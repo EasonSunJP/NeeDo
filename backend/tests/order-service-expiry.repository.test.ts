@@ -62,13 +62,14 @@ const createHarness = (
   input: {
     orders?: any[];
     rates?: any[];
+    preexistingHistories?: any[];
     failCheckoutForOrderId?: number;
     preexistingCheckoutOrderId?: number;
   } = {}
 ) => {
   const orders = input.orders ?? [makeOrder(41)];
   const rates = input.rates ?? [validRate];
-  const histories: any[] = [];
+  const histories: any[] = [...(input.preexistingHistories ?? [])];
   const events: any[] = [];
   const checkouts = new Map<number, any>();
   if (input.preexistingCheckoutOrderId) {
@@ -116,6 +117,14 @@ const createHarness = (
       })
     },
     orderStatusHistory: {
+      findMany: jest.fn(async ({ where }: any) =>
+        histories.filter(
+          (history) =>
+            history.bookingOrderId === where.bookingOrderId &&
+            history.toStatus === where.toStatus &&
+            !history.deletedAt
+        )
+      ),
       create: jest.fn(async ({ data }: any) => {
         histories.push({ id: histories.length + 1, ...data });
         return histories.at(-1);
@@ -413,6 +422,60 @@ describe("OrderServiceExpiryRepository", () => {
     expect(h.events).toHaveLength(0);
     expect(h.histories).toHaveLength(0);
     expect(h.checkouts.size).toBe(1);
+    expect(reportFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before writes when an awaiting-checkout target history already exists", async () => {
+    const reportFailure = jest.fn();
+    const existingHistory = {
+      id: 91,
+      bookingOrderId: 41,
+      fromStatus: "IN_SERVICE",
+      toStatus: "AWAITING_CHECKOUT",
+      actorUserId: null,
+      reason: "preexisting_partial_state",
+      deletedAt: null
+    };
+    const h = createHarness({ preexistingHistories: [existingHistory] });
+
+    await expect(
+      h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
+    ).resolves.toBe(0);
+    expect(h.orders[0].status).toBe("IN_SERVICE");
+    expect(h.orders[0].serviceSession.endedAt).toBeNull();
+    expect(h.orders[0].serviceSession.endedByUserId).toBeNull();
+    expect(h.histories).toEqual([existingHistory]);
+    expect(h.events).toHaveLength(0);
+    expect(h.checkouts.size).toBe(0);
+    expect(h.tx.orderServiceSession.updateMany).not.toHaveBeenCalled();
+    expect(h.tx.bookingOrder.updateMany).not.toHaveBeenCalled();
+    expect(h.tx.orderStatusHistory.create).not.toHaveBeenCalled();
+    expect(h.tx.orderServiceEvent.create).not.toHaveBeenCalled();
+    expect(h.tx.orderCheckout.create).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before writes when an unended session already names an ending actor", async () => {
+    const reportFailure = jest.fn();
+    const inconsistentOrder = makeOrder(41, {
+      serviceSession: { ...makeOrder(41).serviceSession, endedByUserId: 27, endedAt: null }
+    });
+    const h = createHarness({ orders: [inconsistentOrder] });
+
+    await expect(
+      h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
+    ).resolves.toBe(0);
+    expect(inconsistentOrder.status).toBe("IN_SERVICE");
+    expect(inconsistentOrder.serviceSession.endedAt).toBeNull();
+    expect(inconsistentOrder.serviceSession.endedByUserId).toBe(27);
+    expect(h.histories).toHaveLength(0);
+    expect(h.events).toHaveLength(0);
+    expect(h.checkouts.size).toBe(0);
+    expect(h.tx.orderServiceSession.updateMany).not.toHaveBeenCalled();
+    expect(h.tx.bookingOrder.updateMany).not.toHaveBeenCalled();
+    expect(h.tx.orderStatusHistory.create).not.toHaveBeenCalled();
+    expect(h.tx.orderServiceEvent.create).not.toHaveBeenCalled();
+    expect(h.tx.orderCheckout.create).not.toHaveBeenCalled();
     expect(reportFailure).toHaveBeenCalledTimes(1);
   });
 });

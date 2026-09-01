@@ -97,13 +97,14 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
           !session.startedAt ||
           !session.expectedEndsAt ||
           session.endedAt ||
+          session.endedByUserId !== null ||
           session.expectedEndsAt > now
         ) {
           throw new OrderServiceExpirySnapshotError();
         }
         if (session.addOns.some((addOn) => addOn.status === "PROPOSED")) return false;
 
-        const [existingCheckout, existingEvidence] = await Promise.all([
+        const [existingCheckout, existingEvents, existingTargetHistory] = await Promise.all([
           transaction.orderCheckout.findUnique({ where: { bookingOrderId: order.id } }),
           transaction.orderServiceEvent.findMany({
             where: {
@@ -115,9 +116,18 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
             },
             select: { id: true },
             take: 1
+          }),
+          transaction.orderStatusHistory.findMany({
+            where: {
+              bookingOrderId: order.id,
+              toStatus: BookingOrderStatus.AWAITING_CHECKOUT,
+              deletedAt: null
+            },
+            select: { id: true },
+            take: 1
           })
         ]);
-        if (existingCheckout || existingEvidence.length > 0) {
+        if (existingCheckout || existingEvents.length > 0 || existingTargetHistory.length > 0) {
           throw new OrderServiceExpirySnapshotError();
         }
 
