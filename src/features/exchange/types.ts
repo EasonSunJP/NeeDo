@@ -27,6 +27,11 @@ export type ExchangeViewerState = {
   canWithdraw: boolean;
 };
 
+export type ExchangePriority = {
+  active: boolean;
+  tierCode: "free" | "silver" | "gold" | "black_diamond";
+};
+
 export type ExchangeDemand = {
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
@@ -84,6 +89,7 @@ export type ExchangePost = {
   publisher: ExchangeActor | null;
   counts: ExchangeInteractionCounts;
   viewer: ExchangeViewerState;
+  priority?: ExchangePriority;
   demand: ExchangeDemand | null;
   intelligence: ExchangeIntelligence | null;
 };

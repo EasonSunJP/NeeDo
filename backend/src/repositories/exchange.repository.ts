@@ -35,6 +35,7 @@ import type {
   ExchangeMatchMode,
   ExchangePostPage,
   ExchangePostPayload,
+  ExchangePriorityPayload,
   ExchangePostStatus,
   ExchangePostType,
   ExchangePublisherCapacitySource,
@@ -191,6 +192,26 @@ type ExchangePostRecord = Prisma.ExchangePostGetPayload<{
   include: ReturnType<typeof postInclude>;
 }>;
 
+type PrioritizedDemandRow = {
+  id: number | bigint;
+  priorityActive: boolean | number | bigint;
+  tierRank: number | bigint;
+  tierCode: string | null;
+};
+
+const platformTierCodes = new Set(["free", "silver", "gold", "black_diamond"]);
+
+const toPriorityPayload = (row: PrioritizedDemandRow): ExchangePriorityPayload => {
+  const tierCode = row.tierCode ?? "free";
+  if (!platformTierCodes.has(tierCode)) {
+    throw new Error("error.exchange.invalid_priority_tier");
+  }
+  return {
+    active: Number(row.priorityActive) === 1,
+    tierCode: tierCode as ExchangePriorityPayload["tierCode"]
+  };
+};
+
 const isServiceAreaList = (value: Prisma.JsonValue): value is string[] =>
   Array.isArray(value) && value.every((area) => typeof area === "string");
 
@@ -315,22 +336,129 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       deletedAt: null
     } satisfies Prisma.ExchangePostWhereInput;
 
+    const publicDemandMarketplace = input.type === "demand" && input.authorIdentityId === undefined;
+    const rowsPromise: Promise<
+      Array<{ record: ExchangePostRecord; priority?: ExchangePriorityPayload }>
+    > = publicDemandMarketplace
+      ? this.listPrioritizedDemandRows(input, pagination.skip, pagination.take)
+      : this.client.exchangePost.findMany({
+            where,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            skip: pagination.skip,
+            take: pagination.take,
+            include: postInclude(input.viewerIdentityId)
+          }).then((records) => records.map((record) => ({ record })));
     const [rows, total] = await Promise.all([
-      this.client.exchangePost.findMany({
-        where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip: pagination.skip,
-        take: pagination.take,
-        include: postInclude(input.viewerIdentityId)
-      }),
+      rowsPromise,
       this.client.exchangePost.count({ where })
     ]);
 
     return buildPaginatedResponse(
-      rows.map((row) => this.mapPost(row, input.viewerIdentityId, input.now)),
+      rows.map((row) => this.mapPost(
+        row.record,
+        input.viewerIdentityId,
+        input.now,
+        row.priority
+      )),
       total,
       pagination
     );
+  }
+
+  private async listPrioritizedDemandRows(
+    input: ExchangeListInput,
+    skip: number,
+    take: number
+  ): Promise<Array<{ record: ExchangePostRecord; priority?: ExchangePriorityPayload }>> {
+    const ranked = await this.client.$queryRaw<PrioritizedDemandRow[]>(Prisma.sql`
+      WITH active_membership AS (
+        SELECT
+          entitlement.user_id AS userId,
+          entitlement.tier_version_id AS tierVersionId,
+          tier.code AS tierCode,
+          tier.sort_order AS tierRank,
+          ROW_NUMBER() OVER (
+            PARTITION BY entitlement.user_id
+            ORDER BY entitlement.starts_at DESC, entitlement.id DESC
+          ) AS membershipRow
+        FROM platform_membership_entitlements AS entitlement
+        INNER JOIN platform_membership_tier_versions AS tierVersion
+          ON tierVersion.id = entitlement.tier_version_id
+          AND tierVersion.status IN ('published', 'archived')
+          AND tierVersion.deleted_at IS NULL
+        INNER JOIN platform_membership_tiers AS tier
+          ON tier.id = tierVersion.tier_id
+          AND tier.deleted_at IS NULL
+        WHERE entitlement.starts_at <= ${input.now}
+          AND (entitlement.expires_at IS NULL OR entitlement.expires_at > ${input.now})
+          AND entitlement.superseded_at IS NULL
+          AND entitlement.deleted_at IS NULL
+      ),
+      free_membership AS (
+        SELECT
+          tierVersion.id AS tierVersionId,
+          tier.code AS tierCode,
+          tier.sort_order AS tierRank,
+          ROW_NUMBER() OVER (
+            ORDER BY tierVersion.effective_from DESC, tierVersion.version DESC, tierVersion.id DESC
+          ) AS membershipRow
+        FROM platform_membership_tier_versions AS tierVersion
+        INNER JOIN platform_membership_tiers AS tier
+          ON tier.id = tierVersion.tier_id
+          AND tier.code = 'free'
+          AND tier.deleted_at IS NULL
+        WHERE tierVersion.status = 'published'
+          AND tierVersion.effective_from <= ${input.now}
+          AND (tierVersion.effective_to IS NULL OR tierVersion.effective_to > ${input.now})
+          AND tierVersion.deleted_at IS NULL
+      )
+      SELECT
+        post.id AS id,
+        CASE
+          WHEN benefit.is_globally_enabled = TRUE AND tierBenefit.is_enabled = TRUE THEN 1
+          ELSE 0
+        END AS priorityActive,
+        COALESCE(active.tierRank, free.tierRank, 0) AS tierRank,
+        COALESCE(active.tierCode, free.tierCode, 'free') AS tierCode
+      FROM exchange_posts AS post
+      LEFT JOIN active_membership AS active
+        ON active.userId = post.author_user_id
+        AND active.membershipRow = 1
+      LEFT JOIN free_membership AS free
+        ON free.membershipRow = 1
+      LEFT JOIN platform_membership_benefits AS benefit
+        ON benefit.code = ${"priority_request"}
+        AND benefit.deleted_at IS NULL
+      LEFT JOIN platform_membership_tier_benefits AS tierBenefit
+        ON tierBenefit.tier_version_id = COALESCE(active.tierVersionId, free.tierVersionId)
+        AND tierBenefit.benefit_id = benefit.id
+        AND tierBenefit.deleted_at IS NULL
+      WHERE post.type = 'demand'
+        AND post.status = 'published'
+        AND post.expires_at > ${input.now}
+        AND post.deleted_at IS NULL
+      ORDER BY
+        priorityActive DESC,
+        CASE WHEN priorityActive = 1 THEN COALESCE(active.tierRank, free.tierRank, 0) ELSE 0 END DESC,
+        post.created_at ASC,
+        post.id ASC
+      LIMIT ${take} OFFSET ${skip}
+    `);
+    const ids = ranked.map((row) => Number(row.id));
+    if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+      throw new Error("error.exchange.invalid_priority_post_id");
+    }
+    if (ids.length === 0) return [];
+
+    const records = await this.client.exchangePost.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      include: postInclude(input.viewerIdentityId)
+    });
+    const recordsById = new Map(records.map((record) => [record.id, record]));
+    return ranked.flatMap((row) => {
+      const record = recordsById.get(Number(row.id));
+      return record ? [{ record, priority: toPriorityPayload(row) }] : [];
+    });
   }
 
   public async findPostById(
@@ -696,7 +824,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   private mapPost(
     row: ExchangePostRecord,
     viewerIdentityId: number,
-    now: Date
+    now: Date,
+    priority?: ExchangePriorityPayload
   ): ExchangePostPayload {
     const expired =
       row.status === DatabaseExchangePostStatus.PUBLISHED &&
@@ -772,6 +901,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         liked: row.likes.length > 0,
         canWithdraw: ownerView && status === "published"
       },
+      ...(priority ? { priority } : {}),
       demand,
       intelligence
     };

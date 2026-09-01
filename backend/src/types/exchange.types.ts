@@ -29,6 +29,11 @@ export interface ExchangeViewerState {
   canWithdraw: boolean;
 }
 
+export interface ExchangePriorityPayload {
+  active: boolean;
+  tierCode: "free" | "silver" | "gold" | "black_diamond";
+}
+
 export interface ExchangeDemandPayload {
   serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
@@ -95,6 +100,7 @@ export interface ExchangePostPayload {
   publisher: ExchangeActorPayload | null;
   counts: ExchangeInteractionCounts;
   viewer: ExchangeViewerState;
+  priority?: ExchangePriorityPayload;
   demand: ExchangeDemandPayload | null;
   intelligence: ExchangeIntelligencePayload | null;
 }

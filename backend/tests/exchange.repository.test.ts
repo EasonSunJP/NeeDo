@@ -332,6 +332,7 @@ describe("ExchangePostRepository", () => {
         page: 2,
         pageSize: 10,
         viewerIdentityId: 17,
+        authorIdentityId: 17,
         now
       })
     ).resolves.toEqual({
@@ -390,6 +391,7 @@ describe("ExchangePostRepository", () => {
           type: "DEMAND",
           status: "PUBLISHED",
           expiresAt: { gt: now },
+          ownerIdentityId: 17,
           deletedAt: null
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -418,6 +420,7 @@ describe("ExchangePostRepository", () => {
         type: "DEMAND",
         status: "PUBLISHED",
         expiresAt: { gt: now },
+        ownerIdentityId: 17,
         deletedAt: null
       }
     });
@@ -427,10 +430,58 @@ describe("ExchangePostRepository", () => {
       page: 1,
       pageSize: 20,
       viewerIdentityId: 17,
+      authorIdentityId: 17,
       now
     });
     expect(JSON.stringify(response)).not.toContain("authorUserId");
     expect(JSON.stringify(response)).not.toContain("authorIdentityId");
+  });
+
+  it("orders the public Request marketplace by the live priority benefit without N+1 membership reads", async () => {
+    const blackDiamond = {
+      ...demandRow,
+      id: 42,
+      createdAt: new Date("2026-08-30T02:30:00.000Z")
+    };
+    const queryRaw = jest.fn(async (_query: unknown) => [
+      { id: 42, priorityActive: 1, tierRank: 3, tierCode: "black_diamond" },
+      { id: 41, priorityActive: 0, tierRank: 0, tierCode: "free" }
+    ]);
+    const findMany = jest.fn(async () => [demandRow, blackDiamond]);
+    const count = jest.fn(async () => 2);
+    const repository = new ExchangePostRepository({
+      $queryRaw: queryRaw,
+      exchangePost: { findMany, count }
+    } as never);
+
+    const result = await repository.listPosts({
+      type: "demand",
+      page: 1,
+      pageSize: 20,
+      viewerIdentityId: 99,
+      now
+    });
+
+    expect(result.list.map((post) => post.id)).toEqual([42, 41]);
+    expect(result.list.map((post) => post.priority)).toEqual([
+      { active: true, tierCode: "black_diamond" },
+      { active: false, tierCode: "free" }
+    ]);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: [42, 41] }, deletedAt: null }
+      })
+    );
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const query = queryRaw.mock.calls[0]?.[0] as { strings: string[]; values: unknown[] };
+    const sql = query.strings.join("?");
+    expect(sql).toContain("platform_membership_entitlements");
+    expect(sql).toContain("platform_membership_tier_benefits");
+    expect(sql).toContain("platform_membership_benefits");
+    expect(sql).toMatch(/ORDER BY\s+priorityActive DESC/);
+    expect(query.values).toContain("priority_request");
+    expect(query.values).toContain(now);
   });
 
   it("redacts private Request address and publisher identity for a general provider view", async () => {

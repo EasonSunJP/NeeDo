@@ -1575,7 +1575,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
     [base]: {
       get: exchangeOperation("List live demand or intelligence posts", "exchange:posts:list", {
         description:
-          "For type=demand, customers receive only demand posts authored by their active account; merchant and technician identities receive the live demand marketplace. Intelligence posts follow the normal live feed scope.",
+          "For type=demand, customers receive only demand posts authored by their active account; merchant and technician identities receive the live demand marketplace. The public Request marketplace resolves the current membership entitlement and current priority_request benefit at read time, then orders active priority posts by tier and chronological fairness. Intelligence posts follow the normal live feed scope.",
         parameters: [
           {
             name: "type",
@@ -2186,6 +2186,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           canWithdraw: { type: "boolean" }
         }
       },
+      ExchangePriority: {
+        type: "object",
+        additionalProperties: false,
+        required: ["active", "tierCode"],
+        properties: {
+          active: { type: "boolean" },
+          tierCode: {
+            type: "string",
+            enum: ["free", "silver", "gold", "black_diamond"]
+          }
+        }
+      },
       ExchangeDemand: {
         type: "object",
         additionalProperties: false,
@@ -2379,6 +2391,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           counts: { $ref: "#/components/schemas/ExchangeInteractionCounts" },
           viewer: { $ref: "#/components/schemas/ExchangeViewerState" },
+          priority: { $ref: "#/components/schemas/ExchangePriority" },
           demand: {
             oneOf: [{ $ref: "#/components/schemas/ExchangeDemand" }, { type: "null" }]
           },

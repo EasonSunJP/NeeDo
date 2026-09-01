@@ -162,6 +162,15 @@ describe("formal Exchange OpenAPI contract", () => {
       "withdrawn",
       "expired"
     ]);
+    expect(schemas.ExchangePost.properties.priority).toEqual({
+      $ref: "#/components/schemas/ExchangePriority"
+    });
+    expect(schemas.ExchangePriority.properties.tierCode.enum).toEqual([
+      "free",
+      "silver",
+      "gold",
+      "black_diamond"
+    ]);
     expect(schemas.ExchangePublishRequest.oneOf).toEqual([
       { $ref: "#/components/schemas/ExchangeDemandPublishRequest" },
       { $ref: "#/components/schemas/ExchangeIntelligencePublishRequest" }
@@ -174,6 +183,9 @@ describe("formal Exchange OpenAPI contract", () => {
     );
     expect(JSON.stringify({ paths: exchangePaths, schemas: exchangeSchemas })).not.toMatch(
       /authorUserId|authorIdentityId|actorUserId|actorIdentityId/
+    );
+    expect(openApi.paths["/api/v1/exchange/posts"].get.description).toContain(
+      "current priority_request benefit"
     );
   });
 
