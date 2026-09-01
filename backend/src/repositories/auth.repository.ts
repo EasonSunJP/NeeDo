@@ -449,6 +449,9 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           const customerProfile = await transaction.customerProfile.create({
             data: { userId: user.id, displayName: bootstrapKey }
           });
+          await transaction.userExperienceAccount.create({
+            data: { userId: user.id, currentLevel: 1, totalExpUnits: 0n }
+          });
           const customerIdentity = await transaction.userIdentity.create({
             data: {
               userId: user.id,

@@ -18,6 +18,10 @@ import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repo
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
 import { RealtimeRepository } from "./repositories/realtime.repository";
+import { PlatformMembershipRepository } from "./repositories/platform-membership.repository";
+import { NdpExperienceCampaignRepository } from "./repositories/ndp-experience-campaign.repository";
+import { UserGlobalPolicyRepository } from "./repositories/user-global-policy.repository";
+import { UserExperienceRepository } from "./repositories/user-experience.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
 import { BookingUserRewardExpiryService } from "./services/booking-user-reward-expiry.service";
@@ -32,6 +36,10 @@ import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-o
 import { ExchangeService } from "./services/exchange.service";
 import { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
+import { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
+import { PlatformMembershipService } from "./services/platform-membership.service";
+import { UserExperienceService } from "./services/user-experience.service";
+import { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
@@ -60,16 +68,37 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
+const authRepository = new AuthRepository();
+const platformMembershipRepository = new PlatformMembershipRepository();
+const userExperienceRepository = new UserExperienceRepository();
+const userGlobalPolicyRepository = new UserGlobalPolicyRepository();
+const ndpExperienceCampaignRepository = new NdpExperienceCampaignRepository();
+const platformMembershipResolver = new PlatformMembershipService(
+  platformMembershipRepository
+);
+const userExperienceService = new UserExperienceService(
+  userExperienceRepository,
+  platformMembershipResolver,
+  new UserGlobalPolicyService(userGlobalPolicyRepository),
+  new NdpExperienceCampaignService(ndpExperienceCampaignRepository)
+);
 const exchangeRequestFeeService = new ExchangeRequestFeeService(new ExchangeRequestFeeRepository());
-const exchangeLedgerService = new LedgerService(new LedgerRepository());
+const exchangeLedgerService = new LedgerService(
+  new LedgerRepository(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  userExperienceService
+);
 const exchangeService = new ExchangeService(
   new ExchangePostRepository(),
   undefined,
-  new PersonalIdentityScopeService(new AuthRepository()),
+  new PersonalIdentityScopeService(authRepository),
   exchangeRequestFeeService,
   exchangeLedgerService
 );
-const authRepository = new AuthRepository();
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
     logger.error(event, "Merchant shop switch receipt post-state mismatch");
@@ -135,6 +164,11 @@ const app = createApp(env, {
   ledgerService: exchangeLedgerService,
   authRepository,
   authSessionStore,
+  platformMembershipRepository,
+  userExperienceService,
+  userExperienceRepository,
+  userGlobalPolicyRepository,
+  ndpExperienceCampaignRepository,
   merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(

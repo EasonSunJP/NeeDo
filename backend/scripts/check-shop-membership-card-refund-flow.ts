@@ -117,7 +117,18 @@ async function verifyPhysicalMigration(client: PrismaClient, requireRecord: bool
   assert(requiredConstraints.every((name) => constraintNames.has(name)), "refund checks or foreign keys are incomplete");
   assert(indexes.some((row) => row.indexName === "shop_membership_card_redemption_refunds_redemption_id_key" && Number(row.nonUnique) === 0), "one-refund-per-redemption index is missing");
   assert(indexes.some((row) => row.indexName === "shop_membership_card_redemption_refunds_idempotency_key" && Number(row.nonUnique) === 0), "refund idempotency index is missing");
-  assert(enumRows[0]?.columnType.includes("shop_membership_reward_reversal"), "refund ledger enum is missing");
+  const ledgerTypeEnum = enumRows[0]?.columnType ?? "";
+  for (const type of [
+    "shop_membership_reward_reversal",
+    "service_consumption_settlement",
+    "product_consumption_settlement",
+    "platform_membership_purchase",
+    "booking_consumption_refund",
+    "service_consumption_refund",
+    "product_consumption_refund"
+  ]) {
+    assert(ledgerTypeEnum.includes(type), "ledger enum is missing integrated type: " + type);
+  }
   const rewardStateClause = (rewardStateRows[0]?.checkClause ?? "").replace(/\s+/g, " ").toLowerCase();
   assert(
     /reward_status.*reversed.*ledger_transaction_id.*is null.*reward_settled_at.*is null/.test(rewardStateClause),
@@ -135,13 +146,15 @@ async function verifyPhysicalMigration(client: PrismaClient, requireRecord: bool
   assert(roles.includes("admin") && roles.includes("merchant_owner"), "admin/owner grants are incomplete");
   assert(!roles.includes("merchant_staff"), "merchant staff received forbidden refund permission");
   const migrationRows = await client.$queryRawUnsafe<Array<{ migrationName: string; finishedAt: Date | null }>>(
-    "SELECT migration_name AS migrationName, finished_at AS finishedAt FROM _prisma_migrations WHERE migration_name IN (?, ?)",
+    "SELECT migration_name AS migrationName, finished_at AS finishedAt FROM _prisma_migrations WHERE migration_name IN (?, ?, ?)",
     "20260901200000_shop_membership_card_refund",
-    "20260901201000_shop_membership_card_refund_reward_state"
+    "20260901201000_shop_membership_card_refund_reward_state",
+    "20260901211000_membership_refund_ndp_experience_ledger_types"
   );
   const migrationRecorded = [
     "20260901200000_shop_membership_card_refund",
-    "20260901201000_shop_membership_card_refund_reward_state"
+    "20260901201000_shop_membership_card_refund_reward_state",
+    "20260901211000_membership_refund_ndp_experience_ledger_types"
   ].every((name) => migrationRows.some((row) => row.migrationName === name && row.finishedAt !== null));
   if (requireRecord) assert(migrationRecorded, "refund migration is not recorded as applied");
   return {

@@ -18,6 +18,13 @@ const rewardStateMigrationPath = join(
 const rewardStateMigration = existsSync(rewardStateMigrationPath)
   ? readFileSync(rewardStateMigrationPath, "utf8")
   : "";
+const ledgerTypeIntegrationMigrationPath = join(
+  process.cwd(),
+  "prisma/migrations/20260901211000_membership_refund_ndp_experience_ledger_types/migration.sql"
+);
+const ledgerTypeIntegrationMigration = existsSync(ledgerTypeIntegrationMigrationPath)
+  ? readFileSync(ledgerTypeIntegrationMigrationPath, "utf8")
+  : "";
 
 describe("shop membership card refund schema contract", () => {
   it("persists immutable card restoration, order refund, and reward reversal evidence", () => {
@@ -101,5 +108,19 @@ describe("shop membership card refund schema contract", () => {
     expect(rewardStateMigration).toContain("`shop_wallet_id` IS NULL");
     expect(rewardStateMigration).toContain("`customer_wallet_id` IS NULL");
     expect(rewardStateMigration).toContain("`platform_wallet_id` IS NULL");
+  });
+
+  it("preserves refund reversal and experience ledger types after both migrations", () => {
+    for (const type of [
+      "shop_membership_reward_reversal",
+      "service_consumption_settlement",
+      "product_consumption_settlement",
+      "platform_membership_purchase",
+      "booking_consumption_refund",
+      "service_consumption_refund",
+      "product_consumption_refund"
+    ]) {
+      expect(ledgerTypeIntegrationMigration).toContain(`'${type}'`);
+    }
   });
 });

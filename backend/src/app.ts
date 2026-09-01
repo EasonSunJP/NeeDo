@@ -39,6 +39,7 @@ import type { CompensationProfileRepositoryPort } from "./services/compensation-
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
 import type { NdpExperienceCampaignRepositoryPort } from "./domain/ndp-experience-campaign";
@@ -171,6 +172,8 @@ import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.ro
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
+import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
+import { createUserExperienceRoutes } from "./routes/user-experience.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
@@ -178,6 +181,7 @@ import type { VerificationChallengeStore } from "./services/auth-verification-ch
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import type { PlatformMembershipService } from "./services/platform-membership.service";
+import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
@@ -287,6 +291,17 @@ export interface AppDependencies {
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
+  platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
+  userExperienceService?: Pick<
+    UserExperienceService,
+    | "recordEvent"
+    | "recordNdpConsumption"
+    | "recordNdpReversal"
+    | "recordMembershipRenewal"
+    | "getSummary"
+    | "listEntries"
+  >;
+  userExperienceRepository?: UserExperienceRepositoryPort;
   platformMembershipAdministrationService?: Pick<
     PlatformMembershipService,
     | "listTiersForAdministration"
@@ -380,9 +395,15 @@ export const createApp = (
   const authRepository = dependencies.authRepository ?? new AuthRepository();
   const personalIdentityScopeService =
     dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
+  const userExperienceService = createUserExperienceServiceForRoutes(dependencies);
   const realtimeService =
     dependencies.realtimeService ??
-    new RealtimeService(realtimeRepository, realtimeEventGateway, personalIdentityScopeService);
+    new RealtimeService(
+      realtimeRepository,
+      realtimeEventGateway,
+      personalIdentityScopeService,
+      userExperienceService
+    );
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
     databaseHealthCheck: dependencies.databaseHealthCheck ?? checkDatabaseHealth,
@@ -391,6 +412,7 @@ export const createApp = (
     realtimeRepository,
     realtimeEventGateway,
     realtimeService,
+    userExperienceService,
     personalIdentityScopeService
   };
 
@@ -413,6 +435,7 @@ export const createApp = (
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformMembershipRoutes(config, resolvedDependencies));
+  apiRouter.use(createUserExperienceRoutes(config, resolvedDependencies));
   apiRouter.use(createBackofficeUserGroupRoutes(config, resolvedDependencies));
   apiRouter.use(createUserGlobalPolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));
