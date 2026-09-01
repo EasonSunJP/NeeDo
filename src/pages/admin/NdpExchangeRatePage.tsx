@@ -165,6 +165,7 @@ export function NdpExchangeRatePage() {
     projectionOnly = false,
     releaseCommandLock = false
   ) => {
+    if (projectionLock !== null && !releaseCommandLock) return false;
     const currentRequest = ++requestId.current;
     if (!overview || fresh) setLoadStatus("loading");
     setLoadError("");
@@ -196,7 +197,7 @@ export function NdpExchangeRatePage() {
       }
       return false;
     }
-  }, [overview]);
+  }, [overview, projectionLock]);
 
   useEffect(() => {
     void loadOverview(1, true);
@@ -381,7 +382,7 @@ export function NdpExchangeRatePage() {
                   "第 {current} / {total} 页",
                   { current: String(page), total: String(totalPages) }
                 )}</span>
-                <div className="flex gap-2"><Button disabled={page <= 1} onClick={() => void loadOverview(page - 1, false)} variant="secondary">上一页</Button><Button disabled={page >= totalPages} onClick={() => void loadOverview(page + 1, false)} variant="secondary">下一页</Button></div>
+                <div className="flex gap-2"><Button disabled={projectionLock !== null || page <= 1} onClick={() => void loadOverview(page - 1, false)} variant="secondary">上一页</Button><Button disabled={projectionLock !== null || page >= totalPages} onClick={() => void loadOverview(page + 1, false)} variant="secondary">下一页</Button></div>
               </div>
             </section>
           </div>
