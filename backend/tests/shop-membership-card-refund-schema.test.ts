@@ -11,6 +11,13 @@ const migrationPath = join(
   "prisma/migrations/20260901200000_shop_membership_card_refund/migration.sql"
 );
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+const rewardStateMigrationPath = join(
+  process.cwd(),
+  "prisma/migrations/20260901201000_shop_membership_card_refund_reward_state/migration.sql"
+);
+const rewardStateMigration = existsSync(rewardStateMigrationPath)
+  ? readFileSync(rewardStateMigrationPath, "utf8")
+  : "";
 
 describe("shop membership card refund schema contract", () => {
   it("persists immutable card restoration, order refund, and reward reversal evidence", () => {
@@ -82,5 +89,17 @@ describe("shop membership card refund schema contract", () => {
     expect(assignments.merchant_staff).not.toContain("shop.member.card.refund");
     expect(migration).toContain("'shop.member.card.refund'");
     expect(migration).toContain("`roles`.`code` IN ('admin', 'merchant_owner')");
+  });
+
+  it("allows pending rewards to be cancelled without inventing a settlement ledger", () => {
+    expect(rewardStateMigration).toContain(
+      "DROP CHECK `shop_membership_card_redemptions_reward_state`"
+    );
+    expect(rewardStateMigration).toContain("`reward_status` = 'reversed'");
+    expect(rewardStateMigration).toContain("`ledger_transaction_id` IS NULL");
+    expect(rewardStateMigration).toContain("`reward_settled_at` IS NULL");
+    expect(rewardStateMigration).toContain("`shop_wallet_id` IS NULL");
+    expect(rewardStateMigration).toContain("`customer_wallet_id` IS NULL");
+    expect(rewardStateMigration).toContain("`platform_wallet_id` IS NULL");
   });
 });
