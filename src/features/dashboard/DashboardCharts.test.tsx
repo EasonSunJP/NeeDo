@@ -1,9 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { DashboardBucketPayload } from "../../api/backofficeRealData";
+import type { AnalyticsMetricSeries, DashboardBucketPayload } from "../../api/backofficeRealData";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
-import { DualAxisLineChart, GroupedBarChart } from "./DashboardCharts";
+import {
+  DualAxisLineChart,
+  FixedAnalyticsSeriesChart,
+  GroupedBarChart
+} from "./DashboardCharts";
 import source from "./DashboardCharts.tsx?raw";
 
 const buckets: DashboardBucketPayload[] = [
@@ -145,5 +149,38 @@ describe("DashboardCharts", () => {
 
   it("ships a reduced-motion rule for chart transitions", () => {
     expect(source).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  it("renders fixed analytics series accessibly while preserving null gaps and input data", () => {
+    const series: AnalyticsMetricSeries[] = [
+      {
+        seriesKey: "growth",
+        label: "增加",
+        unit: "people",
+        points: [
+          { key: "previous", label: "上期", value: null },
+          { key: "current", label: "本期", value: 0 }
+        ]
+      }
+    ];
+    const snapshot = structuredClone(series);
+    const markup = renderChart(
+      <FixedAnalyticsSeriesChart
+        series={series}
+        unavailableValueLabel="暂无数据"
+      />
+    );
+
+    expect(markup).toContain('viewBox="0 0 720 280"');
+    expect(markup).toContain("增加（people）");
+    expect(markup).toContain("上期");
+    expect(markup).toContain("暂无数据");
+    expect(markup).toContain("本期");
+    expect(markup).toContain(">0<");
+    expect(markup).toContain('data-analytics-point-unavailable="true"');
+    expect(markup).toContain('data-analytics-series-evidence="true"');
+    expect(markup).toMatch(/data-analytics-series-evidence="true"[^>]*data-no-i18n="true"/);
+    expect(markup).not.toMatch(/NaN|Infinity/);
+    expect(series).toEqual(snapshot);
   });
 });

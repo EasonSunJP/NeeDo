@@ -1,4 +1,7 @@
-import type { DashboardBucketPayload } from "../../api/backofficeRealData";
+import type {
+  AnalyticsMetricSeries,
+  DashboardBucketPayload
+} from "../../api/backofficeRealData";
 import { useI18n } from "../../i18n/I18nProvider";
 import { formatDashboardNumber, normalizeDashboardNumber } from "./dashboardFormat";
 
@@ -63,7 +66,7 @@ function linePath(buckets: DashboardBucketPayload[], series: DashboardChartSerie
     .join(" ");
 }
 
-function Grid({ buckets }: { buckets: DashboardBucketPayload[] }) {
+function Grid({ buckets }: { buckets: Array<Pick<DashboardBucketPayload, "key" | "label">> }) {
   return (
     <>
       {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -331,5 +334,114 @@ export function GroupedBarChart({
         })
       )}
     </ChartFrame>
+  );
+}
+
+function analyticsPointX(index: number, count: number) {
+  return getX(index, count);
+}
+
+function analyticsLineSegments(
+  points: AnalyticsMetricSeries["points"],
+  values: number[]
+): string[] {
+  const segments: string[] = [];
+  let current: string[] = [];
+  points.forEach((point, index) => {
+    if (point.value === null) {
+      if (current.length > 1) segments.push(current.join(" "));
+      current = [];
+      return;
+    }
+    current.push(
+      `${current.length === 0 ? "M" : "L"} ${analyticsPointX(index, points.length).toFixed(2)} ${getY(point.value, values).toFixed(2)}`
+    );
+  });
+  if (current.length > 1) segments.push(current.join(" "));
+  return segments;
+}
+
+export function FixedAnalyticsSeriesChart({
+  series,
+  unavailableValueLabel
+}: {
+  series: readonly AnalyticsMetricSeries[];
+  unavailableValueLabel: string;
+}) {
+  const { language } = useI18n();
+  const values = series.flatMap((item) =>
+    item.points.flatMap((point) => point.value === null ? [] : [point.value])
+  );
+  const pointLabels = series[0]?.points ?? [];
+
+  return (
+    <div className="relative min-w-0 overflow-hidden">
+      <svg
+        aria-hidden="true"
+        className="dashboard-chart h-auto w-full text-ink/45"
+        data-analytics-detail-chart="true"
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+      >
+        <Grid buckets={pointLabels} />
+        {series.map((item, seriesIndex) => {
+          const color = lineColors[seriesIndex % lineColors.length];
+          return (
+            <g data-analytics-series={item.seriesKey} key={item.seriesKey}>
+              {analyticsLineSegments(item.points, values).map((path, pathIndex) => (
+                <path
+                  d={path}
+                  fill="none"
+                  key={`${item.seriesKey}-${pathIndex}`}
+                  stroke={color}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="3"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+              {item.points.map((point, pointIndex) => point.value === null ? null : (
+                <circle
+                  cx={analyticsPointX(pointIndex, item.points.length)}
+                  cy={getY(point.value, values)}
+                  fill="var(--admin-surface, white)"
+                  key={point.key}
+                  r="4"
+                  stroke={color}
+                  strokeWidth="2.5"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+      <table className="sr-only" data-analytics-series-evidence="true" data-no-i18n>
+        <thead>
+          <tr>
+            <th />
+            {series.map((item) => <th key={item.seriesKey}>{item.label}（{item.unit}）</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {pointLabels.map((point) => (
+            <tr key={point.key}>
+              <th data-no-i18n>{point.label}</th>
+              {series.map((item) => {
+                const value = item.points.find((candidate) => candidate.key === point.key)?.value ?? null;
+                return (
+                  <td
+                    data-analytics-point-unavailable={value === null ? "true" : undefined}
+                    data-no-i18n
+                    key={item.seriesKey}
+                  >
+                    {value === null ? unavailableValueLabel : formatDashboardNumber(value, language)}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

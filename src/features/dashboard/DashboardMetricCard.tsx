@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
-import type { DashboardMetricComparison } from "../../api/backofficeRealData";
+import type {
+  AnalyticsMetricPayload,
+  DashboardMetricComparison
+} from "../../api/backofficeRealData";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { cn } from "../../lib/utils";
 import {
@@ -14,6 +18,27 @@ export type DashboardMetricSecondary = {
   unit: DashboardValueUnit;
 };
 
+function formatAnalyticsComparison(metric: AnalyticsMetricPayload): {
+  direction: "positive" | "negative" | "zero" | "unavailable";
+  label: string;
+} {
+  if (metric.comparisonDirection === "unavailable" || metric.comparisonPercent === null) {
+    return { direction: "unavailable", label: "—" };
+  }
+  if (metric.comparisonDirection === "flat") {
+    return { direction: "zero", label: "+0%" };
+  }
+  const formatted = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
+    metric.comparisonPercent
+  );
+  return {
+    direction: metric.comparisonDirection === "up" ? "positive" : "negative",
+    label: metric.comparisonDirection === "up" && !formatted.startsWith("+")
+      ? `+${formatted}%`
+      : `${formatted}%`
+  };
+}
+
 export function DashboardMetricCard({
   title,
   value,
@@ -24,26 +49,46 @@ export function DashboardMetricCard({
   secondary,
   note,
   icon,
-  accent = "blue"
+  accent = "blue",
+  metric,
+  previousLabel = "上期",
+  unavailableComparisonLabel = "暂无可比较数据",
+  detailLabel,
+  infoLabel,
+  onDetail
 }: {
   title: string;
   value?: number | null;
   comparison?: DashboardMetricComparison | null;
-  unit: DashboardValueUnit;
+  unit?: DashboardValueUnit;
   testNdp?: number | null;
   statusMessage?: string;
   secondary?: DashboardMetricSecondary;
   note?: string;
   icon?: ReactNode;
   accent?: "blue" | "purple" | "green" | "orange" | "cyan";
+  metric?: AnalyticsMetricPayload;
+  previousLabel?: string;
+  unavailableComparisonLabel?: string;
+  detailLabel?: string;
+  infoLabel?: string;
+  onDetail?: (route: string) => void;
 }) {
   const { language } = useI18n();
-  const mainValue = comparison ? comparison.current : value;
+  const resolvedUnit = metric?.unit ?? unit ?? "count";
+  const mainValue = metric ? metric.currentValue : comparison ? comparison.current : value;
   const formatted = mainValue === null || mainValue === undefined
     ? null
-    : formatDashboardValue(mainValue, unit, language);
-  const change = comparison ? formatDashboardChange(comparison.changeRatePercent) : null;
-  const previous = comparison ? formatDashboardValue(comparison.previous, unit, language) : null;
+    : formatDashboardValue(mainValue, resolvedUnit, language);
+  const change = metric
+    ? formatAnalyticsComparison(metric)
+    : comparison
+      ? formatDashboardChange(comparison.changeRatePercent)
+      : null;
+  const previousValue = metric?.previousValue ?? comparison?.previous;
+  const previous = previousValue === null || previousValue === undefined
+    ? null
+    : formatDashboardValue(previousValue, resolvedUnit, language);
   const secondaryValue = secondary
     ? formatDashboardValue(secondary.value, secondary.unit, language)
     : null;
@@ -71,25 +116,43 @@ export function DashboardMetricCard({
       />
       <div className="flex items-center gap-2 text-sm font-black text-ink/60">
         {icon ? <span className="grid h-8 w-8 place-items-center rounded-xl bg-paper">{icon}</span> : null}
-        <h3>{title}</h3>
+        {metric ? (
+          <TitleWithInfo
+            as="h3"
+            info={(
+              <div className="space-y-2" data-no-i18n>
+                <p>{metric.description}</p>
+                <p>{metric.formula}</p>
+              </div>
+            )}
+            label={infoLabel ?? `查看${title}说明和计算公式`}
+            title={title}
+            variant="paper"
+          />
+        ) : <h3>{title}</h3>}
       </div>
 
       <div className="mt-4 flex min-w-0 items-baseline gap-1.5">
         <strong className="truncate text-3xl font-black tracking-tight text-ink" data-no-i18n>
           {formatted?.number ?? "—"}
         </strong>
-        <span className="text-xs font-black text-ink/45">{formatted?.unit ?? (unit === "people" ? "人" : "")}</span>
+        <span className="text-xs font-black text-ink/45">{formatted?.unit ?? (resolvedUnit === "people" ? "人" : "")}</span>
       </div>
 
-      {statusMessage ? <p className="mt-2 text-xs font-bold text-ink/50">{statusMessage}</p> : null}
+      {statusMessage && (!metric || metric.currentValue === null) ? (
+        <p className="mt-2 text-xs font-bold text-ink/50">{statusMessage}</p>
+      ) : null}
 
-      {comparison && change && previous ? (
+      {(comparison || metric) && change ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs font-bold">
           <span className="text-ink/45">
-            上期 <span data-no-i18n>{previous.number}</span> <span>{previous.unit}</span>
+            {previousLabel} <span data-no-i18n>{previous?.number ?? "—"}</span>{" "}
+            <span>{previous?.unit ?? ""}</span>
           </span>
           {change.direction === "unavailable" ? (
-            <span className="dashboard-comparison-unavailable text-ink/45">暂无上期基线</span>
+            <span className="dashboard-comparison-unavailable text-ink/45">
+              {metric ? unavailableComparisonLabel : "暂无上期基线"}
+            </span>
           ) : (
             <span
               className={cn(
@@ -123,6 +186,16 @@ export function DashboardMetricCard({
       ) : null}
 
       {note ? <p className="mt-3 text-xs font-bold leading-5 text-ink/45">{note}</p> : null}
+
+      {metric?.detailRoute && onDetail && detailLabel ? (
+        <button
+          className="mt-4 rounded-xl border border-line bg-paper px-3 py-2 text-xs font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
+          onClick={() => onDetail(metric.detailRoute as string)}
+          type="button"
+        >
+          {detailLabel}
+        </button>
+      ) : null}
     </article>
   );
 }
