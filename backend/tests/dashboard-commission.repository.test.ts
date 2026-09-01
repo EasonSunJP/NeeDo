@@ -3,6 +3,8 @@ import { resolveDashboardWindow } from "../src/domain/dashboard-period";
 import {
   calculateTechnicianCommission,
   DashboardCommissionRepository,
+  isProductionNdpEvidence,
+  resolveTechnicianCompensationAllocations,
   toTokyoBusinessDate,
   type CommissionFacts,
   type DashboardCommissionReader
@@ -32,6 +34,48 @@ const createReader = (rows: unknown[]) => {
 };
 
 describe("calculateTechnicianCommission", () => {
+  it("resolves archived January and active February production profiles before allocating 52,000 JPY", () => {
+    const resolved = resolveTechnicianCompensationAllocations({
+      workDates: ["2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02"].map((workDate) => ({
+        technicianProfileId: 1,
+        shopId: 9,
+        workDate
+      })),
+      profiles: [
+        { id: 101, technicianProfileId: 1, shopId: 9, status: "archived", wageMode: "base_plus_commission", monthlyBaseJpy: 310_000, effectiveFrom: "2026-01-01", effectiveTo: "2026-01-31", deleted: false },
+        { id: 102, technicianProfileId: 1, shopId: 9, status: "active", wageMode: "base_plus_commission", monthlyBaseJpy: 280_000, effectiveFrom: "2026-02-01", effectiveTo: null, deleted: false }
+      ]
+    });
+
+    expect(resolved.anomalyCount).toBe(0);
+    expect(calculateTechnicianCommission({
+      workDates: resolved.workDates,
+      settledShareJpy: 12_000
+    })).toBe(52_000);
+  });
+
+  it("returns an explicit anomaly sentinel for an overlapping version or a history gap", () => {
+    const base = { technicianProfileId: 1, shopId: 9, workDate: "2026-01-15" };
+    const profile = { id: 1, technicianProfileId: 1, shopId: 9, status: "archived" as const, wageMode: "base_plus_commission" as const, monthlyBaseJpy: 310_000, effectiveFrom: "2026-01-01", effectiveTo: "2026-01-31", deleted: false };
+
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [base],
+      profiles: [profile, { ...profile, id: 2, status: "active" }]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [{ ...base, workDate: "2026-02-01" }],
+      profiles: [profile]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [base],
+      profiles: [{ ...profile, monthlyBaseJpy: Number.MAX_SAFE_INTEGER + 1 }]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [base],
+      profiles: [{ ...profile, effectiveFrom: "2026-02-01", effectiveTo: "2026-01-01" }]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+  });
+
   it("allocates each calendar month separately, rounds each profile-month once, then adds settled share", () => {
     expect(calculateTechnicianCommission({
       workDates: [
@@ -95,10 +139,17 @@ describe("calculateTechnicianCommission", () => {
 });
 
 describe("DashboardCommissionRepository", () => {
+  it("accepts production NDP evidence and rejects a TEST_NDP checkout ledger", () => {
+    expect(isProductionNdpEvidence({ financialCurrency: "NDP", ledgerCurrency: "NDP" }))
+      .toBe(true);
+    expect(isProductionNdpEvidence({ financialCurrency: "NDP", ledgerCurrency: "TEST_NDP" }))
+      .toBe(false);
+  });
+
   it("maps current/previous immutable commission facts from one bounded query", async () => {
     const fixture = createReader([
-      { periodKey: "current", dedicatedJpy: 52_000n, partTimeJpy: "12000", marketingNdp: 500, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 },
-      { period_key: "previous", dedicated_jpy: 40_000, part_time_jpy: 9_000, marketing_ndp: 300, ndp_income_ndp: 700, affiliate_platform_ndp: 50 }
+      { periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: 52_000n, partTimeJpy: "12000", marketingNdp: 500, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 },
+      { period_key: "previous", salary_anomaly_count: 0, dedicated_jpy: 40_000, part_time_jpy: 9_000, marketing_ndp: 300, ndp_income_ndp: 700, affiliate_platform_ndp: 50 }
     ]);
 
     await expect(fixture.reader.getCommissionFacts(input)).resolves.toEqual({
@@ -125,6 +176,8 @@ describe("DashboardCommissionRepository", () => {
     expect(sql).toContain("service_end_event.event_type");
     expect(sql).toContain("COUNT(DISTINCT eligible.work_date)");
     expect(sql).toContain("DAY(LAST_DAY(eligible.work_date))");
+    expect(sql).toContain("compensation.status IN");
+    expect(sql).toContain("salary_anomaly_count");
     expect(sql).toContain("affiliation.relationship_type");
     expect(sql).toContain("profile.employment_type");
     expect(sql).toContain("line.line_type");
@@ -139,6 +192,7 @@ describe("DashboardCommissionRepository", () => {
     expect(sql).toContain("JSON_EXTRACT(ledger.metadata");
     expect(sql).not.toContain("affiliate_budget_reservations");
     expect(sql).toContain("ledger.currency");
+    expect(sql).toContain("payment_ledger.currency =");
     expect(sql).toContain("financial.ndp_currency");
     expect(sql).toContain("settled_platform_income AS");
     expect(sql).toContain("settled_user_rewards AS");
@@ -149,7 +203,7 @@ describe("DashboardCommissionRepository", () => {
     expect(sql).toContain("TRIM(shop.city) =");
     expect(query.values).toEqual(expect.arrayContaining([
       "current", "previous", "completed", "confirmed", "NDP", "settlement",
-      "settled", "applied", "commission", "approved", "scheduled", "paid", "locked", "Tokyo"
+      "settled", "applied", "commission", "active", "archived", "approved", "scheduled", "paid", "locked", "Tokyo"
     ]));
   });
 
@@ -158,8 +212,10 @@ describe("DashboardCommissionRepository", () => {
       dedicatedTechnicianCommission: { current: 0, previous: 0, dataStatus: "ready" },
       marketingCommission: { current: 0, previous: 0, dataStatus: "ready" }
     });
-    await expect(createReader([{ periodKey: "current", dedicatedJpy: -1, partTimeJpy: 0, marketingNdp: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
+    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: -1, partTimeJpy: 0, marketingNdp: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
       .rejects.toThrow("Dashboard commission aggregate must be a non-negative safe integer");
+    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 1, dedicatedJpy: 0, partTimeJpy: 0, marketingNdp: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
+      .rejects.toThrow("Dashboard commission compensation anomaly detected");
   });
 
   it("delegates through DashboardRepository without composing Task 4", async () => {

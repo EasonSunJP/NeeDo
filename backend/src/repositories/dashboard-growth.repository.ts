@@ -34,7 +34,122 @@ interface GrowthRow {
   technician_onboarding?: NumericValue;
 }
 
+export interface PaidMembershipGrowthEvent {
+  userId: number;
+  issuedAt: string;
+  issuanceSource: string;
+  cardStatus: string;
+  cardDeleted: boolean;
+  membershipStatus: string;
+  membershipDeleted: boolean;
+  userActive: boolean;
+  userDeleted: boolean;
+  isTestUser: boolean;
+  shopId: number;
+  shopCity: string;
+}
+
+export interface TechnicianOnboardingGrowthEvent {
+  userId: number;
+  activatedAt: string;
+  identityActive: boolean;
+  identityDeleted: boolean;
+  userActive: boolean;
+  userDeleted: boolean;
+  isTestUser: boolean;
+  profileValid: boolean;
+  shops: readonly { shopId: number; city: string }[];
+}
+
+interface GrowthFixtureInput<T> {
+  events: readonly T[];
+  range: { fromInclusive: Date; toExclusive: Date };
+  scope: DashboardAggregateInput["scope"];
+  city: string | null;
+}
+
 const aggregateError = "Dashboard growth aggregate must be a non-negative safe integer";
+
+const eventTime = (value: string): number => {
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) throw new RangeError(aggregateError);
+  return parsed;
+};
+
+const isInRange = (
+  value: string,
+  range: GrowthFixtureInput<unknown>["range"]
+): boolean => {
+  const time = eventTime(value);
+  return time >= range.fromInclusive.getTime() && time < range.toExclusive.getTime();
+};
+
+const matchesScope = (
+  shop: { shopId: number; city: string },
+  scope: DashboardAggregateInput["scope"],
+  city: string | null
+): boolean => scope.kind === "shop" ? shop.shopId === scope.shopId : city === null || shop.city.trim() === city;
+
+export const countFirstPaidMemberEvents = (
+  input: GrowthFixtureInput<PaidMembershipGrowthEvent>
+): number => {
+  const firstPaidByUser = new Map<number, number>();
+  for (const event of input.events) {
+    if (event.issuanceSource !== "offline_paid") continue;
+    const time = eventTime(event.issuedAt);
+    const existing = firstPaidByUser.get(event.userId);
+    if (existing === undefined || time < existing) firstPaidByUser.set(event.userId, time);
+  }
+  const counted = new Set<number>();
+  for (const event of input.events) {
+    if (
+      event.issuanceSource !== "offline_paid" ||
+      eventTime(event.issuedAt) !== firstPaidByUser.get(event.userId) ||
+      !isInRange(event.issuedAt, input.range) ||
+      event.cardStatus !== "active" ||
+      event.cardDeleted ||
+      event.membershipStatus !== "active" ||
+      event.membershipDeleted ||
+      !event.userActive ||
+      event.userDeleted ||
+      event.isTestUser ||
+      !matchesScope({ shopId: event.shopId, city: event.shopCity }, input.scope, input.city)
+    ) {
+      continue;
+    }
+    counted.add(event.userId);
+  }
+  return counted.size;
+};
+
+export const countFirstTechnicianOnboardingEvents = (
+  input: GrowthFixtureInput<TechnicianOnboardingGrowthEvent>
+): number => {
+  const firstIdentityByUser = new Map<number, number>();
+  for (const event of input.events) {
+    const time = eventTime(event.activatedAt);
+    const existing = firstIdentityByUser.get(event.userId);
+    if (existing === undefined || time < existing) firstIdentityByUser.set(event.userId, time);
+  }
+  const counted = new Set<number>();
+  for (const event of input.events) {
+    if (
+      eventTime(event.activatedAt) !== firstIdentityByUser.get(event.userId) ||
+      !isInRange(event.activatedAt, input.range) ||
+      !event.identityActive ||
+      event.identityDeleted ||
+      !event.userActive ||
+      event.userDeleted ||
+      event.isTestUser ||
+      !event.profileValid ||
+      !event.shops.some((shop) => matchesScope(shop, input.scope, input.city))
+    ) {
+      continue;
+    }
+    counted.add(event.userId);
+  }
+  return counted.size;
+};
 
 export class DashboardGrowthRepository implements DashboardGrowthReader {
   public constructor(private readonly client: DashboardQueryClient) {}
@@ -130,32 +245,29 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
           ON customer.user_id = registered_user.id AND customer.deleted_at IS NULL
         WHERE ${newUserScope}
       ),
-      first_paid_at AS (
+      historical_first_paid_at AS (
         SELECT customer.user_id, MIN(card.issued_at) AS issued_at
         FROM shop_membership_cards AS card
         INNER JOIN shop_customer_memberships AS membership
           ON membership.id = card.membership_id
-          AND membership.deleted_at IS NULL
         INNER JOIN customer_profiles AS customer
           ON customer.id = membership.customer_profile_id
-          AND customer.deleted_at IS NULL
-        INNER JOIN users AS member_user
-          ON member_user.id = customer.user_id
-          AND member_user.is_active = ${true}
-          AND member_user.is_test_account = ${false}
-          AND member_user.deleted_at IS NULL
         WHERE card.issuance_source = ${"offline_paid"}
-          AND card.deleted_at IS NULL
         GROUP BY customer.user_id
       ),
       first_paid_members AS (
         SELECT period.period_key, first_paid.user_id
         FROM periods AS period
-        INNER JOIN first_paid_at AS first_paid
+        INNER JOIN historical_first_paid_at AS first_paid
           ON first_paid.issued_at >= period.from_inclusive
           AND first_paid.issued_at < period.to_exclusive
         INNER JOIN customer_profiles AS customer
           ON customer.user_id = first_paid.user_id AND customer.deleted_at IS NULL
+        INNER JOIN users AS member_user
+          ON member_user.id = customer.user_id
+          AND member_user.is_active = ${true}
+          AND member_user.is_test_account = ${false}
+          AND member_user.deleted_at IS NULL
         INNER JOIN shop_customer_memberships AS membership
           ON membership.customer_profile_id = customer.id
           AND membership.status = ${"active"}
@@ -170,18 +282,26 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
           ON membership.shop_id = shop.id AND shop.deleted_at IS NULL
         WHERE ${membershipScope}
       ),
-      first_technician_identity AS (
+      historical_first_technician_identity AS (
         SELECT identity_row.user_id, MIN(identity_row.created_at) AS activated_at
         FROM user_identities AS identity_row
+        WHERE identity_row.type = ${"technician"}
+        GROUP BY identity_row.user_id
+      ),
+      first_technician_identity AS (
+        SELECT historical.user_id, historical.activated_at
+        FROM historical_first_technician_identity AS historical
+        INNER JOIN user_identities AS identity_row
+          ON identity_row.user_id = historical.user_id
+          AND identity_row.created_at = historical.activated_at
+          AND identity_row.type = ${"technician"}
+          AND identity_row.is_active = ${true}
+          AND identity_row.deleted_at IS NULL
         INNER JOIN users AS technician_user
-          ON technician_user.id = identity_row.user_id
+          ON technician_user.id = historical.user_id
           AND technician_user.is_active = ${true}
           AND technician_user.is_test_account = ${false}
           AND technician_user.deleted_at IS NULL
-        WHERE identity_row.type = ${"technician"}
-          AND identity_row.is_active = ${true}
-          AND identity_row.deleted_at IS NULL
-        GROUP BY identity_row.user_id
       ),
       resolved_shop AS (
         SELECT first_identity.user_id, first_identity.activated_at, technician.id AS technician_profile_id,

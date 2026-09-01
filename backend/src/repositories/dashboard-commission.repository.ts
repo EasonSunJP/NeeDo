@@ -39,6 +39,29 @@ export interface TechnicianCommissionCalculationInput {
   settledShareJpy: number;
 }
 
+export interface TechnicianActiveWorkDate {
+  technicianProfileId: number;
+  shopId: number;
+  workDate: string;
+}
+
+export interface TechnicianCompensationProfileVersion {
+  id: number;
+  technicianProfileId: number;
+  shopId: number;
+  status: string;
+  wageMode: string;
+  monthlyBaseJpy: number;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  deleted: boolean;
+}
+
+export interface TechnicianCompensationResolution {
+  workDates: TechnicianCommissionWorkDate[];
+  anomalyCount: number;
+}
+
 interface CommissionRow {
   periodKey?: string;
   period_key?: string;
@@ -52,10 +75,13 @@ interface CommissionRow {
   ndp_income_ndp?: NumericValue;
   affiliatePlatformNdp?: NumericValue;
   affiliate_platform_ndp?: NumericValue;
+  salaryAnomalyCount?: NumericValue;
+  salary_anomaly_count?: NumericValue;
 }
 
 const allocationError = "Technician commission allocation is invalid";
 const aggregateError = "Dashboard commission aggregate must be a non-negative safe integer";
+const compensationAnomalyError = "Dashboard commission compensation anomaly detected";
 const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
 
 const parseCalendarDate = (value: string): { year: number; month: number; day: number } => {
@@ -84,6 +110,104 @@ export const toTokyoBusinessDate = (value: Date | string): string => {
     String(tokyo.getUTCMonth() + 1).padStart(2, "0"),
     String(tokyo.getUTCDate()).padStart(2, "0")
   ].join("-");
+};
+
+export const isProductionNdpEvidence = (input: {
+  financialCurrency: string;
+  ledgerCurrency: string;
+}): boolean => input.financialCurrency === "NDP" && input.ledgerCurrency === "NDP";
+
+export const resolveTechnicianCompensationAllocations = (input: {
+  workDates: readonly TechnicianActiveWorkDate[];
+  profiles: readonly TechnicianCompensationProfileVersion[];
+}): TechnicianCompensationResolution => {
+  const uniqueWorkDates = new Map<string, TechnicianActiveWorkDate>();
+  for (const workDate of input.workDates) {
+    if (
+      !Number.isSafeInteger(workDate.technicianProfileId) ||
+      workDate.technicianProfileId <= 0 ||
+      !Number.isSafeInteger(workDate.shopId) ||
+      workDate.shopId <= 0
+    ) {
+      throw new RangeError(allocationError);
+    }
+    parseCalendarDate(workDate.workDate);
+    uniqueWorkDates.set(
+      `${workDate.technicianProfileId}:${workDate.shopId}:${workDate.workDate}`,
+      workDate
+    );
+  }
+
+  const resolved: TechnicianCommissionWorkDate[] = [];
+  let anomalyCount = 0;
+  for (const workDate of uniqueWorkDates.values()) {
+    const candidates: TechnicianCompensationProfileVersion[] = [];
+    let invalidCandidate = false;
+    for (const profile of input.profiles) {
+      if (
+        profile.technicianProfileId !== workDate.technicianProfileId ||
+        profile.shopId !== workDate.shopId ||
+        profile.deleted ||
+        (profile.status !== "active" && profile.status !== "archived") ||
+        profile.wageMode !== "base_plus_commission"
+      ) {
+        continue;
+      }
+      try {
+        if (
+          !Number.isSafeInteger(profile.id) ||
+          profile.id <= 0 ||
+          !Number.isSafeInteger(profile.monthlyBaseJpy) ||
+          profile.monthlyBaseJpy < 0
+        ) {
+          throw new RangeError(allocationError);
+        }
+        if (profile.effectiveFrom !== undefined && profile.effectiveFrom !== null) {
+          parseCalendarDate(profile.effectiveFrom);
+        }
+        if (profile.effectiveTo !== undefined && profile.effectiveTo !== null) {
+          parseCalendarDate(profile.effectiveTo);
+        }
+        if (
+          profile.effectiveFrom !== undefined &&
+          profile.effectiveFrom !== null &&
+          profile.effectiveTo !== undefined &&
+          profile.effectiveTo !== null &&
+          profile.effectiveFrom > profile.effectiveTo
+        ) {
+          throw new RangeError(allocationError);
+        }
+      } catch {
+        invalidCandidate = true;
+        continue;
+      }
+      if (
+        (profile.effectiveFrom === undefined ||
+          profile.effectiveFrom === null ||
+          profile.effectiveFrom <= workDate.workDate) &&
+        (profile.effectiveTo === undefined ||
+          profile.effectiveTo === null ||
+          profile.effectiveTo >= workDate.workDate)
+      ) {
+        candidates.push(profile);
+      }
+    }
+    if (invalidCandidate || candidates.length !== 1) {
+      anomalyCount += 1;
+      continue;
+    }
+    const profile = candidates[0]!;
+    resolved.push({
+      technicianProfileId: workDate.technicianProfileId,
+      shopId: workDate.shopId,
+      compensationProfileId: profile.id,
+      monthlyBaseJpy: profile.monthlyBaseJpy,
+      workDate: workDate.workDate,
+      effectiveFrom: profile.effectiveFrom,
+      effectiveTo: profile.effectiveTo
+    });
+  }
+  return { workDates: resolved, anomalyCount };
 };
 
 export const calculateTechnicianCommission = (
@@ -201,6 +325,10 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
       if ((key !== "current" && key !== "previous") || periods.has(key)) {
         throw new RangeError(aggregateError);
       }
+      const anomalyCount = this.toSafeAggregate(
+        row.salaryAnomalyCount ?? row.salary_anomaly_count
+      );
+      if (anomalyCount !== 0) throw new RangeError(compensationAnomalyError);
       periods.set(key, {
         dedicated: this.toSafeAggregate(row.dedicatedJpy ?? row.dedicated_jpy),
         partTime: this.toSafeAggregate(row.partTimeJpy ?? row.part_time_jpy),
@@ -322,6 +450,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
               AND checkout.ledger_transaction_id IS NOT NULL
               AND payment_ledger.type = ${"booking_complete_settlement"}
               AND payment_ledger.status = ${"applied"}
+              AND payment_ledger.currency = ${"NDP"}
               AND payment_ledger.reference_type = ${"order_checkout_payment"}
               AND payment_ledger.reference_id = checkout.id
               AND payment_ledger.amount = checkout.payable_ndp
@@ -403,36 +532,53 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
           eligible.technician_profile_id, eligible.work_date, profile.shop_id, profile.employment_type
         HAVING classification IS NOT NULL
       ),
-      active_salary_dates AS (
+      salary_date_resolution AS (
         SELECT classified.period_key, classified.classification, classified.technician_profile_id,
-          classified.shop_id, classified.work_date, compensation.id AS compensation_profile_id,
-          compensation.base_salary_jpy
+          classified.shop_id, classified.work_date,
+          COUNT(compensation.id) AS matching_profile_count,
+          SUM(CASE WHEN compensation.id IS NOT NULL AND (
+              compensation.base_salary_jpy < 0
+              OR (compensation.effective_from IS NOT NULL
+                AND compensation.effective_to IS NOT NULL
+                AND compensation.effective_from > compensation.effective_to)
+            ) THEN 1 ELSE 0 END) AS invalid_profile_count,
+          MAX(compensation.id) AS compensation_profile_id,
+          MAX(compensation.base_salary_jpy) AS base_salary_jpy
         FROM (SELECT DISTINCT period_key, classification, technician_profile_id, shop_id, work_date
               FROM classified_orders) AS classified
-        INNER JOIN technician_compensation_profiles AS compensation
+        LEFT JOIN technician_compensation_profiles AS compensation
           ON compensation.technician_profile_id = classified.technician_profile_id
           AND compensation.shop_id = classified.shop_id
-          AND compensation.status = ${"active"}
+          AND compensation.status IN (${"active"}, ${"archived"})
           AND compensation.wage_mode = ${"base_plus_commission"}
-          AND compensation.base_salary_jpy >= 0
           AND compensation.deleted_at IS NULL
           AND (compensation.effective_from IS NULL OR DATE(CONVERT_TZ(compensation.effective_from, ${"+00:00"}, ${"+09:00"})) <= classified.work_date)
           AND (compensation.effective_to IS NULL OR DATE(CONVERT_TZ(compensation.effective_to, ${"+00:00"}, ${"+09:00"})) >= classified.work_date)
+        GROUP BY classified.period_key, classified.classification,
+          classified.technician_profile_id, classified.shop_id, classified.work_date
       ),
-      unambiguous_salary_dates AS (
+      valid_salary_dates AS (
         SELECT period_key, classification, technician_profile_id, shop_id, work_date,
-          MAX(compensation_profile_id) AS compensation_profile_id,
-          MAX(base_salary_jpy) AS base_salary_jpy
-        FROM active_salary_dates
-        GROUP BY period_key, classification, technician_profile_id, shop_id, work_date
-        HAVING COUNT(DISTINCT compensation_profile_id) = 1
+          compensation_profile_id, base_salary_jpy
+        FROM salary_date_resolution
+        WHERE matching_profile_count = 1 AND invalid_profile_count = 0
+      ),
+      salary_anomalies AS (
+        SELECT period.period_key,
+          COALESCE(SUM(CASE WHEN resolution.matching_profile_count <> 1
+            OR resolution.invalid_profile_count <> 0 THEN 1 ELSE 0 END), 0)
+            AS salary_anomaly_count
+        FROM periods AS period
+        LEFT JOIN salary_date_resolution AS resolution
+          ON resolution.period_key = period.period_key
+        GROUP BY period.period_key
       ),
       monthly_base AS (
         SELECT period_key, classification, technician_profile_id, shop_id, compensation_profile_id,
           YEAR(work_date) AS work_year, MONTH(work_date) AS work_month,
           ROUND(MAX(base_salary_jpy) * COUNT(DISTINCT eligible.work_date)
             / MAX(DAY(LAST_DAY(eligible.work_date)))) AS amount_jpy
-        FROM unambiguous_salary_dates AS eligible
+        FROM valid_salary_dates AS eligible
         GROUP BY period_key, classification, technician_profile_id, shop_id,
           compensation_profile_id, YEAR(work_date), MONTH(work_date)
       ),
@@ -614,6 +760,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         LEFT JOIN settled_user_rewards AS reward ON reward.period_key = period.period_key
       )
       SELECT period.period_key AS periodKey,
+        COALESCE(MAX(anomaly.salary_anomaly_count), 0) AS salaryAnomalyCount,
         COALESCE(MAX(technician.dedicated_jpy), 0) AS dedicatedJpy,
         COALESCE(MAX(technician.part_time_jpy), 0) AS partTimeJpy,
         COALESCE(SUM(CAST(affiliate.reward_ndp AS DECIMAL(65, 0))), 0) AS marketingNdp,
@@ -621,6 +768,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         COALESCE(SUM(CAST(affiliate.platform_fee_ndp AS DECIMAL(65, 0))), 0) AS affiliatePlatformNdp
       FROM periods AS period
       LEFT JOIN technician_commission AS technician ON technician.period_key = period.period_key
+      LEFT JOIN salary_anomalies AS anomaly ON anomaly.period_key = period.period_key
       LEFT JOIN settled_affiliate AS affiliate ON affiliate.period_key = period.period_key
       LEFT JOIN settled_ndp_income AS ndp ON ndp.period_key = period.period_key
       GROUP BY period.period_key

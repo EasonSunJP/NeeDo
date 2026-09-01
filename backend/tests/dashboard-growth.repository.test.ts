@@ -1,6 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
 import {
+  countFirstPaidMemberEvents,
+  countFirstTechnicianOnboardingEvents,
   DashboardGrowthRepository,
   type DashboardGrowthReader,
   type GrowthFacts
@@ -27,6 +29,37 @@ const createReader = (rows: unknown[]) => {
 };
 
 describe("DashboardGrowthRepository", () => {
+  it("classifies first-paid events from all history before current eligibility and scope", () => {
+    const events = [
+      { userId: 7, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "gift", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
+      { userId: 1, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "manual_grant", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
+      { userId: 2, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "historical_replacement", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
+      { userId: 3, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
+      { userId: 4, issuedAt: "2026-08-24T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "void", cardDeleted: true, membershipStatus: "ended", membershipDeleted: true, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
+      { userId: 4, issuedAt: "2026-08-26T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
+      { userId: 5, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: true, shopId: 91, shopCity: "Tokyo" },
+      { userId: 6, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 92, shopCity: "Osaka" }
+    ];
+    const range = { fromInclusive: new Date("2026-08-24T00:00:00.000Z"), toExclusive: new Date("2026-08-31T00:00:00.000Z") };
+
+    expect(countFirstPaidMemberEvents({ events, range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
+    expect(countFirstPaidMemberEvents({ events, range, scope: { kind: "shop", shopId: 91 }, city: null })).toBe(1);
+  });
+
+  it("never revives onboarding after an earlier deleted identity and excludes test/scope/profile mismatches", () => {
+    const events = [
+      { userId: 1, activatedAt: "2026-08-24T00:00:00.000Z", identityActive: false, identityDeleted: true, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
+      { userId: 1, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
+      { userId: 2, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
+      { userId: 3, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: true, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
+      { userId: 4, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: false, shops: [{ shopId: 91, city: "Tokyo" }] },
+      { userId: 5, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 92, city: "Osaka" }] }
+    ];
+    const range = { fromInclusive: new Date("2026-08-24T00:00:00.000Z"), toExclusive: new Date("2026-08-31T00:00:00.000Z") };
+
+    expect(countFirstTechnicianOnboardingEvents({ events, range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
+    expect(countFirstTechnicianOnboardingEvents({ events, range, scope: { kind: "shop", shopId: 91 }, city: null })).toBe(1);
+  });
   it("maps current and previous first-event growth facts from one bounded query", async () => {
     const fixture = createReader([
       { periodKey: "current", newUsers: 18n, newPaidMembers: "1", technicianOnboarding: 4 },
@@ -52,10 +85,12 @@ describe("DashboardGrowthRepository", () => {
     expect(sql).toContain("registered_user.is_active =");
     expect(sql).toContain("registered_user.is_test_account =");
     expect(sql).toContain("customer.deleted_at IS NULL");
+    expect(sql).toContain("historical_first_paid_at");
     expect(sql).toContain("MIN(card.issued_at)");
     expect(sql).toContain("card.issuance_source");
     expect(sql).toContain("card.status");
     expect(sql).toContain("membership.shop_id = shop.id");
+    expect(sql).toContain("historical_first_technician_identity");
     expect(sql).toContain("MIN(identity_row.created_at)");
     expect(sql).toContain("identity_row.type");
     expect(sql).toContain("identity_row.is_active");
@@ -69,7 +104,7 @@ describe("DashboardGrowthRepository", () => {
     expect(query.values).not.toEqual(expect.arrayContaining(["manual_grant", "historical_replacement"]));
 
     const firstPaidDefinition = sql.slice(
-      sql.indexOf("first_paid_at AS"),
+      sql.indexOf("historical_first_paid_at AS"),
       sql.indexOf("first_paid_members AS")
     );
     expect(firstPaidDefinition).not.toContain("card.status =");
