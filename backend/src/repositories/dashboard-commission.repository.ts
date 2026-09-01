@@ -159,6 +159,15 @@ export const resolveTechnicianCompensationAllocations = (input: {
         continue;
       }
       try {
+        if (
+          !Number.isSafeInteger(profile.id) ||
+          profile.id <= 0 ||
+          !formalWageModes.has(profile.wageMode) ||
+          !Number.isSafeInteger(profile.monthlyBaseJpy) ||
+          profile.monthlyBaseJpy < 0
+        ) {
+          throw new RangeError(allocationError);
+        }
         if (profile.effectiveFrom !== undefined && profile.effectiveFrom !== null) {
           parseCalendarDate(profile.effectiveFrom);
         }
@@ -188,16 +197,6 @@ export const resolveTechnicianCompensationAllocations = (input: {
         profile.effectiveTo >= workDate.workDate
       );
       if (!isEffective) continue;
-      if (
-        !Number.isSafeInteger(profile.id) ||
-        profile.id <= 0 ||
-        !formalWageModes.has(profile.wageMode) ||
-        !Number.isSafeInteger(profile.monthlyBaseJpy) ||
-        profile.monthlyBaseJpy < 0
-      ) {
-        invalidCandidate = true;
-        continue;
-      }
       candidates.push(profile);
     }
     if (invalidCandidate || candidates.length !== 1) {
@@ -541,6 +540,29 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
           eligible.technician_profile_id, eligible.work_date, profile.shop_id, profile.employment_type
         HAVING classification IS NOT NULL
       ),
+      profile_history_anomalies AS (
+        SELECT classified.period_key,
+          COUNT(DISTINCT compensation.id) AS profile_history_anomaly_count
+        FROM (SELECT DISTINCT period_key, technician_profile_id, shop_id
+              FROM classified_orders) AS classified
+        INNER JOIN technician_compensation_profiles AS compensation
+          ON compensation.technician_profile_id = classified.technician_profile_id
+          AND compensation.shop_id = classified.shop_id
+          AND compensation.status IN (${"active"}, ${"archived"})
+          AND compensation.deleted_at IS NULL
+        WHERE compensation.base_salary_jpy IS NULL
+          OR compensation.base_salary_jpy < 0
+          OR compensation.base_salary_jpy > ${Number.MAX_SAFE_INTEGER}
+          OR compensation.base_salary_jpy <> FLOOR(compensation.base_salary_jpy)
+          OR compensation.wage_mode IS NULL
+          OR compensation.wage_mode NOT IN (
+            ${"fixed_per_order"}, ${"commission"}, ${"base_plus_commission"}, ${"hourly"}
+          )
+          OR (compensation.effective_from IS NOT NULL
+            AND compensation.effective_to IS NOT NULL
+            AND compensation.effective_from > compensation.effective_to)
+        GROUP BY classified.period_key
+      ),
       salary_date_resolution AS (
         SELECT classified.period_key, classified.classification, classified.technician_profile_id,
           classified.shop_id, classified.work_date,
@@ -579,10 +601,13 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         SELECT period.period_key,
           COALESCE(SUM(CASE WHEN resolution.matching_profile_count <> 1
             OR resolution.invalid_profile_count <> 0 THEN 1 ELSE 0 END), 0)
+            + COALESCE(MAX(history.profile_history_anomaly_count), 0)
             AS salary_anomaly_count
         FROM periods AS period
         LEFT JOIN salary_date_resolution AS resolution
           ON resolution.period_key = period.period_key
+        LEFT JOIN profile_history_anomalies AS history
+          ON history.period_key = period.period_key
         GROUP BY period.period_key
       ),
       monthly_base AS (

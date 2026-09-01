@@ -134,6 +134,30 @@ describe("calculateTechnicianCommission", () => {
     })).toMatchObject({ anomalyCount: 1, workDates: [] });
   });
 
+  it.each([
+    ["reversed effective dates", { effectiveFrom: "2027-02-01", effectiveTo: "2027-01-01" }],
+    ["negative base", { effectiveFrom: "2027-01-01", monthlyBaseJpy: -1 }],
+    ["fractional base", { effectiveFrom: "2027-01-01", monthlyBaseJpy: 1.5 }],
+    ["unsafe base", { effectiveFrom: "2027-01-01", monthlyBaseJpy: Number.MAX_SAFE_INTEGER + 1 }],
+    ["unknown wage mode", { effectiveFrom: "2027-01-01", wageMode: "legacy_salary" }]
+  ])("rejects mixed compensation history containing an independent %s anomaly", (_label, malformed) => {
+    const valid = {
+      id: 1,
+      technicianProfileId: 1,
+      shopId: 9,
+      status: "active",
+      wageMode: "base_plus_commission",
+      monthlyBaseJpy: 310_000,
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "2026-01-31",
+      deleted: false
+    };
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [{ technicianProfileId: 1, shopId: 9, workDate: "2026-01-15" }],
+      profiles: [valid, { ...valid, id: 2, status: "archived", effectiveTo: null, ...malformed }]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+  });
+
   it("allocates each calendar month separately, rounds each profile-month once, then adds settled share", () => {
     expect(calculateTechnicianCommission({
       workDates: [
@@ -235,9 +259,22 @@ describe("DashboardCommissionRepository", () => {
     expect(sql).toContain("COUNT(DISTINCT eligible.work_date)");
     expect(sql).toContain("DAY(LAST_DAY(eligible.work_date))");
     expect(sql).toContain("compensation.status IN");
+    expect(sql).toContain("profile_history_anomalies AS");
+    expect(sql).toContain("history.profile_history_anomaly_count");
     expect(sql).toContain("MAX(compensation.wage_mode) AS wage_mode");
     expect(sql).toContain("eligible.wage_mode =");
     expect(sql).not.toContain("AND compensation.wage_mode =");
+    const historyAnomalies = sql.slice(
+      sql.indexOf("profile_history_anomalies AS"),
+      sql.indexOf("salary_date_resolution AS")
+    );
+    expect(historyAnomalies).toContain("compensation.technician_profile_id");
+    expect(historyAnomalies).toContain("compensation.base_salary_jpy <");
+    expect(historyAnomalies).toContain("compensation.base_salary_jpy >");
+    expect(historyAnomalies).toContain("FLOOR(compensation.base_salary_jpy)");
+    expect(historyAnomalies).toContain("compensation.effective_from > compensation.effective_to");
+    expect(historyAnomalies).toContain("compensation.wage_mode NOT IN");
+    expect(historyAnomalies).not.toContain("classified.work_date");
     expect(sql).toContain("salary_anomaly_count");
     expect(sql).toContain("affiliation.relationship_type");
     expect(sql).toContain("profile.employment_type");
@@ -275,7 +312,10 @@ describe("DashboardCommissionRepository", () => {
     });
     await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: -1, partTimeJpy: 0, marketingNdp: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
       .rejects.toThrow("Dashboard commission aggregate must be a non-negative safe integer");
-    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 1, dedicatedJpy: 0, partTimeJpy: 0, marketingNdp: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
+  });
+
+  it("rejects a projected profile-history anomaly alongside otherwise valid aggregates", async () => {
+    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 1, dedicatedJpy: 52_000, partTimeJpy: 12_000, marketingNdp: 500, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 }]).reader.getCommissionFacts(input))
       .rejects.toThrow("Dashboard commission compensation anomaly detected");
   });
 
