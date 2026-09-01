@@ -64,7 +64,7 @@ const post: ExchangePostPayload = {
     avatarUrl: actor.avatarUrl
   },
   counts: { comments: 0, likes: 0, shares: 0 },
-  viewer: { liked: false, canWithdraw: true },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
     serviceMode: "store",
     targetProviderCount: 1,
@@ -181,6 +181,7 @@ const createRepository = () => {
     lockPostForMutation: jest.fn(async () => terminalPost()),
     markWithdrawnIfPublished: jest.fn(async () => true),
     markExpiredIfPublished: jest.fn(async () => true),
+    cancelActiveClaimsByPost: jest.fn(async () => 0),
     listDuePostIds: jest.fn(async () => []),
     createComment: jest.fn(async () => ({ kind: "success" as const, value: comment })),
     setLike: jest.fn(async () => ({ kind: "success" as const, value: counts })),
@@ -333,12 +334,13 @@ describe("ExchangeService", () => {
       page: 1,
       pageSize: 20,
       viewerIdentityId: 17,
+      claimProviderUserId: 7,
       now
     });
 
     repository.findPostById.mockResolvedValueOnce({
       ...post,
-      viewer: { liked: false, canWithdraw: false }
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
     });
     await expect(service.getPost(access, 41)).rejects.toMatchObject({
       message: "error.exchange.post_not_found",
@@ -349,11 +351,60 @@ describe("ExchangeService", () => {
     await expect(service.getPost(access, 41)).resolves.toEqual(post);
   });
 
+  it("decorates live selective Requests with server-authoritative claim capabilities", async () => {
+    const repository = createRepository();
+    const selectivePost = {
+      ...post,
+      viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
+      demand: { ...post.demand!, matchMode: "selective" as const }
+    };
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "technician",
+      scopeType: "technician_profile",
+      scopeId: 81
+    });
+    repository.listPosts.mockResolvedValue({
+      list: [selectivePost],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    repository.findPostById.mockResolvedValue(selectivePost);
+    const service = new ExchangeService(repository, () => now);
+    const technicianAccess = {
+      ...access,
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 81
+    };
+
+    await expect(
+      service.listPosts(technicianAccess, { type: "demand", page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({
+      list: [
+        { viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false } }
+      ]
+    });
+    expect(repository.listPosts).toHaveBeenCalledWith(
+      expect.objectContaining({ claimProviderUserId: 7 })
+    );
+
+    repository.resolveActor.mockResolvedValue(actor);
+    repository.findPostById.mockResolvedValue({
+      ...selectivePost,
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false }
+    });
+    await expect(service.getPost(access, 41)).resolves.toMatchObject({
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true }
+    });
+  });
+
   it("returns not found before exposing or mutating another customer's demand interactions", async () => {
     const repository = createRepository();
     repository.findPostById.mockResolvedValue({
       ...post,
-      viewer: { liked: false, canWithdraw: false }
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
     });
     const service = new ExchangeService(repository, () => now);
 
@@ -805,6 +856,7 @@ describe("ExchangeService", () => {
 
   it("captures the full held fee when the owner withdraws", async () => {
     const repository = createRepository();
+    repository.cancelActiveClaimsByPost.mockResolvedValue(2);
     const transactionClient = { transaction: "request-terminal" };
     repository.runInTransaction.mockImplementation(async (handler) =>
       handler(repository, transactionClient)
@@ -828,6 +880,18 @@ describe("ExchangeService", () => {
       { transactionClient }
     );
     expect(repository.markWithdrawnIfPublished).toHaveBeenCalledWith(41, now);
+    expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
+      41,
+      "request_withdrawn",
+      now
+    );
+    expect(repository.createAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "exchange.claim.request_withdrawn",
+        targetId: 41,
+        metadata: expect.objectContaining({ cancelledClaimCount: 2 })
+      })
+    );
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "exchange.post.withdraw",
@@ -863,6 +927,15 @@ describe("ExchangeService", () => {
 
     expect(ledger.captureExchangeRequestPublication).not.toHaveBeenCalled();
     expect(ledger.releaseExchangeRequestPublication).not.toHaveBeenCalled();
+    if (_label === "Intelligence") {
+      expect(repository.cancelActiveClaimsByPost).not.toHaveBeenCalled();
+    } else {
+      expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
+        41,
+        "request_withdrawn",
+        now
+      );
+    }
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ publicationFeeOutcome: "legacy_not_applicable" })
@@ -919,6 +992,7 @@ describe("ExchangeService", () => {
 
   it("releases the full held fee on natural expiry", async () => {
     const repository = createRepository();
+    repository.cancelActiveClaimsByPost.mockResolvedValue(3);
     const transactionClient = { transaction: "request-terminal" };
     repository.runInTransaction.mockImplementation(async (handler) =>
       handler(repository, transactionClient)
@@ -943,6 +1017,18 @@ describe("ExchangeService", () => {
       { transactionClient }
     );
     expect(repository.markExpiredIfPublished).toHaveBeenCalledWith(41, now);
+    expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
+      41,
+      "request_expired",
+      now
+    );
+    expect(repository.createAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "exchange.claim.request_expired",
+        targetId: 41,
+        metadata: expect.objectContaining({ cancelledClaimCount: 3 })
+      })
+    );
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: null,
@@ -999,6 +1085,15 @@ describe("ExchangeService", () => {
 
     expect(ledger.captureExchangeRequestPublication).not.toHaveBeenCalled();
     expect(ledger.releaseExchangeRequestPublication).not.toHaveBeenCalled();
+    if (_label === "Intelligence") {
+      expect(repository.cancelActiveClaimsByPost).not.toHaveBeenCalled();
+    } else {
+      expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
+        41,
+        "request_expired",
+        now
+      );
+    }
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ publicationFeeOutcome: "legacy_not_applicable" })

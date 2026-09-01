@@ -9,6 +9,7 @@ import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-exp
 import { AuditLogRepository } from "./repositories/audit-log.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
 import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
+import { ExchangeClaimRepository } from "./repositories/exchange-claim.repository";
 import { ExchangePostRepository } from "./repositories/exchange.repository";
 import { ExchangeRequestFeeRepository } from "./repositories/exchange-request-fee.repository";
 import { AuthRepository } from "./repositories/auth.repository";
@@ -34,6 +35,7 @@ import { IdentityApplicationPurgeService } from "./services/identity-application
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
 import { RedisAuthSessionStore } from "./services/auth-session.store";
 import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
+import { ExchangeClaimService } from "./services/exchange-claim.service";
 import { ExchangeService } from "./services/exchange.service";
 import { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
@@ -108,6 +110,10 @@ const exchangeService = new ExchangeService(
   userPolicyEnforcementService,
   platformMembershipResolver
 );
+const exchangeClaimService = new ExchangeClaimService(
+  new ExchangeClaimRepository(),
+  new ExchangePostRepository()
+);
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
     logger.error(event, "Merchant shop switch receipt post-state mismatch");
@@ -169,6 +175,7 @@ const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
   exchangeService,
+  exchangeClaimService,
   exchangeRequestFeeService,
   ledgerService: exchangeLedgerService,
   authRepository,

@@ -137,13 +137,15 @@ export interface ExchangeRepositoryPort {
     page: number;
     pageSize: number;
     viewerIdentityId: number;
+    claimProviderUserId?: number;
     authorIdentityId?: number;
     now: Date;
   }): Promise<ExchangePostPage>;
   findPostById(
     postId: number,
     viewerIdentityId: number,
-    now: Date
+    now: Date,
+    claimProviderUserId?: number
   ): Promise<ExchangePostPayload | null>;
   listComments(
     postId: number,
@@ -164,6 +166,11 @@ export interface ExchangeRepositoryPort {
   lockPostForMutation(postId: number): Promise<ExchangeTerminalPostRecord | null>;
   markWithdrawnIfPublished(postId: number, now: Date): Promise<boolean>;
   markExpiredIfPublished(postId: number, now: Date): Promise<boolean>;
+  cancelActiveClaimsByPost(
+    postId: number,
+    status: "request_withdrawn" | "request_expired",
+    now: Date
+  ): Promise<number>;
   listDuePostIds(now: Date, batchSize: number): Promise<number[]>;
   createComment(
     input: ExchangeCommentRepositoryInput
@@ -206,6 +213,15 @@ const DEMAND_AUDIENCE_IDENTITIES = new Set([
   "merchant",
   "merchant_owner",
   "merchant_staff"
+]);
+
+const CLAIM_PROVIDER_IDENTITIES = new Set([
+  ...DEMAND_AUDIENCE_IDENTITIES,
+  "merchant_organization",
+  "business",
+  "b",
+  "owner",
+  "o"
 ]);
 
 export class ExchangeService {
@@ -263,12 +279,16 @@ export class ExchangeService {
       input.type === "demand" && !DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)
         ? ownerIdentityId
         : undefined;
-    return this.repository.listPosts({
+    const page = await this.repository.listPosts({
       ...input,
       viewerIdentityId: ownerIdentityId,
+      ...(CLAIM_PROVIDER_IDENTITIES.has(actor.identityType)
+        ? { claimProviderUserId: actor.userId }
+        : {}),
       ...(privateAuthorIdentityId ? { authorIdentityId: privateAuthorIdentityId } : {}),
       now: this.now()
     });
+    return { ...page, list: page.list.map((post) => this.decorateClaimCapabilities(post, actor)) };
   }
 
   public async getPost(
@@ -279,11 +299,12 @@ export class ExchangeService {
     const post = await this.repository.findPostById(
       postId,
       actor.ownerIdentityId ?? actor.identityId,
-      this.now()
+      this.now(),
+      CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) ? actor.userId : undefined
     );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
-    return post;
+    return this.decorateClaimCapabilities(post, actor);
   }
 
   public async publish(
@@ -425,12 +446,36 @@ export class ExchangeService {
       if (locked.expiresAt.getTime() <= occurredAt.getTime()) throw this.postUnavailable();
 
       const settlesRequestFinancial = locked.type === "demand" && locked.requestFinancial !== null;
+      const ledgerService = this.ledgerService;
       if (settlesRequestFinancial) {
         if (locked.requestFinancial?.state !== "held") {
           throw this.exchangeFinancialStateConflict();
         }
-        if (!this.ledgerService) throw this.requestFeeUnavailable();
-        await this.ledgerService.captureExchangeRequestPublication(
+        if (!ledgerService) throw this.requestFeeUnavailable();
+      }
+      const cancelledClaimCount =
+        locked.type === "demand"
+          ? await repository.cancelActiveClaimsByPost(
+              locked.id,
+              "request_withdrawn",
+              occurredAt
+            )
+          : 0;
+      if (cancelledClaimCount > 0) {
+        await repository.createAudit({
+          actorId: actor.userId,
+          action: "exchange.claim.request_withdrawn",
+          targetType: "ExchangePost",
+          targetId: locked.id,
+          metadata: {
+            exchangePostId: locked.id,
+            cancelledClaimCount,
+            terminalAt: occurredAt.toISOString()
+          }
+        });
+      }
+      if (settlesRequestFinancial) {
+        await ledgerService!.captureExchangeRequestPublication(
           {
             exchangePostId: locked.id,
             actorUserId: actor.userId,
@@ -531,12 +576,36 @@ export class ExchangeService {
       if (locked.expiresAt.getTime() > now.getTime()) return false;
 
       const settlesRequestFinancial = locked.type === "demand" && locked.requestFinancial !== null;
+      const ledgerService = this.ledgerService;
       if (settlesRequestFinancial) {
         if (locked.requestFinancial?.state !== "held") {
           throw this.exchangeFinancialStateConflict();
         }
-        if (!this.ledgerService) throw this.requestFeeUnavailable();
-        await this.ledgerService.releaseExchangeRequestPublication(
+        if (!ledgerService) throw this.requestFeeUnavailable();
+      }
+      const cancelledClaimCount =
+        locked.type === "demand"
+          ? await repository.cancelActiveClaimsByPost(
+              locked.id,
+              "request_expired",
+              now
+            )
+          : 0;
+      if (cancelledClaimCount > 0) {
+        await repository.createAudit({
+          actorId: null,
+          action: "exchange.claim.request_expired",
+          targetType: "ExchangePost",
+          targetId: locked.id,
+          metadata: {
+            exchangePostId: locked.id,
+            cancelledClaimCount,
+            terminalAt: now.toISOString()
+          }
+        });
+      }
+      if (settlesRequestFinancial) {
+        await ledgerService!.releaseExchangeRequestPublication(
           {
             exchangePostId: locked.id,
             actorUserId: locked.authorUserId,
@@ -823,6 +892,29 @@ export class ExchangeService {
     if (post.type !== "demand") return;
     if (post.viewer.canWithdraw || DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)) return;
     throw this.postNotFound();
+  }
+
+  private decorateClaimCapabilities(
+    post: ExchangePostPayload,
+    actor: ExchangeActorRecord
+  ): ExchangePostPayload {
+    const selectiveLiveDemand =
+      post.type === "demand" &&
+      post.status === "published" &&
+      post.demand?.matchMode === "selective";
+    const ownerView = post.viewer.canWithdraw;
+    return {
+      ...post,
+      viewer: {
+        ...post.viewer,
+        canClaim:
+          selectiveLiveDemand &&
+          CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) &&
+          !ownerView &&
+          post.viewer.canClaim,
+        canViewClaims: selectiveLiveDemand && ownerView
+      }
+    };
   }
 
   private unwrapMutation<TValue>(result: ExchangeMutationResult<TValue>): TValue {

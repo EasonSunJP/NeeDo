@@ -1,6 +1,7 @@
 import {
   ContentLocale,
   ExchangeBudgetMode as DatabaseExchangeBudgetMode,
+  ExchangeClaimStatus as DatabaseExchangeClaimStatus,
   ExchangeDemandServiceMode as DatabaseExchangeDemandServiceMode,
   ExchangeMatchMode as DatabaseExchangeMatchMode,
   ExchangePostStatus as DatabaseExchangePostStatus,
@@ -358,7 +359,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         row.record,
         input.viewerIdentityId,
         input.now,
-        row.priority
+        row.priority,
+        input.claimProviderUserId
       )),
       total,
       pagination
@@ -464,14 +466,15 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
   public async findPostById(
     postId: number,
     viewerIdentityId: number,
-    now: Date
+    now: Date,
+    claimProviderUserId?: number
   ): Promise<ExchangePostPayload | null> {
     const row = await this.client.exchangePost.findFirst({
       where: { id: postId, deletedAt: null },
       include: postInclude(viewerIdentityId)
     });
 
-    return row ? this.mapPost(row, viewerIdentityId, now) : null;
+    return row ? this.mapPost(row, viewerIdentityId, now, undefined, claimProviderUserId) : null;
   }
 
   public async listComments(
@@ -662,6 +665,30 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     return updated.count === 1;
   }
 
+  public async cancelActiveClaimsByPost(
+    postId: number,
+    status: "request_withdrawn" | "request_expired",
+    now: Date
+  ): Promise<number> {
+    const updated = await this.client.exchangeClaim.updateMany({
+      where: {
+        exchangePostId: postId,
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
+      data: {
+        status:
+          status === "request_withdrawn"
+            ? DatabaseExchangeClaimStatus.REQUEST_WITHDRAWN
+            : DatabaseExchangeClaimStatus.REQUEST_EXPIRED,
+        activeKey: null,
+        terminalAt: now,
+        updatedAt: now
+      }
+    });
+    return updated.count;
+  }
+
   public async createComment(
     input: ExchangeCommentRepositoryInput
   ): Promise<ExchangeMutationResult<ExchangeCommentPayload>> {
@@ -825,13 +852,16 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     row: ExchangePostRecord,
     viewerIdentityId: number,
     now: Date,
-    priority?: ExchangePriorityPayload
+    priority?: ExchangePriorityPayload,
+    claimProviderUserId?: number
   ): ExchangePostPayload {
     const expired =
       row.status === DatabaseExchangePostStatus.PUBLISHED &&
       row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
     const ownerView = row.ownerIdentityId === viewerIdentityId;
+    const claimableByProviderUser =
+      claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
     const intelligence = row.intelligence
       ? (() => {
           if (!isServiceAreaList(row.intelligence.serviceAreas)) {
@@ -899,7 +929,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       },
       viewer: {
         liked: row.likes.length > 0,
-        canWithdraw: ownerView && status === "published"
+        canWithdraw: ownerView && status === "published",
+        canClaim:
+          claimableByProviderUser &&
+          status === "published" &&
+          Boolean(row.demand) &&
+          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
+        canViewClaims: false
       },
       ...(priority ? { priority } : {}),
       demand,

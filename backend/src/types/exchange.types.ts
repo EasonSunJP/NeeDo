@@ -27,6 +27,8 @@ export interface ExchangeInteractionCounts {
 export interface ExchangeViewerState {
   liked: boolean;
   canWithdraw: boolean;
+  canClaim: boolean;
+  canViewClaims: boolean;
 }
 
 export interface ExchangePriorityPayload {
@@ -118,6 +120,7 @@ export interface ExchangeListInput {
   page: number;
   pageSize: number;
   viewerIdentityId: number;
+  claimProviderUserId?: number;
   authorIdentityId?: number;
   now: Date;
 }

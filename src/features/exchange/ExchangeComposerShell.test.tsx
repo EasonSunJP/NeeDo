@@ -32,7 +32,7 @@ const publishedIntelligence: ExchangePost = {
   publishedAt: "2026-08-30T04:00:00.000Z",
   publisher: { publicId: "s0000000084", identityType: "technician", displayName: "技师 84", avatarUrl: null },
   counts: { comments: 0, likes: 0, shares: 0 },
-  viewer: { liked: false, canWithdraw: true },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: null,
   intelligence: {
     serviceMode: "store",

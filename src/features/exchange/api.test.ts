@@ -2,15 +2,20 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import {
+  createExchangeClaim,
   createExchangeComment,
+  getMyExchangeClaim,
   getExchangePost,
   getRequestPublicationContext,
   likeExchangePost,
+  listExchangeClaimOptions,
   listExchangeComments,
   listExchangePosts,
+  listReceivedExchangeClaims,
   publishExchangePost,
   recordExchangeShare,
   unlikeExchangePost,
+  withdrawExchangeClaim,
   withdrawExchangePost
 } from "./api";
 import type { ExchangePost } from "./types";
@@ -36,7 +41,7 @@ const formalPost = {
     avatarUrl: null
   },
   counts: { comments: 4, likes: 21, shares: 6 },
-  viewer: { liked: false, canWithdraw: true },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
   demand: {
     serviceMode: "store",
     targetProviderCount: 1,
@@ -193,6 +198,54 @@ describe("formal Exchange API client", () => {
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(5, "/exchange/posts/41/shares", {
       headers: { "Idempotency-Key": "exchange-share-0001" },
+      method: "POST"
+    });
+  });
+
+  it("uses the five formal selective claim routes with paginated query names", async () => {
+    const signal = new AbortController().signal;
+
+    await listExchangeClaimOptions("41", {
+      page: 2,
+      pageSize: 10,
+      shopId: 7,
+      technicianProfileId: 12,
+      serviceRef: "technician:31",
+      signal
+    });
+    await createExchangeClaim(
+      "41",
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "exchange-claim-create-0001"
+    );
+    await listReceivedExchangeClaims("41", { page: 3, pageSize: 5, signal });
+    await getMyExchangeClaim("41", signal);
+    await withdrawExchangeClaim("73", "exchange-claim-withdraw-0001");
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/exchange/posts/41/claim-options", {
+      query: {
+        page: 2,
+        page_size: 10,
+        shop_id: 7,
+        technician_profile_id: 12,
+        service_ref: "technician:31"
+      },
+      signal
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/exchange/posts/41/claims", {
+      body: { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      headers: { "Idempotency-Key": "exchange-claim-create-0001" },
+      method: "POST"
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(3, "/exchange/posts/41/claims", {
+      query: { page: 3, page_size: 5 },
+      signal
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(4, "/exchange/posts/41/claims/mine", {
+      signal
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(5, "/exchange/claims/73/withdraw", {
+      headers: { "Idempotency-Key": "exchange-claim-withdraw-0001" },
       method: "POST"
     });
   });

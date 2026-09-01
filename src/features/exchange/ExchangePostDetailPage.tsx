@@ -20,7 +20,9 @@ import {
   unlikeExchangePost,
   withdrawExchangePost
 } from "./api";
+import { ExchangeClaimPanel } from "./ExchangeClaimPanel";
 import { ExchangeInteractions } from "./ExchangeInteractions";
+import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
 import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost } from "./types";
 
@@ -412,6 +414,11 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]">
             {t(post.status === "withdrawn" ? "withdrawnState" : "expiredState")}
           </div>
+        ) : null}
+
+        {post.viewer.canClaim ? <ExchangeClaimPanel language={language} post={post} /> : null}
+        {post.viewer.canViewClaims ? (
+          <ExchangeReceivedClaims language={language} postId={String(post.id)} />
         ) : null}
 
         <section className={detailCardClassName} data-no-i18n="true">

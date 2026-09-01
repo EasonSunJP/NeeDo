@@ -24,7 +24,7 @@ const demandPost: ExchangePost = {
   publishedAt: "2026-08-30T04:00:00.000Z",
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
   counts: { comments: 4, likes: 21, shares: 6 },
-  viewer: { liked: false, canWithdraw: true },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
   demand: {
     serviceMode: "store",
     targetProviderCount: 1,

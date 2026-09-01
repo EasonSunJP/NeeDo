@@ -25,6 +25,56 @@ export type ExchangeInteractionCounts = {
 export type ExchangeViewerState = {
   liked: boolean;
   canWithdraw: boolean;
+  canClaim: boolean;
+  canViewClaims: boolean;
+};
+
+export type ExchangeClaimStatus =
+  | "active"
+  | "withdrawn"
+  | "request_withdrawn"
+  | "request_expired";
+
+export type ExchangeClaimServiceRef = `shop:${number}` | `technician:${number}`;
+
+export type ExchangeClaimOption = {
+  scheduleSlotId: number;
+  shop: { id: number; name: string };
+  technician: { profileId: number; publicId: string; displayName: string };
+  service: { ref: ExchangeClaimServiceRef; name: string; durationMinutes: number };
+  startsAt: string;
+  endsAt: string;
+};
+
+export type ExchangeClaim = {
+  id: number;
+  exchangePostId: number;
+  status: ExchangeClaimStatus;
+  provider: { publicId: string; displayName: string; avatarUrl: string | null };
+  shop: { id: number; name: string };
+  technician: { profileId: number; publicId: string; displayName: string };
+  service: { ref: ExchangeClaimServiceRef; name: string; durationMinutes: number };
+  scheduleSlotId: number;
+  quoteAmountJpy: number;
+  currency: "JPY";
+  message: string | null;
+  estimatedStartsAt: string;
+  estimatedEndsAt: string;
+  createdAt: string;
+  withdrawnAt: string | null;
+  terminalAt: string | null;
+};
+
+export type ExchangeClaimOptionListInput = PaginationInput & {
+  shopId?: number;
+  technicianProfileId?: number;
+  serviceRef?: ExchangeClaimServiceRef;
+};
+
+export type CreateExchangeClaimInput = {
+  scheduleSlotId: number;
+  quoteAmountJpy: number;
+  message: string | null;
 };
 
 export type ExchangePriority = {

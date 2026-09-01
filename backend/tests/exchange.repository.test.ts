@@ -356,7 +356,12 @@ describe("ExchangePostRepository", () => {
             avatarUrl: "https://example.test/avatar.jpg"
           },
           counts: { comments: 4, likes: 21, shares: 5 },
-          viewer: { liked: true, canWithdraw: true },
+          viewer: {
+            liked: true,
+            canWithdraw: true,
+            canClaim: false,
+            canViewClaims: false
+          },
           demand: {
             serviceMode: "store",
             targetProviderCount: 1,
@@ -502,7 +507,12 @@ describe("ExchangePostRepository", () => {
     expect(result).toEqual(
       expect.objectContaining({
         publisher: null,
-        viewer: { liked: true, canWithdraw: false },
+        viewer: {
+          liked: true,
+          canWithdraw: false,
+          canClaim: false,
+          canViewClaims: false
+        },
         demand: expect.objectContaining({
           address: {
             line1: "渋谷区",
@@ -517,6 +527,24 @@ describe("ExchangePostRepository", () => {
     );
     expect(JSON.stringify(result)).not.toContain("道玄坂1-2-3");
     expect(JSON.stringify(result)).not.toMatch(/phone|email|phoneNumber/i);
+  });
+
+  it("never grants claim capability to another provider identity of the author user", async () => {
+    const selectiveRow = {
+      ...demandRow,
+      demand: { ...demandRow.demand, matchMode: "SELECTIVE" }
+    };
+    const findFirst = jest.fn(async () => selectiveRow);
+    const repository = new ExchangePostRepository({
+      exchangePost: { findFirst }
+    } as never);
+
+    await expect(repository.findPostById(41, 99, now, 7)).resolves.toMatchObject({
+      viewer: { canClaim: false }
+    });
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: true }
+    });
   });
 
   it("derives an expired status at read time and disables withdrawal", async () => {
@@ -534,7 +562,12 @@ describe("ExchangePostRepository", () => {
       expect.objectContaining({
         id: 41,
         status: "expired",
-        viewer: { liked: false, canWithdraw: false }
+        viewer: {
+          liked: false,
+          canWithdraw: false,
+          canClaim: false,
+          canViewClaims: false
+        }
       })
     );
     expect(findFirst).toHaveBeenCalledWith(
@@ -911,13 +944,24 @@ describe("ExchangePostRepository", () => {
       .fn()
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 1 });
+    const claimUpdateMany = jest
+      .fn()
+      .mockResolvedValueOnce({ count: 2 })
+      .mockResolvedValueOnce({ count: 1 });
     const repository = new ExchangePostRepository({
-      exchangePost: { findMany, updateMany }
+      exchangePost: { findMany, updateMany },
+      exchangeClaim: { updateMany: claimUpdateMany }
     } as never);
 
     await expect(repository.listDuePostIds(now, 3)).resolves.toEqual([41, 42, 43]);
     await expect(repository.markWithdrawnIfPublished(41, now)).resolves.toBe(true);
     await expect(repository.markExpiredIfPublished(42, now)).resolves.toBe(true);
+    await expect(
+      repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)
+    ).resolves.toBe(2);
+    await expect(
+      repository.cancelActiveClaimsByPost(42, "request_expired", now)
+    ).resolves.toBe(1);
 
     expect(findMany).toHaveBeenCalledWith({
       where: { status: "PUBLISHED", expiresAt: { lte: now }, deletedAt: null },
@@ -937,6 +981,24 @@ describe("ExchangePostRepository", () => {
         deletedAt: null
       },
       data: { status: "EXPIRED", updatedAt: now }
+    });
+    expect(claimUpdateMany).toHaveBeenNthCalledWith(1, {
+      where: { exchangePostId: 41, status: "ACTIVE", deletedAt: null },
+      data: {
+        status: "REQUEST_WITHDRAWN",
+        activeKey: null,
+        terminalAt: now,
+        updatedAt: now
+      }
+    });
+    expect(claimUpdateMany).toHaveBeenNthCalledWith(2, {
+      where: { exchangePostId: 42, status: "ACTIVE", deletedAt: null },
+      data: {
+        status: "REQUEST_EXPIRED",
+        activeKey: null,
+        terminalAt: now,
+        updatedAt: now
+      }
     });
   });
 });

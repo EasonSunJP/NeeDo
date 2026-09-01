@@ -134,7 +134,35 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 ```
 
-The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment text remains in its original language. Offer-taking, quotes, matching, booking/order creation, appointments, and payment remain explicitly deferred and have no Exchange route or control in this phase.
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming is enabled as the first formal fulfillment slice; quick matching, provider selection, matching completion, budget augmentation, booking/order creation, appointments, and payment remain explicitly deferred.
+
+### Formal Selective Exchange Claim
+
+Selective Request claims reuse the existing identity, shop affiliation, service, technician schedule, booking-conflict, RBAC, audit, and Request-terminal transaction authorities. No parallel matching, booking, order, wallet, ledger, or payment system is created. An active claim is a soft technician-time hold; claimant withdrawal, Request withdrawal, and Request expiry persist a terminal claim state and release the hold.
+
+The five authenticated endpoints are:
+
+- `GET /api/v1/exchange/posts/{id}/claim-options` — paginated, provider-scoped shop/technician/service/schedule options.
+- `POST /api/v1/exchange/posts/{id}/claims` — idempotent selective claim creation with server budget and overlap validation.
+- `GET /api/v1/exchange/posts/{id}/claims/mine` — current identity's persisted claim.
+- `GET /api/v1/exchange/posts/{id}/claims` — paginated claims received by the Request owner only.
+- `POST /api/v1/exchange/claims/{claimId}/withdraw` — claimant-only, idempotent pre-match withdrawal.
+
+RBAC codes are `exchange:claim-options:list`, `exchange:claims:create`, `exchange:claims:read-own`, `exchange:claims:list-owned-request`, and `exchange:claims:withdraw-own`. Public claim states are `active`, `withdrawn`, `request_withdrawn`, and `request_expired`. Quote, service, shop, technician, and estimated time are server-authoritative; the provider message is optional and remains in its original language.
+
+Run the guarded local claim-lifecycle fixture checker and concurrency proof from `backend/`. `ENV_FILE` is mandatory, remote/production-looking databases are rejected, and every checker fixture is identified and deleted by captured IDs:
+
+```bash
+ENV_FILE=.env.dev npm run check:exchange-selective-claim-flow
+RUN_EXCHANGE_CLAIM_INTEGRATION=true ALLOW_EXCHANGE_CLAIM_DEV_INTEGRATION=true ENV_FILE=.env.dev \
+  npm test -- --runTestsByPath tests/exchange-claim.repository.integration.test.ts --runInBand
+```
+
+The lifecycle checker creates its Request, schedule, service and identities as exact, namespaced Prisma fixtures, then exercises the real claim repository/service transaction boundary. It proves the claim state machine and cleanup, but does not by itself prove formal Request publication or its TEST_NDP hold; those remain browser/API acceptance responsibilities.
+
+On the current local database, migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. The older unrelated migration `20260831160000_im_chat_records_translation` remains pending and was deliberately left untouched; do not use a blanket migrate-deploy command for this acceptance slice.
+
+The current slice does not implement quick-mode auto matching, Request-owner provider selection, total-budget augmentation, early-close half-fee settlement, bilateral cancellation after matching, `BookingOrder`, or `Payment` creation.
 
 ### Exchange Test NDP Foundation
 
@@ -152,7 +180,7 @@ npm run backfill:test-ndp -- --apply
 npm run check:test-ndp-foundation -- --phase=postflight
 ```
 
-These commands reject production-like targets. The Exchange Request publication fee, its operations-configured default of 1,000 NDP, claiming, matching, booking, and payment remain outside this foundation as separate later microsteps.
+These commands reject production-like targets. The Exchange Request publication fee and its operations-configured default of 1,000 NDP are reused by publication. Selective claiming adds no wallet or ledger movement; matching, booking, and payment remain separate later microsteps.
 
 The isolated formal Social seed updates the 210 simulation accounts plus the six fixed role-entry accounts without replacing booking/order data. It assigns realistic shop and person names, persists 15 posts per account (text, single image, multi-image, video, and quote), and creates exactly 36 mutual friends per account across shop service accounts, technicians, and general users.
 
