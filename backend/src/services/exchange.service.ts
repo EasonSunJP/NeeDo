@@ -89,7 +89,7 @@ export interface ExchangeTerminalPostRecord {
   authorUserId: number;
   ownerIdentityId: number;
   type: ExchangePostType;
-  status: "published" | "withdrawn" | "expired";
+  status: "published" | "withdrawn" | "expired" | "matched" | "closed";
   expiresAt: Date;
   requestFinancial: { state: "held" | "captured" | "released" } | null;
 }

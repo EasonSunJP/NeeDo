@@ -58,7 +58,9 @@ const typeFromDatabase: Record<DatabaseExchangePostType, ExchangePostType> = {
 const statusFromDatabase: Record<DatabaseExchangePostStatus, ExchangePostStatus> = {
   [DatabaseExchangePostStatus.PUBLISHED]: "published",
   [DatabaseExchangePostStatus.WITHDRAWN]: "withdrawn",
-  [DatabaseExchangePostStatus.EXPIRED]: "expired"
+  [DatabaseExchangePostStatus.EXPIRED]: "expired",
+  [DatabaseExchangePostStatus.MATCHED]: "matched",
+  [DatabaseExchangePostStatus.CLOSED]: "closed"
 };
 
 const requestFinancialStateFromDatabase: Record<
