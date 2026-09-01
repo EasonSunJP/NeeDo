@@ -100,8 +100,18 @@ export interface ShopCardPayload {
   address: string;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  favoriteCount: number;
+  shareCount: number;
   serviceCategories: Array<{ id: number; code: string; label: string }>;
   businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
+}
+
+export interface PrimaryTechnicianServicePayload {
+  id: number;
+  name: string;
+  priceAmount: string;
+  currency: string;
+  durationMinutes: number;
 }
 
 export interface TechnicianCardPayload {
@@ -111,6 +121,12 @@ export interface TechnicianCardPayload {
   city: string;
   avatarUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  age: number | null;
+  favoriteCount: number;
+  shareCount: number;
+  completedOrderCount: number;
+  acceptanceRatePercent: number;
+  primaryService: PrimaryTechnicianServicePayload | null;
   distanceKm?: number;
   nearbyRank?: 1 | 2 | 3 | null;
   resolvedRadiusKm?: number;
@@ -215,6 +231,10 @@ type ShopCardRecord = Shop & {
   mediaAssets: MediaAsset[];
   publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
+  _count: {
+    entityFavorites: number;
+    entityShareEvents: number;
+  };
   serviceCategorySelections: Array<{
     category: {
       id: number;
@@ -235,6 +255,22 @@ type ShopCardRecord = Shop & {
 type TechnicianCardRecord = TechnicianProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  performanceSummary: {
+    completedOrderCount: number;
+    acceptanceRateBps: number;
+    deletedAt: Date | null;
+  } | null;
+  technicianServices: Array<{
+    id: number;
+    name: string;
+    priceAmount: number;
+    currency: string;
+    durationMinutes: number;
+  }>;
+  _count: {
+    entityFavorites: number;
+    entityShareEvents: number;
+  };
   user: {
     avatarBootstrapUrl: string | null;
     identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
@@ -626,6 +662,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private shopCardInclude() {
     return {
+      _count: {
+        select: {
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      },
       mediaAssets: activeMediaArgs,
       publicIdentifier: true,
       reviewSummary: true,
@@ -679,8 +721,32 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private technicianCardInclude() {
     return {
+      _count: {
+        select: {
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      },
       mediaAssets: activeMediaArgs,
       reviewSummary: true,
+      performanceSummary: true,
+      technicianServices: {
+        where: {
+          deletedAt: null,
+          isActive: true,
+          isBookable: true,
+          reviewStatus: "APPROVED" as const
+        },
+        select: {
+          id: true,
+          name: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true
+        },
+        orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+        take: 1
+      },
       user: {
         select: {
           avatarBootstrapUrl: true,
@@ -1178,6 +1244,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
       reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      favoriteCount: shop._count.entityFavorites,
+      shareCount: shop._count.entityShareEvents,
       serviceCategories: (shop.serviceCategorySelections ?? []).flatMap(({ category }) =>
         category.translations[0]
           ? [{ id: category.id, code: category.code, label: category.translations[0].name }]
@@ -1218,6 +1286,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       (identity) => this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
 
+    const performanceSummary =
+      technician.performanceSummary?.deletedAt === null
+        ? technician.performanceSummary
+        : null;
+    const primaryService = technician.technicianServices[0] ?? null;
+
     return {
       id: technician.id,
       publicId: this.requirePublicId(identifier ?? null, "S"),
@@ -1226,7 +1300,24 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       avatarUrl:
         this.findMediaUrl(technician.mediaAssets, "avatar") ??
         technician.user.avatarBootstrapUrl,
-      reviewSummary: this.mapReviewSummary(technician.reviewSummary)
+      reviewSummary: this.mapReviewSummary(technician.reviewSummary),
+      age: technician.age,
+      favoriteCount: technician._count.entityFavorites,
+      shareCount: technician._count.entityShareEvents,
+      completedOrderCount: performanceSummary?.completedOrderCount ?? 0,
+      acceptanceRatePercent: Math.min(
+        100,
+        Math.max(0, (performanceSummary?.acceptanceRateBps ?? 10_000) / 100)
+      ),
+      primaryService: primaryService
+        ? {
+            id: primaryService.id,
+            name: primaryService.name,
+            priceAmount: String(primaryService.priceAmount),
+            currency: primaryService.currency,
+            durationMinutes: primaryService.durationMinutes
+          }
+        : null
     };
   }
 

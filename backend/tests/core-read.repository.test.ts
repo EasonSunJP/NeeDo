@@ -44,6 +44,10 @@ const publishedShopWithoutServices = {
   mediaAssets: [],
   publicIdentifier: activeShopIdentifier,
   reviewSummary: null,
+  _count: {
+    entityFavorites: 1540,
+    entityShareEvents: 29
+  },
   serviceCategorySelections: [
     {
       category: {
@@ -69,10 +73,29 @@ const publishedTechnicianWithoutServices = {
   id: 41,
   displayName: "橘 ひかり",
   city: "Tokyo",
+  age: 25,
   baseLatitude: { toString: () => "35.6762000" },
   baseLongitude: { toString: () => "139.6503000" },
   mediaAssets: [],
   reviewSummary: null,
+  performanceSummary: {
+    completedOrderCount: 1280,
+    acceptanceRateBps: 9800,
+    deletedAt: null
+  },
+  technicianServices: [
+    {
+      id: 71,
+      name: "肩颈调理",
+      priceAmount: 8800,
+      currency: "JPY",
+      durationMinutes: 60
+    }
+  ],
+  _count: {
+    entityFavorites: 154,
+    entityShareEvents: 8
+  },
   user: {
     avatarBootstrapUrl: null,
     identities: [
@@ -85,7 +108,9 @@ const publishedTechnicianWithoutServices = {
 function createRepositoryFixture() {
   const shopFindMany = jest.fn(async () => [publishedShopWithoutServices]);
   const shopCount = jest.fn(async () => 1);
-  const technicianFindMany = jest.fn(async () => [publishedTechnicianWithoutServices]);
+  const technicianFindMany = jest.fn(
+    async (): Promise<Array<Record<string, unknown>>> => [publishedTechnicianWithoutServices]
+  );
   const technicianCount = jest.fn(async () => 1);
   const serviceFindMany = jest.fn(async () => []);
   const serviceCount = jest.fn(async () => 0);
@@ -118,6 +143,8 @@ describe("CoreReadRepository multi-entity search", () => {
       list: [{
         name: "LifeDance Wellness 渋谷",
         publicId: "shop5831047296",
+        favoriteCount: 1540,
+        shareCount: 29,
         serviceCategories: [{ code: "wellness", label: "リラクゼーション" }],
         businessKeywords: [{ code: "wellness_spa", label: "スパケア" }]
       }],
@@ -161,7 +188,22 @@ describe("CoreReadRepository multi-entity search", () => {
       pageSize: 20
     });
     expect(result).toMatchObject({
-      list: [{ displayName: "橘 ひかり", publicId: "s5831047296" }],
+      list: [{
+        displayName: "橘 ひかり",
+        publicId: "s5831047296",
+        age: 25,
+        favoriteCount: 154,
+        shareCount: 8,
+        completedOrderCount: 1280,
+        acceptanceRatePercent: 98,
+        primaryService: {
+          id: 71,
+          name: "肩颈调理",
+          priceAmount: "8800",
+          currency: "JPY",
+          durationMinutes: 60
+        }
+      }],
       total: 1
     });
     expect(result.list[0]).not.toHaveProperty("baseLatitude");
@@ -180,6 +222,23 @@ describe("CoreReadRepository multi-entity search", () => {
         OR: expect.arrayContaining([{ displayName: { contains: "ひかり" } }])
       }),
       include: expect.objectContaining({
+        _count: {
+          select: {
+            entityFavorites: { where: { deletedAt: null } },
+            entityShareEvents: { where: { deletedAt: null } }
+          }
+        },
+        performanceSummary: true,
+        technicianServices: expect.objectContaining({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            isBookable: true,
+            reviewStatus: "APPROVED"
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          take: 1
+        }),
         user: {
           select: expect.objectContaining({
             identities: expect.objectContaining({
@@ -201,6 +260,36 @@ describe("CoreReadRepository multi-entity search", () => {
       skip: 0,
       take: 20
     }));
+  });
+
+  it("defaults absent technician performance and primary service without inventing metrics", async () => {
+    const fixture = createRepositoryFixture();
+    fixture.technicianFindMany.mockResolvedValueOnce([
+      {
+        ...publishedTechnicianWithoutServices,
+        age: null,
+        performanceSummary: null,
+        technicianServices: [],
+        _count: { entityFavorites: 0, entityShareEvents: 0 }
+      }
+    ]);
+
+    await expect(fixture.repository.searchTechnicians({
+      entityType: "technician",
+      keywords: ["ひかり"],
+      categoryIds: [],
+      page: 1,
+      pageSize: 20
+    })).resolves.toMatchObject({
+      list: [{
+        age: null,
+        favoriteCount: 0,
+        shareCount: 0,
+        completedOrderCount: 0,
+        acceptanceRatePercent: 100,
+        primaryService: null
+      }]
+    });
   });
 
   it("does not expose a soft-deleted technician attached to a published service", async () => {
