@@ -11,6 +11,7 @@ import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ImScopeProvider } from "./scope";
 import source from "./pages.tsx?raw";
 import componentsSource from "./components.tsx?raw";
+import supportSource from "./MembershipSupportEntry.tsx?raw";
 
 const roomHarness = vi.hoisted(() => ({
   entityStore: { customers: [], stores: [], technicians: [] } as Record<string, unknown>,
@@ -684,6 +685,22 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).toContain("store.acceptFriendRequest");
     expect(infoSource).toContain('contact?.id, formalActivityTargetUserId');
     expect(infoSource).toContain('{t("添加好友")}');
+  });
+});
+
+describe("IM membership support entry wiring", () => {
+  it("keeps the configured support benefit outside formal users and conversations", () => {
+    const start = source.indexOf("export function ImContactsListPage");
+    const end = source.indexOf("export function ImFriendRequestsPage", start);
+    const contactsSource = source.slice(start, end);
+
+    expect(source).toContain('from "./MembershipSupportEntry"');
+    expect(contactsSource).toContain(
+      '<MembershipSupportEntry enabled={scope === "user"} language={language} />'
+    );
+    expect(supportSource).not.toContain("supportUserId");
+    expect(supportSource).not.toContain("supportConversationId");
+    expect(supportSource).not.toContain("usersById");
   });
 });
 

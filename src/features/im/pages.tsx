@@ -110,6 +110,7 @@ import {
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
+import { MembershipSupportEntry } from "./MembershipSupportEntry";
 import {
   ImMessageMultiSelectCircle,
   ImMessageMultiSelectOverlay,
@@ -2143,6 +2144,7 @@ export function ImConversationListPage() {
 
 export function ImContactsListPage() {
   const { store, config, scope } = useImRuntime();
+  const { language } = useOptionalI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = getCurrentUser(store);
@@ -2497,6 +2499,7 @@ export function ImContactsListPage() {
                 to={config.routes.serviceAccounts}
                 trailing={<TestFeatureBadge className="min-h-4 px-1.5 py-0 text-[8px]" />}
               />
+              <MembershipSupportEntry enabled={scope === "user"} language={language} />
             </section>
 
             <div className="px-1 pt-3">
