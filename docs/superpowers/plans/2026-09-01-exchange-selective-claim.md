@@ -637,7 +637,7 @@ Expected: FAIL because claim API functions do not exist.
 
 - [ ] **Step 3: Add frontend claim types and API functions**
 
-Mirror backend fields exactly. Export `listExchangeClaimOptions`, `createExchangeClaim`, `listReceivedExchangeClaims`, `getMyExchangeClaim`, and `withdrawExchangeClaim`; all writes use a generated `Idempotency-Key` and all lists map `page_size`.
+Mirror backend fields exactly. Export `listExchangeClaimOptions`, `createExchangeClaim`, `listReceivedExchangeClaims`, `getMyExchangeClaim`, and `withdrawExchangeClaim`; `claims/mine` transports the nullable value inside a non-null `{ claim }` payload before the client unwraps it, all writes use a generated `Idempotency-Key`, and all lists map `page_size`.
 
 - [ ] **Step 4: Write failing provider panel tests**
 

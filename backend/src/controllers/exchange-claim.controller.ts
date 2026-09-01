@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { ExchangeClaimService } from "../services/exchange-claim.service";
+import type { ExchangeClaimMinePayload } from "../types/exchange-claim.types";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
@@ -58,7 +59,11 @@ export class ExchangeClaimController {
     const { id } = exchangeClaimPostIdParamSchema.parse(request.params);
     response
       .status(200)
-      .json(successResponse(await this.service.getMine(getAuthenticatedAccess(response), id)));
+      .json(
+        successResponse({
+          claim: await this.service.getMine(getAuthenticatedAccess(response), id)
+        } satisfies ExchangeClaimMinePayload)
+      );
   });
 
   public withdraw = this.handle(async (request, response) => {

@@ -262,6 +262,10 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     navigate(exchangeBasePath(context), { replace: true });
   }
 
+  function closeDetail() {
+    navigate(exchangeBasePath(context), { replace: true });
+  }
+
   async function withdraw() {
     if (!post || withdrawPending || !globalThis.confirm(t("confirmWithdraw"))) return;
     const key = withdrawKeyRef.current ?? globalThis.crypto.randomUUID();
@@ -321,7 +325,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
 
   const stateShell = (content: ReactNode) => (
     <MobileFullscreenPage innerClassName="client-glass-page-surface">
-      <MobileFullscreenHeader onBack={goBack} showSpacer={false} title={t(validPostId ? "intelligenceDetail" : "requestDetail")} />
+      <MobileFullscreenHeader onBack={goBack} onClose={closeDetail} showSpacer={false} title={t(validPostId ? "intelligenceDetail" : "requestDetail")} />
       <main className="flex min-h-0 flex-1 items-center justify-center px-6 pt-[calc(env(safe-area-inset-top)+86px)] text-center">
         {content}
       </main>
@@ -377,6 +381,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         )}
         info={`${formatTime(post.serviceStartAt, language)}–${formatTime(post.serviceEndAt, language)} · ${post.areaLabel}`}
         onBack={goBack}
+        onClose={closeDetail}
         showSpacer={false}
         title={t(post.type === "demand" ? "requestDetail" : "intelligenceDetail")}
       />

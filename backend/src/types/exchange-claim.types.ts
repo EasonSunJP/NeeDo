@@ -62,5 +62,9 @@ export interface ExchangeClaimPayload {
   terminalAt: string | null;
 }
 
+export interface ExchangeClaimMinePayload {
+  claim: ExchangeClaimPayload | null;
+}
+
 export type ExchangeClaimOptionPage = PaginatedResponse<ExchangeClaimOptionPayload>;
 export type ExchangeClaimPage = PaginatedResponse<ExchangeClaimPayload>;

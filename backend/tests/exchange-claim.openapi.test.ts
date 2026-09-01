@@ -84,6 +84,7 @@ describe("Exchange selective claim OpenAPI", () => {
     expect(document.components.schemas).toEqual(
       expect.objectContaining({
         ExchangeClaim: expect.any(Object),
+        ExchangeClaimMine: expect.any(Object),
         ExchangeClaimPage: expect.any(Object),
         ExchangeClaimOption: expect.any(Object),
         ExchangeClaimOptionPage: expect.any(Object),
@@ -111,5 +112,22 @@ describe("Exchange selective claim OpenAPI", () => {
     expect(JSON.stringify(document.components.schemas.ExchangeClaim)).not.toMatch(
       /claimantUserId|claimantIdentityId|activeKey|payloadFingerprint|idempotencyKey/
     );
+    expect(document.components.schemas.ExchangeClaimMine).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: ["claim"],
+      properties: {
+        claim: {
+          oneOf: [{ $ref: "#/components/schemas/ExchangeClaim" }, { type: "null" }]
+        }
+      }
+    });
+    const mineResponse = document.paths["/api/v1/exchange/posts/{id}/claims/mine"].get
+      .responses["200"] as unknown as {
+      content: { "application/json": { schema: { properties: { data: unknown } } } };
+    };
+    expect(mineResponse.content["application/json"].schema.properties.data).toEqual({
+      $ref: "#/components/schemas/ExchangeClaimMine"
+    });
   });
 });

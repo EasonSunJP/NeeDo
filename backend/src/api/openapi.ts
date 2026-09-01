@@ -1823,7 +1823,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
           parameters: [postId],
           responses: {
             "200": jsonDataResponse("Own Exchange claim or null", {
-              oneOf: [{ $ref: "#/components/schemas/ExchangeClaim" }, { type: "null" }]
+              $ref: "#/components/schemas/ExchangeClaimMine"
             }),
             ...exchangeClaimErrorResponses
           }
@@ -2694,6 +2694,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           createdAt: { type: "string", format: "date-time" },
           withdrawnAt: { type: ["string", "null"], format: "date-time" },
           terminalAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ExchangeClaimMine: {
+        type: "object",
+        additionalProperties: false,
+        required: ["claim"],
+        properties: {
+          claim: {
+            oneOf: [{ $ref: "#/components/schemas/ExchangeClaim" }, { type: "null" }]
+          }
         }
       },
       ExchangeClaimPage: {
