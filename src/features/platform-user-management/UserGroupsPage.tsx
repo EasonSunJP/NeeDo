@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthProvider";
+import "./registerI18n";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";

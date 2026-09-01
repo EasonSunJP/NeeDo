@@ -262,7 +262,10 @@ async function loadTranslationsFromSource(sourceCode) {
 
   try {
     const loaded = await import(`file://${tempFile}`);
-    return loaded.translations ?? {};
+    return {
+      ...platformUserManagementTranslations,
+      ...(loaded.translations ?? {}),
+    };
   } finally {
     await fs.unlink(tempFile).catch(() => {});
   }

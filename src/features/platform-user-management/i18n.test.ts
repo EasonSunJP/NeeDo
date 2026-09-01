@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { translateText } from "../../i18n/translations";
 import { platformUserManagementCopy } from "./i18n";
+import "./registerI18n";
 
 describe("platform user management copy", () => {
   it("keeps every operations key complete in all five languages", () => {
@@ -19,5 +21,10 @@ describe("platform user management copy", () => {
       membershipBenefits: "会员权益说明",
       capabilityUnavailable: "能力未接通"
     });
+  });
+
+  it("registers feature copy when the lazy user-management feature loads", () => {
+    expect(translateText("用户列表", "ja")).toBe("ユーザーリスト");
+    expect(translateText("NDP 基础经验比例", "en")).toBe("Base NDP experience ratio");
   });
 });

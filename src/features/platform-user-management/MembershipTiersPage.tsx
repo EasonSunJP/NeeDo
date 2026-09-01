@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./registerI18n";
 import { useAuth } from "../../auth/AuthProvider";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Button } from "../../components/ui/Button";
