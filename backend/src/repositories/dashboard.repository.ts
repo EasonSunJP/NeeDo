@@ -15,6 +15,11 @@ import {
   DashboardMerchantRepository,
   type DashboardMerchantReader
 } from "./dashboard-merchant.repository";
+import {
+  DashboardOperationsFinanceRepository,
+  type DashboardOperationsFinanceReader,
+  type OperationsFinanceFacts
+} from "./dashboard-operations-finance.repository";
 
 type NumericValue = bigint | number | string | { toString: () => string } | null | undefined;
 
@@ -86,7 +91,9 @@ export class DashboardRepository {
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly financeReader: DashboardFinanceReader = new DashboardFinanceRepository(client),
-    private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(client)
+    private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(client),
+    private readonly operationsFinanceReader: DashboardOperationsFinanceReader =
+      new DashboardOperationsFinanceRepository(client)
   ) {}
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -113,6 +120,12 @@ export class DashboardRepository {
     input: DashboardAggregateInput
   ): Promise<DashboardMerchantFacts | null> {
     return this.merchantReader.getMerchantFacts(input);
+  }
+
+  public async getOperationsFinance(
+    input: DashboardAggregateInput
+  ): Promise<OperationsFinanceFacts> {
+    return this.operationsFinanceReader.getOperationsFinance(input);
   }
 
   public async getActivityFacts(input: DashboardAggregateInput): Promise<DashboardActivityFacts> {
