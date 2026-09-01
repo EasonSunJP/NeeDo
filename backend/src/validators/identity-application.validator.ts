@@ -65,7 +65,9 @@ const merchantShowcaseShape = {
   businessAddress: z.string().trim().min(1).max(255),
   contactPhone: z.string().trim().min(1).max(32),
   responsiblePersonName: z.string().trim().min(1).max(120),
-  showcaseDraft: z.record(z.unknown())
+  showcaseDraft: z.record(z.unknown()),
+  serviceCategoryIds: z.array(z.number().int().positive()).min(1).max(5),
+  businessKeywordIds: z.array(z.number().int().positive()).max(5)
 };
 
 export const createMerchantApplicationBodySchema = z.object(merchantShowcaseShape).strict();

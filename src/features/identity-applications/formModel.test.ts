@@ -28,11 +28,14 @@ describe("identity application form model", () => {
       businessAddress: "東京都中央区",
       contactPhone: "0312345678",
       responsiblePersonName: "山田 花",
-      description: "静かな個室ケア"
+      description: "静かな個室ケア",
+      serviceCategoryIds: [1],
+      businessKeywordIds: [10]
     };
     expect(validateMerchantShowcase(common)).toBe("请输入法人名称");
     expect(validateMerchantShowcase({ ...common, corporateLegalName: "株式会社銀座ケア", corporateLegalNameKana: "" })).toBe("请输入法人名称片假名");
     expect(validateMerchantShowcase({ ...common, applicantKind: "individual" })).toBeNull();
+    expect(validateMerchantShowcase({ ...common, applicantKind: "individual", serviceCategoryIds: [] })).toBe("请至少选择一个服务种类");
   });
 
   it("maps the app locale to the three signed contract languages", () => {

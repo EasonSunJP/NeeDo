@@ -56,6 +56,19 @@ export interface MerchantApplicationReviewRecord {
   contactPhone: string;
   responsiblePersonName: string;
   showcaseDraft: Record<string, unknown> | null;
+  serviceCategories: Array<{
+    id: number;
+    code: string;
+    label: string;
+    qualificationPolicy: string;
+  }>;
+  businessKeywords: Array<{
+    id: number;
+    code: string;
+    categoryId: number;
+    label: string;
+    qualificationPolicy: string;
+  }>;
   bankAccount: MerchantApplicationBankProjection | null;
   eKycVerified: boolean;
   contractAcceptance: MerchantApplicationContractEvidence | null;
@@ -86,6 +99,8 @@ export interface ApproveMerchantApplicationRepositoryInput {
   businessAddress: string;
   contactPhone: string;
   showcaseDraft: Record<string, unknown>;
+  serviceCategoryIds: number[];
+  businessKeywordIds: number[];
   bankAccountId: number;
   contractAcceptanceId: number;
   reviewedAt: Date;
@@ -202,6 +217,8 @@ export class MerchantApplicationReviewService {
       businessAddress: application.businessAddress,
       contactPhone: application.contactPhone,
       showcaseDraft: application.showcaseDraft!,
+      serviceCategoryIds: application.serviceCategories.map((category) => category.id),
+      businessKeywordIds: application.businessKeywords.map((keyword) => keyword.id),
       bankAccountId: application.bankAccount!.id,
       contractAcceptanceId: application.contractAcceptance!.id,
       reviewedAt: input.now,
@@ -260,6 +277,9 @@ export class MerchantApplicationReviewService {
   private assertApprovalEvidence(application: MerchantApplicationReviewRecord): void {
     if (!application.submittedSnapshotHash || !application.showcaseDraft) {
       throw this.conflict("error.identity_application.submitted_snapshot_invalid");
+    }
+    if (application.serviceCategories.length === 0) {
+      throw this.validation("error.identity_application.service_category_required");
     }
     if (!application.media.some((item) => item.purpose === "representative_identity")) {
       throw this.validation("error.identity_application.representative_identity_required");

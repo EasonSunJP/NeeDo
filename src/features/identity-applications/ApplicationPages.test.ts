@@ -8,4 +8,11 @@ describe("identity application page chrome", () => {
     expect(applicationUiSource).toContain("navItems={hideNavigation ? [] : undefined}");
     expect(merchantApplicationSource).toContain("<ApplicationShell hideNavigation");
   });
+
+  it("uses formal category-first taxonomy selection instead of free-text service tags", () => {
+    expect(merchantApplicationSource).toContain("ShopTaxonomyRegistrationField");
+    expect(merchantApplicationSource).toContain("serviceCategoryIds: form.serviceCategoryIds");
+    expect(merchantApplicationSource).toContain("businessKeywordIds: form.businessKeywordIds");
+    expect(merchantApplicationSource).not.toContain('updateForm("tags"');
+  });
 });

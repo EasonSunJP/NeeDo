@@ -43,6 +43,16 @@ const identityApplicationInclude = {
         select: { expiresAt: true }
       }
     }
+  },
+  serviceCategories: {
+    where: { deletedAt: null },
+    select: { categoryId: true },
+    orderBy: [{ categoryId: "asc" as const }, { id: "asc" as const }]
+  },
+  businessKeywords: {
+    where: { deletedAt: null },
+    select: { businessKeywordId: true },
+    orderBy: [{ businessKeywordId: "asc" as const }, { id: "asc" as const }]
   }
 } satisfies Prisma.IdentityApplicationInclude;
 
@@ -173,6 +183,13 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
     return shop !== null;
   }
 
+  public async assertMerchantTaxonomySelection(input: {
+    serviceCategoryIds: number[];
+    businessKeywordIds: number[];
+  }): Promise<void> {
+    await this.assertTaxonomySelection(this.client, input);
+  }
+
   public async createTechnicianDraft(
     input: CreateTechnicianDraftRepositoryInput
   ): Promise<IdentityApplicationRecord> {
@@ -203,6 +220,18 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
         activeKey: input.activeKey,
         merchantDetail: {
           create: this.toMerchantData(input.detail)
+        },
+        serviceCategories: {
+          create: input.detail.serviceCategoryIds.map((categoryId) => ({
+            categoryId,
+            selectedByUserId: input.userId
+          }))
+        },
+        businessKeywords: {
+          create: input.detail.businessKeywordIds.map((businessKeywordId) => ({
+            businessKeywordId,
+            selectedByUserId: input.userId
+          }))
         }
       },
       include: identityApplicationInclude
@@ -237,6 +266,7 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
   ): Promise<IdentityApplicationRecord> {
     return this.client.$transaction(async (transaction) => {
       await this.updateDraftApplication(transaction, input);
+      await this.assertTaxonomySelection(transaction, input.detail);
       await transaction.merchantApplicationDetail.update({
         where: { applicationId: input.applicationId },
         data: {
@@ -244,6 +274,35 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
           submittedSnapshot: Prisma.JsonNull
         }
       });
+      const removedAt = new Date();
+      await Promise.all([
+        transaction.merchantApplicationServiceCategory.updateMany({
+          where: { applicationId: input.applicationId, deletedAt: null },
+          data: { deletedAt: removedAt }
+        }),
+        transaction.merchantApplicationBusinessKeyword.updateMany({
+          where: { applicationId: input.applicationId, deletedAt: null },
+          data: { deletedAt: removedAt }
+        })
+      ]);
+      if (input.detail.serviceCategoryIds.length > 0) {
+        await transaction.merchantApplicationServiceCategory.createMany({
+          data: input.detail.serviceCategoryIds.map((categoryId) => ({
+            applicationId: input.applicationId,
+            categoryId,
+            selectedByUserId: input.selectedByUserId
+          }))
+        });
+      }
+      if (input.detail.businessKeywordIds.length > 0) {
+        await transaction.merchantApplicationBusinessKeyword.createMany({
+          data: input.detail.businessKeywordIds.map((businessKeywordId) => ({
+            applicationId: input.applicationId,
+            businessKeywordId,
+            selectedByUserId: input.selectedByUserId
+          }))
+        });
+      }
       return this.requireMapped(transaction, input.applicationId);
     });
   }
@@ -374,7 +433,9 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       ? this.mapMerchantDetail(
           row.merchantDetail,
           row.media.map((item) => item.purpose),
-          ekycVerified
+          ekycVerified,
+          (row.serviceCategories ?? []).map((item) => item.categoryId),
+          (row.businessKeywords ?? []).map((item) => item.businessKeywordId)
         )
       : null;
 
@@ -417,7 +478,9 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
   private mapMerchantDetail(
     detail: NonNullable<IdentityApplicationRow["merchantDetail"]>,
     mediaPurposes: string[],
-    eKycVerified: boolean
+    eKycVerified: boolean,
+    serviceCategoryIds: number[],
+    businessKeywordIds: number[]
   ): MerchantApplicationDetailRecord {
     return {
       applicantKind: detail.applicantKind as "corporate" | "individual",
@@ -430,6 +493,8 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       contactPhone: detail.contactPhone,
       responsiblePersonName: detail.responsiblePersonName,
       showcaseDraft: asObject(detail.showcaseDraft),
+      serviceCategoryIds,
+      businessKeywordIds,
       bankAccountId: detail.bankAccountId,
       contractAcceptanceId: detail.contractAcceptanceId,
       mediaPurposes,
@@ -472,6 +537,41 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       bankAccountId: detail.bankAccountId,
       contractAcceptanceId: detail.contractAcceptanceId
     };
+  }
+
+  private async assertTaxonomySelection(
+    client: DatabaseClient,
+    input: { serviceCategoryIds: number[]; businessKeywordIds: number[] }
+  ): Promise<void> {
+    const [categories, keywords] = await Promise.all([
+      client.category.findMany({
+        where: { id: { in: input.serviceCategoryIds }, isActive: true, deletedAt: null },
+        select: { id: true }
+      }),
+      client.businessKeyword.findMany({
+        where: {
+          id: { in: input.businessKeywordIds },
+          isActive: true,
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null }
+        },
+        select: { id: true, categoryId: true }
+      })
+    ]);
+    const categoryIds = new Set(categories.map((category) => category.id));
+    const keywordIds = new Set(keywords.map((keyword) => keyword.id));
+    if (
+      categories.length !== input.serviceCategoryIds.length ||
+      keywords.length !== input.businessKeywordIds.length ||
+      keywords.some((keyword) => !categoryIds.has(keyword.categoryId)) ||
+      input.businessKeywordIds.some((id) => !keywordIds.has(id))
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.identity_application.taxonomy_selection_invalid",
+        statusCode: 400
+      });
+    }
   }
 
   private assertUpdated(count: number): void {

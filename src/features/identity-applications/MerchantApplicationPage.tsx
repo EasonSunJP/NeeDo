@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { StoreDetailExperience } from "../../pages/user/StoreDetailPage";
+import { ShopTaxonomyRegistrationField } from "../shop-taxonomy/ShopTaxonomyRegistrationField";
 import type { Store } from "../../types/domain";
 import {
   ApplicationButton,
@@ -21,11 +22,10 @@ import {
   type ContractDefinition,
   type IdentityApplication
 } from "./api";
-import { getContractLanguage, splitApplicationList, validateMerchantShowcase, type MerchantShowcaseForm } from "./formModel";
+import { getContractLanguage, validateMerchantShowcase, type MerchantShowcaseForm } from "./formModel";
 
 type MerchantForm = MerchantShowcaseForm & {
   priceLabel: string;
-  tags: string;
 };
 
 const emptyMerchantForm: MerchantForm = {
@@ -40,7 +40,8 @@ const emptyMerchantForm: MerchantForm = {
   responsiblePersonName: "",
   description: "",
   priceLabel: "",
-  tags: ""
+  serviceCategoryIds: [],
+  businessKeywordIds: []
 };
 
 const emptyBank: BankAccountInput = {
@@ -78,6 +79,7 @@ export function MerchantApplicationPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [previewImageUrl, setPreviewImageUrl] = useState("");
+  const [selectedKeywordLabels, setSelectedKeywordLabels] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -100,7 +102,8 @@ export function MerchantApplicationPage() {
           responsiblePersonName: detail.responsiblePersonName,
           description: readDraftString(detail.showcaseDraft, "description"),
           priceLabel: readDraftString(detail.showcaseDraft, "priceLabel"),
-          tags: readDraftString(detail.showcaseDraft, "tags")
+          serviceCategoryIds: detail.serviceCategoryIds ?? [],
+          businessKeywordIds: detail.businessKeywordIds ?? []
         });
       }
       if (existing.status === "submitted" || existing.status === "under_review") setStep(3);
@@ -144,7 +147,7 @@ export function MerchantApplicationPage() {
     rating: 0,
     reviewCount: 0,
     priceLabel: form.priceLabel || t("收费规则待填写"),
-    tags: splitApplicationList(form.tags),
+    tags: selectedKeywordLabels,
     openStatus: "closed",
     nextSlot: t("申请审核中"),
     cover: previewImageUrl || emptyCover,
@@ -153,7 +156,7 @@ export function MerchantApplicationPage() {
     rankLabel: t("新店申请"),
     businessHours: t("审核通过后设置"),
     mode: "store"
-  }), [application?.id, form, previewImageUrl, language]);
+  }), [application?.id, form, previewImageUrl, language, selectedKeywordLabels]);
 
   const showcasePayload = () => ({
     applicantKind: form.applicantKind,
@@ -165,10 +168,11 @@ export function MerchantApplicationPage() {
     businessAddress: form.businessAddress.trim(),
     contactPhone: form.contactPhone.trim(),
     responsiblePersonName: form.responsiblePersonName.trim(),
+    serviceCategoryIds: form.serviceCategoryIds,
+    businessKeywordIds: form.businessKeywordIds,
     showcaseDraft: {
       description: form.description.trim(),
-      priceLabel: form.priceLabel.trim(),
-      tags: form.tags.trim()
+      priceLabel: form.priceLabel.trim()
     }
   });
 
@@ -283,8 +287,13 @@ export function MerchantApplicationPage() {
               <ApplicationField label="联系电话" required><ApplicationInput onChange={(event) => updateForm("contactPhone", event.target.value)} value={form.contactPhone} /></ApplicationField>
               <ApplicationField label="负责人姓名" required><ApplicationInput onChange={(event) => updateForm("responsiblePersonName", event.target.value)} value={form.responsiblePersonName} /></ApplicationField>
               <ApplicationField label="收费展示"><ApplicationInput onChange={(event) => updateForm("priceLabel", event.target.value)} placeholder={t("例如 ¥8,800 起")} value={form.priceLabel} /></ApplicationField>
-              <ApplicationField hint="可用逗号分隔" label="服务标签"><ApplicationInput onChange={(event) => updateForm("tags", event.target.value)} value={form.tags} /></ApplicationField>
             </div>
+            <ShopTaxonomyRegistrationField
+              language={language}
+              onChange={(value) => setForm((current) => ({ ...current, ...value }))}
+              onKeywordLabelsChange={setSelectedKeywordLabels}
+              value={{ serviceCategoryIds: form.serviceCategoryIds, businessKeywordIds: form.businessKeywordIds }}
+            />
             <ApplicationField label="服务展示说明" required><ApplicationTextArea onChange={(event) => updateForm("description", event.target.value)} value={form.description} /></ApplicationField>
             <ApplicationField hint="将在下方店铺前端预览中显示" label="服务展示主图"><ApplicationInput accept="image/jpeg,image/png" onChange={(event) => setShowcaseImage(event.target.files?.[0] ?? null)} type="file" /></ApplicationField>
           </ApplicationCard>
