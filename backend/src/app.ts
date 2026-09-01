@@ -292,7 +292,12 @@ export interface AppDependencies {
   platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
   userExperienceService?: Pick<
     UserExperienceService,
-    "recordEvent" | "getSummary" | "listEntries"
+    | "recordEvent"
+    | "recordNdpConsumption"
+    | "recordNdpReversal"
+    | "recordMembershipRenewal"
+    | "getSummary"
+    | "listEntries"
   >;
   userExperienceRepository?: UserExperienceRepositoryPort;
   platformMembershipAdministrationService?: Pick<

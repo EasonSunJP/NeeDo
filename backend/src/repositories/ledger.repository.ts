@@ -45,6 +45,11 @@ type LedgerTransactionRecord = Prisma.LedgerTransactionGetPayload<{
     entries: {
       where: { deletedAt: null };
       orderBy: { id: "asc" };
+      include: {
+        wallet: {
+          select: { ownerType: true; ownerId: true; currency: true };
+        };
+      };
     };
   };
 }>;
@@ -535,7 +540,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       }),
       this.client.wallet.findFirst({
         where: { id: input.walletId, deletedAt: null },
-        select: { currency: true }
+        select: { ownerType: true, ownerId: true, currency: true }
       })
     ]);
     const transactionCurrency = LedgerCurrencyService.fromStored(transaction?.currency ?? "");
@@ -556,7 +561,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       }
     });
 
-    return this.mapLedgerEntry(entry);
+    return this.mapLedgerEntry({ ...entry, wallet: wallet ?? undefined });
   }
 
   public async createFinanceReconciliation(input: {
@@ -1387,7 +1392,10 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return {
       entries: {
         where: { deletedAt: null },
-        orderBy: { id: "asc" as const }
+        orderBy: { id: "asc" as const },
+        include: {
+          wallet: { select: { ownerType: true, ownerId: true, currency: true } }
+        }
       }
     };
   }
@@ -1445,6 +1453,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     frozenBalanceAfter: number;
     reason: string;
     createdAt: Date;
+    wallet?: { ownerType: string; ownerId: number; currency: string };
   }): WalletLedgerPayload {
     return {
       id: entry.id,
@@ -1457,7 +1466,14 @@ export class LedgerRepository implements LedgerRepositoryPort {
       availableBalanceAfter: entry.availableBalanceAfter,
       frozenBalanceAfter: entry.frozenBalanceAfter,
       reason: entry.reason,
-      createdAt: entry.createdAt
+      createdAt: entry.createdAt,
+      ...(entry.wallet
+        ? {
+            walletOwnerType: this.ownerTypeFromDb(entry.wallet.ownerType),
+            walletOwnerId: entry.wallet.ownerId,
+            walletCurrency: LedgerCurrencyService.fromStored(entry.wallet.currency)
+          }
+        : {})
     };
   }
 
@@ -1642,6 +1658,24 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "service_consumption_settlement") {
+      return "SERVICE_CONSUMPTION_SETTLEMENT" as const;
+    }
+    if (type === "product_consumption_settlement") {
+      return "PRODUCT_CONSUMPTION_SETTLEMENT" as const;
+    }
+    if (type === "platform_membership_purchase") {
+      return "PLATFORM_MEMBERSHIP_PURCHASE" as const;
+    }
+    if (type === "booking_consumption_refund") {
+      return "BOOKING_CONSUMPTION_REFUND" as const;
+    }
+    if (type === "service_consumption_refund") {
+      return "SERVICE_CONSUMPTION_REFUND" as const;
+    }
+    if (type === "product_consumption_refund") {
+      return "PRODUCT_CONSUMPTION_REFUND" as const;
+    }
     if (type === "shop_membership_reward_settlement") {
       return "SHOP_MEMBERSHIP_REWARD_SETTLEMENT" as const;
     }
@@ -1695,6 +1729,24 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "SERVICE_CONSUMPTION_SETTLEMENT") {
+      return "service_consumption_settlement";
+    }
+    if (type === "PRODUCT_CONSUMPTION_SETTLEMENT") {
+      return "product_consumption_settlement";
+    }
+    if (type === "PLATFORM_MEMBERSHIP_PURCHASE") {
+      return "platform_membership_purchase";
+    }
+    if (type === "BOOKING_CONSUMPTION_REFUND") {
+      return "booking_consumption_refund";
+    }
+    if (type === "SERVICE_CONSUMPTION_REFUND") {
+      return "service_consumption_refund";
+    }
+    if (type === "PRODUCT_CONSUMPTION_REFUND") {
+      return "product_consumption_refund";
+    }
     if (type === "SHOP_MEMBERSHIP_REWARD_SETTLEMENT") {
       return "shop_membership_reward_settlement";
     }

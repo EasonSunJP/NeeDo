@@ -19,6 +19,7 @@ import type {
   PlatformMembershipTheme,
   PlatformMembershipTierCodeValue
 } from "../domain/platform-membership";
+import type { MembershipRenewalExperienceSource } from "../domain/user-experience";
 import { prisma } from "../prisma/client";
 import {
   toAuditLogCreateData,
@@ -28,6 +29,8 @@ import {
 export interface ResolvedPlatformMembershipBenefit {
   code: PlatformMembershipBenefitCodeValue;
   configuration: unknown;
+  tierBenefitId?: number;
+  tierBenefitPublicId?: string;
 }
 
 export interface ResolvedPlatformMembership {
@@ -141,6 +144,9 @@ export interface PlatformMembershipRepositoryPort {
     occurredAt: Date;
     command: PlatformMembershipEntitlementCommand;
     audit: AuditLogCreateInput;
+    onEntitlementCreated?: (
+      source: MembershipRenewalExperienceSource & { transactionClient: unknown }
+    ) => Promise<void>;
   }) => Promise<PlatformMembershipEntitlementMutationResult>;
   updateBenefitWithAudit: (input: {
     actorId: number;
@@ -171,6 +177,8 @@ const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionS
     },
     orderBy: [{ benefit: { sortOrder: "asc" } }, { id: "asc" }],
     select: {
+      id: true,
+      publicId: true,
       configurationJson: true,
       benefit: { select: { code: true } }
     }
@@ -662,6 +670,9 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     occurredAt: Date;
     command: PlatformMembershipEntitlementCommand;
     audit: AuditLogCreateInput;
+    onEntitlementCreated?: (
+      source: MembershipRenewalExperienceSource & { transactionClient: unknown }
+    ) => Promise<void>;
   }): Promise<PlatformMembershipEntitlementMutationResult> {
     const source = entitlementSourceToDb[input.command.source];
     const execute = async () =>
@@ -751,6 +762,15 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
             monthlyValueNdp: true,
             annualBillingMonths: true,
             durationDays: true,
+            experienceMultiplier: true,
+            benefits: {
+              where: {
+                isEnabled: true,
+                deletedAt: null,
+                benefit: { isGloballyEnabled: true, deletedAt: null }
+              },
+              select: { benefit: { select: { code: true } } }
+            },
             tier: { select: { code: true } }
           }
         });
@@ -841,6 +861,23 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
               select: entitlementResultSelect
             })
           : null;
+
+        if (created && input.onEntitlementCreated) {
+          await input.onEntitlementCreated({
+            transactionClient: transaction,
+            userId: input.userId,
+            entitlementId: created.id,
+            entitlementPublicId: created.publicId,
+            experienceValueNdp: plan.experienceValueNdp,
+            tierCode: tierCodeFromDb[target.tier.code],
+            tierVersionPublicId: target.publicId,
+            multiplier: Number(target.experienceMultiplier),
+            benefits: target.benefits.map((benefit) => ({
+              code: benefitCodeFromDb[benefit.benefit.code]
+            })),
+            occurredAt: input.occurredAt
+          });
+        }
 
         await transaction.auditLog.create({
           data: toAuditLogCreateData({
@@ -1100,7 +1137,9 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       expiresAt,
       benefits: version.benefits.map((item) => ({
         code: benefitCodeFromDb[item.benefit.code],
-        configuration: item.configurationJson
+        configuration: item.configurationJson,
+        tierBenefitId: item.id,
+        tierBenefitPublicId: item.publicId
       })),
       theme: {
         detailAccentColor: version.detailAccentColor,

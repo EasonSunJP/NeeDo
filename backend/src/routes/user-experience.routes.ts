@@ -6,8 +6,12 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { PlatformMembershipRepository } from "../repositories/platform-membership.repository";
+import { NdpExperienceCampaignRepository } from "../repositories/ndp-experience-campaign.repository";
+import { UserGlobalPolicyRepository } from "../repositories/user-global-policy.repository";
 import { UserExperienceRepository } from "../repositories/user-experience.repository";
 import { PlatformMembershipService } from "../services/platform-membership.service";
+import { NdpExperienceCampaignService } from "../services/ndp-experience-campaign.service";
+import { UserGlobalPolicyService } from "../services/user-global-policy.service";
 import { UserExperienceService } from "../services/user-experience.service";
 import {
   userExperienceEntriesParamSchema,
@@ -34,6 +38,12 @@ export const createUserExperienceRoutes = (
       new UserExperienceRepository(),
       new PlatformMembershipService(
         dependencies.platformMembershipRepository ?? new PlatformMembershipRepository()
+      ),
+      new UserGlobalPolicyService(
+        dependencies.userGlobalPolicyRepository ?? new UserGlobalPolicyRepository()
+      ),
+      new NdpExperienceCampaignService(
+        dependencies.ndpExperienceCampaignRepository ?? new NdpExperienceCampaignRepository()
       )
     );
   const controller = new UserExperienceController(service);
