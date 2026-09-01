@@ -1658,6 +1658,24 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "service_consumption_settlement") {
+      return "SERVICE_CONSUMPTION_SETTLEMENT" as const;
+    }
+    if (type === "product_consumption_settlement") {
+      return "PRODUCT_CONSUMPTION_SETTLEMENT" as const;
+    }
+    if (type === "platform_membership_purchase") {
+      return "PLATFORM_MEMBERSHIP_PURCHASE" as const;
+    }
+    if (type === "booking_consumption_refund") {
+      return "BOOKING_CONSUMPTION_REFUND" as const;
+    }
+    if (type === "service_consumption_refund") {
+      return "SERVICE_CONSUMPTION_REFUND" as const;
+    }
+    if (type === "product_consumption_refund") {
+      return "PRODUCT_CONSUMPTION_REFUND" as const;
+    }
     if (type === "shop_membership_reward_settlement") {
       return "SHOP_MEMBERSHIP_REWARD_SETTLEMENT" as const;
     }
@@ -1711,6 +1729,24 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "SERVICE_CONSUMPTION_SETTLEMENT") {
+      return "service_consumption_settlement";
+    }
+    if (type === "PRODUCT_CONSUMPTION_SETTLEMENT") {
+      return "product_consumption_settlement";
+    }
+    if (type === "PLATFORM_MEMBERSHIP_PURCHASE") {
+      return "platform_membership_purchase";
+    }
+    if (type === "BOOKING_CONSUMPTION_REFUND") {
+      return "booking_consumption_refund";
+    }
+    if (type === "SERVICE_CONSUMPTION_REFUND") {
+      return "service_consumption_refund";
+    }
+    if (type === "PRODUCT_CONSUMPTION_REFUND") {
+      return "product_consumption_refund";
+    }
     if (type === "SHOP_MEMBERSHIP_REWARD_SETTLEMENT") {
       return "shop_membership_reward_settlement";
     }

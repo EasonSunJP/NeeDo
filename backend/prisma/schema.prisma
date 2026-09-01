@@ -189,6 +189,12 @@ enum LedgerTransactionType {
   EXCHANGE_REQUEST_PUBLICATION_CAPTURE @map("exchange_request_publication_capture")
   EXCHANGE_REQUEST_PUBLICATION_RELEASE @map("exchange_request_publication_release")
   SHOP_MEMBERSHIP_REWARD_SETTLEMENT    @map("shop_membership_reward_settlement")
+  SERVICE_CONSUMPTION_SETTLEMENT       @map("service_consumption_settlement")
+  PRODUCT_CONSUMPTION_SETTLEMENT       @map("product_consumption_settlement")
+  PLATFORM_MEMBERSHIP_PURCHASE         @map("platform_membership_purchase")
+  BOOKING_CONSUMPTION_REFUND           @map("booking_consumption_refund")
+  SERVICE_CONSUMPTION_REFUND           @map("service_consumption_refund")
+  PRODUCT_CONSUMPTION_REFUND           @map("product_consumption_refund")
 
   @@map("ledger_transaction_type")
 }
@@ -1453,6 +1459,7 @@ model UserExperienceEntry {
   reversalOfEntryId       Int?                        @map("reversal_of_entry_id")
   ledgerTransactionId     Int?                        @unique(map: "user_experience_entries_ledger_transaction_id_key") @map("ledger_transaction_id")
   entitlementId           Int?                        @unique(map: "user_experience_entries_entitlement_id_key") @map("entitlement_id")
+  tierBenefitId           Int?                        @map("tier_benefit_id")
   ndpAmount               Int?                        @map("ndp_amount")
   ndpPerBaseExp           Int?                        @map("ndp_per_base_exp")
   extraThresholdNdp       Int?                        @map("extra_threshold_ndp")
@@ -1469,11 +1476,13 @@ model UserExperienceEntry {
   reversals       UserExperienceEntry[] @relation("UserExperienceEntryReversal")
   ledgerTransaction LedgerTransaction?  @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
   entitlement       PlatformMembershipEntitlement? @relation(fields: [entitlementId], references: [id], onDelete: Restrict)
+  tierBenefit       PlatformMembershipTierBenefit? @relation(fields: [tierBenefitId], references: [id], onDelete: Restrict)
 
   @@index([userId, occurredAt, id], map: "user_experience_entries_user_occurred_idx")
   @@index([sourceType, sourcePublicId], map: "user_experience_entries_source_idx")
   @@index([accountId, occurredAt, id], map: "user_experience_entries_account_occurred_idx")
   @@index([reversalOfEntryId], map: "user_experience_entries_reversal_idx")
+  @@index([tierBenefitId], map: "user_experience_entries_tier_benefit_idx")
   @@index([deletedAt])
   @@map("user_experience_entries")
 }
@@ -1588,6 +1597,7 @@ model PlatformMembershipTierBenefit {
   tierVersion PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
   benefit     PlatformMembershipBenefit     @relation(fields: [benefitId], references: [id], onDelete: Restrict)
   ndpExperienceAccumulators UserNdpExperienceAccumulator[]
+  experienceEntries UserExperienceEntry[]
 
   @@unique([tierVersionId, benefitId], map: "platform_membership_tier_benefit_key")
   @@index([benefitId, isEnabled, deletedAt], map: "platform_membership_tier_benefit_enabled_idx")

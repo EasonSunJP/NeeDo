@@ -147,4 +147,46 @@ describe("Ledger NDP experience transaction bridge", () => {
     );
     expect(recorder.recordNdpConsumption).not.toHaveBeenCalled();
   });
+
+  it("passes a validated refund reversal through the same wallet transaction", async () => {
+    const recorder = {
+      recordNdpConsumption: jest.fn(),
+      recordNdpReversal: jest.fn(async () => ({ status: "awarded" as const }))
+    };
+    const service = new LedgerService(
+      {} as LedgerRepositoryPort,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      recorder
+    );
+    await service.recordNdpExperienceForAppliedTransaction(
+      appliedTransaction({
+        type: "booking_consumption_refund" as LedgerTransactionPayload["type"],
+        referenceType: "booking_order_refund",
+        metadata: { originalLedgerTransactionNo: "TX-NDP-ORIGINAL" },
+        entries: [
+          {
+            ...appliedTransaction().entries[0],
+            direction: "available_credit",
+            amount: 4_000,
+            availableDelta: 4_000,
+            frozenDelta: 0
+          }
+        ]
+      }),
+      transactionClient
+    );
+    expect(recorder.recordNdpConsumption).not.toHaveBeenCalled();
+    expect(recorder.recordNdpReversal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "reversal",
+        reversedNdp: 4_000,
+        originalLedgerTransactionNo: "TX-NDP-ORIGINAL"
+      }),
+      { transactionClient }
+    );
+  });
 });

@@ -44,6 +44,7 @@ export interface UserExperienceEntrySnapshot {
   reversalOfEntryId: number | null;
   ledgerTransactionId?: number | null;
   entitlementId?: number | null;
+  tierBenefitId?: number | null;
   ndpAmount?: number | null;
   ndpPerBaseExp?: number | null;
   extraThresholdNdp?: number | null;
@@ -71,6 +72,7 @@ export interface UserExperienceCalculatedEvent {
   reversalOfEntryId: number | null;
   ledgerTransactionId?: number | null;
   entitlementId?: number | null;
+  tierBenefitId?: number | null;
   ndpAmount?: number | null;
   ndpPerBaseExp?: number | null;
   extraThresholdNdp?: number | null;
@@ -97,6 +99,16 @@ export interface NdpConsumptionExperienceSource {
   settledNdp: number;
   ledgerTransactionId: number;
   transactionNo: string;
+  occurredAt: Date;
+}
+
+export interface NdpExperienceReversalSource {
+  kind: "reversal";
+  userId: number;
+  reversedNdp: number;
+  ledgerTransactionId: number;
+  transactionNo: string;
+  originalLedgerTransactionNo: string;
   occurredAt: Date;
 }
 
@@ -161,6 +173,10 @@ export interface UserExperienceRepositoryPort {
   ) => Promise<UserExperienceMutationResult>;
   recordNdpConsumptionEvent: (
     event: NdpConsumptionCalculatedEvent,
+    options?: { transactionClient?: unknown }
+  ) => Promise<UserExperienceMutationResult>;
+  recordNdpReversalEvent: (
+    source: NdpExperienceReversalSource,
     options?: { transactionClient?: unknown }
   ) => Promise<UserExperienceMutationResult>;
 }
@@ -229,5 +245,74 @@ export const calculateNdpBonus = (input: {
   return {
     extraUnits: numerator / threshold,
     accumulatorAfterNumerator: numerator % threshold
+  };
+};
+
+export const calculateNdpExperienceReversal = (input: {
+  original: {
+    ndpAmount: number;
+    baseUnits: bigint;
+    extraUnits: bigint;
+    finalUnits: bigint;
+  };
+  previous: {
+    reversedNdp: number;
+    reversedBaseUnits: bigint;
+    reversedExtraUnits: bigint;
+    reversedFinalUnits: bigint;
+  };
+  requestedNdp: number;
+}): {
+  appliedNdp: number;
+  baseUnits: bigint;
+  extraUnits: bigint;
+  finalUnits: bigint;
+  cumulativeReversedNdp: number;
+} | null => {
+  const { original, previous } = input;
+  if (
+    !Number.isSafeInteger(original.ndpAmount) ||
+    original.ndpAmount < 1 ||
+    original.baseUnits < 0n ||
+    original.extraUnits < 0n ||
+    original.finalUnits < 0n ||
+    !Number.isSafeInteger(previous.reversedNdp) ||
+    previous.reversedNdp < 0 ||
+    previous.reversedNdp > original.ndpAmount ||
+    previous.reversedBaseUnits < 0n ||
+    previous.reversedExtraUnits < 0n ||
+    previous.reversedFinalUnits < 0n ||
+    !Number.isSafeInteger(input.requestedNdp) ||
+    input.requestedNdp < 1
+  ) {
+    throw new RangeError("NDP experience reversal input is invalid");
+  }
+  const appliedNdp = Math.min(
+    input.requestedNdp,
+    original.ndpAmount - previous.reversedNdp
+  );
+  if (appliedNdp === 0) return null;
+  const cumulativeReversedNdp = previous.reversedNdp + appliedNdp;
+  const denominator = BigInt(original.ndpAmount);
+  const numerator = BigInt(cumulativeReversedNdp);
+  const cumulativeBase = (original.baseUnits * numerator) / denominator;
+  const cumulativeExtra = (original.extraUnits * numerator) / denominator;
+  const cumulativeFinal =
+    cumulativeReversedNdp === original.ndpAmount
+      ? original.finalUnits
+      : (original.finalUnits * numerator) / denominator;
+  if (
+    cumulativeBase < previous.reversedBaseUnits ||
+    cumulativeExtra < previous.reversedExtraUnits ||
+    cumulativeFinal < previous.reversedFinalUnits
+  ) {
+    throw new RangeError("NDP experience reversal history is invalid");
+  }
+  return {
+    appliedNdp,
+    baseUnits: -(cumulativeBase - previous.reversedBaseUnits),
+    extraUnits: -(cumulativeExtra - previous.reversedExtraUnits),
+    finalUnits: -(cumulativeFinal - previous.reversedFinalUnits),
+    cumulativeReversedNdp
   };
 };

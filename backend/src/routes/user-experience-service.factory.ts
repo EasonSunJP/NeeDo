@@ -13,6 +13,7 @@ export const createUserExperienceServiceForRoutes = (
   UserExperienceService,
   | "recordEvent"
   | "recordNdpConsumption"
+  | "recordNdpReversal"
   | "recordMembershipRenewal"
   | "getSummary"
   | "listEntries"

@@ -37,7 +37,8 @@ const repository = (): jest.Mocked<UserExperienceRepositoryPort> => ({
       ...event
     }
   })),
-  recordNdpConsumptionEvent: jest.fn()
+  recordNdpConsumptionEvent: jest.fn(),
+  recordNdpReversalEvent: jest.fn()
 });
 
 const membership = (

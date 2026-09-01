@@ -294,6 +294,7 @@ export interface AppDependencies {
     UserExperienceService,
     | "recordEvent"
     | "recordNdpConsumption"
+    | "recordNdpReversal"
     | "recordMembershipRenewal"
     | "getSummary"
     | "listEntries"

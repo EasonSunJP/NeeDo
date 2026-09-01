@@ -65,7 +65,8 @@ const experienceRepository = (): jest.Mocked<UserExperienceRepositoryPort> => ({
     },
     entry: { publicId: "entry-membership", ...event }
   })),
-  recordNdpConsumptionEvent: jest.fn()
+  recordNdpConsumptionEvent: jest.fn(),
+  recordNdpReversalEvent: jest.fn()
 });
 
 const membershipResolver = {

@@ -2,6 +2,7 @@ import {
   calculateFinalExperienceUnits,
   USER_EXPERIENCE_EVENT_TYPES,
   type NdpConsumptionExperienceSource,
+  type NdpExperienceReversalSource,
   type MembershipRenewalExperienceSource,
   type UserExperienceCampaignResolverPort,
   type UserExperienceGlobalPolicyResolverPort,
@@ -300,6 +301,32 @@ export class UserExperienceService {
     };
     return this.repository.recordCalculatedEvent(
       event,
+      options.transactionClient ? options : undefined
+    );
+  }
+
+  public async recordNdpReversal(
+    source: NdpExperienceReversalSource,
+    options: { transactionClient?: unknown } = {}
+  ): Promise<UserExperienceMutationResult> {
+    if (
+      source.kind !== "reversal" ||
+      !Number.isSafeInteger(source.userId) ||
+      source.userId < 1 ||
+      !Number.isSafeInteger(source.reversedNdp) ||
+      source.reversedNdp < 1 ||
+      !Number.isSafeInteger(source.ledgerTransactionId) ||
+      source.ledgerTransactionId < 1 ||
+      !source.transactionNo ||
+      source.transactionNo.length > 96 ||
+      !source.originalLedgerTransactionNo ||
+      source.originalLedgerTransactionNo.length > 160 ||
+      Number.isNaN(source.occurredAt.getTime())
+    ) {
+      throw new RangeError("NDP experience reversal source is invalid");
+    }
+    return this.repository.recordNdpReversalEvent(
+      source,
       options.transactionClient ? options : undefined
     );
   }

@@ -79,7 +79,13 @@ export const ledgerTransactionListQuerySchema = withValidDateRange(
         "affiliate_task_budget_freeze",
         "affiliate_task_budget_release",
         "affiliate_reward_settlement",
-        "shop_membership_reward_settlement"
+        "shop_membership_reward_settlement",
+        "service_consumption_settlement",
+        "product_consumption_settlement",
+        "platform_membership_purchase",
+        "booking_consumption_refund",
+        "service_consumption_refund",
+        "product_consumption_refund"
       ])
       .optional()
   })

@@ -147,7 +147,8 @@ const repository = () => {
         account: { ...account, totalUnits: finalUnits, lockVersion: 2 },
         entry: { publicId: `entry-${event.ledgerTransactionId}`, ...stored }
       };
-    })
+    }),
+    recordNdpReversalEvent: jest.fn()
   };
   return repo;
 };

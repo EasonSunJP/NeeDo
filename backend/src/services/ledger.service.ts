@@ -17,7 +17,10 @@ import type {
 import type { ExchangeRequestFeeSnapshot } from "./exchange-request-fee.service";
 import { LedgerCurrencyService, type LedgerCurrency } from "./ledger-currency.service";
 import { classifyExperienceSource } from "../domain/ndp-experience-source";
-import type { NdpConsumptionExperienceSource } from "../domain/user-experience";
+import type {
+  NdpConsumptionExperienceSource,
+  NdpExperienceReversalSource
+} from "../domain/user-experience";
 
 export type { LedgerCurrency } from "./ledger-currency.service";
 
@@ -51,7 +54,13 @@ export type LedgerTransactionType =
   | "exchange_request_publication_freeze"
   | "exchange_request_publication_capture"
   | "exchange_request_publication_release"
-  | "shop_membership_reward_settlement";
+  | "shop_membership_reward_settlement"
+  | "service_consumption_settlement"
+  | "product_consumption_settlement"
+  | "platform_membership_purchase"
+  | "booking_consumption_refund"
+  | "service_consumption_refund"
+  | "product_consumption_refund";
 export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported" | "test_only";
 export type LedgerTransactionClient = unknown;
@@ -667,6 +676,10 @@ export interface NdpExperienceRecorderPort {
     source: NdpConsumptionExperienceSource,
     options?: { transactionClient?: LedgerTransactionClient }
   ) => Promise<unknown>;
+  recordNdpReversal?: (
+    source: NdpExperienceReversalSource,
+    options?: { transactionClient?: LedgerTransactionClient }
+  ) => Promise<unknown>;
 }
 
 export interface BookingLedgerSettlementPort {
@@ -742,6 +755,13 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
       );
       if (classification.kind === "qualifying_consumption") {
         await this.ndpExperienceRecorder.recordNdpConsumption(classification, {
+          transactionClient
+        });
+      } else if (
+        classification.kind === "reversal" &&
+        this.ndpExperienceRecorder.recordNdpReversal
+      ) {
+        await this.ndpExperienceRecorder.recordNdpReversal(classification, {
           transactionClient
         });
       }
