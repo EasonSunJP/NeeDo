@@ -3640,6 +3640,112 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bio: { type: "string", nullable: true }
         }
       },
+      TechnicianContactService: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "shopId",
+          "name",
+          "priceAmount",
+          "currency",
+          "durationMinutes",
+          "taxIncluded",
+          "sortOrder"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          priceAmount: { type: "integer", minimum: 0 },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+          durationMinutes: { type: "integer", minimum: 1 },
+          taxIncluded: { type: "boolean", enum: [true] },
+          sortOrder: { type: "integer", minimum: 0, maximum: 4 }
+        }
+      },
+      TechnicianContactDetails: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Returned only to an active, unblocked owner-side contact of a technician identity. Precise technician coordinates and service-base coordinates are explicitly excluded.",
+        required: [
+          "bidBudgetMinJpy",
+          "bidBudgetMaxJpy",
+          "paymentMethods",
+          "specialTags",
+          "profileTags",
+          "services",
+          "completedOrderCount",
+          "acceptanceRateBps"
+        ],
+        properties: {
+          bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0 },
+          bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
+          paymentMethods: { type: "array", items: { type: "string" } },
+          specialTags: { type: "array", items: { type: "string" } },
+          profileTags: { type: "array", items: { type: "string" } },
+          services: {
+            type: "array",
+            maxItems: 5,
+            items: { $ref: "#/components/schemas/TechnicianContactService" }
+          },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          acceptanceRateBps: { type: "integer", minimum: 0, maximum: 10000 }
+        }
+      },
+      TechnicianService: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "shopId",
+          "technicianId",
+          "sourceShopServiceId",
+          "name",
+          "description",
+          "categoryId",
+          "priceAmount",
+          "currency",
+          "durationMinutes",
+          "taxIncluded",
+          "coverImageUrl",
+          "images",
+          "tags",
+          "isActive",
+          "isBookable",
+          "isRecommended",
+          "sortOrder",
+          "reviewStatus",
+          "rejectionReason",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          technicianId: { type: "integer", minimum: 1 },
+          sourceShopServiceId: { type: ["integer", "null"], minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          description: { type: ["string", "null"] },
+          categoryId: { type: "integer", minimum: 1 },
+          priceAmount: { type: "integer", minimum: 0 },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+          durationMinutes: { type: "integer", minimum: 1 },
+          taxIncluded: { type: "boolean", enum: [true] },
+          coverImageUrl: { type: ["string", "null"] },
+          images: { type: "array", items: { type: "string" } },
+          tags: { type: "array", items: { type: "string" } },
+          isActive: { type: "boolean" },
+          isBookable: { type: "boolean" },
+          isRecommended: { type: "boolean" },
+          sortOrder: { type: "integer", minimum: 0, maximum: 4 },
+          reviewStatus: { type: "string" },
+          rejectionReason: { type: ["string", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
       RealtimeDirectoryProfile: {
         type: "object",
         required: ["user", "identityCard", "relationship", "contactId", "friendRequest"],
@@ -3653,6 +3759,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           contactId: { type: "integer", nullable: true },
           friendRequest: {
             anyOf: [{ $ref: "#/components/schemas/FriendRequest" }, { type: "null" }]
+          },
+          technicianContactDetails: {
+            $ref: "#/components/schemas/TechnicianContactDetails"
           }
         }
       },
@@ -6057,6 +6166,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "heightCm",
           "languages",
           "serviceAreas",
+          "specialTags",
           "profileTags",
           "canServeForeigners",
           "bidBudgetMinJpy",
@@ -6081,6 +6191,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
           languages: { type: "array", items: { type: "string" } },
           serviceAreas: { type: "array", items: { type: "string" } },
+          specialTags: {
+            type: "array",
+            readOnly: true,
+            description: "Active, non-expired operations-assigned technician tags.",
+            items: { type: "string" }
+          },
           profileTags: { type: "array", items: { type: "string" } },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0 },
@@ -14353,6 +14469,83 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": { description: "Paginated active technician services" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technicians/me/services`]: {
+      get: {
+        tags: ["Pricing Mode"],
+        summary: "List the authenticated technician's profile-wide service portfolio",
+        description:
+          "Returns services across every active shop context for the current technician identity. The portfolio contains at most five non-deleted services.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:list",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "activeOnly", in: "query", schema: { type: "boolean" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Profile-wide technician service portfolio", {
+            type: "object",
+            additionalProperties: false,
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                maxItems: 5,
+                items: { $ref: "#/components/schemas/TechnicianService" }
+              },
+              total: { type: "integer", minimum: 0, maximum: 5 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technicians/me/services/order`]: {
+      put: {
+        tags: ["Pricing Mode"],
+        summary: "Replace the authenticated technician's service order",
+        description:
+          "The orderedServiceIds array must be the complete current non-deleted profile-wide service set. The command writes contiguous zero-based sortOrder values and is idempotent by idempotencyKey.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["orderedServiceIds", "idempotencyKey"],
+                properties: {
+                  orderedServiceIds: {
+                    type: "array",
+                    minItems: 0,
+                    maxItems: 5,
+                    uniqueItems: true,
+                    items: { type: "integer", minimum: 1 }
+                  },
+                  idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Reordered technician service portfolio", {
+            type: "array",
+            maxItems: 5,
+            items: { $ref: "#/components/schemas/TechnicianService" }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden"),
+          "409": jsonErrorResponse("error.idempotency_key_reused")
         }
       }
     },

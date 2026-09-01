@@ -379,9 +379,54 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas.RealtimeDirectoryProfile).toMatchObject({
       required: expect.arrayContaining(["user", "identityCard"]),
       properties: {
-        identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" }
+        identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" },
+        technicianContactDetails: {
+          $ref: "#/components/schemas/TechnicianContactDetails"
+        }
       }
     });
+    expect(response.body.components.schemas.RealtimeDirectoryProfile.required).not.toContain(
+      "technicianContactDetails"
+    );
+    expect(response.body.components.schemas.TechnicianContactDetails).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        acceptanceRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+        services: { type: "array", maxItems: 5 }
+      }
+    });
+    expect(response.body.components.schemas.TechnicianContactDetails.properties).not.toHaveProperty(
+      "baseLatitude"
+    );
+    expect(response.body.components.schemas.TechnicianContactDetails.properties).not.toHaveProperty(
+      "baseLongitude"
+    );
+    expect(response.body.components.schemas.TechnicianContactService).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining(["durationMinutes", "taxIncluded"]),
+      properties: {
+        durationMinutes: { type: "integer", minimum: 1 },
+        taxIncluded: { type: "boolean", enum: [true] }
+      }
+    });
+    expect(response.body.paths).toHaveProperty("/api/v1/technicians/me/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/technicians/me/services/order");
+    const serviceOrderSchema = response.body.paths[
+      "/api/v1/technicians/me/services/order"
+    ].put.requestBody.content["application/json"].schema;
+    expect(serviceOrderSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["orderedServiceIds", "idempotencyKey"],
+      properties: {
+        orderedServiceIds: { type: "array", maxItems: 5, uniqueItems: true }
+      }
+    });
+    expect(
+      response.body.paths["/api/v1/technicians/me/services/order"].put.description
+    ).toContain("complete");
+    expect(response.body.components.schemas.TechnicianSelfProfile.required).toContain(
+      "specialTags"
+    );
     expect(
       response.body.components.schemas.RealtimeDirectoryProfile.properties.relationship.enum
     ).toEqual(["none", "friend", "incoming_pending", "outgoing_pending", "self"]);

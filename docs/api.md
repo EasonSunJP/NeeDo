@@ -258,6 +258,26 @@ All three commands use a strict body with required `publicReason`, `idempotencyK
 
 Booking order responses retain the existing `statusHistory` field unchanged. They also return `performanceAssessment` and a `timelineEvents` discriminated union sorted by `createdAt` and then stable prefixed ID. Event IDs use `status:<id>` or `performance:<id>`, and event types are `ORDER_STATUS_CHANGED`, `TECHNICIAN_CANCEL_CLASSIFIED`, `TECHNICIAN_UNCOMPLETED_CLASSIFIED`, `SPECIAL_CANCELLATION_APPLIED`, and `SPECIAL_CANCELLATION_REVOKED`. Customer and technician order responses expose only `publicReason`; `internalNote` is operations-only and is returned only by the authorized `GET /api/v1/backoffice/orders/:id` projection. The operations UI refreshes this detail before any action and after optimistic-concurrency conflicts.
 
+## Technician Service Portfolio And Contact-Only Details
+
+The authenticated technician portfolio is profile-wide rather than shop-wide:
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/technicians/me/services` | Paginated service portfolio across all active shop contexts | `technician:services:list` |
+| `PUT` | `/api/v1/technicians/me/services/order` | Replace the complete service order with contiguous positions | `technician:services:write` |
+| `POST` | `/api/v1/technicians/me/shops/:shopId/services` | Create a service in one authorized shop context | `technician:services:write` |
+| `PUT` | `/api/v1/technicians/me/shops/:shopId/services/:serviceId` | Update a service in its owning shop context | `technician:services:write` |
+| `DELETE` | `/api/v1/technicians/me/shops/:shopId/services/:serviceId` | Soft-delete a service in its owning shop context | `technician:services:write` |
+
+A technician may have at most five non-deleted services across all shops. The limit is enforced under the technician-profile lock, so concurrent sixth creates cannot both succeed. Every service price is integer JPY and the response declares `taxIncluded: true`; duration is integer minutes. The first eligible service after ordering by `sortOrder`, then ID, is the primary service.
+
+The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
+
+`GET /api/v1/im/directory/:userId` may include `technicianContactDetails` only when the caller owns an active, non-deleted, unblocked contact pointing to that technician identity. Reverse-only contacts, pending requests, deleted contacts, blocked contacts, self lookups without that relationship, and public lookups omit the entire key. The optional object contains integer bid-budget bounds, payment methods, active non-expired operations tags, technician profile tags, up to five active approved services, completed-order count, and acceptance rate in basis points (`10000` = 100%). It never contains `baseLatitude`, `baseLongitude`, `serviceBase`, or other precise coordinates.
+
+The technician self-profile response also contains read-only `specialTags`, filtered to active and non-expired operations-assigned tags. Clients cannot edit those tags through the technician profile update endpoint.
+
 ## Current Customer Self-Profile API
 
 | Method | Path | Purpose | Auth |
