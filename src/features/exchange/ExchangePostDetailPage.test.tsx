@@ -13,6 +13,7 @@ import {
 import { ExchangePostDetailPage } from "./ExchangePostDetailPage";
 import type { ExchangePost } from "./types";
 import appSource from "../../App.tsx?raw";
+import type { MessageCenterContext } from "../../lib/messageCenter";
 import routeSource from "../../pages/mobile/NeedoRoutePages.tsx?raw";
 import detailSource from "./ExchangePostDetailPage.tsx?raw";
 
@@ -126,11 +127,23 @@ let container: HTMLDivElement;
 let root: Root;
 let renderVersion = 0;
 
-async function renderDetail(path = "/needo/posts/41") {
+function detailBasePath(context: MessageCenterContext) {
+  return context === "user" ? "/needo" : `/${context}/needo`;
+}
+
+async function renderDetail(
+  path = "/needo/posts/41",
+  context: MessageCenterContext = "user"
+) {
+  const basePath = detailBasePath(context);
   await act(async () => root.render(
-    <MemoryRouter initialEntries={[path]} key={`${path}-${renderVersion += 1}`}>
+    <MemoryRouter initialEntries={[path]} key={`${path}-${context}-${renderVersion += 1}`}>
       <Routes>
-        <Route path="/needo/posts/:postId" element={<ExchangePostDetailPage context="user" />} />
+        <Route
+          path={`${basePath}/posts/:postId`}
+          element={<ExchangePostDetailPage context={context} />}
+        />
+        <Route path={basePath} element={<div data-testid="exchange-root">{basePath}</div>} />
       </Routes>
     </MemoryRouter>
   ));
@@ -167,6 +180,37 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it.each([
+    ["user", "/needo/posts/61", "/needo"],
+    ["merchant", "/merchant/needo/posts/61", "/merchant/needo"],
+    ["technician", "/technician/needo/posts/61", "/technician/needo"]
+  ] as const)("closes a direct %s detail to its Exchange root", async (context, path, expectedRoot) => {
+    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    await renderDetail(path, context);
+    await waitFor(() => expect(document.body.textContent).toContain(intelligencePost.title));
+
+    const close = document.body.querySelector<HTMLButtonElement>('button[aria-label="关闭"]');
+    expect(close).not.toBeNull();
+    await act(async () => close?.click());
+
+    expect(document.body.querySelector('[data-testid="exchange-root"]')?.textContent).toBe(expectedRoot);
+  });
+
+  it("keeps a deterministic close action in invalid, loading, and read-error states", async () => {
+    await renderDetail("/needo/posts/not-a-number");
+    expect(document.body.querySelector('button[aria-label="关闭"]')).not.toBeNull();
+
+    vi.mocked(getExchangePost).mockImplementationOnce(() => new Promise<ExchangePost>(() => undefined));
+    await renderDetail("/needo/posts/41");
+    expect(document.body.textContent).toContain("正在读取正式详情");
+    expect(document.body.querySelector('button[aria-label="关闭"]')).not.toBeNull();
+
+    vi.mocked(getExchangePost).mockRejectedValueOnce(new Error("error.exchange.post_not_found"));
+    await renderDetail("/needo/posts/42");
+    await waitFor(() => expect(document.body.textContent).toContain("内容不存在或不可查看"));
+    expect(document.body.querySelector('button[aria-label="关闭"]')).not.toBeNull();
   });
 
   it("renders a redacted publisher without reconstructing private identity", async () => {
