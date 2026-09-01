@@ -7,6 +7,7 @@ import {
   ExternalAuthAccountConflictError,
   createGoogleUnlinkRecoveryProof,
   GoogleLoginStateError,
+  PhoneBindingConflictError,
   type AuthRepositoryPort,
   type AuthUserRecord,
   type GoogleAuthRepositoryPort,
@@ -145,6 +146,12 @@ export interface AuthMePayload {
   compliancePolicyVersionPublicId?: string;
   complianceEffectiveAt?: string;
   compliancePermittedNextRoutes?: string[];
+}
+
+export interface CompliancePhoneBindingPayload {
+  phone: string;
+  complianceRequirements: UserPolicyComplianceRequirement[];
+  smsVerified: false;
 }
 
 interface LoginFailureInput {
@@ -1221,6 +1228,42 @@ export class AuthService {
     return compliance ? this.withCompliance(payload, compliance) : payload;
   }
 
+  public async bindCompliancePhone(
+    phone: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<CompliancePhoneBindingPayload> {
+    if (!this.repository.completePhoneBinding) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.unavailable",
+        statusCode: 503
+      });
+    }
+    try {
+      const updated = await this.repository.completePhoneBinding({
+        userId: auth.userId,
+        phone,
+        context
+      });
+      const compliance = await this.evaluateAccountCompliance(updated.id, new Date());
+      return {
+        phone: updated.phone ?? phone,
+        complianceRequirements: compliance?.requirements ?? [],
+        smsVerified: false
+      };
+    } catch (error) {
+      if (error instanceof PhoneBindingConflictError) {
+        throw new AppError({
+          code: ERROR_CODES.PHONE_ALREADY_EXISTS,
+          message: "error.user.phone_exists",
+          statusCode: 409
+        });
+      }
+      throw error;
+    }
+  }
+
   public async authenticateAccessToken(
     token: string,
     requiredPermission?: string,
@@ -1323,8 +1366,12 @@ export class AuthService {
     return [
       "/api/v1/auth/me",
       "/api/v1/auth/logout",
+      "/api/v1/auth/account-compliance/phone",
       "/api/v1/auth/google/link",
-      "/api/v1/auth/password/setup"
+      "/api/v1/auth/google/link/init",
+      "/api/v1/auth/google/link/verify",
+      "/api/v1/auth/password/setup",
+      "/api/v1/auth/password/setup/verify"
     ];
   }
 

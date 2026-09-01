@@ -5026,6 +5026,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           permittedNextRoutes: { type: "array", items: { type: "string" } }
         }
       },
+      CompliancePhoneBinding: {
+        type: "object",
+        additionalProperties: false,
+        required: ["phone", "complianceRequirements", "smsVerified"],
+        properties: {
+          phone: { type: "string", pattern: "^\\+[1-9]\\d{7,14}$" },
+          complianceRequirements: {
+            type: "array",
+            items: { $ref: "#/components/schemas/UserPolicyComplianceRequirement" }
+          },
+          smsVerified: {
+            type: "boolean",
+            enum: [false],
+            description: "A stored normalized number does not claim provider-backed SMS verification."
+          }
+        }
+      },
       AuthMe: {
         type: "object",
         required: [
@@ -12295,6 +12312,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/account-compliance/phone`]: {
+      put: {
+        tags: ["Auth"],
+        summary: "Store the current user's normalized phone for account-policy compliance",
+        description:
+          "Stores an E.164 number and audits the write. This endpoint does not claim provider-backed SMS verification.",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          { phone: { type: "string", pattern: "^\\+[1-9]\\d{7,14}$" } },
+          ["phone"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Phone stored and compliance re-evaluated", {
+            $ref: "#/components/schemas/CompliancePhoneBinding"
+          }),
+          "400": { description: "error.validation — phone must be a normalized E.164 number" },
+          "401": { description: "Access token invalid, expired, or blacklisted" },
+          "403": { description: "Missing auth me permission" },
+          "409": { description: "error.user.phone_exists — phone belongs to another account" }
         }
       }
     },

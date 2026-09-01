@@ -10,8 +10,12 @@ const nowIso = "2026-09-01T10:00:00.000Z";
 const allowedRoutes = [
   "/api/v1/auth/me",
   "/api/v1/auth/logout",
+  "/api/v1/auth/account-compliance/phone",
   "/api/v1/auth/google/link",
-  "/api/v1/auth/password/setup"
+  "/api/v1/auth/google/link/init",
+  "/api/v1/auth/google/link/verify",
+  "/api/v1/auth/password/setup",
+  "/api/v1/auth/password/setup/verify"
 ];
 
 const user = async (): Promise<AuthUserRecord> => ({
@@ -86,7 +90,11 @@ async function fixture() {
     findVerifiedRegistrationByChallenge: jest.fn(),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
-    createAuditLog: jest.fn(async () => undefined)
+    createAuditLog: jest.fn(async () => undefined),
+    completePhoneBinding: jest.fn(async ({ phone }: { phone: string }) => ({
+      ...account,
+      phone
+    }))
   };
   const sessionStore = {
     getLoginLock: jest.fn(async () => false),
@@ -132,6 +140,7 @@ async function fixture() {
     enforcement
   );
   return {
+    repository,
     service,
     refreshTokens,
     setDecision: (next: UserPolicyComplianceDecision) => { decision = next; }
@@ -142,6 +151,7 @@ describe("auth global-policy enforcement", () => {
   it("documents compliance requirements and permitted next routes", async () => {
     const document = createOpenApiDocument(env) as {
       components: { schemas: Record<string, Record<string, unknown>> };
+      paths: Record<string, Record<string, unknown>>;
     };
     const schemas = document.components.schemas;
     expect(schemas.UserPolicyComplianceRequirement.enum).toEqual([
@@ -151,6 +161,7 @@ describe("auth global-policy enforcement", () => {
     ]);
     expect(schemas.UserPolicyComplianceErrorData.required).toContain("permittedNextRoutes");
     expect(schemas.AuthMe.properties).toHaveProperty("complianceRequirements");
+    expect(document.paths["/api/v1/auth/account-compliance/phone"]).toHaveProperty("put");
   });
 
   it("issues a limited existing-user session and exposes only safe compliance data", async () => {
@@ -197,5 +208,36 @@ describe("auth global-policy enforcement", () => {
       expiresIn: env.AUTH_ACCESS_TOKEN_TTL_SECONDS
     });
     expect(state.refreshTokens.size).toBe(1);
+  });
+
+  it("stores a normalized phone through the audited account-binding path without claiming SMS verification", async () => {
+    const state = await fixture();
+    state.setDecision(compliantDecision());
+
+    await expect(state.service.bindCompliancePhone(
+      "+819012345678",
+      {
+        userId: 41,
+        email: "member@example.com",
+        accessTokenJti: "access-41",
+        accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
+        currentIdentityId: 410,
+        currentIdentityType: "customer",
+        currentIdentityScopeType: "customer_profile",
+        currentIdentityScopeId: 41,
+        roles: ["customer"],
+        permissions: ["auth:me"]
+      },
+      { ip: "127.0.0.1" }
+    )).resolves.toEqual({
+      phone: "+819012345678",
+      complianceRequirements: [],
+      smsVerified: false
+    });
+    expect(state.repository.completePhoneBinding).toHaveBeenCalledWith({
+      userId: 41,
+      phone: "+819012345678",
+      context: { ip: "127.0.0.1" }
+    });
   });
 });

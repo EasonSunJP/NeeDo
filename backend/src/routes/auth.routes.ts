@@ -14,6 +14,7 @@ import {
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import {
   challengeVerificationBodySchema,
+  compliancePhoneBindingBodySchema,
   emptyAuthActionBodySchema,
   googleCredentialBodySchema,
   legacyLoginBodySchema,
@@ -111,6 +112,14 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
     authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.me),
     controller.me
+  );
+  router.put(
+    "/auth/account-compliance/phone",
+    validateRequest({ body: compliancePhoneBindingBodySchema }),
+    authenticate({ allowDuringCompliance: true }),
+    authorize(AUTH_ROUTE_PERMISSIONS.me),
+    accountSecurityRateLimit,
+    controller.bindCompliancePhone
   );
   router.get(
     "/auth/google/link",

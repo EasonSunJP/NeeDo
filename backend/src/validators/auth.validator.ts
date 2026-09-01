@@ -86,6 +86,12 @@ export const passwordSetupBodySchema = z
   })
   .strict();
 
+export const compliancePhoneBindingBodySchema = z
+  .object({
+    phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/)
+  })
+  .strict();
+
 export const refreshBodySchema = z
   .object({
     refreshToken: z.string().min(1).max(8192)
@@ -119,6 +125,7 @@ export type RegisterVerifyBody = z.infer<typeof registerVerifyBodySchema>;
 export type ChallengeVerificationBody = z.infer<typeof challengeVerificationBodySchema>;
 export type GoogleCredentialBody = z.infer<typeof googleCredentialBodySchema>;
 export type PasswordSetupBody = z.infer<typeof passwordSetupBodySchema>;
+export type CompliancePhoneBindingBody = z.infer<typeof compliancePhoneBindingBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
 export type SwitchIdentityBody = z.infer<typeof switchIdentityBodySchema>;
 export type SwitchMerchantShopBody = z.infer<typeof switchMerchantShopBodySchema>;
