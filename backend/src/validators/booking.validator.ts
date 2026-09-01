@@ -28,6 +28,13 @@ const fulfillmentReasonSchema = visibleTextSchema(500);
 const serviceCatalogIdSchema = z.number().int().positive().max(2_147_483_647);
 const routeIdSchema = z.coerce.number().int().positive().max(2_147_483_647);
 const normalizeReviewText = (value: string): string => value.normalize("NFKC").trim();
+const reviewTagCaseFoldKey = (value: string): string =>
+  value
+    .normalize("NFKC")
+    .toUpperCase()
+    .toLowerCase()
+    .replace(/\u00df/gu, "ss")
+    .normalize("NFKC");
 const unicodeCodePointLength = (value: string): number => Array.from(value).length;
 const reviewTagSchema = z.string().transform(normalizeReviewText).superRefine((value, context) => {
   if (!hasVisibleCodePoint(value)) {
@@ -217,7 +224,7 @@ export const orderReviewCreateBodySchema = z
   .superRefine((value, context) => {
     const seen = new Set<string>();
     value.tags.forEach((tag, index) => {
-      const folded = tag.toLocaleLowerCase("und");
+      const folded = reviewTagCaseFoldKey(tag);
       if (seen.has(folded)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,

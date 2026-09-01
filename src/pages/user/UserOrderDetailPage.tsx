@@ -124,6 +124,16 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const retainedReviewCommand = useRef<{ fingerprint: string; key: string } | null>(null);
   const routeState = location.state as { notice?: string } | null;
 
+  useEffect(() => {
+    setReviewSkipped(false);
+    setOwnReview(null);
+    setReviewStatus("idle");
+    setReviewError("");
+    setReviewPending(false);
+    setReviewRevision(0);
+    retainedReviewCommand.current = null;
+  }, [orderId]);
+
   const loadOrder = useCallback(async () => {
     const data = await bookingApi.getOrder(orderId);
     setOrder(data);
@@ -289,7 +299,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       new TextEncoder().encode(left).join(",").localeCompare(new TextEncoder().encode(right).join(","))
     );
     const comment = submission.comment?.normalize("NFKC").trim() || null;
-    const fingerprint = JSON.stringify({ rating: submission.rating, tags, comment });
+    const fingerprint = JSON.stringify({ orderId, targetType: "technician", rating: submission.rating, tags, comment });
     const retained = retainedReviewCommand.current;
     const key = retained?.fingerprint === fingerprint ? retained.key : createBookingIdempotencyKey();
     retainedReviewCommand.current = { fingerprint, key };

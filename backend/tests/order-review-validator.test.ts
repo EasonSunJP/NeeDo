@@ -37,6 +37,14 @@ describe("order review validator", () => {
     expect(() => orderReviewCreateBodySchema.parse({ ...validInput, tags: ["Service", "ｓｅｒｖｉｃｅ"] })).toThrow();
   });
 
+  it.each([
+    [["Straße", "STRASSE"], "multi-character sharp-s expansion"],
+    [["Σ", "ς"], "final sigma folding"],
+    [["ẞ", "ss"], "capital sharp-s expansion"]
+  ])("rejects Unicode full-fold duplicates for %s (%s)", (tags) => {
+    expect(() => orderReviewCreateBodySchema.parse({ ...validInput, tags })).toThrow();
+  });
+
   it("normalizes blank comments to null and rejects invisible or oversized comments", () => {
     expect(orderReviewCreateBodySchema.parse({ ...validInput, comment: "   " }).comment).toBeNull();
     expect(orderReviewCreateBodySchema.parse({ ...validInput, comment: null }).comment).toBeNull();

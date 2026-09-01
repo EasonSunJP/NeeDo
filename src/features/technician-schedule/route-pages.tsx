@@ -578,8 +578,19 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [reviewError, setReviewError] = useState("");
   const [reviewPending, setReviewPending] = useState(false);
   const [reviewSkipped, setReviewSkipped] = useState(false);
+  const [reviewRevision, setReviewRevision] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
+
+  useEffect(() => {
+    setReviewSkipped(false);
+    setOwnReview(null);
+    setReviewStatus("idle");
+    setReviewError("");
+    setReviewPending(false);
+    setReviewRevision(0);
+    mutationKeys.current.delete("submit-review");
+  }, [orderId]);
 
   useEffect(() => {
     setOrder(resource.data);
@@ -624,7 +635,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
         setReviewStatus("error");
       });
     return () => { active = false; };
-  }, [order?.id, reviewEligible]);
+  }, [order?.id, reviewEligible, reviewRevision]);
 
   useEffect(() => {
     if (order?.status !== "inService") return;
@@ -866,7 +877,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
 
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
         {reviewEligible && reviewStatus === "loading" ? <p className="text-center text-sm font-black">正在读取评价状态</p> : null}
-        {reviewEligible && reviewStatus === "error" ? <p className="text-sm font-black text-red-500" role="alert">{reviewError}</p> : null}
+        {reviewEligible && reviewStatus === "error" ? <section className="space-y-3 rounded-2xl border border-red-400/35 bg-red-500/10 p-4" role="alert"><p className="text-sm font-black text-red-500">{reviewError}</p><Button className="w-full" onClick={() => setReviewRevision((value) => value + 1)} variant="secondary">重新读取评价状态</Button></section> : null}
         {order.status === "pending" || canCancel ? (
           <section className="grid gap-2 sm:grid-cols-2">
             {canCancel ? (

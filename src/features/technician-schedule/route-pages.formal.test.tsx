@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
@@ -185,10 +185,10 @@ const slot: BookingScheduleSlot = {
   durationMinutes: 60
 };
 
-function makeOrder(status: BookingOrderStatus): BookingOrder {
+function makeOrder(status: BookingOrderStatus, id = 29): BookingOrder {
   return {
-    id: 29,
-    orderNo: "ND202608280029",
+    id,
+    orderNo: `ND20260828${String(id).padStart(4, "0")}`,
     orderType: "booking",
     status,
     paymentMethod: "onsite",
@@ -296,6 +296,11 @@ const checkout = {
 function LocationProbe() {
   const location = useLocation();
   return <output data-testid="location">{location.pathname}</output>;
+}
+
+function TechnicianOrderNavigationProbe() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/technician/orders/30")} type="button">打开技师订单B</button>;
 }
 
 function TestRoutes() {
@@ -748,6 +753,55 @@ describe("formal technician order detail route", () => {
     await renderOrder(makeOrder("completed"));
     await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalled());
     expect(container.textContent).not.toContain("提交评价");
+  });
+
+  it("resets skipped review state and retained commands when the mounted technician route changes orders", async () => {
+    const completedCheckout = { ...checkout, status: "completed" as const, paymentEvidence: "ndp_ledger" as const, paymentMethod: "ndp" as const, receiptConfirmedAt: null, receiptConfirmationReason: null };
+    const completedOrders = new Map([
+      [29, makeOrder("completed", 29)],
+      [30, makeOrder("completed", 30)]
+    ]);
+    mocks.orderResource.mockImplementation((_session: AuthSession | null, id: number) => ({
+      data: completedOrders.get(id) ?? null, error: null, loading: false, retry: mocks.retryOrder
+    }));
+    mocks.getCheckout.mockImplementation(async (id: number) => ({ ...completedCheckout, orderId: id }));
+    mocks.createReview
+      .mockRejectedValueOnce(new Error("ambiguous order A review"))
+      .mockResolvedValueOnce({ applied: true, review: { targetType: "customer", rating: 5, tags: [], comment: null, createdAt: "2026-09-01T12:00:00.000Z" } });
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/technician/orders/29"]}>
+        <TechnicianOrderNavigationProbe />
+        <TestRoutes />
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败"));
+    const orderAKey = mocks.createReview.mock.calls[0]?.[1]?.idempotencyKey;
+    await click("跳过不评价");
+    expect(container.textContent).not.toContain("提交评价");
+
+    await click("打开技师订单B");
+    await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledWith(30));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(2));
+    expect(mocks.createReview.mock.calls[1]?.[0]).toBe(30);
+    expect(mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey).not.toBe(orderAKey);
+  });
+
+  it("retries a failed technician own-review lookup in place", async () => {
+    const completedCheckout = { ...checkout, status: "completed" as const, paymentEvidence: "ndp_ledger" as const, paymentMethod: "ndp" as const, receiptConfirmedAt: null, receiptConfirmationReason: null };
+    mocks.getCheckout.mockResolvedValue(completedCheckout);
+    mocks.getOwnReview.mockRejectedValueOnce(new Error("review projection unavailable")).mockResolvedValueOnce({ review: null });
+    await renderOrder(makeOrder("completed"));
+
+    await waitFor(() => expect(container.textContent).toContain("正式订单操作失败"));
+    expect(container.textContent).not.toContain("提交评价");
+    await click("重新读取评价状态");
+    await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
   });
 
   it("does not query or render a review for a status-only completion without evidence", async () => {

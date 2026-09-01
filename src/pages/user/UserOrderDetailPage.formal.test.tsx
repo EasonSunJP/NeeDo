@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import type { BookingOrder, BookingOrderStatus, OrderCheckout } from "../../features/booking/api";
@@ -67,10 +67,10 @@ import { UserOrderDetailPage } from "./UserOrderDetailPage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function makeOrder(status: BookingOrderStatus): BookingOrder {
+function makeOrder(status: BookingOrderStatus, id = 88): BookingOrder {
   return {
-    id: 88,
-    orderNo: "ND202609010088",
+    id,
+    orderNo: `ND20260901${String(id).padStart(4, "0")}`,
     orderType: "booking",
     status,
     paymentMethod: status === "awaitingPaymentConfirmation" ? "cash" : "onsite",
@@ -195,6 +195,11 @@ async function waitFor(assertion: () => void) {
 async function render(path = "/orders/88") {
   await act(async () => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/orders/:orderId" element={<UserOrderDetailPage />} /></Routes></MemoryRouter>));
   await waitFor(() => expect(container.textContent).not.toContain("正在加载预约详情"));
+}
+
+function UserOrderNavigationProbe() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/orders/89")} type="button">打开用户订单B</button>;
 }
 
 function button(label: string) {
@@ -357,6 +362,41 @@ describe("formal user order detail", () => {
     await click("修改后提交");
     await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(3));
     expect(mocks.createReview.mock.calls[2]?.[1]?.idempotencyKey).not.toBe(firstKey);
+  });
+
+  it("resets skipped review state and retained commands when the mounted route changes orders", async () => {
+    mocks.getOrder.mockImplementation(async (id: number) => makeOrder("completed", id));
+    mocks.getCheckout.mockImplementation(async (id: number) => ({
+      ...checkout,
+      orderId: id,
+      status: "completed",
+      paymentMethod: "ndp",
+      paymentEvidence: "ndp_ledger"
+    }));
+    mocks.createReview
+      .mockRejectedValueOnce(new Error("ambiguous order A review"))
+      .mockResolvedValueOnce({ applied: true, review: { targetType: "technician", rating: 5, tags: ["魅力值"], comment: "很好", createdAt: "2026-09-01T12:00:00.000Z" } });
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/orders/88"]}>
+        <UserOrderNavigationProbe />
+        <Routes><Route path="/orders/:orderId" element={<UserOrderDetailPage />} /></Routes>
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败"));
+    const orderAKey = mocks.createReview.mock.calls[0]?.[1]?.idempotencyKey;
+    await click("跳过不评价");
+    expect(container.textContent).not.toContain("提交评价");
+
+    await click("打开用户订单B");
+    await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledWith(89));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(2));
+    expect(mocks.createReview.mock.calls[1]?.[0]).toBe(89);
+    expect(mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey).not.toBe(orderAKey);
   });
 
   it("skips locally with zero writes and hides prompt for existing review or missing evidence", async () => {

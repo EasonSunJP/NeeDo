@@ -28,5 +28,8 @@ describe("order review idempotency persistence", () => {
     expect(migration).toContain(
       "UNIQUE INDEX `order_reviews_idempotency_key_key`(`idempotency_key`)"
     );
+    expect(migration).toMatch(
+      /ALTER TABLE `order_review_tags`[\s\S]*MODIFY `label` VARCHAR\(40\) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL/
+    );
   });
 });
