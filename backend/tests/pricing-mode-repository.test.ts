@@ -206,4 +206,69 @@ describe("PricingModeRepository", () => {
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
     });
   });
+
+  it("reorders the complete portfolio once and rejects conflicting idempotency replay", async () => {
+    const rows = [serviceRecord(11, 1), serviceRecord(12, 2), serviceRecord(13, 1)];
+    let storedAudit: { metadata: unknown } | null = null;
+    const transactionClient = {
+      $queryRaw: jest.fn(async () => [{ id: 3 }]),
+      technicianService: {
+        findMany: jest.fn(async () =>
+          [...rows].sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
+        ),
+        updateMany: jest.fn(
+          async ({ where, data }: { where: { id: number }; data: { sortOrder: number } }) => {
+            const row = rows.find(({ id }) => id === where.id);
+            if (row) row.sortOrder = data.sortOrder;
+            return { count: row ? 1 : 0 };
+          }
+        )
+      },
+      auditLog: {
+        findFirst: jest.fn(async () => storedAudit),
+        create: jest.fn(async ({ data }: { data: { metadata?: unknown } }) => {
+          storedAudit = { metadata: data.metadata };
+          return {};
+        })
+      }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback: (transaction: typeof transactionClient) => unknown) =>
+        callback(transactionClient)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+    const input = {
+      technicianId: 3,
+      orderedServiceIds: [13, 11, 12],
+      actorUserId: 8,
+      idempotencyKey: "technician-order-0001",
+      requestFingerprint: "fingerprint-a",
+      auditLog: {
+        actorId: 8,
+        action: "technician.services.reorder",
+        targetType: "technician_profile",
+        targetId: 3
+      }
+    };
+
+    await expect(repository.reorderTechnicianServices(input)).resolves.toEqual([
+      expect.objectContaining({ id: 13, sortOrder: 0 }),
+      expect.objectContaining({ id: 11, sortOrder: 1 }),
+      expect.objectContaining({ id: 12, sortOrder: 2 })
+    ]);
+    await expect(repository.reorderTechnicianServices(input)).resolves.toHaveLength(3);
+    expect(transactionClient.technicianService.updateMany).toHaveBeenCalledTimes(3);
+    expect(transactionClient.auditLog.create).toHaveBeenCalledTimes(1);
+
+    await expect(
+      repository.reorderTechnicianServices({
+        ...input,
+        orderedServiceIds: [11, 12, 13],
+        requestFingerprint: "fingerprint-b"
+      })
+    ).rejects.toMatchObject({ message: "error.idempotency_key_reused", statusCode: 409 });
+    expect(transactionClient.technicianService.updateMany).toHaveBeenCalledTimes(3);
+    expect(transactionClient.auditLog.create).toHaveBeenCalledTimes(1);
+  });
 });

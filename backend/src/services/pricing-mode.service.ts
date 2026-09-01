@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
-import type { TechnicianServiceBody } from "../validators/pricing-mode.validator";
+import type {
+  TechnicianServiceBody,
+  TechnicianServiceOrderBody
+} from "../validators/pricing-mode.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import { assertMerchantShopId } from "./merchant-shop-scope";
@@ -88,6 +92,15 @@ export interface TechnicianServiceUpdateRepositoryInput extends Partial<Technici
   updatedBy: number;
 }
 
+export interface TechnicianServiceReorderRepositoryInput {
+  technicianId: number;
+  orderedServiceIds: number[];
+  actorUserId: number;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  auditLog: AuditLogCreateInput;
+}
+
 export interface PricingModeRepositoryPort {
   findShopPricingMode: (shopId: number) => Promise<ShopPricingModePayload | null>;
   updateShopPricingMode: (
@@ -106,6 +119,9 @@ export interface PricingModeRepositoryPort {
   findPrimaryTechnicianService: (
     technicianId: number
   ) => Promise<TechnicianServicePayload | null>;
+  reorderTechnicianServices: (
+    input: TechnicianServiceReorderRepositoryInput
+  ) => Promise<TechnicianServicePayload[]>;
   createTechnicianService: (
     input: TechnicianServiceCreateRepositoryInput
   ) => Promise<TechnicianServicePayload>;
@@ -191,6 +207,55 @@ export class PricingModeService {
       ...input,
       shopId,
       technicianId: scope.technicianId
+    });
+  }
+
+  public async listMyTechnicianServices(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: PaginationInput & { activeOnly?: boolean }
+  ): Promise<PaginatedResponse<TechnicianServicePayload>> {
+    const technicianId = this.getTechnicianIdentityScope(actor);
+    await this.auditLogService.record({
+      actor,
+      action: "technician.services.profile_list",
+      targetType: "technician_profile",
+      targetId: technicianId,
+      context
+    });
+
+    return this.repository.listTechnicianServicesByProfile({
+      ...input,
+      technicianId
+    });
+  }
+
+  public async reorderMyTechnicianServices(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: TechnicianServiceOrderBody
+  ): Promise<TechnicianServicePayload[]> {
+    const technicianId = this.getTechnicianIdentityScope(actor);
+    const requestFingerprint = createHash("sha256")
+      .update(JSON.stringify({ technicianId, orderedServiceIds: input.orderedServiceIds }))
+      .digest("hex");
+
+    return this.repository.reorderTechnicianServices({
+      technicianId,
+      orderedServiceIds: input.orderedServiceIds,
+      actorUserId: actor.userId,
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint,
+      auditLog: {
+        ...this.transactionalAuditLog(
+          actor,
+          context,
+          "technician.services.reorder",
+          "technician_profile",
+          { technicianId }
+        ),
+        targetId: technicianId
+      }
     });
   }
 
@@ -392,6 +457,14 @@ export class PricingModeService {
     }
 
     return { technicianId: scope.technicianId };
+  }
+
+  private getTechnicianIdentityScope(actor: AuthenticatedAccessContext): number {
+    if (actor.currentIdentityScopeType !== "technician_profile" || !actor.currentIdentityScopeId) {
+      throw this.identityForbidden();
+    }
+
+    return actor.currentIdentityScopeId;
   }
 
   private identityForbidden(): AppError {

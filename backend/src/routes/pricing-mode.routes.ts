@@ -16,7 +16,8 @@ import {
   shopIdParamSchema,
   technicianServiceBodySchema,
   technicianServiceIdParamSchema,
-  technicianServiceListQuerySchema
+  technicianServiceListQuerySchema,
+  technicianServiceOrderBodySchema
 } from "../validators/pricing-mode.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -57,6 +58,20 @@ export const createPricingModeRoutes = (
     authorize(PRICING_MODE_ROUTE_PERMISSIONS.pricingModeUpdate),
     validateRequest({ params: shopIdParamSchema, body: pricingModeBodySchema }),
     controller.updateShopPricingMode
+  );
+  router.get(
+    "/technicians/me/services",
+    authenticate(),
+    authorize(PRICING_MODE_ROUTE_PERMISSIONS.technicianServicesList),
+    validateRequest({ query: technicianServiceListQuerySchema }),
+    controller.listMyTechnicianServices
+  );
+  router.put(
+    "/technicians/me/services/order",
+    authenticate(),
+    authorize(PRICING_MODE_ROUTE_PERMISSIONS.technicianServicesWrite),
+    validateRequest({ body: technicianServiceOrderBodySchema }),
+    controller.reorderMyTechnicianServices
   );
   router.get(
     "/technicians/me/shops/:shopId/services",

@@ -54,6 +54,14 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       page: 1,
       page_size: 20
     })),
+    listTechnicianServicesByProfile: jest.fn(async () => ({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    })),
+    findPrimaryTechnicianService: jest.fn(async () => null),
+    reorderTechnicianServices: jest.fn(async () => []),
     createTechnicianService: jest.fn(async () => ({
       id: 11,
       shopId: 1,
@@ -198,6 +206,50 @@ describe("PricingModeService", () => {
       })
     );
     expect(auditLogService.record).not.toHaveBeenCalled();
+  });
+
+  it("lists and reorders the authenticated technician profile across shop contexts", async () => {
+    const repository = createRepository();
+    const service = new PricingModeService(repository, { record: jest.fn() });
+
+    await service.listMyTechnicianServices(technicianActor, context, {
+      page: 1,
+      pageSize: 20,
+      activeOnly: false
+    });
+    await service.reorderMyTechnicianServices(technicianActor, context, {
+      orderedServiceIds: [13, 11, 12],
+      idempotencyKey: "technician-order-0001"
+    });
+
+    expect(repository.listTechnicianServicesByProfile).toHaveBeenCalledWith({
+      technicianId: 3,
+      page: 1,
+      pageSize: 20,
+      activeOnly: false
+    });
+    expect(repository.reorderTechnicianServices).toHaveBeenCalledWith(
+      expect.objectContaining({
+        technicianId: 3,
+        orderedServiceIds: [13, 11, 12],
+        actorUserId: 8,
+        idempotencyKey: "technician-order-0001",
+        requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        auditLog: expect.objectContaining({
+          action: "technician.services.reorder",
+          targetType: "technician_profile",
+          targetId: 3
+        })
+      })
+    );
+  });
+
+  it("rejects global portfolio access outside technician identity scope", async () => {
+    const service = new PricingModeService(createRepository(), { record: jest.fn() });
+
+    await expect(
+      service.listMyTechnicianServices(merchantActor, context, { page: 1, pageSize: 20 })
+    ).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
   });
 
   it("returns technician list navigation when a shop is in technician pricing mode", async () => {

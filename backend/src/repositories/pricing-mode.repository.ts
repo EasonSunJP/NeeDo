@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import {
@@ -9,10 +10,13 @@ import {
   type ShopPricingModePayload,
   type TechnicianServiceCreateRepositoryInput,
   type TechnicianServicePayload,
+  type TechnicianServiceReorderRepositoryInput,
   type TechnicianServiceUpdateRepositoryInput,
   type TechnicianShopScopePayload
 } from "../services/pricing-mode.service";
 import { assertTechnicianServiceQuota } from "../services/technician-service-policy";
+import { assertCompleteServiceOrder } from "../services/technician-service-policy";
+import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -176,6 +180,82 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     });
 
     return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async reorderTechnicianServices(
+    input: TechnicianServiceReorderRepositoryInput
+  ): Promise<TechnicianServicePayload[]> {
+    const services = await this.client.$transaction(async (transaction) => {
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${input.technicianId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      const existingAudit = await transaction.auditLog.findFirst({
+        where: {
+          actorId: input.actorUserId,
+          action: input.auditLog.action,
+          targetType: input.auditLog.targetType,
+          targetId: input.technicianId,
+          metadata: { path: "$.idempotencyKey", equals: input.idempotencyKey }
+        },
+        select: { metadata: true }
+      });
+      if (existingAudit) {
+        const metadata = this.metadataObject(existingAudit.metadata);
+        if (metadata.requestFingerprint !== input.requestFingerprint) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.idempotency_key_reused",
+            statusCode: 409
+          });
+        }
+
+        return transaction.technicianService.findMany({
+          where: { technicianId: input.technicianId, deletedAt: null },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        });
+      }
+
+      const owned = await transaction.technicianService.findMany({
+        where: { technicianId: input.technicianId, deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      });
+      assertCompleteServiceOrder(
+        owned.map(({ id }) => id),
+        input.orderedServiceIds
+      );
+
+      for (const [sortOrder, serviceId] of input.orderedServiceIds.entries()) {
+        await transaction.technicianService.updateMany({
+          where: {
+            id: serviceId,
+            technicianId: input.technicianId,
+            deletedAt: null
+          },
+          data: { sortOrder, updatedBy: input.actorUserId }
+        });
+      }
+
+      const reordered = await transaction.technicianService.findMany({
+        where: { technicianId: input.technicianId, deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.auditLog,
+          targetId: input.technicianId,
+          metadata: {
+            ...this.metadataObject(input.auditLog.metadata),
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint,
+            orderedServiceIds: input.orderedServiceIds
+          }
+        })
+      });
+
+      return reordered;
+    });
+
+    return services.map((service) => this.mapTechnicianService(service));
   }
 
   public async createTechnicianService(
@@ -548,6 +628,12 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string")
       : [];
+  }
+
+  private metadataObject(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   private formatDecimal(value: DecimalLike | string | number, scale: number): string {
