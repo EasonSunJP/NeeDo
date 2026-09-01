@@ -559,11 +559,13 @@ describe("zero-write comprehensive dashboard checker", () => {
       "EXPLAIN SELECT * FROM users",
       "SELECT cOnCaT /* reviewed pure function */ ('a', 'b')",
       "SELECT '東京都' AS city",
-      "SELECT 1 /* 恶意() remains inert fixture data */"
+      "SELECT 1 /* 恶意() remains inert fixture data */",
+      "SELECT '\"恶意\"()' AS inert_literal",
+      "SELECT 1 /* \"evil_mutating_udf\"() remains inert */"
     ]) {
       await expect(facade.$queryRaw(statement)).resolves.toEqual([{ ok: 1 }]);
     }
-    expect(queryRaw).toHaveBeenCalledTimes(10);
+    expect(queryRaw).toHaveBeenCalledTimes(12);
 
     for (const statement of [
       "SELECT 1; DELETE FROM users",
@@ -593,12 +595,19 @@ describe("zero-write comprehensive dashboard checker", () => {
       "SELECT evil恶意()",
       "SELECT sys.evil恶意()",
       "SELECT sys.CONCAT('a', 'b')",
+      "SELECT \"恶意\"()",
+      "SELECT \"evil_mutating_udf\"()",
+      "SELECT \"CONCAT\"('a', 'b')",
+      "SELECT sys.\"evil_mutating_udf\"()",
+      "SELECT \"sys\".\"evil_mutating_udf\"()",
+      "SELECT \"evil_mutating_udf\" /* hidden call */ ()",
+      "SELECT \"ordinary data\"",
       "SELECT @x := 1",
       "SELECT @@session.sql_mode := ''"
     ]) {
       await expect(facade.$queryRaw(statement)).rejects.toThrow("read-only");
     }
-    expect(queryRaw).toHaveBeenCalledTimes(10);
+    expect(queryRaw).toHaveBeenCalledTimes(12);
     expect(extractSqlFunctionCalls(
       "SELECT CONCAT('safe(', TRIM(name)), `evil_mutating_udf` FROM users"
     )).toEqual(["CONCAT", "TRIM"]);

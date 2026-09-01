@@ -1053,7 +1053,7 @@ export function extractSqlFunctionCalls(query: unknown): string[] {
 
 const lexicalSql = (input: string): string => {
   let output = "";
-  let state: "normal" | "single" | "double" | "backtick" | "line" | "block" = "normal";
+  let state: "normal" | "single" | "backtick" | "line" | "block" = "normal";
   for (let index = 0; index < input.length; index += 1) {
     const character = input[index]!;
     const next = input[index + 1];
@@ -1072,8 +1072,8 @@ const lexicalSql = (input: string): string => {
       }
       continue;
     }
-    if (state === "single" || state === "double" || state === "backtick") {
-      const delimiter = state === "single" ? "'" : state === "double" ? '"' : "`";
+    if (state === "single" || state === "backtick") {
+      const delimiter = state === "single" ? "'" : "`";
       if (character === "\\" && state !== "backtick") {
         index += 1;
         continue;
@@ -1107,7 +1107,9 @@ const lexicalSql = (input: string): string => {
       continue;
     }
     if (character === "'") state = "single";
-    else if (character === '"') state = "double";
+    else if (character === '"') {
+      throw new Error("Dashboard checker read-only facade rejected an ANSI_QUOTES-ambiguous token");
+    }
     else if (character === "`") state = "backtick";
     else output += character;
   }
