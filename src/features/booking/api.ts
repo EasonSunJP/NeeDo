@@ -1,9 +1,95 @@
 import { httpClient } from "../../api/httpClient";
 import type { FulfillmentMode, Order } from "../../types/domain";
 
-export type BookingOrderStatus = "pending" | "confirmed" | "inService" | "completed" | "cancelled";
+export type BookingOrderStatus =
+  | "pending"
+  | "confirmed"
+  | "inService"
+  | "awaitingCheckout"
+  | "awaitingPaymentConfirmation"
+  | "completed"
+  | "cancelled";
 export type ManualPaymentMethod = "onsite" | "bank_transfer";
 export type ManualPaymentStatus = "pending" | "confirmed" | "refundPending" | "refunded";
+export type CheckoutPaymentMethod = "cash" | "ndp" | "other";
+export type CheckoutPaymentEvidence =
+  | "ndp_ledger"
+  | "technician_receipt_confirmation"
+  | "operations_receipt_override";
+export type FulfillmentParticipant = "customer" | "technician";
+
+export type BookingOrderAddOn = {
+  id: number;
+  serviceId: number;
+  status: "proposed" | "accepted" | "rejected";
+  serviceNameSnapshot: string;
+  priceAmountJpy: number;
+  currency: "JPY";
+  durationMinutes: number;
+  serviceSnapshot: unknown;
+  proposedBy: FulfillmentParticipant | null;
+  proposedAt: string;
+  resolvedBy: FulfillmentParticipant | null;
+  resolvedAt: string | null;
+  resolutionReason: string | null;
+};
+
+export type BookingOrderServiceSession = {
+  startedAt: string | null;
+  expectedEndsAt: string | null;
+  endedAt: string | null;
+  addOns: BookingOrderAddOn[];
+};
+
+export type OrderCheckout = {
+  id: number;
+  orderId: number;
+  status: BookingOrderStatus;
+  baseAmountJpy: number;
+  addOnAmountJpy: number;
+  discountAmountJpy: number;
+  checkoutAmountJpy: number;
+  payableNdp: number;
+  rate: {
+    ruleId: number;
+    publicId: string;
+    version: number;
+    ndpUnits: number;
+    jpyUnits: number;
+    effectiveFrom: string;
+  };
+  calculation: {
+    formula: "base_plus_accepted_add_ons_minus_discount";
+    baseAmountJpy: number;
+    acceptedAddOnIds: number[];
+    addOnAmountJpy: number;
+    discountAmountJpy: number;
+    checkoutAmountJpy: number;
+    rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
+  };
+  paymentMethod: CheckoutPaymentMethod | null;
+  paymentSelectedAt: string | null;
+  otherMethod: { code: string; label: string } | null;
+  paymentEvidence: CheckoutPaymentEvidence | null;
+  receiptConfirmedAt: string | null;
+  receiptConfirmationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookingIdempotencyInput = { idempotencyKey: string };
+export type StartServiceInput = BookingIdempotencyInput & (
+  | { actor: "customer"; verificationCode?: never }
+  | { actor: "technician"; verificationCode: string }
+);
+export type CreateAddOnInput = BookingIdempotencyInput & { serviceId: number };
+export type EndServiceInput = BookingIdempotencyInput & { reason: string };
+export type SelectCheckoutPaymentMethodInput = BookingIdempotencyInput & (
+  | { method: "cash"; otherMethodCode?: never; otherMethodLabel?: never }
+  | { method: "ndp"; otherMethodCode?: never; otherMethodLabel?: never }
+  | { method: "other"; otherMethodCode: string; otherMethodLabel: string }
+);
+export type ConfirmCheckoutReceiptInput = BookingIdempotencyInput & { reason: string };
 
 export type BookingScheduleSlot = {
   id: number;
@@ -29,7 +115,7 @@ export type BookingOrder = {
   orderNo: string;
   orderType: "booking" | "request";
   status: BookingOrderStatus;
-  paymentMethod: ManualPaymentMethod;
+  paymentMethod: ManualPaymentMethod | CheckoutPaymentMethod;
   paymentStatus: ManualPaymentStatus;
   paymentAmountJpy: number;
   paymentConfirmedById: number | null;
@@ -65,6 +151,8 @@ export type BookingOrder = {
   cancelReason: string | null;
   createdAt: string;
   updatedAt: string;
+  serviceVerificationCode?: string;
+  serviceSession?: BookingOrderServiceSession | null;
   statusHistory: Array<{
     id: number;
     orderId: number;
@@ -143,6 +231,11 @@ export function isBookingApiId(value: string | number | null | undefined) {
   return typeof value === "number" ? Number.isInteger(value) && value > 0 : Boolean(value && /^[1-9]\d*$/.test(value));
 }
 
+export function createBookingIdempotencyKey() {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 export function formatApiOrderDateTime(value: string) {
   const date = new Date(value);
 
@@ -173,7 +266,10 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     scheduleSlotId: String(order.scheduleSlotId),
     orderNo: order.orderNo,
     mode: order.fulfillmentMode,
-    status: order.status,
+    status:
+      order.status === "awaitingCheckout" || order.status === "awaitingPaymentConfirmation"
+        ? "completed"
+        : order.status,
     customerId: String(order.customerUserId),
     customerName: "NeeDo 用户",
     itemName: order.serviceName,
@@ -232,6 +328,57 @@ export const bookingApi = {
   cancelOrder(id: number, reason?: string) {
     return httpClient.request<BookingOrder>(`/orders/${id}/cancel`, {
       body: { reason },
+      method: "POST"
+    });
+  },
+  startService(id: number, input: StartServiceInput) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/service/start`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  createAddOn(id: number, input: CreateAddOnInput) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/add-ons`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  acceptAddOn(id: number, addOnId: number, input: BookingIdempotencyInput) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/add-ons/${addOnId}/accept`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  rejectAddOn(id: number, addOnId: number, input: BookingIdempotencyInput) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/add-ons/${addOnId}/reject`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  endService(id: number, input: EndServiceInput) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/service/end`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  getCheckout(id: number) {
+    return httpClient.request<OrderCheckout>(`/orders/${id}/checkout`);
+  },
+  selectPaymentMethod(id: number, input: SelectCheckoutPaymentMethodInput) {
+    return httpClient.request<OrderCheckout>(`/orders/${id}/checkout/payment-method`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  payWithNdp(id: number, input: BookingIdempotencyInput) {
+    return httpClient.request<OrderCheckout>(`/orders/${id}/checkout/pay/ndp`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  confirmReceipt(id: number, input: ConfirmCheckoutReceiptInput) {
+    return httpClient.request<OrderCheckout>(`/orders/${id}/checkout/confirm-receipt`, {
+      body: input,
       method: "POST"
     });
   },

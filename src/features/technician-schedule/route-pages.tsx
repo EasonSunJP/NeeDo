@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
@@ -6,12 +6,15 @@ import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreen
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
+import { ServiceCountdownPill } from "../../shared/order-detail/ServiceSessionUi";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
+  createBookingIdempotencyKey,
   type BookingOrder,
   type BookingOrderStatus,
-  type BookingScheduleSlot
+  type BookingScheduleSlot,
+  type OrderCheckout
 } from "../booking/api";
 import { schedulingApi } from "../scheduling/api";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
@@ -513,12 +516,14 @@ function orderStatusLabel(status: BookingOrderStatus): string {
   if (status === "pending") return "待确认";
   if (status === "confirmed") return "已确认";
   if (status === "inService") return "服务中";
+  if (status === "awaitingCheckout") return "等待客户结账";
+  if (status === "awaitingPaymentConfirmation") return "等待确认收款";
   if (status === "completed") return "已完成";
   return "已取消";
 }
 
 function orderPaymentLabel(order: BookingOrder): string {
-  const method = order.paymentMethod === "onsite" ? "现场支付" : "银行转账";
+  const method = order.paymentMethod === "onsite" ? "现场支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
   const status = order.paymentStatus === "confirmed"
     ? "已确认收款"
     : order.paymentStatus === "refundPending"
@@ -539,11 +544,21 @@ function orderMutationError(error: unknown): string {
   return "正式订单操作失败，请检查网络后重试";
 }
 
-function primaryOrderAction(status: BookingOrderStatus): { label: string; run: (id: number) => Promise<BookingOrder> } | null {
-  if (status === "pending") return { label: "确认接单", run: bookingApi.confirmOrder };
-  if (status === "confirmed") return { label: "开始服务", run: bookingApi.startOrder };
-  if (status === "inService") return { label: "完成服务", run: bookingApi.completeOrder };
-  return null;
+function isAmbiguousOrderMutationError(error: unknown) {
+  return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+function serviceRemainingSeconds(expectedEndsAt: string | null | undefined, now: number) {
+  if (!expectedEndsAt) return 0;
+  const target = new Date(expectedEndsAt).getTime();
+  return Number.isFinite(target) ? Math.max(0, Math.ceil((target - now) / 1000)) : 0;
+}
+
+function checkoutEvidenceLabel(checkout: OrderCheckout | null) {
+  if (checkout?.paymentEvidence === "ndp_ledger") return "NDP 账本已结算";
+  if (checkout?.paymentEvidence === "technician_receipt_confirmation") return "技师已确认收款";
+  if (checkout?.paymentEvidence === "operations_receipt_override") return "运营已确认收款";
+  return "尚无收款凭证";
 }
 
 function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
@@ -553,10 +568,34 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
   const [cancelArmed, setCancelArmed] = useState(false);
+  const [endArmed, setEndArmed] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [receiptReason, setReceiptReason] = useState("");
+  const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const mutationKeys = useRef(new Map<string, string>());
 
   useEffect(() => {
     setOrder(resource.data);
   }, [resource.data]);
+
+  useEffect(() => {
+    if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
+      setCheckout(null);
+      return;
+    }
+    let active = true;
+    bookingApi.getCheckout(order.id)
+      .then((data) => { if (active) setCheckout(data); })
+      .catch((error: unknown) => { if (active) setActionError(orderMutationError(error)); });
+    return () => { active = false; };
+  }, [order]);
+
+  useEffect(() => {
+    if (order?.status !== "inService") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [order?.status]);
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell title="正式预约订单"><LoadingPanel label="正在读取正式订单" /></TechnicianSchedulePageShell>;
@@ -569,16 +608,54 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
     );
   }
 
-  const primary = primaryOrderAction(order.status);
   const canCancel = order.status === "pending" || order.status === "confirmed";
 
-  const runPrimary = async () => {
-    if (!primary || pending) return;
+  const runFormalMutation = async (slot: string, operation: (idempotencyKey: string) => Promise<BookingOrder>) => {
+    if (pending) return;
+    const key = mutationKeys.current.get(slot) ?? createBookingIdempotencyKey();
+    mutationKeys.current.set(slot, key);
     setPending(true);
     setActionError("");
     try {
-      setOrder(await primary.run(order.id));
+      setOrder(await operation(key));
+      mutationKeys.current.delete(slot);
       setCancelArmed(false);
+      setEndArmed(false);
+    } catch (error) {
+      if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
+      setActionError(orderMutationError(error));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const confirmReceipt = async () => {
+    const slot = "confirm-receipt";
+    if (pending || receiptReason.trim().length === 0) return;
+    const key = mutationKeys.current.get(slot) ?? createBookingIdempotencyKey();
+    mutationKeys.current.set(slot, key);
+    setPending(true);
+    setActionError("");
+    try {
+      const updatedCheckout = await bookingApi.confirmReceipt(order.id, { reason: receiptReason.trim(), idempotencyKey: key });
+      const updatedOrder = await bookingApi.getOrder(order.id);
+      mutationKeys.current.delete(slot);
+      setCheckout(updatedCheckout);
+      setOrder(updatedOrder);
+    } catch (error) {
+      if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
+      setActionError(orderMutationError(error));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const confirmOrder = async () => {
+    if (pending || order.status !== "pending") return;
+    setPending(true);
+    setActionError("");
+    try {
+      setOrder(await bookingApi.confirmOrder(order.id));
     } catch (error) {
       setActionError(orderMutationError(error));
     } finally {
@@ -652,15 +729,69 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           </ol>
         </section>
 
+        {order.status === "confirmed" ? (
+          <section className={panelClass}>
+            <h2 className="text-base font-black">服务验证码</h2>
+            <p className="mt-2 text-xs font-bold text-[color:var(--client-muted)]">请向客户索取六位验证码。技师端不会显示客户验证码。</p>
+            <input
+              aria-label="六位服务验证码"
+              className={fieldClass}
+              inputMode="numeric"
+              maxLength={6}
+              onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="输入 6 位验证码"
+              value={verificationCode}
+            />
+            <Button className="mt-3 w-full" disabled={pending || !/^\d{6}$/.test(verificationCode)} onClick={() => void runFormalMutation("technician-start", (idempotencyKey) => bookingApi.startService(order.id, { actor: "technician", verificationCode, idempotencyKey }))}>
+              验证并开始服务
+            </Button>
+          </section>
+        ) : null}
+
+        {order.status === "inService" && order.serviceSession ? (
+          <section className={panelClass}>
+            <div className="text-center"><ServiceCountdownPill seconds={serviceRemainingSeconds(order.serviceSession.expectedEndsAt, now)} /></div>
+            <div className="mt-4 space-y-2">
+              {order.serviceSession.addOns.length === 0 ? <p className="text-center text-xs font-bold text-[color:var(--client-muted)]">暂无追加服务</p> : order.serviceSession.addOns.map((addOn) => (
+                <article className="rounded-[16px] bg-[color:var(--client-elevated)] p-3" key={addOn.id}>
+                  <div className="flex items-start justify-between gap-3"><div><strong className="text-sm">{addOn.serviceNameSnapshot}</strong><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">+{addOn.durationMinutes} 分钟 · ¥{addOn.priceAmountJpy.toLocaleString("ja-JP")}</p></div><span className="text-[10px] font-black text-[color:var(--client-muted)]">{addOn.status === "proposed" ? addOn.proposedBy === "customer" ? "客户申请" : "等待客户" : addOn.status === "accepted" ? "已接受" : "已拒绝"}</span></div>
+                  {addOn.status === "proposed" && addOn.proposedBy === "customer" ? <div className="mt-3 grid grid-cols-2 gap-2"><Button disabled={pending} onClick={() => void runFormalMutation(`reject-${addOn.id}`, (idempotencyKey) => bookingApi.rejectAddOn(order.id, addOn.id, { idempotencyKey }))} variant="danger">拒绝</Button><Button disabled={pending} onClick={() => void runFormalMutation(`accept-${addOn.id}`, (idempotencyKey) => bookingApi.acceptAddOn(order.id, addOn.id, { idempotencyKey }))}>接受追加</Button></div> : null}
+                </article>
+              ))}
+            </div>
+            <div className="mt-4">
+              {endArmed ? <p className="mb-2 text-xs font-bold text-red-500">确认提前结束服务？理由“技师确认提前结束服务”将写入正式记录。</p> : null}
+              <Button className="w-full" disabled={pending} onClick={() => endArmed ? void runFormalMutation("technician-end", (idempotencyKey) => bookingApi.endService(order.id, { reason: "技师确认提前结束服务", idempotencyKey })) : setEndArmed(true)} variant="danger">
+                {endArmed ? "再次点击确认结束" : "提前结束服务"}
+              </Button>
+            </div>
+          </section>
+        ) : null}
+
+        {order.status === "awaitingCheckout" ? <section className={panelClass}><h2 className="text-base font-black">等待客户结账</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">客户需要选择现金、NDP 或其他支付方式。</p></section> : null}
+
+        {checkout ? <section className={panelClass}><h2 className="text-base font-black">正式结算</h2><dl className="mt-3 grid gap-2 sm:grid-cols-2"><DetailRow label="应付金额" value={`¥${checkout.checkoutAmountJpy.toLocaleString("ja-JP")}`} /><DetailRow label="应付 NDP" value={`${checkout.payableNdp.toLocaleString("ja-JP")} NDP`} /><DetailRow label="支付方式" value={checkout.paymentMethod === "cash" ? "现金" : checkout.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout.paymentMethod === "ndp" ? "NDP" : "未选择"} /><DetailRow label="支付凭证" value={checkoutEvidenceLabel(checkout)} /></dl></section> : null}
+
+        {order.status === "awaitingPaymentConfirmation" && checkout && (checkout.paymentMethod === "cash" || checkout.paymentMethod === "other") ? (
+          <section className={panelClass}>
+            <h2 className="text-base font-black">确认已经收款</h2>
+            <p className="mt-2 text-xs font-bold text-[color:var(--client-muted)]">只有实际收到现金或确认其他方式到账后才能完成订单。</p>
+            <textarea aria-label="收款确认理由" className={`${fieldClass} min-h-24 py-3`} onChange={(event) => setReceiptReason(event.target.value)} placeholder="填写可审计的收款确认理由" value={receiptReason} />
+            <Button className="mt-3 w-full" disabled={pending || receiptReason.trim().length === 0} onClick={() => void confirmReceipt()}>确认收款并完成订单</Button>
+          </section>
+        ) : null}
+
+        {order.status === "completed" ? <section className={panelClass}><h2 className="text-base font-black">订单已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkoutEvidenceLabel(checkout)}</p></section> : null}
+
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
-        {primary || canCancel ? (
+        {order.status === "pending" || canCancel ? (
           <section className="grid gap-2 sm:grid-cols-2">
             {canCancel ? (
               <Button disabled={pending} onClick={() => void cancel()} variant="danger">
                 {cancelArmed ? "再次点击确认取消" : "取消预约"}
               </Button>
             ) : null}
-            {primary ? <Button disabled={pending} onClick={() => void runPrimary()}>{primary.label}</Button> : null}
+            {order.status === "pending" ? <Button disabled={pending} onClick={() => void confirmOrder()}>确认接单</Button> : null}
           </section>
         ) : null}
       </div>

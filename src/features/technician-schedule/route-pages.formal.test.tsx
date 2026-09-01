@@ -10,16 +10,21 @@ import type { CoreTechnicianDetail } from "../core-read/api";
 import type { TechnicianServicePayload } from "../pricing-mode/api";
 
 const mocks = vi.hoisted(() => ({
+  acceptAddOn: vi.fn(),
   cancelOrder: vi.fn(),
-  completeOrder: vi.fn(),
+  confirmReceipt: vi.fn(),
   confirmOrder: vi.fn(),
   createSlot: vi.fn(),
   deleteSlot: vi.fn(),
+  endService: vi.fn(),
+  getCheckout: vi.fn(),
+  getOrder: vi.fn(),
   orderResource: vi.fn(),
+  rejectAddOn: vi.fn(),
   retryOrder: vi.fn(),
   retrySchedule: vi.fn(),
   scheduleResource: vi.fn(),
-  startOrder: vi.fn(),
+  startService: vi.fn(),
   updateSlot: vi.fn()
 }));
 
@@ -33,10 +38,15 @@ vi.mock("../booking/api", async () => {
   return {
     ...actual,
     bookingApi: {
+      acceptAddOn: mocks.acceptAddOn,
       cancelOrder: mocks.cancelOrder,
-      completeOrder: mocks.completeOrder,
+      confirmReceipt: mocks.confirmReceipt,
       confirmOrder: mocks.confirmOrder,
-      startOrder: mocks.startOrder
+      endService: mocks.endService,
+      getCheckout: mocks.getCheckout,
+      getOrder: mocks.getOrder,
+      rejectAddOn: mocks.rejectAddOn,
+      startService: mocks.startService
     }
   };
 });
@@ -206,6 +216,27 @@ function makeOrder(status: BookingOrderStatus): BookingOrder {
     cancelReason: null,
     createdAt: "2026-08-28T01:00:00.000Z",
     updatedAt: "2026-08-28T01:00:00.000Z",
+    serviceVerificationCode: "482931",
+    serviceSession: status === "inService" ? {
+      startedAt: "2026-09-01T10:00:00.000+09:00",
+      expectedEndsAt: "2099-09-01T11:00:00.000+09:00",
+      endedAt: null,
+      addOns: [{
+        id: 301,
+        serviceId: 45,
+        status: "proposed",
+        serviceNameSnapshot: "延长 30 分钟",
+        priceAmountJpy: 3000,
+        currency: "JPY",
+        durationMinutes: 30,
+        serviceSnapshot: {},
+        proposedBy: "customer",
+        proposedAt: "2026-09-01T10:15:00.000+09:00",
+        resolvedBy: null,
+        resolvedAt: null,
+        resolutionReason: null
+      }]
+    } : null,
     statusHistory: [
       {
         id: 1,
@@ -228,6 +259,35 @@ function makeOrder(status: BookingOrderStatus): BookingOrder {
     ]
   };
 }
+
+const checkout = {
+  id: 91,
+  orderId: 29,
+  status: "awaitingPaymentConfirmation" as const,
+  baseAmountJpy: 10000,
+  addOnAmountJpy: 3000,
+  discountAmountJpy: 0,
+  checkoutAmountJpy: 13000,
+  payableNdp: 13000,
+  rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 1, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
+  calculation: {
+    formula: "base_plus_accepted_add_ons_minus_discount" as const,
+    baseAmountJpy: 10000,
+    acceptedAddOnIds: [301],
+    addOnAmountJpy: 3000,
+    discountAmountJpy: 0,
+    checkoutAmountJpy: 13000,
+    rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" as const
+  },
+  paymentMethod: "cash" as const,
+  paymentSelectedAt: "2026-09-01T11:00:00.000+09:00",
+  otherMethod: null,
+  paymentEvidence: null,
+  receiptConfirmedAt: null,
+  receiptConfirmationReason: null,
+  createdAt: "2026-09-01T11:00:00.000+09:00",
+  updatedAt: "2026-09-01T11:00:00.000+09:00"
+};
 
 function LocationProbe() {
   const location = useLocation();
@@ -463,6 +523,7 @@ describe("formal technician schedule routes", () => {
 describe("formal technician order detail route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getCheckout.mockResolvedValue(checkout);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -496,19 +557,90 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("正式状态记录");
   });
 
-  it.each([
-    ["pending", "确认接单", "confirmOrder"],
-    ["confirmed", "开始服务", "startOrder"],
-    ["inService", "完成服务", "completeOrder"]
-  ] as const)("runs the formal %s transition and uses the returned order", async (status, label, method) => {
-    const current = makeOrder(status);
-    const updated = makeOrder(status === "pending" ? "confirmed" : status === "confirmed" ? "inService" : "completed");
-    mocks[method].mockResolvedValue(updated);
-    await renderOrder(current);
+  it("keeps the existing formal pending confirmation transition", async () => {
+    mocks.confirmOrder.mockResolvedValue(makeOrder("confirmed"));
+    await renderOrder(makeOrder("pending"));
+    await click("确认接单");
+    await waitFor(() => expect(mocks.confirmOrder).toHaveBeenCalledWith(29));
+    expect(container.textContent).toContain("已确认");
+  });
 
-    await click(label);
-    await waitFor(() => expect(mocks[method]).toHaveBeenCalledWith(29));
-    expect(container.textContent).toContain(updated.status === "confirmed" ? "已确认" : updated.status === "inService" ? "服务中" : "已完成");
+  it("requires the exact technician code input without projecting the customer code", async () => {
+    mocks.startService.mockResolvedValue(makeOrder("inService"));
+    await renderOrder(makeOrder("confirmed"));
+    expect(container.textContent).not.toContain("482931");
+    const code = container.querySelector('input[aria-label="六位服务验证码"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(code, "482931");
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("验证并开始服务");
+    await waitFor(() => expect(mocks.startService).toHaveBeenCalledWith(29, {
+      actor: "technician",
+      verificationCode: "482931",
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
+    expect(container.textContent).toContain("服务中");
+  });
+
+  it("accepts a customer add-on and ends service through formal endpoints", async () => {
+    mocks.acceptAddOn.mockResolvedValue(makeOrder("inService"));
+    mocks.rejectAddOn.mockResolvedValue(makeOrder("inService"));
+    mocks.endService.mockResolvedValue(makeOrder("awaitingCheckout"));
+    await renderOrder(makeOrder("inService"));
+    expect(container.textContent).toContain("延长 30 分钟");
+    await click("接受追加");
+    await waitFor(() => expect(mocks.acceptAddOn).toHaveBeenCalledWith(29, 301, {
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
+    await waitFor(() => expect(textButton("拒绝").disabled).toBe(false));
+    await click("拒绝");
+    await waitFor(() => expect(mocks.rejectAddOn).toHaveBeenCalledWith(29, 301, {
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
+    await waitFor(() => expect(textButton("提前结束服务").disabled).toBe(false));
+    await click("提前结束服务");
+    await click("再次点击确认结束");
+    await waitFor(() => expect(mocks.endService).toHaveBeenCalledWith(29, {
+      reason: "技师确认提前结束服务",
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
+    expect(container.textContent).toContain("等待客户结账");
+  });
+
+  it("confirms a cash receipt with a visible reason and keeps rejected state unchanged", async () => {
+    mocks.getCheckout.mockResolvedValue(checkout);
+    const completed = { ...makeOrder("completed"), serviceVerificationCode: undefined };
+    mocks.confirmReceipt.mockResolvedValue({ ...checkout, status: "completed", paymentEvidence: "technician_receipt_confirmation", receiptConfirmedAt: "2026-09-01T11:01:00.000+09:00", receiptConfirmationReason: "现金已当面清点确认" });
+    mocks.getOrder.mockResolvedValue(completed);
+    await renderOrder(makeOrder("awaitingPaymentConfirmation"));
+    await waitFor(() => expect(container.textContent).toContain("确认已经收款"));
+    const reason = container.querySelector('textarea[aria-label="收款确认理由"]') as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(reason, "现金已当面清点确认");
+      reason.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("确认收款并完成订单");
+    await waitFor(() => expect(mocks.confirmReceipt).toHaveBeenCalledWith(29, {
+      reason: "现金已当面清点确认",
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
+    expect(mocks.getOrder).toHaveBeenCalledWith(29);
+    expect(container.textContent).toContain("订单已完成");
+
+    mocks.startService.mockRejectedValue(new ApiClientError("error.order.verification_failed", 40012, 400));
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await renderOrder(makeOrder("confirmed"));
+    const code = container.querySelector('input[aria-label="六位服务验证码"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(code, "111111");
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("验证并开始服务");
+    await waitFor(() => expect(container.textContent).toContain("正式订单操作失败"));
+    expect(container.textContent).toContain("已确认");
+    expect(container.textContent).not.toContain("服务中");
   });
 
   it("requires two clicks to cancel and keeps the returned persisted order", async () => {

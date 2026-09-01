@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAuthTokens } from "../../api/httpClient";
-import { bookingApi, mapBookingOrderToDomainOrder, type BookingOrder } from "./api";
+import { bookingApi, createBookingIdempotencyKey, mapBookingOrderToDomainOrder, type BookingOrder } from "./api";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -61,6 +61,11 @@ function lastRequestBody() {
   return JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")) as Record<string, unknown>;
 }
 
+function requestBodyAt(index: number) {
+  const [, init] = vi.mocked(fetch).mock.calls[index] ?? [];
+  return JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")) as Record<string, unknown>;
+}
+
 describe("bookingApi", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -89,6 +94,15 @@ describe("bookingApi", () => {
       scheduleSlotId: 33,
       serviceId: 12
     });
+  });
+
+  it("generates distinct opaque idempotency keys within the formal contract bounds", () => {
+    const first = createBookingIdempotencyKey();
+    const second = createBookingIdempotencyKey();
+
+    expect(first).toMatch(/^[a-f0-9]{32}$/);
+    expect(second).toMatch(/^[a-f0-9]{32}$/);
+    expect(first).not.toBe(second);
   });
 
   it("passes request order creation through to the formal bookings API", async () => {
@@ -226,5 +240,90 @@ describe("bookingApi", () => {
       technicianProfileId: "9",
       scheduleSlotId: "33"
     });
+  });
+
+  it("calls every formal fulfillment and checkout route with its strict body", async () => {
+    const orderEnvelope = createBookingResponse("booking");
+    const checkoutEnvelope = {
+      code: 0,
+      message: "success",
+      data: {
+        id: 91,
+        orderId: 88,
+        status: "pending",
+        baseAmountJpy: 8800,
+        addOnAmountJpy: 1200,
+        discountAmountJpy: 0,
+        checkoutAmountJpy: 10000,
+        payableNdp: 10000,
+        rate: {
+          ruleId: 7,
+          publicId: "rate-7",
+          version: 3,
+          ndpUnits: 1,
+          jpyUnits: 1,
+          effectiveFrom: "2026-09-01T00:00:00.000Z"
+        },
+        calculation: {
+          formula: "base_plus_accepted_add_ons_minus_discount",
+          baseAmountJpy: 8800,
+          acceptedAddOnIds: [301],
+          addOnAmountJpy: 1200,
+          discountAmountJpy: 0,
+          checkoutAmountJpy: 10000,
+          rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
+        },
+        paymentMethod: null,
+        paymentSelectedAt: null,
+        otherMethod: null,
+        paymentEvidence: null,
+        receiptConfirmedAt: null,
+        receiptConfirmationReason: null,
+        createdAt: "2026-09-01T00:00:00.000Z",
+        updatedAt: "2026-09-01T00:00:00.000Z"
+      }
+    };
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse(checkoutEnvelope))
+      .mockResolvedValueOnce(jsonResponse(checkoutEnvelope))
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope))
+      .mockResolvedValueOnce(jsonResponse(orderEnvelope));
+
+    await bookingApi.startService(88, { actor: "technician", verificationCode: "482931", idempotencyKey: "idem-start-0000001" });
+    await bookingApi.createAddOn(88, { serviceId: 45, idempotencyKey: "idem-addon-0000001" });
+    await bookingApi.acceptAddOn(88, 301, { idempotencyKey: "idem-accept-000001" });
+    await bookingApi.rejectAddOn(88, 302, { idempotencyKey: "idem-reject-000001" });
+    await bookingApi.endService(88, { reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
+    await bookingApi.getCheckout(88);
+    await bookingApi.selectPaymentMethod(88, { method: "other", otherMethodCode: "paypay", otherMethodLabel: "PayPay", idempotencyKey: "idem-method-000001" });
+    await bookingApi.payWithNdp(88, { idempotencyKey: "idem-ndp-pay-00001" });
+    await bookingApi.confirmReceipt(88, { reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
+
+    expect(vi.mocked(fetch).mock.calls.map(([url, init]) => [url, (init as RequestInit).method])).toEqual([
+      ["/api/v1/orders/88/service/start", "POST"],
+      ["/api/v1/orders/88/add-ons", "POST"],
+      ["/api/v1/orders/88/add-ons/301/accept", "POST"],
+      ["/api/v1/orders/88/add-ons/302/reject", "POST"],
+      ["/api/v1/orders/88/service/end", "POST"],
+      ["/api/v1/orders/88/checkout", "GET"],
+      ["/api/v1/orders/88/checkout/payment-method", "POST"],
+      ["/api/v1/orders/88/checkout/pay/ndp", "POST"],
+      ["/api/v1/orders/88/checkout/confirm-receipt", "POST"]
+    ]);
+    expect(requestBodyAt(0)).toEqual({ actor: "technician", verificationCode: "482931", idempotencyKey: "idem-start-0000001" });
+    expect(requestBodyAt(1)).toEqual({ serviceId: 45, idempotencyKey: "idem-addon-0000001" });
+    expect(requestBodyAt(2)).toEqual({ idempotencyKey: "idem-accept-000001" });
+    expect(requestBodyAt(3)).toEqual({ idempotencyKey: "idem-reject-000001" });
+    expect(requestBodyAt(4)).toEqual({ reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
+    expect(requestBodyAt(5)).toEqual({});
+    expect(requestBodyAt(6)).toEqual({ method: "other", otherMethodCode: "paypay", otherMethodLabel: "PayPay", idempotencyKey: "idem-method-000001" });
+    expect(requestBodyAt(7)).toEqual({ idempotencyKey: "idem-ndp-pay-00001" });
+    expect(requestBodyAt(8)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
   });
 });

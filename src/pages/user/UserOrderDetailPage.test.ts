@@ -20,4 +20,22 @@ describe("UserOrderDetailPage header", () => {
     expect(source).toContain("重新加载预约详情");
     expect(source).toContain("isBookingApiId(orderId) ? <FormalUserOrderDetailPage");
   });
+
+  it("uses only formal server projections for fulfillment and checkout", () => {
+    expect(source).toContain("coreReadApi.listServices");
+    expect(source).toContain("bookingApi.startService");
+    expect(source).toContain("bookingApi.createAddOn");
+    expect(source).toContain("bookingApi.acceptAddOn");
+    expect(source).toContain("bookingApi.rejectAddOn");
+    expect(source).toContain("bookingApi.endService");
+    expect(source).toContain("bookingApi.getCheckout");
+    expect(source).toContain("bookingApi.selectPaymentMethod");
+    expect(source).toContain("bookingApi.payWithNdp");
+    expect(source).not.toContain("orderServiceSessionStore");
+    expect(source).not.toContain("emptyServices");
+    expect(source).not.toContain("getServiceStartCode");
+    expect(source).not.toContain("submitOrderServiceUserReview");
+    expect(source).not.toContain("localStorage");
+    expect(source).not.toContain("sessionStorage");
+  });
 });

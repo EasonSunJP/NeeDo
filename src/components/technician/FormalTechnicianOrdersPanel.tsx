@@ -8,11 +8,11 @@ import {
   type BookingOrderStatus
 } from "../../features/booking/api";
 import { loadEveryTechnicianOrder } from "../../features/scheduling/window-loader";
-import { cn, statusLabel, yen } from "../../lib/utils";
+import { cn, yen } from "../../lib/utils";
 import { Button } from "../ui/Button";
 
 type OrderFilter = "active" | "completed" | "cancelled";
-type OrderAction = "confirm" | "start" | "complete" | "cancel";
+type OrderAction = "confirm" | "cancel";
 
 function describeTechnicianOrderError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -29,18 +29,26 @@ function describeTechnicianOrderError(error: unknown) {
 function orderMatchesFilter(status: BookingOrderStatus, filter: OrderFilter) {
   if (filter === "completed") return status === "completed";
   if (filter === "cancelled") return status === "cancelled";
-  return status === "pending" || status === "confirmed" || status === "inService";
+  return status === "pending" || status === "confirmed" || status === "inService" || status === "awaitingCheckout" || status === "awaitingPaymentConfirmation";
 }
 
 function primaryActionLabel(status: BookingOrderStatus) {
   if (status === "pending") return "确认接单";
-  if (status === "confirmed") return "开始服务";
-  if (status === "inService") return "完成服务";
   return null;
 }
 
+function orderStatusLabel(status: BookingOrderStatus) {
+  if (status === "pending") return "待确认";
+  if (status === "confirmed") return "已确认";
+  if (status === "inService") return "服务中";
+  if (status === "awaitingCheckout") return "等待客户结账";
+  if (status === "awaitingPaymentConfirmation") return "等待确认收款";
+  if (status === "completed") return "已完成";
+  return "已取消";
+}
+
 function paymentLabel(order: BookingOrder) {
-  const method = order.paymentMethod === "onsite" ? "现场支付" : "银行转账";
+  const method = order.paymentMethod === "onsite" ? "现场支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
   const status = order.paymentStatus === "confirmed"
     ? "已确认收款"
     : order.paymentStatus === "refundPending"
@@ -98,8 +106,6 @@ export function FormalTechnicianOrdersPanel() {
     try {
       let updated: BookingOrder;
       if (action === "confirm") updated = await bookingApi.confirmOrder(order.id);
-      else if (action === "start") updated = await bookingApi.startOrder(order.id);
-      else if (action === "complete") updated = await bookingApi.completeOrder(order.id);
       else updated = await bookingApi.cancelOrder(order.id, "技师端取消正式预约");
 
       setOrders((current) => current.map((item) => (item.id === updated.id ? updated : item)));
@@ -113,8 +119,6 @@ export function FormalTechnicianOrdersPanel() {
 
   const runPrimaryAction = (order: BookingOrder) => {
     if (order.status === "pending") return runAction(order, "confirm");
-    if (order.status === "confirmed") return runAction(order, "start");
-    if (order.status === "inService") return runAction(order, "complete");
     return Promise.resolve();
   };
 
@@ -190,7 +194,7 @@ export function FormalTechnicianOrdersPanel() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black text-white/70">{statusLabel(order.status)}</span>
+                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black text-white/70">{orderStatusLabel(order.status)}</span>
                     <span className="text-[10px] font-bold text-white/45">{order.orderNo}</span>
                   </div>
                   <h3 className="mt-3 text-base font-black text-white">{order.serviceName}</h3>
@@ -217,7 +221,7 @@ export function FormalTechnicianOrdersPanel() {
                 <div className="mt-2 space-y-2">
                   {order.statusHistory.map((history) => (
                     <div className="flex items-start justify-between gap-3 text-[11px]" key={history.id}>
-                      <span className="font-black text-white/75">{statusLabel(history.toStatus)}</span>
+                      <span className="font-black text-white/75">{orderStatusLabel(history.toStatus)}</span>
                       <span className="text-right font-bold text-white/45">
                         {formatApiOrderDateTime(history.createdAt)}{history.reason ? ` · ${history.reason}` : ""}
                       </span>
