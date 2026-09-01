@@ -1,15 +1,29 @@
-import { MessageType } from "@prisma/client";
+import {
+  MessageType,
+  PlatformMembershipTierCode,
+  PlatformMembershipVersionStatus
+} from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import {
   serializeContactCardSnapshotV2,
   type ImContactCardV2
 } from "../domain/im-contact-card";
-import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import {
   imMessageInclude,
   persistImMessageInTransaction
 } from "./im-message-send.transaction";
+
+const contactCardMembershipVersionSelect = {
+  publicId: true,
+  simpleTopColor: true,
+  simpleBottomColor: true,
+  tier: { select: { code: true } }
+} satisfies Prisma.PlatformMembershipTierVersionSelect;
+
+type ContactCardMembershipVersion = Prisma.PlatformMembershipTierVersionGetPayload<{
+  select: typeof contactCardMembershipVersionSelect;
+}>;
 
 export interface PersistImContactCardInput {
   conversationId: number;
@@ -76,17 +90,13 @@ export async function persistImContactCardInTransaction(
           bio: true,
           isPublic: true,
           visibility: true,
-          deletedAt: true,
-          membershipLevel: true,
-          membershipGrantMode: true,
-          membershipStartsAt: true,
-          membershipExpiresAt: true
+          deletedAt: true
         }
       },
       ekycVerifications: {
         where: {
           status: "verified",
-          verifiedAt: { not: null },
+          verifiedAt: { not: null, lte: input.transactionNow },
           deletedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: input.transactionNow } }]
         },
@@ -148,8 +158,8 @@ export async function persistImContactCardInTransaction(
         select: { currentLevel: true }
       })
     : null;
-  const tierCode = customerProfile
-    ? normalizeTierCode(resolveEffectiveCustomerMembershipLevel(customerProfile, input.transactionNow))
+  const membership = customerProfile
+    ? await resolveContactCardMembershipVersion(tx, target.id, input.transactionNow)
     : null;
   const contactCard: ImContactCardV2 = {
     targetUserPublicId: target.needoId,
@@ -162,10 +172,10 @@ export async function persistImContactCardInTransaction(
     bio: customerProfile?.isPublic && customerProfile.visibility === "public"
       ? boundedBio(customerProfile.bio)
       : null,
-    tierCode,
-    themeVersionPublicId: null,
-    simpleTopColor: null,
-    simpleBottomColor: null
+    tierCode: membership ? normalizeTierCode(membership.tier.code) : null,
+    themeVersionPublicId: membership?.publicId ?? null,
+    simpleTopColor: membership?.simpleTopColor ?? null,
+    simpleBottomColor: membership?.simpleBottomColor ?? null
   };
   const metadata = serializeContactCardSnapshotV2(contactCard);
   const messageOutcome = await persistImMessageInTransaction(tx, {
@@ -191,6 +201,50 @@ export async function persistImContactCardInTransaction(
     }
   });
   return { status: "created", message: messageOutcome.message };
+}
+
+async function resolveContactCardMembershipVersion(
+  tx: Prisma.TransactionClient,
+  userId: number,
+  occurredAt: Date
+): Promise<ContactCardMembershipVersion> {
+  const activeEntitlement = await tx.platformMembershipEntitlement.findFirst({
+    where: {
+      userId,
+      deletedAt: null,
+      startsAt: { lte: occurredAt },
+      supersededAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }],
+      tierVersion: {
+        status: {
+          in: [
+            PlatformMembershipVersionStatus.PUBLISHED,
+            PlatformMembershipVersionStatus.ARCHIVED
+          ]
+        },
+        deletedAt: null,
+        tier: { deletedAt: null }
+      }
+    },
+    orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+    select: { tierVersion: { select: contactCardMembershipVersionSelect } }
+  });
+  if (activeEntitlement) return activeEntitlement.tierVersion;
+
+  const freeTier = await tx.platformMembershipTierVersion.findFirst({
+    where: {
+      status: PlatformMembershipVersionStatus.PUBLISHED,
+      deletedAt: null,
+      effectiveFrom: { lte: occurredAt },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }],
+      tier: { code: PlatformMembershipTierCode.FREE, deletedAt: null }
+    },
+    orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }],
+    select: contactCardMembershipVersionSelect
+  });
+  if (freeTier) return freeTier;
+
+  throw new Error("Published free platform membership tier is unavailable");
 }
 
 export function contactCardRequestFingerprint(input: {

@@ -1,4 +1,4 @@
-import { ConversationType, MessageType } from "@prisma/client";
+import { ConversationType, MessageType, PlatformMembershipTierCode } from "@prisma/client";
 import { describe, expect, it, jest } from "@jest/globals";
 import {
   contactCardRequestFingerprint,
@@ -27,6 +27,23 @@ const targetCustomer = {
   ekycVerifications: [{ id: 9 }]
 };
 
+const activeGoldEntitlement = {
+  expiresAt: new Date("2026-09-30T03:00:00.000Z"),
+  tierVersion: {
+    publicId: "20000000-0000-4000-8000-000000000003",
+    simpleTopColor: "#493613",
+    simpleBottomColor: "#241B0A",
+    tier: { code: PlatformMembershipTierCode.GOLD }
+  }
+};
+
+const publishedFreeTier = {
+  publicId: "20000000-0000-4000-8000-000000000001",
+  simpleTopColor: "#0D2F27",
+  simpleBottomColor: "#132630",
+  tier: { code: PlatformMembershipTierCode.FREE }
+};
+
 function createdMessage(metadata: unknown) {
   return {
     id: 801,
@@ -53,6 +70,8 @@ function createTransaction(input: {
   target?: typeof targetCustomer | null;
   reciprocalFriend?: boolean;
   replay?: null | { requestFingerprint: string; message: ReturnType<typeof createdMessage> };
+  activeEntitlement?: typeof activeGoldEntitlement | null;
+  publishedFree?: typeof publishedFreeTier | null;
 } = {}) {
   let storedMetadata: unknown;
   const tx = {
@@ -68,6 +87,16 @@ function createTransaction(input: {
     },
     userExperienceAccount: {
       upsert: jest.fn(async () => ({ currentLevel: 38 }))
+    },
+    platformMembershipEntitlement: {
+      findFirst: jest.fn(async () => input.activeEntitlement === undefined
+        ? activeGoldEntitlement
+        : input.activeEntitlement)
+    },
+    platformMembershipTierVersion: {
+      findFirst: jest.fn(async () => input.publishedFree === undefined
+        ? publishedFreeTier
+        : input.publishedFree)
     },
     conversationParticipant: {
       findFirst: jest.fn(async () => ({
@@ -134,9 +163,9 @@ describe("persistImContactCardInTransaction", () => {
         level: 38,
         bio: "公開プロフィール",
         tierCode: "gold",
-        themeVersionPublicId: null,
-        simpleTopColor: null,
-        simpleBottomColor: null
+        themeVersionPublicId: "20000000-0000-4000-8000-000000000003",
+        simpleTopColor: "#493613",
+        simpleBottomColor: "#241B0A"
       }
     });
     expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
@@ -146,6 +175,33 @@ describe("persistImContactCardInTransaction", () => {
       where: { userId: 52 },
       create: expect.objectContaining({ userId: 52, currentLevel: 1, totalExpUnits: 0n })
     }));
+    expect(tx.platformMembershipEntitlement.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: 52 })
+    }));
+    expect(tx.platformMembershipTierVersion.findFirst).not.toHaveBeenCalled();
+    expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        ekycVerifications: expect.objectContaining({
+          where: expect.objectContaining({ verifiedAt: { not: null, lte: transactionNow } })
+        })
+      })
+    }));
+  });
+
+  it("uses the current published free tier when the customer has no active paid entitlement", async () => {
+    const { tx, storedMetadata } = createTransaction({ activeEntitlement: null });
+
+    await expect(persistImContactCardInTransaction(tx as never, command))
+      .resolves.toMatchObject({ status: "created" });
+    expect(storedMetadata()).toMatchObject({
+      contactCard: {
+        tierCode: "free",
+        themeVersionPublicId: "20000000-0000-4000-8000-000000000001",
+        simpleTopColor: "#0D2F27",
+        simpleBottomColor: "#132630"
+      }
+    });
+    expect(tx.platformMembershipTierVersion.findFirst).toHaveBeenCalled();
   });
 
   it("rejects a nonfriend target without creating a message", async () => {
@@ -185,6 +241,8 @@ describe("persistImContactCardInTransaction", () => {
     await expect(persistImContactCardInTransaction(tx as never, command))
       .resolves.toMatchObject({ status: "created" });
     expect(tx.userExperienceAccount.upsert).not.toHaveBeenCalled();
+    expect(tx.platformMembershipEntitlement.findFirst).not.toHaveBeenCalled();
+    expect(tx.platformMembershipTierVersion.findFirst).not.toHaveBeenCalled();
     expect(storedMetadata()).toMatchObject({
       contactCard: {
         entityKind: "technician",
