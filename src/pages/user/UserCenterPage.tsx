@@ -19,6 +19,7 @@ import { customerProfileApi, type CustomerSelfProfile } from "../../features/cor
 import { walletApi, type Wallet } from "../../features/wallet/api";
 import { customerShopMembershipApi } from "../../features/shop-member/api";
 import { platformMembershipSelfApi, type MyExperienceSummary, type MyPlatformMembership } from "../../features/platform-membership/api";
+import { CurrentMembershipBenefits } from "../../features/platform-membership/CurrentMembershipBenefits";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
@@ -935,6 +936,7 @@ function CompleteUserCenterPage({
           ) : null}
           <div className="space-y-4">
             {!isEditingProfile ? (
+              <>
               <PlatformMembershipDetailCard
                 actionSlot={<IconButton className="text-ink shadow-[0_14px_30px_rgba(0,0,0,0.22)]" icon="edit" label="编辑资料" onClick={startProfileEdit} />}
                 age={visibleProfile.age ? Number(visibleProfile.age) : null}
@@ -957,6 +959,8 @@ function CompleteUserCenterPage({
                 tierLabel={platformMembershipTierLabels[formalData.membership.tierCode]}
                 usageCount={usageCount}
               />
+              <CurrentMembershipBenefits language={language} />
+              </>
             ) : (
             <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
               <div className="relative">
