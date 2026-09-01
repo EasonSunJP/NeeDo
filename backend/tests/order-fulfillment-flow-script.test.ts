@@ -291,6 +291,38 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     }, "failure")).toThrow("failure left partial writes");
   });
 
+  it("canonicalizes recursive JSON object keys but preserves array order", () => {
+    const first = {
+      metadata: {
+        zeta: 3,
+        nested: { beta: 2, alpha: 1 },
+        entries: [{ right: "r", left: "l" }, { value: 2 }],
+        nullable: null,
+        sequence: 7n,
+        occurredAt: new Date("2026-09-01T01:00:00.000Z")
+      }
+    };
+    const sameMeaningDifferentKeyOrder = {
+      metadata: {
+        occurredAt: new Date("2026-09-01T01:00:00.000Z"),
+        sequence: 7n,
+        nullable: null,
+        entries: [{ left: "l", right: "r" }, { value: 2 }],
+        nested: { alpha: 1, beta: 2 },
+        zeta: 3
+      }
+    };
+    expect(() => assertDeepSnapshotEqual(
+      first, sameMeaningDifferentKeyOrder, "canonical JSON"
+    )).not.toThrow();
+    expect(() => assertDeepSnapshotEqual(first, {
+      metadata: {
+        ...sameMeaningDifferentKeyOrder.metadata,
+        entries: [...sameMeaningDifferentKeyOrder.metadata.entries].reverse()
+      }
+    }, "ordered JSON array")).toThrow("ordered JSON array left partial writes");
+  });
+
   it("captures every mutable order, session, add-on and checkout field in failure snapshots", async () => {
     const state = {
       order: {
@@ -408,6 +440,13 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     };
 
     expect(() => assertFormalFulfillmentChain(evidence, expected, "cash")).not.toThrow();
+    expect(() => assertFormalFulfillmentChain({
+      ...evidence,
+      events: evidence.events.map((event) => ({
+        ...event,
+        metadata: Object.fromEntries(Object.entries(event.metadata).reverse())
+      }))
+    }, expected, "cash")).not.toThrow();
     expect(() => assertFormalFulfillmentChain(
       { ...evidence, histories: [...evidence.histories].reverse() }, expected, "cash"
     )).toThrow("cash history chain mismatch");

@@ -278,10 +278,36 @@ type FormalFulfillmentChain = {
   events: Array<Record<string, unknown>>;
 };
 
-const serializeEvidence = (value: unknown): string =>
-  JSON.stringify(value, (_key, current: unknown) =>
-    typeof current === "bigint" ? { $bigint: current.toString() } : current
-  );
+const serializeEvidence = (value: unknown): string => {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "string") return `string:${JSON.stringify(value)}`;
+  if (typeof value === "boolean") return `boolean:${value ? "true" : "false"}`;
+  if (typeof value === "bigint") return `bigint:${value.toString()}`;
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return "number:NaN";
+    if (value === Number.POSITIVE_INFINITY) return "number:Infinity";
+    if (value === Number.NEGATIVE_INFINITY) return "number:-Infinity";
+    if (Object.is(value, -0)) return "number:-0";
+    return `number:${value}`;
+  }
+  if (value instanceof Date) return `date:${JSON.stringify(value.toISOString())}`;
+  if (Array.isArray(value)) {
+    return `array:[${value.map((item) => serializeEvidence(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const jsonCapable = value as { toJSON?: () => unknown };
+    if (typeof jsonCapable.toJSON === "function") {
+      return `json:${serializeEvidence(jsonCapable.toJSON())}`;
+    }
+    const record = value as Record<string, unknown>;
+    return `object:{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${serializeEvidence(record[key])}`)
+      .join(",")}}`;
+  }
+  return `${typeof value}:${String(value)}`;
+};
 
 const projectExpectedShape = (actual: unknown, expected: unknown): unknown => {
   if (Array.isArray(expected)) {
