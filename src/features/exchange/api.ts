@@ -8,11 +8,13 @@ import type {
   ExchangeComment,
   ExchangeInteractionCounts,
   ExchangeListInput,
+  ExchangeMatching,
   ExchangePost,
   ExchangeRequestPublicationContext,
   Paginated,
   PaginationInput,
-  PublishExchangePostInput
+  PublishExchangePostInput,
+  SelectExchangeMatchingInput
 } from "./types";
 
 const idempotencyHeaders = (key: string) => ({ "Idempotency-Key": key });
@@ -70,6 +72,25 @@ export function listReceivedExchangeClaims(
   return httpClient.request<Paginated<ExchangeClaim>>(`/exchange/posts/${postId}/claims`, {
     query: { page: input.page ?? 1, page_size: input.pageSize ?? 20 },
     signal: input.signal
+  });
+}
+
+export function getExchangeMatching(
+  postId: string,
+  signal?: AbortSignal
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(`/exchange/posts/${postId}/matching`, { signal });
+}
+
+export function selectExchangeMatching(
+  postId: string,
+  input: SelectExchangeMatchingInput,
+  key: string
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(`/exchange/posts/${postId}/matching/select`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
   });
 }
 

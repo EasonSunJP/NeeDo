@@ -1,5 +1,5 @@
 export type ExchangePostType = "demand" | "intelligence";
-export type ExchangePostStatus = "published" | "withdrawn" | "expired";
+export type ExchangePostStatus = "published" | "withdrawn" | "expired" | "matched" | "closed";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
 export type ExchangeDemandServiceMode = "home" | "store";
 export type ExchangeContentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
@@ -33,7 +33,10 @@ export type ExchangeClaimStatus =
   | "active"
   | "withdrawn"
   | "request_withdrawn"
-  | "request_expired";
+  | "request_expired"
+  | "matched"
+  | "not_selected"
+  | "matching_closed";
 
 export type ExchangeClaimServiceRef = `shop:${number}` | `technician:${number}`;
 
@@ -67,6 +70,39 @@ export type ExchangeClaim = {
 
 export type ExchangeClaimMine = {
   claim: ExchangeClaim | null;
+};
+
+export type ExchangeMatchingStatus = "open" | "matched" | "closed";
+
+export type ExchangeMatchParticipant = {
+  exchangeClaimId: number;
+  provider: { publicId: string; displayName: string; avatarUrl: string | null };
+  shop: { id: number; name: string };
+  technician: { profileId: number; publicId: string; displayName: string };
+  service: { ref: ExchangeClaimServiceRef; name: string; durationMinutes: number };
+  scheduleSlotId: number;
+  quoteAmountJpy: number;
+  currency: "JPY";
+  estimatedStartsAt: string;
+  estimatedEndsAt: string;
+  matchedAt: string;
+};
+
+export type ExchangeMatching = {
+  exchangePostId: number;
+  status: ExchangeMatchingStatus;
+  version: number;
+  effectiveTargetProviderCount: number;
+  effectiveBudgetMaxJpy: number;
+  selectedQuoteTotalJpy: number;
+  matchedAt: string | null;
+  participants: ExchangeMatchParticipant[];
+  viewer: { canSelect: boolean };
+};
+
+export type SelectExchangeMatchingInput = {
+  selectedClaimIds: number[];
+  expectedVersion: number;
 };
 
 export type ExchangeClaimOptionListInput = PaginationInput & {
@@ -105,7 +141,7 @@ export type ExchangeRequestAddress = {
   line3: string | null;
   line2GenerallyVisible: boolean;
   line3GenerallyVisible: boolean;
-  disclosure: "owner" | "general";
+  disclosure: "owner" | "general" | "matched_participant";
 };
 
 export type ExchangeRequestPublicationContext = {
