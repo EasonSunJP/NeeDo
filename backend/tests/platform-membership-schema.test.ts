@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("platform membership persistence schema", () => {
@@ -95,5 +95,23 @@ describe("platform membership persistence schema", () => {
     expect(lockMigration).toContain("ADD COLUMN `platform_membership_lock_version` INTEGER NOT NULL DEFAULT 1");
     expect(lockMigration).toContain("ADD COLUMN `experience_value_ndp` INTEGER NOT NULL DEFAULT 0");
     expect(lockMigration).toContain("platform_membership_entitlements_lock_version_chk");
+  });
+
+  it("normalizes future bootstrap membership versions to UTC without rewriting active history", () => {
+    const correctionPath = resolve(
+      process.cwd(),
+      "prisma/migrations/20260901231000_platform_membership_utc_bootstrap/migration.sql"
+    );
+    const correction = existsSync(correctionPath)
+      ? readFileSync(correctionPath, "utf8")
+      : "";
+
+    expect(correction).toContain("UPDATE `platform_membership_tier_versions`");
+    expect(correction).toContain("`effective_from` = UTC_TIMESTAMP(3)");
+    expect(correction).toContain("`published_at` = LEAST(`published_at`, UTC_TIMESTAMP(3))");
+    expect(correction).toContain("`version` = 1");
+    expect(correction).toContain("`status` = 'published'");
+    expect(correction).toContain("`deleted_at` IS NULL");
+    expect(correction).toContain("`effective_from` > UTC_TIMESTAMP(3)");
   });
 });
