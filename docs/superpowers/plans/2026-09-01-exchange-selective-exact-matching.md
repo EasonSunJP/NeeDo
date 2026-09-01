@@ -26,7 +26,7 @@
 ### Task 1: Add matching persistence and migration contracts
 
 **Files:**
-- Create: `backend/prisma/migrations/20260901170000_exchange_selective_exact_matching/migration.sql`
+- Create: `backend/prisma/migrations/20260901232000_exchange_selective_exact_matching/migration.sql`
 - Modify: `backend/prisma/schema.prisma`
 - Test: `backend/tests/exchange-matching-schema.test.ts`
 
@@ -89,7 +89,7 @@ Expected: PASS and generated client success.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/prisma/schema.prisma backend/prisma/migrations/20260901170000_exchange_selective_exact_matching/migration.sql backend/tests/exchange-matching-schema.test.ts
+git add backend/prisma/schema.prisma backend/prisma/migrations/20260901232000_exchange_selective_exact_matching/migration.sql backend/tests/exchange-matching-schema.test.ts
 git commit -m "feat(exchange): add selective matching persistence"
 ```
 
