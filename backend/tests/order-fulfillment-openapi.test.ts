@@ -1,5 +1,10 @@
 import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
+import {
+  endServiceBodySchema,
+  startServiceBodySchema
+} from "../src/validators/booking.validator";
+import { ndpExchangeRatePublishBodySchema } from "../src/validators/ndp-exchange-rate.validator";
 
 type Schema = Record<string, unknown> & {
   additionalProperties: boolean;
@@ -112,7 +117,10 @@ describe("formal order fulfillment OpenAPI contract", () => {
     expect(orderId).toEqual({ type: "integer", minimum: 1 });
     const end = bodySchema("post", "/api/v1/orders/{id}/service/end");
     expect(end).toMatchObject({ additionalProperties: false, required: ["reason", "idempotencyKey"] });
-    expect(resolveSchema(end.properties.reason)).toMatchObject({ minLength: 1, maxLength: 500 });
+    expect(resolveSchema(end.properties.reason)).toMatchObject({
+      "x-min-utf16-code-units": 1,
+      "x-max-utf16-code-units": 500
+    });
   });
 
   it("uses the actual order-id persistence bound only on add-on decisions", () => {
@@ -143,12 +151,12 @@ describe("formal order fulfillment OpenAPI contract", () => {
       "method", "otherMethodCode", "otherMethodLabel", "idempotencyKey"
     ]);
     expect(resolveSchema(payment.oneOf[2].properties.otherMethodCode)).toMatchObject({
-      minLength: 1,
-      maxLength: 40
+      "x-min-utf16-code-units": 1,
+      "x-max-utf16-code-units": 40
     });
     expect(resolveSchema(payment.oneOf[2].properties.otherMethodLabel)).toMatchObject({
-      minLength: 1,
-      maxLength: 80
+      "x-min-utf16-code-units": 1,
+      "x-max-utf16-code-units": 80
     });
     for (const path of [
       "/api/v1/orders/{id}/checkout/pay/ndp",
@@ -285,21 +293,54 @@ describe("formal order fulfillment OpenAPI contract", () => {
       expectedVersion: { maximum: 2_147_483_646 }
     });
     expect(resolveSchema(schemas.NdpExchangeRatePublish.properties.idempotencyKey)).toMatchObject({
-      minLength: 16,
-      maxLength: 160
+      "x-min-utf16-code-units": 16,
+      "x-max-utf16-code-units": 160
     });
     expect(JSON.stringify(schemas.NdpExchangeRate)).not.toMatch(/activeKey|idempotencyKey/i);
   });
 
-  it("documents trim and visible-code-point semantics for every mutation string", () => {
+  it("documents UTF-16 unit bounds while preserving code-point bounds for reviews", () => {
+    const astralMinimumKey = "😀".repeat(8);
+    expect(astralMinimumKey).toHaveLength(16);
+    expect(startServiceBodySchema.safeParse({
+      actor: "customer",
+      idempotencyKey: astralMinimumKey
+    }).success).toBe(true);
+    expect(ndpExchangeRatePublishBodySchema.safeParse({
+      ndpUnits: 1,
+      jpyUnits: 1,
+      expectedVersion: 0,
+      effectiveFrom: "2026-09-01T00:00:00.000Z",
+      reason: "rate update",
+      idempotencyKey: astralMinimumKey
+    }).success).toBe(true);
+
+    const astralOverlongReason = "😀".repeat(300);
+    expect(astralOverlongReason).toHaveLength(600);
+    expect(endServiceBodySchema.safeParse({
+      reason: astralOverlongReason,
+      idempotencyKey: astralMinimumKey
+    }).success).toBe(false);
+    expect(ndpExchangeRatePublishBodySchema.safeParse({
+      ndpUnits: 1,
+      jpyUnits: 1,
+      expectedVersion: 0,
+      effectiveFrom: "2026-09-01T00:00:00.000Z",
+      reason: astralOverlongReason,
+      idempotencyKey: astralMinimumKey
+    }).success).toBe(false);
+
     const idempotency = schemas.TrimmedVisibleIdempotencyKey;
     expect(idempotency).toMatchObject({
       type: "string",
-      minLength: 16,
-      maxLength: 160,
+      "x-min-utf16-code-units": 16,
+      "x-max-utf16-code-units": 160,
       "x-normalization": "trim",
       "x-requires-visible-code-point": true
     });
+    expect(idempotency).not.toHaveProperty("minLength");
+    expect(idempotency).not.toHaveProperty("maxLength");
+    expect(idempotency.description).toMatch(/JavaScript UTF-16 code units/i);
     expect(idempotency.description).toMatch(/whitespace-only.*invalid/i);
 
     for (const [method, path] of mutationOperations) {
@@ -312,32 +353,31 @@ describe("formal order fulfillment OpenAPI contract", () => {
       }
     }
 
-    const normalizedValueIsValid = (value: string, schema: Schema): boolean => {
-      const normalized = schema["x-normalization"] === "trim" ? value.trim() : value;
-      const minLength = schema.minLength as number;
-      const maxLength = schema.maxLength as number;
-      const visible = /[\p{L}\p{N}\p{P}\p{S}]/u.test(normalized);
-      return normalized.length >= minLength && normalized.length <= maxLength && visible;
-    };
-    expect(normalizedValueIsValid("                ", idempotency)).toBe(false);
-    expect(normalizedValueIsValid("abcdefghijklmnop", idempotency)).toBe(true);
-
-    for (const name of [
-      "TrimmedVisibleReason500",
-      "TrimmedVisibleOtherMethodCode",
-      "TrimmedVisibleOtherMethodLabel"
-    ]) {
-      expect(schemas[name]).toMatchObject({
+    for (const [name, maximum] of [
+      ["TrimmedVisibleReason500", 500],
+      ["TrimmedVisibleOtherMethodCode", 40],
+      ["TrimmedVisibleOtherMethodLabel", 80]
+    ] as const) {
+      const schema = schemas[name];
+      expect(schema).toMatchObject({
         type: "string",
-        minLength: 1,
+        "x-min-utf16-code-units": 1,
+        "x-max-utf16-code-units": maximum,
         "x-normalization": "trim",
         "x-requires-visible-code-point": true
       });
-      expect(normalizedValueIsValid("   \t", schemas[name])).toBe(false);
+      expect(schema).not.toHaveProperty("minLength");
+      expect(schema).not.toHaveProperty("maxLength");
+      expect(schema.description).toMatch(/JavaScript UTF-16 code units/i);
     }
     expect(
       bodySchema("post", "/api/v1/backoffice/ndp-exchange-rates").properties.reason
     ).toEqual({ $ref: "#/components/schemas/TrimmedVisibleReason500" });
+    const review = bodySchema("post", "/api/v1/orders/{id}/reviews");
+    expect(review.properties.tags.items.maxLength).toBe(40);
+    expect(
+      review.properties.comment.oneOf.find((item) => item.type === "string")?.maxLength
+    ).toBe(1000);
   });
 
   it("publishes actual error code, message and condition pairs without invented messages", () => {

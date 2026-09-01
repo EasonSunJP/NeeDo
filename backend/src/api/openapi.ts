@@ -1365,39 +1365,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ...shopMembershipCardPlanOpenApiSchemas,
       TrimmedVisibleIdempotencyKey: {
         type: "string",
-        minLength: 16,
-        maxLength: 160,
+        "x-min-utf16-code-units": 16,
+        "x-max-utf16-code-units": 160,
         "x-normalization": "trim",
         "x-requires-visible-code-point": true,
         description:
-          "The server trims leading and trailing whitespace before applying the 16–160 length bound, then requires at least one Unicode letter, number, punctuation, or symbol. Whitespace-only input is invalid and 16 spaces do not satisfy the minimum."
+          "The server trims leading and trailing whitespace before applying a 16–160 bound measured in JavaScript UTF-16 code units, then requires at least one Unicode letter, number, punctuation, or symbol. Whitespace-only input is invalid and 16 spaces do not satisfy the minimum."
       },
       TrimmedVisibleReason500: {
         type: "string",
-        minLength: 1,
-        maxLength: 500,
+        "x-min-utf16-code-units": 1,
+        "x-max-utf16-code-units": 500,
         "x-normalization": "trim",
         "x-requires-visible-code-point": true,
         description:
-          "The server trims the reason, limits it to 500 Unicode code points, and rejects empty or whitespace-only input without a visible letter, number, punctuation, or symbol."
+          "The server trims the reason, applies a 1–500 bound measured in JavaScript UTF-16 code units, and rejects empty or whitespace-only input without a visible letter, number, punctuation, or symbol."
       },
       TrimmedVisibleOtherMethodCode: {
         type: "string",
-        minLength: 1,
-        maxLength: 40,
+        "x-min-utf16-code-units": 1,
+        "x-max-utf16-code-units": 40,
         "x-normalization": "trim",
         "x-requires-visible-code-point": true,
         description:
-          "The server trims this code and rejects empty or whitespace-only input without a visible Unicode code point."
+          "The server trims this code, applies a 1–40 bound measured in JavaScript UTF-16 code units, and rejects empty or whitespace-only input without a visible Unicode code point."
       },
       TrimmedVisibleOtherMethodLabel: {
         type: "string",
-        minLength: 1,
-        maxLength: 80,
+        "x-min-utf16-code-units": 1,
+        "x-max-utf16-code-units": 80,
         "x-normalization": "trim",
         "x-requires-visible-code-point": true,
         description:
-          "The server trims this label and rejects empty or whitespace-only input without a visible Unicode code point."
+          "The server trims this label, applies a 1–80 bound measured in JavaScript UTF-16 code units, and rejects empty or whitespace-only input without a visible Unicode code point."
       },
       DashboardPeriod: {
         type: "string",
