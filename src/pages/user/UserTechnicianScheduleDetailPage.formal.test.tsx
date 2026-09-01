@@ -82,6 +82,12 @@ const technicianDetailFixture = {
     latestReviewAt: null,
     highlights: []
   },
+  age: null,
+  favoriteCount: 0,
+  shareCount: 0,
+  completedOrderCount: 0,
+  acceptanceRatePercent: 100,
+  primaryService: null,
   shop: null,
   bio: null,
   serviceArea: "東京",

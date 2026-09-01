@@ -2656,4 +2656,40 @@ describe("GET /api/v1/openapi.json", () => {
     expect(schemas.TechnicianCard.properties).not.toHaveProperty("baseLongitude");
     expect(schemas.TechnicianCard.properties).not.toHaveProperty("serviceBase");
   });
+
+  it("documents persisted fields required by the formal home search cards", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const schemas = response.body.components.schemas;
+
+    expect(schemas.ShopCard.required).toEqual(expect.arrayContaining([
+      "serviceCategories",
+      "businessKeywords",
+      "favoriteCount",
+      "shareCount"
+    ]));
+    expect(schemas.ShopCard.properties.favoriteCount).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 0 })
+    );
+    expect(schemas.ShopCard.properties.shareCount).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 0 })
+    );
+
+    expect(schemas.TechnicianCard.required).toEqual(expect.arrayContaining([
+      "age",
+      "favoriteCount",
+      "shareCount",
+      "completedOrderCount",
+      "acceptanceRatePercent",
+      "primaryService"
+    ]));
+    expect(schemas.TechnicianCard.properties.acceptanceRatePercent).toEqual(
+      expect.objectContaining({ type: "number", minimum: 0, maximum: 100 })
+    );
+    expect(schemas.TechnicianCard.properties.primaryService.anyOf).toEqual(
+      expect.arrayContaining([
+        { $ref: "#/components/schemas/PrimaryTechnicianService" },
+        { type: "null" }
+      ])
+    );
+  });
 });

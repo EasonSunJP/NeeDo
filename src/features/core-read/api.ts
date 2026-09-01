@@ -50,8 +50,18 @@ export type CoreShopCard = {
   address: string;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  favoriteCount: number;
+  shareCount: number;
   serviceCategories: Array<{ id: number; code: string; label: string }>;
   businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
+};
+
+export type CorePrimaryTechnicianService = {
+  id: number;
+  name: string;
+  priceAmount: string;
+  currency: string;
+  durationMinutes: number;
 };
 
 export type CoreTechnicianCard = {
@@ -61,6 +71,12 @@ export type CoreTechnicianCard = {
   city: string;
   avatarUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  age: number | null;
+  favoriteCount: number;
+  shareCount: number;
+  completedOrderCount: number;
+  acceptanceRatePercent: number;
+  primaryService: CorePrimaryTechnicianService | null;
   distanceKm?: number;
   nearbyRank?: 1 | 2 | 3 | null;
   resolvedRadiusKm?: number;

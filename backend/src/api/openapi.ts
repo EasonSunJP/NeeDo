@@ -5836,7 +5836,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       ShopCard: {
         type: "object",
-        required: ["id", "publicId", "name", "city", "address", "coverUrl", "reviewSummary"],
+        required: [
+          "id",
+          "publicId",
+          "name",
+          "city",
+          "address",
+          "coverUrl",
+          "reviewSummary",
+          "favoriteCount",
+          "shareCount",
+          "serviceCategories",
+          "businessKeywords"
+        ],
         properties: {
           id: { type: "integer" },
           publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
@@ -5844,12 +5856,64 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           city: { type: "string" },
           address: { type: "string" },
           coverUrl: { type: ["string", "null"] },
-          reviewSummary: { $ref: "#/components/schemas/ReviewSummary" }
+          reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
+          favoriteCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 },
+          serviceCategories: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["id", "code", "label"],
+              properties: {
+                id: { type: "integer" },
+                code: { type: "string" },
+                label: { type: "string" }
+              }
+            }
+          },
+          businessKeywords: {
+            type: "array",
+            maxItems: 5,
+            items: {
+              type: "object",
+              required: ["id", "code", "label", "categoryId"],
+              properties: {
+                id: { type: "integer" },
+                code: { type: "string" },
+                label: { type: "string" },
+                categoryId: { type: "integer" }
+              }
+            }
+          }
+        }
+      },
+      PrimaryTechnicianService: {
+        type: "object",
+        required: ["id", "name", "priceAmount", "currency", "durationMinutes"],
+        properties: {
+          id: { type: "integer" },
+          name: { type: "string" },
+          priceAmount: { type: "string", pattern: "^[0-9]+$" },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+          durationMinutes: { type: "integer", minimum: 1 }
         }
       },
       TechnicianCard: {
         type: "object",
-        required: ["id", "publicId", "displayName", "city", "avatarUrl", "reviewSummary"],
+        required: [
+          "id",
+          "publicId",
+          "displayName",
+          "city",
+          "avatarUrl",
+          "reviewSummary",
+          "age",
+          "favoriteCount",
+          "shareCount",
+          "completedOrderCount",
+          "acceptanceRatePercent",
+          "primaryService"
+        ],
         properties: {
           id: { type: "integer" },
           publicId: { type: "string", pattern: "^s[0-9]{10}$" },
@@ -5857,6 +5921,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           city: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
+          age: { type: ["integer", "null"], minimum: 18 },
+          favoriteCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          acceptanceRatePercent: { type: "number", minimum: 0, maximum: 100 },
+          primaryService: {
+            anyOf: [
+              { $ref: "#/components/schemas/PrimaryTechnicianService" },
+              { type: "null" }
+            ]
+          },
           distanceKm: {
             type: "number",
             format: "double",

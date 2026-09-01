@@ -71,6 +71,12 @@ const profile = {
   city: "東京",
   avatarUrl: null,
   reviewSummary: { ratingAverage: "5.0", reviewCount: 2, latestReviewAt: null, highlights: [] },
+  age: null,
+  favoriteCount: 0,
+  shareCount: 0,
+  completedOrderCount: 0,
+  acceptanceRatePercent: 100,
+  primaryService: null,
   shop: {
     id: 11,
     publicId: "b0000000011",
@@ -79,6 +85,8 @@ const profile = {
     address: "東京都港区",
     coverUrl: null,
     reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] },
+    favoriteCount: 0,
+    shareCount: 0,
     serviceCategories: [],
     businessKeywords: []
   },
