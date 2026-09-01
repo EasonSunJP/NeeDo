@@ -7933,6 +7933,7 @@ export const translations: TranslationMap = {
   "没有找到匹配的标签或分类": { "zh-Hant": "沒有找到匹配的標籤或分類", ja: "一致するタグまたはカテゴリが見つかりませんでした。", en: "No matching tags or categories found", ko: "일치하는 태그 또는 카테고리를 찾을 수 없습니다." },
   "没有找到匹配的通讯录联系人。": { "zh-Hant": "沒有找到匹配的通訊錄聯系人。", ja: "没有找到匹配の連絡先連絡責任者者。", en: "Contact Person Contacts Connect People..", ko: "담당자 연락처 연결하다 사람들." },
   "没有找到匹配结果": { "zh-Hant": "沒有找到匹配結果", ja: "没有找到匹配结果", en: "No matching results", ko: "일치하는 결과 없음" },
+  "开启首页服务位置或设备定位后，可查看附近技师排名。": { "zh-Hant": "開啟首頁服務位置或裝置定位後，即可查看附近技師排名。", ja: "ホームのサービスエリアまたは端末の位置情報を有効にすると、近くのスタッフランキングを確認できます。", en: "Enable a home service or device location to view nearby staff rankings.", ko: "홈 서비스 위치 또는 기기 위치를 활성화하면 주변 스태프 순위를 볼 수 있습니다." },
   "没有找到匹配联系人": { "zh-Hant": "沒有找到匹配聯絡人", ja: "一致する連絡先が見つかりませんでした", en: "No matching contact found", ko: "일치하는 연락처를 찾을 수 없습니다." },
   "没有找到匹配聊天": { "zh-Hant": "沒有找到匹配聊天", ja: "没有找到匹配チャット", en: "Chat", ko: "채팅" },
   "没有找到匹配朋友": { "zh-Hant": "沒有找到匹配朋友", ja: "没有找到匹配友人", en: "Friend", ko: "친구" },

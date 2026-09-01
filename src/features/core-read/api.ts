@@ -59,6 +59,9 @@ export type CoreTechnicianCard = {
   city: string;
   avatarUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  distanceKm?: number;
+  nearbyRank?: 1 | 2 | 3 | null;
+  resolvedRadiusKm?: number;
 };
 
 export type CoreServiceCard = {
@@ -154,6 +157,8 @@ export type CoreSearchListQuery = Omit<CoreServiceListQuery, "keyword" | "catego
   keyword?: string;
   keywords?: readonly string[];
   categoryIds?: readonly number[];
+  latitude?: number;
+  longitude?: number;
 };
 
 const fallbackServiceImage = "/images/generated/services/service-home-organization.jpg";

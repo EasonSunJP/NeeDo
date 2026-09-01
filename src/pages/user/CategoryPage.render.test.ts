@@ -10,11 +10,38 @@ type QueryState = {
   error: string | null;
   loading: boolean;
 };
+type LocationHarness = {
+  config: {
+    selectedLocationId: string;
+    locations: Array<{
+      id: string;
+      coordinates?: { lat: number; lng: number };
+    }>;
+  };
+  state: {
+    promptStatus: "unrequested" | "granted" | "denied" | "unavailable" | "error";
+    source: "default" | "device" | "manual";
+    coordinates?: { lat: number; lng: number };
+  };
+};
 
 const queryHarness = vi.hoisted(() => ({
   calls: [] as QueryKey[],
   queries: {} as Partial<Record<QueryKey, unknown>>,
   states: {} as Record<QueryKey, QueryState>
+}));
+
+const locationHarness = vi.hoisted((): LocationHarness => ({
+  config: {
+    selectedLocationId: "tokyo-service",
+    locations: [
+      {
+        id: "tokyo-service",
+        coordinates: { lat: 35.6555, lng: 139.7367 }
+      }
+    ]
+  },
+  state: { promptStatus: "unrequested", source: "default" }
 }));
 
 const category = {
@@ -89,6 +116,16 @@ function resetQueryStates(overrides: Partial<Record<QueryKey, QueryState>> = {})
     service: { data: page([]), error: null, loading: false },
     ...overrides
   };
+  locationHarness.config = {
+    selectedLocationId: "tokyo-service",
+    locations: [
+      {
+        id: "tokyo-service",
+        coordinates: { lat: 35.6555, lng: 139.7367 }
+      }
+    ]
+  };
+  locationHarness.state = { promptStatus: "unrequested", source: "default" };
 }
 
 function renderCategoryPage(path: string) {
@@ -155,6 +192,14 @@ vi.mock("../../i18n/I18nProvider", () => ({
   useOptionalI18n: () => ({ language: "zh" })
 }));
 
+vi.mock("../../state/homeLayoutStore", () => ({
+  useHomeLayoutStore: () => ({ config: locationHarness.config })
+}));
+
+vi.mock("../../state/homeLocationStore", () => ({
+  useHomeLocationPreference: () => ({ state: locationHarness.state })
+}));
+
 describe("CategoryPage formal category state", () => {
   it("renders the real empty state when the category API returns no records", () => {
     resetQueryStates({ categories: { data: page([]), error: null, loading: false } });
@@ -182,6 +227,27 @@ describe("CategoryPage formal category state", () => {
     expect(queryHarness.queries.shop).toMatchObject({ categoryIds: [4] });
     expect(queryHarness.queries.technician).toMatchObject({ categoryIds: [4] });
     expect(queryHarness.queries.service).toMatchObject({ categoryIds: [4] });
+    expect(queryHarness.queries.technician).toMatchObject({
+      latitude: 35.6555,
+      longitude: 139.7367
+    });
+    expect(queryHarness.queries.shop).not.toHaveProperty("latitude");
+    expect(queryHarness.queries.service).not.toHaveProperty("latitude");
+  });
+
+  it("shows location guidance separately when technician ranking has no origin", () => {
+    resetQueryStates();
+    locationHarness.config = {
+      selectedLocationId: "tokyo-service",
+      locations: [{ id: "tokyo-service", coordinates: undefined }]
+    };
+    locationHarness.state = { promptStatus: "denied", source: "default" };
+
+    const html = renderCategoryPage("/categories?type=technician");
+
+    expect(queryHarness.queries.technician).not.toHaveProperty("latitude");
+    expect(html).toContain("开启首页服务位置或设备定位后，可查看附近技师排名。");
+    expect(html).toContain("橘 ひかり");
   });
 
   it("keeps successful sections and a scoped retry when one entity request fails", () => {
