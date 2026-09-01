@@ -50,6 +50,8 @@ export type CoreShopCard = {
   address: string;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  serviceCategories: Array<{ id: number; code: string; label: string }>;
+  businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
 };
 
 export type CoreTechnicianCard = {
@@ -359,7 +361,7 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     rating: parseRating(shop.reviewSummary),
     reviewCount: shop.reviewSummary.reviewCount,
     priceLabel: priceRangeFromServices(detail?.services),
-    tags: uniqueStrings([shop.city, ...shop.reviewSummary.highlights]).slice(0, 6),
+    tags: uniqueStrings(shop.businessKeywords.map((keyword) => keyword.label)).slice(0, 5),
     openStatus: "open",
     nextSlot: "可预约",
     alwaysBookable: true,

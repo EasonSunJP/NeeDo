@@ -100,6 +100,8 @@ export interface ShopCardPayload {
   address: string;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  serviceCategories: Array<{ id: number; code: string; label: string }>;
+  businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
 }
 
 export interface TechnicianCardPayload {
@@ -213,6 +215,21 @@ type ShopCardRecord = Shop & {
   mediaAssets: MediaAsset[];
   publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
+  serviceCategorySelections: Array<{
+    category: {
+      id: number;
+      code: string;
+      translations: Array<{ name: string }>;
+    };
+  }>;
+  businessKeywordSelections: Array<{
+    businessKeyword: {
+      id: number;
+      code: string;
+      categoryId: number;
+      translations: Array<{ label: string }>;
+    };
+  }>;
 };
 
 type TechnicianCardRecord = TechnicianProfile & {
@@ -611,7 +628,52 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return {
       mediaAssets: activeMediaArgs,
       publicIdentifier: true,
-      reviewSummary: true
+      reviewSummary: true,
+      serviceCategorySelections: {
+        where: {
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null }
+        },
+        select: {
+          category: {
+            select: {
+              id: true,
+              code: true,
+              translations: {
+                where: { locale: "JA" as const, deletedAt: null },
+                select: { name: true },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: [{ category: { sortOrder: "asc" as const } }, { id: "asc" as const }]
+      },
+      businessKeywordSelections: {
+        where: {
+          deletedAt: null,
+          businessKeyword: {
+            isActive: true,
+            deletedAt: null,
+            category: { isActive: true, deletedAt: null }
+          }
+        },
+        select: {
+          businessKeyword: {
+            select: {
+              id: true,
+              code: true,
+              categoryId: true,
+              translations: {
+                where: { locale: "JA" as const, deletedAt: null },
+                select: { label: true },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: [{ businessKeyword: { sortOrder: "asc" as const } }, { id: "asc" as const }]
+      }
     };
   }
 
@@ -866,12 +928,46 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       { address: { contains: keyword } },
       { description: { contains: keyword } },
       { publicIdentifier: { is: { publicId: keyword } } },
-      { services: { some: this.publishedServiceKeywordWhere(keyword) } }
+      { services: { some: this.publishedServiceKeywordWhere(keyword) } },
+      {
+        serviceCategorySelections: {
+          some: {
+            deletedAt: null,
+            category: {
+              isActive: true,
+              deletedAt: null,
+              translations: { some: { name: { contains: keyword }, deletedAt: null } }
+            }
+          }
+        }
+      },
+      {
+        businessKeywordSelections: {
+          some: {
+            deletedAt: null,
+            businessKeyword: {
+              isActive: true,
+              deletedAt: null,
+              category: { isActive: true, deletedAt: null },
+              translations: { some: { label: { contains: keyword }, deletedAt: null } }
+            }
+          }
+        }
+      }
     ]);
 
     if (input.categoryIds.length > 0) {
       searchBranches.push({
         services: { some: this.publishedServiceCategoryWhere(input.categoryIds) }
+      });
+      searchBranches.push({
+        serviceCategorySelections: {
+          some: {
+            deletedAt: null,
+            categoryId: { in: input.categoryIds },
+            category: { isActive: true, deletedAt: null }
+          }
+        }
       });
     }
 
@@ -1081,7 +1177,22 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: shop.city,
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
-      reviewSummary: this.mapReviewSummary(shop.reviewSummary)
+      reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      serviceCategories: (shop.serviceCategorySelections ?? []).flatMap(({ category }) =>
+        category.translations[0]
+          ? [{ id: category.id, code: category.code, label: category.translations[0].name }]
+          : []
+      ),
+      businessKeywords: (shop.businessKeywordSelections ?? []).flatMap(({ businessKeyword }) =>
+        businessKeyword.translations[0]
+          ? [{
+              id: businessKeyword.id,
+              code: businessKeyword.code,
+              categoryId: businessKeyword.categoryId,
+              label: businessKeyword.translations[0].label
+            }]
+          : []
+      )
     };
   }
 

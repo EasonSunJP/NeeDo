@@ -117,7 +117,9 @@ const profile = {
     city: "东京",
     address: "东京都港区",
     coverUrl: null,
-    reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] }
+    reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] },
+    serviceCategories: [],
+    businessKeywords: []
   },
   bio: null,
   serviceArea: "东京",

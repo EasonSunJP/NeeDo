@@ -78,7 +78,9 @@ const profile = {
     city: "東京",
     address: "東京都港区",
     coverUrl: null,
-    reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] }
+    reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] },
+    serviceCategories: [],
+    businessKeywords: []
   },
   bio: null,
   serviceArea: "東京",

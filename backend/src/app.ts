@@ -450,7 +450,7 @@ export const createApp = (
   apiRouter.use(createRoleRoutes(config, resolvedDependencies));
   apiRouter.use(createUserRoutes(config, resolvedDependencies));
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
-  apiRouter.use(createShopTaxonomyRoutes(resolvedDependencies));
+  apiRouter.use(createShopTaxonomyRoutes(config, resolvedDependencies));
   apiRouter.use(createEntityEngagementRoutes(config, resolvedDependencies));
   apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));

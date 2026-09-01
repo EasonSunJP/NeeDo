@@ -43,7 +43,26 @@ const publishedShopWithoutServices = {
   address: "1-2-3 Shibuya",
   mediaAssets: [],
   publicIdentifier: activeShopIdentifier,
-  reviewSummary: null
+  reviewSummary: null,
+  serviceCategorySelections: [
+    {
+      category: {
+        id: 2,
+        code: "wellness",
+        translations: [{ name: "リラクゼーション" }]
+      }
+    }
+  ],
+  businessKeywordSelections: [
+    {
+      businessKeyword: {
+        id: 21,
+        code: "wellness_spa",
+        categoryId: 2,
+        translations: [{ label: "スパケア" }]
+      }
+    }
+  ]
 };
 
 const publishedTechnicianWithoutServices = {
@@ -96,7 +115,12 @@ describe("CoreReadRepository multi-entity search", () => {
       page: 1,
       pageSize: 20
     })).resolves.toMatchObject({
-      list: [{ name: "LifeDance Wellness 渋谷", publicId: "shop5831047296" }],
+      list: [{
+        name: "LifeDance Wellness 渋谷",
+        publicId: "shop5831047296",
+        serviceCategories: [{ code: "wellness", label: "リラクゼーション" }],
+        businessKeywords: [{ code: "wellness_spa", label: "スパケア" }]
+      }],
       total: 1
     });
 
@@ -108,7 +132,17 @@ describe("CoreReadRepository multi-entity search", () => {
           is: expect.objectContaining({ kind: "SHOP", status: "ACTIVE", deletedAt: null })
         },
         OR: expect.arrayContaining([
-          { name: { contains: "LifeDance Wellness 渋谷" } }
+          { name: { contains: "LifeDance Wellness 渋谷" } },
+          {
+            serviceCategorySelections: {
+              some: expect.objectContaining({ deletedAt: null })
+            }
+          },
+          {
+            businessKeywordSelections: {
+              some: expect.objectContaining({ deletedAt: null })
+            }
+          }
         ])
       }),
       skip: 0,

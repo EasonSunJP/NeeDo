@@ -50,7 +50,11 @@ const coreService = {
     city: "Tokyo",
     address: "3-1 Kita Aoyama, Minato-ku",
     coverUrl: "/images/generated/home-merchant-feature.jpg",
-    reviewSummary
+    reviewSummary,
+    serviceCategories: [{ id: 2, code: "wellness", label: "リラクゼーション" }],
+    businessKeywords: [
+      { id: 21, code: "wellness_spa", categoryId: 2, label: "スパケア" }
+    ]
   },
   technician: {
     id: 5,
@@ -216,7 +220,13 @@ describe("core read API adapter", () => {
       updatedAt: coreService.updatedAt
     } satisfies CoreCustomerProfile);
 
-    expect(shop).toMatchObject({ id: "3", systemId: "shop5831047296", name: "Aoyama Care Studio", rating: 4.8 });
+    expect(shop).toMatchObject({
+      id: "3",
+      systemId: "shop5831047296",
+      name: "Aoyama Care Studio",
+      rating: 4.8,
+      tags: ["スパケア"]
+    });
     expect(technician).toMatchObject({ id: "5", systemId: "s5831047296", name: "Mika Tanaka", storeId: "3", rating: 4.8 });
     expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
   });
