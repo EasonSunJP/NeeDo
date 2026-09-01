@@ -372,6 +372,35 @@ function NdpCostCard({
   );
 }
 
+export function MerchantMembershipMetricCard({
+  membership
+}: {
+  membership: BackofficeDashboardPayload["membership"];
+}) {
+  const { language } = useI18n();
+  const t = (source: string) => translateTextForContext(source, language, { portal: "merchant" });
+
+  return (
+    <DashboardMetricCard
+      accent="orange"
+      icon="♡"
+      secondary={
+        membership
+          ? {
+              label: t("利用者数"),
+              unit: "people",
+              value: membership.completedCustomerCount
+            }
+          : undefined
+      }
+      statusMessage={membership ? undefined : t("会员功能尚未开放")}
+      title={t("会员数")}
+      unit="people"
+      value={membership?.memberCount}
+    />
+  );
+}
+
 export function shouldBlockMerchantDashboardForOwnerTransition(
   status: MerchantAdminDashboardResource["status"],
   dashboard: BackofficeDashboardPayload | null,
@@ -399,9 +428,6 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
     Boolean(committedDashboard)
   );
   const loadError = resource.error ? describeMerchantReadError(resource.error, language) : "";
-  const completedCustomerCount = dashboard
-    ? dashboard.membership?.completedCustomerCount
-    : undefined;
 
   function applyFilter(value: DashboardFilterValue) {
     resource.setQuery(value);
@@ -508,23 +534,7 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
               title={t("注册技师")}
               unit="people"
             />
-            <DashboardMetricCard
-              accent="orange"
-              icon="♡"
-              secondary={
-                completedCustomerCount === undefined
-                  ? undefined
-                  : {
-                      label: t("利用者数"),
-                      unit: "people",
-                      value: completedCustomerCount
-                    }
-              }
-              statusMessage={t("会员功能尚未开放")}
-              title={t("会员数")}
-              unit="people"
-              value={dashboard.membership?.memberCount}
-            />
+            <MerchantMembershipMetricCard membership={dashboard.membership} />
           </section>
 
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs font-bold text-ink/45">

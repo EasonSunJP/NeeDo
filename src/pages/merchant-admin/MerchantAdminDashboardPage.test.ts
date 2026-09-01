@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import {
+  MerchantMembershipMetricCard,
   MerchantShopSwitcher,
   shouldBlockMerchantDashboardForOwnerTransition,
   type MerchantShopSwitcherProps
@@ -44,13 +45,38 @@ describe("merchant unified data dashboard", () => {
     await settle();
   }
 
+  it("renders ready member and utilizer facts without the obsolete unavailable status", async () => {
+    await act(async () => {
+      root.render(
+        createElement(
+          I18nProvider,
+          null,
+          createElement(MerchantMembershipMetricCard, {
+            membership: {
+              memberCount: 12,
+              memberDataStatus: "ready",
+              completedCustomerCount: 7
+            }
+          })
+        )
+      );
+    });
+    await settle();
+
+    expect(container.textContent).toContain("会员数");
+    expect(container.textContent).toContain("12");
+    expect(container.textContent).toContain("利用者数");
+    expect(container.textContent).toContain("7");
+    expect(container.textContent).not.toContain("会员功能尚未开放");
+  });
+
   it("renders the final named contract without legacy previews or browser derivation", () => {
     expect(source).toContain("DashboardFilterBar");
     expect(source).toContain("dashboard.summary.availableScheduleSlots");
     expect(source).toContain("dashboard.summary.activeTechnicians");
     expect(source).toContain("dashboard.summary.registeredTechnicians");
-    expect(source).toContain("dashboard.membership?.memberCount");
-    expect(source).toContain("dashboard.membership?.completedCustomerCount");
+    expect(source).toContain("membership?.memberCount");
+    expect(source).toContain("membership.completedCustomerCount");
     expect(source).toContain("dashboard.series.buckets");
     expect(source).toContain('key: "shopEstimatedGrossProfitJpy"');
     expect(source).toContain('key: "scheduleTotalHours"');
@@ -68,7 +94,8 @@ describe("merchant unified data dashboard", () => {
   it("uses the ready formal member count and exposes the real completed-customer count", () => {
     expect(source).toContain('title={t("会员数")}');
     expect(source).toContain('label: t("利用者数")');
-    expect(source).toContain("value={dashboard.membership?.memberCount}");
+    expect(source).toContain("value={membership?.memberCount}");
+    expect(source).toContain("statusMessage={membership ? undefined");
   });
 
   it("freezes stale owner data only while loading and exposes retry after a switch-load failure", () => {
