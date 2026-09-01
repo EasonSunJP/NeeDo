@@ -99,6 +99,16 @@ describe("MerchantApplicationReviewRepository", () => {
       contractAcceptance: { findFirst: jest.fn().mockResolvedValue({ id: 91 }) },
       merchantAccount: { create: jest.fn().mockResolvedValue({ id: 51 }) },
       shop: { create: jest.fn().mockResolvedValue({ id: 61 }) },
+      merchantApplicationServiceCategory: {
+        findMany: jest.fn().mockResolvedValue([{ category: { id: 1, qualificationPolicy: "PLATFORM_REVIEW" } }])
+      },
+      merchantApplicationBusinessKeyword: {
+        findMany: jest.fn().mockResolvedValue([{ businessKeyword: { id: 10, categoryId: 1, qualificationPolicy: "PLATFORM_REVIEW" } }])
+      },
+      shopServiceCategory: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      shopBusinessKeyword: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      shopServiceTaxonomyState: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+      shopServiceQualification: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
       merchantShopMembership: { create: jest.fn().mockResolvedValue({ id: 71 }) },
       saasBillingProfile: { create: jest.fn().mockResolvedValue({ id: 81 }) },
       saasFreePeriod: { create: jest.fn().mockResolvedValue({ id: 82 }) },
@@ -113,6 +123,7 @@ describe("MerchantApplicationReviewRepository", () => {
           scopeId: 61
         })
       },
+      merchantIdentityProfile: { create: jest.fn().mockResolvedValue({ id: 61 }) },
       userRole: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 101 })
@@ -137,6 +148,8 @@ describe("MerchantApplicationReviewRepository", () => {
         businessAddress: "東京都中央区銀座3-4-12",
         contactPhone: "03-1234-5678",
         showcaseDraft: { city: "東京都中央区", description: "リラクゼーション" },
+        serviceCategoryIds: [1],
+        businessKeywordIds: [10],
         bankAccountId: 81,
         contractAcceptanceId: 91,
         reviewedAt,
@@ -200,6 +213,18 @@ describe("MerchantApplicationReviewRepository", () => {
         trialEndsAt: new Date("2026-10-31T15:00:00.000Z")
       })
     });
+    expect(tx.shopServiceCategory.createMany).toHaveBeenCalledWith({
+      data: [{ shopId: 61, categoryId: 1, selectedByUserId: 7 }]
+    });
+    expect(tx.shopBusinessKeyword.createMany).toHaveBeenCalledWith({
+      data: [{ shopId: 61, businessKeywordId: 10, selectedByUserId: 7 }]
+    });
+    expect(tx.shopServiceQualification.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ shopId: 61, categoryId: 1, sourceApplicationId: 41, approvedByUserId: 9 }),
+        expect.objectContaining({ shopId: 61, businessKeywordId: 10, sourceApplicationId: 41, approvedByUserId: 9 })
+      ])
+    });
     expect(tx.saasFreePeriod.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         billingProfileId: 81,
@@ -212,6 +237,14 @@ describe("MerchantApplicationReviewRepository", () => {
         activeKey: "identity-activation:7:merchant_owner:application:41",
         scopeId: 61
       })
+    });
+    expect(tx.merchantIdentityProfile.create).toHaveBeenCalledWith({
+      data: {
+        userId: 7,
+        identityId: 91,
+        displayName: "山本太郎",
+        languages: []
+      }
     });
     const merchantAudit = tx.auditLog.create.mock.calls.find(
       ([call]) => call.data.action === "identity_application.merchant.approved"

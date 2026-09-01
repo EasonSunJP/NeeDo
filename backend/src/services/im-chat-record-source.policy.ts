@@ -1,3 +1,5 @@
+import { parseContactCardSnapshot } from "../domain/im-contact-card";
+
 const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
 
 export const CHAT_RECORD_SNAPSHOT_MESSAGE_TYPES = [
@@ -61,6 +63,16 @@ export function parseChatRecordSourcePolicy(
   if (metadata === null || metadata === undefined) return snapshot("text");
   if (!isRecord(metadata)) return null;
 
+  const parsedContactCard = parseContactCardSnapshot(metadata);
+  if (parsedContactCard.kind === "v2") {
+    return snapshot("contact-card", {
+      contactCard: {
+        snapshotVersion: 2,
+        ...parsedContactCard.snapshot.contactCard
+      }
+    });
+  }
+
   const rawType = metadata.needoMessageType;
   if (rawType === undefined || rawType === "text") return snapshot("text");
   if (rawType === "emoji") return snapshot("emoji");
@@ -104,24 +116,8 @@ export function parseChatRecordSourcePolicy(
     return snapshot(rawType, { location: { title, address, latitude, longitude } });
   }
   if (rawType === "contact-card") {
-    const card = isRecord(extension.contactCard) ? extension.contactCard : null;
-    const userId = card && requiredString(card.userId, 191);
-    const displayName = card && requiredString(card.displayName, 160);
-    const profileKind = card?.profileKind;
-    if (
-      !userId || !displayName ||
-      (profileKind !== "person" && profileKind !== "technician" && profileKind !== "store" && profileKind !== "service")
-    ) return null;
-    return snapshot(rawType, {
-      contactCard: compactRecord({
-        userId, displayName, profileKind,
-        avatar: optionalSafeDisplayUrl(card?.avatar),
-        entityId: optionalString(card?.entityId, 191),
-        entityType: optionalEnum(card?.entityType, ["user", "technician", "shop"]),
-        headline: optionalString(card?.headline, 500),
-        userIdLabel: optionalString(card?.userIdLabel, 160)
-      })
-    });
+    if (parsedContactCard.kind !== "legacy") return null;
+    return snapshot(rawType, { contactCard: parsedContactCard.contactCard });
   }
   if (rawType === "service-card") {
     const card = isRecord(extension.serviceCard) ? extension.serviceCard : null;

@@ -105,6 +105,8 @@ describe("IM chat-record persistence", () => {
       'createdByUser      User         @relation("ImChatRecordBundleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)',
       'ownerIdentity UserIdentity       @relation("ImChatRecordFavoriteIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)',
       'conversation  Conversation @relation("ImMessageBatchDeleteConversation", fields: [conversationId], references: [id], onDelete: Restrict)'
-    ].forEach((relation) => expect(schema).toContain(relation));
+    ].forEach((relation) =>
+      expect(schema.replace(/\s+/g, " ")).toContain(relation.replace(/\s+/g, " "))
+    );
   });
 });

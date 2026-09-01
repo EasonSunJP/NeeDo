@@ -41,6 +41,8 @@ export type MerchantApplicationProfile = {
   contactPhone: string;
   responsiblePersonName: string;
   showcaseDraft: Record<string, unknown>;
+  serviceCategoryIds: number[];
+  businessKeywordIds: number[];
   bankAccountId: number | null;
   contractAcceptanceId: number | null;
   mediaPurposes: string[];
@@ -116,6 +118,8 @@ export type MerchantReview = {
   contactPhone: string;
   responsiblePersonName: string;
   showcaseDraft: Record<string, unknown> | null;
+  serviceCategories: Array<{ id: number; code: string; label: string; qualificationPolicy: string }>;
+  businessKeywords: Array<{ id: number; code: string; categoryId: number; label: string; qualificationPolicy: string }>;
   bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string; accountHolderMasked: string; holderMatched: boolean; verificationStatus: string; verificationSource: string } | null;
   eKycVerified: boolean;
   contractAcceptance: { contractVersion: string; contentHash: string; language: string; receiptId: string; acceptedAt: string } | null;

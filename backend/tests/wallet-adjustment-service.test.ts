@@ -304,6 +304,36 @@ describe("LedgerService wallet adjustment requests", () => {
     });
   });
 
+  it("settles pending membership rewards after the approved shop top-up in the same transaction", async () => {
+    const repository = createRepository();
+    const allocator = { allocatePendingForShopWallet: jest.fn(async () => undefined) };
+    const service = new LedgerService(
+      repository as never,
+      undefined,
+      undefined,
+      () => now,
+      undefined,
+      allocator
+    );
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 5_000,
+      idempotencyKey: "wallet-topup-membership-reward"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "会员返点补充资金"
+    });
+
+    expect(allocator.allocatePendingForShopWallet).toHaveBeenCalledWith({
+      walletId: 3,
+      shopId: 7,
+      actorUserId: 1,
+      transactionClient: {}
+    });
+  });
+
   it("allocates a partial top-up only to the oldest outstanding debt", async () => {
     const repository = createRepository(-380);
     const debts = installDebtRecords(repository, [

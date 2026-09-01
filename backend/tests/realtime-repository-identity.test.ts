@@ -321,3 +321,169 @@ describe("RealtimeRepository formal identity payloads", () => {
     expect(client.conversationParticipant.update).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("RealtimeRepository technician contact privacy", () => {
+  const dbNow = new Date("2026-09-01T09:00:00.000Z");
+  const technicianUser = {
+    id: 2,
+    needoId: "u0000000002",
+    username: "Mika Technician",
+    avatarUrl: null,
+    identities: [
+      {
+        id: 20,
+        type: "technician",
+        scopeType: "technician_profile",
+        scopeId: 3,
+        displayName: "Mika",
+        isDefault: true
+      }
+    ],
+    customerProfile: null,
+    technicianProfile: {
+      id: 3,
+      displayName: "Mika",
+      bio: "肩颈护理",
+      city: "Tokyo",
+      serviceArea: "银座",
+      yearsExperience: 4,
+      age: 25,
+      heightCm: { toString: () => "164" },
+      languages: ["日本語", "中文"],
+      visibility: "public",
+      employmentType: "INDEPENDENT",
+      status: "published",
+      verifiedAt: dbNow,
+      deletedAt: null,
+      reviewSummary: {
+        ratingAverage: { toString: () => "5.0" },
+        reviewCount: 968,
+        deletedAt: null
+      }
+    }
+  };
+  const technicianDetails = {
+    bidBudgetMinJpy: 12_000,
+    bidBudgetMaxJpy: 28_000,
+    paymentMethods: ["platform", "offline"],
+    profileTags: ["肩颈调理", "中文预约"],
+    backofficeProfileTags: [
+      { id: 1, label: "高完成率" },
+      { id: 2, label: "准时" }
+    ],
+    performanceSummary: {
+      completedOrderCount: 1_280,
+      acceptanceRateBps: 9_800,
+      deletedAt: null
+    },
+    technicianServices: [
+      {
+        id: 11,
+        shopId: 1,
+        name: "肩颈调理",
+        priceAmount: 8_800,
+        currency: "JPY",
+        durationMinutes: 60,
+        sortOrder: 0
+      }
+    ]
+  };
+
+  const createClient = (ownerContact: { id: number } | null) => {
+    let contactRead = 0;
+    return {
+      $queryRaw: jest.fn(async () => [{ dbNow }]),
+      user: { findFirst: jest.fn(async () => technicianUser) },
+      contact: {
+        findFirst: jest.fn(async () => {
+          contactRead += 1;
+          return contactRead === 1 ? ownerContact : ownerContact ? { id: 91 } : null;
+        })
+      },
+      technicianProfile: {
+        findFirst: jest.fn(async (input?: unknown) => {
+          void input;
+          return technicianDetails;
+        })
+      },
+      friendRequest: { findFirst: jest.fn(async () => null) }
+    };
+  };
+
+  it("returns expanded technician details only for an active unblocked owner contact", async () => {
+    const client = createClient({ id: 90 });
+    const result = await new RealtimeRepository(client as unknown as PrismaClient).getDirectoryProfile(
+      1,
+      10,
+      2,
+      20
+    );
+
+    expect(result).toMatchObject({
+      relationship: "friend",
+      identityCard: { entityType: "technician", age: 25, heightCm: "164" },
+      technicianContactDetails: {
+        bidBudgetMinJpy: 12_000,
+        bidBudgetMaxJpy: 28_000,
+        paymentMethods: ["platform", "offline"],
+        specialTags: ["高完成率", "准时"],
+        profileTags: ["肩颈调理", "中文预约"],
+        completedOrderCount: 1_280,
+        acceptanceRateBps: 9_800,
+        services: [
+          {
+            id: 11,
+            shopId: 1,
+            name: "肩颈调理",
+            priceAmount: 8_800,
+            currency: "JPY",
+            durationMinutes: 60,
+            taxIncluded: true,
+            sortOrder: 0
+          }
+        ]
+      }
+    });
+    expect(client.contact.findFirst).toHaveBeenNthCalledWith(1, {
+      where: {
+        ownerIdentityId: 10,
+        contactIdentityId: 20,
+        deletedAt: null,
+        blockedAt: null
+      },
+      select: { id: true }
+    });
+    expect(client.technicianProfile.findFirst).toHaveBeenCalledTimes(1);
+    const detailQuery = JSON.stringify(client.technicianProfile.findFirst.mock.calls[0]?.[0]);
+    expect(detailQuery).not.toContain("baseLatitude");
+    expect(detailQuery).not.toContain("baseLongitude");
+  });
+
+  it.each(["reverse-only", "pending", "deleted", "blocked"])(
+    "omits all expanded fields for %s access",
+    async () => {
+      const client = createClient(null);
+      const result = await new RealtimeRepository(
+        client as unknown as PrismaClient
+      ).getDirectoryProfile(1, 10, 2, 20);
+
+      expect(result).not.toHaveProperty("technicianContactDetails");
+      expect(client.technicianProfile.findFirst).not.toHaveBeenCalled();
+    }
+  );
+
+  it("omits expanded fields for self lookup without reading contacts", async () => {
+    const client = createClient({ id: 90 });
+    const result = await new RealtimeRepository(client as unknown as PrismaClient).getDirectoryProfile(
+      2,
+      20,
+      2,
+      20
+    );
+
+    expect(result).toMatchObject({ relationship: "self" });
+    expect(result).not.toHaveProperty("technicianContactDetails");
+    expect(client.contact.findFirst).not.toHaveBeenCalled();
+    expect(client.technicianProfile.findFirst).not.toHaveBeenCalled();
+  });
+});

@@ -6,6 +6,7 @@ import type {
   BackofficeCustomerUpdateBody,
   BackofficeDashboardQuery,
   BackofficeListQuery,
+  BackofficeManagedUserListQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
@@ -30,6 +31,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
+import type { PlatformMembershipService } from "./platform-membership.service";
 import {
   parseCalendarDate,
   resolveDashboardWindow,
@@ -231,43 +233,6 @@ const DASHBOARD_METRIC_METADATA: Record<DashboardMetricKey, DashboardMetricMetad
   )
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export const resolveCustomerMembershipGrant = (
-  input: Pick<BackofficeCustomerMembershipGrantBody, "durationUnit" | "durationValue" | "startsAt">
-): { durationValue: number | null; startsAt: Date; expiresAt: Date | null } => {
-  const startsAt = new Date(input.startsAt);
-  if (input.durationUnit === "forever") {
-    return { durationValue: null, startsAt, expiresAt: null };
-  }
-
-  const durationValue = input.durationValue as number;
-  if (input.durationUnit === "day") {
-    return {
-      durationValue,
-      startsAt,
-      expiresAt: new Date(startsAt.getTime() + durationValue * DAY_MS)
-    };
-  }
-
-  const targetMonthFirst = new Date(
-    Date.UTC(
-      startsAt.getUTCFullYear(),
-      startsAt.getUTCMonth() + durationValue,
-      1,
-      startsAt.getUTCHours(),
-      startsAt.getUTCMinutes(),
-      startsAt.getUTCSeconds(),
-      startsAt.getUTCMilliseconds()
-    )
-  );
-  const lastTargetDay = new Date(
-    Date.UTC(targetMonthFirst.getUTCFullYear(), targetMonthFirst.getUTCMonth() + 1, 0)
-  ).getUTCDate();
-  targetMonthFirst.setUTCDate(Math.min(startsAt.getUTCDate(), lastTargetDay));
-  return { durationValue, startsAt, expiresAt: targetMonthFirst };
-};
-
 export type {
   TechnicianRankingPeriod,
   TechnicianRankingSort
@@ -373,6 +338,44 @@ export interface BackofficeOrderPayload {
   updatedAt: string;
 }
 
+export type BackofficeOrderTimelineEventPayload =
+  | {
+      type: "ORDER_STATUS_CHANGED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      fromStatus: string | null;
+      toStatus: string;
+      publicReason: string | null;
+    }
+  | {
+      type:
+        | "TECHNICIAN_CANCEL_CLASSIFIED"
+        | "TECHNICIAN_UNCOMPLETED_CLASSIFIED"
+        | "SPECIAL_CANCELLATION_APPLIED"
+        | "SPECIAL_CANCELLATION_REVOKED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+      internalNote: string | null;
+    };
+
+export interface BackofficeOrderDetailPayload extends BackofficeOrderPayload {
+  performanceAssessment: {
+    id: number;
+    bookingOrderId: number;
+    technicianProfileId: number;
+    outcome: "technician_cancelled" | "technician_uncompleted";
+    treatment: "counted" | "special_excluded";
+    version: number;
+    currentRevisionId: number | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  timelineEvents: BackofficeOrderTimelineEventPayload[];
+}
+
 export interface BackofficeScheduleSlotPayload {
   id: number;
   serviceId: number | null;
@@ -422,6 +425,82 @@ export interface BackofficeFinanceSettlementPayload {
   moneyTimeline: unknown[];
   moneyTimelineStatus: string;
   createdAt: string;
+}
+
+export interface BackofficeManagedUserIdentityPayload {
+  type: string;
+  displayName: string | null;
+  scopeType: string | null;
+  scopeId: number | null;
+}
+
+export interface BackofficeManagedUserMembershipPayload {
+  tierCode: "free" | "silver" | "gold" | "black_diamond";
+  tierVersionPublicId: string | null;
+  entitlementPublicId: string | null;
+  expiresAt: string | null;
+  experienceMultiplier: number;
+  lockVersion: number | null;
+}
+
+export interface BackofficeManagedUserExperiencePayload {
+  currentLevel: number;
+  totalExpUnits: string;
+}
+
+export interface BackofficeManagedUserPayload {
+  id: number;
+  needoId: string;
+  username: string;
+  email: string;
+  phone: string | null;
+  emailBound: boolean;
+  phoneBound: boolean;
+  avatarUrl: string | null;
+  isActive: boolean;
+  isTestAccount: boolean;
+  source: string[];
+  identities: BackofficeManagedUserIdentityPayload[];
+  roles: Array<{ code: string; name: string }>;
+  groups: string[];
+  ekycVerified: boolean;
+  membership: BackofficeManagedUserMembershipPayload;
+  experience: BackofficeManagedUserExperiencePayload | null;
+  ndpBalance: { available: number; frozen: number };
+  bookingCount: number;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUserPayload {
+  profile: {
+    displayName: string;
+    bio: string | null;
+    city: string | null;
+    gender: string | null;
+    age: number | null;
+    heightCm: string | null;
+    languages: unknown[];
+  } | null;
+  account: {
+    roles: Array<{
+      code: string;
+      name: string;
+      scopeType: string | null;
+      scopeId: number | null;
+      permissions: string[];
+    }>;
+  };
+  bookingSpend: {
+    totalBookings: number;
+    completedBookings: number;
+    completedSpendJpy: number;
+  };
+  audit: {
+    total: number;
+    list: BackofficeAuditEventPayload[];
+  };
 }
 
 export interface BackofficeTechnicianPayload {
@@ -641,14 +720,9 @@ export interface BackofficeCustomerMembershipGrantPayload {
   membershipGrantedBy: { needoId: string; username: string };
 }
 
-export interface BackofficeCustomerMembershipGrantData {
-  customerProfileId: number;
-  membershipLevel: string;
-  durationUnit: "forever" | "day" | "month";
-  durationValue: number | null;
-  startsAt: Date;
-  expiresAt: Date | null;
-  grantedById: number;
+export interface BackofficeCustomerMembershipGrantContext {
+  customerUserId: number;
+  membershipGrantedBy: { needoId: string; username: string };
 }
 
 export interface BackofficeServicePayload {
@@ -722,9 +796,20 @@ export interface BackofficeNdpSummaryPayload {
 
 export interface BackofficeRepositoryPort {
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
+  listManagedUsers: (
+    input: BackofficeManagedUserListQuery,
+    occurredAt: Date
+  ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
+  getManagedUser: (
+    userId: number,
+    occurredAt: Date
+  ) => Promise<BackofficeManagedUserDetailPayload | null>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
+  findOrderById: (
+    input: BackofficeScope & { id: number }
+  ) => Promise<BackofficeOrderDetailPayload | null>;
   listSchedule: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeScheduleSlotPayload>>;
@@ -784,9 +869,10 @@ export interface BackofficeRepositoryPort {
     id: number,
     input: BackofficeCustomerUpdateBody
   ) => Promise<BackofficeCustomerPayload | null>;
-  assignCustomerMembership: (
-    input: BackofficeCustomerMembershipGrantData
-  ) => Promise<BackofficeCustomerMembershipGrantPayload | null>;
+  findCustomerMembershipGrantContext: (
+    customerProfileId: number,
+    grantedById: number
+  ) => Promise<BackofficeCustomerMembershipGrantContext | null>;
   softDeleteCustomer: (id: number) => Promise<BackofficeCustomerPayload | null>;
   listServices: (
     input: BackofficeScope & BackofficeListQuery
@@ -805,8 +891,19 @@ export class BackofficeService {
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort,
     private readonly now: () => Date = () => new Date(),
     private readonly avatarStorage?: CustomerAvatarStoragePort,
-    private readonly analyticsReader?: BackofficeAnalyticsReader
-  ) {}
+    analyticsOrMembership?: BackofficeAnalyticsReader | Pick<PlatformMembershipService, "changeEntitlement">,
+    platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">
+  ) {
+    if (analyticsOrMembership && "getOperationsFinance" in analyticsOrMembership) {
+      this.analyticsReader = analyticsOrMembership;
+      this.platformMembershipService = platformMembershipService;
+    } else {
+      this.platformMembershipService = analyticsOrMembership ?? platformMembershipService;
+    }
+  }
+
+  private readonly analyticsReader?: BackofficeAnalyticsReader;
+  private readonly platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
 
   public async getDashboardOverview(
     actor: AuthenticatedAccessContext,
@@ -920,6 +1017,29 @@ export class BackofficeService {
       evaluatedAt
     });
     return this.composeDashboard(aggregate, window, city, null, evaluatedAt);
+  }
+
+  public async listManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    await this.record(actor, context, "backoffice.users.list", "User", {
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers(input, this.now());
+  }
+
+  public async getManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    await this.record(actor, context, "backoffice.user.read", "User", { userId });
+    return this.requireResult(
+      await this.repository.getManagedUser(userId, this.now()),
+      "error.user.not_found"
+    );
   }
 
   public async getMerchantDashboard(
@@ -1211,6 +1331,25 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.orders.list", "booking_order");
 
     return this.repository.listOrders({ ...input, scope: "platform" });
+  }
+
+  public async getPlatformOrder(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeOrderDetailPayload> {
+    await this.record(
+      actor,
+      context,
+      "backoffice.order.read",
+      "booking_order",
+      { bookingOrderId: id },
+      id
+    );
+    return this.requireResult(
+      await this.repository.findOrderById({ scope: "platform", id }),
+      "error.order.not_found"
+    );
   }
 
   public async listMerchantOrders(
@@ -1887,29 +2026,32 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeCustomerMembershipGrantPayload> {
-    const period = resolveCustomerMembershipGrant(input);
-    const membership = this.requireResult(
-      await this.repository.assignCustomerMembership({
-        customerProfileId: id,
-        membershipLevel: input.membershipLevel,
-        durationUnit: input.durationUnit,
-        durationValue: period.durationValue,
-        startsAt: period.startsAt,
-        expiresAt: period.expiresAt,
-        grantedById: actor.userId
-      }),
+    const grantContext = this.requireResult(
+      await this.repository.findCustomerMembershipGrantContext(id, actor.userId),
       "error.customer.not_found"
     );
-    await this.record(actor, context, "backoffice.customer.membership.assign", "CustomerProfile", {
-      customerProfileId: id,
-      membershipLevel: input.membershipLevel,
-      grantMode: input.grantMode,
-      durationUnit: input.durationUnit,
-      durationValue: period.durationValue,
-      startsAt: period.startsAt.toISOString(),
-      expiresAt: period.expiresAt?.toISOString() ?? null
-    });
-    return membership;
+    const membership = await this.requirePlatformMembershipService().changeEntitlement(
+      actor,
+      context,
+      grantContext.customerUserId,
+      {
+        kind: "grant",
+        targetTierCode: input.membershipLevel,
+        billingCycle: input.durationValue === 12 ? "annual" : "monthly",
+        source: "operations",
+        sourceReference: `backoffice:customer:${id}:membership:${input.membershipLevel}:${input.startsAt}`,
+        expectedCurrentLockVersion: null
+      }
+    );
+    return {
+      membershipLevel: membership.tierCode,
+      membershipGrantMode: "operator_complimentary",
+      membershipDurationUnit: "month",
+      membershipDurationValue: input.durationValue,
+      membershipStartsAt: membership.startsAt.toISOString(),
+      membershipExpiresAt: membership.expiresAt?.toISOString() ?? null,
+      membershipGrantedBy: grantContext.membershipGrantedBy
+    };
   }
 
   public async deletePlatformCustomer(
@@ -2107,6 +2249,15 @@ export class BackofficeService {
     return value;
   }
 
+  private requirePlatformMembershipService(): Pick<PlatformMembershipService, "changeEntitlement"> {
+    if (this.platformMembershipService) return this.platformMembershipService;
+    throw new AppError({
+      code: ERROR_CODES.INTERNAL,
+      message: "error.platform_membership.service_unavailable",
+      statusCode: 500
+    });
+  }
+
   private emailExistsError(): AppError {
     return new AppError({
       code: ERROR_CODES.EMAIL_ALREADY_EXISTS,
@@ -2138,12 +2289,14 @@ export class BackofficeService {
     context: AuthRequestContext,
     action: string,
     targetType: string,
-    metadata?: unknown
+    metadata?: unknown,
+    targetId?: number
   ): Promise<void> {
     return this.auditLogService.record({
       actor,
       action,
       targetType,
+      targetId,
       context,
       metadata
     });

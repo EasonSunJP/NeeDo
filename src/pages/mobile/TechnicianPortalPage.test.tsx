@@ -11,7 +11,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile)");
     expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
     expect(source).toContain("technician: CoreTechnicianDetail | null");
-    expect(source).toContain("关联店铺后即可管理正式服务");
+    expect(source).toContain("当前没有可用的正式店铺，暂时无法新增服务");
     expect(source).toContain("技师资料加载失败");
     expect(source).toContain("正在加载技师资料");
     expect(source).toContain("<TechnicianPortalContent");
@@ -94,10 +94,12 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).not.toContain("nextOrder?.statusHistory.slice(-3)");
   });
 
-  it("restores the approved information, services, and data-center tabs", () => {
+  it("keeps profile and data-center tabs while normalizing the legacy services entry", () => {
     expect(source).toContain('{ label: "信息卡", value: "info" }');
-    expect(source).toContain('{ label: "服务信息", value: "services" }');
     expect(source).toContain('{ label: "数据中心", value: "data" }');
+    expect(source).not.toContain('{ label: "服务信息", value: "services" }');
+    expect(source).toContain('searchParams.get("meTab") === "services"');
+    expect(source).toContain('document.getElementById("technician-service-information")');
     expect(source).toContain('data-testid="technician-info-card"');
     expect(source).toContain('data-testid="technician-profile-privacy-control"');
     expect(source).toContain('data-testid="technician-privacy-options"');
@@ -121,32 +123,70 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('role="alert">技师资料保存失败：{error}');
   });
 
+  it("shows actionable profile mutation errors instead of backend error keys", () => {
+    expect(source).toContain("function describeProfileMutationError");
+    expect(source).toContain("setError(describeProfileMutationError(mutationError))");
+    expect(source).toContain('return "请检查资料内容后重试"');
+    expect(source).not.toContain('setError(mutationError instanceof Error ? mutationError.message : "error.technician_profile.update_failed")');
+  });
+
   it("loads and mutates only persisted technician services", () => {
     const servicesStart = source.indexOf("function FormalTechnicianServicesPanel");
     const servicesEnd = source.indexOf("function DataCenter", servicesStart);
     const servicesSource = source.slice(servicesStart, servicesEnd);
 
-    expect(servicesSource).toContain("pricingModeApi.listTechnicianServices(shopId, { page: 1, pageSize: 100 })");
-    expect(servicesSource).toContain("pricingModeApi.getShopPricingMode(shopId)");
+    expect(servicesSource).toContain("pricingModeApi.listMyTechnicianServices");
+    expect(servicesSource).toContain("pricingModeApi.reorderMyTechnicianServices");
     expect(servicesSource).toContain("pricingModeApi.createTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.updateTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.deleteTechnicianService");
+    expect(servicesSource).toContain('setError("服务数量已达到 5 个上限")');
+    expect(servicesSource).toContain("service.shopId");
     expect(servicesSource).toContain("当前没有已保存的正式技师服务");
     expect(servicesSource).not.toContain('"default"');
     expect(servicesSource).not.toContain("fake");
   });
 
-  it("does not fabricate income or trend metrics before a formal statistics API exists", () => {
+  it("mounts the single service editor below special and normal tags", () => {
+    const infoStart = source.indexOf("function TechnicianInfoCard");
+    const infoEnd = source.indexOf("function describeServiceError", infoStart);
+    const infoSource = source.slice(infoStart, infoEnd);
+    const specialTags = infoSource.indexOf('data-testid="technician-info-special-tags"');
+    const normalTags = infoSource.indexOf('data-testid="technician-info-tags"');
+    const services = infoSource.indexOf('id="technician-service-information"');
+
+    expect(specialTags).toBeGreaterThan(-1);
+    expect(normalTags).toBeGreaterThan(specialTags);
+    expect(services).toBeGreaterThan(normalTags);
+    expect(infoSource.match(/<FormalTechnicianServicesPanel/g)).toHaveLength(1);
+    expect(source.match(/<FormalTechnicianServicesPanel/g)).toHaveLength(1);
+  });
+
+  it("renders the formal dual-series data center and preserves its selected period", () => {
     const dataStart = source.indexOf("function DataCenter");
     const dataEnd = source.indexOf("function TechnicianPortalContent", dataStart);
     const dataSource = source.slice(dataStart, dataEnd);
 
-    expect(dataSource).toContain("technician.reviewSummary.ratingAverage");
-    expect(dataSource).toContain("technician.reviewSummary.reviewCount");
-    expect(dataSource).toContain("profile.yearsExperience");
-    expect(dataSource).toContain("当前页面不会生成演示统计");
-    expect(dataSource).not.toContain("本月收入");
-    expect(dataSource).not.toContain("收入趋势");
+    expect(source).toContain('import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel"');
+    expect(dataSource).toContain("<TechnicianDataCenterPanel");
+    expect(dataSource).toContain("period={period}");
+    expect(dataSource).toContain("onPeriodChange={onPeriodChange}");
+    expect(source).toContain('const dataCenterPeriod = getDataCenterPeriod(searchParams.get("period"))');
+    expect(source).toContain('next.set("period", period)');
+    expect(source).toContain('showBottomNav={!(activeView === "me" && meTab === "data")}');
+    expect(source).toContain("确认详细排班记录");
+    expect(source).toContain('period=${dataCenterPeriod}');
+    expect(source).toContain("onRangeLoaded={setDataCenterRange}");
+    expect(source).toContain('from=${encodeURIComponent(dataCenterRange.startsAt)}');
+    expect(source).toContain('to=${encodeURIComponent(dataCenterRange.endsAt)}');
+  });
+
+  it("uses the shared personal-center header while retaining all profile tabs in the same container", () => {
+    expect(source).toContain("<MobileFullscreenHeader");
+    expect(source).toContain('title="个人中心"');
+    expect(source).toContain('label="打开技师设置"');
+    expect(source).toContain("footer={");
+    expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
   });
 
   it("permanently excludes the simplified and mock production implementations", () => {

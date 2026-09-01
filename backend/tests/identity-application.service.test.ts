@@ -36,6 +36,8 @@ const merchantDetail = (
   contactPhone: "09000000000",
   responsiblePersonName: "山本太郎",
   showcaseDraft: { headline: "安心服务" },
+  serviceCategoryIds: [1],
+  businessKeywordIds: [10],
   bankAccountId: 19,
   contractAcceptanceId: 23,
   mediaPurposes: ["corporate_registration", "representative_identity"],
@@ -71,6 +73,7 @@ const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => (
   findActiveByUserAndType: jest.fn().mockResolvedValue(null),
   hasActiveIdentity: jest.fn().mockResolvedValue(false),
   isShopEligibleForTechnicianApplications: jest.fn().mockResolvedValue(true),
+  assertMerchantTaxonomySelection: jest.fn().mockResolvedValue(undefined),
   createTechnicianDraft: jest.fn(async (input) =>
     application({
       userId: input.userId,
@@ -188,6 +191,30 @@ describe("IdentityApplicationService", () => {
       message: "error.identity_application.target_shop_not_found",
       statusCode: 404
     });
+  });
+
+  it("requires one to five service categories and validates keyword membership before creating a merchant draft", async () => {
+    const missingCategory = createRepository();
+    await expect(
+      new IdentityApplicationService(missingCategory).createMerchantDraft({
+        userId: 3,
+        detail: merchantDetail({ serviceCategoryIds: [], businessKeywordIds: [] })
+      })
+    ).rejects.toMatchObject({ message: "error.identity_application.service_category_limit", statusCode: 400 });
+    expect(missingCategory.createMerchantDraft).not.toHaveBeenCalled();
+
+    const repository = createRepository();
+    await new IdentityApplicationService(repository).createMerchantDraft({
+      userId: 3,
+      detail: merchantDetail()
+    });
+    expect(repository.assertMerchantTaxonomySelection).toHaveBeenCalledWith({
+      serviceCategoryIds: [1],
+      businessKeywordIds: [10]
+    });
+    expect(repository.createMerchantDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.objectContaining({ serviceCategoryIds: [1], businessKeywordIds: [10] }) })
+    );
   });
 
   it("updates only the owner's editable draft at the expected version", async () => {

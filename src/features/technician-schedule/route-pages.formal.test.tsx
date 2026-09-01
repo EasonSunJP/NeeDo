@@ -124,6 +124,12 @@ const profile = {
   city: "东京",
   avatarUrl: null,
   reviewSummary: { ratingAverage: "5.0", reviewCount: 2, latestReviewAt: null, highlights: [] },
+  age: null,
+  favoriteCount: 0,
+  shareCount: 0,
+  completedOrderCount: 0,
+  acceptanceRatePercent: 100,
+  primaryService: null,
   shop: {
     id: 11,
     publicId: "b0000000011",
@@ -131,7 +137,11 @@ const profile = {
     city: "东京",
     address: "东京都港区",
     coverUrl: null,
-    reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] }
+    reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] },
+    favoriteCount: 0,
+    shareCount: 0,
+    serviceCategories: [],
+    businessKeywords: []
   },
   bio: null,
   serviceArea: "东京",
@@ -153,6 +163,7 @@ const service: TechnicianServicePayload = {
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],
@@ -394,7 +405,7 @@ describe("formal technician schedule routes", () => {
       retry: mocks.retrySchedule
     });
 
-    await render("/technician/schedule");
+    await render("/technician/schedule?period=last7days&from=2026-08-26T15%3A00%3A00.000Z&to=2026-09-02T15%3A00%3A00.000Z");
 
     expect(container.textContent).not.toContain("排班与预约");
     expect(container.textContent).toContain("正式技师");
@@ -583,6 +594,48 @@ describe("formal technician order detail route", () => {
     await click("确认接单");
     await waitFor(() => expect(mocks.confirmOrder).toHaveBeenCalledWith(29));
     expect(container.textContent).toContain("已确认");
+  });
+
+  it("renders public performance revisions in the shared timeline without operations-only notes", async () => {
+    const order = {
+      ...makeOrder("cancelled"),
+      timelineEvents: [
+        {
+          id: "status:2",
+          type: "ORDER_STATUS_CHANGED" as const,
+          createdAt: "2026-08-28T02:00:00.000Z",
+          actorUserId: 31,
+          fromStatus: "pending" as const,
+          toStatus: "cancelled" as const,
+          publicReason: "技师端取消正式预约"
+        },
+        {
+          id: "performance:3",
+          type: "SPECIAL_CANCELLATION_APPLIED" as const,
+          createdAt: "2026-08-28T03:00:00.000Z",
+          actorUserId: 1,
+          publicReason: "已核实不可抗力",
+          internalNote: "技师端绝不能显示"
+        },
+        {
+          id: "performance:4",
+          type: "SPECIAL_CANCELLATION_REVOKED" as const,
+          createdAt: "2026-08-28T04:00:00.000Z",
+          actorUserId: 1,
+          publicReason: "用户投诉后复核恢复计入",
+          internalNote: "投诉工单仅运营可见"
+        }
+      ]
+    } as BookingOrder;
+
+    await renderOrder(order);
+
+    expect(container.textContent).toContain("特殊取消已生效");
+    expect(container.textContent).toContain("已核实不可抗力");
+    expect(container.textContent).toContain("特殊取消已撤销");
+    expect(container.textContent).toContain("用户投诉后复核恢复计入");
+    expect(container.textContent).not.toContain("技师端绝不能显示");
+    expect(container.textContent).not.toContain("投诉工单仅运营可见");
   });
 
   it("requires the exact technician code input without projecting the customer code", async () => {

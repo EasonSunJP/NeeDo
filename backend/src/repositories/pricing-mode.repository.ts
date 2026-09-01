@@ -1,5 +1,7 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
+import { toAuditLogCreateData } from "./audit-log.repository";
 import {
   type BookingNavigationServicePayload,
   type BookingNavigationTechnicianPayload,
@@ -8,9 +10,13 @@ import {
   type ShopPricingModePayload,
   type TechnicianServiceCreateRepositoryInput,
   type TechnicianServicePayload,
+  type TechnicianServiceReorderRepositoryInput,
   type TechnicianServiceUpdateRepositoryInput,
   type TechnicianShopScopePayload
 } from "../services/pricing-mode.service";
+import { assertTechnicianServiceQuota } from "../services/technician-service-policy";
+import { assertCompleteServiceOrder } from "../services/technician-service-policy";
+import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -134,31 +140,164 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     );
   }
 
+  public async listTechnicianServicesByProfile(
+    input: PaginationInput & { technicianId: number; activeOnly?: boolean }
+  ): Promise<PaginatedResponse<TechnicianServicePayload>> {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.TechnicianServiceWhereInput = {
+      technicianId: input.technicianId,
+      deletedAt: null,
+      ...(input.activeOnly ? { isActive: true } : {})
+    };
+    const [list, total] = await Promise.all([
+      this.client.technicianService.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.client.technicianService.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((service) => this.mapTechnicianService(service)),
+      total,
+      input
+    );
+  }
+
+  public async findPrimaryTechnicianService(
+    technicianId: number
+  ): Promise<TechnicianServicePayload | null> {
+    const service = await this.client.technicianService.findFirst({
+      where: {
+        technicianId,
+        deletedAt: null,
+        isActive: true,
+        reviewStatus: "APPROVED"
+      },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+    });
+
+    return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async reorderTechnicianServices(
+    input: TechnicianServiceReorderRepositoryInput
+  ): Promise<TechnicianServicePayload[]> {
+    const services = await this.client.$transaction(async (transaction) => {
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${input.technicianId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      const existingAudit = await transaction.auditLog.findFirst({
+        where: {
+          actorId: input.actorUserId,
+          action: input.auditLog.action,
+          targetType: input.auditLog.targetType,
+          targetId: input.technicianId,
+          metadata: { path: "$.idempotencyKey", equals: input.idempotencyKey }
+        },
+        select: { metadata: true }
+      });
+      if (existingAudit) {
+        const metadata = this.metadataObject(existingAudit.metadata);
+        if (metadata.requestFingerprint !== input.requestFingerprint) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.idempotency_key_reused",
+            statusCode: 409
+          });
+        }
+
+        return transaction.technicianService.findMany({
+          where: { technicianId: input.technicianId, deletedAt: null },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        });
+      }
+
+      const owned = await transaction.technicianService.findMany({
+        where: { technicianId: input.technicianId, deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      });
+      assertCompleteServiceOrder(
+        owned.map(({ id }) => id),
+        input.orderedServiceIds
+      );
+
+      for (const [sortOrder, serviceId] of input.orderedServiceIds.entries()) {
+        await transaction.technicianService.updateMany({
+          where: {
+            id: serviceId,
+            technicianId: input.technicianId,
+            deletedAt: null
+          },
+          data: { sortOrder, updatedBy: input.actorUserId }
+        });
+      }
+
+      const reordered = await transaction.technicianService.findMany({
+        where: { technicianId: input.technicianId, deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.auditLog,
+          targetId: input.technicianId,
+          metadata: {
+            ...this.metadataObject(input.auditLog.metadata),
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint,
+            orderedServiceIds: input.orderedServiceIds
+          }
+        })
+      });
+
+      return reordered;
+    });
+
+    return services.map((service) => this.mapTechnicianService(service));
+  }
+
   public async createTechnicianService(
     input: TechnicianServiceCreateRepositoryInput
   ): Promise<TechnicianServicePayload> {
-    const service = await this.client.technicianService.create({
-      data: {
-        shopId: input.shopId,
-        technicianId: input.technicianId,
-        sourceShopServiceId: input.sourceShopServiceId ?? null,
-        name: input.name,
-        description: input.description ?? null,
-        categoryId: input.categoryId,
-        priceAmount: input.priceAmount,
-        currency: input.currency,
-        durationMinutes: input.durationMinutes,
-        coverImageUrl: input.coverImageUrl ?? null,
-        imagesJson: input.images ?? [],
-        tagsJson: input.tags ?? [],
-        isActive: input.isActive ?? true,
-        isBookable: input.isBookable ?? true,
-        isRecommended: input.isRecommended ?? false,
-        sortOrder: input.sortOrder ?? 0,
-        reviewStatus: "APPROVED",
-        createdBy: input.createdBy,
-        updatedBy: input.createdBy
-      }
+    const service = await this.client.$transaction(async (transaction) => {
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${input.technicianId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      const nonDeletedCount = await transaction.technicianService.count({
+        where: { technicianId: input.technicianId, deletedAt: null }
+      });
+      assertTechnicianServiceQuota(nonDeletedCount + 1);
+
+      const created = await transaction.technicianService.create({
+        data: {
+          shopId: input.shopId,
+          technicianId: input.technicianId,
+          sourceShopServiceId: input.sourceShopServiceId ?? null,
+          name: input.name,
+          description: input.description ?? null,
+          categoryId: input.categoryId,
+          priceAmount: input.priceAmount,
+          currency: input.currency,
+          durationMinutes: input.durationMinutes,
+          coverImageUrl: input.coverImageUrl ?? null,
+          imagesJson: input.images ?? [],
+          tagsJson: input.tags ?? [],
+          isActive: input.isActive ?? true,
+          isBookable: input.isBookable ?? true,
+          isRecommended: input.isRecommended ?? false,
+          sortOrder: input.sortOrder ?? 0,
+          reviewStatus: "APPROVED",
+          createdBy: input.createdBy,
+          updatedBy: input.createdBy
+        }
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({ ...input.auditLog, targetId: created.id })
+      });
+
+      return created;
     });
 
     return this.mapTechnicianService(service);
@@ -326,6 +465,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       priceAmount: service.priceAmount,
       currency: service.currency,
       durationMinutes: service.durationMinutes,
+      taxIncluded: true,
       coverImageUrl: service.coverImageUrl,
       images: this.stringArrayFromJson(service.imagesJson),
       tags: this.stringArrayFromJson(service.tagsJson),
@@ -488,6 +628,12 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string")
       : [];
+  }
+
+  private metadataObject(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   private formatDecimal(value: DecimalLike | string | number, scale: number): string {

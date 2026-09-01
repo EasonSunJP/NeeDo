@@ -434,6 +434,64 @@ const createFixture = async (
       page_size: 20,
       input
     })),
+    findOrderById: jest.fn(async ({ id }: { id: number }) =>
+      id === 31
+        ? {
+            id: 31,
+            orderNo: "ND202605250001",
+            status: "cancelled",
+            paymentStatus: "pending" as const,
+            customerUserId: 101,
+            customerProfileId: 201,
+            customerName: "Aya Customer",
+            serviceId: 1,
+            serviceName: "Shiatsu Recovery",
+            shopId: 11,
+            shopName: "Aoyama Care Studio",
+            technicianProfileId: 301,
+            technicianNeedoId: "s0000000301",
+            technicianName: "Mika Tanaka",
+            fulfillmentMode: "store",
+            priceAmount: 8800,
+            currency: "JPY",
+            startsAt: "2026-05-25T01:00:00.000Z",
+            endsAt: "2026-05-25T02:00:00.000Z",
+            note: null,
+            cancelReason: "技师临时无法到达",
+            createdAt: "2026-05-24T23:00:00.000Z",
+            updatedAt: "2026-05-25T04:00:00.000Z",
+            performanceAssessment: {
+              id: 81,
+              bookingOrderId: 31,
+              technicianProfileId: 301,
+              outcome: "technician_cancelled" as const,
+              treatment: "counted" as const,
+              version: 3,
+              currentRevisionId: 93,
+              createdAt: "2026-05-25T02:00:00.000Z",
+              updatedAt: "2026-05-25T04:00:00.000Z"
+            },
+            timelineEvents: [
+              {
+                id: "performance:92",
+                type: "SPECIAL_CANCELLATION_APPLIED" as const,
+                createdAt: "2026-05-25T03:00:00.000Z",
+                actorUserId: 1,
+                publicReason: "不可抗力",
+                internalNote: "后台核验材料 A"
+              },
+              {
+                id: "performance:93",
+                type: "SPECIAL_CANCELLATION_REVOKED" as const,
+                createdAt: "2026-05-25T04:00:00.000Z",
+                actorUserId: 1,
+                publicReason: "用户投诉后复核",
+                internalNote: "投诉工单 C-123"
+              }
+            ]
+          }
+        : null
+    ),
     listSchedule: jest.fn(async () => ({
       list: [{ id: 41, shopId: 11, status: "available" }],
       total: 1,
@@ -530,23 +588,10 @@ const createFixture = async (
       page: input.page,
       page_size: input.pageSize
     })),
-    assignCustomerMembership: jest.fn(
-      async (input: {
-        membershipLevel: string;
-        durationUnit: "forever" | "day" | "month";
-        durationValue: number | null;
-        startsAt: Date;
-        expiresAt: Date | null;
-      }) => ({
-        membershipLevel: input.membershipLevel,
-        membershipGrantMode: "operator_complimentary",
-        membershipDurationUnit: input.durationUnit,
-        membershipDurationValue: input.durationValue,
-        membershipStartsAt: input.startsAt.toISOString(),
-        membershipExpiresAt: input.expiresAt?.toISOString() ?? null,
-        membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
-      })
-    ),
+    findCustomerMembershipGrantContext: jest.fn(async () => ({
+      customerUserId: 42,
+      membershipGrantedBy: { needoId: "o0000000001", username: "NeeDo Admin" }
+    })),
     listTechnicianRankings: jest.fn(async () => ({
       list: [
         {
@@ -606,6 +651,26 @@ const createFixture = async (
       createdAt: now.toISOString()
     }))
   };
+  const platformMembershipService = {
+    changeEntitlement: jest.fn(async (
+      _actor: unknown,
+      _context: unknown,
+      _userId: number,
+      command: { targetTierCode: "silver" | "gold" | "black_diamond"; billingCycle: "monthly" | "annual" }
+    ) => ({
+      kind: "grant" as const,
+      tierCode: command.targetTierCode,
+      tierVersionPublicId: `tier-${command.targetTierCode}-v1`,
+      entitlementPublicId: `entitlement-${command.targetTierCode}-1`,
+      startsAt: now,
+      expiresAt:
+        command.billingCycle === "annual"
+          ? new Date("2027-05-25T00:00:00.000Z")
+          : new Date("2026-06-24T00:00:00.000Z"),
+      experienceValueNdp: command.targetTierCode === "gold" ? 1_999 : 0,
+      idempotent: false
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
@@ -614,6 +679,7 @@ const createFixture = async (
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
     backofficeRepository,
+    platformMembershipService,
     merchantShopContextRepository:
       options.merchantShopContextRepository ?? merchantShopContextRepository
   } as never);
@@ -626,7 +692,14 @@ const createFixture = async (
     return response.body.data.accessToken as string;
   };
 
-  return { app, auditLogs, backofficeRepository, merchantShopContextRepository, login };
+  return {
+    app,
+    auditLogs,
+    backofficeRepository,
+    merchantShopContextRepository,
+    platformMembershipService,
+    login
+  };
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
@@ -721,7 +794,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     );
   });
 
-  it("assigns an audited complimentary user membership through the write permission", async () => {
+  it("routes complimentary membership grants through the formal entitlement service", async () => {
     const fixture = await createFixture();
     const adminToken = await fixture.login("admin@example.com");
 
@@ -732,8 +805,8 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         membershipLevel: "gold",
         grantMode: "operator_complimentary",
         durationUnit: "month",
-        durationValue: 3,
-        startsAt: "2026-08-29T00:00:00.000Z"
+        durationValue: 1,
+        startsAt: now.toISOString()
       })
       .expect(200);
 
@@ -741,22 +814,24 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       membershipLevel: "gold",
       membershipGrantMode: "operator_complimentary",
       membershipDurationUnit: "month",
-      membershipDurationValue: 3,
-      membershipExpiresAt: "2026-11-29T00:00:00.000Z"
+      membershipDurationValue: 1,
+      membershipExpiresAt: "2026-06-24T00:00:00.000Z"
     });
-    expect(fixture.backofficeRepository.assignCustomerMembership).toHaveBeenCalledWith(
-      expect.objectContaining({
-        customerProfileId: 44,
-        membershipLevel: "gold",
-        durationUnit: "month",
-        durationValue: 3,
-        grantedById: expect.any(Number)
-      })
+    expect(fixture.backofficeRepository.findCustomerMembershipGrantContext).toHaveBeenCalledWith(
+      44,
+      expect.any(Number)
     );
-    expect(fixture.auditLogs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ action: "backoffice.customer.membership.assign" })
-      ])
+    expect(fixture.platformMembershipService.changeEntitlement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      42,
+      expect.objectContaining({
+        kind: "grant",
+        targetTierCode: "gold",
+        billingCycle: "monthly",
+        source: "operations",
+        expectedCurrentLockVersion: null
+      })
     );
 
     await request(fixture.app)
@@ -765,9 +840,9 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .send({
         membershipLevel: "gold",
         grantMode: "operator_complimentary",
-        durationUnit: "forever",
-        durationValue: 30,
-        startsAt: "2026-08-29T00:00:00.000Z"
+        durationUnit: "month",
+        durationValue: 3,
+        startsAt: now.toISOString()
       })
       .expect(400);
   });
@@ -1424,6 +1499,47 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .expect(400);
 
     expect(fixture.backofficeRepository.summarizeNdpByCurrency).not.toHaveBeenCalled();
+  });
+
+  it("returns a fresh authorized order-performance detail including immutable internal notes", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/orders/31")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data.performanceAssessment).toMatchObject({
+      outcome: "technician_cancelled",
+      treatment: "counted",
+      version: 3
+    });
+    expect(response.body.data.timelineEvents).toEqual([
+      expect.objectContaining({
+        id: "performance:92",
+        type: "SPECIAL_CANCELLATION_APPLIED",
+        internalNote: "后台核验材料 A"
+      }),
+      expect.objectContaining({
+        id: "performance:93",
+        type: "SPECIAL_CANCELLATION_REVOKED",
+        internalNote: "投诉工单 C-123"
+      })
+    ]);
+    expect(fixture.backofficeRepository.findOrderById).toHaveBeenCalledWith({
+      id: 31,
+      scope: "platform"
+    });
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "backoffice.order.read",
+          targetType: "booking_order",
+          targetId: 31
+        })
+      ])
+    );
   });
 
   it("blocks users without the matching backoffice permission", async () => {

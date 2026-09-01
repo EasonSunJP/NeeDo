@@ -132,7 +132,7 @@ describe("SocialProfileMiniCard cover readability", () => {
     );
     expect(technicianPublicInfoCardSource).toContain("TechnicianReviewStampList");
     expect(technicianPublicInfoCardSource).not.toContain('name="sparkles"');
-    expect(technicianPublicInfoCardSource).not.toContain("接单预算");
+    expect(technicianPublicInfoCardSource).toContain("formalData?.contactDetails");
     expect(technicianPublicInfoCardSource).not.toContain("bg-black/62");
     expect(technicianPublicInfoCardSource).not.toContain("#061018");
     expect(technicianPublicInfoCardSource).not.toContain("--technician-status-duty");

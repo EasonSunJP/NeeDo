@@ -82,6 +82,44 @@ describe("Step 08 core read API", () => {
       search: jest.fn(async () => paginated([serviceCard])),
       searchShops: jest.fn(async () => paginated([shopCard])),
       searchTechnicians: jest.fn(async () => paginated([technicianCard])),
+      countEligibleLocatedTechnicians: jest.fn(async () => 4),
+      findEligibleTechniciansWithinBounds: jest.fn(async (_input, _origin, radiusKm) => {
+        const candidates = [
+          {
+            technicianProfileId: 1,
+            locations: [{ latitude: 35.6762, longitude: 139.6503 }],
+            ratingAverage: "4.80",
+            completedOrderCount: 120,
+            reviewCount: 132,
+            registeredAt: new Date("2025-01-01T00:00:00.000Z")
+          },
+          {
+            technicianProfileId: 2,
+            locations: [{ latitude: 35.695, longitude: 139.6503 }],
+            ratingAverage: "4.90",
+            completedOrderCount: 90,
+            reviewCount: 109,
+            registeredAt: new Date("2025-02-01T00:00:00.000Z")
+          },
+          {
+            technicianProfileId: 3,
+            locations: [{ latitude: 35.7113, longitude: 139.6503 }],
+            ratingAverage: "4.70",
+            completedOrderCount: 200,
+            reviewCount: 154,
+            registeredAt: new Date("2024-01-01T00:00:00.000Z")
+          }
+        ];
+        return radiusKm >= 4 ? candidates : candidates.slice(0, 2);
+      }),
+      loadTechnicianCardsByRankedIds: jest.fn(async (ids: number[]) =>
+        new Map(ids.map((id) => [id, {
+          ...technicianCard,
+          id,
+          publicId: `s${String(id).padStart(10, "0")}`,
+          displayName: `Technician ${id}`
+        }]))
+      ),
       findShopDetail: jest.fn(async () => ({
         ...shopCard,
         description: "Private care studio in Aoyama.",
@@ -190,6 +228,9 @@ describe("Step 08 core read API", () => {
       .get("/api/v1/search?entityType=technician&keywords=%E3%81%B2%E3%81%8B%E3%82%8A")
       .expect(200);
     expect(technicianResponse.body.data).toEqual(paginated([technicianCard]));
+    expect(technicianResponse.body.data.list[0]).not.toHaveProperty("distanceKm");
+    expect(technicianResponse.body.data.list[0]).not.toHaveProperty("nearbyRank");
+    expect(technicianResponse.body.data.list[0]).not.toHaveProperty("resolvedRadiusKm");
     expect(fixture.coreReadRepository.searchTechnicians).toHaveBeenCalledWith(
       expect.objectContaining({ entityType: "technician", keywords: ["ひかり"] })
     );
@@ -215,6 +256,59 @@ describe("Step 08 core read API", () => {
 
     expect(fixture.coreReadRepository.search).not.toHaveBeenCalled();
     expect(fixture.coreReadRepository.searchShops).not.toHaveBeenCalled();
+    expect(fixture.coreReadRepository.searchTechnicians).not.toHaveBeenCalled();
+  });
+
+  it("requires technician search coordinates to be provided as a complete pair", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .get("/api/v1/search?entityType=technician&latitude=35.6762")
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/search?entityType=technician&longitude=139.6503")
+      .expect(400);
+
+    expect(fixture.coreReadRepository.searchTechnicians).not.toHaveBeenCalled();
+    expect(fixture.coreReadRepository.countEligibleLocatedTechnicians).not.toHaveBeenCalled();
+  });
+
+  it("expands nearby technician search and paginates only after business ranking", async () => {
+    const fixture = createFixture();
+
+    const response = await request(fixture.app)
+      .get(
+        "/api/v1/search?entityType=technician&keywords=massage&categoryIds=3" +
+          "&latitude=35.6762&longitude=139.6503&page=2&pageSize=1"
+      )
+      .expect(200);
+
+    expect(fixture.coreReadRepository.findEligibleTechniciansWithinBounds).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ keywords: ["massage"], categoryIds: [3] }),
+      { latitude: 35.6762, longitude: 139.6503 },
+      3
+    );
+    expect(fixture.coreReadRepository.findEligibleTechniciansWithinBounds).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ keywords: ["massage"], categoryIds: [3] }),
+      { latitude: 35.6762, longitude: 139.6503 },
+      4
+    );
+    expect(fixture.coreReadRepository.loadTechnicianCardsByRankedIds).toHaveBeenCalledWith([1]);
+    expect(response.body.data).toEqual({
+      list: [
+        expect.objectContaining({
+          id: 1,
+          distanceKm: 0,
+          nearbyRank: 2,
+          resolvedRadiusKm: 4
+        })
+      ],
+      total: 3,
+      page: 2,
+      page_size: 1
+    });
     expect(fixture.coreReadRepository.searchTechnicians).not.toHaveBeenCalled();
   });
 

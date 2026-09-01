@@ -25,6 +25,10 @@ const dashboardTranslationsPath = path.join(
   workspaceRoot,
   "src/features/dashboard/dashboardTranslations.ts",
 );
+const platformUserManagementTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/platform-user-management/i18n.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
@@ -34,6 +38,7 @@ const codeFileExtensions = new Set([".ts", ".tsx", ".mjs"]);
 const excludedFilePatterns = [
   /src\/i18n\/translations\.ts$/u,
   /src\/features\/dashboard\/dashboardTranslations\.ts$/u,
+  /src\/features\/platform-user-management\/i18n\.ts$/u,
 ];
 
 function normalizeText(value) {
@@ -126,6 +131,7 @@ let identityTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
 let dashboardTranslationsPromise;
+let platformUserManagementTranslationsPromise;
 
 async function loadIdentityTranslations() {
   identityTranslationsPromise ??= (async () => {
@@ -198,12 +204,30 @@ async function loadDashboardTranslations() {
   return dashboardTranslationsPromise;
 }
 
+async function loadPlatformUserManagementTranslations() {
+  platformUserManagementTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(platformUserManagementTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.platformUserManagementTranslations ?? {};
+  })();
+
+  return platformUserManagementTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const identityTranslations = await loadIdentityTranslations();
   const affiliateProfileTranslations = await loadAffiliateProfileTranslations();
   const affiliateMarketplaceTranslations =
     await loadAffiliateMarketplaceTranslations();
   const dashboardTranslations = await loadDashboardTranslations();
+  const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
@@ -216,6 +240,9 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*dashboardTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const dashboardTranslations = ${JSON.stringify(dashboardTranslations)};`,
+  ).replace(
+    /import\s+\{\s*platformUserManagementTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const platformUserManagementTranslations = ${JSON.stringify(platformUserManagementTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,
@@ -235,7 +262,10 @@ async function loadTranslationsFromSource(sourceCode) {
 
   try {
     const loaded = await import(`file://${tempFile}`);
-    return loaded.translations ?? {};
+    return {
+      ...platformUserManagementTranslations,
+      ...(loaded.translations ?? {}),
+    };
   } finally {
     await fs.unlink(tempFile).catch(() => {});
   }

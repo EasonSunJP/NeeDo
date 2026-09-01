@@ -60,6 +60,7 @@ describe("customerProfileApi", () => {
       bio: "自己紹介",
       avatarUrl: null,
       membershipLevel: "standard",
+      level: 72,
       gender: "private",
       age: 36,
       heightCm: 171,
@@ -68,11 +69,12 @@ describe("customerProfileApi", () => {
       isPublic: false,
       createdAt: "2026-08-26T00:00:00.000Z",
       updatedAt: "2026-08-26T00:00:00.000Z"
-    } satisfies CustomerSelfProfile;
+    } as CustomerSelfProfile & { level: number };
 
     expect(() => mapCoreCustomerToCustomer(selfProfile)).not.toThrow();
     expect(mapCoreCustomerToCustomer(selfProfile)).toMatchObject({
       systemId: "u3141592653",
+      experienceLevel: 72,
       activeScore: 0,
       creditRating: undefined,
       orderCount: 0

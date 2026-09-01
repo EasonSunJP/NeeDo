@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "reac
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
-import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs, IconButton, PrimaryButton, StickyBottomBar } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import type { ContactEventTimelineEntry } from "../../components/mobile/ContactEventTimeline";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { roleBasedTabConfig, technicianNavItems } from "../../components/mobile/navItems";
 import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
+import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
@@ -25,6 +27,8 @@ import {
   type TechnicianProfileVisibility,
   type TechnicianSelfProfile
 } from "../../features/core-read/technicianProfileApi";
+import type { TechnicianDataCenterPeriod } from "../../features/core-read/technicianDataCenterApi";
+import type { TechnicianDataCenterPayload } from "../../features/core-read/technicianDataCenterApi";
 import {
   pricingModeApi,
   type ShopPricingMode,
@@ -34,7 +38,7 @@ import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../featu
 import { cn, yen } from "../../lib/utils";
 
 type TechnicianPortalView = "tasks" | "me";
-type TechnicianMeTab = "info" | "services" | "data";
+type TechnicianMeTab = "info" | "data";
 
 const languageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
 const paymentOptions: Array<{ value: TechnicianProfilePaymentMethod; label: string }> = [
@@ -80,7 +84,11 @@ function getPortalView(view: string | undefined): TechnicianPortalView {
 }
 
 function getMeTab(value: string | null): TechnicianMeTab {
-  return value === "services" || value === "data" ? value : "info";
+  return value === "data" ? value : "info";
+}
+
+function getDataCenterPeriod(value: string | null): TechnicianDataCenterPeriod {
+  return value === "last30days" || value === "week" || value === "month" || value === "year" ? value : "last7days";
 }
 
 function parseNullableNumber(value: string) {
@@ -508,7 +516,20 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
 
 type TechnicianProfileDraft = ReturnType<typeof profileDraft>;
 
-function TechnicianInfoCard({ profile, onSaved }: {
+function describeProfileMutationError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 400) return "请检查资料内容后重试";
+    if (error.status === 401) return "登录状态已失效，请重新登录技师账号后再操作";
+    if (error.status === 403) return "当前技师身份没有资料编辑权限";
+    if (error.status === 409) return "资料已在其他位置更新，请重新加载后再保存";
+  }
+  if (error instanceof Error && !error.message.startsWith("error.")) return error.message;
+  return "暂时无法保存，请稍后重试";
+}
+
+function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, onSaved }: {
+  defaultCategoryId: number | null;
+  defaultShopId: number | null;
   profile: TechnicianSelfProfile;
   onSaved: (profile: TechnicianSelfProfile) => void;
 }) {
@@ -531,7 +552,7 @@ function TechnicianInfoCard({ profile, onSaved }: {
       setDraft(profileDraft(saved));
       return saved;
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "error.technician_profile.update_failed");
+      setError(describeProfileMutationError(mutationError));
       return null;
     } finally {
       setSaving(false);
@@ -624,7 +645,6 @@ function TechnicianInfoCard({ profile, onSaved }: {
           </div>
           <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{languageOptions.map((language) => <button className={cn(draft.languages.includes(language) ? surface.chip : surface.metric, "rounded-full border px-2.5 py-1 text-xs font-black")} key={language} onClick={() => toggleLanguage(language)} type="button">{language}</button>)}</div></div>
           <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>服务范围</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, serviceAreasText: event.target.value }))} value={draft.serviceAreasText} /></label>
-          <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>标签</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, profileTagsText: event.target.value }))} value={draft.profileTagsText} /></label>
           <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-28 w-full bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))} value={draft.bio} /></label>
           <div className="grid grid-cols-2 gap-2">
             <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>接单预算下限</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, bidBudgetMinJpy: event.target.value }))} value={draft.bidBudgetMinJpy} /></label>
@@ -632,6 +652,8 @@ function TechnicianInfoCard({ profile, onSaved }: {
           </div>
           <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>支持支付方式</p><div className="mt-2 flex flex-wrap gap-1.5">{paymentOptions.map((method) => <button className={cn(draft.paymentMethods.includes(method.value) ? surface.chip : surface.metric, "rounded-full border px-2.5 py-1 text-xs font-black")} key={method.value} onClick={() => togglePaymentMethod(method.value)} type="button">{method.label}</button>)}</div></div>
           <label className={cn(surface.panel, "flex items-center justify-between rounded-[18px] border p-3 text-sm font-black")}><span>服务外国人</span><ToggleSwitch ariaLabel="服务外国人" checked={draft.canServeForeigners} onChange={(checked) => setDraft((current) => ({ ...current, canServeForeigners: checked }))} /></label>
+          <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-info-special-tags"><p className={cn(surface.muted, "text-xs font-bold")}>特殊标签</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.specialTags.length > 0 ? profile.specialTags.map((tag) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={tag}>{tag}</span>) : <span className={cn(surface.muted, "text-sm font-bold")}>暂未获得特殊标签</span>}</div></div>
+          <label className={cn(surface.panel, "block rounded-[18px] border p-3")} data-testid="technician-info-tags"><span className={cn(surface.muted, "text-xs font-bold")}>标签</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, profileTagsText: event.target.value }))} value={draft.profileTagsText} /></label>
           {error ? <p className="text-xs font-bold text-red-500" role="alert">技师资料保存失败：{error}</p> : null}
           <button className={cn(surface.chip, "w-full rounded-[18px] border px-4 py-3 text-sm font-black")} disabled={saving} onClick={() => void saveProfile()} type="button">{saving ? "保存中…" : "保存"}</button>
         </div>
@@ -646,10 +668,17 @@ function TechnicianInfoCard({ profile, onSaved }: {
           <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>接单预算</p><strong className="mt-1 block text-sm">{profile.bidBudgetMinJpy === null && profile.bidBudgetMaxJpy === null ? "未设置" : `${profile.bidBudgetMinJpy?.toLocaleString("ja-JP") ?? "—"}–${profile.bidBudgetMaxJpy?.toLocaleString("ja-JP") ?? "—"} 円`}</strong></div>
           <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>支持支付方式</p><p className="mt-2 text-sm font-bold leading-6">{profile.paymentMethods.map((value) => paymentOptions.find((item) => item.value === value)?.label ?? value).join("、") || "未设置"}</p></div>
           <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>自我介绍</p><p className="mt-2 text-sm font-bold leading-6">{profile.bio || "未设置"}</p></div>
+          <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-info-special-tags"><p className={cn(surface.muted, "text-xs font-bold")}>特殊标签</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.specialTags.length > 0 ? profile.specialTags.map((tag) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={tag}>{tag}</span>) : <span className={cn(surface.muted, "text-sm font-bold")}>暂未获得特殊标签</span>}</div></div>
           <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-info-tags"><p className={cn(surface.muted, "text-xs font-bold")}>标签</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.profileTags.map((tag) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={tag}>{tag}</span>)}</div></div>
           {error ? <p className="text-xs font-bold text-red-500" role="alert">技师资料保存失败：{error}</p> : null}
         </div>
       )}
+      <div className="mt-4" id="technician-service-information">
+        <FormalTechnicianServicesPanel
+          defaultCategoryId={defaultCategoryId}
+          defaultShopId={defaultShopId}
+        />
+      </div>
     </section>
   );
 }
@@ -663,7 +692,10 @@ function describeServiceError(error: unknown) {
   return error instanceof Error ? error.message : "error.technician_service.failed";
 }
 
-function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: number; defaultCategoryId: number | null }) {
+function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId }: {
+  defaultShopId: number | null;
+  defaultCategoryId: number | null;
+}) {
   const [services, setServices] = useState<TechnicianServicePayload[]>([]);
   const [pricingMode, setPricingMode] = useState<ShopPricingMode | null>(null);
   const [loading, setLoading] = useState(true);
@@ -678,11 +710,11 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
     setError("");
     try {
       const [serviceResult, modeResult] = await Promise.all([
-        pricingModeApi.listTechnicianServices(shopId, { page: 1, pageSize: 100 }),
-        pricingModeApi.getShopPricingMode(shopId)
+        pricingModeApi.listMyTechnicianServices({ page: 1, pageSize: 5, activeOnly: false }),
+        defaultShopId ? pricingModeApi.getShopPricingMode(defaultShopId) : Promise.resolve(null)
       ]);
       setServices(serviceResult.list);
-      setPricingMode(modeResult.pricingMode);
+      setPricingMode(modeResult?.pricingMode ?? null);
     } catch (loadError) {
       setServices([]);
       setPricingMode(null);
@@ -690,7 +722,7 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
     } finally {
       setLoading(false);
     }
-  }, [shopId]);
+  }, [defaultShopId]);
 
   useEffect(() => { void load(); }, [load]);
   const openEditor = (service?: TechnicianServicePayload) => {
@@ -701,6 +733,10 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
   };
   const save = async () => {
     if (saving || editingId === null) return;
+    if (editingId === "new" && services.length >= 5) {
+      setError("服务数量已达到 5 个上限");
+      return;
+    }
     const priceAmount = Number(draft.priceAmount);
     const durationMinutes = Number(draft.durationMinutes);
     if (!draft.name.trim() || !Number.isInteger(priceAmount) || priceAmount < 0 || !Number.isInteger(durationMinutes) || durationMinutes < 1) {
@@ -710,11 +746,13 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
     const existing = typeof editingId === "number" ? services.find((item) => item.id === editingId) : null;
     const categoryId = existing?.categoryId ?? defaultCategoryId;
     if (!categoryId) { setError("当前没有可用的正式服务分类，暂时无法新增服务"); return; }
+    const targetShopId = existing?.shopId ?? defaultShopId;
+    if (!targetShopId) { setError("当前没有可用的正式店铺，暂时无法新增服务"); return; }
     setSaving(true);
     setError("");
     try {
       const body = { name: draft.name.trim(), priceAmount, durationMinutes, description: draft.description.trim() || null, categoryId, currency: "JPY" };
-      const saved = existing ? await pricingModeApi.updateTechnicianService(shopId, existing.id, body) : await pricingModeApi.createTechnicianService(shopId, { ...body, sortOrder: services.length });
+      const saved = existing ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body) : await pricingModeApi.createTechnicianService(targetShopId, { ...body, sortOrder: services.length });
       setServices((current) => existing ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
       setEditingId(null);
     } catch (saveError) {
@@ -729,7 +767,7 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
     setSaving(true);
     setError("");
     try {
-      await pricingModeApi.deleteTechnicianService(shopId, service.id);
+      await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
       setServices((current) => current.filter((item) => item.id !== service.id));
       setEditingId(null);
       setDeleteArmedId(null);
@@ -739,10 +777,34 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
       setSaving(false);
     }
   };
+  const move = async (service: TechnicianServicePayload, direction: -1 | 1) => {
+    if (saving) return;
+    const currentIndex = services.findIndex((item) => item.id === service.id);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= services.length) return;
+    const reordered = [...services];
+    [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+    if (!globalThis.crypto?.randomUUID) {
+      setError("当前环境无法安全保存服务排序");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      setServices(await pricingModeApi.reorderMyTechnicianServices(
+        reordered.map((item) => item.id),
+        globalThis.crypto.randomUUID()
+      ));
+    } catch (reorderError) {
+      setError(describeServiceError(reorderError));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) return <section className={cn(surface.shell, "rounded-[28px] border p-6 text-center text-sm font-black")}>正在加载正式服务</section>;
   return (
-    <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
+    <section className={cn(surface.panel, "rounded-[24px] border p-4")}>
       <div className="flex items-start justify-between gap-3">
         <div><h2 className="text-lg font-black">服务信息</h2><p className={cn(surface.muted, "mt-1 text-xs font-bold")}>店铺当前定价模式：{pricingMode === "technician" ? "技师定价" : pricingMode === "merchant" ? "店铺定价" : "未读取"}</p></div>
         {services.length < 5 ? <button className={cn(surface.chip, "rounded-full border px-3 py-2 text-xs font-black")} disabled={saving || editingId !== null} onClick={() => openEditor()} type="button">添加服务 {services.length}/5</button> : null}
@@ -767,8 +829,12 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
                 </div>
               ) : service ? (
                 <>
-                  <IconButton className={cn(surface.metric, "absolute right-3 top-3 h-9 w-9")} icon="edit" label="编辑服务" onClick={() => openEditor(service)} />
-                  <div className="pr-12"><p className={cn(surface.muted, "text-[11px] font-bold")}>服务名称</p><h3 className="mt-1 text-[17px] font-black">{service.name}</h3></div>
+                  <div className="absolute right-3 top-3 flex gap-1">
+                    <button aria-label="服务上移" className={cn(surface.metric, "grid h-9 w-9 place-items-center rounded-full border text-sm font-black")} disabled={saving || services[0]?.id === service.id} onClick={() => void move(service, -1)} type="button">↑</button>
+                    <button aria-label="服务下移" className={cn(surface.metric, "grid h-9 w-9 place-items-center rounded-full border text-sm font-black")} disabled={saving || services.at(-1)?.id === service.id} onClick={() => void move(service, 1)} type="button">↓</button>
+                    <IconButton className={cn(surface.metric, "h-9 w-9")} icon="edit" label="编辑服务" onClick={() => openEditor(service)} />
+                  </div>
+                  <div className="pr-32"><p className={cn(surface.muted, "text-[11px] font-bold")}>服务名称</p><h3 className="mt-1 text-[17px] font-black">{service.name}</h3><p className={cn(surface.muted, "mt-1 text-[10px] font-bold")}>店铺 ID：{service.shopId}</p></div>
                   <div className="mt-3 grid grid-cols-2 gap-2"><div className={cn(surface.metric, "rounded-[16px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>价格</p><strong className="mt-1 block">{yen(service.priceAmount)}</strong></div><div className={cn(surface.metric, "rounded-[16px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>时长</p><strong className="mt-1 block">{service.durationMinutes} 分钟</strong></div></div>
                   <p className={cn(surface.muted, "mt-3 text-sm font-bold leading-6")}>{service.description || "未填写描述"}</p>
                 </>
@@ -781,29 +847,12 @@ function FormalTechnicianServicesPanel({ shopId, defaultCategoryId }: { shopId: 
   );
 }
 
-function TechnicianShopRequiredPanel() {
-  return (
-    <section className={cn(surface.shell, "rounded-[28px] border p-6 text-center shadow-[var(--client-shadow)]")}>
-      <h2 className="text-lg font-black">暂未关联店铺</h2>
-      <p className={cn(surface.muted, "mt-2 text-sm font-bold leading-6")}>关联店铺后即可管理正式服务；当前不会创建演示服务或临时数据。</p>
-    </section>
-  );
-}
-
-function DataCenter({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
-  const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
-  const reviewCount = technician ? String(technician.reviewSummary.reviewCount) : "—";
-  return (
-    <div className="space-y-4">
-      <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
-        <p className={cn(surface.muted, "text-xs font-black")}>服务数据</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {[["服务评分", rating > 0 ? rating.toFixed(1) : "—"], ["评价数量", reviewCount], ["从业年限", `${profile.yearsExperience} 年`], ["资料更新时间", new Date(profile.updatedAt).toLocaleDateString("zh-CN")]].map(([label, value]) => <div className={cn(surface.metric, "rounded-[18px] border p-3")} key={label}><p className={cn(surface.muted, "text-xs font-bold")}>{label}</p><strong className="mt-1 block text-xl">{value}</strong></div>)}
-        </div>
-      </section>
-      <section className={cn(surface.panel, "rounded-[24px] border p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]")}>收入、工时与履约趋势仅在正式统计接口返回真实聚合数据后展示；当前页面不会生成演示统计。</section>
-    </div>
-  );
+function DataCenter({ period, onPeriodChange, onRangeLoaded }: {
+  period: TechnicianDataCenterPeriod;
+  onPeriodChange: (period: TechnicianDataCenterPeriod) => void;
+  onRangeLoaded: (range: TechnicianDataCenterPayload["range"]) => void;
+}) {
+  return <TechnicianDataCenterPanel onPeriodChange={onPeriodChange} onRangeLoaded={onRangeLoaded} period={period} />;
 }
 
 function TechnicianPortalContent({ initialSelfProfile, technician }: {
@@ -811,10 +860,13 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
   technician: CoreTechnicianDetail | null;
 }) {
   const { view } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selfProfile, setSelfProfile] = useState(initialSelfProfile);
+  const [dataCenterRange, setDataCenterRange] = useState<TechnicianDataCenterPayload["range"] | null>(null);
   const activeView = getPortalView(view);
   const meTab = getMeTab(searchParams.get("meTab"));
+  const dataCenterPeriod = getDataCenterPeriod(searchParams.get("period"));
   const shopId = technician?.shop?.id ?? selfProfile.shopId;
   const technicianPortalConfig = roleBasedTabConfig.technician;
   const updateMeTab = (tab: TechnicianMeTab) => {
@@ -822,30 +874,58 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
     next.set("meTab", tab);
     setSearchParams(next, { replace: true });
   };
+  const updateDataCenterPeriod = (period: TechnicianDataCenterPeriod) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("meTab", "data");
+    next.set("period", period);
+    setSearchParams(next, { replace: true });
+  };
   const defaultCategoryId = technician?.services[0]?.category.id ?? null;
 
+  useEffect(() => {
+    if (searchParams.get("meTab") === "services") {
+      const next = new URLSearchParams(searchParams);
+      next.set("meTab", "info");
+      setSearchParams(next, { replace: true });
+      globalThis.requestAnimationFrame(() => {
+        document.getElementById("technician-service-information")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+    }
+  }, [searchParams, setSearchParams]);
+
   return (
-    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
+    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"} showBottomNav={!(activeView === "me" && meTab === "data")}>
       {activeView === "tasks" ? <TasksView profile={selfProfile} technician={technician} /> : null}
       {activeView === "me" ? (
         <>
-          <FloatingHomeHeader panelClassName="relative overflow-hidden" stacked>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                {selfProfile.avatarUrl ? <AvatarImage alt={selfProfile.displayName} className="h-12 w-12" src={selfProfile.avatarUrl} /> : <span className="grid h-12 w-12 place-items-center rounded-full bg-[color:var(--client-primary-soft)] text-lg font-black">{selfProfile.displayName.slice(0, 1)}</span>}
-                <div className="min-w-0"><h1 className="truncate text-[22px] font-black tracking-[-0.04em]">{selfProfile.displayName}</h1><p className={cn(surface.muted, "mt-1 text-xs font-semibold")}>信息卡与数据中心</p></div>
-              </div>
-              <IconButton icon="settings" label="打开技师设置" to={technicianPortalConfig.settingsPath} />
-            </div>
-            <FeatureSegmentedTabs items={[{ label: "信息卡", value: "info" }, { label: "服务信息", value: "services" }, { label: "数据中心", value: "data" }]} onChange={(value) => updateMeTab(value as TechnicianMeTab)} value={meTab} variant="header" />
-          </FloatingHomeHeader>
+          <MobileFullscreenHeader
+            action={<IconButton icon="settings" label="打开技师设置" to={technicianPortalConfig.settingsPath} />}
+            footer={<FeatureSegmentedTabs items={[{ label: "信息卡", value: "info" }, { label: "数据中心", value: "data" }]} onChange={(value) => updateMeTab(value as TechnicianMeTab)} value={meTab} variant="header" />}
+            maxWidth="880px"
+            onBack={() => navigate("/technician")}
+            title="个人中心"
+          />
           <div className="space-y-4 px-4 pb-32 pt-1">
-            {meTab === "info" ? <TechnicianInfoCard onSaved={setSelfProfile} profile={selfProfile} /> : null}
-            {meTab === "services" ? shopId
-              ? <FormalTechnicianServicesPanel defaultCategoryId={defaultCategoryId} shopId={shopId} />
-              : <TechnicianShopRequiredPanel /> : null}
-            {meTab === "data" ? <DataCenter profile={selfProfile} technician={technician} /> : null}
+            {meTab === "info" ? (
+              <TechnicianInfoCard
+                defaultCategoryId={defaultCategoryId}
+                defaultShopId={shopId}
+                onSaved={setSelfProfile}
+                profile={selfProfile}
+              />
+            ) : null}
+             {meTab === "data" ? <DataCenter onPeriodChange={updateDataCenterPeriod} onRangeLoaded={setDataCenterRange} period={dataCenterPeriod} /> : null}
           </div>
+           {meTab === "data" && dataCenterRange ? (
+             <StickyBottomBar>
+               <PrimaryButton className="w-full" onClick={() => navigate(`/technician/schedule?period=${dataCenterPeriod}&from=${encodeURIComponent(dataCenterRange.startsAt)}&to=${encodeURIComponent(dataCenterRange.endsAt)}`)}>
+                确认详细排班记录
+              </PrimaryButton>
+            </StickyBottomBar>
+          ) : null}
         </>
       ) : null}
     </MobileShell>

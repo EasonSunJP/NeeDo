@@ -9,9 +9,11 @@ import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeRepository } from "../repositories/backoffice.repository";
 import { DashboardRepository } from "../repositories/dashboard.repository";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import { PlatformMembershipRepository } from "../repositories/platform-membership.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeService } from "../services/backoffice.service";
 import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
+import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
@@ -19,6 +21,8 @@ import {
   backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeManagedUserListQuerySchema,
+  backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
@@ -49,6 +53,7 @@ export const BACKOFFICE_ROUTE_PERMISSIONS = {
   shopsWrite: "backoffice:shops:write",
   customers: "backoffice:customers:list",
   customersWrite: "backoffice:customers:write",
+  usersRead: "backoffice:users:read",
   services: "backoffice:services:list",
   servicesWrite: "backoffice:services:write",
   merchantDashboard: "merchant-admin:dashboard:read",
@@ -86,7 +91,14 @@ export const createBackofficeRoutes = (
         config.CUSTOMER_AVATAR_STORAGE_DIR,
         config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
       ),
-    new DashboardRepository()
+    new DashboardRepository(),
+    dependencies.platformMembershipService ??
+      new PlatformMembershipService(
+        new PlatformMembershipRepository(),
+        auditLogService,
+        undefined,
+        dependencies.userExperienceService
+      )
   );
   const controller = new BackofficeController(service);
 
@@ -115,11 +127,32 @@ export const createBackofficeRoutes = (
     controller.dashboardMetricDetail
   );
   router.get(
+    "/backoffice/users",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
+    validateRequest({ query: backofficeManagedUserListQuerySchema }),
+    controller.managedUsers
+  );
+  router.get(
+    "/backoffice/users/:userId",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
+    validateRequest({ params: backofficeManagedUserParamSchema }),
+    controller.managedUser
+  );
+  router.get(
     "/backoffice/orders",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.orders),
     validateRequest({ query: backofficeListQuerySchema }),
     controller.platformOrders
+  );
+  router.get(
+    "/backoffice/orders/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.orders),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.platformOrder
   );
   router.get(
     "/backoffice/schedule",

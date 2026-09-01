@@ -134,7 +134,35 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 ```
 
-The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment text remains in its original language. Offer-taking, quotes, matching, booking/order creation, appointments, and payment remain explicitly deferred and have no Exchange route or control in this phase.
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming is enabled as the first formal fulfillment slice; quick matching, provider selection, matching completion, budget augmentation, booking/order creation, appointments, and payment remain explicitly deferred.
+
+### Formal Selective Exchange Claim
+
+Selective Request claims reuse the existing identity, shop affiliation, service, technician schedule, booking-conflict, RBAC, audit, and Request-terminal transaction authorities. No parallel matching, booking, order, wallet, ledger, or payment system is created. An active claim is a soft technician-time hold; claimant withdrawal, Request withdrawal, and Request expiry persist a terminal claim state and release the hold.
+
+The five authenticated endpoints are:
+
+- `GET /api/v1/exchange/posts/{id}/claim-options` — paginated, provider-scoped shop/technician/service/schedule options.
+- `POST /api/v1/exchange/posts/{id}/claims` — idempotent selective claim creation with server budget and overlap validation.
+- `GET /api/v1/exchange/posts/{id}/claims/mine` — current identity's persisted claim.
+- `GET /api/v1/exchange/posts/{id}/claims` — paginated claims received by the Request owner only.
+- `POST /api/v1/exchange/claims/{claimId}/withdraw` — claimant-only, idempotent pre-match withdrawal.
+
+RBAC codes are `exchange:claim-options:list`, `exchange:claims:create`, `exchange:claims:read-own`, `exchange:claims:list-owned-request`, and `exchange:claims:withdraw-own`. Public claim states are `active`, `withdrawn`, `request_withdrawn`, and `request_expired`. Quote, service, shop, technician, and estimated time are server-authoritative; the provider message is optional and remains in its original language.
+
+Run the guarded local claim-lifecycle fixture checker and concurrency proof from `backend/`. `ENV_FILE` is mandatory, remote/production-looking databases are rejected, and every checker fixture is identified and deleted by captured IDs:
+
+```bash
+ENV_FILE=.env.dev npm run check:exchange-selective-claim-flow
+RUN_EXCHANGE_CLAIM_INTEGRATION=true ALLOW_EXCHANGE_CLAIM_DEV_INTEGRATION=true ENV_FILE=.env.dev \
+  npm test -- --runTestsByPath tests/exchange-claim.repository.integration.test.ts --runInBand
+```
+
+The lifecycle checker creates its Request, schedule, service and identities as exact, namespaced Prisma fixtures, then exercises the real claim repository/service transaction boundary. It proves the claim state machine and cleanup, but does not by itself prove formal Request publication or its TEST_NDP hold; those remain browser/API acceptance responsibilities.
+
+On the current local database, migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. The older unrelated migration `20260831160000_im_chat_records_translation` remains pending and was deliberately left untouched; do not use a blanket migrate-deploy command for this acceptance slice.
+
+The current slice does not implement quick-mode auto matching, Request-owner provider selection, total-budget augmentation, early-close half-fee settlement, bilateral cancellation after matching, `BookingOrder`, or `Payment` creation.
 
 ### Exchange Test NDP Foundation
 
@@ -152,7 +180,7 @@ npm run backfill:test-ndp -- --apply
 npm run check:test-ndp-foundation -- --phase=postflight
 ```
 
-These commands reject production-like targets. The Exchange Request publication fee, its operations-configured default of 1,000 NDP, claiming, matching, booking, and payment remain outside this foundation as separate later microsteps.
+These commands reject production-like targets. The Exchange Request publication fee and its operations-configured default of 1,000 NDP are reused by publication. Selective claiming adds no wallet or ledger movement; matching, booking, and payment remain separate later microsteps.
 
 The isolated formal Social seed updates the 210 simulation accounts plus the six fixed role-entry accounts without replacing booking/order data. It assigns realistic shop and person names, persists 15 posts per account (text, single image, multi-image, video, and quote), and creates exactly 36 mutual friends per account across shop service accounts, technicians, and general users.
 
@@ -369,7 +397,7 @@ Authenticated customer identities now receive an API-backed “My” page. `GET 
 
 On `/me`, the information card switches in place between normal and editable state. The top-right control is an edit action normally and a red X while editing; cancelling discards only the current draft. The ordinary user bottom navigation is disabled for the view, loading, error, editing, and saving states. Editing shows the single viewport-fixed “保存并退出编辑模式” action with safe-area spacing, while NDP, usage count, credit score, NeeDo ID, and membership level remain read-only. Profile reads and writes always use the formal authenticated API.
 
-Shop membership is a separate, shop-scoped relationship from the NeeDo platform-level `CustomerProfile.membershipLevel`. Merchant membership routes live under `/api/v1/merchant-admin/shop-memberships`, `/api/v1/merchant-admin/shop-membership-candidates`, `/api/v1/merchant-admin/shop-membership-cards`, `/api/v1/merchant-admin/shop-membership-activities`, and `/api/v1/merchant-admin/shop-membership-analytics`; every query derives the shop from the active authenticated `shop` identity. Customer self-service reads use `/api/v1/customer-profile/me/shop-memberships` and never accept a user or profile ID. `merchant_owner` receives view, create, analytics, and operation-log permissions, while `merchant_staff` receives only `shop.member.view`. Creating a shop membership requires a persisted booking relationship and writes `merchant.shop_membership.create` audit evidence in the same transaction. The `Test` badge marks feature maturity only: all data is persisted API/MySQL data. Card issuing, top-up, redemption, and refund remain deferred as four independent microsteps; the current card surface is read-only and creates no demo records.
+Shop membership is a separate, shop-scoped relationship from the NeeDo platform-level `CustomerProfile.membershipLevel`. Merchant membership routes live under `/api/v1/merchant-admin/shop-memberships`, `/api/v1/merchant-admin/shop-membership-candidates`, `/api/v1/merchant-admin/shop-membership-cards`, `/api/v1/merchant-admin/shop-membership-activities`, and `/api/v1/merchant-admin/shop-membership-analytics`; every query derives the shop from the active authenticated `shop` identity. Customer self-service reads use `/api/v1/customer-profile/me/shop-memberships` and never accept a user or profile ID. `merchant_owner` receives view, create, analytics, operation-log, card-plan, issuance, card-adjustment, stored-value top-up, and card-refund permissions; `merchant_staff` may redeem an eligible completed order but cannot refund it. Creating a shop membership requires a persisted booking relationship and writes audit evidence transactionally. Card plans, formal issuance, post-issuance customer-approved corrections, immediate offline-paid stored-value top-ups, completed-order redemption, NDP reward settlement, and redemption refund are database-backed. An adjustment takes effect only after the owning customer explicitly approves it within 72 hours, and expiry never auto-approves; a top-up credits only exact paid principal and never creates NDP. Redemption consumes immutable paid principal or uses and applies the published NDP reward plus platform fee without freezing funds. Refund is allowed only after the linked Booking payment is formally refunded: it restores the exact original card consumption, cancels a pending reward or reverses a paid customer reward and platform fee through a balanced ledger transaction, and preserves visible negative customer/platform balances for automatic offset by future credits. The `TEST` badge marks feature maturity only.
 
 Customer avatars are accepted only as bounded JPEG, PNG, or WebP data URLs, stored under a SHA-256 content hash, and exposed as immutable files under `/media/customer-avatars/:contentHash.ext`; original browser data URLs are never stored in MySQL. Configure `CUSTOMER_AVATAR_STORAGE_DIR` (local default: `runtime/customer-avatars`) and `CUSTOMER_AVATAR_PUBLIC_BASE_URL` (local default: `http://localhost:3000/media/customer-avatars`). Production requires an HTTPS avatar public base URL.
 

@@ -49,6 +49,8 @@ export interface ShopFinanceRuleSetPayload {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: ShopFinanceNdpBearer;
   technicianNdpSharePercent: number;
@@ -117,6 +119,8 @@ const defaultRuleSetForShop = (shopId: number): ShopFinanceRuleSetPayload => {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 0,
     commissionRatePercent: 60,
+    extensionCommissionRatePercent: 60,
+    nominationFeeJpy: 0,
     guaranteedMinimumJpy: 0,
     ndpFeeBearer: "shop",
     technicianNdpSharePercent: 0,
@@ -208,6 +212,8 @@ export class MerchantFinanceRulesService {
       dailyRateJpy: input.dailyRateJpy ?? 0,
       fixedOrderPayJpy: input.fixedOrderPayJpy ?? 0,
       commissionRatePercent: input.commissionRatePercent ?? 60,
+      extensionCommissionRatePercent: input.extensionCommissionRatePercent ?? 60,
+      nominationFeeJpy: input.nominationFeeJpy ?? 0,
       guaranteedMinimumJpy: input.guaranteedMinimumJpy ?? 0,
       ndpFeeBearer: input.ndpFeeBearer ?? "shop",
       technicianNdpSharePercent:

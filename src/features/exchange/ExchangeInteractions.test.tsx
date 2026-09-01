@@ -39,8 +39,19 @@ const post: ExchangePost = {
   publishedAt: "2026-08-30T04:00:00.000Z",
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "客户 41", avatarUrl: null },
   counts: { comments: 3, likes: 10, shares: 2 },
-  viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 5000, budgetMaxJpy: 8000 },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
+  demand: {
+    serviceMode: "store",
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 5000,
+    budgetMaxJpy: 8000,
+    address: { line1: "东京", line2: null, line3: null, line2GenerallyVisible: false, line3GenerallyVisible: false, disclosure: "owner" }
+  },
   intelligence: null
 };
 

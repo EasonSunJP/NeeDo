@@ -27,6 +27,13 @@ export const technicianServiceListQuerySchema = z.object({
   activeOnly: z.coerce.boolean().optional()
 });
 
+export const technicianServiceOrderBodySchema = z
+  .object({
+    orderedServiceIds: z.array(z.number().int().positive()).max(5),
+    idempotencyKey: z.string().trim().min(16).max(160)
+  })
+  .strict();
+
 export const bookingNavigationQuerySchema = z.object({
   ...paginationQuerySchema
 });
@@ -53,5 +60,6 @@ export type TechnicianServiceIdParams = z.infer<typeof technicianServiceIdParamS
 export type PublicTechnicianServicesParams = z.infer<typeof publicTechnicianServicesParamSchema>;
 export type PricingModeBody = z.infer<typeof pricingModeBodySchema>;
 export type TechnicianServiceListQuery = z.infer<typeof technicianServiceListQuerySchema>;
+export type TechnicianServiceOrderBody = z.infer<typeof technicianServiceOrderBodySchema>;
 export type BookingNavigationQuery = z.infer<typeof bookingNavigationQuerySchema>;
 export type TechnicianServiceBody = z.infer<typeof technicianServiceBodySchema>;

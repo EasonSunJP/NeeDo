@@ -163,7 +163,7 @@ export type MembershipRewardCaps = z.infer<typeof membershipRewardCapsSchema>;
 
 export interface MembershipRewardPreviewFacts {
   eligibleAmountJpy: number;
-  servicePublicId: string;
+  servicePublicId: string | null;
   categoryCode: string;
   occurredAt: string;
   completedCountBefore: number;
@@ -197,7 +197,7 @@ export interface MembershipRewardPreviewResult {
 
 const factsSchema = z.object({
   eligibleAmountJpy: safeNonNegativeInt,
-  servicePublicId: z.string().uuid(),
+  servicePublicId: z.string().uuid().nullable(),
   categoryCode: z.string().trim().min(1).max(100),
   occurredAt: z.string().datetime(),
   completedCountBefore: safeNonNegativeInt,
@@ -230,12 +230,12 @@ function multiplyCeil(left: number, right: number, divisor: number): number {
 
 function scopeMatches(rule: MembershipRewardRuleInput, facts: MembershipRewardPreviewFacts): boolean {
   const { scope } = rule;
-  if (scope.excludedServicePublicIds.includes(facts.servicePublicId)) return false;
+  if (facts.servicePublicId && scope.excludedServicePublicIds.includes(facts.servicePublicId)) return false;
   if (scope.excludedCategoryCodes.includes(facts.categoryCode)) return false;
   const hasInclusions = scope.servicePublicIds.length > 0 || scope.categoryCodes.length > 0;
   if (
     hasInclusions &&
-    !scope.servicePublicIds.includes(facts.servicePublicId) &&
+    (!facts.servicePublicId || !scope.servicePublicIds.includes(facts.servicePublicId)) &&
     !scope.categoryCodes.includes(facts.categoryCode)
   ) return false;
   const occurredAt = new Date(facts.occurredAt).getTime();

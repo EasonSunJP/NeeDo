@@ -57,7 +57,11 @@ import {
 import { cn } from "../../lib/utils";
 import { useI18n, useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
-import { SocialProfileMiniCard } from "../../shared/profile-card";
+import {
+  PlatformMembershipSimpleCard,
+  TechnicianPublicInfoCard,
+  type TechnicianFormalContactCardData,
+} from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { getTechnicianScheduleStoreSnapshot } from "../../state/technicianScheduleStore";
@@ -110,6 +114,7 @@ import {
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
+import { MembershipSupportEntry } from "./MembershipSupportEntry";
 import {
   ImMessageMultiSelectCircle,
   ImMessageMultiSelectOverlay,
@@ -172,12 +177,14 @@ import {
   type DirectoryProfile,
   type FriendRequest,
   type GroupInfoEditPolicy,
+  type ImContactCardCandidate,
   type ImMessageType,
   type ImRoleType,
   type ImSearchResult,
   type ImUser,
   type MessageCampaignImageInput,
   type MessageExt,
+  type TechnicianContactDetails,
   type TagMessageCampaignEstimate,
   type TagMessageCampaignResult
 } from "./model";
@@ -195,7 +202,7 @@ import {
   type GroupPrivacyCountdownField,
   type GroupPrivacyCountdownInput,
 } from "./privacy-countdown";
-import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImContactInformationPath, resolveImProfilePath } from "./role-config";
+import { getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImContactInformationPath, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
 import { translateImUiText } from "./ui-copy";
 import { MAX_VOICE_RECORDING_SECONDS, useImVoiceRecording } from "./useImVoiceRecording";
@@ -256,6 +263,71 @@ export type DirectoryProfileAction =
   | "accept"
   | "waiting"
   | "status";
+
+type FormalTechnicianProfileCard = {
+  technician: Technician;
+  formalData: TechnicianFormalContactCardData;
+};
+
+function buildFormalTechnicianProfileCard(
+  profile: DirectoryProfile | null | undefined,
+): FormalTechnicianProfileCard | null {
+  if (
+    !profile ||
+    profile.identityCard.entityType !== "technician" ||
+    !profile.technicianContactDetails
+  ) {
+    return null;
+  }
+
+  const details: TechnicianContactDetails = profile.technicianContactDetails;
+  const identityCard = profile.identityCard;
+  const rating = identityCard.creditValue ?? 0;
+
+  return {
+    technician: {
+      id: identityCard.profileId ?? profile.user.id,
+      systemId: profile.user.userIdLabel,
+      name: identityCard.displayName,
+      nickname: identityCard.displayName,
+      storeId: details.services[0] ? String(details.services[0].shopId) : "",
+      role: "therapist",
+      status: "available",
+      rating,
+      orderCount: details.completedOrderCount,
+      income: 0,
+      skills: [],
+      serviceAreas: identityCard.serviceArea ? [identityCard.serviceArea] : [],
+      acceptRate: details.acceptanceRateBps / 100,
+      cancelRate: 0,
+      reviewCount: identityCard.creditReviewCount,
+      languages: identityCard.languages,
+      avatar: profile.user.avatar,
+      age: identityCard.age === undefined ? undefined : String(identityCard.age),
+      height: identityCard.heightCm === undefined ? undefined : String(identityCard.heightCm),
+      bio: identityCard.bio,
+      identityLabel: identityCard.identityLabel === "店铺所属技师"
+        ? "店铺所属技师"
+        : "个人技师",
+    },
+    formalData: {
+      metrics: {
+        completedOrderCount: details.completedOrderCount,
+        ratingAverage: rating.toFixed(2),
+        reviewCount: identityCard.creditReviewCount,
+        acceptanceRateBps: details.acceptanceRateBps,
+      },
+      contactDetails: {
+        bidBudgetMinJpy: details.bidBudgetMinJpy,
+        bidBudgetMaxJpy: details.bidBudgetMaxJpy,
+        paymentMethods: details.paymentMethods,
+        specialTags: details.specialTags,
+        profileTags: details.profileTags,
+        services: details.services,
+      },
+    },
+  };
+}
 
 export function isActiveFriendRequest(
   request: FriendRequest | null | undefined,
@@ -2142,6 +2214,7 @@ export function ImConversationListPage() {
 
 export function ImContactsListPage() {
   const { store, config, scope } = useImRuntime();
+  const { language } = useOptionalI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = getCurrentUser(store);
@@ -2496,6 +2569,7 @@ export function ImContactsListPage() {
                 to={config.routes.serviceAccounts}
                 trailing={<TestFeatureBadge className="min-h-4 px-1.5 py-0 text-[8px]" />}
               />
+              <MembershipSupportEntry enabled={scope === "user"} language={language} />
             </section>
 
             <div className="px-1 pt-3">
@@ -2853,6 +2927,7 @@ export function ImDirectoryProfilePage() {
     : undefined;
   const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend" && !activePendingRequest;
   const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
+  const formalTechnicianProfileCard = buildFormalTechnicianProfileCard(profile);
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -2979,13 +3054,22 @@ export function ImDirectoryProfilePage() {
     );
   };
 
+  const closeDirectoryProfile = () => {
+    if (fromRequests) {
+      navigate(config.routes.friendRequests);
+      return;
+    }
+
+    navigate(-1);
+  };
+
   return (
     <MobileFullscreenPage innerClassName="bg-[color:var(--client-bg)]">
       <MobileFullscreenHeader
         dark={isNight}
         info={t("查看资料")}
         onBack={fromRequests ? undefined : () => navigate(-1)}
-        onClose={fromRequests ? () => navigate(config.routes.friendRequests) : undefined}
+        onClose={closeDirectoryProfile}
         title={t("联系人信息")}
       />
       <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-4">
@@ -3017,11 +3101,20 @@ export function ImDirectoryProfilePage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <ConversationIdentityProfileCard
-              identityCard={profile.identityCard}
-              user={profile.user}
-              viewerScope={scope}
-            />
+            {formalTechnicianProfileCard ? (
+              <TechnicianPublicInfoCard
+                dynamicTo={activityTo}
+                formalData={formalTechnicianProfileCard.formalData}
+                technician={formalTechnicianProfileCard.technician}
+                themeScope={scope}
+              />
+            ) : (
+              <ConversationIdentityProfileCard
+                identityCard={profile.identityCard}
+                user={profile.user}
+                viewerScope={scope}
+              />
+            )}
             {!isSelfProfile ? (
               <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
                 <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
@@ -4811,6 +4904,12 @@ export function ImConversationRoomPage({
   const [mediaPreviewScale, setMediaPreviewScale] = useState(1);
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
   const [contactCardQuery, setContactCardQuery] = useState("");
+  const [contactCardCandidates, setContactCardCandidates] = useState<ImContactCardCandidate[]>([]);
+  const [contactCardPickerStatus, setContactCardPickerStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [contactCardPickerError, setContactCardPickerError] = useState(false);
+  const [contactCardReloadVersion, setContactCardReloadVersion] = useState(0);
+  const [contactCardPendingTargetId, setContactCardPendingTargetId] = useState<string | null>(null);
+  const contactCardCandidateRequestRef = useRef(0);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   const [serviceCardQuery, setServiceCardQuery] = useState("");
   const [scheduleInvitePickerOpen, setScheduleInvitePickerOpen] = useState(false);
@@ -4958,6 +5057,42 @@ export function ImConversationRoomPage({
   useEffect(() => {
     setDraft(clampMessageText(conversation?.draftText ?? ""));
   }, [conversation?.draftText, conversationId]);
+
+  useEffect(() => {
+    if (!contactCardPickerOpen) {
+      return;
+    }
+
+    const requestId = contactCardCandidateRequestRef.current + 1;
+    contactCardCandidateRequestRef.current = requestId;
+    let disposed = false;
+    setContactCardPickerStatus("loading");
+
+    const normalizedQuery = contactCardQuery.trim();
+    void api.listContactCardCandidates(conversationId, {
+      page: 1,
+      pageSize: 50,
+      ...(normalizedQuery ? { query: normalizedQuery } : {}),
+    }).then((result) => {
+      if (disposed || requestId !== contactCardCandidateRequestRef.current) {
+        return;
+      }
+
+      setContactCardCandidates(result.list);
+      setContactCardPickerStatus("ready");
+    }).catch(() => {
+      if (disposed || requestId !== contactCardCandidateRequestRef.current) {
+        return;
+      }
+
+      setContactCardCandidates([]);
+      setContactCardPickerStatus("error");
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [api, contactCardPickerOpen, contactCardQuery, contactCardReloadVersion, conversationId]);
 
   useEffect(() => {
     const next: ImMessageReactionState = {};
@@ -5307,18 +5442,6 @@ export function ImConversationRoomPage({
       users: store.users
     });
   }, [activeContactByUserId, scope, store.currentUserId, store.users]);
-  const filteredShareableCardUsers = useMemo(() => {
-    const keyword = contactCardQuery.trim().toLowerCase();
-
-    if (!keyword) {
-      return shareableCardUsers;
-    }
-
-    return shareableCardUsers.filter((user) =>
-      [user.nickname, user.userIdLabel, user.signature, user.region, user.bio, ...user.searchableFields]
-        .some((field) => typeof field === "string" && field.toLowerCase().includes(keyword))
-    );
-  }, [contactCardQuery, shareableCardUsers]);
   const scheduleInviteSelectableAttendees = useMemo(() => {
     const excludedIds = new Set([partner?.id, store.currentUserId].filter((id): id is string => Boolean(id)));
 
@@ -5519,47 +5642,81 @@ export function ImConversationRoomPage({
     }
   };
 
-  const resolveContactCardDetailPath = (card: ContactCardPayload) => {
-    const cardUser = store.usersById[card.userId];
-    const directPath = resolveImProfilePath(scope, cardUser);
+  const resolveContactCardUser = (card: ContactCardPayload) => {
+    const publicIds = new Set(
+      [card.userId, card.needoId, card.userIdLabel]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
 
-    if (directPath) {
-      return directPath;
-    }
-
-    const profileRef = resolveContactCardProfileRef(card, cardUser);
-    return profileRef ? getScopedProfileDetailPath(scope, profileRef.entityType, profileRef.id) : undefined;
+    return store.users.find((user) => (
+      publicIds.has(user.id) ||
+      publicIds.has(user.accountId) ||
+      publicIds.has(user.userIdLabel)
+    ));
   };
 
-  const openContactCardProfile = (card: ContactCardPayload) => {
-    const detailPath = resolveContactCardDetailPath(card);
-
-    if (detailPath) {
-      navigate(detailPath);
+  const openContactCardProfile = async (card: ContactCardPayload) => {
+    const cardUser = resolveContactCardUser(card);
+    if (cardUser) {
+      navigate(config.routes.directoryProfile(cardUser.id));
       return;
     }
 
-    const targetContact = activeContactByUserId.get(card.userId);
-
-    if (targetContact) {
-      navigate(config.routes.contactDetail(targetContact.id));
-    }
-  };
-
-  const sendContactCard = async (cardUser: ImUser) => {
-    if (blocked || !canShareUserCard(scope, cardUser)) {
+    const publicId = card.needoId?.trim() || card.userIdLabel?.trim() || card.userId.trim();
+    if (!publicId) {
+      setActionNotice(translateText("无法打开联系人信息，请稍后重试", language));
       return;
     }
 
-    await store.sendMessage(conversationId, "contact-card", cardUser.nickname, {
-      quotedMessageId,
-      ext: {
-        contactCard: buildContactCardPayload(cardUser)
+    try {
+      const result = await api.searchDirectory(publicId);
+      const exactUser = result.users.find((user) => (
+        user.accountId === publicId ||
+        user.userIdLabel === publicId ||
+        user.id === publicId
+      ));
+
+      if (exactUser) {
+        navigate(config.routes.directoryProfile(exactUser.id));
+        return;
       }
-    });
-    setQuotedMessageId(undefined);
+    } catch {
+      // Keep provider error details out of the user-facing notice.
+    }
+
+    setActionNotice(translateText("无法打开联系人信息，请稍后重试", language));
+  };
+
+  const closeContactCardPicker = () => {
+    contactCardCandidateRequestRef.current += 1;
     setContactCardPickerOpen(false);
     setContactCardQuery("");
+    setContactCardCandidates([]);
+    setContactCardPickerStatus("idle");
+    setContactCardPickerError(false);
+    setContactCardPendingTargetId(null);
+  };
+
+  const sendContactCard = async (candidate: ImContactCardCandidate) => {
+    if (blocked || contactCardPendingTargetId) {
+      return;
+    }
+
+    setContactCardPendingTargetId(candidate.targetUserId);
+    setContactCardPickerError(false);
+    try {
+      await store.sendContactCard(
+        conversationId,
+        candidate.targetUserId,
+        crypto.randomUUID(),
+      );
+      setQuotedMessageId(undefined);
+      closeContactCardPicker();
+    } catch {
+      setContactCardPickerError(true);
+      setContactCardPendingTargetId(null);
+    }
   };
 
   const sendServiceCard = async ({ service, provider, providerType, href }: ImServiceShareOption) => {
@@ -5688,123 +5845,49 @@ export function ImConversationRoomPage({
     setPanel(null);
   };
 
-  const renderContactCardAction = (card: ContactCardPayload, message?: ConversationMessage) => {
-    const cardUser = store.usersById[card.userId];
-    const contactFromCard = activeContactByUserId.get(card.userId);
-    const profileRef = resolveContactCardProfileRef(card, cardUser);
-    const targetKey = profileRef ? profileKey(profileRef) : undefined;
-    const actorKey = social.getActorForScope(scope as SocialPortalScope);
-    const statusClassName = "whitespace-nowrap text-[11px] font-black text-[color:var(--client-muted)]";
-    const actionClassName =
-      "rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]";
-    const renderActionButton = (label: string, run: () => unknown | Promise<unknown>) => (
-      <button
-        className={actionClassName}
-        onClick={(event) => {
-          event.stopPropagation();
-          void run();
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        type="button"
-      >
-        {label}
-      </button>
+  const renderContactCardAction = (card: ContactCardPayload) => {
+    const cardUser = resolveContactCardUser(card);
+    const contactFromCard = cardUser ? activeContactByUserId.get(cardUser.id) : undefined;
+    const isCurrentUser = Boolean(
+      cardUser?.id === store.currentUserId ||
+      currentUser?.accountId === card.needoId ||
+      currentUser?.accountId === card.userId,
     );
+    const statusClassName = "whitespace-nowrap text-[11px] font-black text-white/68";
 
-    if (card.userId === store.currentUserId || (targetKey && targetKey === actorKey)) {
-      return <span className={statusClassName}>我的名片</span>;
+    if (isCurrentUser) {
+      return <span className={statusClassName}>{translateText("我的名片", language)}</span>;
     }
 
-    if (contactFromCard || (message?.senderId === store.currentUserId && card.profileKind === "person")) {
-      return <span className={statusClassName}>好友</span>;
-    }
-
-    if (targetKey && social.profiles[targetKey]) {
-      const following = social.getFollowing(actorKey).some((profile) => profileKey(profile) === targetKey);
-      const targetFollowsActor = social.getFollowing(targetKey).some((profile) => profileKey(profile) === actorKey);
-
-      if (following && targetFollowsActor) {
-        return <span className={statusClassName}>好友</span>;
-      }
-
-      if (following) {
-        return (
-          <span className={`${statusClassName} inline-flex items-center gap-1`}>
-            已关注
-            <ImIcon className="h-3 w-3" name="check" />
-          </span>
-        );
-      }
-
-      return renderActionButton("关注", () => social.toggleFollow(actorKey, targetKey));
-    }
-
-    if (card.profileKind === "person") {
-      return renderActionButton("添加好友", () =>
-        store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
-      );
-    }
-
-    return renderActionButton("添加", () =>
-      store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
-    );
+    return contactFromCard
+      ? <span className={statusClassName}>{translateText("好友", language)}</span>
+      : undefined;
   };
 
-  const renderContactCard = (card: ContactCardPayload, message?: ConversationMessage) => {
-    const profileRef = resolveContactCardProfileRef(card, store.usersById[card.userId]);
-    const detailTo = resolveContactCardDetailPath(card);
-    const actionSlot = renderContactCardAction(card, message);
-    const cardClassName = "w-[330px] max-w-[84vw] shadow-[0_8px_20px_rgba(0,0,0,0.08)]";
+  const renderContactCard = (card: ContactCardPayload, _message?: ConversationMessage) => {
+    const entityKind = card.entityKind ?? (
+      card.profileKind === "person"
+        ? "customer"
+        : card.profileKind === "store"
+          ? "shop"
+          : card.profileKind
+    );
 
-    if (profileRef?.entityType === "shop") {
-      const shop = entityStore.stores.find((item) => item.id === profileRef.id);
-
-      if (shop) {
-        return (
-          <SocialProfileMiniCard
-            actionSlot={actionSlot}
-            className={cardClassName}
-            detailTo={detailTo}
-            onOpenDetails={detailTo ? undefined : () => openContactCardProfile(card)}
-            store={shop}
-          />
-        );
-      }
-    }
-
-    if (profileRef?.entityType === "technician") {
-      const technician = entityStore.technicians.find((item) => item.id === profileRef.id);
-
-      if (technician) {
-        return (
-          <SocialProfileMiniCard
-            actionSlot={actionSlot}
-            className={cardClassName}
-            detailTo={detailTo}
-            onOpenDetails={detailTo ? undefined : () => openContactCardProfile(card)}
-            technician={technician}
-          />
-        );
-      }
-    }
-
-    if (profileRef?.entityType === "user") {
-      const customer = entityStore.customers.find((item) => item.id === profileRef.id);
-
-      if (customer) {
-        return (
-          <SocialProfileMiniCard
-            actionSlot={actionSlot}
-            className={cardClassName}
-            customer={customer}
-            detailTo={detailTo}
-            onOpenDetails={detailTo ? undefined : () => openContactCardProfile(card)}
-          />
-        );
-      }
-    }
-
-    return undefined;
+    return (
+      <PlatformMembershipSimpleCard
+        actionSlot={renderContactCardAction(card)}
+        avatarUrl={card.avatar || null}
+        bio={card.headline ?? ""}
+        displayName={card.displayName}
+        ekycVerified={card.ekycVerified ?? false}
+        entityKind={entityKind}
+        level={card.level ?? null}
+        needoId={card.needoId ?? card.userIdLabel ?? card.userId}
+        onOpenDetails={() => void openContactCardProfile(card)}
+        simpleBottomColor={card.simpleBottomColor}
+        simpleTopColor={card.simpleTopColor}
+      />
+    );
   };
 
   const sendPresetMessage = async (type: ImMessageType) => {
@@ -5826,6 +5909,7 @@ export function ImConversationRoomPage({
     if (type === "contact-card") {
       setPanel(null);
       setContactCardQuery("");
+      setContactCardPickerError(false);
       setContactCardPickerOpen(true);
     }
   };
@@ -6872,38 +6956,83 @@ export function ImConversationRoomPage({
         />
       ) : null}
 
-      <ImBottomSheet onClose={() => setContactCardPickerOpen(false)} open={contactCardPickerOpen} title="发送名片">
+      <ImBottomSheet
+        onClose={closeContactCardPicker}
+        open={contactCardPickerOpen}
+        title={translateText("发送名片", language)}
+      >
         <div className="space-y-3 pb-2">
           <input
             className="h-11 w-full rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-4 text-[15px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
-            onChange={(event) => setContactCardQuery(event.target.value)}
-            placeholder="搜索用户、店铺或技师名片"
+            onChange={(event) => {
+              setContactCardPickerError(false);
+              setContactCardQuery(event.target.value);
+            }}
+            placeholder={translateText("搜索我或好友", language)}
             value={contactCardQuery}
           />
 
-          <section className="max-h-[62dvh] overflow-y-auto rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-surface)_28%)]">
-            {filteredShareableCardUsers.length > 0 ? (
-              filteredShareableCardUsers.map((user) => {
-                const contactForUser = activeContactByUserId.get(user.id);
-                const currentUser = store.currentUserId ? store.usersById[store.currentUserId] : undefined;
-                const captionPrefix = getShareableCardCaptionPrefix(scope, user, store.currentUserId, currentUser);
-                const caption = captionPrefix
-                  ? `${captionPrefix} · ${user.signature ?? user.region ?? user.userIdLabel}`
-                  : buildContactCaption(user, contactForUser) || user.userIdLabel;
+          {contactCardPickerError ? (
+            <p className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-600" role="alert">
+              {translateText("名片发送失败，请稍后重试", language)}
+            </p>
+          ) : null}
 
-                return (
-                  <ContactRow
-                    caption={caption}
-                    contact={contactForUser}
-                    key={user.id}
-                    onClick={() => void sendContactCard(user)}
-                    user={user}
-                  />
-                );
-              })
+          <section className="max-h-[62dvh] overflow-y-auto rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-surface)_28%)]">
+            {contactCardPickerStatus === "loading" ? (
+              <div className="px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
+                {translateText("正在加载名片", language)}
+              </div>
+            ) : contactCardPickerStatus === "error" ? (
+              <div className="space-y-3 px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
+                <p>{translateText("名片加载失败，请稍后重试", language)}</p>
+                <Button
+                  onClick={() => setContactCardReloadVersion((version) => version + 1)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {translateText("重试", language)}
+                </Button>
+              </div>
+            ) : contactCardCandidates.length > 0 ? (
+              contactCardCandidates.map((candidate) => (
+                <button
+                  className="flex min-h-[74px] w-full items-center gap-3 border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 text-left last:border-b-0 disabled:opacity-55"
+                  data-im-contact-card-candidate={candidate.targetUserId}
+                  disabled={Boolean(contactCardPendingTargetId)}
+                  key={candidate.targetUserId}
+                  onClick={() => void sendContactCard(candidate)}
+                  type="button"
+                >
+                  {candidate.avatarUrl ? (
+                    <img
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-full object-cover"
+                      src={candidate.avatarUrl}
+                    />
+                  ) : (
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[color:var(--client-elevated)] text-sm font-black text-[color:var(--client-muted)]">
+                      {candidate.nickname.slice(0, 1)}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-black text-[color:var(--client-text)]">
+                      {candidate.nickname}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-[color:var(--client-muted)]">
+                      {candidate.needoId}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">
+                    {contactCardPendingTargetId === candidate.targetUserId
+                      ? translateText("发送中", language)
+                      : translateText(candidate.relationship === "self" ? "我的名片" : "好友", language)}
+                  </span>
+                </button>
+              ))
             ) : (
               <div className="px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
-                没有可发送的名片
+                {translateText("没有可发送的名片", language)}
               </div>
             )}
           </section>
@@ -7706,6 +7835,9 @@ export function ImConversationInfoPage() {
         languages: [],
       }
     : undefined;
+  const infoFormalTechnicianProfileCard = buildFormalTechnicianProfileCard(
+    conversationDirectoryProfile,
+  );
   const infoIdentityCardDetailTo = infoIdentityCard?.profileId && infoIdentityCard.entityType !== "account"
     ? getScopedProfileDetailPath(scope, infoIdentityCard.entityType, infoIdentityCard.profileId)
     : infoCardDetailTo;
@@ -7772,16 +7904,29 @@ export function ImConversationInfoPage() {
   return (
     <ImStandaloneShell>
       <div className="contents">
-        <ImTopBar onBack={() => navigate(-1)} title={t(conversation.type === "single" ? "联系人信息" : "信息设置")} />
+        <ImTopBar
+          actions={<IconButton icon="close" label={t("关闭")} onClick={() => navigate(-1)} />}
+          onBack={() => navigate(-1)}
+          title={t(conversation.type === "single" ? "联系人信息" : "信息设置")}
+        />
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
         {conversation.type === "single" && user && infoIdentityCard ? (
-          <ConversationIdentityProfileCard
-            detailTo={infoIdentityCardDetailTo}
-            identityCard={infoIdentityCard}
-            user={user}
-            viewerScope={scope}
-          />
+          infoFormalTechnicianProfileCard ? (
+            <TechnicianPublicInfoCard
+              dynamicTo={infoActivityTo}
+              formalData={infoFormalTechnicianProfileCard.formalData}
+              technician={infoFormalTechnicianProfileCard.technician}
+              themeScope={scope}
+            />
+          ) : (
+            <ConversationIdentityProfileCard
+              detailTo={infoIdentityCardDetailTo}
+              identityCard={infoIdentityCard}
+              user={user}
+              viewerScope={scope}
+            />
+          )
         ) : null}
 
         <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">

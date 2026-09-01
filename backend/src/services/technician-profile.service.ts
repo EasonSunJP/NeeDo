@@ -87,6 +87,7 @@ export class TechnicianProfileService {
       ...(input.bidBudgetMinJpy !== undefined ? { bidBudgetMinJpy: input.bidBudgetMinJpy } : {}),
       ...(input.bidBudgetMaxJpy !== undefined ? { bidBudgetMaxJpy: input.bidBudgetMaxJpy } : {}),
       ...(input.paymentMethods !== undefined ? { paymentMethods: input.paymentMethods } : {}),
+      ...(input.serviceBase !== undefined ? { serviceBase: input.serviceBase } : {}),
       ...(input.visibility !== undefined ? { visibility: input.visibility } : {})
     };
   }

@@ -241,6 +241,8 @@ export function MerchantApplicationsReviewPage() {
             <DetailRow label="名义一致校验" value={t(selected.bankAccount?.holderMatched ? "一致" : "不一致")} />
             <DetailRow label="合同版本" value={selected.contractAcceptance?.contractVersion} />
             <DetailRow label="合同回执" value={selected.contractAcceptance?.receiptId} />
+            <DetailRow label="服务种类" value={selected.serviceCategories.map((category) => category.label).join("、")} />
+            <DetailRow label="服务关键词" value={selected.businessKeywords.map((keyword) => keyword.label).join("、") || "—"} />
             <DetailRow label="服务展示" value={<pre className="whitespace-pre-wrap text-xs">{JSON.stringify(selected.showcaseDraft, null, 2)}</pre>} />
           </dl></ApplicationCard>
           {selected.media.length ? <ApplicationCard className="grid gap-4 sm:grid-cols-2">{selected.media.map((media) => <figure key={media.id}><ProtectedApplicationImage alt={t(media.purpose)} applicationId={selected.applicationId} className="aspect-[4/3]" mediaId={media.id} /><figcaption className="mt-2 text-center text-xs font-bold text-[color:var(--client-muted)]">{t(media.purpose)}</figcaption></figure>)}</ApplicationCard> : null}

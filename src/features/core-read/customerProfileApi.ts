@@ -10,6 +10,7 @@ export type CustomerSelfProfile = {
   bio: string | null;
   avatarUrl: string | null;
   membershipLevel: string;
+  level: number;
   gender: "female" | "male" | "private";
   age: number | null;
   heightCm: number | null;

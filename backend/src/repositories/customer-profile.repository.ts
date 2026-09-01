@@ -1,4 +1,10 @@
-import type { CustomerProfile, MediaAsset, Prisma, PrismaClient } from "@prisma/client";
+import type {
+  CustomerProfile,
+  MediaAsset,
+  Prisma,
+  PrismaClient,
+  UserExperienceAccount
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import {
   toAuditLogCreateData,
@@ -28,6 +34,7 @@ export interface CustomerProfilePayload {
   displayName: string;
   city: string | null;
   membershipLevel: string;
+  level: number;
   avatarUrl: string | null;
   gender: "female" | "male" | "private";
   age: number | null;
@@ -53,7 +60,12 @@ export interface CustomerProfileRepositoryPort {
 
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
-  user: { avatarBootstrapUrl: string | null; avatarUrl: string | null; needoId: string };
+  user: {
+    avatarBootstrapUrl: string | null;
+    avatarUrl: string | null;
+    experienceAccount: Pick<UserExperienceAccount, "currentLevel" | "deletedAt"> | null;
+    needoId: string;
+  };
 };
 
 export class CustomerProfileRepository implements CustomerProfileRepositoryPort {
@@ -64,7 +76,14 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       where: { id: profileId, userId, deletedAt: null },
       include: {
         mediaAssets: this.avatarMediaInclude(),
-        user: { select: { avatarBootstrapUrl: true, avatarUrl: true, needoId: true } }
+        user: {
+          select: {
+            avatarBootstrapUrl: true,
+            avatarUrl: true,
+            experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+            needoId: true
+          }
+        }
       }
     });
 
@@ -92,7 +111,14 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
         data: this.profileData(mutation),
         include: {
           mediaAssets: this.avatarMediaInclude(),
-          user: { select: { avatarBootstrapUrl: true, avatarUrl: true, needoId: true } }
+          user: {
+            select: {
+              avatarBootstrapUrl: true,
+              avatarUrl: true,
+              experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+              needoId: true
+            }
+          }
         }
       });
 
@@ -112,7 +138,14 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
         where: { id: updated.id },
         include: {
           mediaAssets: this.avatarMediaInclude(),
-          user: { select: { avatarBootstrapUrl: true, avatarUrl: true, needoId: true } }
+          user: {
+            select: {
+              avatarBootstrapUrl: true,
+              avatarUrl: true,
+              experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+              needoId: true
+            }
+          }
         }
       });
     });
@@ -151,6 +184,10 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       displayName: profile.displayName,
       city: profile.city,
       membershipLevel: resolveEffectiveCustomerMembershipLevel(profile),
+      level:
+        profile.user.experienceAccount?.deletedAt === null
+          ? profile.user.experienceAccount.currentLevel
+          : 1,
       avatarUrl:
         profile.user.avatarUrl ??
         profile.mediaAssets[0]?.url ??

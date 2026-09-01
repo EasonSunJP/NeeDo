@@ -112,4 +112,48 @@ describe("IdentityActivationRepository", () => {
       })
     });
   });
+
+  it("creates an independent identity card in the same merchant activation transaction", async () => {
+    const tx = {
+      role: { findFirst: jest.fn().mockResolvedValue({ id: 5, code: "merchant_owner" }) },
+      userIdentity: {
+        findFirst: jest.fn().mockResolvedValue({ id: 109 }),
+        create: jest.fn().mockResolvedValue({
+          id: 92,
+          userId: 4,
+          type: "merchant_owner",
+          scopeType: "shop",
+          scopeId: 73
+        })
+      },
+      merchantIdentityProfile: { create: jest.fn().mockResolvedValue({ id: 62 }) },
+      userRole: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 45 })
+      },
+      notification: { create: jest.fn().mockResolvedValue({ id: 72 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 82 }) }
+    };
+    const repository = new IdentityActivationRepository({} as PrismaClient);
+
+    await repository.activateWithTransaction(tx as never, {
+      userId: 4,
+      actorUserId: 8,
+      identityType: "merchant_owner",
+      roleCode: "merchant_owner",
+      scopeType: "shop",
+      scopeId: 73,
+      displayName: "佐藤 美咲",
+      applicationId: 12,
+      contractAcceptanceId: null,
+      activatedAt: new Date("2026-09-01T00:00:00.000Z"),
+      notificationPayload: { identityKind: "merchant" },
+      auditMetadata: { applicationId: 12 },
+      idempotencyKey: "identity-activation:4:merchant_owner:application:12"
+    });
+
+    expect(tx.merchantIdentityProfile.create).toHaveBeenCalledWith({
+      data: { userId: 4, identityId: 92, displayName: "佐藤 美咲", languages: [] }
+    });
+  });
 });

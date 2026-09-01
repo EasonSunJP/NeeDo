@@ -62,7 +62,9 @@ const order: BookingOrderPayload = {
   serviceSession: null,
   createdAt: now,
   updatedAt: now,
-  statusHistory: []
+  statusHistory: [],
+  performanceAssessment: null,
+  timelineEvents: []
 };
 
 const createFixture = () => {

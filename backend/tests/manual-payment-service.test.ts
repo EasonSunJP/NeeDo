@@ -79,6 +79,8 @@ const order = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPayloa
   createdAt: now,
   updatedAt: now,
   statusHistory: [],
+  performanceAssessment: null,
+  timelineEvents: [],
   affiliate: null,
   ...overrides
 });

@@ -30,11 +30,13 @@ describe("BackofficeRepository shop owner account identifiers", () => {
         update: jest.fn(async () => ({ id: 7 }))
       },
       customerProfile: { create: jest.fn(async () => ({ id: 17 })) },
+      userExperienceAccount: { create: jest.fn(async () => ({ id: 27 })) },
       userIdentity: {
         create: jest.fn(async () => ({ id: nextIdentityId++ })),
         update: jest.fn(async () => ({ id: 70 }))
       },
       userRole: { create: jest.fn(async () => ({ id: 1 })) },
+      merchantIdentityProfile: { create: jest.fn(async () => ({ id: 61 })) },
       vanityNumberReservation: { findFirst: jest.fn(async () => null) },
       publicIdentifier: { create: createIdentifier },
       shop: {
@@ -87,6 +89,9 @@ describe("BackofficeRepository shop owner account identifiers", () => {
       where: { id: 7 },
       data: { needoId: "u5831047296" }
     });
+    expect(transaction.userExperienceAccount.create).toHaveBeenCalledWith({
+      data: { userId: 7, currentLevel: 1, totalExpUnits: 0n }
+    });
     expect(createIdentifier).toHaveBeenCalledWith({
       data: expect.objectContaining({
         publicId: "b5831047296",
@@ -96,5 +101,8 @@ describe("BackofficeRepository shop owner account identifiers", () => {
       })
     });
     expect(transaction.userRole.create).toHaveBeenCalledTimes(2);
+    expect(transaction.merchantIdentityProfile.create).toHaveBeenCalledWith({
+      data: { userId: 7, identityId: 71, displayName: "Owner", languages: [] }
+    });
   });
 });

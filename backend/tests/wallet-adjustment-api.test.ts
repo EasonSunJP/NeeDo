@@ -212,6 +212,11 @@ const createFixture = async () => {
     updatePlatformFeeDebt: jest.fn(async () => true),
     getDatabaseNow: jest.fn(async () => now)
   });
+  const shopMembershipCardRedemptionRepository = {
+    listPendingRewardIds: jest.fn(async () => []),
+    lockPendingReward: jest.fn(async () => null),
+    markPendingRewardPaid: jest.fn(async () => undefined)
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: {
@@ -230,6 +235,7 @@ const createFixture = async () => {
     authSessionStore: new InMemorySessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     ledgerRepository,
+    shopMembershipCardRedemptionRepository,
     merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 })
   } as never);
   const login = async (email: string) => {

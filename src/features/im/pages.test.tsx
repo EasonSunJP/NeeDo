@@ -11,6 +11,7 @@ import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ImScopeProvider } from "./scope";
 import source from "./pages.tsx?raw";
 import componentsSource from "./components.tsx?raw";
+import supportSource from "./MembershipSupportEntry.tsx?raw";
 
 const roomHarness = vi.hoisted(() => ({
   entityStore: { customers: [], stores: [], technicians: [] } as Record<string, unknown>,
@@ -551,17 +552,22 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(profileSource).toContain("<MobileFullscreenPage");
     expect(profileSource).toContain("<MobileFullscreenHeader");
     expect(profileSource).toContain('info={t("查看资料")}');
-    expect(profileSource).toContain("onClose={fromRequests");
+    expect(profileSource).toContain("const closeDirectoryProfile = () => {");
+    expect(profileSource).toContain("onClose={closeDirectoryProfile}");
+    expect(profileSource).not.toContain("onClose={fromRequests");
     expect(profileSource).not.toContain("subtitle=");
     expect(profileSource).not.toContain("gradient");
   });
 
-  it("uses the formal identity information card on the directory profile", () => {
+  it("uses the expanded formal technician card only when contact details are authorized", () => {
     const start = source.indexOf("export function ImDirectoryProfilePage");
     const end = source.indexOf("export function ImContactDetailPage", start);
     const profileSource = source.slice(start, end);
 
     expect(profileSource).toContain("<ConversationIdentityProfileCard");
+    expect(profileSource).toContain("<TechnicianPublicInfoCard");
+    expect(profileSource).toContain("formalData={formalTechnicianProfileCard.formalData}");
+    expect(profileSource).toContain("buildFormalTechnicianProfileCard(profile)");
     expect(profileSource).toContain("identityCard={profile.identityCard}");
     expect(profileSource).toContain("viewerScope={scope}");
     expect(profileSource).not.toContain("<ContactSummaryCard");
@@ -632,6 +638,9 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(conversationInfoSource).toContain(
       'title={t(conversation.type === "single" ? "联系人信息" : "信息设置")}',
     );
+    expect(conversationInfoSource).toContain(
+      'actions={<IconButton icon="close" label={t("关闭")} onClick={() => navigate(-1)} />}',
+    );
   });
 
   it("uses the formal identity profile card in one-to-one conversation settings", () => {
@@ -679,6 +688,22 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).toContain("store.acceptFriendRequest");
     expect(infoSource).toContain('contact?.id, formalActivityTargetUserId');
     expect(infoSource).toContain('{t("添加好友")}');
+  });
+});
+
+describe("IM membership support entry wiring", () => {
+  it("keeps the configured support benefit outside formal users and conversations", () => {
+    const start = source.indexOf("export function ImContactsListPage");
+    const end = source.indexOf("export function ImFriendRequestsPage", start);
+    const contactsSource = source.slice(start, end);
+
+    expect(source).toContain('from "./MembershipSupportEntry"');
+    expect(contactsSource).toContain(
+      '<MembershipSupportEntry enabled={scope === "user"} language={language} />'
+    );
+    expect(supportSource).not.toContain("supportUserId");
+    expect(supportSource).not.toContain("supportConversationId");
+    expect(supportSource).not.toContain("usersById");
   });
 });
 
@@ -1573,6 +1598,172 @@ describe("IM contact information automatic translation control", () => {
 
     expect(toggleSource).toContain("disabled?: boolean;");
     expect(toggleSource).toContain("disabled={disabled}");
+  });
+});
+
+describe("ImConversationRoomPage formal contact-card picker", () => {
+  it("loads authoritative candidates and sends the selected public user id through the dedicated store action", async () => {
+    installConversationRoomDomStubs();
+    const store = buildConversationRoomStore();
+    store.conversations[0].draftText = "";
+    const listContactCardCandidates = vi.fn().mockResolvedValue({
+      list: [
+        {
+          avatarUrl: "/current-avatar.png",
+          needoId: "u0000000100",
+          nickname: "我的正式名片",
+          relationship: "self",
+          targetUserId: "u0000000100",
+        },
+        {
+          avatarUrl: "/friend-avatar.png",
+          needoId: "u0000000201",
+          nickname: "山田花子",
+          relationship: "friend",
+          targetUserId: "u0000000201",
+        },
+      ],
+      page: 1,
+      page_size: 20,
+      total: 2,
+    });
+    const sendContactCard = vi.fn().mockResolvedValue(roomMessage({
+      content: "山田花子",
+      id: "contact-card-701",
+      localId: "contact-card-701",
+      type: "contact-card",
+    }));
+    store.api = { ...store.api, listContactCardCandidates };
+    store.sendContactCard = sendContactCard;
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("11111111-1111-4111-8111-111111111111");
+
+    const view = await renderConversationRoom(store);
+    await expect.poll(() => view.container.querySelector("button[aria-label='打开更多功能']")).not.toBeNull();
+    const moreButton = view.container.querySelector<HTMLButtonElement>("button[aria-label='打开更多功能']")!;
+    await act(async () => {
+      moreButton.click();
+      await Promise.resolve();
+    });
+    const cardButton = Array.from(view.container.querySelectorAll<HTMLButtonElement>("[data-im-composer-panel='more'] button"))
+      .find((button) => button.textContent?.includes("名片"));
+    expect(cardButton).not.toBeUndefined();
+
+    await act(async () => {
+      cardButton!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listContactCardCandidates).toHaveBeenCalledWith("conversation-room", {
+      page: 1,
+      pageSize: 50,
+    });
+    expect(view.container.textContent).toContain("我的正式名片");
+    expect(view.container.textContent).toContain("山田花子");
+    expect(view.container.textContent).toContain("u0000000201");
+
+    const friendCandidate = view.container.querySelector<HTMLButtonElement>(
+      "[data-im-contact-card-candidate='u0000000201']",
+    )!;
+    await act(async () => {
+      friendCandidate.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(sendContactCard).toHaveBeenCalledWith(
+      "conversation-room",
+      "u0000000201",
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(store.sendMessage).not.toHaveBeenCalled();
+    expect(view.container.textContent).not.toContain("发送名片");
+    await act(async () => view.root.unmount());
+  });
+
+  it("renders a V2 contact-card directly from the immutable message snapshot", async () => {
+    installConversationRoomDomStubs();
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({
+      content: "山田花子",
+      ext: {
+        contactCard: {
+          avatar: "/hanako.png",
+          displayName: "山田花子",
+          ekycVerified: true,
+          entityKind: "customer",
+          headline: "预约前请先确认时间、语言和付款方式。",
+          level: 12,
+          needoId: "u0000000201",
+          profileKind: "person",
+          simpleBottomColor: "#132630",
+          simpleTopColor: "#0d2f27",
+          snapshotVersion: 2,
+          userId: "u0000000201",
+          userIdLabel: "u0000000201",
+        },
+      },
+      id: "contact-card-v2",
+      localId: "contact-card-v2",
+      type: "contact-card",
+    })];
+
+    const view = await renderConversationRoom(store);
+    await expect.poll(() => view.container.querySelector("[data-platform-membership-simple-card='true']")).not.toBeNull();
+    expect(view.container.textContent).toContain("山田花子");
+    expect(view.container.textContent).toContain("Lv.12");
+    expect(view.container.textContent).toContain("ID u0000000201");
+    expect(view.container.textContent).toContain("预约前请先确认时间、语言和付款方式。");
+    await act(async () => view.root.unmount());
+  });
+
+  it("resolves an unknown snapshot public id and opens the shared contact information page", async () => {
+    installConversationRoomDomStubs();
+    const store = buildConversationRoomStore();
+    const directoryUser = {
+      ...store.users[1],
+      accountId: "u0000000201",
+      id: "directory-user-201",
+      userIdLabel: "u0000000201",
+    };
+    const searchDirectory = vi.fn().mockResolvedValue({ users: [directoryUser] });
+    store.api = { ...store.api, searchDirectory };
+    store.messagesByConversation["conversation-room"] = [roomMessage({
+      content: "山田花子",
+      ext: {
+        contactCard: {
+          avatar: "/hanako.png",
+          displayName: "山田花子",
+          ekycVerified: true,
+          entityKind: "customer",
+          headline: "正式简介",
+          level: 12,
+          needoId: "u0000000201",
+          profileKind: "person",
+          snapshotVersion: 2,
+          userId: "u0000000201",
+          userIdLabel: "u0000000201",
+        },
+      },
+      id: "contact-card-route",
+      localId: "contact-card-route",
+      type: "contact-card",
+    })];
+
+    const view = await renderRoutedConversationRoom(store);
+    await expect.poll(() => view.container.querySelector<HTMLElement>(
+      "[data-platform-membership-simple-card='true']",
+    )).toBeTruthy();
+    await act(async () => {
+      view.container.querySelector<HTMLElement>("[data-platform-membership-simple-card='true']")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(searchDirectory).toHaveBeenCalledWith("u0000000201");
+    expect(view.container.querySelector("[data-testid='location']")?.textContent)
+      .toBe("/contacts/directory/directory-user-201");
+    await act(async () => view.root.unmount());
   });
 });
 

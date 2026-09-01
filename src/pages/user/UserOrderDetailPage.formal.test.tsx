@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +49,14 @@ vi.mock("../../components/client-ui/AppScaffold", () => ({
   PageScaffold: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   PrimaryButton: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button onClick={onClick} type="button">{children}</button>
 }));
-vi.mock("../../components/mobile/ContactEventTimeline", () => ({ ContactEventTimelinePanel: () => <section>状态记录</section> }));
+vi.mock("../../components/mobile/ContactEventTimeline", () => ({
+  ContactEventTimelinePanel: ({ events, title }: { events: Array<{ message?: ReactNode; title: ReactNode }>; title: string }) => (
+    <section>
+      <h2>{title}</h2>
+      {events.map((event, index) => <article key={index}>{event.title}{event.message}</article>)}
+    </section>
+  )
+}));
 vi.mock("../../shared/order-detail/ServiceSessionUi", () => ({
   ServiceCountdownPill: ({ seconds }: { seconds: number }) => <output data-testid="countdown">{seconds}</output>,
   ServiceReviewPrompt: ({ error, onSkip, onSubmit, pending, tagOptions }: { error?: string; onSkip: () => void; onSubmit: (input: { rating: number; tags: string[]; comment: string | null }) => void; pending?: boolean; tagOptions: string[] }) => (
@@ -521,5 +528,80 @@ describe("formal user order detail", () => {
     expect(container.textContent).toContain("不支持开始、追加、结束、结算或评价操作");
     expect(mocks.getOrder).not.toHaveBeenCalled();
     expect(container.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("renders status, apply, and later revoke events without operations-only notes", async () => {
+    const order: BookingOrder = {
+      ...makeOrder("cancelled", 31),
+      cancelReason: "技师临时无法到达",
+      statusHistory: [{
+        id: 11,
+        orderId: 31,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        actorUserId: 301,
+        reason: "技师临时无法到达",
+        createdAt: "2026-05-25T02:00:00.000Z"
+      }],
+      timelineEvents: [
+        {
+          id: "status:11",
+          type: "ORDER_STATUS_CHANGED",
+          createdAt: "2026-05-25T02:00:00.000Z",
+          actorUserId: 301,
+          fromStatus: "pending",
+          toStatus: "cancelled",
+          publicReason: "技师临时无法到达"
+        },
+        {
+          id: "performance:92",
+          type: "SPECIAL_CANCELLATION_APPLIED",
+          createdAt: "2026-05-25T03:00:00.000Z",
+          actorUserId: 1,
+          publicReason: "已核实不可抗力"
+        },
+        {
+          id: "performance:93",
+          type: "SPECIAL_CANCELLATION_REVOKED",
+          createdAt: "2026-05-25T04:00:00.000Z",
+          actorUserId: 1,
+          publicReason: "用户投诉后复核恢复计入"
+        }
+      ]
+    };
+    (order.timelineEvents?.[1] as unknown as { internalNote: string }).internalNote = "用户端绝不能显示";
+    mocks.getOrder.mockResolvedValue(order);
+
+    await render("/orders/31");
+
+    expect(container.textContent).toContain("预约状态");
+    expect(container.textContent).toContain("技师临时无法到达");
+    expect(container.textContent).toContain("特殊取消已生效");
+    expect(container.textContent).toContain("已核实不可抗力");
+    expect(container.textContent).toContain("特殊取消已撤销");
+    expect(container.textContent).toContain("用户投诉后复核恢复计入");
+    expect(container.textContent).not.toContain("用户端绝不能显示");
+  });
+
+  it("falls back to legacy statusHistory when an older backend omits timelineEvents", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("cancelled", 31),
+      cancelReason: "技师临时无法到达",
+      statusHistory: [{
+        id: 11,
+        orderId: 31,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        actorUserId: 301,
+        reason: "技师临时无法到达",
+        createdAt: "2026-05-25T02:00:00.000Z"
+      }],
+      timelineEvents: undefined
+    });
+
+    await render("/orders/31");
+
+    expect(container.textContent).toContain("预约状态");
+    expect(container.textContent).toContain("技师临时无法到达");
   });
 });

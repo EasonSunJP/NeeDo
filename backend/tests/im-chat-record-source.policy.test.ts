@@ -70,6 +70,37 @@ describe("IM chat-record authoritative snapshot type contract", () => {
     expect(JSON.stringify(policy)).not.toContain("needoMessageType");
   });
 
+  it("copies a formal V2 contact-card snapshot into an immutable chat-record display snapshot", () => {
+    const contactCard = {
+      targetUserPublicId: "user-public-id",
+      needoId: "u0000000041",
+      nickname: "山田太郎",
+      avatarUrl: "/media/avatar.jpg",
+      entityKind: "customer",
+      ekycVerified: true,
+      level: 38,
+      bio: "自己紹介",
+      tierCode: "gold",
+      themeVersionPublicId: "tier-version",
+      simpleTopColor: "#09251F",
+      simpleBottomColor: "#10242D"
+    };
+
+    expect(parseChatRecordSourcePolicy("text", {
+      snapshotVersion: 2,
+      type: "contact-card",
+      contactCard
+    })).toEqual({
+      kind: "content",
+      messageType: "contact-card",
+      snapshotMetadata: {
+        snapshotVersion: 1,
+        type: "contact-card",
+        display: { contactCard: { snapshotVersion: 2, ...contactCard } }
+      }
+    });
+  });
+
   const mediaCases: Array<["image" | "video" | "voice" | "file", string]> = [
     ["image", "image/png"],
     ["video", "video/mp4"],

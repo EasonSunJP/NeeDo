@@ -1,5 +1,6 @@
 import {
   ShopCustomerMembershipStatus,
+  ShopMembershipCardAdjustmentStatus,
   ShopMembershipCardIssuanceSource,
   ShopMembershipCardStatus,
   ShopMembershipCardType,
@@ -108,6 +109,13 @@ export interface MerchantShopMembershipCardPayload extends ShopMembershipCardPay
   membershipPublicId: string;
   customerNeedoId: string;
   customerDisplayName: string;
+  pendingAdjustment: {
+    publicId: string;
+    status: "pending";
+    beforeValue: number;
+    targetValue: number;
+    expiresAt: Date;
+  } | null;
 }
 
 export interface ShopMembershipAnalyticsPayload {
@@ -469,6 +477,7 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
 
   public async listCards(shopId: number, input: MembershipCardListInput): Promise<PaginatedResponse<MerchantShopMembershipCardPayload>> {
     const pagination = toPrismaPagination(input);
+    const now = await this.getDatabaseNow();
     const where: Prisma.ShopMembershipCardWhereInput = {
       membership: { shopId, deletedAt: null },
       deletedAt: null,
@@ -480,6 +489,24 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
         where,
         select: {
           ...cardSelect,
+          adjustments: {
+            where: {
+              status: ShopMembershipCardAdjustmentStatus.PENDING,
+              expiresAt: { gt: now },
+              deletedAt: null
+            },
+            select: {
+              publicId: true,
+              status: true,
+              beforePrincipalBalanceJpy: true,
+              targetPrincipalBalanceJpy: true,
+              beforeRemainingUses: true,
+              targetRemainingUses: true,
+              expiresAt: true
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 1
+          },
           membership: {
             select: { publicId: true, customerProfile: { select: { displayName: true, user: { select: { needoId: true } } } } }
           }
@@ -490,12 +517,26 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       }),
       this.client.shopMembershipCard.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => ({
-      ...this.mapCard(record),
-      membershipPublicId: record.membership.publicId,
-      customerNeedoId: record.membership.customerProfile.user.needoId,
-      customerDisplayName: record.membership.customerProfile.displayName
-    })), total, pagination);
+    return buildPaginatedResponse(records.map((record) => {
+      const pendingAdjustment = record.adjustments[0];
+      const beforeValue = pendingAdjustment?.beforePrincipalBalanceJpy ?? pendingAdjustment?.beforeRemainingUses;
+      const targetValue = pendingAdjustment?.targetPrincipalBalanceJpy ?? pendingAdjustment?.targetRemainingUses;
+      return {
+        ...this.mapCard(record),
+        membershipPublicId: record.membership.publicId,
+        customerNeedoId: record.membership.customerProfile.user.needoId,
+        customerDisplayName: record.membership.customerProfile.displayName,
+        pendingAdjustment: pendingAdjustment && beforeValue !== null && beforeValue !== undefined && targetValue !== null && targetValue !== undefined
+          ? {
+              publicId: pendingAdjustment.publicId,
+              status: "pending" as const,
+              beforeValue,
+              targetValue,
+              expiresAt: pendingAdjustment.expiresAt
+            }
+          : null
+      };
+    }), total, pagination);
   }
 
   public async listActivities(shopId: number, input: PaginationInput): Promise<PaginatedResponse<ShopMembershipActivityPayload>> {
@@ -702,6 +743,13 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       expiresAt: record.expiresAt,
       frozenAt: record.frozenAt
     };
+  }
+
+  private async getDatabaseNow(): Promise<Date> {
+    const rows = await this.client.$queryRaw<Array<{ now: Date }>>`SELECT CURRENT_TIMESTAMP(3) AS now`;
+    const databaseNow = rows[0]?.now;
+    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime())) throw new Error("error.database_clock_unavailable");
+    return databaseNow;
   }
 
   private membershipStatusToDb(value: ShopMembershipStatusPayload): ShopCustomerMembershipStatus {

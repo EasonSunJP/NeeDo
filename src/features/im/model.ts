@@ -91,13 +91,46 @@ export type FriendRequest = {
   handledAt?: string;
 };
 
-export type DirectoryProfile = {
+type DirectoryProfileBase = {
   user: ImUser;
-  identityCard: DirectoryIdentityCard;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId?: string;
   friendRequest?: FriendRequest;
 };
+
+export type TechnicianContactService = {
+  id: number;
+  shopId: number;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+};
+
+export type TechnicianContactDetails = {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: TechnicianContactService[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+};
+
+export type DirectoryProfile =
+  | DirectoryProfileBase & {
+      identityCard: DirectoryIdentityCard & { entityType: "technician" };
+      technicianContactDetails?: TechnicianContactDetails;
+    }
+  | DirectoryProfileBase & {
+      identityCard: DirectoryIdentityCard & {
+        entityType: "user" | "shop" | "account";
+      };
+      technicianContactDetails?: never;
+    };
 
 export type DirectoryIdentityCard = {
   entityType: "user" | "technician" | "shop" | "account";
@@ -227,6 +260,34 @@ export type MessageAttachment = {
   height?: number;
 };
 
+export type ImContactCardCandidate = {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+};
+
+export type ImContactCardSnapshot = {
+  userId: string;
+  displayName: string;
+  avatar: string;
+  profileKind: ImProfileKind;
+  entityType?: "user" | "technician" | "shop";
+  entityId?: string;
+  userIdLabel?: string;
+  headline?: string;
+  snapshotVersion?: 2;
+  needoId?: string;
+  entityKind?: "customer" | "technician" | "shop" | "service";
+  ekycVerified?: boolean;
+  level?: number | null;
+  tierCode?: "free" | "silver" | "gold" | "black_diamond" | null;
+  themeVersionPublicId?: string | null;
+  simpleTopColor?: string | null;
+  simpleBottomColor?: string | null;
+};
+
 export type MessageExt = {
   width?: number;
   height?: number;
@@ -245,16 +306,7 @@ export type MessageExt = {
     latitude: number;
     longitude: number;
   };
-  contactCard?: {
-    userId: string;
-    displayName: string;
-    avatar: string;
-    profileKind: ImProfileKind;
-    entityType?: "user" | "technician" | "shop";
-    entityId?: string;
-    userIdLabel?: string;
-    headline?: string;
-  };
+  contactCard?: ImContactCardSnapshot;
   serviceCard?: {
     serviceId: string;
     name: string;

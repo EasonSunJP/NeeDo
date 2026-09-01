@@ -200,6 +200,19 @@ export class ExternalAuthAccountConflictError extends Error {
   }
 }
 
+export class PhoneBindingConflictError extends Error {
+  public constructor() {
+    super("Phone is already bound to another NeeDo account");
+    this.name = "PhoneBindingConflictError";
+  }
+}
+
+export interface CompletePhoneBindingInput {
+  userId: number;
+  phone: string;
+  context: { ip: string; userAgent?: string | null };
+}
+
 export interface AuthRepositoryPort {
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>;
   findUserByLoginIdentifier: (identifier: string) => Promise<AuthUserRecord | null>;
@@ -214,6 +227,7 @@ export interface AuthRepositoryPort {
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
   createAuditLog: (input: CreateAuditLogInput) => Promise<void | AuditLogReceipt>;
+  completePhoneBinding?: (input: CompletePhoneBindingInput) => Promise<AuthUserRecord>;
   completeMerchantShopSwitchAudit?: (input: {
     auditId: number;
     operationId: string;
@@ -405,6 +419,51 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
     return user ? toAuthUserRecord(user) : null;
   }
 
+  public async completePhoneBinding(input: CompletePhoneBindingInput): Promise<AuthUserRecord> {
+    try {
+      return await this.client.$transaction(async (transaction) => {
+        const conflicting = await transaction.user.findFirst({
+          where: {
+            phone: input.phone,
+            deletedAt: null,
+            NOT: { id: input.userId }
+          },
+          select: { id: true }
+        });
+        if (conflicting) throw new PhoneBindingConflictError();
+
+        const updated = await transaction.user.updateMany({
+          where: { id: input.userId, deletedAt: null, isActive: true },
+          data: { phone: input.phone }
+        });
+        if (updated.count !== 1) throw new GoogleLoginStateError("missing");
+
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.userId,
+            action: "auth.phone.bind",
+            targetType: "User",
+            targetId: input.userId,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { verificationMethod: "stored_normalized_number" }
+          }
+        });
+
+        const user = await transaction.user.findUniqueOrThrow({
+          where: { id: input.userId },
+          include: authUserInclude
+        });
+        return toAuthUserRecord(user);
+      });
+    } catch (error) {
+      if (error instanceof PhoneBindingConflictError || this.isPhoneCollision(error)) {
+        throw new PhoneBindingConflictError();
+      }
+      throw error;
+    }
+  }
+
   public async findGoogleBindingBySubject(
     providerSubject: string
   ): Promise<GoogleBindingRecord | null> {
@@ -448,6 +507,9 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           });
           const customerProfile = await transaction.customerProfile.create({
             data: { userId: user.id, displayName: bootstrapKey }
+          });
+          await transaction.userExperienceAccount.create({
+            data: { userId: user.id, currentLevel: 1, totalExpUnits: 0n }
           });
           const customerIdentity = await transaction.userIdentity.create({
             data: {
@@ -1161,5 +1223,24 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           target.includes("active_user_provider_key")
         );
       });
+  }
+
+  private isPhoneCollision(error: unknown): boolean {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") {
+      return false;
+    }
+    const record = error as {
+      meta?: {
+        target?: unknown;
+        driverAdapterError?: { cause?: { constraint?: { index?: unknown; fields?: unknown } } };
+      };
+    };
+    return [
+      record.meta?.target,
+      record.meta?.driverAdapterError?.cause?.constraint?.index,
+      record.meta?.driverAdapterError?.cause?.constraint?.fields
+    ]
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .some((value) => String(value ?? "").toLowerCase().includes("phone"));
   }
 }

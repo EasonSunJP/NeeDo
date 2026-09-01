@@ -2,6 +2,7 @@ import { identityApplicationTranslations } from "../features/identity-applicatio
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { dashboardTranslations } from "../features/dashboard/dashboardTranslations";
+import { orderPerformanceTranslations } from "../features/order-performance/i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -870,6 +871,7 @@ export const translations: TranslationMap = {
   },
   "搜索联系人昵称、用户名或 NeeDoID": { "zh-Hant": "搜尋聯絡人暱稱、使用者名稱或 NeeDoID", ja: "連絡先のニックネーム、ユーザー名、NeeDoID を検索", en: "Search contacts by nickname, username, or NeeDoID", ko: "연락처 닉네임, 사용자 이름 또는 NeeDoID 검색" },
   "正在加载联系人...": { "zh-Hant": "正在載入聯絡人...", ja: "連絡先を読み込み中...", en: "Loading contacts...", ko: "연락처 불러오는 중..." },
+  "正在加载名片": { "zh-Hant": "正在載入名片", ja: "名刺を読み込んでいます", en: "Loading contact cards", ko: "명함을 불러오는 중" },
   "联系人加载失败，请重试。": { "zh-Hant": "聯絡人載入失敗，請重試。", ja: "連絡先を読み込めませんでした。もう一度お試しください。", en: "Contacts failed to load. Try again.", ko: "연락처를 불러오지 못했습니다. 다시 시도해 주세요." },
   "当前没有可提醒的联系人。": { "zh-Hant": "目前沒有可提醒的聯絡人。", ja: "現在、通知できる連絡先はありません。", en: "There are no contacts to remind.", ko: "현재 알림을 보낼 수 있는 연락처가 없습니다." },
   "没有匹配的联系人。": { "zh-Hant": "沒有符合的聯絡人。", ja: "一致する連絡先はありません。", en: "No matching contacts.", ko: "일치하는 연락처가 없습니다." },
@@ -4643,7 +4645,7 @@ export const translations: TranslationMap = {
   "发送公告": { "zh-Hant": "發送公告", ja: "送信お知らせ", en: "SendNotice", ko: "전송공지" },
   "发送官方通知": { "zh-Hant": "發送官方通知", ja: "送信公式通知", en: "SendOfficial Notice", ko: "전송공식 공지" },
   "发送检查": { "zh-Hant": "發送檢查", ja: "送信检查", en: "Send", ko: "전송" },
-  "发送名片": { "zh-Hant": "發送名片", ja: "送信名刺", en: "SendContact card", ko: "전송명함" },
+  "发送名片": { "zh-Hant": "傳送名片", ja: "名刺を送信", en: "Send contact card", ko: "명함 보내기" },
   "发送内容": { "zh-Hant": "傳送內容", ja: "コンテンツを送…", en: "Send content", ko: "콘텐츠 전송" },
   "发送平台消息": { "zh-Hant": "發送平台訊息", ja: "平台メッセージを送信する", en: "Send platform message", ko: "플랫폼 메시지 전송" },
   "发送情报": { "zh-Hant": "發送情報", ja: "オファーを送信", en: "Send Info", ko: "정보 보내기" },
@@ -4659,7 +4661,7 @@ export const translations: TranslationMap = {
   "发送需求": { "zh-Hant": "發送需求", ja: "需要を送信", en: "Send Need", ko: "필요 보내기" },
   "发送营销消息": { "zh-Hant": "發送行銷訊息", ja: "マーケティングメッセージを送信する", en: "Send marketing messages", ko: "마케팅 메시지를 보내세요" },
   "发送预览": { "zh-Hant": "發送預覽", ja: "送信プレビュー", en: "SendPreview", ko: "전송미리보기" },
-  "发送中": { "zh-Hant": "發送中", ja: "送信中", en: "Sending", ko: "배상" },
+  "发送中": { "zh-Hant": "傳送中", ja: "送信中", en: "Sending", ko: "전송 중" },
   "发送转让邀请": { "zh-Hant": "發送轉讓邀請", ja: "転送招待状を送信", en: "Send transfer invitation", ko: "송금 초대장 보내기" },
   "发现位预留": { "zh-Hant": "發現位預留", ja: "発見枠予約", en: "Discover Slot Reserved", ko: "발견 슬롯 예약" },
   "发消息": { "zh-Hant": "發訊息", ja: "メッセージを送信", en: "Send message", ko: "메시지 보내기" },
@@ -8010,7 +8012,7 @@ export const translations: TranslationMap = {
   "没有访问权限": { "zh-Hant": "沒有訪问權限", ja: "没有访问権限", en: "Permissions", ko: "권한" },
   "没有符合「": { "zh-Hant": "沒有符合「", ja: "没有符合「", en: "Mei You Fu He [", ko: "Mei You Fu He [" },
   "没有符合筛选条件的排班记录。": { "zh-Hant": "沒有符合篩選條件的排班記錄。", ja: "没有符合フィルターのシフト記録。", en: "Filters Shift Filter Record Condition.", ko: "필터 근무표 기록 상태" },
-  "没有可发送的名片": { "zh-Hant": "沒有可發送的名片", ja: "没有可送信の名刺", en: "Send Contact Card", ko: "전송 명함" },
+  "没有可发送的名片": { "zh-Hant": "沒有可傳送的名片", ja: "送信できる名刺がありません", en: "No contact cards available to send", ko: "보낼 수 있는 명함이 없습니다" },
   "没有可同步到 Google 日历的 NeeDo 行程": { "zh-Hant": "沒有可同步到 Google 日歷的 NeeDo 行程", ja: "没有可同期到 Google 日历の NeeDo スケジュール", en: "Sync Journey", ko: "동기화 여행" },
   "没有匹配的订单": { "zh-Hant": "沒有匹配的訂單", ja: "没有匹配の注文", en: "Order", ko: "주문" },
   "没有匹配的好友": { "zh-Hant": "沒有匹配的好友", ja: "一致する友だちはいません", en: "No matching friends", ko: "일치하는 친구가 없습니다" },
@@ -8030,6 +8032,7 @@ export const translations: TranslationMap = {
   "没有找到匹配的标签或分类": { "zh-Hant": "沒有找到匹配的標籤或分類", ja: "一致するタグまたはカテゴリが見つかりませんでした。", en: "No matching tags or categories found", ko: "일치하는 태그 또는 카테고리를 찾을 수 없습니다." },
   "没有找到匹配的通讯录联系人。": { "zh-Hant": "沒有找到匹配的通訊錄聯系人。", ja: "没有找到匹配の連絡先連絡責任者者。", en: "Contact Person Contacts Connect People..", ko: "담당자 연락처 연결하다 사람들." },
   "没有找到匹配结果": { "zh-Hant": "沒有找到匹配結果", ja: "没有找到匹配结果", en: "No matching results", ko: "일치하는 결과 없음" },
+  "开启首页服务位置或设备定位后，可查看附近技师排名。": { "zh-Hant": "開啟首頁服務位置或裝置定位後，即可查看附近技師排名。", ja: "ホームのサービスエリアまたは端末の位置情報を有効にすると、近くのスタッフランキングを確認できます。", en: "Enable a home service or device location to view nearby staff rankings.", ko: "홈 서비스 위치 또는 기기 위치를 활성화하면 주변 스태프 순위를 볼 수 있습니다." },
   "没有找到匹配联系人": { "zh-Hant": "沒有找到匹配聯絡人", ja: "一致する連絡先が見つかりませんでした", en: "No matching contact found", ko: "일치하는 연락처를 찾을 수 없습니다." },
   "没有找到匹配聊天": { "zh-Hant": "沒有找到匹配聊天", ja: "没有找到匹配チャット", en: "Chat", ko: "채팅" },
   "没有找到匹配朋友": { "zh-Hant": "沒有找到匹配朋友", ja: "没有找到匹配友人", en: "Friend", ko: "친구" },
@@ -8196,6 +8199,8 @@ export const translations: TranslationMap = {
   "名技师。容量趋势、日期 / 时间表头和下方排班表已经合并到同一条时间轴里；横向拖动时会整体同步，折叠技师昵称栏后也不会打乱对应关系。": { "zh-Hant": "名技師。容量趨勢、日期 / 時間表頭和下方排班表已經合併到同一時間軸裡；橫向拖曳時會整體同步，折疊技師暱稱欄後也不會打亂對應關係。", ja: "専門スタッフ。キャパシティトレンド、日付/時刻表ヘッダー、および下記の予定は同じタイムラインに統合されています。水平方向にドラッグすると同期され、スタッフニックネーム列を折りたたんでも対応関係は崩れません。", en: "Specialist staffs. The capacity trend, date/timetable header, and schedule below have been merged into the same timeline; they will be synchronized when dragged horizontally, and the correspondence will not be disrupted when the staff nickname column is folded.", ko: "전문 스태프. 용량 추세, 날짜/시간표 헤더 및 아래 일정이 동일한 타임라인에 통합되었습니다. 가로로 드래그하면 동기화되며, 스태프 별칭 열을 접어도 관련 내용이 끊기지 않습니다." },
   "名片": { "zh-Hant": "名片", ja: "名刺", en: "Contact card", ko: "명함" },
   "名片 联系人卡片": { "zh-Hant": "名片 聯系人卡片", ja: "名刺 連絡責任者者カード", en: "Contact card Contact PersonCard", ko: "명함 담당자카드" },
+  "名片加载失败，请稍后重试": { "zh-Hant": "名片載入失敗，請稍後再試", ja: "名刺を読み込めませんでした。しばらくしてからもう一度お試しください", en: "The contact cards could not be loaded. Please try again later", ko: "명함을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요" },
+  "名片发送失败，请稍后重试": { "zh-Hant": "名片傳送失敗，請稍後再試", ja: "名刺を送信できませんでした。しばらくしてからもう一度お試しください", en: "The contact card could not be sent. Please try again later", ko: "명함을 보내지 못했습니다. 잠시 후 다시 시도해 주세요" },
   "名在线技师": { "zh-Hant": "名線上技師", ja: "オンラインスタッフ", en: "Online staffs", ko: "온라인 스태프" },
   "名字": { "zh-Hant": "名字", ja: "名字", en: "Name", ko: "이름" },
   "名字会变为用户，个人资料将不再显示。": { "zh-Hant": "名字會變為使用者，個人資料將不再顯示。", ja: "名前はユーザーに変更され、プロフィールが表示されなくなります。", en: "Names become users, and profiles will no longer be shown.", ko: "이름이 사용자로 바뀌고 프로필이 더 이상 표시되지 않습니다." },
@@ -8342,7 +8347,7 @@ export const translations: TranslationMap = {
   "难波": { "zh-Hant": "難波", ja: "難波", en: "Namba", ko: "남바" },
   "難波": { "zh-Hant": "難波", ja: "難波", en: "Namba", ko: "남바" },
   "内部安排": { "zh-Hant": "內部安排", ja: "内部体制", en: "Internal arrangements", ko: "내부 배치" },
-  "内部备注：": { "zh-Hant": "內部備註：", ja: "内部述べる：", en: "Remark: Note", ko: "주목: 메모" },
+  "内部备注：": { "zh-Hant": "內部備註：", ja: "内部メモ：", en: "Internal note: ", ko: "내부 메모: " },
   "内容": { "zh-Hant": "內容", ja: "コンテンツ", en: "Content", ko: "콘텐츠" },
   "内容不存在或已失效": { "zh-Hant": "內容不存在或已失效", ja: "コンテンツが存在しないか、有効期限が切れています", en: "Content does not exist or has expired.", ko: "콘텐츠가 존재하지 않거나 만료되었습니다." },
   "内容焦点": { "zh-Hant": "內容焦點", ja: "コンテンツの焦点", en: "Content Focus", ko: "콘텐츠 초점" },
@@ -10492,6 +10497,7 @@ export const translations: TranslationMap = {
   "搜索要收款的联系人": { "zh-Hant": "搜尋要收款的聯絡人", ja: "支払いを受け取りたい相手の連絡先を検索する。", en: "Search for the contact you wish to receive payment from.", ko: "대금을 받고자 하는 연락처를 찾으세요." },
   "搜索用户 / 标签": { "zh-Hant": "搜尋用戶 / 標籤", ja: "ユーザー/タグを検索", en: "Search users / tags", ko: "사용자/태그 검색" },
   "搜索用户、店铺、技师、动态和 hashtag": { "zh-Hant": "搜尋用戶、店鋪、技師、動態和 hashtag", ja: "ユーザー、ショップ、スタッフ、アクティビティ、…", en: "Search by user, store, staff, activity, and hashtag", ko: "사용자, 매장, 스태프, 활동 및 해시태그로 검색하세요" },
+  "搜索我或好友": { "zh-Hant": "搜尋自己或好友", ja: "自分または友だちを検索", en: "Search yourself or friends", ko: "나 또는 친구 검색" },
   "搜索用户、店铺或技师名片": { "zh-Hant": "搜索用戶、店鋪或技師名片", ja: "検索ユーザー／店舗或スタッフ名刺", en: "SearchUser / Staff Store Contact Card", ko: "검색사용자 / 스태프 매장 명함" },
   "搜索用户、技师或店铺": { "zh-Hant": "搜尋用戶、技師或店鋪", ja: "ユーザー、スタッフ、またはショップを検索", en: "Search users, staffs, or stores", ko: "사용자, 스태프 또는 매장을 검색하세요." },
   "搜索用户地址、技师、手机号": { "zh-Hant": "搜尋用戶地址、技師、手機號", ja: "ユーザーの住所、スタッフ、電話…", en: "Search user address, staff, phone number", ko: "사용자 주소, 스태프, 전화번호를 검…" },
@@ -11359,7 +11365,7 @@ export const translations: TranslationMap = {
   "我的反馈": { "zh-Hant": "我的回饋", ja: "私のフィードバック", en: "My feedback", ko: "제 의견입니다" },
   "我的付款码": { "zh-Hant": "我的付款碼", ja: "私の付款码", en: "Mine", ko: "내 거" },
   "我的可预约时间": { "zh-Hant": "我的可預約時間", ja: "私の予約可能な時間", en: "My available appointment time", ko: "제가 예약 가능한 시간" },
-  "我的名片": { "zh-Hant": "我的名片", ja: "私の名刺", en: "MineContact card", ko: "내 거명함" },
+  "我的名片": { "zh-Hant": "我的名片", ja: "自分の名刺", en: "My contact card", ko: "내 명함" },
   "我的排班": { "zh-Hant": "我的排班", ja: "私のシフト", en: "MineShift", ko: "내 거근무표" },
   "我的排班偏好": { "zh-Hant": "我的排班偏好", ja: "我的シフト好み", en: "Shift Mine", ko: "근무표 내 거" },
   "我的排班偏好说明": { "zh-Hant": "我的排班偏好說明", ja: "我的シフト好み説明", en: "Shift Notes Mine Notes", ko: "근무표 설명 내 거 설명" },
@@ -11401,6 +11407,7 @@ export const translations: TranslationMap = {
   "无备注": { "zh-Hant": "無備註", ja: "特記事項なし", en: "No remarks", ko: "비고 없음" },
   "无冲突，可进入处理": { "zh-Hant": "無衝突，可進入處理", ja: "なし重複、可入力対応", en: "Conflict Handling Enter.", ko: "충돌 처리 입력" },
   "无法补位": { "zh-Hant": "無法補位", ja: "なし法补位", en: "Wu Fa Bu Wei", ko: "Wu Fa Bu Wei" },
+  "无法打开联系人信息，请稍后重试": { "zh-Hant": "無法開啟聯絡人資訊，請稍後再試", ja: "連絡先情報を開けません。しばらくしてからもう一度お試しください", en: "Unable to open contact information. Please try again later", ko: "연락처 정보를 열 수 없습니다. 잠시 후 다시 시도해 주세요" },
   "无法打开二维码": { "zh-Hant": "無法開啟 QR 碼", ja: "QRコードを開けません", en: "Unable to open QR code", ko: "QR 코드를 열 수 없습니다" },
   "无效聊天，无法进入": {
     "zh-Hant": "無效的聊天，無法進入",
@@ -11461,7 +11468,7 @@ export const translations: TranslationMap = {
   "洗衣、熨烫、取送护理": { "zh-Hant": "洗衣、熨燙、取送護理", ja: "洗濯、アイロンがけ、集荷・配達サービス", en: "Laundry, ironing, pick-up and delivery care", ko: "세탁, 다림질, 수거 및 배달 서비스" },
   "喜欢": { "zh-Hant": "喜歡", ja: "のように", en: "Like", ko: "좋다" },
   "喜欢简短直接的确认方式，临时变更会尽量提前说明。": { "zh-Hant": "喜歡簡短直接的確認方式，臨時變更會盡量提前說明。", ja: "私は簡潔で直接的な確認方法を好みます。また、一時的な変更については事前に説明するように努めます。", en: "I prefer a concise and direct confirmation method, and I will try to explain any temporary changes in advance.", ko: "저는 간결하고 직접적인 확인 방식을 선호하며, 일시적인 변경 사항이 있을 경우 사전에 설명해 드리도록 하겠습니다." },
-  "系统": { "zh-Hant": "系統", ja: "システム", en: "System", ko: "체계" },
+  "系统": { "zh-Hant": "系統", ja: "システム", en: "System", ko: "시스템" },
   "系统安装提示暂时不可用，请使用浏览器菜单添加到主屏幕。": { "zh-Hant": "系統安裝提示暫時不可用，請使用瀏覽器選單加入主畫面。", ja: "システムのインストール確認は一時的に使えません。ブラウザーメニューからホーム画面に追加してください。", en: "The system install prompt is not available right now. Use the browser menu to add it to the Home Screen.", ko: "시스템 설치 안내를 사용할 수 없습니다. 브라우저 메뉴에서 홈 화면에 추가하세요." },
   "系统版本": { "zh-Hant": "系統版本", ja: "OSバージョン", en: "OS version", ko: "OS 버전" },
   "系统动作": { "zh-Hant": "系統動作", ja: "システムアクション", en: "SystemAction", ko: "체계행동" },
@@ -15032,6 +15039,7 @@ export const translations: TranslationMap = {
   ...affiliateProfileTranslations,
   ...affiliateMarketplaceTranslations,
   ...dashboardTranslations,
+  ...orderPerformanceTranslations,
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {
@@ -16150,6 +16158,14 @@ const coreReadApiSourceTranslationOverrides: Record<string, LocalizedText> = {
   "搜索订单、用户、员工、财务": { zh: "搜索订单、用户、员工、财务", "zh-Hant": "搜尋訂單、使用者、員工、財務", ja: "注文、ユーザー、スタッフ、経理を検索", en: "Search orders, users, employees, or finance", ko: "주문, 사용자, 직원, 재무 검색" },
   "wellness": { zh: "健康护理", "zh-Hant": "健康護理", ja: "ウェルネス", en: "wellness", ko: "웰니스" }
 };
+
+export function registerTranslationEntries(entries: Readonly<Record<string, TranslationEntry>>) {
+  Object.entries(entries).forEach(([source, entry]) => {
+    if (!(source in translations)) {
+      translations[source] = entry;
+    }
+  });
+}
 
 function cleanupRuntimeTranslation(value: string, language: Language) {
   if (language === "zh") {

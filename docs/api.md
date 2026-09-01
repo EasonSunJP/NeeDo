@@ -172,6 +172,7 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `serviceMode` | string | Existing service-mode filter. |
 | `minPrice` / `maxPrice` | number | Existing service-price filters; min cannot exceed max. |
 | `sort` | enum | `recommended`, `rating_desc`, `price_asc`, `price_desc`, `newest`. |
+| `latitude` / `longitude` | number pair | Optional search origin for technicians. Both values must be sent together. |
 | `page` / `pageSize` | integer | Defaults to page `1`, page size `20`; maximum page size is `100`. |
 
 Repeat array values as query keys instead of comma-joining them:
@@ -183,6 +184,27 @@ GET /api/v1/search?entityType=shop&keywords=LifeDance&keywords=家政&categoryId
 Keywords, category IDs, and their two groups use OR semantics: a published record matching any supplied keyword or any selected category may appear. Shop and technician names use trimmed substring containment, so `LifeDance` and `Wellness 渋谷` can each match `LifeDance Wellness 渋谷`; a multi-word value stays one phrase. Shop `shop##########` and technician `s##########` public IDs use exact matching.
 
 The response keeps the shared success envelope and returns exactly one typed paginated page selected by `entityType`: `ShopCard`, `TechnicianCard`, or `ServiceCard`. Published status, active formal public identifiers, and `deletedAt IS NULL` remain mandatory. A shop or technician may be searchable without a published service; search visibility does not imply that the entity is currently bookable, and the client must not fabricate price, service, or availability data.
+
+When `entityType=technician` and a complete origin pair is present, candidate distance uses the nearest valid location among the technician's private personal service base and active, published affiliated shops. The backend starts at 3 km and expands exactly 1 km at a time until at least three eligible technicians are available or every eligible located technician is included. It then sorts the complete final-radius set by comprehensive rating, completed-order count, review count, account registration time, and stable profile ID before applying pagination. `distanceKm`, `nearbyRank`, and `resolvedRadiusKm` are optional `TechnicianCard` fields and are absent when no origin was supplied.
+
+Personal service-base coordinates are self-only profile data. Public search and public technician-card/detail responses never return `baseLatitude`, `baseLongitude`, `serviceBase`, or affiliated-shop coordinates through the technician object.
+
+### Entity Favorites And Successful Shares
+
+These endpoints are authenticated and database-backed. Favorite ownership is always the NeeDo user account, so switching the active customer/technician/merchant identity neither duplicates nor hides a favorite. Review totals are separate from favorite and share totals.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `PUT` | `/api/v1/me/entity-favorites/:targetType/:publicId` | Idempotently favorite one published shop or technician | `entity-favorite:write` |
+| `DELETE` | `/api/v1/me/entity-favorites/:targetType/:publicId` | Idempotently remove the favorite | `entity-favorite:write` |
+| `GET` | `/api/v1/me/entity-favorites` | Paginated current-account favorites | `entity-favorite:read` |
+| `POST` | `/api/v1/me/entity-favorites/statuses` | Batch `1..100` target states and authoritative counts | `entity-favorite:read` |
+| `POST` | `/api/v1/entities/:targetType/:publicId/shares/needo` | Atomically commit a NeeDo message and successful share event | `entity-share:write` |
+| `POST` | `/api/v1/entities/:targetType/:publicId/shares/system` | Record a platform share only after client capability success | `entity-share:write` |
+
+`targetType` is `shop` with `shop##########`, or `technician` with `s##########`. Page/card clients must batch favorite status reads rather than issue one request per card.
+
+Both share commands require a UUID `idempotencyKey`. Replaying the same key and same command returns the original receipt without incrementing `shareCount`; reusing it for a different payload returns `409 error.idempotency_key_reused`. A NeeDo share increments only if both the eligible message and append-only share event commit. The system-share endpoint is a success-report endpoint: the server does not invoke a browser capability and the client must not call it after capability cancellation or failure.
 
 `GET /home/recommendations`
 
@@ -213,6 +235,48 @@ The response keeps the shared success envelope and returns exactly one typed pag
 
 - `id`, `displayName`, `city`, `bio`, `avatarUrl`, `membershipLevel`, `reviewSummary`, `createdAt`, `updatedAt`
 - Account credentials and private fields such as `email`, `phone`, `passwordHash`, tokens, and OTP values are never returned.
+
+## Order Performance And Special Cancellation
+
+Technician acceptance rate is derived from formal order outcomes and cannot be edited as a percentage:
+
+```text
+acceptanceRate = completedOrderCount
+  / (completedOrderCount + accountableCancellationCount + accountableUncompletedCount)
+```
+
+The stored rate uses basis points (`10000` = 100%). When the denominator is zero the result is 100%. Outcomes whose current treatment is `special_excluded` are recorded but omitted from the denominator. Applying or revoking an exclusion rebuilds the technician summary from source orders and assessment records.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/backoffice/orders/:id` | Read fresh order detail, current assessment, and the complete operations timeline | `backoffice:orders:list` |
+| `POST` | `/api/v1/backoffice/orders/:id/technician-uncompleted` | Classify an eligible cancelled, assigned order as technician-caused uncompleted | `backoffice:order-performance:write` |
+| `POST` | `/api/v1/backoffice/orders/:id/special-cancellation` | Exclude a counted technician cancellation or uncompleted outcome | `backoffice:order-performance:write` |
+| `POST` | `/api/v1/backoffice/orders/:id/special-cancellation/revoke` | Revoke the exclusion after a later review or complaint | `backoffice:order-performance:write` |
+
+All three commands use a strict body with required `publicReason`, `idempotencyKey`, and `expectedRevision`; nullable `internalNote` is optional. Clients never submit an acceptance-rate value. Stale revisions and conflicting idempotency re-use return `409`, missing assessments return `404`, and ineligible state changes return `422`. Every successful mutation appends an immutable assessment revision and an audit record in the same transaction.
+
+Booking order responses retain the existing `statusHistory` field unchanged. They also return `performanceAssessment` and a `timelineEvents` discriminated union sorted by `createdAt` and then stable prefixed ID. Event IDs use `status:<id>` or `performance:<id>`, and event types are `ORDER_STATUS_CHANGED`, `TECHNICIAN_CANCEL_CLASSIFIED`, `TECHNICIAN_UNCOMPLETED_CLASSIFIED`, `SPECIAL_CANCELLATION_APPLIED`, and `SPECIAL_CANCELLATION_REVOKED`. Customer and technician order responses expose only `publicReason`; `internalNote` is operations-only and is returned only by the authorized `GET /api/v1/backoffice/orders/:id` projection. The operations UI refreshes this detail before any action and after optimistic-concurrency conflicts.
+
+## Technician Service Portfolio And Contact-Only Details
+
+The authenticated technician portfolio is profile-wide rather than shop-wide:
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/technicians/me/services` | Paginated service portfolio across all active shop contexts | `technician:services:list` |
+| `PUT` | `/api/v1/technicians/me/services/order` | Replace the complete service order with contiguous positions | `technician:services:write` |
+| `POST` | `/api/v1/technicians/me/shops/:shopId/services` | Create a service in one authorized shop context | `technician:services:write` |
+| `PUT` | `/api/v1/technicians/me/shops/:shopId/services/:serviceId` | Update a service in its owning shop context | `technician:services:write` |
+| `DELETE` | `/api/v1/technicians/me/shops/:shopId/services/:serviceId` | Soft-delete a service in its owning shop context | `technician:services:write` |
+
+A technician may have at most five non-deleted services across all shops. The limit is enforced under the technician-profile lock, so concurrent sixth creates cannot both succeed. Every service price is integer JPY and the response declares `taxIncluded: true`; duration is integer minutes. The first eligible service after ordering by `sortOrder`, then ID, is the primary service.
+
+The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
+
+`GET /api/v1/im/directory/:userId` may include `technicianContactDetails` only when the caller owns an active, non-deleted, unblocked contact pointing to that technician identity. Reverse-only contacts, pending requests, deleted contacts, blocked contacts, self lookups without that relationship, and public lookups omit the entire key. The optional object contains integer bid-budget bounds, payment methods, active non-expired operations tags, technician profile tags, up to five active approved services, completed-order count, and acceptance rate in basis points (`10000` = 100%). It never contains `baseLatitude`, `baseLongitude`, `serviceBase`, or other precise coordinates.
+
+The technician self-profile response also contains read-only `specialTags`, filtered to active and non-expired operations-assigned tags. Clients cannot edit those tags through the technician profile update endpoint.
 
 ## Current Customer Self-Profile API
 
@@ -260,6 +324,22 @@ Stored-value plans require principal within the published issuance range and cre
 
 Issuance does not debit a store wallet, credit customer NDP, or create ledger entries. Platform fees are charged only at a later actual reward settlement node. Internal issuance references and notes are returned to the authorized merchant issuance response but are excluded from shared customer card reads.
 
+### Membership card adjustment approval
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `POST` | `/api/v1/merchant-admin/shop-membership-cards/:publicId/adjustment-requests` | Request one final principal or remaining-use target for a current-shop card | `shop.member.card.adjust.request` |
+| `GET` | `/api/v1/merchant-admin/shop-membership-card-adjustment-requests` | Paginated current-shop request history | `shop.member.card.adjust.request` |
+| `POST` | `/api/v1/merchant-admin/shop-membership-card-adjustment-requests/:publicId/cancel` | Cancel a still-pending current-shop request | `shop.member.card.adjust.request` |
+| `GET` | `/api/v1/customer-profile/me/shop-membership-card-adjustment-requests` | Paginated requests owned by the current customer | `customer-profile:read` |
+| `POST` | `/api/v1/customer-profile/me/shop-membership-card-adjustment-requests/:publicId/decision` | Explicitly approve or reject an owned pending request | `customer-profile:read` |
+
+Create accepts exactly one of `targetPrincipalBalanceJpy` or `targetRemainingUses`, plus a 1–500 character `reason` and `idempotencyKey`. The backend derives shop, customer, card type, current value and `lockVersion`; callers cannot submit a before-value or choose another identity. Stored-value changes affect principal only and preserve bonus. Count changes move `totalUses` by the same delta as `remainingUses`, preserving already-consumed uses. Benefit cards are not adjustable in this microstep.
+
+Requests are `pending`, `approved`, `rejected`, `cancelled`, `expired`, or `invalidated`. A customer may approve only while the database clock is strictly before `expiresAt`; at the exact deadline the request expires and the card remains unchanged. Approval uses a row lock plus card snapshot compare-and-swap. If the card changed after submission, the request becomes `invalidated` instead of overwriting newer data. Request, decision, audit and notification writes are transactional, and request/decision retries are idempotent.
+
+The adjustment path does not debit a store wallet, credit customer NDP, change bonus balance, or create a finance ledger row. Top-up, redemption, refund and actual rule-driven NDP settlement remain separate state-machine microsteps.
+
 ### Operations membership reward fee
 
 | Method | Path | Purpose | Permission |
@@ -269,6 +349,23 @@ Issuance does not debit a store wallet, credit customer NDP, or create ledger en
 
 The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, ISO-8601 `effectiveFrom`, and a non-empty reason. The initial version is 1000 bps (10%). Creating a version writes an audit record; stale versions or overlapping policy boundaries return a conflict response.
 
-Customer approval for later balance/use-count changes, top-up, redemption, refund, and reward ledger settlement remain outside these configuration and issuance endpoints and must be implemented as separate state-machine microsteps.
+Top-up, redemption, refund, and reward ledger settlement remain outside these configuration, issuance, and adjustment endpoints and must be implemented as separate state-machine microsteps.
 
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
+
+## Shop Service Taxonomy
+
+The shop taxonomy is a platform-owned, localized catalog. It initially contains 18 service categories and 180 business keywords, each translated into `zh-CN`, `zh-TW`, `ja`, `en`, and `ko`. Category names and keyword labels participate in shop search. Only selected business-keyword labels are rendered in the public shop keyword row; category labels remain a separate searchable classification.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/service-categories` | Paginated active category catalog in the requested locale | Public |
+| `GET` | `/api/v1/service-categories/:id/keywords` | Paginated active keywords belonging to one active category | Public |
+| `GET` | `/api/v1/merchant-admin/shop/service-taxonomy` | Current shop selection, revision, and server-owned limits | `merchant-admin:shop:service-taxonomy:read` |
+| `PUT` | `/api/v1/merchant-admin/shop/service-taxonomy` | Replace the complete current-shop selection | `merchant-admin:shop:service-taxonomy:write` |
+
+Catalog reads accept `locale` (default `ja`) and standard page parameters. The merchant response separates `selectedCategories` from `selectedKeywords` and returns `categoryLimit`, `keywordLimit`, `revision`, and `removedKeywordIds`.
+
+The replacement body is strict JSON with complete `categoryIds` and `keywordIds` arrays, `expectedRevision`, and a 16–160 character `idempotencyKey`. The default server policy permits five categories and five total keywords across all categories. A future paid Option may increase these values through the server quota policy without changing the frontend contract. Duplicate, inactive, foreign-category, over-quota, or unqualified selections return `400`; stale revisions or conflicting key reuse return `409`. Removing a category soft-deletes its dependent keyword selections atomically, and every successful change writes command replay and audit evidence.
+
+Merchant identity applications require one to five category IDs and zero to five keyword IDs. Draft selections are stored in application joins and do not create shop selections. Operations review exposes the selected localized records. Approval copies them into the new shop, creates taxonomy revision 1, and records exact qualifications for every approved non-open category or keyword in the same transaction; rejection creates none.

@@ -1,7 +1,10 @@
 import {
-  CustomerMembershipDurationUnit,
-  CustomerMembershipGrantMode,
+  type BookingOrderStatus,
+  OrderPerformanceOutcome,
+  OrderPerformanceRevisionAction,
+  OrderPerformanceTreatment,
   Prisma,
+  PlatformMembershipTierCode,
   TechnicianEmploymentType,
   type PrismaClient
 } from "@prisma/client";
@@ -29,11 +32,14 @@ import {
   type BackofficeCompensationProfilePayload,
   type BackofficeCustomerPayload,
   type BackofficeCustomerDetailPayload,
-  type BackofficeCustomerMembershipGrantData,
-  type BackofficeCustomerMembershipGrantPayload,
+  type BackofficeCustomerMembershipGrantContext,
   type BackofficeFinanceSettlementPayload,
+  type BackofficeManagedUserDetailPayload,
+  type BackofficeManagedUserPayload,
   type BackofficeNdpAggregate,
+  type BackofficeOrderDetailPayload,
   type BackofficeOrderPayload,
+  type BackofficeOrderTimelineEventPayload,
   type BackofficeRepositoryPort,
   type BackofficeScheduleSlotPayload,
   type BackofficeServicePayload,
@@ -54,6 +60,7 @@ import {
 import type {
   BackofficeCustomerUpdateBody,
   BackofficeListQuery,
+  BackofficeManagedUserListQuery,
   BackofficeTimelineQuery,
   BackofficeShopUpdateBody
 } from "../validators/backoffice.validator";
@@ -87,6 +94,123 @@ interface TechnicianRankingDatabaseRow {
 }
 
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
+const OPERATIONS_ROLE_CODES = ["admin", "operator", "finance", "support", "viewer"];
+const PAID_PLATFORM_TIER_CODES = [
+  PlatformMembershipTierCode.SILVER,
+  PlatformMembershipTierCode.GOLD,
+  PlatformMembershipTierCode.BLACK_DIAMOND
+];
+
+const buildManagedUserSelect = (occurredAt: Date) =>
+  Prisma.validator<Prisma.UserSelect>()({
+    id: true,
+    needoId: true,
+    username: true,
+    email: true,
+    phone: true,
+    emailVerifiedAt: true,
+    avatarUrl: true,
+    avatarBootstrapUrl: true,
+    isActive: true,
+    isTestAccount: true,
+    primaryIdentityType: true,
+    lastLoginAt: true,
+    createdAt: true,
+    updatedAt: true,
+    identities: {
+      where: { deletedAt: null },
+      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      select: { type: true, displayName: true, scopeType: true, scopeId: true }
+    },
+    userRoles: {
+      where: { deletedAt: null, role: { deletedAt: null } },
+      orderBy: [{ roleId: "asc" }, { id: "asc" }],
+      select: {
+        scopeType: true,
+        scopeId: true,
+        role: {
+          select: {
+            code: true,
+            name: true,
+            rolePermissions: {
+              where: { deletedAt: null, permission: { deletedAt: null } },
+              select: { permission: { select: { code: true } } }
+            }
+          }
+        }
+      }
+    },
+    customerProfile: {
+      select: {
+        id: true,
+        displayName: true,
+        bio: true,
+        city: true,
+        gender: true,
+        age: true,
+        heightCm: true,
+        languages: true,
+        deletedAt: true
+      }
+    },
+    technicianProfile: { select: { id: true, displayName: true, deletedAt: true } },
+    ownedShops: { where: { deletedAt: null }, select: { id: true, name: true } },
+    experienceAccount: {
+      select: { currentLevel: true, totalExpUnits: true, deletedAt: true }
+    },
+    platformMembershipEntitlements: {
+      where: {
+        deletedAt: null,
+        supersededAt: null,
+        startsAt: { lte: occurredAt },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }],
+        tierVersion: {
+          status: "PUBLISHED",
+          deletedAt: null,
+          effectiveFrom: { lte: occurredAt },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }],
+          tier: { deletedAt: null }
+        }
+      },
+      orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+      take: 1,
+      select: {
+        publicId: true,
+        expiresAt: true,
+        lockVersion: true,
+        tierVersion: {
+          select: {
+            publicId: true,
+            experienceMultiplier: true,
+            tier: { select: { code: true } }
+          }
+        }
+      }
+    },
+    backofficeUserGroupMemberships: {
+      where: {
+        deletedAt: null,
+        group: { status: "ACTIVE", deletedAt: null }
+      },
+      select: { group: { select: { code: true } } }
+    },
+    ekycVerifications: {
+      where: { deletedAt: null },
+      orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
+      take: 1,
+      select: { status: true, verifiedAt: true }
+    },
+    externalAccounts: {
+      where: { deletedAt: null },
+      orderBy: [{ provider: "asc" }, { id: "asc" }],
+      select: { provider: true }
+    },
+    _count: { select: { bookingOrders: { where: { deletedAt: null } } } }
+  });
+
+type ManagedUserRecord = Prisma.UserGetPayload<{
+  select: ReturnType<typeof buildManagedUserSelect>;
+}>;
 
 type TechnicianEmploymentPayload = BackofficeTechnicianPayload["employmentType"];
 
@@ -140,6 +264,37 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
     };
   };
 }>;
+
+type OrderDetailRecord = OrderRecord & {
+  statusHistory: Array<{
+    id: number;
+    bookingOrderId: number;
+    fromStatus: BookingOrderStatus | null;
+    toStatus: BookingOrderStatus;
+    actorUserId: number | null;
+    reason: string | null;
+    createdAt: Date;
+  }>;
+  performanceAssessment: {
+    id: number;
+    bookingOrderId: number;
+    technicianProfileId: number;
+    outcome: OrderPerformanceOutcome;
+    treatment: OrderPerformanceTreatment;
+    version: number;
+    currentRevisionId: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null;
+  performanceRevisions: Array<{
+    id: number;
+    action: OrderPerformanceRevisionAction;
+    actorUserId: number | null;
+    publicReason: string | null;
+    internalNote: string | null;
+    createdAt: Date;
+  }>;
+};
 
 type ScheduleSlotRecord = Prisma.ScheduleSlotGetPayload<{
   include: {
@@ -244,6 +399,103 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return this.dashboardRepository.getDashboard(input);
   }
 
+  public async listManagedUsers(
+    input: BackofficeManagedUserListQuery,
+    occurredAt: Date
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where = await this.managedUserWhere(input, occurredAt);
+    const [rows, total] = await Promise.all([
+      this.client.user.findMany({
+        where,
+        select: buildManagedUserSelect(occurredAt),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.user.count({ where })
+    ]);
+    const balances = await this.managedUserBalances(rows.map((row) => row.id));
+    return buildPaginatedResponse(
+      rows.map((row) => this.mapManagedUser(row, balances.get(row.id))),
+      total,
+      input
+    );
+  }
+
+  public async getManagedUser(
+    userId: number,
+    occurredAt: Date
+  ): Promise<BackofficeManagedUserDetailPayload | null> {
+    const user = await this.client.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: buildManagedUserSelect(occurredAt)
+    });
+    if (!user) return null;
+    const [balances, totalBookings, completedBookings, completedSpend, auditTotal, auditRows] =
+      await Promise.all([
+        this.managedUserBalances([userId]),
+        this.client.bookingOrder.count({ where: { customerUserId: userId, deletedAt: null } }),
+        this.client.bookingOrder.count({
+          where: { customerUserId: userId, status: "COMPLETED", deletedAt: null }
+        }),
+        this.client.bookingOrder.aggregate({
+          where: {
+            customerUserId: userId,
+            status: "COMPLETED",
+            paymentStatus: "CONFIRMED",
+            deletedAt: null
+          },
+          _sum: { paymentAmountJpy: true }
+        }),
+        this.client.auditLog.count({
+          where: { targetType: "User", targetId: userId, deletedAt: null }
+        }),
+        this.client.auditLog.findMany({
+          where: { targetType: "User", targetId: userId, deletedAt: null },
+          include: { actor: { select: { username: true, avatarUrl: true } } },
+          take: 20,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        })
+      ]);
+    const summary = this.mapManagedUser(user, balances.get(userId));
+    const customer = user.customerProfile?.deletedAt ? null : user.customerProfile;
+    return {
+      ...summary,
+      profile: customer
+        ? {
+            displayName: customer.displayName,
+            bio: customer.bio,
+            city: customer.city,
+            gender: customer.gender,
+            age: customer.age,
+            heightCm: customer.heightCm?.toString() ?? null,
+            languages: Array.isArray(customer.languages) ? customer.languages : []
+          }
+        : null,
+      account: {
+        roles: user.userRoles.map((assignment) => ({
+          code: assignment.role.code,
+          name: assignment.role.name,
+          scopeType: assignment.scopeType,
+          scopeId: assignment.scopeId,
+          permissions: assignment.role.rolePermissions
+            .map((item) => item.permission.code)
+            .sort()
+        }))
+      },
+      bookingSpend: {
+        totalBookings,
+        completedBookings,
+        completedSpendJpy: completedSpend._sum.paymentAmountJpy ?? 0
+      },
+      audit: {
+        total: auditTotal,
+        list: auditRows.map((row) => this.mapAuditEvent(row))
+      }
+    };
+  }
+
   public async listOrders(
     input: BackofficeScope & BackofficeListQuery
   ): Promise<PaginatedResponse<BackofficeOrderPayload>> {
@@ -265,6 +517,21 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       total,
       input
     );
+  }
+
+  public async findOrderById(
+    input: BackofficeScope & { id: number }
+  ): Promise<BackofficeOrderDetailPayload | null> {
+    const order = await this.client.bookingOrder.findFirst({
+      where: {
+        id: input.id,
+        deletedAt: null,
+        ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+      },
+      include: this.orderDetailInclude()
+    });
+
+    return order ? this.mapOrderDetail(order) : null;
   }
 
   public async listSchedule(
@@ -885,6 +1152,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       const customerProfile = await transaction.customerProfile.create({
         data: { userId: owner.id, displayName: input.ownerUsername }
       });
+      await transaction.userExperienceAccount.create({
+        data: { userId: owner.id, currentLevel: 1, totalExpUnits: 0n }
+      });
       const customerIdentity = await transaction.userIdentity.create({
         data: {
           userId: owner.id,
@@ -942,6 +1212,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         userIdentityId: merchantIdentity.id,
         loginAllowed: true,
         searchable: true
+      });
+      await transaction.merchantIdentityProfile.create({
+        data: {
+          userId: owner.id,
+          identityId: merchantIdentity.id,
+          displayName: input.ownerUsername,
+          languages: []
+        }
       });
       await transaction.userRole.create({
         data: {
@@ -1214,48 +1492,22 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     }));
   }
 
-  public async assignCustomerMembership(
-    input: BackofficeCustomerMembershipGrantData
-  ): Promise<BackofficeCustomerMembershipGrantPayload | null> {
-    const existing = await this.client.customerProfile.findFirst({
-      where: { id: input.customerProfileId, deletedAt: null },
-      select: { id: true }
+  public async findCustomerMembershipGrantContext(
+    customerProfileId: number,
+    grantedById: number
+  ): Promise<BackofficeCustomerMembershipGrantContext | null> {
+    const customer = await this.client.customerProfile.findFirst({
+      where: { id: customerProfileId, deletedAt: null },
+      select: { userId: true }
     });
-    if (!existing) return null;
-
-    const customer = await this.client.customerProfile.update({
-      where: { id: input.customerProfileId },
-      data: {
-        membershipLevel: input.membershipLevel,
-        membershipGrantMode: CustomerMembershipGrantMode.OPERATOR_COMPLIMENTARY,
-        membershipDurationUnit:
-          input.durationUnit === "forever"
-            ? CustomerMembershipDurationUnit.FOREVER
-            : input.durationUnit === "day"
-              ? CustomerMembershipDurationUnit.DAY
-              : CustomerMembershipDurationUnit.MONTH,
-        membershipDurationValue: input.durationValue,
-        membershipStartsAt: input.startsAt,
-        membershipExpiresAt: input.expiresAt,
-        membershipGrantedById: input.grantedById
-      },
-      include: {
-        membershipGrantedBy: { select: { needoId: true, username: true } }
-      }
+    if (!customer) return null;
+    const membershipGrantedBy = await this.client.user.findFirst({
+      where: { id: grantedById, deletedAt: null },
+      select: { needoId: true, username: true }
     });
-    const membershipGrantedBy = customer.membershipGrantedBy;
-    if (!membershipGrantedBy) {
-      throw new Error("Membership grant actor is missing");
-    }
-    return {
-      membershipLevel: customer.membershipLevel,
-      membershipGrantMode: "operator_complimentary",
-      membershipDurationUnit: input.durationUnit,
-      membershipDurationValue: customer.membershipDurationValue,
-      membershipStartsAt: customer.membershipStartsAt?.toISOString() ?? input.startsAt.toISOString(),
-      membershipExpiresAt: customer.membershipExpiresAt?.toISOString() ?? null,
-      membershipGrantedBy
-    };
+    return membershipGrantedBy
+      ? { customerUserId: customer.userId, membershipGrantedBy }
+      : null;
   }
 
   public softDeleteCustomer(id: number): Promise<BackofficeCustomerPayload | null> {
@@ -1367,6 +1619,287 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             ]
           }
         : {})
+    };
+  }
+
+  private async managedUserWhere(
+    input: BackofficeManagedUserListQuery,
+    occurredAt: Date
+  ): Promise<Prisma.UserWhereInput> {
+    const conditions: Prisma.UserWhereInput[] = [];
+    if (input.keyword) {
+      conditions.push({
+        OR: [
+          { needoId: { contains: input.keyword } },
+          { username: { contains: input.keyword } },
+          { email: { contains: input.keyword } },
+          { phone: { contains: input.keyword } },
+          { customerProfile: { is: { displayName: { contains: input.keyword } } } },
+          { technicianProfile: { is: { displayName: { contains: input.keyword } } } }
+        ]
+      });
+    }
+    if (input.state) conditions.push({ isActive: input.state === "active" });
+    if (input.identityType) {
+      conditions.push({
+        identities: { some: { type: input.identityType, isActive: true, deletedAt: null } }
+      });
+    }
+    if (input.source) {
+      conditions.push(
+        input.source === "password"
+          ? { externalAccounts: { none: { deletedAt: null } } }
+          : {
+              externalAccounts: {
+                some: { provider: input.source, deletedAt: null }
+              }
+            }
+      );
+    }
+    if (input.ekyc) {
+      const verifiedWhere: Prisma.EkycVerificationWhereInput = {
+        status: "verified",
+        verifiedAt: { not: null },
+        deletedAt: null
+      };
+      conditions.push(
+        input.ekyc === "verified"
+          ? { ekycVerifications: { some: verifiedWhere } }
+          : { ekycVerifications: { none: verifiedWhere } }
+      );
+    }
+    if (input.minLevel !== undefined || input.maxLevel !== undefined) {
+      conditions.push({
+        customerProfile: { is: { deletedAt: null } },
+        experienceAccount: {
+          is: {
+            deletedAt: null,
+            currentLevel: {
+              ...(input.minLevel !== undefined ? { gte: input.minLevel } : {}),
+              ...(input.maxLevel !== undefined ? { lte: input.maxLevel } : {})
+            }
+          }
+        }
+      });
+    }
+    if (input.minExpUnits !== undefined || input.maxExpUnits !== undefined) {
+      conditions.push({
+        customerProfile: { is: { deletedAt: null } },
+        experienceAccount: {
+          is: {
+            deletedAt: null,
+            totalExpUnits: {
+              ...(input.minExpUnits !== undefined ? { gte: input.minExpUnits } : {}),
+              ...(input.maxExpUnits !== undefined ? { lte: input.maxExpUnits } : {})
+            }
+          }
+        }
+      });
+    }
+    if (input.registeredFrom || input.registeredTo) {
+      conditions.push({
+        createdAt: {
+          ...(input.registeredFrom ? { gte: input.registeredFrom } : {}),
+          ...(input.registeredTo ? { lte: input.registeredTo } : {})
+        }
+      });
+    }
+    if (input.tier) conditions.push(this.managedUserTierWhere(input.tier, occurredAt));
+    if (input.groupCode) {
+      conditions.push(this.managedUserGroupWhere(input.groupCode, occurredAt));
+    }
+    if (input.minNdpBalance !== undefined || input.maxNdpBalance !== undefined) {
+      const walletRows = await this.client.wallet.findMany({
+        where: {
+          ownerType: "USER",
+          currency: "NDP",
+          deletedAt: null,
+          availableBalance: {
+            ...(input.minNdpBalance !== undefined ? { gte: input.minNdpBalance } : {}),
+            ...(input.maxNdpBalance !== undefined ? { lte: input.maxNdpBalance } : {})
+          }
+        },
+        select: { ownerId: true }
+      });
+      conditions.push({ id: { in: walletRows.map((wallet) => wallet.ownerId) } });
+    }
+    return { deletedAt: null, ...(conditions.length > 0 ? { AND: conditions } : {}) };
+  }
+
+  private managedUserTierWhere(
+    tierCode: "free" | "silver" | "gold" | "black_diamond",
+    occurredAt: Date
+  ): Prisma.UserWhereInput {
+    const activeEntitlement = this.managedActiveEntitlementWhere(occurredAt);
+    if (tierCode === "free") {
+      return {
+        customerProfile: { is: { deletedAt: null } },
+        platformMembershipEntitlements: {
+          none: {
+            ...activeEntitlement,
+            tierVersion: {
+              ...this.managedActiveTierVersionWhere(occurredAt),
+              tier: { code: { in: PAID_PLATFORM_TIER_CODES }, deletedAt: null }
+            }
+          }
+        }
+      };
+    }
+    const dbTierCode =
+      tierCode === "silver"
+        ? PlatformMembershipTierCode.SILVER
+        : tierCode === "gold"
+          ? PlatformMembershipTierCode.GOLD
+          : PlatformMembershipTierCode.BLACK_DIAMOND;
+    return {
+      customerProfile: { is: { deletedAt: null } },
+      platformMembershipEntitlements: {
+        some: {
+          ...activeEntitlement,
+          tierVersion: {
+            ...this.managedActiveTierVersionWhere(occurredAt),
+            tier: { code: dbTierCode, deletedAt: null }
+          }
+        }
+      }
+    };
+  }
+
+  private managedUserGroupWhere(groupCode: string, occurredAt: Date): Prisma.UserWhereInput {
+    if (groupCode === "system:operations") {
+      return {
+        userRoles: {
+          some: {
+            deletedAt: null,
+            role: { code: { in: OPERATIONS_ROLE_CODES }, deletedAt: null }
+          }
+        }
+      };
+    }
+    const systemTier = {
+      "system:free": "free",
+      "system:silver": "silver",
+      "system:gold": "gold",
+      "system:black_diamond": "black_diamond"
+    }[groupCode] as "free" | "silver" | "gold" | "black_diamond" | undefined;
+    if (systemTier) return this.managedUserTierWhere(systemTier, occurredAt);
+    return {
+      backofficeUserGroupMemberships: {
+        some: {
+          deletedAt: null,
+          group: { code: groupCode, status: "ACTIVE", deletedAt: null }
+        }
+      }
+    };
+  }
+
+  private managedActiveEntitlementWhere(
+    occurredAt: Date
+  ): Prisma.PlatformMembershipEntitlementWhereInput {
+    return {
+      deletedAt: null,
+      supersededAt: null,
+      startsAt: { lte: occurredAt },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
+    };
+  }
+
+  private managedActiveTierVersionWhere(
+    occurredAt: Date
+  ): Prisma.PlatformMembershipTierVersionWhereInput {
+    return {
+      status: "PUBLISHED",
+      deletedAt: null,
+      effectiveFrom: { lte: occurredAt },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }]
+    };
+  }
+
+  private async managedUserBalances(
+    userIds: number[]
+  ): Promise<Map<number, { available: number; frozen: number }>> {
+    if (userIds.length === 0) return new Map();
+    const wallets = await this.client.wallet.findMany({
+      where: {
+        ownerType: "USER",
+        ownerId: { in: userIds },
+        currency: "NDP",
+        deletedAt: null
+      },
+      select: { ownerId: true, availableBalance: true, frozenBalance: true }
+    });
+    return new Map(
+      wallets.map((wallet) => [
+        wallet.ownerId,
+        { available: wallet.availableBalance, frozen: wallet.frozenBalance }
+      ])
+    );
+  }
+
+  private mapManagedUser(
+    user: ManagedUserRecord,
+    ndpBalance: { available: number; frozen: number } | undefined
+  ): BackofficeManagedUserPayload {
+    const customerProfile = user.customerProfile?.deletedAt ? null : user.customerProfile;
+    const entitlement = user.platformMembershipEntitlements[0] ?? null;
+    const tierCode = entitlement
+      ? entitlement.tierVersion.tier.code === PlatformMembershipTierCode.BLACK_DIAMOND
+        ? "black_diamond"
+        : entitlement.tierVersion.tier.code.toLowerCase() as "free" | "silver" | "gold"
+      : "free";
+    const operationMember = user.userRoles.some((assignment) =>
+      OPERATIONS_ROLE_CODES.includes(assignment.role.code)
+    );
+    const systemGroups = customerProfile ? [`system:${tierCode}`] : [];
+    if (operationMember) systemGroups.push("system:operations");
+    const customGroups = user.backofficeUserGroupMemberships.map(
+      (membership) => membership.group.code
+    );
+    const providers = [...new Set(user.externalAccounts.map((account) => account.provider))];
+    return {
+      id: user.id,
+      needoId: user.needoId,
+      username: user.username,
+      email: user.email,
+      phone: user.phone,
+      emailBound: user.emailVerifiedAt !== null,
+      phoneBound: user.phone !== null,
+      avatarUrl: user.avatarUrl ?? user.avatarBootstrapUrl,
+      isActive: user.isActive,
+      isTestAccount: user.isTestAccount,
+      source: providers.length > 0 ? providers : ["password"],
+      identities: user.identities,
+      roles: user.userRoles.map((assignment) => ({
+        code: assignment.role.code,
+        name: assignment.role.name
+      })),
+      groups: [...systemGroups, ...customGroups],
+      ekycVerified: user.ekycVerifications.some(
+        (verification) =>
+          verification.status.toLowerCase() === "verified" && verification.verifiedAt !== null
+      ),
+      membership: {
+        tierCode,
+        tierVersionPublicId: entitlement?.tierVersion.publicId ?? null,
+        entitlementPublicId: entitlement?.publicId ?? null,
+        expiresAt: entitlement?.expiresAt?.toISOString() ?? null,
+        experienceMultiplier: entitlement
+          ? Number(entitlement.tierVersion.experienceMultiplier.toString())
+          : 1,
+        lockVersion: entitlement?.lockVersion ?? null
+      },
+      experience:
+        customerProfile && user.experienceAccount && !user.experienceAccount.deletedAt
+          ? {
+              currentLevel: user.experienceAccount.currentLevel,
+              totalExpUnits: user.experienceAccount.totalExpUnits.toString()
+            }
+          : null,
+      ndpBalance: ndpBalance ?? { available: 0, frozen: 0 },
+      bookingCount: user._count.bookingOrders,
+      lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString()
     };
   }
 
@@ -1734,6 +2267,50 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     } satisfies Prisma.BookingOrderInclude;
   }
 
+  private orderDetailInclude() {
+    return {
+      ...this.orderInclude(),
+      statusHistory: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          bookingOrderId: true,
+          fromStatus: true,
+          toStatus: true,
+          actorUserId: true,
+          reason: true,
+          createdAt: true
+        }
+      },
+      performanceAssessment: {
+        select: {
+          id: true,
+          bookingOrderId: true,
+          technicianProfileId: true,
+          outcome: true,
+          treatment: true,
+          version: true,
+          currentRevisionId: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      },
+      performanceRevisions: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          action: true,
+          actorUserId: true,
+          publicReason: true,
+          internalNote: true,
+          createdAt: true
+        }
+      }
+    } satisfies Prisma.BookingOrderInclude;
+  }
+
   private scheduleInclude() {
     return {
       service: true,
@@ -1831,6 +2408,70 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString()
     };
+  }
+
+  private mapOrderDetail(order: OrderDetailRecord): BackofficeOrderDetailPayload {
+    const timelineEvents: BackofficeOrderTimelineEventPayload[] = [
+      ...order.statusHistory.map((history) => ({
+        type: "ORDER_STATUS_CHANGED" as const,
+        id: `status:${history.id}`,
+        createdAt: history.createdAt.toISOString(),
+        actorUserId: history.actorUserId,
+        fromStatus: history.fromStatus ? this.statusFromDb(history.fromStatus) : null,
+        toStatus: this.statusFromDb(history.toStatus),
+        publicReason: history.reason
+      })),
+      ...order.performanceRevisions.map((revision) => ({
+        type: this.performanceTimelineType(revision.action),
+        id: `performance:${revision.id}`,
+        createdAt: revision.createdAt.toISOString(),
+        actorUserId: revision.actorUserId,
+        publicReason: revision.publicReason,
+        internalNote: revision.internalNote
+      }))
+    ].sort(
+      (left, right) =>
+        Date.parse(left.createdAt) - Date.parse(right.createdAt) || left.id.localeCompare(right.id)
+    );
+
+    return {
+      ...this.mapOrder(order),
+      performanceAssessment: order.performanceAssessment
+        ? {
+            id: order.performanceAssessment.id,
+            bookingOrderId: order.performanceAssessment.bookingOrderId,
+            technicianProfileId: order.performanceAssessment.technicianProfileId,
+            outcome:
+              order.performanceAssessment.outcome === OrderPerformanceOutcome.TECHNICIAN_CANCELLED
+                ? "technician_cancelled"
+                : "technician_uncompleted",
+            treatment:
+              order.performanceAssessment.treatment === OrderPerformanceTreatment.SPECIAL_EXCLUDED
+                ? "special_excluded"
+                : "counted",
+            version: order.performanceAssessment.version,
+            currentRevisionId: order.performanceAssessment.currentRevisionId,
+            createdAt: order.performanceAssessment.createdAt.toISOString(),
+            updatedAt: order.performanceAssessment.updatedAt.toISOString()
+          }
+        : null,
+      timelineEvents
+    };
+  }
+
+  private performanceTimelineType(
+    action: OrderPerformanceRevisionAction
+  ): Exclude<BackofficeOrderTimelineEventPayload, { type: "ORDER_STATUS_CHANGED" }>["type"] {
+    switch (action) {
+      case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED:
+        return "TECHNICIAN_CANCEL_CLASSIFIED";
+      case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_UNCOMPLETED:
+        return "TECHNICIAN_UNCOMPLETED_CLASSIFIED";
+      case OrderPerformanceRevisionAction.APPLY_SPECIAL_EXCLUSION:
+        return "SPECIAL_CANCELLATION_APPLIED";
+      case OrderPerformanceRevisionAction.REVOKE_SPECIAL_EXCLUSION:
+        return "SPECIAL_CANCELLATION_REVOKED";
+    }
   }
 
   private mapScheduleSlot(slot: ScheduleSlotRecord): BackofficeScheduleSlotPayload {

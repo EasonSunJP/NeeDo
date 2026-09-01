@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import adjustmentActionSource from "./IssuedCardAdjustmentAction.tsx?raw";
 import source from "./ShopMemberCenterPage.tsx?raw";
 
 describe("ShopMemberCenterPage formal UI", () => {
@@ -12,14 +13,22 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).not.toContain("shopMemberStore");
   });
 
-  it("keeps card money and redemption mutations out of this micro-step", () => {
-    expect(source).not.toContain("扫码核销");
-    expect(source).not.toContain("立即充值");
-    expect(source).not.toContain("申请退款");
+  it("opens formal top-up, redemption, and owner-only refund", () => {
     expect(source).not.toContain("开卡演示");
     expect(source).not.toContain("开卡将在后续");
     expect(source).toContain("开通会员");
-    expect(source).toContain("后续独立开放");
+    expect(source).toContain("充值记录");
+    expect(source).toContain("<CardTopUpDialog");
+    expect(source).toContain("<CardTopUpHistory");
+    expect(source).toContain("<CardRedemptionDialog");
+    expect(source).toContain("<CardRedemptionHistory");
+    expect(source).toContain('hasPermission("shop.member.card.topup.create")');
+    expect(source).toContain('hasPermission("shop.member.card.redeem")');
+    expect(source).toContain('hasPermission("shop.member.card.refund")');
+    expect(source).toContain("核销与退款");
+    expect(source).toContain("核销 TEST");
+    expect(source).toContain("核销与退款已接入正式数据库、RBAC、审计、通知与 NDP 账本");
+    expect(source).not.toContain("充值、核销、退款仍会分别接入");
   });
 
   it("splits issued cards from card plans and uses exact plan permissions", () => {
@@ -31,6 +40,12 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain('hasPermission("shop.member.card.issue")');
     expect(source).toContain("<CardIssuanceDialog");
     expect(source).toContain("开卡");
+    expect(source).toContain("<IssuedCardAdjustmentAction");
+    expect(adjustmentActionSource).toContain("申请调整");
+    expect(adjustmentActionSource).toContain("已有调整等待客户确认");
+    expect(source).toContain("<CardAdjustmentRequestDialog");
+    expect(source).toContain("<CardAdjustmentRequestList");
+    expect(source).toContain('hasPermission("shop.member.card.adjust.request")');
   });
 
   it("provides real loading, empty, error, retry, and permission states", () => {

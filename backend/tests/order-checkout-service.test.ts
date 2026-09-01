@@ -171,6 +171,8 @@ const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow
     createdAt: new Date(), updatedAt: new Date(),
     serviceSession: { id: 5, startedAt: new Date("2026-09-01T09:00:00.000Z"), expectedEndsAt: new Date("2026-09-01T10:00:00.000Z"), endedAt: new Date("2026-09-01T10:00:00.000Z"), addOns: [{ id: 3, serviceId: 19, status: "ACCEPTED", serviceNameSnapshot: "Extra", priceAmountJpy: options.overflow ? 1 : 2_200, currency: "JPY", durationMinutes: 30, serviceSnapshotJson: {}, proposedByUserId: 202, proposedAt: new Date(), acceptedByUserId: 101, acceptedAt: new Date(), rejectedByUserId: null, rejectedAt: null, resolutionReason: null, deletedAt: null }] },
     statusHistory: [{ id: 1, bookingOrderId: 41, fromStatus: "PENDING", toStatus: "CONFIRMED", actorUserId: 202, reason: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null }],
+    performanceAssessment: null,
+    performanceRevisions: [],
     affiliateAttributions: options.affiliateInvalid ? [{ id: 1, taskId: 1, source: "CODE", originalPriceJpy: 8_800, customerDiscountJpy: 800, finalPriceJpy: 8_001, rewardAllocatedNdp: 10, status: "ATTRIBUTED", claim: { publicCode: "A" } }] : [{ id: 1, taskId: 1, source: "CODE", originalPriceJpy: options.overflow ? 2_147_483_647 : 8_800, customerDiscountJpy: options.overflow ? 0 : 800, finalPriceJpy: options.overflow ? 2_147_483_647 : 8_000, rewardAllocatedNdp: 10, status: "ATTRIBUTED", claim: { publicCode: "A" } }]
   };
   let checkout: any = null;
@@ -183,11 +185,30 @@ const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow
     $queryRaw: jest.fn(async () => [{ id: order.id }]),
     bookingOrder: {
       findFirst: jest.fn(async ({ where }: any) => where.id === order.id && !order.deletedAt ? order : null),
+      count: jest.fn(async ({ where }: any) =>
+        where.technicianProfileId === order.technicianProfileId &&
+        where.status === order.status &&
+        !order.deletedAt
+          ? 1
+          : 0
+      ),
       updateMany: jest.fn(async ({ where, data }: any) => {
         if (where.id !== order.id || (where.status && where.status !== order.status) || (where.paymentStatus && where.paymentStatus !== order.paymentStatus)) return { count: 0 };
         Object.assign(order, data);
         return { count: 1 };
       })
+    },
+    orderPerformanceAssessment: {
+      groupBy: jest.fn(async () => [])
+    },
+    technicianPerformanceSummary: {
+      upsert: jest.fn(async ({ create, update }: any) => ({
+        id: 1,
+        technicianProfileId: order.technicianProfileId,
+        ...(create ?? update),
+        createdAt: new Date("2026-09-01T10:00:00.000Z"),
+        updatedAt: new Date("2026-09-01T10:00:00.000Z")
+      }))
     },
     orderCheckout: {
       findUnique: jest.fn(async ({ where }: any) => checkout && ((where.bookingOrderId && where.bookingOrderId === checkout.bookingOrderId) || (where.id && where.id === checkout.id)) ? checkout : null),

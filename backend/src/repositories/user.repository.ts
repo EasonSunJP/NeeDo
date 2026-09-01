@@ -169,6 +169,9 @@ export class UserRepository implements UserRepositoryPort {
         const profile = await transaction.customerProfile.create({
           data: { userId: user.id, displayName: input.username }
         });
+        await transaction.userExperienceAccount.create({
+          data: { userId: user.id, currentLevel: 1, totalExpUnits: 0n }
+        });
         const identity = await transaction.userIdentity.create({
           data: {
             userId: user.id,

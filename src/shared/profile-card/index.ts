@@ -4,8 +4,19 @@ export { CustomerMembershipBadge, CustomerMembershipIcon } from "./CustomerMembe
 export { SocialProfileMiniCard, buildServiceMiniCardData, buildSocialProfileMiniCardData } from "./SocialProfileMiniCard";
 export { TechnicianShowcaseCard, getTechnicianDynamicPath } from "./TechnicianShowcaseCard";
 export { TechnicianPublicInfoCard, TechnicianPublicInfoCardModal, TechnicianReviewStampList } from "./TechnicianPublicInfoCard";
+export { PlatformMembershipSimpleCard } from "./PlatformMembershipSimpleCard";
+export type { PlatformMembershipSimpleCardProps } from "./PlatformMembershipSimpleCard";
 export type { SocialProfileMiniActionLabel, SocialProfileMiniData } from "./SocialProfileMiniCard";
-export type { BaseProfileCardData, ShopProfileData, TechnicianProfileData, UserProfileData } from "./types";
+export type {
+  BaseProfileCardData,
+  ShopProfileData,
+  TechnicianFormalContactCardData,
+  TechnicianFormalContactDetails,
+  TechnicianFormalContactService,
+  TechnicianFormalMetrics,
+  TechnicianProfileData,
+  UserProfileData
+} from "./types";
 export { CompactProfileCard } from "./variants/compact";
 export { ListProfileCard } from "./variants/list";
 export { NearbyProfileCard } from "./variants/nearby";

@@ -10,11 +10,38 @@ type QueryState = {
   error: string | null;
   loading: boolean;
 };
+type LocationHarness = {
+  config: {
+    selectedLocationId: string;
+    locations: Array<{
+      id: string;
+      coordinates?: { lat: number; lng: number };
+    }>;
+  };
+  state: {
+    promptStatus: "unrequested" | "granted" | "denied" | "unavailable" | "error";
+    source: "default" | "device" | "manual";
+    coordinates?: { lat: number; lng: number };
+  };
+};
 
 const queryHarness = vi.hoisted(() => ({
   calls: [] as QueryKey[],
   queries: {} as Partial<Record<QueryKey, unknown>>,
   states: {} as Record<QueryKey, QueryState>
+}));
+
+const locationHarness = vi.hoisted((): LocationHarness => ({
+  config: {
+    selectedLocationId: "tokyo-service",
+    locations: [
+      {
+        id: "tokyo-service",
+        coordinates: { lat: 35.6555, lng: 139.7367 }
+      }
+    ]
+  },
+  state: { promptStatus: "unrequested", source: "default" }
 }));
 
 const category = {
@@ -63,7 +90,11 @@ const shop = {
   city: "Tokyo",
   address: "Shibuya",
   coverUrl: null,
-  reviewSummary
+  reviewSummary,
+  favoriteCount: 2049,
+  shareCount: 29,
+  serviceCategories: [{ id: 3, code: "wellness", label: "放松" }],
+  businessKeywords: [{ id: 31, code: "private", categoryId: 3, label: "包间" }]
 };
 
 const technician = {
@@ -72,7 +103,19 @@ const technician = {
   displayName: "橘 ひかり",
   city: "Tokyo",
   avatarUrl: null,
-  reviewSummary
+  reviewSummary,
+  age: 25,
+  favoriteCount: 154,
+  shareCount: 8,
+  completedOrderCount: 1280,
+  acceptanceRatePercent: 98,
+  primaryService: {
+    id: 71,
+    name: "肩颈调理",
+    priceAmount: "8800",
+    currency: "JPY",
+    durationMinutes: 60
+  }
 };
 
 function page<T>(list: T[]) {
@@ -89,6 +132,16 @@ function resetQueryStates(overrides: Partial<Record<QueryKey, QueryState>> = {})
     service: { data: page([]), error: null, loading: false },
     ...overrides
   };
+  locationHarness.config = {
+    selectedLocationId: "tokyo-service",
+    locations: [
+      {
+        id: "tokyo-service",
+        coordinates: { lat: 35.6555, lng: 139.7367 }
+      }
+    ]
+  };
+  locationHarness.state = { promptStatus: "unrequested", source: "default" };
 }
 
 function renderCategoryPage(path: string) {
@@ -155,6 +208,14 @@ vi.mock("../../i18n/I18nProvider", () => ({
   useOptionalI18n: () => ({ language: "zh" })
 }));
 
+vi.mock("../../state/homeLayoutStore", () => ({
+  useHomeLayoutStore: () => ({ config: locationHarness.config })
+}));
+
+vi.mock("../../state/homeLocationStore", () => ({
+  useHomeLocationPreference: () => ({ state: locationHarness.state })
+}));
+
 describe("CategoryPage formal category state", () => {
   it("renders the real empty state when the category API returns no records", () => {
     resetQueryStates({ categories: { data: page([]), error: null, loading: false } });
@@ -169,10 +230,11 @@ describe("CategoryPage formal category state", () => {
 
     expect(html).toContain("LifeDance Wellness 渋谷");
     expect(html).toContain("橘 ひかり");
-    expect(html).not.toContain("预约确认");
-    expect(html).not.toContain("可预约");
-    expect(html).not.toContain("预约服务");
-    expect(html).not.toContain("接单率");
+    expect(html).toContain("肩颈调理");
+    expect(html).toMatch(/接单率[\s\S]*98[\s\S]*%/);
+    expect(html).toContain("收藏 154");
+    expect(html).toContain("包间");
+    expect(html).not.toContain(">放松<");
   });
 
   it("keeps the bare category route scoped to the displayed cleaning category", () => {
@@ -182,6 +244,27 @@ describe("CategoryPage formal category state", () => {
     expect(queryHarness.queries.shop).toMatchObject({ categoryIds: [4] });
     expect(queryHarness.queries.technician).toMatchObject({ categoryIds: [4] });
     expect(queryHarness.queries.service).toMatchObject({ categoryIds: [4] });
+    expect(queryHarness.queries.technician).toMatchObject({
+      latitude: 35.6555,
+      longitude: 139.7367
+    });
+    expect(queryHarness.queries.shop).not.toHaveProperty("latitude");
+    expect(queryHarness.queries.service).not.toHaveProperty("latitude");
+  });
+
+  it("shows location guidance separately when technician ranking has no origin", () => {
+    resetQueryStates();
+    locationHarness.config = {
+      selectedLocationId: "tokyo-service",
+      locations: [{ id: "tokyo-service", coordinates: undefined }]
+    };
+    locationHarness.state = { promptStatus: "denied", source: "default" };
+
+    const html = renderCategoryPage("/categories?type=technician");
+
+    expect(queryHarness.queries.technician).not.toHaveProperty("latitude");
+    expect(html).toContain("开启首页服务位置或设备定位后，可查看附近技师排名。");
+    expect(html).toContain("橘 ひかり");
   });
 
   it("keeps successful sections and a scoped retry when one entity request fails", () => {

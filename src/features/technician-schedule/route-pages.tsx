@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -7,6 +7,7 @@ import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
@@ -18,6 +19,7 @@ import {
   type OrderReview
 } from "../booking/api";
 import { schedulingApi } from "../scheduling/api";
+import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 import {
@@ -127,7 +129,10 @@ function ScheduleResourceErrorPanel({
 
 export function TechnicianScheduleIndexRoutePage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
   const resource = useFormalTechnicianScheduleResource(session, null);
+  const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
+  const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
@@ -152,6 +157,8 @@ export function TechnicianScheduleIndexRoutePage() {
       title="排班与预约"
     >
       <FormalTechnicianScheduleWorkspace
+        dataCenterPeriod={dataCenterPeriod}
+        initialSelectedDate={initialSelectedDate}
         profileAvatarUrl={resource.data.profile.avatarUrl}
         profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
@@ -160,6 +167,24 @@ export function TechnicianScheduleIndexRoutePage() {
       />
     </TechnicianSchedulePageShell>
   );
+}
+
+function readDataCenterPeriod(value: string | null) {
+  return value === "last7days" || value === "last30days" || value === "week" || value === "month" || value === "year" ? value : undefined;
+}
+
+function tokyoDateKey(value: string | null) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return undefined;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Tokyo",
+    year: "numeric"
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${read("year")}-${read("month")}-${read("day")}`;
 }
 
 function localDateLabel(value: string | Date): string {
@@ -804,22 +829,10 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           ) : null}
         </section>
 
-        <section className={panelClass}>
-          <h2 className="text-base font-black">状态记录</h2>
-          <ol className="mt-3 space-y-2">
-            {order.statusHistory.map((history) => (
-              <li className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={history.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong className="text-sm">{orderStatusLabel(history.toStatus)}</strong>
-                  <span className="text-xs font-bold text-[color:var(--client-muted)]">
-                    {localDateLabel(history.createdAt)} {localTimeLabel(history.createdAt)}
-                  </span>
-                </div>
-                {history.reason ? <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{history.reason}</p> : null}
-              </li>
-            ))}
-          </ol>
-        </section>
+        <ContactEventTimelinePanel
+          title="状态记录"
+          events={buildFormalOrderTimelineEvents(order)}
+        />
 
         {order.status === "confirmed" ? (
           <section className={panelClass}>

@@ -15,6 +15,8 @@ describe("identity application review pages", () => {
     expect(source).toContain("selected.bankAccount.accountNumberMasked");
     expect(source).toContain("selected.contractAcceptance?.receiptId");
     expect(source).toContain("approveMerchantApplication(selected.applicationId, selected.version)");
+    expect(source).toContain("selected.serviceCategories.map((category) => category.label)");
+    expect(source).toContain("selected.businessKeywords.map((keyword) => keyword.label)");
   });
 
   it("documents the exact 15-day trial boundary in the approval surface", () => {

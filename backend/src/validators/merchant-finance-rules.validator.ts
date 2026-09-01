@@ -32,6 +32,8 @@ export const shopFinanceRuleSetBodySchema = z.object({
   dailyRateJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   fixedOrderPayJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   commissionRatePercent: z.number().min(0).max(100).default(60),
+  extensionCommissionRatePercent: z.number().min(0).max(100).default(60),
+  nominationFeeJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   guaranteedMinimumJpy: z.number().int().nonnegative().max(10_000_000).default(0),
   ndpFeeBearer: z.enum(["shop", "technician", "split"]).default("shop"),
   technicianNdpSharePercent: z.number().min(0).max(100).default(0),

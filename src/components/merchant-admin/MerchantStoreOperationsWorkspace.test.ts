@@ -17,7 +17,9 @@ describe("MerchantStoreOperationsWorkspace finance rules", () => {
     expect(source).toContain("订单钱路 / 服务收入上报");
     expect(source).toContain("技师收入模式");
     expect(source).toContain("工资模式");
-    expect(source).toContain("分成比例 %");
+    expect(source).toContain("服务完成分成 %");
+    expect(source).toContain("加钟分成 %");
+    expect(source).toContain("指名费 JPY");
     expect(source).toContain("NDP 平台费承担");
     expect(source).toContain("奖金规则");
     expect(source).toContain("估算服务 GMV");

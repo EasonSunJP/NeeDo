@@ -77,7 +77,9 @@ const makeOrder = (
   createdAt: now,
   updatedAt: now,
   statusHistory: [],
-  ...overrides
+  ...overrides,
+  performanceAssessment: overrides.performanceAssessment ?? null,
+  timelineEvents: overrides.timelineEvents ?? []
 });
 
 const ok = (order: BookingOrderPayload, applied = true): FulfillmentMutationResult => ({

@@ -39,6 +39,8 @@ export interface ShopFinanceRuleSetPayload {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: ShopFinanceNdpBearer;
   technicianNdpSharePercent: number;
@@ -60,6 +62,8 @@ export interface ShopFinanceRuleSetInput {
   dailyRateJpy?: number;
   fixedOrderPayJpy?: number;
   commissionRatePercent?: number;
+  extensionCommissionRatePercent?: number;
+  nominationFeeJpy?: number;
   guaranteedMinimumJpy?: number;
   ndpFeeBearer?: ShopFinanceNdpBearer;
   technicianNdpSharePercent?: number;

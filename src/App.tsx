@@ -21,7 +21,6 @@ import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
-import { CRMPage } from "./pages/admin/CRMPage";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";
 import { DataCenterPage } from "./pages/admin/DataCenterPage";
@@ -40,7 +39,7 @@ import { ReviewsPage } from "./pages/admin/ReviewsPage";
 import { RolesPage } from "./pages/admin/RolesPage";
 import { PermissionsPage } from "./pages/admin/PermissionsPage";
 import { TechniciansPage } from "./pages/admin/TechniciansPage";
-import { UsersPage } from "./pages/admin/UsersPage";
+import { LegacyUserManagementRedirect } from "./features/platform-user-management/LegacyUserManagementRedirect";
 import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile/MerchantPortalPage";
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
 import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";
@@ -192,6 +191,7 @@ import {
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
 import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
+import { AccountComplianceGate } from "./features/auth/AccountComplianceGate";
 import {
   SocialAccountProfilePage,
   SocialComposerPage,
@@ -214,6 +214,12 @@ import {
 } from "./assets/runtime/images";
 
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
+const PlatformUserListPage = lazy(() => import("./features/platform-user-management/UserListPage").then((module) => ({ default: module.UserListPage })));
+const UserGroupsPage = lazy(() => import("./features/platform-user-management/UserGroupsPage").then((module) => ({ default: module.UserGroupsPage })));
+const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-management/UserGlobalSettingsPage").then((module) => ({ default: module.UserGlobalSettingsPage })));
+const MembershipTiersPage = lazy(() => import("./features/platform-user-management/MembershipTiersPage").then((module) => ({ default: module.MembershipTiersPage })));
+const MembershipBenefitsPage = lazy(() => import("./features/platform-user-management/MembershipBenefitsPage").then((module) => ({ default: module.MembershipBenefitsPage })));
+const AccountCompliancePage = lazy(() => import("./features/auth/AccountCompliancePage").then((module) => ({ default: module.AccountCompliancePage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -1078,6 +1084,7 @@ export default function App() {
                 <ShareFeedbackViewport />
                 <OfficialNoticeAutoPopup disabled={Boolean(splashPortal)} />
                 <NeedoPet disabled={Boolean(splashPortal)} />
+                <AccountComplianceGate>
                 <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />
@@ -1089,6 +1096,7 @@ export default function App() {
               <Route path="/login/cps-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/business-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/:portal" element={<LoginPage />} />
+              <Route path="/account-compliance" element={<Suspense fallback={null}><AccountCompliancePage /></Suspense>} />
 
               <Route path="/" element={protect("user", <HomePage />)} />
               <Route path="/categories" element={protect("user", <CategoryPage />)} />
@@ -1395,7 +1403,7 @@ export default function App() {
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
               <Route path="/admin/docs" element={protect("admin", <AdminDocsPage />)} />
               <Route path="/admin/docs/api" element={protect("admin", <AdminDocsPage />)} />
-              <Route path="/admin/data" element={protect("admin", <DataCenterPage />)} />
+              <Route path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><DataCenterPage /></LegacyUserManagementRedirect>)} />
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
@@ -1404,8 +1412,12 @@ export default function App() {
               <Route path="/admin/orders/info" element={protect("admin", <NeedoInfoAdminPage />)} />
               <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
-              <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
-              <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
+              <Route path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)} />
+              <Route path="/admin/users" element={protectPermission("admin", "backoffice:users:read", <LegacyUserManagementRedirect source="users"><Suspense fallback={null}><PlatformUserListPage /></Suspense></LegacyUserManagementRedirect>)} />
+              <Route path="/admin/user-groups" element={protectPermission("admin", "backoffice:user-group:read", <Suspense fallback={null}><UserGroupsPage /></Suspense>)} />
+              <Route path="/admin/user-global-settings" element={protectPermission("admin", "backoffice:user-policy:read", <Suspense fallback={null}><UserGlobalSettingsPage /></Suspense>)} />
+              <Route path="/admin/membership-tiers" element={protectPermission("admin", "backoffice:membership-tier:read", <Suspense fallback={null}><MembershipTiersPage /></Suspense>)} />
+              <Route path="/admin/membership-benefits" element={protectPermission("admin", "backoffice:membership-benefit:read", <Suspense fallback={null}><MembershipBenefitsPage /></Suspense>)} />
               <Route path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)} />
               <Route path="/admin/afirieito/fee-rules" element={protectPermission("admin", "page:backoffice-affiliate-fee-rule", <AffiliateFeeRulesPage />)} />
               <Route path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)} />
@@ -1425,6 +1437,7 @@ export default function App() {
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>
+                </AccountComplianceGate>
               </SocialProvider>
             </I18nRuntime>
           </ClientThemeProvider>

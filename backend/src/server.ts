@@ -8,7 +8,10 @@ import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.r
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
+import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
+import { ExchangeClaimRepository } from "./repositories/exchange-claim.repository";
 import { ExchangePostRepository } from "./repositories/exchange.repository";
+import { ExchangeRequestFeeRepository } from "./repositories/exchange-request-fee.repository";
 import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
@@ -17,9 +20,15 @@ import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
 import { OrderServiceExpiryRepository } from "./repositories/order-service-expiry.repository";
 import { RealtimeRepository } from "./repositories/realtime.repository";
+import { PlatformMembershipRepository } from "./repositories/platform-membership.repository";
+import { NdpExperienceCampaignRepository } from "./repositories/ndp-experience-campaign.repository";
+import { UserGlobalPolicyRepository } from "./repositories/user-global-policy.repository";
+import { UserPolicyEnforcementRepository } from "./repositories/user-policy-enforcement.repository";
+import { UserExperienceRepository } from "./repositories/user-experience.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
 import { BookingUserRewardExpiryService } from "./services/booking-user-reward-expiry.service";
+import { ShopMembershipCardAdjustmentExpiryService } from "./services/shop-membership-card-adjustment-expiry.service";
 import { ContentPublicationSchedulerService } from "./services/content-publication-scheduler.service";
 import { FriendRequestExpiryService } from "./services/friend-request-expiry.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
@@ -28,8 +37,15 @@ import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
 import { RedisAuthSessionStore } from "./services/auth-session.store";
 import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
 import { OrderServiceExpiryService } from "./services/order-service-expiry.service";
+import { ExchangeClaimService } from "./services/exchange-claim.service";
 import { ExchangeService } from "./services/exchange.service";
+import { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import { PersonalIdentityScopeService } from "./services/personal-identity-scope.service";
+import { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
+import { PlatformMembershipService } from "./services/platform-membership.service";
+import { UserExperienceService } from "./services/user-experience.service";
+import { UserGlobalPolicyService } from "./services/user-global-policy.service";
+import { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
@@ -37,6 +53,7 @@ import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
 import { AffiliateTaskExpiryWorker } from "./workers/affiliate-task-expiry.worker";
 import { BookingUserRewardExpiryWorker } from "./workers/booking-user-reward-expiry.worker";
+import { ShopMembershipCardAdjustmentExpiryWorker } from "./workers/shop-membership-card-adjustment-expiry.worker";
 import { ExchangePostExpiryWorker } from "./workers/exchange-post-expiry.worker";
 import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
@@ -58,12 +75,48 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
+const authRepository = new AuthRepository();
+const platformMembershipRepository = new PlatformMembershipRepository();
+const userExperienceRepository = new UserExperienceRepository();
+const userGlobalPolicyRepository = new UserGlobalPolicyRepository();
+const userPolicyEnforcementRepository = new UserPolicyEnforcementRepository();
+const userPolicyEnforcementService = new UserPolicyEnforcementService(
+  userPolicyEnforcementRepository,
+  new UserGlobalPolicyService(userGlobalPolicyRepository)
+);
+const ndpExperienceCampaignRepository = new NdpExperienceCampaignRepository();
+const platformMembershipResolver = new PlatformMembershipService(
+  platformMembershipRepository
+);
+const userExperienceService = new UserExperienceService(
+  userExperienceRepository,
+  platformMembershipResolver,
+  new UserGlobalPolicyService(userGlobalPolicyRepository),
+  new NdpExperienceCampaignService(ndpExperienceCampaignRepository)
+);
+const exchangeRequestFeeService = new ExchangeRequestFeeService(new ExchangeRequestFeeRepository());
+const exchangeLedgerService = new LedgerService(
+  new LedgerRepository(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  userExperienceService
+);
 const exchangeService = new ExchangeService(
   new ExchangePostRepository(),
   undefined,
-  new PersonalIdentityScopeService(new AuthRepository())
+  new PersonalIdentityScopeService(authRepository),
+  exchangeRequestFeeService,
+  exchangeLedgerService,
+  userPolicyEnforcementService,
+  platformMembershipResolver
 );
-const authRepository = new AuthRepository();
+const exchangeClaimService = new ExchangeClaimService(
+  new ExchangeClaimRepository(),
+  new ExchangePostRepository()
+);
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
     logger.error(event, "Merchant shop switch receipt post-state mismatch");
@@ -125,8 +178,19 @@ const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
   exchangeService,
+  exchangeClaimService,
+  exchangeRequestFeeService,
+  ledgerService: exchangeLedgerService,
   authRepository,
   authSessionStore,
+  platformMembershipRepository,
+  platformMembershipResolverService: platformMembershipResolver,
+  userExperienceService,
+  userExperienceRepository,
+  userGlobalPolicyRepository,
+  userPolicyEnforcementRepository,
+  userPolicyEnforcementService,
+  ndpExperienceCampaignRepository,
   merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
@@ -176,6 +240,14 @@ const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
   env.ORDER_SERVICE_EXPIRY_INTERVAL_MS,
   env.ORDER_SERVICE_EXPIRY_BATCH_SIZE
 );
+const shopMembershipCardAdjustmentExpiryWorker = new ShopMembershipCardAdjustmentExpiryWorker(
+  new ShopMembershipCardAdjustmentExpiryService(
+    new ShopMembershipCardAdjustmentRepository()
+  ),
+  logger,
+  env.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_INTERVAL_MS,
+  env.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_BATCH_SIZE
+);
 const exchangePostExpiryWorker = new ExchangePostExpiryWorker(
   exchangeService,
   logger,
@@ -223,6 +295,7 @@ const server = app.listen(env.PORT, () => {
   affiliateTaskExpiryWorker.start();
   bookingUserRewardExpiryWorker.start();
   orderServiceExpiryWorker.start();
+  shopMembershipCardAdjustmentExpiryWorker.start();
   if (env.EXCHANGE_EXPIRY_WORKER_ENABLED) {
     exchangePostExpiryWorker.start();
   }
@@ -247,6 +320,7 @@ const shutdown = createShutdownHandler({
     });
     bookingUserRewardExpiryWorker.stop();
     orderServiceExpiryWorker.stop();
+    shopMembershipCardAdjustmentExpiryWorker.stop();
     exchangePostExpiryWorker.stop();
     contentPublicationWorker.stop();
     affiliateAllianceInvitationExpiryWorker.stop();

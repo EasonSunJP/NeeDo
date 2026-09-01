@@ -18,10 +18,12 @@ import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
 import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
 import { walletApi, type Wallet } from "../../features/wallet/api";
 import { customerShopMembershipApi } from "../../features/shop-member/api";
+import { platformMembershipSelfApi, type MyExperienceSummary, type MyPlatformMembership } from "../../features/platform-membership/api";
+import { CurrentMembershipBenefits } from "../../features/platform-membership/CurrentMembershipBenefits";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
-import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
+import { PlatformMembershipDetailCard } from "../../shared/profile-card/PlatformMembershipDetailCard";
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
 import type { Customer } from "../../types/domain";
 
@@ -29,6 +31,8 @@ const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
   activeShopMembershipCount: number | null;
+  experience: MyExperienceSummary;
+  membership: MyPlatformMembership;
   orderCounts: FormalOrderCounts;
   profile: CustomerSelfProfile;
   wallet: Wallet;
@@ -48,6 +52,12 @@ const userCenterCollectionInfo: Record<Language, string> = {
   ja: "お気に入りの投稿とチャット履歴",
   en: "Bookmarked posts and chat records",
   ko: "즐겨찾기 게시물 및 채팅 기록"
+};
+const platformMembershipTierLabels: Record<MyPlatformMembership["tierCode"], string> = {
+  free: "免费会员",
+  silver: "白银会员",
+  gold: "黄金会员",
+  black_diamond: "黑钻会员"
 };
 
 const accountSettings = [
@@ -541,15 +551,19 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
       ),
       customerShopMembershipApi.list({ page: 1, pageSize: 1, status: "active" })
         .then((result) => result.total)
-        .catch(() => null)
+        .catch(() => null),
+      platformMembershipSelfApi.getMyExperience(),
+      platformMembershipSelfApi.getMine()
     ])
-      .then(([profile, wallet, counts, activeShopMembershipCount]) => {
+      .then(([profile, wallet, counts, activeShopMembershipCount, experience, membership]) => {
         if (!active) return;
         if (profile.id !== customerProfileId) {
           throw new ApiClientError("error.forbidden", 403, 403);
         }
         setFormalData({
           activeShopMembershipCount,
+          experience,
+          membership,
           profile,
           wallet,
           orderCounts: { ...emptyFormalOrderCounts, ...Object.fromEntries(counts) }
@@ -626,7 +640,7 @@ function CompleteUserCenterPage({
   const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
-  const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
+  const levelLabel = `Lv.${formalData.experience.level}`;
   const membershipSurface = getThemeProfileSurfaceClassNames();
   const savedProfilePrivacy = getPersistedUserProfilePrivacy(formalData.profile.visibility);
   const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;
@@ -921,6 +935,33 @@ function CompleteUserCenterPage({
             </div>
           ) : null}
           <div className="space-y-4">
+            {!isEditingProfile ? (
+              <>
+              <PlatformMembershipDetailCard
+                actionSlot={<IconButton className="text-ink shadow-[0_14px_30px_rgba(0,0,0,0.22)]" icon="edit" label="编辑资料" onClick={startProfileEdit} />}
+                age={visibleProfile.age ? Number(visibleProfile.age) : null}
+                avatarUrl={visibleProfile.avatar || null}
+                bio={visibleProfile.bio}
+                credit={`${creditScore} /5`}
+                displayName={displayName}
+                ekycVerified={formalData.membership.ekycVerified}
+                entityKind="customer"
+                footerSlot={<div className="relative z-30 rounded-[18px] border p-3" data-testid="user-profile-privacy-control" style={{ borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}><div className="flex items-center justify-between gap-3"><button aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined} className="min-w-0 flex-1 text-left disabled:cursor-default" disabled={!activeProfilePrivacy.enabled || isSavingProfile} onClick={() => setProfilePrivacyMenuOpen((current) => !current)} type="button"><p className="text-xs font-bold opacity-60">隐私模式</p><strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong></button><ToggleSwitch ariaLabel="开启隐私模式" checked={activeProfilePrivacy.enabled} disabled={isSavingProfile} onChange={updateProfilePrivacyEnabled} size="md" /></div><PrivacyModeConfirmDialog onCancel={() => setProfilePrivacyConfirmOpen(false)} onConfirm={confirmProfilePrivacyEnabled} open={profilePrivacyConfirmOpen} />{activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? <div className="absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl" data-testid="user-profile-privacy-options" style={{ borderColor: formalData.membership.theme.detailOuterBorderColor, backgroundColor: formalData.membership.theme.detailSurfaceColor }}>{userProfilePrivacyOptions.map((option) => <div className="rounded-[18px] border px-3 py-3" key={option.value} style={{ borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}><div className="flex items-center gap-3"><button aria-label={`选择${option.label}`} className="grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black" disabled={isSavingProfile} onClick={() => updateProfilePrivacyVisibility(option.value)} type="button">{activeProfilePrivacy.visibility === option.value ? "✓" : ""}</button><div className="flex min-w-0 flex-1 items-center gap-1.5"><button className="min-w-0 truncate text-left text-sm font-black" disabled={isSavingProfile} onClick={() => updateProfilePrivacyVisibility(option.value)} type="button">{option.label}</button><UserProfilePrivacyInfoButton content={option.description} /></div></div></div>)}</div> : null}</div>}
+                gender={visibleProfile.gender}
+                heightCm={formatUserHeightInput(visibleProfile.height) || null}
+                languages={visibleProfile.languages}
+                level={formalData.experience.level}
+                needoId={currentCustomer.systemId}
+                onNeedoIdClick={() => void copyNeedoId()}
+                points={points.toLocaleString("en-US")}
+                pointsLabel={pointsLabel}
+                theme={formalData.membership.theme}
+                tierLabel={platformMembershipTierLabels[formalData.membership.tierCode]}
+                usageCount={usageCount}
+              />
+              <CurrentMembershipBenefits language={language} />
+              </>
+            ) : (
             <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
               <div className="relative">
                 <IconButton
@@ -987,7 +1028,7 @@ function CompleteUserCenterPage({
                       <CustomerMembershipBadge
                         className="h-6 w-6"
                         imageClassName="h-6 w-6"
-                        level={currentCustomer.memberLevel}
+                        level={formalData.membership.tierCode}
                         showFallback={false}
                       />
                       <span className={cn("inline-flex h-7 shrink-0 items-center text-[11px] font-black", membershipSurface.muted)}>
@@ -1227,6 +1268,7 @@ function CompleteUserCenterPage({
                 </div>
               </div>
             </section>
+            )}
 
             <section className={pagePanelClassName}>
               <div className="flex items-center justify-between">

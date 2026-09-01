@@ -20,6 +20,8 @@ const profile: TechnicianProfilePayload = {
   heightCm: 164,
   languages: ["日本語"],
   serviceAreas: ["銀座"],
+  serviceBase: null,
+  specialTags: ["准时"],
   profileTags: ["肩颈调理"],
   canServeForeigners: true,
   bidBudgetMinJpy: 12_000,

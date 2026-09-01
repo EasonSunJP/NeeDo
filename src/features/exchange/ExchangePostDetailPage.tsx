@@ -20,7 +20,9 @@ import {
   unlikeExchangePost,
   withdrawExchangePost
 } from "./api";
+import { ExchangeClaimPanel } from "./ExchangeClaimPanel";
 import { ExchangeInteractions } from "./ExchangeInteractions";
+import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
 import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost } from "./types";
 
@@ -75,7 +77,9 @@ function formatCountdown(expiresAt: string, nowMs: number, language: Language) {
 
 function priceLabel(post: ExchangePost) {
   if (post.type === "demand" && post.demand) {
-    return `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+    return post.demand.budgetMinJpy === null
+      ? formatJpy(post.demand.budgetMaxJpy)
+      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
   }
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }
@@ -121,15 +125,15 @@ function HeaderActionButton({
   );
 }
 
-function DetailHero({ label, post }: { label: string; post: ExchangePost }) {
-  const image = post.publisher.avatarUrl || fallbackPublisherImage;
+function DetailHero({ label, post, publisherAlt }: { label: string; post: ExchangePost; publisherAlt: string }) {
+  const image = post.publisher?.avatarUrl || fallbackPublisherImage;
   return (
     <section
       className="relative h-[238px] overflow-hidden rounded-[28px] bg-[color:var(--client-surface)] text-white shadow-soft"
       data-no-i18n="true"
       data-testid="exchange-detail-hero"
     >
-      <img alt={post.publisher.displayName} className="absolute inset-0 h-full w-full object-cover" src={image} />
+      <img alt={post.publisher?.displayName ?? publisherAlt} className="absolute inset-0 h-full w-full object-cover" src={image} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/32 to-black/90" />
       <div className="relative flex h-full flex-col justify-between p-4">
         <div>
@@ -155,22 +159,32 @@ function publisherIdentityLabel(identityType: string, language: Language) {
 }
 
 function PublisherCard({ post, language }: { post: ExchangePost; language: Language }) {
-  const areas = post.intelligence?.serviceAreas ?? [post.areaLabel];
-  const address = post.intelligence?.addressLabel || post.areaLabel;
+  const areas = post.intelligence?.serviceAreas ?? [];
+  const intelligenceAddress = post.intelligence?.addressLabel || post.areaLabel;
+  const requestAddressLines = post.demand
+    ? [post.demand.address.line1, post.demand.address.line2, post.demand.address.line3].filter(
+        (line): line is string => line !== null
+      )
+    : [];
+  const publisherName = post.publisher?.displayName ?? exchangeText("publisherHidden", language);
   return (
     <section className={`${detailCardClassName} overflow-hidden p-0`} data-no-i18n="true">
       <div className="relative overflow-hidden bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent_72%)] px-4 pb-4 pt-5">
         <div className="flex items-center gap-4">
           <AvatarImage
-            alt={post.publisher.displayName}
+            alt={publisherName}
             className="h-24 w-24 shrink-0 rounded-[24px] border border-[color:var(--client-line)] object-cover shadow-soft"
-            src={post.publisher.avatarUrl || fallbackPublisherImage}
+            src={post.publisher?.avatarUrl || fallbackPublisherImage}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{post.publisher.displayName}</p>
-            <p className="mt-1 truncate font-mono text-xs font-bold text-[color:var(--client-primary)]">{post.publisher.publicId}</p>
+            <p className="truncate text-xl font-black text-[color:var(--client-text)]">{publisherName}</p>
+            {post.publisher ? (
+              <p className="mt-1 truncate font-mono text-xs font-bold text-[color:var(--client-primary)]">{post.publisher.publicId}</p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-1.5">
-              <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">{publisherIdentityLabel(post.publisher.identityType, language)}</span>
+              {post.publisher ? (
+                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">{publisherIdentityLabel(post.publisher.identityType, language)}</span>
+              ) : null}
               {post.intelligence ? (
                 <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-muted)]">
                   {exchangeText(post.intelligence.serviceMode, language)}
@@ -179,12 +193,20 @@ function PublisherCard({ post, language }: { post: ExchangePost; language: Langu
             </div>
           </div>
         </div>
-        <p className="mt-4 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{address}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {areas.map((area) => (
-            <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--client-muted)]" key={area}>{area}</span>
-          ))}
-        </div>
+        {post.demand ? (
+          <div className="mt-4 grid gap-1 text-xs font-semibold leading-5 text-[color:var(--client-muted)]" data-testid="exchange-request-address">
+            {requestAddressLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}
+          </div>
+        ) : (
+          <>
+            <p className="mt-4 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{intelligenceAddress}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {areas.map((area) => (
+                <span className="rounded-full bg-[color:var(--client-bg-soft)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--client-muted)]" key={area}>{area}</span>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -237,6 +259,10 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       navigate(-1);
       return;
     }
+    navigate(exchangeBasePath(context), { replace: true });
+  }
+
+  function closeDetail() {
     navigate(exchangeBasePath(context), { replace: true });
   }
 
@@ -299,7 +325,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
 
   const stateShell = (content: ReactNode) => (
     <MobileFullscreenPage innerClassName="client-glass-page-surface">
-      <MobileFullscreenHeader onBack={goBack} showSpacer={false} title={t(validPostId ? "intelligenceDetail" : "requestDetail")} />
+      <MobileFullscreenHeader onBack={goBack} onClose={closeDetail} showSpacer={false} title={t(validPostId ? "intelligenceDetail" : "requestDetail")} />
       <main className="flex min-h-0 flex-1 items-center justify-center px-6 pt-[calc(env(safe-area-inset-top)+86px)] text-center">
         {content}
       </main>
@@ -330,7 +356,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     : [t("flowReviewDemand"), t("flowContact"), t("flowConfirmScope"), t("flowAwaitMatching"), t("flowReview")];
   const requirementTags = post.intelligence
     ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel, post.contentLocale]
-    : [post.areaLabel, post.contentLocale];
+    : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
 
   return (
     <MobileFullscreenPage innerClassName="client-glass-page-surface">
@@ -355,6 +381,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         )}
         info={`${formatTime(post.serviceStartAt, language)}–${formatTime(post.serviceEndAt, language)} · ${post.areaLabel}`}
         onBack={goBack}
+        onClose={closeDetail}
         showSpacer={false}
         title={t(post.type === "demand" ? "requestDetail" : "intelligenceDetail")}
       />
@@ -368,7 +395,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         ) : null}
         {actionError ? <p className="text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("interactionFailed")}</p> : null}
 
-        <DetailHero label={t(post.type)} post={post} />
+        <DetailHero label={t(post.type)} post={post} publisherAlt={t("publisherHidden")} />
 
         <section className={detailCardClassName} data-no-i18n="true">
           <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t("introduction")}</p>
@@ -392,6 +419,11 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]">
             {t(post.status === "withdrawn" ? "withdrawnState" : "expiredState")}
           </div>
+        ) : null}
+
+        {post.viewer.canClaim ? <ExchangeClaimPanel language={language} post={post} /> : null}
+        {post.viewer.canViewClaims ? (
+          <ExchangeReceivedClaims language={language} postId={String(post.id)} />
         ) : null}
 
         <section className={detailCardClassName} data-no-i18n="true">

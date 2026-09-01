@@ -4,7 +4,8 @@ import {
   authSessionVersion,
   isLoginMethod,
   type AuthIdentityPayload,
-  type AuthSession
+  type AuthSession,
+  type UserPolicyComplianceRequirement
 } from "./rbac";
 
 export const persistedAuthEnvelopeStorageKey = "needo.auth.envelope.v8";
@@ -121,6 +122,18 @@ const sessionRequiredKeys = [
   "identities",
   "identityAvailability"
 ] as const;
+const sessionOptionalKeys = [
+  "merchantShopPublicId",
+  "complianceRequirements",
+  "compliancePolicyVersionPublicId",
+  "complianceEffectiveAt",
+  "compliancePermittedNextRoutes"
+] as const;
+const complianceRequirements = new Set<UserPolicyComplianceRequirement>([
+  "phone_binding_required",
+  "email_binding_required",
+  "ekyc_required"
+]);
 const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type"] as const;
 const availabilityKeys = [
   "kind",
@@ -235,7 +248,7 @@ function isAvailability(value: unknown) {
 }
 
 export function isStrictAuthSession(value: unknown): value is AuthSession {
-  if (!isRecord(value) || !hasExactKeys(value, sessionRequiredKeys, ["merchantShopPublicId"])) {
+  if (!isRecord(value) || !hasExactKeys(value, sessionRequiredKeys, sessionOptionalKeys)) {
     return false;
   }
   const identities = value.identities;
@@ -260,6 +273,18 @@ export function isStrictAuthSession(value: unknown): value is AuthSession {
   ) {
     return false;
   }
+  const complianceFields = sessionOptionalKeys
+    .filter((key) => key !== "merchantShopPublicId")
+    .filter((key) => Object.hasOwn(value, key));
+  const complianceValid =
+    complianceFields.length === 0 ||
+    (complianceFields.length === sessionOptionalKeys.length - 1 &&
+      Array.isArray(value.complianceRequirements) &&
+      value.complianceRequirements.every((item) => complianceRequirements.has(item)) &&
+      typeof value.compliancePolicyVersionPublicId === "string" &&
+      value.compliancePolicyVersionPublicId.length > 0 &&
+      isRfc3339(value.complianceEffectiveAt) &&
+      isStringArray(value.compliancePermittedNextRoutes));
   return (
     value.authVersion === authSessionVersion &&
     isSafePositiveInteger(value.id) &&
@@ -292,6 +317,7 @@ export function isStrictAuthSession(value: unknown): value is AuthSession {
     isStringArray(value.roles) &&
     isStringArray(value.permissions) &&
     isStringArray(value.menus) &&
+    complianceValid &&
     (value.merchantShopPublicId === undefined ||
       (value.portal === "merchant" &&
         typeof value.merchantShopPublicId === "string" &&

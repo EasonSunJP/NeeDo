@@ -7,6 +7,7 @@ import {
   ExternalAuthAccountConflictError,
   createGoogleUnlinkRecoveryProof,
   GoogleLoginStateError,
+  PhoneBindingConflictError,
   type AuthRepositoryPort,
   type AuthUserRecord,
   type GoogleAuthRepositoryPort,
@@ -31,6 +32,7 @@ import {
 } from "./auth-token.service";
 import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import type { UserExperienceService } from "./user-experience.service";
 import {
   FORMAL_MERCHANT_IDENTITY_TYPES,
   merchantShopIdentityForbidden,
@@ -38,6 +40,11 @@ import {
   resolveMerchantShopScope,
   type ResolvedMerchantShopScope
 } from "./merchant-shop-scope";
+import type {
+  UserPolicyComplianceDecision,
+  UserPolicyComplianceRequirement
+} from "../domain/user-policy-enforcement";
+import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 
 export interface AuthRequestContext {
   ip: string;
@@ -87,6 +94,7 @@ export interface AuthenticatedAccessContext {
   selectedMerchantShopPublicId?: string;
   roles: string[];
   permissions: string[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
 }
@@ -134,6 +142,16 @@ export interface AuthMePayload {
   roles: string[];
   permissions: string[];
   menus: string[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
+}
+
+export interface CompliancePhoneBindingPayload {
+  phone: string;
+  complianceRequirements: UserPolicyComplianceRequirement[];
+  smsVerified: false;
 }
 
 interface LoginFailureInput {
@@ -213,7 +231,12 @@ export class AuthService {
       config
     ),
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository(),
-    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger
+    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger,
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
+    private readonly userPolicyEnforcementService?: Pick<
+      UserPolicyEnforcementService,
+      "evaluateAccountCompliance"
+    >
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -1200,12 +1223,51 @@ export class AuthService {
     const user = await this.repository.findUserById(auth.userId);
     this.assertActiveUser(user);
 
-    return this.buildMePayload(user, auth.currentIdentityId);
+    const payload = this.buildMePayload(user, auth.currentIdentityId);
+    const compliance = await this.evaluateAccountCompliance(user.id, new Date());
+    return compliance ? this.withCompliance(payload, compliance) : payload;
+  }
+
+  public async bindCompliancePhone(
+    phone: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<CompliancePhoneBindingPayload> {
+    if (!this.repository.completePhoneBinding) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.unavailable",
+        statusCode: 503
+      });
+    }
+    try {
+      const updated = await this.repository.completePhoneBinding({
+        userId: auth.userId,
+        phone,
+        context
+      });
+      const compliance = await this.evaluateAccountCompliance(updated.id, new Date());
+      return {
+        phone: updated.phone ?? phone,
+        complianceRequirements: compliance?.requirements ?? [],
+        smsVerified: false
+      };
+    } catch (error) {
+      if (error instanceof PhoneBindingConflictError) {
+        throw new AppError({
+          code: ERROR_CODES.PHONE_ALREADY_EXISTS,
+          message: "error.user.phone_exists",
+          statusCode: 409
+        });
+      }
+      throw error;
+    }
   }
 
   public async authenticateAccessToken(
     token: string,
-    requiredPermission?: string
+    requiredPermission?: string,
+    options: { allowDuringCompliance?: boolean } = {}
   ): Promise<AuthenticatedAccessContext> {
     const payload = this.tokenService.verifyAccessToken(token);
 
@@ -1227,6 +1289,10 @@ export class AuthService {
       payload.currentIdentityId,
       payload.merchantShopPublicId
     );
+    const compliance = await this.evaluateAccountCompliance(userId, new Date());
+    if (compliance && !compliance.compliant && !options.allowDuringCompliance) {
+      throw this.accountComplianceRequired(compliance);
+    }
 
     if (requiredPermission && !me.permissions.includes(requiredPermission)) {
       throw new AppError({
@@ -1256,8 +1322,57 @@ export class AuthService {
           }
         : {}),
       roles: me.roles,
-      permissions: me.permissions
+      permissions: me.permissions,
+      ...(compliance ? { complianceRequirements: compliance.requirements } : {})
     };
+  }
+
+  private async evaluateAccountCompliance(
+    userId: number,
+    occurredAt: Date
+  ): Promise<UserPolicyComplianceDecision | null> {
+    if (!this.userPolicyEnforcementService) return null;
+    return this.userPolicyEnforcementService.evaluateAccountCompliance(userId, occurredAt);
+  }
+
+  private withCompliance(
+    payload: AuthMePayload,
+    compliance: UserPolicyComplianceDecision
+  ): AuthMePayload {
+    return {
+      ...payload,
+      complianceRequirements: compliance.requirements,
+      compliancePolicyVersionPublicId: compliance.policyVersionPublicId,
+      complianceEffectiveAt: compliance.effectiveAt,
+      compliancePermittedNextRoutes: this.compliancePermittedNextRoutes()
+    };
+  }
+
+  private accountComplianceRequired(compliance: UserPolicyComplianceDecision): AppError {
+    return new AppError({
+      code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
+      message: "error.user_policy.account_compliance_required",
+      statusCode: 403,
+      data: {
+        complianceRequirements: compliance.requirements,
+        policyVersionPublicId: compliance.policyVersionPublicId,
+        effectiveAt: compliance.effectiveAt,
+        permittedNextRoutes: this.compliancePermittedNextRoutes()
+      }
+    });
+  }
+
+  private compliancePermittedNextRoutes(): string[] {
+    return [
+      "/api/v1/auth/me",
+      "/api/v1/auth/logout",
+      "/api/v1/auth/account-compliance/phone",
+      "/api/v1/auth/google/link",
+      "/api/v1/auth/google/link/init",
+      "/api/v1/auth/google/link/verify",
+      "/api/v1/auth/password/setup",
+      "/api/v1/auth/password/setup/verify"
+    ];
   }
 
   private async completeSuccessfulLogin(
@@ -1597,6 +1712,7 @@ export class AuthService {
         userAgent: context.userAgent,
         status: "success"
       });
+      await this.recordMemberSignInExperience(user, loggedInAt);
     } catch (error) {
       if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
       throw error;
@@ -1627,6 +1743,7 @@ export class AuthService {
     providerSubject: string,
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
+    const loggedInAt = new Date();
     const sessionGeneration = this.userSessionGeneration(user);
     const { me, subject } = await this.buildAuthTokenContext(user);
     const accessToken = this.tokenService.issueAccessToken(subject);
@@ -1647,10 +1764,11 @@ export class AuthService {
         providerSubject,
         expectedUserId: user.id,
         expectedIdentityId: me.currentIdentity.id,
-        loggedInAt: new Date(),
+        loggedInAt,
         context: { ip: context.ip, userAgent: context.userAgent }
       });
       this.assertActiveUser(fresh);
+      await this.recordMemberSignInExperience(fresh, loggedInAt);
     } catch (error) {
       if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
       if (error instanceof GoogleLoginStateError) {
@@ -1681,6 +1799,40 @@ export class AuthService {
       refreshJti: refreshToken.jti,
       userId: user.id
     };
+  }
+
+  private async recordMemberSignInExperience(
+    user: AuthUserRecord,
+    occurredAt: Date
+  ): Promise<void> {
+    if (!this.userExperienceService) return;
+    const date = this.japanCalendarDate(occurredAt);
+    try {
+      await this.userExperienceService.recordEvent({
+        userId: user.id,
+        eventType: "member_sign_in",
+        sourceType: "member_sign_in",
+        sourcePublicId: date,
+        idempotencyKey: `member-sign-in:${user.needoId}:${date}`,
+        baseUnits: 10_000n,
+        requiredBenefit: "member_sign_in",
+        occurredAt
+      });
+    } catch {
+      // Authentication already succeeded. A later real login retries this idempotent daily event.
+    }
+  }
+
+  private japanCalendarDate(occurredAt: Date): string {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(occurredAt);
+    const value = (type: Intl.DateTimeFormatPartTypes): string =>
+      parts.find((part) => part.type === type)?.value ?? "";
+    return `${value("year")}-${value("month")}-${value("day")}`;
   }
 
   private async revokeRefreshTokenAfterFailedLogin(

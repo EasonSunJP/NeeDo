@@ -7,8 +7,10 @@ import {
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician,
   type CoreCustomerProfile,
+  type CoreShopCard,
   type CoreServiceDetail,
   type CoreShopDetail,
+  type CoreTechnicianCard,
   type CoreTechnicianDetail
 } from "./api";
 
@@ -50,7 +52,13 @@ const coreService = {
     city: "Tokyo",
     address: "3-1 Kita Aoyama, Minato-ku",
     coverUrl: "/images/generated/home-merchant-feature.jpg",
-    reviewSummary
+    reviewSummary,
+    favoriteCount: 1540,
+    shareCount: 29,
+    serviceCategories: [{ id: 2, code: "wellness", label: "リラクゼーション" }],
+    businessKeywords: [
+      { id: 21, code: "wellness_spa", categoryId: 2, label: "スパケア" }
+    ]
   },
   technician: {
     id: 5,
@@ -58,7 +66,19 @@ const coreService = {
     displayName: "Mika Tanaka",
     city: "Tokyo",
     avatarUrl: "/images/generated/profile-technician-mika.jpg",
-    reviewSummary
+    reviewSummary,
+    age: 25,
+    favoriteCount: 154,
+    shareCount: 8,
+    completedOrderCount: 1280,
+    acceptanceRatePercent: 98,
+    primaryService: {
+      id: 71,
+      name: "肩颈调理",
+      priceAmount: "8800",
+      currency: "JPY",
+      durationMinutes: 60
+    }
   },
   city: "Tokyo",
   priceAmount: "8800.00",
@@ -79,6 +99,18 @@ describe("core read API adapter", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps formal shop and technician card metrics typed separately", () => {
+    const shop = {
+      ...coreService.shop,
+    } satisfies CoreShopCard;
+    const technician = {
+      ...coreService.technician,
+    } satisfies CoreTechnicianCard;
+
+    expect(shop.businessKeywords[0]?.label).toBe("スパケア");
+    expect(technician.primaryService?.name).toBe("肩颈调理");
   });
 
   it("calls the Step 08 public search endpoint without auth", async () => {
@@ -216,7 +248,13 @@ describe("core read API adapter", () => {
       updatedAt: coreService.updatedAt
     } satisfies CoreCustomerProfile);
 
-    expect(shop).toMatchObject({ id: "3", systemId: "shop5831047296", name: "Aoyama Care Studio", rating: 4.8 });
+    expect(shop).toMatchObject({
+      id: "3",
+      systemId: "shop5831047296",
+      name: "Aoyama Care Studio",
+      rating: 4.8,
+      tags: ["スパケア"]
+    });
     expect(technician).toMatchObject({ id: "5", systemId: "s5831047296", name: "Mika Tanaka", storeId: "3", rating: 4.8 });
     expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
   });

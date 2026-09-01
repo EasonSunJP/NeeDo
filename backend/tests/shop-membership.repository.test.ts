@@ -28,6 +28,7 @@ function prismaClient() {
   };
   return {
     client: {
+      $queryRaw: jest.fn(async () => [{ now: new Date("2026-08-31T03:00:00.000Z") }]),
       shopCustomerMembership: {
         findMany: jest.fn(async () => [membership]),
         count: jest.fn(async () => 1),
@@ -155,6 +156,15 @@ describe("ShopMembershipRepository", () => {
       frozenAt: null,
       plan: { publicId: "00000000-0000-4000-8000-000000000402" },
       planVersion: { publicId: "00000000-0000-4000-8000-000000000403", version: 3 },
+      adjustments: [{
+        publicId: "00000000-0000-4000-8000-000000000482",
+        status: "PENDING",
+        beforePrincipalBalanceJpy: 10_000,
+        targetPrincipalBalanceJpy: 12_000,
+        beforeRemainingUses: null,
+        targetRemainingUses: null,
+        expiresAt: new Date("2026-09-03T03:00:00.000Z")
+      }],
       membership: { publicId: membership.publicId, customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
     } as never]);
     client.shopMembershipCard.count.mockResolvedValue(1);
@@ -168,9 +178,25 @@ describe("ShopMembershipRepository", () => {
         platformFeeRateBpsSnapshot: 1_000,
         planPublicId: "00000000-0000-4000-8000-000000000402",
         planVersionPublicId: "00000000-0000-4000-8000-000000000403",
-        planVersion: 3
+        planVersion: 3,
+        pendingAdjustment: {
+          publicId: "00000000-0000-4000-8000-000000000482",
+          status: "pending",
+          beforeValue: 10_000,
+          targetValue: 12_000,
+          expiresAt: new Date("2026-09-03T03:00:00.000Z")
+        }
       }]
     });
+    expect(client.shopMembershipCard.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        adjustments: expect.objectContaining({
+          where: expect.objectContaining({ status: "PENDING", deletedAt: null }),
+          take: 1
+        })
+      })
+    }));
+    expect(client.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it.each([

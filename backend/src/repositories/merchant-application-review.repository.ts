@@ -93,6 +93,43 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
         purpose: true,
         mediaAsset: { select: { id: true, url: true, mimeType: true } }
       }
+    },
+    serviceCategories: {
+      where: { deletedAt: null },
+      orderBy: [{ category: { sortOrder: "asc" as const } }, { id: "asc" as const }],
+      select: {
+        category: {
+          select: {
+            id: true,
+            code: true,
+            qualificationPolicy: true,
+            translations: {
+              where: { locale: "JA" as const, deletedAt: null },
+              select: { name: true },
+              take: 1
+            }
+          }
+        }
+      }
+    },
+    businessKeywords: {
+      where: { deletedAt: null },
+      orderBy: [{ businessKeyword: { sortOrder: "asc" as const } }, { id: "asc" as const }],
+      select: {
+        businessKeyword: {
+          select: {
+            id: true,
+            code: true,
+            categoryId: true,
+            qualificationPolicy: true,
+            translations: {
+              where: { locale: "JA" as const, deletedAt: null },
+              select: { label: true },
+              take: 1
+            }
+          }
+        }
+      }
     }
   }) satisfies Prisma.IdentityApplicationSelect;
 
@@ -207,6 +244,47 @@ export class MerchantApplicationReviewRepository
           isRecommended: false
         }
       });
+      const taxonomy = await this.requireApplicationTaxonomy(transaction, input);
+      await transaction.shopServiceCategory.createMany({
+        data: taxonomy.categories.map((category) => ({
+          shopId: shop.id,
+          categoryId: category.id,
+          selectedByUserId: input.applicantUserId
+        }))
+      });
+      if (taxonomy.keywords.length > 0) {
+        await transaction.shopBusinessKeyword.createMany({
+          data: taxonomy.keywords.map((keyword) => ({
+            shopId: shop.id,
+            businessKeywordId: keyword.id,
+            selectedByUserId: input.applicantUserId
+          }))
+        });
+      }
+      await transaction.shopServiceTaxonomyState.create({
+        data: { shopId: shop.id, version: 1 }
+      });
+      const qualifications = [
+        ...taxonomy.categories
+          .filter((category) => category.qualificationPolicy !== "OPEN")
+          .map((category) => ({ categoryId: category.id, businessKeywordId: null })),
+        ...taxonomy.keywords
+          .filter((keyword) => keyword.qualificationPolicy !== "OPEN")
+          .map((keyword) => ({ categoryId: null, businessKeywordId: keyword.id }))
+      ];
+      if (qualifications.length > 0) {
+        await transaction.shopServiceQualification.createMany({
+          data: qualifications.map((qualification) => ({
+            shopId: shop.id,
+            ...qualification,
+            sourceApplicationId: input.applicationId,
+            status: "APPROVED" as const,
+            expiresAt: null,
+            approvedByUserId: input.reviewerUserId,
+            reason: "Approved with merchant identity application"
+          }))
+        });
+      }
       await transaction.merchantShopMembership.create({
         data: {
           merchantAccountId: merchant.id,
@@ -277,6 +355,9 @@ export class MerchantApplicationReviewRepository
             billingProfileId: billingProfile.id,
             bankAccountId: input.bankAccountId,
             contractAcceptanceId: input.contractAcceptanceId,
+            serviceCategoryIds: input.serviceCategoryIds,
+            businessKeywordIds: input.businessKeywordIds,
+            qualificationCount: qualifications.length,
             trialEndsAt: input.trialEndsAt.toISOString(),
             automaticBonusDays: input.automaticBonusDays,
             version: input.expectedVersion + 1
@@ -472,6 +553,27 @@ export class MerchantApplicationReviewRepository
       contactPhone: detail.contactPhone,
       responsiblePersonName: detail.responsiblePersonName,
       showcaseDraft: asRecord(detail.showcaseDraft),
+      serviceCategories: (row.serviceCategories ?? []).flatMap(({ category }) =>
+        category.translations[0]
+          ? [{
+              id: category.id,
+              code: category.code,
+              label: category.translations[0].name,
+              qualificationPolicy: category.qualificationPolicy
+            }]
+          : []
+      ),
+      businessKeywords: (row.businessKeywords ?? []).flatMap(({ businessKeyword }) =>
+        businessKeyword.translations[0]
+          ? [{
+              id: businessKeyword.id,
+              code: businessKeyword.code,
+              categoryId: businessKeyword.categoryId,
+              label: businessKeyword.translations[0].label,
+              qualificationPolicy: businessKeyword.qualificationPolicy
+            }]
+          : []
+      ),
       bankAccount: bank
         ? {
             id: bank.id,
@@ -510,6 +612,57 @@ export class MerchantApplicationReviewRepository
         mimeType: item.mediaAsset.mimeType
       }))
     };
+  }
+
+  private async requireApplicationTaxonomy(
+    transaction: Prisma.TransactionClient,
+    input: ApproveMerchantApplicationRepositoryInput
+  ) {
+    const [categorySelections, keywordSelections] = await Promise.all([
+      transaction.merchantApplicationServiceCategory.findMany({
+        where: {
+          applicationId: input.applicationId,
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null }
+        },
+        select: { category: { select: { id: true, qualificationPolicy: true } } }
+      }),
+      transaction.merchantApplicationBusinessKeyword.findMany({
+        where: {
+          applicationId: input.applicationId,
+          deletedAt: null,
+          businessKeyword: {
+            isActive: true,
+            deletedAt: null,
+            category: { isActive: true, deletedAt: null }
+          }
+        },
+        select: {
+          businessKeyword: {
+            select: { id: true, categoryId: true, qualificationPolicy: true }
+          }
+        }
+      })
+    ]);
+    const categories = categorySelections.map((selection) => selection.category);
+    const keywords = keywordSelections.map((selection) => selection.businessKeyword);
+    const categoryIds = new Set(categories.map((category) => category.id));
+    const expectedCategoryIds = [...input.serviceCategoryIds].sort((a, b) => a - b);
+    const expectedKeywordIds = [...input.businessKeywordIds].sort((a, b) => a - b);
+    const actualCategoryIds = categories.map((category) => category.id).sort((a, b) => a - b);
+    const actualKeywordIds = keywords.map((keyword) => keyword.id).sort((a, b) => a - b);
+    if (
+      JSON.stringify(actualCategoryIds) !== JSON.stringify(expectedCategoryIds) ||
+      JSON.stringify(actualKeywordIds) !== JSON.stringify(expectedKeywordIds) ||
+      keywords.some((keyword) => !categoryIds.has(keyword.categoryId))
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.SAAS_BILLING_CONFLICT,
+        message: "error.identity_application.taxonomy_selection_changed",
+        statusCode: 409
+      });
+    }
+    return { categories, keywords };
   }
 }
 

@@ -5,6 +5,18 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("uses a root server when versioned paths already include the API prefix", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      servers: Array<{ url: string }>;
+      paths: Record<string, unknown>;
+    };
+    const loginPath = "/api/v1/auth/login";
+
+    expect(document.servers).toEqual([{ url: "/" }]);
+    expect(document.paths).toHaveProperty(loginPath);
+    expect(`${document.servers[0].url.replace(/\/$/, "")}${loginPath}`).toBe(loginPath);
+  });
+
   it("describes the health endpoint with the versioned API prefix", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
 
@@ -195,6 +207,45 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/ops/merchant-applications/{id}/approve",
       "/api/v1/ops/merchant-applications/{id}/reject"
     ].forEach((path) => expect(response.body.paths[path]).toBeDefined());
+    [
+      "/api/v1/service-categories",
+      "/api/v1/service-categories/{id}/keywords",
+      "/api/v1/merchant-admin/shop/service-taxonomy"
+    ].forEach((path) => expect(response.body.paths[path]).toBeDefined());
+    const categoryLocale = response.body.paths["/api/v1/service-categories"].get.parameters.find(
+      (parameter: { name: string }) => parameter.name === "locale"
+    );
+    expect(categoryLocale.schema).toEqual(expect.objectContaining({
+      enum: ["zh-CN", "zh-TW", "ja", "en", "ko"],
+      default: "ja"
+    }));
+    const taxonomyPut = response.body.paths["/api/v1/merchant-admin/shop/service-taxonomy"].put;
+    expect(taxonomyPut).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      "x-permission": "merchant-admin:shop:service-taxonomy:write"
+    });
+    expect(taxonomyPut.requestBody.content["application/json"].schema).toMatchObject({
+      additionalProperties: false,
+      required: ["categoryIds", "keywordIds", "expectedRevision", "idempotencyKey"],
+      properties: {
+        categoryIds: { type: "array", maxItems: 100, uniqueItems: true },
+        keywordIds: { type: "array", maxItems: 100, uniqueItems: true },
+        expectedRevision: { type: "integer", minimum: 0 },
+        idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+      }
+    });
+    expect(taxonomyPut.responses["200"].content["application/json"].schema.properties.data).toEqual({
+      $ref: "#/components/schemas/ShopServiceTaxonomySelection"
+    });
+    expect(taxonomyPut.responses["400"].description).toContain("qualification");
+    expect(taxonomyPut.responses["409"].description).toContain("version_conflict");
+    expect(response.body.components.schemas.ShopServiceTaxonomySelection.required).toEqual(
+      expect.arrayContaining(["categoryLimit", "keywordLimit", "selectedCategories", "selectedKeywords", "removedKeywordIds"])
+    );
+    const merchantApplicationBody = response.body.paths["/api/v1/identity-applications/merchant"].post.requestBody.content["application/json"].schema;
+    expect(merchantApplicationBody.required).toEqual(expect.arrayContaining(["serviceCategoryIds", "businessKeywordIds"]));
+    expect(merchantApplicationBody.properties.serviceCategoryIds).toMatchObject({ minItems: 1, maxItems: 5, uniqueItems: true });
+    expect(merchantApplicationBody.properties.businessKeywordIds).toMatchObject({ maxItems: 5, uniqueItems: true });
     expect(
       response.body.paths["/api/v1/identity-applications/{id}/media"].post.requestBody.content
     ).toHaveProperty("image/jpeg");
@@ -368,9 +419,54 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas.RealtimeDirectoryProfile).toMatchObject({
       required: expect.arrayContaining(["user", "identityCard"]),
       properties: {
-        identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" }
+        identityCard: { $ref: "#/components/schemas/RealtimeDirectoryIdentityCard" },
+        technicianContactDetails: {
+          $ref: "#/components/schemas/TechnicianContactDetails"
+        }
       }
     });
+    expect(response.body.components.schemas.RealtimeDirectoryProfile.required).not.toContain(
+      "technicianContactDetails"
+    );
+    expect(response.body.components.schemas.TechnicianContactDetails).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        acceptanceRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+        services: { type: "array", maxItems: 5 }
+      }
+    });
+    expect(response.body.components.schemas.TechnicianContactDetails.properties).not.toHaveProperty(
+      "baseLatitude"
+    );
+    expect(response.body.components.schemas.TechnicianContactDetails.properties).not.toHaveProperty(
+      "baseLongitude"
+    );
+    expect(response.body.components.schemas.TechnicianContactService).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining(["durationMinutes", "taxIncluded"]),
+      properties: {
+        durationMinutes: { type: "integer", minimum: 1 },
+        taxIncluded: { type: "boolean", enum: [true] }
+      }
+    });
+    expect(response.body.paths).toHaveProperty("/api/v1/technicians/me/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/technicians/me/services/order");
+    const serviceOrderSchema = response.body.paths[
+      "/api/v1/technicians/me/services/order"
+    ].put.requestBody.content["application/json"].schema;
+    expect(serviceOrderSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["orderedServiceIds", "idempotencyKey"],
+      properties: {
+        orderedServiceIds: { type: "array", maxItems: 5, uniqueItems: true }
+      }
+    });
+    expect(
+      response.body.paths["/api/v1/technicians/me/services/order"].put.description
+    ).toContain("complete");
+    expect(response.body.components.schemas.TechnicianSelfProfile.required).toContain(
+      "specialTags"
+    );
     expect(
       response.body.components.schemas.RealtimeDirectoryProfile.properties.relationship.enum
     ).toEqual(["none", "friend", "incoming_pending", "outgoing_pending", "self"]);
@@ -817,11 +913,74 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/employees/{needoId}/compensation-profile/preview"
     );
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-profile/me");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/data-center");
+    expect(response.body.paths["/api/v1/technician/data-center"].get.parameters).toEqual([
+      expect.objectContaining({
+        name: "period",
+        schema: expect.objectContaining({
+          enum: ["last7days", "last30days", "week", "month", "year"]
+        })
+      })
+    ]);
+    expect(response.body.components.schemas.TechnicianDataCenter.properties.series.items.properties)
+      .toEqual(expect.objectContaining({
+        incomeJpy: { type: "integer" },
+        workedMinutes: { type: "integer" }
+      }));
+    expect(response.body.paths["/api/v1/merchant-profile/me"]).toMatchObject({
+      get: { responses: { "200": expect.any(Object), "403": expect.any(Object) } },
+      patch: { responses: { "200": expect.any(Object), "400": expect.any(Object) } }
+    });
+    expect(response.body.components.schemas.MerchantIdentityProfile).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        publicId: { type: "string", pattern: "^[bB][0-9]{10}$" },
+        displayName: { type: "string" },
+        languages: { type: "array" }
+      }
+    });
     const employeeCompensationSchema = response.body.components.schemas.EmployeeCompensationProfile;
     expect(employeeCompensationSchema.properties).not.toHaveProperty("shopId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("technicianProfileId");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("createdById");
     expect(employeeCompensationSchema.properties).not.toHaveProperty("updatedById");
+    for (const schemaName of [
+      "ShopFinanceRuleSet",
+      "TechnicianCompensationProfile",
+      "EmployeeCompensationProfile",
+      "CompensationProfileInput"
+    ]) {
+      expect(response.body.components.schemas[schemaName].properties).toEqual(
+        expect.objectContaining({
+          extensionCommissionRatePercent: expect.objectContaining({ type: "number" }),
+          nominationFeeJpy: expect.objectContaining({ type: "integer" })
+        })
+      );
+    }
+    expect(response.body.components.schemas.CompensationPreview.properties).toEqual(
+      expect.objectContaining({
+        baseServiceAmountJpy: expect.objectContaining({ type: "integer" }),
+        extensionAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominationChargeAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominated: expect.objectContaining({ type: "boolean" }),
+        serviceCommissionPayJpy: expect.objectContaining({ type: "integer" }),
+        extensionCommissionPayJpy: expect.objectContaining({ type: "integer" }),
+        nominationPayJpy: expect.objectContaining({ type: "integer" })
+      })
+    );
+    const serviceIncomeReportSchema =
+      response.body.paths[
+        "/api/v1/merchant-admin/finance/orders/{bookingOrderId}/service-income-report"
+      ].put.requestBody.content["application/json"].schema;
+    expect(serviceIncomeReportSchema.properties).toEqual(
+      expect.objectContaining({
+        baseServiceAmountJpy: expect.objectContaining({ type: "integer" }),
+        extensionAmountJpy: expect.objectContaining({ type: "integer" }),
+        nominationChargeAmountJpy: expect.objectContaining({ type: "integer" }),
+        wasTechnicianNominated: expect.objectContaining({ type: "boolean" })
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}");
@@ -1211,9 +1370,88 @@ describe("GET /api/v1/openapi.json", () => {
       affiliatePublicToken: { type: "string", maxLength: 512 }
     });
     expect(response.body.components.schemas.BookingOrder.required).toContain("affiliate");
+    expect(response.body.components.schemas.BookingOrder.required).toEqual(
+      expect.arrayContaining(["statusHistory", "performanceAssessment", "timelineEvents"])
+    );
     expect(response.body.components.schemas.BookingOrder.properties.affiliate).toEqual({
       anyOf: [{ $ref: "#/components/schemas/AffiliateCheckoutSummary" }, { type: "null" }]
     });
+    expect(response.body.components.schemas.BookingOrder.properties.timelineEvents).toEqual({
+      type: "array",
+      items: { $ref: "#/components/schemas/OrderTimelineEvent" }
+    });
+    expect(response.body.components.schemas.OrderTimelineEvent.oneOf).toEqual([
+      { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+      { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
+    ]);
+    expect(response.body.components.schemas.OrderTimelineStatusEvent.properties.type.const).toBe(
+      "ORDER_STATUS_CHANGED"
+    );
+    expect(
+      response.body.components.schemas.OrderTimelinePerformanceEvent.properties.type.enum
+    ).toEqual([
+      "TECHNICIAN_CANCEL_CLASSIFIED",
+      "TECHNICIAN_UNCOMPLETED_CLASSIFIED",
+      "SPECIAL_CANCELLATION_APPLIED",
+      "SPECIAL_CANCELLATION_REVOKED"
+    ]);
+    expect(
+      response.body.components.schemas.OrderTimelinePerformanceEvent.properties
+    ).not.toHaveProperty("internalNote");
+    expect(
+      response.body.components.schemas.OperationsOrderTimelinePerformanceEvent.properties
+        .internalNote
+    ).toMatchObject({ "x-visibility": "operations-only" });
+    expect(response.body.components.schemas.OperationsOrderTimelineEvent.oneOf).toEqual([
+      { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+      { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+    ]);
+    expect(response.body.components.schemas.BackofficeOrderDetail.allOf[1]).toMatchObject({
+      required: ["performanceAssessment", "timelineEvents"],
+      properties: {
+        timelineEvents: {
+          type: "array",
+          items: { $ref: "#/components/schemas/OperationsOrderTimelineEvent" }
+        }
+      }
+    });
+
+    const backofficeOrderDetail = response.body.paths["/api/v1/backoffice/orders/{id}"].get;
+    expect(backofficeOrderDetail.security).toEqual([{ bearerAuth: [] }]);
+    expect(backofficeOrderDetail["x-permission"]).toBe("backoffice:orders:list");
+    expect(
+      backofficeOrderDetail.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/BackofficeOrderDetail" });
+
+    for (const path of [
+      "/api/v1/backoffice/orders/{id}/technician-uncompleted",
+      "/api/v1/backoffice/orders/{id}/special-cancellation",
+      "/api/v1/backoffice/orders/{id}/special-cancellation/revoke"
+    ]) {
+      const operation = response.body.paths[path].post;
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-permission"]).toBe("backoffice:order-performance:write");
+      expect(operation.requestBody.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/OrderPerformanceCommandInput"
+      });
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object),
+          "422": expect.any(Object)
+        })
+      );
+    }
+    expect(response.body.components.schemas.OrderPerformanceCommandInput).toMatchObject({
+      additionalProperties: false,
+      required: ["publicReason", "idempotencyKey", "expectedRevision"]
+    });
+    expect(
+      response.body.components.schemas.OrderPerformanceCommandInput.properties
+    ).not.toHaveProperty("acceptanceRate");
     expect(
       response.body.components.schemas.AffiliateCheckoutSummary.properties.attributionStatus.enum
     ).toEqual(["attributed", "qualified", "settled", "invalidated", "reversed"]);
@@ -1280,9 +1518,15 @@ describe("GET /api/v1/openapi.json", () => {
         "languages",
         "bio",
         "visibility",
-        "membershipLevel"
+        "membershipLevel",
+        "level"
       ])
     );
+    expect(response.body.components.schemas.CustomerSelfProfile.properties.level).toEqual({
+      type: "integer",
+      minimum: 1,
+      maximum: 100
+    });
     expect(response.body.paths).toHaveProperty("/media/customer-avatars/{filename}");
   });
 
@@ -2546,6 +2790,100 @@ describe("GET /api/v1/openapi.json", () => {
     );
     expect(document.components.schemas.MemberAnalyticsListPayload.description).toContain(
       "lower than the summed added trend"
+    );
+  });
+
+  it("documents account-owned entity engagement and private nearby ranking contracts", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const paths = response.body.paths;
+    const schemas = response.body.components.schemas;
+    const favoriteTarget = paths["/api/v1/me/entity-favorites/{targetType}/{publicId}"];
+    const favoriteStatuses = paths["/api/v1/me/entity-favorites/statuses"].post;
+    const needoShare = paths["/api/v1/entities/{targetType}/{publicId}/shares/needo"].post;
+    const systemShare = paths["/api/v1/entities/{targetType}/{publicId}/shares/system"].post;
+    const search = paths["/api/v1/search"].get;
+
+    expect(favoriteTarget.put.security).toEqual([{ bearerAuth: [] }]);
+    expect(favoriteTarget.delete.security).toEqual([{ bearerAuth: [] }]);
+    expect(paths["/api/v1/me/entity-favorites"].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(favoriteStatuses.security).toEqual([{ bearerAuth: [] }]);
+    expect(
+      favoriteStatuses.requestBody.content["application/json"].schema.properties.targets.maxItems
+    ).toBe(100);
+
+    for (const operation of [needoShare, systemShare]) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.requestBody.content["application/json"].schema.required).toContain(
+        "idempotencyKey"
+      );
+      expect(operation.responses["409"].description).toContain("idempotency");
+    }
+    expect(needoShare.requestBody.content["application/json"].schema.required).toEqual(
+      expect.arrayContaining(["conversationId", "recipientIdentityId", "idempotencyKey"])
+    );
+
+    expect(search.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "latitude",
+          description: expect.stringContaining("together")
+        }),
+        expect.objectContaining({
+          name: "longitude",
+          description: expect.stringContaining("together")
+        })
+      ])
+    );
+    expect(search.description).toContain("3 km");
+    expect(search.description).toContain("precise technician coordinates are never returned");
+    expect(schemas.TechnicianCard.required).not.toEqual(
+      expect.arrayContaining(["distanceKm", "nearbyRank", "resolvedRadiusKm"])
+    );
+    expect(schemas.TechnicianCard.properties).toEqual(
+      expect.objectContaining({
+        distanceKm: expect.objectContaining({ type: "number", minimum: 0 }),
+        nearbyRank: expect.objectContaining({ type: ["integer", "null"] }),
+        resolvedRadiusKm: expect.objectContaining({ type: "integer", minimum: 3 })
+      })
+    );
+    expect(schemas.TechnicianCard.properties).not.toHaveProperty("baseLatitude");
+    expect(schemas.TechnicianCard.properties).not.toHaveProperty("baseLongitude");
+    expect(schemas.TechnicianCard.properties).not.toHaveProperty("serviceBase");
+  });
+
+  it("documents persisted fields required by the formal home search cards", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const schemas = response.body.components.schemas;
+
+    expect(schemas.ShopCard.required).toEqual(expect.arrayContaining([
+      "serviceCategories",
+      "businessKeywords",
+      "favoriteCount",
+      "shareCount"
+    ]));
+    expect(schemas.ShopCard.properties.favoriteCount).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 0 })
+    );
+    expect(schemas.ShopCard.properties.shareCount).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 0 })
+    );
+
+    expect(schemas.TechnicianCard.required).toEqual(expect.arrayContaining([
+      "age",
+      "favoriteCount",
+      "shareCount",
+      "completedOrderCount",
+      "acceptanceRatePercent",
+      "primaryService"
+    ]));
+    expect(schemas.TechnicianCard.properties.acceptanceRatePercent).toEqual(
+      expect.objectContaining({ type: "number", minimum: 0, maximum: 100 })
+    );
+    expect(schemas.TechnicianCard.properties.primaryService.anyOf).toEqual(
+      expect.arrayContaining([
+        { $ref: "#/components/schemas/PrimaryTechnicianService" },
+        { type: "null" }
+      ])
     );
   });
 });

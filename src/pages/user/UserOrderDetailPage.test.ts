@@ -16,7 +16,7 @@ describe("UserOrderDetailPage header", () => {
     expect(source).toContain("function FormalUserOrderDetailPage");
     expect(source).toContain("bookingApi.getOrder(orderId)");
     expect(source).toContain("bookingApi.cancelOrder(orderId");
-    expect(source).toContain("order.statusHistory.map");
+    expect(source).toContain("buildFormalOrderTimelineEvents(order)");
     expect(source).toContain("重新加载预约详情");
     expect(source).toContain("isBookingApiId(orderId) ? <FormalUserOrderDetailPage");
   });

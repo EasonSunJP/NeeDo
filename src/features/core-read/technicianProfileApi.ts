@@ -24,11 +24,13 @@ export type TechnicianSelfProfile = {
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
+  specialTags: string[];
   profileTags: string[];
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
   paymentMethods: TechnicianProfilePaymentMethod[];
+  serviceBase: { latitude: number; longitude: number } | null;
   visibility: TechnicianProfileVisibility;
   employmentType: "independent" | "full_time" | "temporary";
   yearsExperience: number;
@@ -49,6 +51,7 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
   | "bidBudgetMinJpy"
   | "bidBudgetMaxJpy"
   | "paymentMethods"
+  | "serviceBase"
   | "visibility"
 >> & { avatarDataUrl?: string };
 

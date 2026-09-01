@@ -206,6 +206,15 @@ const createFixture = async () => {
     reason: string | null;
     createdAt: Date;
   }> = [];
+  const timelineEvents: Array<{
+    type: "ORDER_STATUS_CHANGED";
+    id: string;
+    createdAt: Date;
+    actorUserId: number | null;
+    fromStatus: string | null;
+    toStatus: string;
+    publicReason: string | null;
+  }> = [];
   const slot = {
     id: 11,
     serviceId: 1,
@@ -266,6 +275,8 @@ const createFixture = async () => {
     createdAt: Date;
     updatedAt: Date;
     statusHistory: typeof statusHistory;
+    performanceAssessment: null;
+    timelineEvents: typeof timelineEvents;
   } | null = null;
   const bookingRepository = {
     listAvailableSlots: jest.fn(async () => ({
@@ -294,6 +305,15 @@ const createFixture = async () => {
           actorUserId: input.customerUserId,
           reason: null,
           createdAt: now
+        });
+        timelineEvents.push({
+          type: "ORDER_STATUS_CHANGED",
+          id: "status:1",
+          createdAt: now,
+          actorUserId: input.customerUserId,
+          fromStatus: null,
+          toStatus: "pending",
+          publicReason: null
         });
         order = {
           id: 1,
@@ -336,7 +356,9 @@ const createFixture = async () => {
           cancelReason: null,
           createdAt: now,
           updatedAt: now,
-          statusHistory
+          statusHistory,
+          performanceAssessment: null,
+          timelineEvents
         };
 
         return order;
@@ -373,6 +395,15 @@ const createFixture = async () => {
           actorUserId: input.actorUserId,
           reason: input.reason ?? null,
           createdAt: now
+        });
+        timelineEvents.push({
+          type: "ORDER_STATUS_CHANGED",
+          id: `status:${statusHistory.length}`,
+          createdAt: now,
+          actorUserId: input.actorUserId,
+          fromStatus: input.fromStatus,
+          toStatus: input.toStatus,
+          publicReason: input.reason ?? null
         });
 
         return order;
@@ -606,6 +637,15 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       toStatus: "pending",
       actorUserId: 1
     });
+    expect(createdResponse.body.data.timelineEvents[0]).toMatchObject({
+      id: "status:1",
+      type: "ORDER_STATUS_CHANGED",
+      fromStatus: null,
+      toStatus: "pending",
+      actorUserId: 1,
+      publicReason: null
+    });
+    expect(createdResponse.body.data.performanceAssessment).toBeNull();
 
     await request(fixture.app)
       .post("/api/v1/bookings")

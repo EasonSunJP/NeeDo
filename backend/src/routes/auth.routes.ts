@@ -14,6 +14,7 @@ import {
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import {
   challengeVerificationBodySchema,
+  compliancePhoneBindingBodySchema,
   emptyAuthActionBodySchema,
   googleCredentialBodySchema,
   legacyLoginBodySchema,
@@ -102,14 +103,27 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/logout",
     validateRequest({ body: logoutBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.logout),
     controller.logout
   );
-  router.get("/auth/me", authenticate(), authorize(AUTH_ROUTE_PERMISSIONS.me), controller.me);
+  router.get(
+    "/auth/me",
+    authenticate({ allowDuringCompliance: true }),
+    authorize(AUTH_ROUTE_PERMISSIONS.me),
+    controller.me
+  );
+  router.put(
+    "/auth/account-compliance/phone",
+    validateRequest({ body: compliancePhoneBindingBodySchema }),
+    authenticate({ allowDuringCompliance: true }),
+    authorize(AUTH_ROUTE_PERMISSIONS.me),
+    accountSecurityRateLimit,
+    controller.bindCompliancePhone
+  );
   router.get(
     "/auth/google/link",
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleRead),
     accountSecurityRateLimit,
     controller.getGoogleLinkStatus
@@ -117,7 +131,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/link/init",
     validateRequest({ body: emptyAuthActionBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleLink),
     accountSecurityRateLimit,
     controller.initializeAuthenticatedGoogleLink
@@ -125,7 +139,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/link",
     validateRequest({ body: googleCredentialBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleLink),
     accountSecurityRateLimit,
     controller.submitAuthenticatedGoogleLink
@@ -133,7 +147,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/link/verify",
     validateRequest({ body: challengeVerificationBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleLink),
     accountSecurityRateLimit,
     verificationRateLimit,
@@ -142,7 +156,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/unlink",
     validateRequest({ body: emptyAuthActionBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleUnlink),
     accountSecurityRateLimit,
     controller.startGoogleUnlink
@@ -158,7 +172,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/password/setup",
     validateRequest({ body: passwordSetupBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.passwordSetup),
     accountSecurityRateLimit,
     controller.startPasswordSetup
@@ -166,7 +180,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/password/setup/verify",
     validateRequest({ body: challengeVerificationBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.passwordSetup),
     accountSecurityRateLimit,
     verificationRateLimit,

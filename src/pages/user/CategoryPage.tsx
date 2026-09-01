@@ -16,16 +16,21 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import {
   coreReadApi,
   mapCoreCategoryToServiceCategory,
-  mapCoreServiceToServiceItem,
-  type CoreShopCard,
-  type CoreTechnicianCard
+  mapCoreServiceToServiceItem
 } from "../../features/core-read/api";
+import {
+  FormalShopSearchCard,
+  FormalTechnicianSearchCard
+} from "../../features/core-read/FormalSearchResultCards";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { resolveSearchOrigin } from "../../features/location/searchOrigin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategories";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
+import { useHomeLayoutStore } from "../../state/homeLayoutStore";
+import { useHomeLocationPreference } from "../../state/homeLocationStore";
 import { cn, yen } from "../../lib/utils";
 import type { ServiceCategory, ServiceItem } from "../../types/domain";
 import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
@@ -275,59 +280,6 @@ function ServicePreviewCard({ service }: { service: ServiceItem }) {
   );
 }
 
-type DirectSearchProfileCardProps =
-  | { entityType: "shop"; profile: CoreShopCard }
-  | { entityType: "technician"; profile: CoreTechnicianCard };
-
-function DirectSearchProfileCard(props: DirectSearchProfileCardProps) {
-  const { language } = useI18n();
-  const isShop = props.entityType === "shop";
-  const name = isShop ? props.profile.name : props.profile.displayName;
-  const imageUrl = isShop ? props.profile.coverUrl : props.profile.avatarUrl;
-  const secondary = isShop ? props.profile.address : props.profile.publicId;
-  const rating = Number.parseFloat(props.profile.reviewSummary.ratingAverage);
-  const reviewCount = props.profile.reviewSummary.reviewCount;
-  const detailTo = isShop
-    ? `/stores/${props.profile.id}`
-    : `/profiles/technician/${props.profile.id}`;
-
-  return (
-    <Link
-      className="flex min-w-0 items-center gap-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-3 shadow-[0_14px_30px_rgba(0,0,0,0.05)]"
-      data-search-entity={props.entityType}
-      to={detailTo}
-    >
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[20px] bg-[color:var(--client-primary-soft)] text-[22px] font-black text-[color:var(--client-primary)]">
-        {imageUrl ? (
-          <img
-            alt={name}
-            className="h-full w-full object-cover"
-            src={getGeneratedImageThumbnailUrl(imageUrl)}
-          />
-        ) : (
-          <span aria-hidden="true">{name.trim().slice(0, 1)}</span>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <h4 className="line-clamp-1 text-[15px] font-black text-[color:var(--client-text)]">{name}</h4>
-          <Badge className="shrink-0 whitespace-nowrap" tone="green">
-            {translateText(isShop ? "店铺" : "技师", language)}
-          </Badge>
-        </div>
-        <p className="mt-1 line-clamp-1 text-[12px] text-[color:var(--client-muted)]">
-          {[props.profile.city, secondary].filter(Boolean).join(" · ")}
-        </p>
-        {reviewCount > 0 && Number.isFinite(rating) ? (
-          <p className="mt-2 text-[12px] font-black text-[color:var(--client-text)]">
-            ★ {rating.toFixed(1)} · {reviewCount}
-          </p>
-        ) : null}
-      </div>
-    </Link>
-  );
-}
-
 export function CategoryPage() {
   const navigate = useNavigate();
   const { language } = useI18n();
@@ -343,6 +295,16 @@ export function CategoryPage() {
   const [appliedTagIds, setAppliedTagIds] = useState<string[]>(initialTagIds);
   const [appliedCustomLabels, setAppliedCustomLabels] = useState<string[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const { config: homeLayoutConfig } = useHomeLayoutStore();
+  const { state: homeLocationPreference } = useHomeLocationPreference();
+  const selectedServiceLocation =
+    homeLayoutConfig.locations.find(
+      (location) => location.id === homeLayoutConfig.selectedLocationId
+    ) ?? homeLayoutConfig.locations[0];
+  const searchOrigin = resolveSearchOrigin({
+    selectedServiceLocation,
+    deviceLocation: homeLocationPreference
+  });
   const { scrollRef: tagRailRef, dragScrollProps: tagRailDragProps } = useHorizontalDragScroll({});
   const categoryQuery = useCoreReadQuery(() => coreReadApi.listCategories({ pageSize: 100 }), []);
   const availableCategories = useMemo(
@@ -387,6 +349,15 @@ export function CategoryPage() {
     }),
     [appliedCustomLabels, searchCategoryIds]
   );
+  const technicianCoreSearchQuery = useMemo(
+    () => ({
+      ...coreSearchQuery,
+      ...(searchOrigin
+        ? { latitude: searchOrigin.latitude, longitude: searchOrigin.longitude }
+        : {})
+    }),
+    [coreSearchQuery, searchOrigin?.latitude, searchOrigin?.longitude]
+  );
   const searchTermsKey = useMemo(
     () => JSON.stringify({
       categoryIds: [...searchCategoryIds].sort((left, right) => left - right),
@@ -410,8 +381,15 @@ export function CategoryPage() {
     [loadShops, searchFiltersReady, searchTermsKey, shopRetryKey]
   );
   const technicianSearchQuery = useCoreReadQuery(
-    () => loadTechnicians && searchFiltersReady ? coreReadApi.searchTechnicians(coreSearchQuery) : null,
-    [loadTechnicians, searchFiltersReady, searchTermsKey, technicianRetryKey]
+    () => loadTechnicians && searchFiltersReady ? coreReadApi.searchTechnicians(technicianCoreSearchQuery) : null,
+    [
+      loadTechnicians,
+      searchFiltersReady,
+      searchTermsKey,
+      searchOrigin?.latitude,
+      searchOrigin?.longitude,
+      technicianRetryKey
+    ]
   );
   const serviceSearchQuery = useCoreReadQuery(
     () => loadServices && searchFiltersReady ? coreReadApi.searchServices(coreSearchQuery) : null,
@@ -946,13 +924,15 @@ export function CategoryPage() {
                       title={`${t("店铺")} · ${t("搜索失败，请稍后重试")}`}
                     />
                   ) : shopProfiles.length > 0 ? (
-                    shopProfiles.map((item) => (
-                      <DirectSearchProfileCard
-                        entityType="shop"
-                        key={item.id}
-                        profile={item.store}
-                      />
-                    ))
+                    <div className="space-y-3">
+                      {shopProfiles.map((item) => (
+                        <FormalShopSearchCard
+                          key={item.id}
+                          language={language}
+                          profile={item.store}
+                        />
+                      ))}
+                    </div>
                   ) : (
                     <CoreReadScopedState description={t("没有找到匹配结果")} title={t("店铺")} />
                   )}
@@ -962,6 +942,14 @@ export function CategoryPage() {
               {showTechnicianSection ? (
                 <div className="space-y-3">
                   <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("技师")}</h3>
+                  {!searchOrigin ? (
+                    <p
+                      className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,var(--client-surface))] px-3 py-2 text-[12px] leading-5 text-[color:var(--client-muted)]"
+                      data-search-origin-guidance
+                    >
+                      {t("开启首页服务位置或设备定位后，可查看附近技师排名。")}
+                    </p>
+                  ) : null}
                   {technicianSearchQuery.loading ? (
                     <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入技师")} />
                   ) : technicianSearchQuery.error ? (
@@ -973,9 +961,9 @@ export function CategoryPage() {
                   ) : technicianProfiles.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
                       {technicianProfiles.map((item) => (
-                        <DirectSearchProfileCard
-                          entityType="technician"
+                        <FormalTechnicianSearchCard
                           key={item.id}
+                          language={language}
                           profile={item.technician}
                         />
                       ))}

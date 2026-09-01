@@ -12,6 +12,10 @@ import type {
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
+import type {
+  Coordinates,
+  NearbyTechnicianCandidate
+} from "../services/nearby-technician-ranking.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -47,6 +51,8 @@ export interface CoreSearchInput extends ServiceListInput {
   entityType: CoreSearchEntityType;
   keywords: string[];
   categoryIds: number[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface HomeRecommendationsInput {
@@ -94,6 +100,18 @@ export interface ShopCardPayload {
   address: string;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  favoriteCount: number;
+  shareCount: number;
+  serviceCategories: Array<{ id: number; code: string; label: string }>;
+  businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
+}
+
+export interface PrimaryTechnicianServicePayload {
+  id: number;
+  name: string;
+  priceAmount: string;
+  currency: string;
+  durationMinutes: number;
 }
 
 export interface TechnicianCardPayload {
@@ -103,6 +121,15 @@ export interface TechnicianCardPayload {
   city: string;
   avatarUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  age: number | null;
+  favoriteCount: number;
+  shareCount: number;
+  completedOrderCount: number;
+  acceptanceRatePercent: number;
+  primaryService: PrimaryTechnicianServicePayload | null;
+  distanceKm?: number;
+  nearbyRank?: 1 | 2 | 3 | null;
+  resolvedRadiusKm?: number;
 }
 
 export interface ServiceCardPayload {
@@ -186,6 +213,15 @@ export interface CoreReadRepositoryPort {
   searchTechnicians: (
     input: CoreSearchInput
   ) => Promise<PaginatedResponse<TechnicianCardPayload>>;
+  countEligibleLocatedTechnicians: (input: CoreSearchInput) => Promise<number>;
+  findEligibleTechniciansWithinBounds: (
+    input: CoreSearchInput,
+    origin: Coordinates,
+    radiusKm: number
+  ) => Promise<NearbyTechnicianCandidate[]>;
+  loadTechnicianCardsByRankedIds: (
+    ids: number[]
+  ) => Promise<Map<number, TechnicianCardPayload>>;
   findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
@@ -195,11 +231,46 @@ type ShopCardRecord = Shop & {
   mediaAssets: MediaAsset[];
   publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
+  _count: {
+    entityFavorites: number;
+    entityShareEvents: number;
+  };
+  serviceCategorySelections: Array<{
+    category: {
+      id: number;
+      code: string;
+      translations: Array<{ name: string }>;
+    };
+  }>;
+  businessKeywordSelections: Array<{
+    businessKeyword: {
+      id: number;
+      code: string;
+      categoryId: number;
+      translations: Array<{ label: string }>;
+    };
+  }>;
 };
 
 type TechnicianCardRecord = TechnicianProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  performanceSummary: {
+    completedOrderCount: number;
+    acceptanceRateBps: number;
+    deletedAt: Date | null;
+  } | null;
+  technicianServices: Array<{
+    id: number;
+    name: string;
+    priceAmount: number;
+    currency: string;
+    durationMinutes: number;
+  }>;
+  _count: {
+    entityFavorites: number;
+    entityShareEvents: number;
+  };
   user: {
     avatarBootstrapUrl: string | null;
     identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
@@ -404,6 +475,96 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
+  public countEligibleLocatedTechnicians(input: CoreSearchInput): Promise<number> {
+    return this.client.technicianProfile.count({
+      where: {
+        ...this.buildTechnicianSearchWhere(input),
+        AND: [{ OR: this.eligibleTechnicianLocationBranches() }]
+      }
+    });
+  }
+
+  public async findEligibleTechniciansWithinBounds(
+    input: CoreSearchInput,
+    origin: Coordinates,
+    radiusKm: number
+  ): Promise<NearbyTechnicianCandidate[]> {
+    const technicians = await this.client.technicianProfile.findMany({
+      where: {
+        ...this.buildTechnicianSearchWhere(input),
+        AND: [{ OR: this.boundedTechnicianLocationBranches(origin, radiusKm) }]
+      },
+      select: {
+        id: true,
+        baseLatitude: true,
+        baseLongitude: true,
+        reviewSummary: {
+          select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+        },
+        performanceSummary: {
+          select: { completedOrderCount: true, deletedAt: true }
+        },
+        user: { select: { createdAt: true } },
+        technicianShopAffiliations: {
+          where: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              latitude: { not: null },
+              longitude: { not: null }
+            }
+          },
+          select: {
+            shop: { select: { latitude: true, longitude: true } }
+          }
+        }
+      }
+    });
+
+    return technicians.map((technician) => ({
+      technicianProfileId: technician.id,
+      locations: [
+        this.toCoordinates(technician.baseLatitude, technician.baseLongitude),
+        ...technician.technicianShopAffiliations.map(({ shop }) =>
+          this.toCoordinates(shop.latitude, shop.longitude)
+        )
+      ].filter((location): location is Coordinates => location !== null),
+      ratingAverage:
+        technician.reviewSummary?.deletedAt === null
+          ? technician.reviewSummary.ratingAverage.toString()
+          : null,
+      completedOrderCount:
+        technician.performanceSummary?.deletedAt === null
+          ? technician.performanceSummary.completedOrderCount
+          : 0,
+      reviewCount:
+        technician.reviewSummary?.deletedAt === null
+          ? technician.reviewSummary.reviewCount
+          : 0,
+      registeredAt: technician.user.createdAt
+    }));
+  }
+
+  public async loadTechnicianCardsByRankedIds(
+    ids: number[]
+  ): Promise<Map<number, TechnicianCardPayload>> {
+    if (ids.length === 0) {
+      return new Map();
+    }
+    const technicians = await this.client.technicianProfile.findMany({
+      where: {
+        ...this.publishedTechnicianProfileWhere(),
+        id: { in: ids }
+      },
+      include: this.technicianCardInclude()
+    });
+    return new Map(
+      technicians.map((technician) => [technician.id, this.mapTechnicianCard(technician)])
+    );
+  }
+
   public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
     const shop = await this.client.shop.findFirst({
       where: {
@@ -501,16 +662,91 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private shopCardInclude() {
     return {
+      _count: {
+        select: {
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      },
       mediaAssets: activeMediaArgs,
       publicIdentifier: true,
-      reviewSummary: true
+      reviewSummary: true,
+      serviceCategorySelections: {
+        where: {
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null }
+        },
+        select: {
+          category: {
+            select: {
+              id: true,
+              code: true,
+              translations: {
+                where: { locale: "JA" as const, deletedAt: null },
+                select: { name: true },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: [{ category: { sortOrder: "asc" as const } }, { id: "asc" as const }]
+      },
+      businessKeywordSelections: {
+        where: {
+          deletedAt: null,
+          businessKeyword: {
+            isActive: true,
+            deletedAt: null,
+            category: { isActive: true, deletedAt: null }
+          }
+        },
+        select: {
+          businessKeyword: {
+            select: {
+              id: true,
+              code: true,
+              categoryId: true,
+              translations: {
+                where: { locale: "JA" as const, deletedAt: null },
+                select: { label: true },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: [{ businessKeyword: { sortOrder: "asc" as const } }, { id: "asc" as const }]
+      }
     };
   }
 
   private technicianCardInclude() {
     return {
+      _count: {
+        select: {
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      },
       mediaAssets: activeMediaArgs,
       reviewSummary: true,
+      performanceSummary: true,
+      technicianServices: {
+        where: {
+          deletedAt: null,
+          isActive: true,
+          isBookable: true,
+          reviewStatus: "APPROVED" as const
+        },
+        select: {
+          id: true,
+          name: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true
+        },
+        orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+        take: 1
+      },
       user: {
         select: {
           avatarBootstrapUrl: true,
@@ -629,6 +865,127 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
+  private eligibleTechnicianLocationBranches(): Prisma.TechnicianProfileWhereInput[] {
+    return [
+      {
+        baseLatitude: { not: null },
+        baseLongitude: { not: null }
+      },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              latitude: { not: null },
+              longitude: { not: null }
+            }
+          }
+        }
+      }
+    ];
+  }
+
+  private boundedTechnicianLocationBranches(
+    origin: Coordinates,
+    radiusKm: number
+  ): Prisma.TechnicianProfileWhereInput[] {
+    const latitudeDelta = radiusKm / 111.32;
+    const longitudeScale = Math.abs(Math.cos((origin.latitude * Math.PI) / 180));
+    const longitudeDelta =
+      longitudeScale < 1e-12 ? 180 : Math.min(180, radiusKm / (111.32 * longitudeScale));
+    const latitudeRange = {
+      gte: Math.max(-90, origin.latitude - latitudeDelta),
+      lte: Math.min(90, origin.latitude + latitudeDelta)
+    };
+    const personalLongitude = this.decimalLongitudeWhere(
+      "baseLongitude",
+      origin.longitude,
+      longitudeDelta
+    );
+    const shopLongitude = this.decimalLongitudeWhere(
+      "longitude",
+      origin.longitude,
+      longitudeDelta
+    );
+
+    return [
+      {
+        AND: [
+          { baseLatitude: latitudeRange },
+          ...(personalLongitude as Prisma.TechnicianProfileWhereInput[])
+        ]
+      },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              AND: [
+                { latitude: latitudeRange },
+                ...(shopLongitude as Prisma.ShopWhereInput[])
+              ]
+            }
+          }
+        }
+      }
+    ];
+  }
+
+  private decimalLongitudeWhere(
+    field: "baseLongitude" | "longitude",
+    center: number,
+    delta: number
+  ): Array<Record<string, unknown>> {
+    if (delta >= 180) {
+      return [{ [field]: { gte: -180, lte: 180 } }];
+    }
+    const minimum = center - delta;
+    const maximum = center + delta;
+    if (minimum < -180) {
+      return [
+        {
+          OR: [
+            { [field]: { gte: minimum + 360 } },
+            { [field]: { lte: maximum } }
+          ]
+        }
+      ];
+    }
+    if (maximum > 180) {
+      return [
+        {
+          OR: [
+            { [field]: { gte: minimum } },
+            { [field]: { lte: maximum - 360 } }
+          ]
+        }
+      ];
+    }
+    return [{ [field]: { gte: minimum, lte: maximum } }];
+  }
+
+  private toCoordinates(
+    latitude: Prisma.Decimal | null,
+    longitude: Prisma.Decimal | null
+  ): Coordinates | null {
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+    const coordinates = {
+      latitude: Number(latitude),
+      longitude: Number(longitude)
+    };
+    return Number.isFinite(coordinates.latitude) && Number.isFinite(coordinates.longitude)
+      ? coordinates
+      : null;
+  }
+
   private buildShopSearchWhere(input: CoreSearchInput): Prisma.ShopWhereInput {
     const keywords = this.searchKeywords(input);
     const searchBranches: Prisma.ShopWhereInput[] = keywords.flatMap((keyword) => [
@@ -637,12 +994,46 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       { address: { contains: keyword } },
       { description: { contains: keyword } },
       { publicIdentifier: { is: { publicId: keyword } } },
-      { services: { some: this.publishedServiceKeywordWhere(keyword) } }
+      { services: { some: this.publishedServiceKeywordWhere(keyword) } },
+      {
+        serviceCategorySelections: {
+          some: {
+            deletedAt: null,
+            category: {
+              isActive: true,
+              deletedAt: null,
+              translations: { some: { name: { contains: keyword }, deletedAt: null } }
+            }
+          }
+        }
+      },
+      {
+        businessKeywordSelections: {
+          some: {
+            deletedAt: null,
+            businessKeyword: {
+              isActive: true,
+              deletedAt: null,
+              category: { isActive: true, deletedAt: null },
+              translations: { some: { label: { contains: keyword }, deletedAt: null } }
+            }
+          }
+        }
+      }
     ]);
 
     if (input.categoryIds.length > 0) {
       searchBranches.push({
         services: { some: this.publishedServiceCategoryWhere(input.categoryIds) }
+      });
+      searchBranches.push({
+        serviceCategorySelections: {
+          some: {
+            deletedAt: null,
+            categoryId: { in: input.categoryIds },
+            category: { isActive: true, deletedAt: null }
+          }
+        }
       });
     }
 
@@ -852,7 +1243,24 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: shop.city,
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
-      reviewSummary: this.mapReviewSummary(shop.reviewSummary)
+      reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      favoriteCount: shop._count.entityFavorites,
+      shareCount: shop._count.entityShareEvents,
+      serviceCategories: (shop.serviceCategorySelections ?? []).flatMap(({ category }) =>
+        category.translations[0]
+          ? [{ id: category.id, code: category.code, label: category.translations[0].name }]
+          : []
+      ),
+      businessKeywords: (shop.businessKeywordSelections ?? []).flatMap(({ businessKeyword }) =>
+        businessKeyword.translations[0]
+          ? [{
+              id: businessKeyword.id,
+              code: businessKeyword.code,
+              categoryId: businessKeyword.categoryId,
+              label: businessKeyword.translations[0].label
+            }]
+          : []
+      )
     };
   }
 
@@ -878,6 +1286,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       (identity) => this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
 
+    const performanceSummary =
+      technician.performanceSummary?.deletedAt === null
+        ? technician.performanceSummary
+        : null;
+    const primaryService = technician.technicianServices[0] ?? null;
+
     return {
       id: technician.id,
       publicId: this.requirePublicId(identifier ?? null, "S"),
@@ -886,7 +1300,24 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       avatarUrl:
         this.findMediaUrl(technician.mediaAssets, "avatar") ??
         technician.user.avatarBootstrapUrl,
-      reviewSummary: this.mapReviewSummary(technician.reviewSummary)
+      reviewSummary: this.mapReviewSummary(technician.reviewSummary),
+      age: technician.age,
+      favoriteCount: technician._count.entityFavorites,
+      shareCount: technician._count.entityShareEvents,
+      completedOrderCount: performanceSummary?.completedOrderCount ?? 0,
+      acceptanceRatePercent: Math.min(
+        100,
+        Math.max(0, (performanceSummary?.acceptanceRateBps ?? 10_000) / 100)
+      ),
+      primaryService: primaryService
+        ? {
+            id: primaryService.id,
+            name: primaryService.name,
+            priceAmount: String(primaryService.priceAmount),
+            currency: primaryService.currency,
+            durationMinutes: primaryService.durationMinutes
+          }
+        : null
     };
   }
 

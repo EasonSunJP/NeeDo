@@ -105,6 +105,40 @@ export type CreateOrderReviewInput = BookingIdempotencyInput & {
   comment: string | null;
 };
 
+export type BookingOrderPerformanceAssessment = {
+  id: number;
+  bookingOrderId: number;
+  technicianProfileId: number;
+  outcome: "technician_cancelled" | "technician_uncompleted";
+  treatment: "counted" | "special_excluded";
+  version: number;
+  currentRevisionId: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookingOrderTimelineEvent =
+  | {
+      type: "ORDER_STATUS_CHANGED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      fromStatus: BookingOrderStatus | null;
+      toStatus: BookingOrderStatus;
+      publicReason: string | null;
+    }
+  | {
+      type:
+        | "TECHNICIAN_CANCEL_CLASSIFIED"
+        | "TECHNICIAN_UNCOMPLETED_CLASSIFIED"
+        | "SPECIAL_CANCELLATION_APPLIED"
+        | "SPECIAL_CANCELLATION_REVOKED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+    };
+
 export type BookingScheduleSlot = {
   id: number;
   serviceId: number | null;
@@ -176,6 +210,8 @@ export type BookingOrder = {
     reason: string | null;
     createdAt: string;
   }>;
+  performanceAssessment?: BookingOrderPerformanceAssessment | null;
+  timelineEvents?: BookingOrderTimelineEvent[];
 };
 
 export type PaginatedBookingData<TItem> = {

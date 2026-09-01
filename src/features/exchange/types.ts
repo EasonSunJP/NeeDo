@@ -1,7 +1,13 @@
 export type ExchangePostType = "demand" | "intelligence";
 export type ExchangePostStatus = "published" | "withdrawn" | "expired";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
+export type ExchangeDemandServiceMode = "home" | "store";
 export type ExchangeContentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
+export type ExchangeMatchMode = "quick" | "selective";
+export type ExchangeBudgetMode = "total" | "per_provider";
+export type ExchangePublisherCapacitySource = "customer_membership" | "shop_merchant";
+export type ExchangeCustomerMembershipLevel = "standard" | "silver" | "gold" | "black";
+export type ExchangeNdpCurrency = "NDP" | "TEST_NDP";
 
 export type ExchangeActor = {
   publicId: string;
@@ -19,11 +25,99 @@ export type ExchangeInteractionCounts = {
 export type ExchangeViewerState = {
   liked: boolean;
   canWithdraw: boolean;
+  canClaim: boolean;
+  canViewClaims: boolean;
+};
+
+export type ExchangeClaimStatus =
+  | "active"
+  | "withdrawn"
+  | "request_withdrawn"
+  | "request_expired";
+
+export type ExchangeClaimServiceRef = `shop:${number}` | `technician:${number}`;
+
+export type ExchangeClaimOption = {
+  scheduleSlotId: number;
+  shop: { id: number; name: string };
+  technician: { profileId: number; publicId: string; displayName: string };
+  service: { ref: ExchangeClaimServiceRef; name: string; durationMinutes: number };
+  startsAt: string;
+  endsAt: string;
+};
+
+export type ExchangeClaim = {
+  id: number;
+  exchangePostId: number;
+  status: ExchangeClaimStatus;
+  provider: { publicId: string; displayName: string; avatarUrl: string | null };
+  shop: { id: number; name: string };
+  technician: { profileId: number; publicId: string; displayName: string };
+  service: { ref: ExchangeClaimServiceRef; name: string; durationMinutes: number };
+  scheduleSlotId: number;
+  quoteAmountJpy: number;
+  currency: "JPY";
+  message: string | null;
+  estimatedStartsAt: string;
+  estimatedEndsAt: string;
+  createdAt: string;
+  withdrawnAt: string | null;
+  terminalAt: string | null;
+};
+
+export type ExchangeClaimMine = {
+  claim: ExchangeClaim | null;
+};
+
+export type ExchangeClaimOptionListInput = PaginationInput & {
+  shopId?: number;
+  technicianProfileId?: number;
+  serviceRef?: ExchangeClaimServiceRef;
+};
+
+export type CreateExchangeClaimInput = {
+  scheduleSlotId: number;
+  quoteAmountJpy: number;
+  message: string | null;
+};
+
+export type ExchangePriority = {
+  active: boolean;
+  tierCode: "free" | "silver" | "gold" | "black_diamond";
 };
 
 export type ExchangeDemand = {
-  budgetMinJpy: number;
+  serviceMode: ExchangeDemandServiceMode;
+  targetProviderCount: number;
+  targetProviderLimitSnapshot: number;
+  publisherCapacitySource: ExchangePublisherCapacitySource;
+  membershipLevelSnapshot: ExchangeCustomerMembershipLevel | null;
+  matchMode: ExchangeMatchMode;
+  budgetMode: ExchangeBudgetMode;
+  budgetMinJpy: number | null;
   budgetMaxJpy: number;
+  address: ExchangeRequestAddress;
+};
+
+export type ExchangeRequestAddress = {
+  line1: string;
+  line2: string | null;
+  line3: string | null;
+  line2GenerallyVisible: boolean;
+  line3GenerallyVisible: boolean;
+  disclosure: "owner" | "general";
+};
+
+export type ExchangeRequestPublicationContext = {
+  canPublish: boolean;
+  capacitySource: ExchangePublisherCapacitySource;
+  membershipLevel: ExchangeCustomerMembershipLevel | null;
+  maxTargetProviderCount: number;
+  publicationFee: {
+    amountNdp: number;
+    currency: ExchangeNdpCurrency;
+    ruleSetVersion: number;
+  };
 };
 
 export type ExchangeIntelligence = {
@@ -46,9 +140,10 @@ export type ExchangePost = {
   serviceEndAt: string;
   expiresAt: string;
   publishedAt: string;
-  publisher: ExchangeActor;
+  publisher: ExchangeActor | null;
   counts: ExchangeInteractionCounts;
   viewer: ExchangeViewerState;
+  priority?: ExchangePriority;
   demand: ExchangeDemand | null;
   intelligence: ExchangeIntelligence | null;
 };
@@ -82,7 +177,6 @@ type ExchangePublishCommon = {
   title: string;
   detail: string;
   contentLocale: ExchangeContentLocale;
-  areaLabel: string;
   serviceStartAt: string;
   serviceEndAt: string;
   expiresAt: string;
@@ -90,12 +184,23 @@ type ExchangePublishCommon = {
 
 export type PublishExchangeDemandInput = ExchangePublishCommon & {
   type: "demand";
-  budgetMinJpy: number;
+  serviceMode: ExchangeDemandServiceMode;
+  targetProviderCount: number;
+  matchMode: ExchangeMatchMode;
+  budgetMode: ExchangeBudgetMode;
+  budgetMinJpy: number | null;
   budgetMaxJpy: number;
+  addressLine1: string;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  addressLine2Public: boolean;
+  addressLine3Public: boolean;
+  publisherIdentityPublic: boolean;
 };
 
 export type PublishExchangeIntelligenceInput = ExchangePublishCommon & {
   type: "intelligence";
+  areaLabel: string;
   serviceMode: ExchangeServiceMode;
   addressLabel: string | null;
   serviceAreas: string[];

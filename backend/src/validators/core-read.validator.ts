@@ -74,7 +74,18 @@ export const coreSearchQuerySchema = serviceListQueryBaseSchema
     entityType: z.enum(["service", "shop", "technician"]).default("service"),
     keyword: z.string().trim().min(1).max(100).optional(),
     keywords: uniqueTrimmedStrings,
-    categoryIds: uniquePositiveIntegers
+    categoryIds: uniquePositiveIntegers,
+    latitude: z.coerce.number().min(-90).max(90).optional(),
+    longitude: z.coerce.number().min(-180).max(180).optional()
+  })
+  .superRefine((value, context) => {
+    if ((value.latitude === undefined) !== (value.longitude === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "latitude and longitude must be provided together",
+        path: value.latitude === undefined ? ["latitude"] : ["longitude"]
+      });
+    }
   })
   .refine(
     (value) =>

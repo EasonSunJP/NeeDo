@@ -5,6 +5,7 @@ import { AppError } from "../utils/app-error";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   ChallengeVerificationBody,
+  CompliancePhoneBindingBody,
   GoogleCredentialBody,
   LoginBody,
   LogoutBody,
@@ -296,6 +297,26 @@ export class AuthController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public bindCompliancePhone = async (
+    request: BodyRequest<CompliancePhoneBindingBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.authService.bindCompliancePhone(
+            request.body.phone,
+            this.getAuthenticatedAccess(response),
+            this.getContext(request)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

@@ -208,7 +208,7 @@ Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 
 
 商户会员中心保留现有“已发会员卡”页面，并新增“卡方案”工作区。会员入口及相关页面均显示 `TEST` 角标，提醒当前能力仍处于本地测试阶段。方案工作区沿用既有暗色视觉系统，按“卡种与有效期 → 初始发卡范围 → 基础返点 → 叠加奖励 → 范围与上限 → 试算发布”组织，支持储值卡、次卡、权益卡，不新增平行 mock 数据。
 
-店铺可以设定发卡时允许的初始金额或次数范围；实际给客人发卡、后续调额/调次及客户同意流程留给后续独立微步骤。本页不提供折扣、礼物、赠送服务或赠送次数选项，所有权益统一为 NDP 返点。
+店铺可以设定发卡时允许的初始金额或次数范围；正式发卡与后续客户确认调整分别见第 16、17 节。本页不提供折扣、礼物、赠送服务或赠送次数选项，所有权益统一为 NDP 返点。
 
 正式商户接口：
 
@@ -242,4 +242,42 @@ Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 
 
 服务端按当前 JWT 店铺范围再次校验会员、方案和当前发布版本，计算有效期并保存方案版本、费率、来源、初始值和操作人快照。会员卡、审计和用户通知在同一事务中提交。商户发卡成功后刷新真实卡列表；用户个人中心的店铺会员详情显示当前金额/次数、初始值、方案版本、开卡时间、来源、有效期和平台费率快照，且明确说明“开卡不会自动产生 NDP”。业务参考号和内部说明不返回用户端卡片读取合同。
 
-Migration 为 `20260831160000_shop_membership_card_issuance`。本地 `needo_dev` 已验证物理列、CHECK、外键、幂等唯一索引和默认 RBAC；回滚式正式数据流验证三种卡型、审计、通知、幂等重放、内容冲突以及钱包/NDP 账本零变化。充值、核销、退款和发卡后的金额/次数调整及客户同意仍保持后续独立微步骤，不在本页面提供假操作。
+Migration 为 `20260831160000_shop_membership_card_issuance`。本地 `needo_dev` 已验证物理列、CHECK、外键、幂等唯一索引和默认 RBAC；回滚式正式数据流验证三种卡型、审计、通知、幂等重放、内容冲突以及钱包/NDP 账本零变化。充值、核销和退款仍保持后续独立微步骤，不在本页面提供假操作。
+
+## 17. 2026-08-31 会员卡金额/次数调整与 72 小时客户确认
+
+“已发会员卡”对有效储值卡和次数卡新增 `申请调整 TEST`，并增加“调整申请”队列。具备 `shop.member.card.adjust.request` 的店铺负责人或管理员可提交最终本金或最终剩余次数及可核对原因；`merchant_staff` 默认不授权。权益卡不支持此调整。店铺可查看全部状态并在客户决定前撤回。
+
+用户个人中心“我的会员”顶部新增 `TEST` 待办卡，按店铺与会员卡展示变更前、变更后、店铺说明和剩余时间。用户必须先选择同意或拒绝，再二次确认提交；服务端只接受当前 customer identity 所有的请求。客户必须在创建后 72 小时内判断，截止时刻及之后直接失效，绝不自动同意。
+
+正式接口：
+
+- `POST /api/v1/merchant-admin/shop-membership-cards/:publicId/adjustment-requests`
+- `GET /api/v1/merchant-admin/shop-membership-card-adjustment-requests`
+- `POST /api/v1/merchant-admin/shop-membership-card-adjustment-requests/:publicId/cancel`
+- `GET /api/v1/customer-profile/me/shop-membership-card-adjustment-requests`
+- `POST /api/v1/customer-profile/me/shop-membership-card-adjustment-requests/:publicId/decision`
+
+申请、决定、撤回、到期和快照失效均写审计并通知相关双方。批准使用数据库时间、请求行锁和会员卡 `lockVersion` 条件更新；储值卡只改本金、不改赠送余额，次数卡同步调整总次数以保持已消费次数不变。每张卡仅允许一个待确认申请，进入任何终态都会释放唯一待办键。定时 worker 与列表惰性处理共用同一到期事务。
+
+Migration 为 `20260831170000_shop_membership_card_adjustment_approval`。由于本地 migration 基线另有未应用 IM migration，本次在 `needo_dev` 仅执行并登记该已审查的 additive migration，没有夹带应用无关 migration。物理库独立确认 20 个业务/状态列、7 个 CHECK/外键、4 个唯一索引、卡 `lock_version` 与默认 `admin`/`merchant_owner` 授权。
+
+`check:shop-membership-card-adjustment-flow` 在回滚事务中验证：储值本金 10000→12000 且赠送余额 500 不变；次数卡剩余 4→6、总次数 10→12 且已消费 6 次不变；拒绝、撤回、到期均不改卡；旧快照不会覆盖更新后的 4500；跨店/跨客户隐藏、请求/决定幂等、11 条操作审计、2 条系统审计、15 条通知、钱包与 NDP 账本零变化。事务结束后全库保护基线完全恢复。
+
+## 18. 2026-09-01 会员卡线下收款充值
+
+“已发会员卡”对具备 `shop.member.card.topup.create` 的店铺负责人或管理员开放 `充值 TEST`。按钮只出现在当前店铺有效储值卡且没有待客户确认调整时；次数卡、权益卡和非有效卡不出现。充值弹层同时展示充值前/后本金，要求录入实际收款整数金额、收款方式，并至少填写收款凭证或可核对备注。页面明确说明充值立即到账、只增加已收款本金、不会增加赠送金额、不会产生 NDP 或返点平台费。
+
+商家会员卡工作区增加“充值记录 TEST”，用户个人中心“我的会员”增加本人只读充值记录。每条记录展示店铺或客户、卡号掩码、充值金额、本金前后值、收款方式、凭证、经办人和时间；页面没有修改、删除或用户端充值操作。
+
+正式接口：
+
+- `POST /api/v1/merchant-admin/shop-membership-cards/:publicId/top-ups`
+- `GET /api/v1/merchant-admin/shop-membership-card-top-ups`
+- `GET /api/v1/customer-profile/me/shop-membership-card-top-ups`
+
+写入和商家历史要求 `shop.member.card.topup.create`，客户历史沿用 `customer-profile:read`。店铺范围和客户所有权均由当前 JWT identity 决定，客户端不能传 `shopId` 或用户 ID。充值使用卡行锁、数据库时间、`lockVersion` 条件更新和请求幂等键；本金变化、`shop_membership_card_topups`、审计和客户通知在同一事务提交。
+
+Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` 已独立确认 16 个受检业务列、7 个 CHECK/外键、幂等唯一索引和仅 `admin`/`merchant_owner` 的默认授权。由于本地 migration 表另含当前分支没有的 Exchange migration，而当前分支有未应用 IM migration，本步没有运行会夹带无关变更的全量 deploy，只执行、核对并登记本次 additive migration。
+
+`check:shop-membership-card-topup-flow` 已证明实收 5000 JPY 仅令本金 10000→15000、赠送余额保持 500；充值、审计、通知各 1 条；幂等、冲突、待确认调整、跨店、商家/客户只读范围均正确；NDP 钱包与账本零变化，临时业务数据全部回滚。核销和退款继续作为后续独立微步骤。

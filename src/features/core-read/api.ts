@@ -50,6 +50,18 @@ export type CoreShopCard = {
   address: string;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  favoriteCount: number;
+  shareCount: number;
+  serviceCategories: Array<{ id: number; code: string; label: string }>;
+  businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
+};
+
+export type CorePrimaryTechnicianService = {
+  id: number;
+  name: string;
+  priceAmount: string;
+  currency: string;
+  durationMinutes: number;
 };
 
 export type CoreTechnicianCard = {
@@ -59,6 +71,15 @@ export type CoreTechnicianCard = {
   city: string;
   avatarUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  age: number | null;
+  favoriteCount: number;
+  shareCount: number;
+  completedOrderCount: number;
+  acceptanceRatePercent: number;
+  primaryService: CorePrimaryTechnicianService | null;
+  distanceKm?: number;
+  nearbyRank?: 1 | 2 | 3 | null;
+  resolvedRadiusKm?: number;
 };
 
 export type CoreServiceCard = {
@@ -125,6 +146,7 @@ export type CoreCustomerProfile = {
 };
 
 type CustomerProfileViewSource = Omit<CoreCustomerProfile, "reviewSummary"> & {
+  level?: number;
   reviewSummary?: CoreReviewSummary;
 };
 
@@ -153,6 +175,8 @@ export type CoreSearchListQuery = Omit<CoreServiceListQuery, "keyword" | "catego
   keyword?: string;
   keywords?: readonly string[];
   categoryIds?: readonly number[];
+  latitude?: number;
+  longitude?: number;
 };
 
 const fallbackServiceImage = "/images/generated/services/service-home-organization.jpg";
@@ -353,7 +377,7 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     rating: parseRating(shop.reviewSummary),
     reviewCount: shop.reviewSummary.reviewCount,
     priceLabel: priceRangeFromServices(detail?.services),
-    tags: uniqueStrings([shop.city, ...shop.reviewSummary.highlights]).slice(0, 6),
+    tags: uniqueStrings(shop.businessKeywords.map((keyword) => keyword.label)).slice(0, 5),
     openStatus: "open",
     nextSlot: "可预约",
     alwaysBookable: true,
@@ -427,6 +451,7 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
     points: 0,
     couponCount: 0,
     memberLevel: customer.membershipLevel,
+    experienceLevel: customer.level,
     tags: uniqueStrings([customer.city, ...(customer.reviewSummary?.highlights ?? [])]).slice(0, 6),
     ltv: 0,
     orderCount: reviewCount,

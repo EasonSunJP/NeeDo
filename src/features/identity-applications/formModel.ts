@@ -34,6 +34,8 @@ export type MerchantShowcaseForm = {
   contactPhone: string;
   responsiblePersonName: string;
   description: string;
+  serviceCategoryIds: number[];
+  businessKeywordIds: number[];
 };
 
 export function validateMerchantShowcase(input: MerchantShowcaseForm) {
@@ -42,6 +44,9 @@ export function validateMerchantShowcase(input: MerchantShowcaseForm) {
   }
   if (input.applicantKind === "corporate" && !input.corporateLegalNameKana.trim()) {
     return "请输入法人名称片假名";
+  }
+  if (input.serviceCategoryIds.length === 0) {
+    return "请至少选择一个服务种类";
   }
 
   const required: Array<[string, string]> = [

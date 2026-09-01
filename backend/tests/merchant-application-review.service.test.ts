@@ -26,6 +26,8 @@ const corporateApplication = (
   contactPhone: "03-1234-5678",
   responsiblePersonName: "山本太郎",
   showcaseDraft: { city: "東京都中央区", description: "リラクゼーション" },
+  serviceCategories: [{ id: 1, code: "massage", label: "マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }],
+  businessKeywords: [{ id: 10, code: "massage_home_visit", categoryId: 1, label: "訪問マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }],
   bankAccount: {
     id: 81,
     bankCode: "0001",

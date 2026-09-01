@@ -19,6 +19,7 @@ export type TechnicianPaymentMethod =
   | "alipay";
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
 export type TechnicianEmploymentTypePayload = "independent" | "full_time" | "temporary";
+export type TechnicianServiceBase = { latitude: number; longitude: number } | null;
 
 export interface TechnicianProfileMutation {
   displayName?: string;
@@ -32,6 +33,7 @@ export interface TechnicianProfileMutation {
   bidBudgetMinJpy?: number | null;
   bidBudgetMaxJpy?: number | null;
   paymentMethods?: TechnicianPaymentMethod[];
+  serviceBase?: TechnicianServiceBase;
   visibility?: TechnicianProfileVisibility;
   avatar?: { url: string; mimeType: string };
 }
@@ -49,11 +51,13 @@ export interface TechnicianProfilePayload {
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
+  specialTags: string[];
   profileTags: string[];
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
   paymentMethods: TechnicianPaymentMethod[];
+  serviceBase: TechnicianServiceBase;
   visibility: TechnicianProfileVisibility;
   employmentType: TechnicianEmploymentTypePayload;
   yearsExperience: number;
@@ -73,6 +77,11 @@ export interface TechnicianProfileRepositoryPort {
 }
 
 const profileInclude = {
+  backofficeProfileTags: {
+    where: { isActive: true, deletedAt: null },
+    select: { id: true, label: true, isActive: true, expiresAt: true },
+    orderBy: { id: "asc" as const }
+  },
   mediaAssets: {
     where: { usageType: "avatar", isActive: true, deletedAt: null },
     orderBy: { id: "desc" as const },
@@ -170,6 +179,12 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
         ? { bidBudgetMaxJpy: mutation.bidBudgetMaxJpy }
         : {}),
       ...(mutation.paymentMethods !== undefined ? { paymentMethods: mutation.paymentMethods } : {}),
+      ...(mutation.serviceBase !== undefined
+        ? {
+            baseLatitude: mutation.serviceBase?.latitude ?? null,
+            baseLongitude: mutation.serviceBase?.longitude ?? null
+          }
+        : {}),
       ...(mutation.visibility !== undefined ? { visibility: mutation.visibility } : {})
     };
   }
@@ -200,11 +215,21 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.stringArray(profile.languages, "languages"),
       serviceAreas: this.stringArray(profile.serviceAreasJson, "service_areas"),
+      specialTags: profile.backofficeProfileTags
+        .filter((tag) => tag.expiresAt === null || tag.expiresAt.getTime() > Date.now())
+        .map((tag) => tag.label),
       profileTags: this.stringArray(profile.profileTags, "profile_tags"),
       canServeForeigners: profile.canServeForeigners,
       bidBudgetMinJpy: profile.bidBudgetMinJpy,
       bidBudgetMaxJpy: profile.bidBudgetMaxJpy,
       paymentMethods: this.paymentMethodArray(profile.paymentMethods),
+      serviceBase:
+        profile.baseLatitude === null || profile.baseLongitude === null
+          ? null
+          : {
+              latitude: Number(profile.baseLatitude),
+              longitude: Number(profile.baseLongitude)
+            },
       visibility: this.visibility(profile.visibility),
       employmentType: profile.employmentType === "FULL_TIME"
         ? "full_time"

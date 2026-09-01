@@ -9,7 +9,8 @@ import {
   shopIdParamSchema,
   technicianServiceBodySchema,
   technicianServiceIdParamSchema,
-  technicianServiceListQuerySchema
+  technicianServiceListQuerySchema,
+  technicianServiceOrderBodySchema
 } from "../validators/pricing-mode.validator";
 
 export class PricingModeController {
@@ -106,6 +107,50 @@ export class PricingModeController {
               getRequestContext(request),
               shopId,
               technicianServiceBodySchema.parse(request.body)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listMyTechnicianServices = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listMyTechnicianServices(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              technicianServiceListQuerySchema.parse(request.query)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public reorderMyTechnicianServices = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.reorderMyTechnicianServices(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              technicianServiceOrderBodySchema.parse(request.body)
             )
           )
         );

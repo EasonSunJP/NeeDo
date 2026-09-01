@@ -912,6 +912,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
         bio: null,
         city: "东京",
         serviceArea: null,
+        baseLatitude: { toString: () => "35.6762000" },
+        baseLongitude: { toString: () => "139.6503000" },
         yearsExperience: 7,
         languages: ["日本語"],
         visibility: "public",
@@ -1000,6 +1002,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
     );
 
     expect(profile?.identityCard.languages).toEqual(["中文"]);
+    expect(profile?.identityCard).not.toHaveProperty("baseLatitude");
+    expect(profile?.identityCard).not.toHaveProperty("baseLongitude");
+    expect(profile?.identityCard).not.toHaveProperty("serviceBase");
   });
 
   it("does not fall back to private technician languages for a public customer", async () => {

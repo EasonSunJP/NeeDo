@@ -19,6 +19,10 @@ import {
 import type { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
+import type {
+  EntityShareReceipt,
+  ResolvedEntityTarget
+} from "./entity-engagement.repository";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
@@ -27,6 +31,10 @@ import {
   imMessageInclude as messageInclude,
   persistImMessageInTransaction
 } from "./im-message-send.transaction";
+import {
+  contactCardRequestFingerprint,
+  persistImContactCardInTransaction
+} from "./im-contact-card-send.transaction";
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -153,6 +161,18 @@ export interface DirectorySearchInput extends PaginationInput {
   ownerIdentityId?: number;
 }
 
+export interface ContactCardCandidateListInput extends PaginationInput {
+  query?: string;
+}
+
+export interface ContactCardCandidatePayload {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+}
+
 export interface AddContactInput {
   contactUserId: number;
   ownerUserId: number;
@@ -186,12 +206,35 @@ export type CreateFriendRequestOutcome =
   | { status: "already_friends" }
   | { status: "target_unavailable" };
 
+export interface TechnicianContactServicePayload {
+  id: number;
+  shopId: number;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+}
+
+export interface TechnicianContactDetailsPayload {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: TechnicianContactServicePayload[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+}
+
 export interface DirectoryProfilePayload {
   user: ParticipantPayload;
   identityCard: DirectoryIdentityCardPayload;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: FriendRequestPayload | null;
+  technicianContactDetails?: TechnicianContactDetailsPayload;
 }
 
 export interface DirectoryIdentityCardPayload {
@@ -285,6 +328,14 @@ export interface SocialPostInteractionMutationInput {
   actorIdentityId?: number;
   active: boolean;
   context: AuthRequestContext;
+  onActiveLike?: (context: SocialPostLikeExperienceContext) => Promise<void>;
+}
+
+export interface SocialPostLikeExperienceContext {
+  transactionClient: unknown;
+  postId: number;
+  authorUserId: number;
+  actorUserId: number;
 }
 
 export interface RecordSocialPostViewInput {
@@ -416,6 +467,49 @@ export interface CreateMessageInput {
 
 export type CreateMessageOutcome =
   | { status: "created"; message: MessagePayload }
+  | { status: "not_found" }
+  | { status: "recipient_blocked" }
+  | { status: "not_friends" };
+
+export interface CreateNeedoEntityShareInput {
+  actorUserId: number;
+  actorIdentityId: number;
+  conversationId: number;
+  recipientIdentityId: number;
+  target: ResolvedEntityTarget;
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+export type CreateNeedoEntityShareOutcome =
+  | {
+      status: "created" | "replayed";
+      message: MessagePayload;
+      receipt: EntityShareReceipt;
+    }
+  | {
+      status:
+        | "idempotency_conflict"
+        | "recipient_not_found"
+        | "not_found"
+        | "recipient_blocked"
+        | "not_friends";
+    };
+
+export interface SendContactCardInput {
+  conversationId: number;
+  senderUserId: number;
+  senderIdentityId: number;
+  targetUserPublicId: string;
+  idempotencyKey: string;
+}
+
+export type SendContactCardOutcome =
+  | { status: "created"; message: MessagePayload }
+  | { status: "replayed"; message: MessagePayload }
+  | { status: "target_not_found" }
+  | { status: "target_not_allowed" }
+  | { status: "idempotency_conflict" }
   | { status: "not_found" }
   | { status: "recipient_blocked" }
   | { status: "not_friends" };
@@ -629,6 +723,10 @@ export interface RealtimeRepositoryPort {
     input: CheckMessageSendEligibilityInput
   ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
+  createNeedoEntityShare: (
+    input: CreateNeedoEntityShareInput
+  ) => Promise<CreateNeedoEntityShareOutcome>;
+  sendContactCard: (input: SendContactCardInput) => Promise<SendContactCardOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
     senderUserId: number,
@@ -675,6 +773,11 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ContactPayload>>;
+  listContactCardCandidates: (
+    userId: number,
+    identityId: number,
+    input: ContactCardCandidateListInput
+  ) => Promise<PaginatedResponse<ContactCardCandidatePayload>>;
   searchDirectory: (
     userId: number,
     input: DirectorySearchInput
@@ -882,6 +985,8 @@ type DirectoryProfileUserRecord = {
     city: string;
     serviceArea: string | null;
     yearsExperience: number;
+    age?: number | null;
+    heightCm?: { toString: () => string } | null;
     languages: unknown;
     visibility: string;
     employmentType: string;
@@ -1459,6 +1564,184 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         message: this.mapMessage(outcome.message, senderIdentityId)
       };
     });
+  }
+
+  public async createNeedoEntityShare(
+    input: CreateNeedoEntityShareInput
+  ): Promise<CreateNeedoEntityShareOutcome> {
+    const execute = async (): Promise<CreateNeedoEntityShareOutcome> =>
+      this.client.$transaction(async (tx) => {
+        const existing = await tx.entityShareEvent.findUnique({
+          where: {
+            actorUserId_idempotencyKey: {
+              actorUserId: input.actorUserId,
+              idempotencyKey: input.idempotencyKey
+            }
+          },
+          include: { message: { include: messageInclude } }
+        });
+        if (existing) {
+          if (
+            existing.requestFingerprint !== input.requestFingerprint ||
+            existing.message === null
+          ) {
+            return { status: "idempotency_conflict" };
+          }
+          const shareCount = await tx.entityShareEvent.count({
+            where: { ...this.entityShareTargetWhere(input.target), deletedAt: null }
+          });
+          return {
+            status: "replayed",
+            message: this.mapMessage(existing.message, input.actorIdentityId),
+            receipt: this.entityShareReceipt(
+              input.target,
+              existing.id,
+              existing.messageId,
+              shareCount,
+              true
+            )
+          };
+        }
+
+        const recipient = await tx.conversationParticipant.findFirst({
+          where: {
+            conversationId: input.conversationId,
+            identityId: input.recipientIdentityId,
+            deletedAt: null,
+            conversation: { deletedAt: null }
+          },
+          select: { userId: true, identityId: true }
+        });
+        if (!recipient || recipient.identityId === input.actorIdentityId) {
+          return { status: "recipient_not_found" };
+        }
+
+        const messageOutcome = await persistImMessageInTransaction(tx, {
+          conversationId: input.conversationId,
+          senderUserId: input.actorUserId,
+          senderIdentityId: input.actorIdentityId,
+          type: MessageType.SYSTEM,
+          content: input.target.publicId,
+          metadata: {
+            needoMessageType: "entity-share",
+            targetType: input.target.targetType,
+            publicId: input.target.publicId
+          },
+          transactionNow: new Date()
+        });
+        if (messageOutcome.status !== "created") {
+          return messageOutcome;
+        }
+
+        const event = await tx.entityShareEvent.create({
+          data: {
+            actorUserId: input.actorUserId,
+            actorIdentityId: input.actorIdentityId,
+            shopId: input.target.shopId,
+            technicianProfileId: input.target.technicianProfileId,
+            channel: "NEEDO_MESSAGE",
+            recipientUserId: recipient.userId,
+            recipientIdentityId: recipient.identityId,
+            conversationId: input.conversationId,
+            messageId: messageOutcome.message.id,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint
+          }
+        });
+        const shareCount = await tx.entityShareEvent.count({
+          where: { ...this.entityShareTargetWhere(input.target), deletedAt: null }
+        });
+        return {
+          status: "created",
+          message: this.mapMessage(messageOutcome.message, input.actorIdentityId),
+          receipt: this.entityShareReceipt(
+            input.target,
+            event.id,
+            messageOutcome.message.id,
+            shareCount,
+            false
+          )
+        };
+      });
+
+    try {
+      return await execute();
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+      const existing = await this.client.entityShareEvent.findUnique({
+        where: {
+          actorUserId_idempotencyKey: {
+            actorUserId: input.actorUserId,
+            idempotencyKey: input.idempotencyKey
+          }
+        },
+        include: { message: { include: messageInclude } }
+      });
+      if (
+        !existing ||
+        existing.requestFingerprint !== input.requestFingerprint ||
+        existing.message === null
+      ) {
+        return { status: "idempotency_conflict" };
+      }
+      const shareCount = await this.client.entityShareEvent.count({
+        where: { ...this.entityShareTargetWhere(input.target), deletedAt: null }
+      });
+      return {
+        status: "replayed",
+        message: this.mapMessage(existing.message, input.actorIdentityId),
+        receipt: this.entityShareReceipt(
+          input.target,
+          existing.id,
+          existing.messageId,
+          shareCount,
+          true
+        )
+      };
+    }
+  }
+
+  public async sendContactCard(
+    input: SendContactCardInput
+  ): Promise<SendContactCardOutcome> {
+    const requestFingerprint = contactCardRequestFingerprint(input);
+    try {
+      const outcome = await this.client.$transaction((tx) =>
+        persistImContactCardInTransaction(tx, {
+          ...input,
+          requestFingerprint,
+          transactionNow: new Date()
+        })
+      );
+      if (outcome.status === "created" || outcome.status === "replayed") {
+        return {
+          status: outcome.status,
+          message: this.mapMessage(outcome.message, input.senderIdentityId)
+        };
+      }
+      return outcome;
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) throw error;
+      const replay = await this.client.imContactCardSendCommand.findUnique({
+        where: {
+          actorIdentityId_idempotencyKey: {
+            actorIdentityId: input.senderIdentityId,
+            idempotencyKey: input.idempotencyKey
+          }
+        },
+        include: { message: { include: messageInclude } }
+      });
+      if (!replay) throw error;
+      if (replay.requestFingerprint !== requestFingerprint) {
+        return { status: "idempotency_conflict" };
+      }
+      return {
+        status: "replayed",
+        message: this.mapMessage(replay.message, input.senderIdentityId)
+      };
+    }
   }
 
   public async isMessageSenderBlocked(
@@ -2135,6 +2418,100 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
+  public async listContactCardCandidates(
+    userId: number,
+    identityId: number,
+    input: ContactCardCandidateListInput
+  ): Promise<PaginatedResponse<ContactCardCandidatePayload>> {
+    const pagination = toPrismaPagination(input);
+    const query = input.query?.trim() ?? "";
+    const searchWhere: Prisma.UserWhereInput = query
+      ? {
+          OR: [
+            { username: { contains: query } },
+            { needoId: { contains: query } }
+          ]
+        }
+      : {};
+    const projection = {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    } as const;
+
+    const self = await this.client.user.findFirst({
+      where: {
+        id: userId,
+        isActive: true,
+        deletedAt: null,
+        ...searchWhere
+      },
+      select: projection
+    });
+    const selfCount = self ? 1 : 0;
+    const friendWhere: Prisma.UserWhereInput = {
+      id: { not: userId },
+      isActive: true,
+      deletedAt: null,
+      contactEntries: {
+        some: {
+          ownerIdentityId: identityId,
+          blockedAt: null,
+          deletedAt: null,
+          contactIdentity: {
+            isActive: true,
+            deletedAt: null,
+            ownedContacts: {
+              some: {
+                contactIdentityId: identityId,
+                blockedAt: null,
+                deletedAt: null
+              }
+            }
+          }
+        }
+      },
+      ...searchWhere
+    };
+
+    const includeSelfOnPage = Boolean(self && pagination.skip === 0);
+    const friendSkip = Math.max(0, pagination.skip - selfCount);
+    const friendTake = Math.max(0, pagination.take - (includeSelfOnPage ? 1 : 0));
+    const [friends, friendCount] = await Promise.all([
+      friendTake > 0
+        ? this.client.user.findMany({
+            where: friendWhere,
+            select: projection,
+            skip: friendSkip,
+            take: friendTake,
+            orderBy: [{ username: "asc" }, { needoId: "asc" }, { id: "asc" }]
+          })
+        : Promise.resolve([]),
+      this.client.user.count({ where: friendWhere })
+    ]);
+
+    const list: ContactCardCandidatePayload[] = [];
+    if (includeSelfOnPage && self) {
+      list.push({
+        targetUserId: self.needoId,
+        needoId: self.needoId,
+        nickname: self.username,
+        avatarUrl: self.avatarUrl,
+        relationship: "self"
+      });
+    }
+    list.push(...friends.map((candidate) => ({
+      targetUserId: candidate.needoId,
+      needoId: candidate.needoId,
+      nickname: candidate.username,
+      avatarUrl: candidate.avatarUrl,
+      relationship: "friend" as const
+    })));
+
+    return buildPaginatedResponse(list, selfCount + friendCount, pagination);
+  }
+
   public async searchDirectory(
     userId: number,
     input: DirectorySearchInput
@@ -2504,6 +2881,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             city: true,
             serviceArea: true,
             yearsExperience: true,
+            age: true,
+            heightCm: true,
             languages: true,
             visibility: true,
             employmentType: true,
@@ -2538,18 +2917,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       where: {
         ownerIdentityId: viewerIdentityId,
         contactIdentityId: targetIdentityId,
-        source: "friend_request",
-        deletedAt: null
+        deletedAt: null,
+        blockedAt: null
       },
       select: { id: true }
     });
+    const technicianContactDetails =
+      contact && identityCard.entityType === "technician" && user.technicianProfile
+        ? await this.loadTechnicianContactDetails(user.technicianProfile.id, dbNow)
+        : undefined;
     const reciprocalContact = contact
       ? await this.client.contact.findFirst({
           where: {
             ownerIdentityId: targetIdentityId,
             contactIdentityId: viewerIdentityId,
             source: "friend_request",
-            deletedAt: null
+            deletedAt: null,
+            blockedAt: null
           },
           select: { id: true }
         })
@@ -2560,7 +2944,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         identityCard,
         relationship: "friend",
         contactId: contact.id,
-        friendRequest: null
+        friendRequest: null,
+        ...(technicianContactDetails ? { technicianContactDetails } : {})
       };
     }
     const friendRequest = await this.client.friendRequest.findFirst({
@@ -2586,7 +2971,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           : "incoming_pending"
         : "none",
       contactId: null,
-      friendRequest: friendRequest ? this.mapFriendRequest(friendRequest, dbNow) : null
+      friendRequest: friendRequest ? this.mapFriendRequest(friendRequest, dbNow) : null,
+      ...(technicianContactDetails ? { technicianContactDetails } : {})
     };
   }
 
@@ -3565,6 +3951,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         await transaction.socialPostLike.update({
           where: { id: existing.id },
           data: { deletedAt: new Date() }
+        });
+      }
+
+      if (
+        input.active &&
+        changed &&
+        input.actorUserId !== socialPost.authorUserId &&
+        input.onActiveLike
+      ) {
+        await input.onActiveLike({
+          transactionClient: transaction,
+          postId: socialPost.id,
+          authorUserId: socialPost.authorUserId,
+          actorUserId: input.actorUserId
         });
       }
 
@@ -4958,8 +5358,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         creditValue: review?.ratingAverage.toString() ?? null,
         creditReviewCount: review?.reviewCount ?? 0,
         gender: null,
-        age: null,
-        heightCm: null,
+        age: profile.age ?? null,
+        heightCm: profile.heightCm?.toString() ?? null,
         languages:
           profile.visibility === "public" ? toDirectoryLanguages(profile.languages) : [],
         city: profile.city,
@@ -5021,6 +5421,78 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return fallback;
+  }
+
+  private async loadTechnicianContactDetails(
+    technicianProfileId: number,
+    dbNow: Date
+  ): Promise<TechnicianContactDetailsPayload | undefined> {
+    const profile = await this.client.technicianProfile.findFirst({
+      where: {
+        id: technicianProfileId,
+        status: "published",
+        deletedAt: null
+      },
+      select: {
+        bidBudgetMinJpy: true,
+        bidBudgetMaxJpy: true,
+        paymentMethods: true,
+        profileTags: true,
+        backofficeProfileTags: {
+          where: {
+            isActive: true,
+            deletedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: dbNow } }]
+          },
+          select: { id: true, label: true },
+          orderBy: [{ id: "asc" }]
+        },
+        performanceSummary: {
+          select: {
+            completedOrderCount: true,
+            acceptanceRateBps: true,
+            deletedAt: true
+          }
+        },
+        technicianServices: {
+          where: {
+            deletedAt: null,
+            isActive: true,
+            reviewStatus: "APPROVED"
+          },
+          select: {
+            id: true,
+            shopId: true,
+            name: true,
+            priceAmount: true,
+            currency: true,
+            durationMinutes: true,
+            sortOrder: true
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          take: 5
+        }
+      }
+    });
+    if (!profile) {
+      return undefined;
+    }
+    const summary =
+      profile.performanceSummary?.deletedAt === null ? profile.performanceSummary : null;
+
+    return {
+      bidBudgetMinJpy: profile.bidBudgetMinJpy,
+      bidBudgetMaxJpy: profile.bidBudgetMaxJpy,
+      paymentMethods: toDirectoryLanguages(profile.paymentMethods),
+      specialTags: profile.backofficeProfileTags.map(({ label }) => label),
+      profileTags: toDirectoryLanguages(profile.profileTags),
+      services: profile.technicianServices.map((service) => ({
+        ...service,
+        taxIncluded: true
+      })),
+      completedOrderCount: summary?.completedOrderCount ?? 0,
+      acceptanceRateBps: summary?.acceptanceRateBps ?? 10_000
+    };
   }
 
   private mapFriendRequest(friendRequest: FriendRequestRecord, dbNow?: Date): FriendRequestPayload {
@@ -5322,6 +5794,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return "text";
+  }
+
+  private entityShareTargetWhere(target: ResolvedEntityTarget): Prisma.EntityShareEventWhereInput {
+    return target.targetType === "shop"
+      ? { shopId: target.shopId }
+      : { technicianProfileId: target.technicianProfileId };
+  }
+
+  private entityShareReceipt(
+    target: ResolvedEntityTarget,
+    eventId: number,
+    messageId: number | null,
+    shareCount: number,
+    replayed: boolean
+  ): EntityShareReceipt {
+    return {
+      targetType: target.targetType,
+      publicId: target.publicId,
+      eventId,
+      messageId,
+      shareCount,
+      replayed
+    };
   }
 
   private friendRequestStatusToDb(status: FriendRequestStatusPayload): FriendRequestStatus {

@@ -12,6 +12,8 @@ import { RealtimeService } from "../services/realtime.service";
 import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
 import {
   contactIdParamSchema,
+  contactCardCandidateListQuerySchema,
+  contactCardSendBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -123,6 +125,26 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
     validateRequest({ params: conversationIdParamSchema, body: messageCreateBodySchema }),
     controller.createMessage
+  );
+  router.get(
+    "/im/conversations/:conversationId/contact-card-candidates",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
+    validateRequest({
+      params: conversationIdParamSchema,
+      query: contactCardCandidateListQuerySchema
+    }),
+    controller.listContactCardCandidates
+  );
+  router.post(
+    "/im/conversations/:conversationId/contact-cards",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
+    validateRequest({
+      params: conversationIdParamSchema,
+      body: contactCardSendBodySchema
+    }),
+    controller.sendContactCard
   );
   router.post(
     "/im/conversations/:conversationId/messages/:messageId/recall",

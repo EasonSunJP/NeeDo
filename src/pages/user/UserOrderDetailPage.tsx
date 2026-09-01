@@ -15,6 +15,7 @@ import {
   type OrderReview
 } from "../../features/booking/api";
 import { coreReadApi, type CoreServiceCard } from "../../features/core-read/api";
+import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
@@ -352,14 +353,46 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       {queryStatus === "success" && order ? (
         <>
           <OrderDynamicStatusCard order={mapBookingOrderToDomainOrder(order)} providerName={order.shopName} />
+
+          <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-black text-[color:var(--client-muted)]">正式预约</p>
+                <h2 className="mt-1 text-xl font-black text-[color:var(--client-text)]">{order.serviceName}</h2>
+                <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.shopName}</p>
+              </div>
+              <strong className="shrink-0 text-lg font-black text-[color:var(--client-primary)]">
+                {yen(order.paymentAmountJpy)}
+              </strong>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {order.serviceId ? (
+                <Link className="focus-ring rounded-[16px] border border-[color:var(--client-line)] px-3 py-3 text-center text-xs font-black text-[color:var(--client-text)]" to={`/services/${order.serviceId}`}>
+                  查看服务
+                </Link>
+              ) : <span />}
+              <Link className="focus-ring rounded-[16px] border border-[color:var(--client-line)] px-3 py-3 text-center text-xs font-black text-[color:var(--client-text)]" to={`/stores/${order.shopId}`}>
+                查看店铺
+              </Link>
+            </div>
+          </section>
+
           <DetailRows title="预约情报" rows={[
             ["预约状态", formalStatusLabel(order.status)],
             ["预约编号", order.orderNo],
             ["服务", order.serviceName],
+            ["服务方式", order.fulfillmentMode === "home" ? "上门服务" : "到店预约"],
             ["店铺", order.shopName],
             ["预约时间", formatApiOrderDateTime(order.startsAt)],
-            ["担当", order.technicianName ?? "尚未指定"]
+            ["结束时间", formatApiOrderDateTime(order.endsAt)],
+            ["担当", order.technicianName ?? "尚未指定"],
+            ["备注", order.note ?? "无特别备注"]
           ]} />
+
+          <ContactEventTimelinePanel
+            title="状态记录"
+            events={buildFormalOrderTimelineEvents(order)}
+          />
 
           {order.status === "confirmed" && /^\d{6}$/.test(order.serviceVerificationCode ?? "") ? (
             <section className="rounded-[24px] border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-5 text-center">
@@ -410,7 +443,6 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "awaitingPaymentConfirmation" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">等待技师确认收款</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">订单会在技师确认现金或其他方式收款后完成。</p></section> : null}
           {order.status === "completed" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">服务与结算已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkout ? paymentEvidenceLabel(checkout.paymentEvidence) : "正在读取支付凭证"}</p></section> : null}
 
-          <ContactEventTimelinePanel title="状态记录" events={order.statusHistory.map((history) => ({ actorName: history.actorUserId ? `用户 #${history.actorUserId}` : "系统", actorRole: "预约状态", atLabel: formatApiOrderDateTime(history.createdAt), id: String(history.id), message: history.reason ?? `${history.fromStatus ?? "created"} → ${history.toStatus}`, title: formalStatusLabel(history.toStatus), tone: history.toStatus === "cancelled" ? "red" : "green" }))} />
           {projectionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert"><p>{projectionError}</p><button className="mt-3 h-10 w-full rounded-full border border-red-400/40" disabled={projectionPending} onClick={() => void retryOrderProjection()} type="button">{projectionPending ? "正在读取订单状态" : "重新读取订单状态"}</button></section> : null}
           {actionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert">{actionError}</section> : null}
           {reviewEligible && reviewStatus === "loading" ? <section className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">正在读取评价状态</section> : null}

@@ -87,6 +87,27 @@ describe("PersistedAuthEnvelopeV8", () => {
     expect(readPersistedAuthEnvelope()).toEqual(envelope);
   });
 
+  it("persists a coherent limited-compliance session without weakening strict parsing", async () => {
+    const limited = {
+      ...session(),
+      complianceRequirements: ["phone_binding_required" as const],
+      compliancePolicyVersionPublicId: "policy-v2",
+      complianceEffectiveAt: "2026-09-01T10:00:00.000Z",
+      compliancePermittedNextRoutes: ["/api/v1/auth/me"]
+    };
+    const envelope = createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000009",
+      credentialVersion: 9,
+      refreshToken: "limited-refresh",
+      session: limited
+    });
+    expect(await writePersistedAuthEnvelope(envelope, { expectedRaw: null })).toBe(true);
+    expect(readPersistedAuthEnvelope()?.session).toMatchObject({
+      complianceRequirements: ["phone_binding_required"],
+      compliancePolicyVersionPublicId: "policy-v2"
+    });
+  });
+
   it("performs one atomic setItem and leaves the previous committed envelope byte-identical on failure", async () => {
     const previous = createCommittedAuthEnvelope({
       authInstanceId: "00000000-0000-4000-8000-000000000008",

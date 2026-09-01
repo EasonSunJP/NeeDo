@@ -16,6 +16,7 @@ import {
   type RealtimeFriendRequest,
   type RealtimeMessage,
   type RealtimeParticipant,
+  type RealtimeTechnicianContactDetails,
 } from "../realtime/api";
 import type { ImApi } from "./contract";
 import { buildConversationLastMessageSummary } from "./model";
@@ -28,12 +29,14 @@ import type {
   DirectoryProfile,
   FriendRequest,
   ImBootstrapPayload,
+  ImContactCardCandidate,
   ImMessageType,
   ImProfileKind,
   ImStoreUpdate,
   ImRoleType,
   ImUser,
   MessageExt,
+  TechnicianContactDetails,
 } from "./model";
 
 type FormalCurrentUser = {
@@ -133,6 +136,274 @@ function readMetadata(metadata: unknown) {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)
     : {};
+}
+
+const invalidContactCard = (): never => {
+  throw new Error("error.response.invalid_contact_card");
+};
+
+function contactCardRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return invalidContactCard();
+  }
+  return value as Record<string, unknown>;
+}
+
+function exactContactCardRecord(value: unknown, keys: readonly string[]) {
+  const record = contactCardRecord(value);
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    return invalidContactCard();
+  }
+  return record;
+}
+
+function contactCardString(value: unknown, maximum: number) {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.length > maximum
+  ) {
+    return invalidContactCard();
+  }
+  return value;
+}
+
+function isSafeContactCardUrl(value: string) {
+  return /^(?:https?:\/\/[^\s]+|\/(?!\/)[^\s]*)$/iu.test(value);
+}
+
+function optionalLegacyContactCardString(value: unknown, maximum: number) {
+  return typeof value === "string" && value.length <= maximum ? value : undefined;
+}
+
+function parseLegacyContactCardMetadata(metadata: Record<string, unknown>): MessageExt {
+  if (metadata.needoMessageType !== "contact-card") return invalidContactCard();
+  const extension = contactCardRecord(metadata.needoMessageExt);
+  const card = contactCardRecord(extension.contactCard);
+  const userId = contactCardString(card.userId, 191);
+  const displayName = contactCardString(card.displayName, 160);
+  const profileKind = card.profileKind;
+  if (
+    profileKind !== "person" &&
+    profileKind !== "technician" &&
+    profileKind !== "store" &&
+    profileKind !== "service"
+  ) {
+    return invalidContactCard();
+  }
+  const rawAvatar = optionalLegacyContactCardString(card.avatar, 2_048);
+  const avatar = rawAvatar && isSafeContactCardUrl(rawAvatar) ? rawAvatar : "";
+  const entityType = card.entityType;
+  const safeEntityType =
+    entityType === "user" || entityType === "technician" || entityType === "shop"
+      ? entityType
+      : undefined;
+
+  return {
+    contactCard: {
+      userId,
+      displayName,
+      avatar,
+      profileKind,
+      ...(safeEntityType ? { entityType: safeEntityType } : {}),
+      ...(optionalLegacyContactCardString(card.entityId, 191) !== undefined
+        ? { entityId: optionalLegacyContactCardString(card.entityId, 191) }
+        : {}),
+      ...(optionalLegacyContactCardString(card.userIdLabel, 160) !== undefined
+        ? { userIdLabel: optionalLegacyContactCardString(card.userIdLabel, 160) }
+        : {}),
+      ...(optionalLegacyContactCardString(card.headline, 500) !== undefined
+        ? { headline: optionalLegacyContactCardString(card.headline, 500) }
+        : {})
+    }
+  };
+}
+
+function parseV2ContactCardMetadata(metadata: Record<string, unknown>): MessageExt {
+  const snapshot = exactContactCardRecord(metadata, [
+    "snapshotVersion",
+    "type",
+    "contactCard"
+  ]);
+  if (snapshot.snapshotVersion !== 2 || snapshot.type !== "contact-card") {
+    return invalidContactCard();
+  }
+  const card = exactContactCardRecord(snapshot.contactCard, [
+    "targetUserPublicId",
+    "needoId",
+    "nickname",
+    "avatarUrl",
+    "entityKind",
+    "ekycVerified",
+    "level",
+    "bio",
+    "tierCode",
+    "themeVersionPublicId",
+    "simpleTopColor",
+    "simpleBottomColor"
+  ]);
+  const targetUserPublicId = contactCardString(card.targetUserPublicId, 191);
+  const needoId = contactCardString(card.needoId, 160);
+  const nickname = contactCardString(card.nickname, 160);
+  const avatarUrl = card.avatarUrl;
+  if (
+    avatarUrl !== null &&
+    (typeof avatarUrl !== "string" ||
+      avatarUrl.length > 2_048 ||
+      !isSafeContactCardUrl(avatarUrl))
+  ) {
+    return invalidContactCard();
+  }
+  const entityKind = card.entityKind;
+  if (
+    entityKind !== "customer" &&
+    entityKind !== "technician" &&
+    entityKind !== "shop" &&
+    entityKind !== "service"
+  ) {
+    return invalidContactCard();
+  }
+  if (typeof card.ekycVerified !== "boolean") return invalidContactCard();
+  if (
+    card.level !== null &&
+    (typeof card.level !== "number" ||
+      !Number.isInteger(card.level) ||
+      card.level < 1 ||
+      card.level > 100)
+  ) {
+    return invalidContactCard();
+  }
+  if (card.bio !== null && (typeof card.bio !== "string" || card.bio.length > 500)) {
+    return invalidContactCard();
+  }
+  const tierCode = card.tierCode;
+  if (
+    tierCode !== null &&
+    tierCode !== "free" &&
+    tierCode !== "silver" &&
+    tierCode !== "gold" &&
+    tierCode !== "black_diamond"
+  ) {
+    return invalidContactCard();
+  }
+  if (
+    card.themeVersionPublicId !== null &&
+    (typeof card.themeVersionPublicId !== "string" ||
+      card.themeVersionPublicId.trim().length === 0 ||
+      card.themeVersionPublicId.length > 191)
+  ) {
+    return invalidContactCard();
+  }
+  for (const color of [card.simpleTopColor, card.simpleBottomColor]) {
+    if (color !== null && (typeof color !== "string" || !/^#[0-9a-f]{6}$/iu.test(color))) {
+      return invalidContactCard();
+    }
+  }
+  const profileKind =
+    entityKind === "customer"
+      ? "person"
+      : entityKind === "shop"
+        ? "store"
+        : entityKind;
+  const entityType =
+    entityKind === "customer"
+      ? "user"
+      : entityKind === "technician" || entityKind === "shop"
+        ? entityKind
+        : undefined;
+
+  return {
+    contactCard: {
+      snapshotVersion: 2,
+      userId: targetUserPublicId,
+      needoId,
+      displayName: nickname,
+      avatar: avatarUrl ?? "",
+      profileKind,
+      ...(entityType ? { entityType } : {}),
+      userIdLabel: needoId,
+      ...(card.bio === null ? {} : { headline: card.bio }),
+      entityKind,
+      ekycVerified: card.ekycVerified,
+      level: card.level as number | null,
+      tierCode,
+      themeVersionPublicId: card.themeVersionPublicId as string | null,
+      simpleTopColor: card.simpleTopColor as string | null,
+      simpleBottomColor: card.simpleBottomColor as string | null
+    }
+  };
+}
+
+function toContactCardMessageExt(metadata: Record<string, unknown>): MessageExt {
+  return metadata.snapshotVersion === 2 || metadata.type === "contact-card"
+    ? parseV2ContactCardMetadata(metadata)
+    : parseLegacyContactCardMetadata(metadata);
+}
+
+function toContactCardCandidate(value: unknown): ImContactCardCandidate {
+  const candidate = exactContactCardRecord(value, [
+    "targetUserId",
+    "needoId",
+    "nickname",
+    "avatarUrl",
+    "relationship"
+  ]);
+  const targetUserId = contactCardString(candidate.targetUserId, 160);
+  const needoId = contactCardString(candidate.needoId, 160);
+  if (!/^u[0-9]{10}$/u.test(targetUserId) || !/^u[0-9]{10}$/u.test(needoId)) {
+    return invalidContactCard();
+  }
+  const nickname = contactCardString(candidate.nickname, 160);
+  if (
+    candidate.avatarUrl !== null &&
+    (typeof candidate.avatarUrl !== "string" ||
+      candidate.avatarUrl.length > 2_048 ||
+      !isSafeContactCardUrl(candidate.avatarUrl))
+  ) {
+    return invalidContactCard();
+  }
+  if (candidate.relationship !== "self" && candidate.relationship !== "friend") {
+    return invalidContactCard();
+  }
+
+  return {
+    targetUserId,
+    needoId,
+    nickname,
+    avatarUrl: candidate.avatarUrl as string | null,
+    relationship: candidate.relationship
+  };
+}
+
+function toContactCardCandidatePage(
+  value: unknown,
+  requestedPage: number,
+  requestedPageSize: number
+) {
+  const page = exactContactCardRecord(value, ["list", "total", "page", "page_size"]);
+  if (!Array.isArray(page.list)) return invalidContactCard();
+  const total = responseInteger(page.total, 0);
+  const pageNumber = responseInteger(page.page, 1);
+  const pageSize = responseInteger(page.page_size, 1, 100);
+  if (
+    pageNumber !== requestedPage ||
+    pageSize !== requestedPageSize ||
+    page.list.length > pageSize ||
+    page.list.length > total
+  ) {
+    return invalidContactCard();
+  }
+  return {
+    list: page.list.map(toContactCardCandidate),
+    total,
+    page: pageNumber,
+    page_size: pageSize
+  };
 }
 
 function toChatRecordSummary(value: import("../realtime/api").RealtimeChatRecordSummary): import("./chat-records").ImChatRecordSummary {
@@ -383,6 +654,30 @@ function toImUser(participant: RealtimeParticipant): ImUser {
   };
 }
 
+function toTechnicianContactDetails(
+  details: RealtimeTechnicianContactDetails,
+): TechnicianContactDetails {
+  return {
+    bidBudgetMinJpy: details.bidBudgetMinJpy,
+    bidBudgetMaxJpy: details.bidBudgetMaxJpy,
+    paymentMethods: [...details.paymentMethods],
+    specialTags: [...details.specialTags],
+    profileTags: [...details.profileTags],
+    services: details.services.map((service) => ({
+      id: service.id,
+      shopId: service.shopId,
+      name: service.name,
+      priceAmount: service.priceAmount,
+      currency: service.currency,
+      durationMinutes: service.durationMinutes,
+      taxIncluded: service.taxIncluded,
+      sortOrder: service.sortOrder,
+    })),
+    completedOrderCount: details.completedOrderCount,
+    acceptanceRateBps: details.acceptanceRateBps,
+  };
+}
+
 function getOrganizationTechnicianTags(
   technician: BackofficeTechnicianPayload,
 ) {
@@ -458,8 +753,12 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
   );
   const metadata = isRecalled ? {} : readMetadata(message.metadata);
   const storedType = metadata.needoMessageType;
+  const hasV2ContactCardMarker =
+    metadata.snapshotVersion === 2 || metadata.type === "contact-card";
   const type: ImMessageType = isRecalled
     ? "recalled"
+    : hasV2ContactCardMarker
+      ? "contact-card"
     : typeof storedType === "string" &&
         richMessageTypes.has(storedType as ImMessageType)
       ? (storedType as ImMessageType)
@@ -473,7 +772,12 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
       ? (ext as MessageExt)
       : undefined;
   const { disappearing: _untrustedDisappearing, ...safeRawExt } = rawExt ?? {};
-  const safeExt = type === "chat-record" ? toChatRecordMessageExt(metadata) : safeRawExt;
+  const safeExt =
+    type === "chat-record"
+      ? toChatRecordMessageExt(metadata)
+      : type === "contact-card"
+        ? toContactCardMessageExt(metadata)
+        : safeRawExt;
   const privacyPolicyVersionAtSend = message.privacyPolicyVersionAtSend;
   const createdAtMs = Date.parse(message.createdAt);
   const expiresAtMs = message.expiresAt ? Date.parse(message.expiresAt) : Number.NaN;
@@ -872,36 +1176,61 @@ export function createFormalImApi({
     },
     async getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
       const profile = await realtimeApi.getDirectoryProfile(toNumericId(userId));
-      return {
+      const identityCard = {
+        entityType: profile.identityCard.entityType,
+        profileId: profile.identityCard.profileId === null
+          ? undefined
+          : String(profile.identityCard.profileId),
+        displayName: profile.identityCard.displayName,
+        identityLabel: profile.identityCard.identityLabel ?? undefined,
+        verified: profile.identityCard.verified,
+        creditValue: profile.identityCard.creditValue === null
+          ? undefined
+          : Number(profile.identityCard.creditValue),
+        creditReviewCount: profile.identityCard.creditReviewCount,
+        gender: profile.identityCard.gender ?? undefined,
+        age: profile.identityCard.age ?? undefined,
+        heightCm: profile.identityCard.heightCm === null
+          ? undefined
+          : Number(profile.identityCard.heightCm),
+        languages: profile.identityCard.languages,
+        city: profile.identityCard.city ?? undefined,
+        serviceArea: profile.identityCard.serviceArea ?? undefined,
+        yearsExperience: profile.identityCard.yearsExperience ?? undefined,
+        bio: profile.identityCard.bio ?? undefined,
+      };
+      const baseProfile = {
         user: toImUser(profile.user),
-        identityCard: {
-          entityType: profile.identityCard.entityType,
-          profileId: profile.identityCard.profileId === null
-            ? undefined
-            : String(profile.identityCard.profileId),
-          displayName: profile.identityCard.displayName,
-          identityLabel: profile.identityCard.identityLabel ?? undefined,
-          verified: profile.identityCard.verified,
-          creditValue: profile.identityCard.creditValue === null
-            ? undefined
-            : Number(profile.identityCard.creditValue),
-          creditReviewCount: profile.identityCard.creditReviewCount,
-          gender: profile.identityCard.gender ?? undefined,
-          age: profile.identityCard.age ?? undefined,
-          heightCm: profile.identityCard.heightCm === null
-            ? undefined
-            : Number(profile.identityCard.heightCm),
-          languages: profile.identityCard.languages,
-          city: profile.identityCard.city ?? undefined,
-          serviceArea: profile.identityCard.serviceArea ?? undefined,
-          yearsExperience: profile.identityCard.yearsExperience ?? undefined,
-          bio: profile.identityCard.bio ?? undefined,
-        },
         relationship: profile.relationship,
         contactId: profile.contactId === null ? undefined : String(profile.contactId),
         friendRequest: profile.friendRequest
           ? toFriendRequest(profile.friendRequest)
           : undefined,
+      };
+
+      if (profile.identityCard.entityType === "technician") {
+        return {
+          ...baseProfile,
+          identityCard: {
+            ...identityCard,
+            entityType: "technician",
+          },
+          ...(profile.technicianContactDetails
+            ? {
+                technicianContactDetails: toTechnicianContactDetails(
+                  profile.technicianContactDetails,
+                ),
+              }
+            : {}),
+        };
+      }
+
+      return {
+        ...baseProfile,
+        identityCard: {
+          ...identityCard,
+          entityType: profile.identityCard.entityType,
+        },
       };
     },
     async sendFriendRequest(targetUserId: string, message?: string) {
@@ -1019,6 +1348,57 @@ export function createFormalImApi({
           response.nextCursor === null ? null : String(response.nextCursor),
         hasMore: response.nextCursor !== null,
       };
+    },
+    async listContactCardCandidates(
+      conversationId: string,
+      query: { page?: number; pageSize?: number; query?: string } = {},
+    ) {
+      const page = query.page === undefined ? 1 : positive(query.page);
+      const pageSize = query.pageSize === undefined ? 20 : positive(query.pageSize, 100);
+      const normalizedQuery = query.query?.trim();
+      if (normalizedQuery && normalizedQuery.length > 100) {
+        throw new Error("error.validation");
+      }
+      const response = await realtimeApi.listContactCardCandidates(
+        toNumericId(conversationId),
+        {
+          page,
+          pageSize,
+          ...(normalizedQuery ? { query: normalizedQuery } : {})
+        },
+      );
+      return toContactCardCandidatePage(response, page, pageSize);
+    },
+    async sendContactCard(
+      conversationId: string,
+      targetUserId: string,
+      idempotencyKey: string,
+    ) {
+      const normalizedTargetUserId = targetUserId.trim();
+      const normalizedIdempotencyKey = idempotencyKey.trim();
+      if (
+        !/^u[0-9]{10}$/u.test(normalizedTargetUserId) ||
+        normalizedIdempotencyKey.length < 8 ||
+        normalizedIdempotencyKey.length > 191
+      ) {
+        throw new Error("error.validation");
+      }
+      const rawResult = await realtimeApi.sendContactCard(
+        toNumericId(conversationId),
+        normalizedTargetUserId,
+        normalizedIdempotencyKey,
+      );
+      const result = exactContactCardRecord(rawResult, ["message", "replayed"]);
+      if (typeof result.replayed !== "boolean") return invalidContactCard();
+      const mappedMessage = toConversationMessage(result.message as RealtimeMessage);
+      if (
+        mappedMessage.type !== "contact-card" ||
+        mappedMessage.conversationId !== conversationId ||
+        mappedMessage.ext?.contactCard?.userId !== normalizedTargetUserId
+      ) {
+        return invalidContactCard();
+      }
+      return { message: mappedMessage, replayed: result.replayed };
     },
     async createConversation(
       memberIds: string[],
@@ -1190,6 +1570,9 @@ export function createFormalImApi({
     ) {
       if (type === "chat-record") {
         throw new Error("error.im.chat_record_requires_server_snapshot");
+      }
+      if (type === "contact-card") {
+        throw new Error("error.im.contact_card_requires_server_snapshot");
       }
       const storedType = type === "system" ? "system" : "text";
       const metadata = {

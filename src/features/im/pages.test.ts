@@ -630,7 +630,7 @@ describe("IM pages", () => {
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
     const componentSource = pagesSource.slice(componentStart, componentEnd);
     const sendStart = componentSource.indexOf("const sendVoiceRecording = async () =>");
-    const sendEnd = componentSource.indexOf("const resolveContactCardDetailPath", sendStart);
+    const sendEnd = componentSource.indexOf("const resolveContactCardUser", sendStart);
     const sendSource = componentSource.slice(sendStart, sendEnd);
 
     expect(componentSource).toContain("useImVoiceRecording()");

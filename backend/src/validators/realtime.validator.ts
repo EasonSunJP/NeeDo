@@ -132,6 +132,21 @@ export const messageListQuerySchema = z.object({
   beforeId: z.coerce.number().int().positive().optional()
 });
 
+export const contactCardCandidateListQuerySchema = z
+  .object({
+    ...paginationQuerySchema,
+    query: z.string().trim().max(100).optional()
+  })
+  .strict();
+
+export const contactCardSendBodySchema = z
+  .object({
+    targetUserId: z.string().trim().regex(/^u[0-9]{10}$/u)
+  })
+  .strict();
+
+export const contactCardIdempotencyKeySchema = z.string().trim().min(8).max(191);
+
 export const messageCreateBodySchema = z.object({
   type: z.enum(["text", "system", "orderStatus"]).default("text"),
   content: z.string().trim().min(1).max(4000),

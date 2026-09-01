@@ -117,6 +117,7 @@ const makeProfile = (): CustomerProfilePayload => ({
   displayName: "田中 彩",
   city: "Tokyo",
   membershipLevel: "standard",
+  level: 72,
   avatarUrl: `http://localhost:3101/media/customer-avatars/${avatarHash}.png`,
   gender: "private",
   age: null,

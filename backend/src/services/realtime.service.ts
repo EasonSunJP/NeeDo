@@ -8,8 +8,10 @@ import type {
   CreateFollowInput,
   CreateFriendRequestInput,
   CreateMessageInput,
+  CreateNeedoEntityShareInput,
   CreateOrderStatusNotificationInput,
   CreateSocialPostInput,
+  ContactCardCandidateListInput,
   FriendRequestListInput,
   DirectorySearchInput,
   DeleteMessagesForUserInput,
@@ -31,8 +33,18 @@ import type {
 } from "./personal-identity-scope.service";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
+import type { UserExperienceService } from "./user-experience.service";
 
 const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isClientAuthoredContactCard(metadata: unknown): boolean {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+    return false;
+  }
+  const record = metadata as Record<string, unknown>;
+  return record.needoMessageType === "contact-card" ||
+    (record.snapshotVersion === 2 && record.type === "contact-card");
+}
 
 export interface OrderStatusNotificationInput {
   actorUserId: number;
@@ -56,7 +68,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
     private readonly eventGateway: RealtimeEventGatewayPort,
     private readonly personalIdentityScope?: {
       resolve: (actor: PersonalIdentityActor) => Promise<PersonalIdentityScope>;
-    }
+    },
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public async createConversation(
@@ -264,6 +278,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
     auth: AuthenticatedAccessContext,
     input: Omit<CreateMessageInput, "senderUserId">
   ) {
+    if (isClientAuthoredContactCard(input.metadata)) {
+      throw this.validationError("error.im.contact_card_requires_dedicated_endpoint");
+    }
     const scope = await this.assertMessageSendAllowed(auth, input.conversationId);
 
     const outcome = await this.repository.createMessage({
@@ -312,6 +329,135 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return message;
+  }
+
+  public async createNeedoEntityShare(
+    auth: AuthenticatedAccessContext,
+    input: Omit<CreateNeedoEntityShareInput, "actorUserId" | "actorIdentityId">
+  ) {
+    const scope = await this.assertMessageSendAllowed(auth, input.conversationId);
+    const outcome = await this.repository.createNeedoEntityShare({
+      ...input,
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId
+    });
+    if (outcome.status === "idempotency_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        statusCode: 409
+      });
+    }
+    if (outcome.status === "recipient_not_found") {
+      throw this.notFoundError("error.realtime.recipient_not_found");
+    }
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.conversation_not_found");
+    }
+    if (outcome.status === "recipient_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status !== "created" && outcome.status !== "replayed") {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.internal_server_error",
+        statusCode: 500
+      });
+    }
+
+    if (outcome.status === "created") {
+      try {
+        await this.publishToConversation(
+          input.conversationId,
+          "message.created",
+          outcome.message,
+          auth.userId,
+          scope.identityId
+        );
+      } catch (error) {
+        logger.error(
+          {
+            conversationId: input.conversationId,
+            error,
+            eventType: "message.created",
+            messageId: outcome.message.id
+          },
+          "Realtime entity-share publication failed after message and share event commit"
+        );
+      }
+    }
+    return outcome.receipt;
+  }
+
+  public async sendContactCard(
+    auth: AuthenticatedAccessContext,
+    conversationId: number,
+    targetUserPublicId: string,
+    idempotencyKey: string
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const outcome = await this.repository.sendContactCard({
+      conversationId,
+      senderUserId: auth.userId,
+      senderIdentityId: scope.identityId,
+      targetUserPublicId,
+      idempotencyKey
+    });
+    if (outcome.status === "target_not_found") {
+      throw this.notFoundError("error.realtime.user_not_found");
+    }
+    if (outcome.status === "target_not_allowed") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.contact_card_target_not_allowed",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "idempotency_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        statusCode: 409
+      });
+    }
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.conversation_not_found");
+    }
+    if (outcome.status === "recipient_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "created") {
+      await this.publishToConversation(
+        conversationId,
+        "message.created",
+        outcome.message,
+        auth.userId,
+        scope.identityId
+      );
+    }
+    return { message: outcome.message, replayed: outcome.status === "replayed" };
   }
 
   public async listMessages(auth: AuthenticatedAccessContext, input: ListMessagesInput) {
@@ -547,6 +693,15 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.listContacts(scope.identityId, input);
   }
 
+  public async listContactCardCandidates(
+    auth: AuthenticatedAccessContext,
+    conversationId: number,
+    input: ContactCardCandidateListInput
+  ) {
+    const scope = await this.assertMessageSendAllowed(auth, conversationId);
+    return this.repository.listContactCardCandidates(auth.userId, scope.identityId, input);
+  }
+
   public async searchDirectory(auth: AuthenticatedAccessContext, input: DirectorySearchInput) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     return this.repository.searchDirectory(auth.userId, {
@@ -568,6 +723,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     );
     if (!profile) {
       throw this.notFoundError("error.realtime.user_not_found");
+    }
+    if (profile.identityCard.entityType !== "technician" && profile.technicianContactDetails) {
+      const safeProfile = { ...profile };
+      delete safeProfile.technicianContactDetails;
+      return safeProfile;
     }
     return profile;
   }
@@ -860,12 +1020,28 @@ export class RealtimeService implements OrderStatusNotificationPort {
     context: AuthRequestContext
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
+    const occurredAt = this.now();
     const result = await this.repository.setSocialPostLike({
       postId,
       actorUserId: auth.userId,
       actorIdentityId: scope.identityId,
       active,
-      context
+      context,
+      onActiveLike: this.userExperienceService
+        ? ({ transactionClient, postId: persistedPostId, authorUserId, actorUserId }) =>
+            this.userExperienceService!.recordEvent(
+              {
+                userId: authorUserId,
+                eventType: "social_post_liked",
+                sourceType: "social_post_like",
+                sourcePublicId: String(persistedPostId),
+                idempotencyKey: `social-post-like:${persistedPostId}:${actorUserId}`,
+                baseUnits: 10_000n,
+                occurredAt
+              },
+              { transactionClient }
+            ).then(() => undefined)
+        : undefined
     });
     if (!result) {
       throw this.notFoundError("error.realtime.social_post_not_found");

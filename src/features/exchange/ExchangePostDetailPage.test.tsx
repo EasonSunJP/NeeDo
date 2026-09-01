@@ -13,7 +13,9 @@ import {
 import { ExchangePostDetailPage } from "./ExchangePostDetailPage";
 import type { ExchangePost } from "./types";
 import appSource from "../../App.tsx?raw";
+import type { MessageCenterContext } from "../../lib/messageCenter";
 import routeSource from "../../pages/mobile/NeedoRoutePages.tsx?raw";
+import detailSource from "./ExchangePostDetailPage.tsx?raw";
 
 const mockI18n = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko" }));
 
@@ -35,6 +37,12 @@ vi.mock("./ExchangeInteractions", () => ({
     <div data-show-action-bar={String(showActionBar)} data-testid="formal-interactions" data-variant={variant}>{post.counts.comments}</div>
   )
 }));
+vi.mock("./ExchangeClaimPanel", () => ({
+  ExchangeClaimPanel: ({ post }: { post: ExchangePost }) => <div data-post-id={post.id} data-testid="formal-claim-panel" />
+}));
+vi.mock("./ExchangeReceivedClaims", () => ({
+  ExchangeReceivedClaims: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-received-claims" />
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,8 +60,26 @@ const demandPost: ExchangePost = {
   publishedAt: "2026-08-30T04:00:00.000Z",
   publisher: { publicId: "u0000000041", identityType: "customer", displayName: "测试客户 41", avatarUrl: null },
   counts: { comments: 4, likes: 21, shares: 6 },
-  viewer: { liked: false, canWithdraw: true },
-  demand: { budgetMinJpy: 8000, budgetMaxJpy: 12000 },
+  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
+  demand: {
+    serviceMode: "store",
+    targetProviderCount: 1,
+    targetProviderLimitSnapshot: 1,
+    publisherCapacitySource: "customer_membership",
+    membershipLevelSnapshot: "standard",
+    matchMode: "quick",
+    budgetMode: "total",
+    budgetMinJpy: 8000,
+    budgetMaxJpy: 12000,
+    address: {
+      line1: "東京都千代田区丸の内 1-1",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner"
+    }
+  },
   intelligence: null
 };
 
@@ -70,7 +96,7 @@ const intelligencePost: ExchangePost = {
     avatarUrl: "/simulation/shops/ginza-calm-body-lab.png"
   },
   counts: { comments: 7, likes: 42, shares: 8 },
-  viewer: { liked: false, canWithdraw: false },
+  viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false },
   demand: null,
   intelligence: {
     serviceMode: "store",
@@ -101,11 +127,23 @@ let container: HTMLDivElement;
 let root: Root;
 let renderVersion = 0;
 
-async function renderDetail(path = "/needo/posts/41") {
+function detailBasePath(context: MessageCenterContext) {
+  return context === "user" ? "/needo" : `/${context}/needo`;
+}
+
+async function renderDetail(
+  path = "/needo/posts/41",
+  context: MessageCenterContext = "user"
+) {
+  const basePath = detailBasePath(context);
   await act(async () => root.render(
-    <MemoryRouter initialEntries={[path]} key={`${path}-${renderVersion += 1}`}>
+    <MemoryRouter initialEntries={[path]} key={`${path}-${context}-${renderVersion += 1}`}>
       <Routes>
-        <Route path="/needo/posts/:postId" element={<ExchangePostDetailPage context="user" />} />
+        <Route
+          path={`${basePath}/posts/:postId`}
+          element={<ExchangePostDetailPage context={context} />}
+        />
+        <Route path={basePath} element={<div data-testid="exchange-root">{basePath}</div>} />
       </Routes>
     </MemoryRouter>
   ));
@@ -142,6 +180,75 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it.each([
+    ["user", "/needo/posts/61", "/needo"],
+    ["merchant", "/merchant/needo/posts/61", "/merchant/needo"],
+    ["technician", "/technician/needo/posts/61", "/technician/needo"]
+  ] as const)("closes a direct %s detail to its Exchange root", async (context, path, expectedRoot) => {
+    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    await renderDetail(path, context);
+    await waitFor(() => expect(document.body.textContent).toContain(intelligencePost.title));
+
+    const close = document.body.querySelector<HTMLButtonElement>('button[aria-label="关闭"]');
+    expect(close).not.toBeNull();
+    await act(async () => close?.click());
+
+    expect(document.body.querySelector('[data-testid="exchange-root"]')?.textContent).toBe(expectedRoot);
+  });
+
+  it("keeps a deterministic close action in invalid, loading, and read-error states", async () => {
+    await renderDetail("/needo/posts/not-a-number");
+    expect(document.body.querySelector('button[aria-label="关闭"]')).not.toBeNull();
+
+    vi.mocked(getExchangePost).mockImplementationOnce(() => new Promise<ExchangePost>(() => undefined));
+    await renderDetail("/needo/posts/41");
+    expect(document.body.textContent).toContain("正在读取正式详情");
+    expect(document.body.querySelector('button[aria-label="关闭"]')).not.toBeNull();
+
+    vi.mocked(getExchangePost).mockRejectedValueOnce(new Error("error.exchange.post_not_found"));
+    await renderDetail("/needo/posts/42");
+    await waitFor(() => expect(document.body.textContent).toContain("内容不存在或不可查看"));
+    expect(document.body.querySelector('button[aria-label="关闭"]')).not.toBeNull();
+  });
+
+  it("renders a redacted publisher without reconstructing private identity", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({ ...demandPost, publisher: null });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.textContent).toContain("发布者已隐藏身份");
+    expect(document.body.textContent).not.toContain("测试客户 41");
+    expect(document.body.textContent).not.toContain("u0000000041");
+  });
+
+  it("renders only the Request address lines projected by the server", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      publisher: null,
+      demand: {
+        ...demandPost.demand!,
+        budgetMinJpy: null,
+        address: {
+          line1: "東京都港区六本木 3-2-1",
+          line2: "Prince Tower 12F",
+          line3: null,
+          line2GenerallyVisible: true,
+          line3GenerallyVisible: false,
+          disclosure: "general"
+        }
+      }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.textContent).toContain("東京都港区六本木 3-2-1");
+    expect(document.body.textContent).toContain("Prince Tower 12F");
+    expect(document.body.textContent).not.toContain("测试客户 41");
+    expect(document.body.textContent).not.toContain("u0000000041");
+    expect(document.body.textContent).toContain("¥12,000");
+    expect(document.body.textContent).not.toContain("¥0–¥12,000");
   });
 
   it("restores the approved full-screen intelligence detail composition with formal fields", async () => {
@@ -199,7 +306,7 @@ describe("ExchangePostDetailPage", () => {
 
   it("requires confirmation and renders the server-authoritative withdrawn state", async () => {
     vi.mocked(getExchangePost).mockResolvedValue(demandPost);
-    vi.mocked(withdrawExchangePost).mockResolvedValue({ ...demandPost, status: "withdrawn", viewer: { liked: false, canWithdraw: false } });
+    vi.mocked(withdrawExchangePost).mockResolvedValue({ ...demandPost, status: "withdrawn", viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false } });
     const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
     vi.stubGlobal("confirm", confirm);
     vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
@@ -215,9 +322,37 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.querySelector('[data-action="withdraw"]')).toBeNull();
   });
 
-  it("removes the obsolete customer-detail route and local profile bridge", () => {
+  it("composes the provider claim panel only from the server capability flag", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
+      demand: { ...demandPost.demand!, matchMode: "selective" }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).not.toBeNull());
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+  });
+
+  it("composes the read-only received list only from the owner capability flag", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
+      demand: { ...demandPost.demand!, matchMode: "selective" }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull());
+
+    expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).toBeNull();
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="booking-deferred"]')?.disabled).toBe(true);
+  });
+
+  it("keeps the formal claim composition free of local or fake workflow bridges", () => {
     expect(appSource).not.toContain("/needo/posts/:postId/customer");
     expect(appSource).not.toContain("NeedoPostCustomerRoutePage");
-    expect(routeSource).not.toMatch(/getDemandDetail|formalRuntimeFallbacks|localStorage|抢单|预约|支付/u);
+    expect(routeSource).not.toMatch(/getDemandDetail|formalRuntimeFallbacks|localStorage/u);
+    expect(detailSource).toContain("ExchangeClaimPanel");
+    expect(detailSource).toContain("ExchangeReceivedClaims");
+    expect(detailSource).not.toMatch(/localStorage|fakeBooking|fakePayment/u);
   });
 });

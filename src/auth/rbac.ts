@@ -4,6 +4,10 @@ import type { IdentityAvailability } from "../features/identity-applications/mod
 export const authSessionVersion = 7;
 
 export type LoginMethod = "google" | "password";
+export type UserPolicyComplianceRequirement =
+  | "phone_binding_required"
+  | "email_binding_required"
+  | "ekyc_required";
 
 const loginMethods = new Set<LoginMethod>(["google", "password"]);
 
@@ -38,6 +42,10 @@ export type AuthMePayload = {
   permissions: string[];
   menus: string[];
   identityAvailability: IdentityAvailability[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
 };
 
 export type AuthSession = {
@@ -66,6 +74,10 @@ export type AuthSession = {
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
   identityAvailability: IdentityAvailability[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
 };
 
 const adminRoles = new Set(["admin", "operator", "finance", "support", "viewer"]);
@@ -215,8 +227,20 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     menus: me.menus,
     currentIdentity: me.currentIdentity,
     identities: me.identities,
-    identityAvailability: me.identityAvailability
+    identityAvailability: me.identityAvailability,
+    ...(me.complianceRequirements
+      ? {
+          complianceRequirements: me.complianceRequirements,
+          compliancePolicyVersionPublicId: me.compliancePolicyVersionPublicId,
+          complianceEffectiveAt: me.complianceEffectiveAt,
+          compliancePermittedNextRoutes: me.compliancePermittedNextRoutes
+        }
+      : {})
   });
+}
+
+export function hasAccountComplianceRequirements(session: AuthSession | null): boolean {
+  return Boolean(session?.complianceRequirements?.length);
 }
 
 export function hasPermissionInSession(session: AuthSession | null, permission: string) {

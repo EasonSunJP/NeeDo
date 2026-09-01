@@ -31,6 +31,53 @@ export const backofficeListQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional()
 });
 
+export const backofficeManagedUserListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20),
+    keyword: z.string().trim().max(100).optional(),
+    tier: z.enum(["free", "silver", "gold", "black_diamond"]).optional(),
+    groupCode: z.string().trim().min(1).max(80).optional(),
+    identityType: z.string().trim().min(1).max(50).optional(),
+    source: z.string().trim().min(1).max(32).optional(),
+    state: z.enum(["active", "inactive"]).optional(),
+    ekyc: z.enum(["verified", "unverified"]).optional(),
+    minLevel: z.coerce.number().int().min(1).max(100).optional(),
+    maxLevel: z.coerce.number().int().min(1).max(100).optional(),
+    minExpUnits: z.coerce.bigint().nonnegative().optional(),
+    maxExpUnits: z.coerce.bigint().nonnegative().optional(),
+    minNdpBalance: z.coerce.number().int().nonnegative().optional(),
+    maxNdpBalance: z.coerce.number().int().nonnegative().optional(),
+    registeredFrom: isoDateSchema.optional(),
+    registeredTo: isoDateSchema.optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const ranges = [
+      [value.minLevel, value.maxLevel, "maxLevel"],
+      [value.minExpUnits, value.maxExpUnits, "maxExpUnits"],
+      [value.minNdpBalance, value.maxNdpBalance, "maxNdpBalance"],
+      [value.registeredFrom?.getTime(), value.registeredTo?.getTime(), "registeredTo"]
+    ] as const;
+    for (const [minimum, maximum, path] of ranges) {
+      if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: `${path} must not be lower than its minimum`
+        });
+      }
+    }
+  });
+
+export type BackofficeManagedUserListQuery = z.infer<
+  typeof backofficeManagedUserListQuerySchema
+>;
+
+export const backofficeManagedUserParamSchema = z
+  .object({ userId: z.coerce.number().int().positive() })
+  .strict();
+
 export const merchantAdminListQuerySchema = z
   .object({
     ...paginationQuerySchema,
@@ -292,29 +339,13 @@ export const backofficeCustomerUpdateBodySchema = z
 
 export const backofficeCustomerMembershipGrantBodySchema = z
   .object({
-    membershipLevel: z.string().trim().min(1).max(50),
+    membershipLevel: z.enum(["silver", "gold", "black_diamond"]),
     grantMode: z.literal("operator_complimentary"),
-    durationUnit: z.enum(["forever", "day", "month"]),
-    durationValue: z.number().int().positive().max(1200).nullable(),
+    durationUnit: z.literal("month"),
+    durationValue: z.union([z.literal(1), z.literal(12)]),
     startsAt: z.string().datetime({ offset: true })
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.durationUnit === "forever" && value.durationValue !== null) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Forever membership must not define a duration value",
-        path: ["durationValue"]
-      });
-    }
-    if (value.durationUnit !== "forever" && value.durationValue === null) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Timed membership requires a duration value",
-        path: ["durationValue"]
-      });
-    }
-  });
+  .strict();
 
 const serviceFields = {
   categoryId: z.number().int().positive(),

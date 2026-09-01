@@ -55,10 +55,13 @@ import {
 } from "./affiliate-checkout.service";
 import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
 import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
+import type { UserExperienceService } from "./user-experience.service";
+import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 
 export interface AuthenticatedBookingActor {
   userId: number;
   roles: string[];
+  currentIdentityId?: number;
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
@@ -109,6 +112,14 @@ const ORDER_TRANSITIONS = {
 >;
 
 export class BookingService {
+  private readonly ndpExchangeRateService?: Pick<NdpExchangeRateService, "resolveEffectiveRate">;
+  private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">;
+  private readonly now: () => Date;
+  private readonly userPolicyEnforcementService?: Pick<
+    UserPolicyEnforcementService,
+    "assertServiceEkyc"
+  >;
+
   public constructor(
     private readonly repository: BookingRepositoryPort,
     private readonly ledgerService?: BookingLedgerSettlementPort & Partial<CheckoutPaymentLedgerPort>,
@@ -122,9 +133,26 @@ export class BookingService {
       | "invalidateCancelledBooking"
       | "settleCompletedBooking"
     >,
-    private readonly ndpExchangeRateService?: Pick<NdpExchangeRateService, "resolveEffectiveRate">,
-    private readonly now: () => Date = () => new Date()
-  ) {}
+    rateOrExperience?: Pick<NdpExchangeRateService, "resolveEffectiveRate"> |
+      Pick<UserExperienceService, "recordEvent">,
+    experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
+    nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
+    policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">
+  ) {
+    if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
+      this.ndpExchangeRateService = rateOrExperience;
+    } else {
+      this.userExperienceService = rateOrExperience;
+    }
+    if (typeof experienceOrNow === "function") {
+      this.now = experienceOrNow;
+    } else {
+      this.userExperienceService = experienceOrNow ?? this.userExperienceService;
+      this.now = typeof nowOrPolicy === "function" ? nowOrPolicy : () => new Date();
+    }
+    this.userPolicyEnforcementService =
+      policy ?? (typeof nowOrPolicy === "function" ? undefined : nowOrPolicy);
+  }
 
   public listAvailableSlots(input: AvailabilityListInput) {
     return this.repository.listAvailableSlots(input);
@@ -224,6 +252,11 @@ export class BookingService {
         statusCode: 403
       });
     }
+    await this.userPolicyEnforcementService?.assertServiceEkyc(
+      actor.userId,
+      input.fulfillmentMode,
+      this.now()
+    );
     await this.assertShopNotSuspended(
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
@@ -766,15 +799,30 @@ export class BookingService {
     context: CheckoutMutationContext,
     actorUserId: number
   ): Promise<void> {
-    if (!this.affiliateCheckoutService) return;
-    await this.affiliateCheckoutService.settleCompletedBooking({
-      bookingOrderId: context.order.id,
-      customerUserId: context.order.customerUserId,
-      shopId: context.order.shopId,
-      serviceId: context.order.serviceId,
-      actorUserId,
-      transactionClient: context.transactionClient
-    });
+    if (this.userExperienceService) {
+      await this.userExperienceService.recordEvent(
+        {
+          userId: context.order.customerUserId,
+          eventType: "service_completed",
+          sourceType: "booking_order",
+          sourcePublicId: context.order.orderNo,
+          idempotencyKey: `service-completed:${context.order.orderNo}`,
+          baseUnits: 100_000n,
+          occurredAt: this.now()
+        },
+        { transactionClient: context.transactionClient }
+      );
+    }
+    if (this.affiliateCheckoutService) {
+      await this.affiliateCheckoutService.settleCompletedBooking({
+        bookingOrderId: context.order.id,
+        customerUserId: context.order.customerUserId,
+        shopId: context.order.shopId,
+        serviceId: context.order.serviceId,
+        actorUserId,
+        transactionClient: context.transactionClient
+      });
+    }
   }
 
   private async notifyCheckoutCompletionBestEffort(
@@ -843,11 +891,17 @@ export class BookingService {
       throw this.invalidTransitionError();
     }
 
+    const transitionActor = {
+      userId: actor.userId,
+      identityId: actor.currentIdentityId ?? null,
+      identityType: actor.currentIdentityType ?? actor.roles[0] ?? "unknown"
+    };
     const transitionInput: OrderTransitionRepositoryInput =
       action === "confirm"
         ? {
             id,
             actorUserId: actor.userId,
+            actor: transitionActor,
             fromStatus: "pending",
             toStatus: "confirmed",
             reason
@@ -856,6 +910,7 @@ export class BookingService {
           ? {
               id,
               actorUserId: actor.userId,
+              actor: transitionActor,
               fromStatus: "pending",
               toStatus: "cancelled",
               reason
@@ -863,6 +918,7 @@ export class BookingService {
           : {
               id,
               actorUserId: actor.userId,
+              actor: transitionActor,
               fromStatus: "confirmed",
               toStatus: "cancelled",
               reason

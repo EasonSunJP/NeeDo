@@ -38,21 +38,37 @@ import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { NdpExchangeRateRepositoryPort } from "./repositories/ndp-exchange-rate.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
+import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
+import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
+import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import type { UserExperienceRepositoryPort } from "./domain/user-experience";
+import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
+import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
+import type { UserPolicyEnforcementRepositoryPort } from "./domain/user-policy-enforcement";
+import type { NdpExperienceCampaignRepositoryPort } from "./domain/ndp-experience-campaign";
+import type { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
 import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
 import type { MembershipAnalyticsRepositoryPort } from "./repositories/membership-analytics.repository";
+import type { ShopMembershipCardAdjustmentRepositoryPort } from "./services/shop-membership-card-adjustment.service";
+import type { ShopMembershipCardTopUpRepositoryPort } from "./services/shop-membership-card-topup.service";
+import type { ShopMembershipCardRedemptionRepositoryPort } from "./services/shop-membership-card-redemption.service";
+import type { ShopMembershipCardRefundRepositoryPort } from "./services/shop-membership-card-refund.service";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
+import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
+import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
+import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
 import type {
   AffiliatePlatformFeeRepositoryPort,
   AffiliatePlatformFeeService
 } from "./services/affiliate-platform-fee.service";
-import type { LedgerRepositoryPort } from "./services/ledger.service";
+import type { LedgerRepositoryPort, LedgerService } from "./services/ledger.service";
 import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
 import type { IdentityApplicationService } from "./services/identity-application.service";
 import type { IdentityApplicationMediaRepositoryPort } from "./services/identity-application-media.service";
@@ -122,15 +138,26 @@ import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
+import { createShopTaxonomyRoutes } from "./routes/shop-taxonomy.routes";
+import { createEntityEngagementRoutes } from "./routes/entity-engagement.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
 import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-card-plan.routes";
 import { createShopMembershipCardIssuanceRoutes } from "./routes/shop-membership-card-issuance.routes";
 import { createMembershipAnalyticsRoutes } from "./routes/membership-analytics.routes";
+import { createShopMembershipCardAdjustmentRoutes } from "./routes/shop-membership-card-adjustment.routes";
+import { createShopMembershipCardTopUpRoutes } from "./routes/shop-membership-card-topup.routes";
+import { createShopMembershipCardRedemptionRoutes } from "./routes/shop-membership-card-redemption.routes";
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
+import { createTechnicianDataCenterRoutes } from "./routes/technician-data-center.routes";
+import { createMerchantProfileRoutes } from "./routes/merchant-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
+import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
+import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
+import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
+import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createNdpExchangeRateRoutes } from "./routes/ndp-exchange-rate.routes";
 import { createHealthRoutes } from "./routes/health.routes";
@@ -158,16 +185,27 @@ import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
+import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
+import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
+import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
+import { createUserExperienceRoutes } from "./routes/user-experience.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
+import type { PlatformMembershipService } from "./services/platform-membership.service";
+import type { UserExperienceService } from "./services/user-experience.service";
+import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
+import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
+import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
 import type { ExchangeService } from "./services/exchange.service";
+import type { ExchangeClaimService } from "./services/exchange-claim.service";
+import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
   type RealtimeEventGatewayPort
@@ -209,16 +247,25 @@ export interface AppDependencies {
   userRepository?: UserRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
+  shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
+  entityEngagementRepository?: EntityEngagementRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
   shopMembershipRepository?: ShopMembershipRepositoryPort;
   shopMembershipCardPlanRepository?: ShopMembershipCardPlanRepositoryPort;
   shopMembershipCardIssuanceRepository?: ShopMembershipCardIssuanceRepositoryPort;
   membershipAnalyticsRepository?: MembershipAnalyticsRepositoryPort;
+  shopMembershipCardAdjustmentRepository?: ShopMembershipCardAdjustmentRepositoryPort;
+  shopMembershipCardTopUpRepository?: ShopMembershipCardTopUpRepositoryPort;
+  shopMembershipCardRedemptionRepository?: ShopMembershipCardRedemptionRepositoryPort;
+  shopMembershipCardRefundRepository?: ShopMembershipCardRefundRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
+  technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;
+  merchantProfileRepository?: MerchantProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
   platformFeePolicyRepository?: PlatformFeePolicyRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
+  orderPerformanceRepository?: OrderPerformanceRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
   affiliatePlatformFeeService?: AffiliatePlatformFeeService;
   ndpExchangeRateRepository?: NdpExchangeRateRepositoryPort;
@@ -270,6 +317,56 @@ export interface AppDependencies {
   merchantApplicationReviewRepository?: MerchantApplicationReviewRepositoryPort;
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
+  platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
+  platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
+  userExperienceService?: Pick<
+    UserExperienceService,
+    | "recordEvent"
+    | "recordNdpConsumption"
+    | "recordNdpReversal"
+    | "recordMembershipRenewal"
+    | "getSummary"
+    | "listEntries"
+  >;
+  userExperienceRepository?: UserExperienceRepositoryPort;
+  platformMembershipAdministrationService?: Pick<
+    PlatformMembershipService,
+    | "listTiersForAdministration"
+    | "getTierDraft"
+    | "saveTierDraft"
+    | "publishTierVersion"
+    | "listBenefitsForAdministration"
+    | "updateBenefit"
+    | "changeEntitlement"
+    | "getMyMembership"
+    | "getMyMembershipBenefits"
+  >;
+  platformMembershipRepository?: PlatformMembershipRepositoryPort;
+  backofficeUserGroupService?: Pick<
+    BackofficeUserGroupService,
+    | "listGroups"
+    | "listGroupMembers"
+    | "createCustomGroup"
+    | "updateCustomGroup"
+    | "archiveCustomGroup"
+    | "setCustomGroupMembers"
+  >;
+  backofficeUserGroupRepository?: BackofficeUserGroupRepositoryPort;
+  userGlobalPolicyService?: Pick<
+    UserGlobalPolicyService,
+    "getCurrentAndDraft" | "saveDraft" | "publishDraft"
+  >;
+  userGlobalPolicyRepository?: UserGlobalPolicyRepositoryPort;
+  userPolicyEnforcementRepository?: UserPolicyEnforcementRepositoryPort;
+  userPolicyEnforcementService?: Pick<
+    UserPolicyEnforcementService,
+    "evaluateAccountCompliance" | "assertServiceEkyc"
+  >;
+  ndpExperienceCampaignService?: Pick<
+    NdpExperienceCampaignService,
+    "listCampaigns" | "saveDraft" | "publishDraft" | "archiveCampaign"
+  >;
+  ndpExperienceCampaignRepository?: NdpExperienceCampaignRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;
@@ -291,6 +388,9 @@ export interface AppDependencies {
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;
+  exchangeClaimService?: ExchangeClaimService;
+  exchangeRequestFeeService?: ExchangeRequestFeeService;
+  ledgerService?: LedgerService;
 }
 
 const createDefaultAppDependencies = (): AppDependencies => ({
@@ -330,9 +430,15 @@ export const createApp = (
   const authRepository = dependencies.authRepository ?? new AuthRepository();
   const personalIdentityScopeService =
     dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
+  const userExperienceService = createUserExperienceServiceForRoutes(dependencies);
   const realtimeService =
     dependencies.realtimeService ??
-    new RealtimeService(realtimeRepository, realtimeEventGateway, personalIdentityScopeService);
+    new RealtimeService(
+      realtimeRepository,
+      realtimeEventGateway,
+      personalIdentityScopeService,
+      userExperienceService
+    );
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
     databaseHealthCheck: dependencies.databaseHealthCheck ?? checkDatabaseHealth,
@@ -341,6 +447,7 @@ export const createApp = (
     realtimeRepository,
     realtimeEventGateway,
     realtimeService,
+    userExperienceService,
     personalIdentityScopeService
   };
 
@@ -351,16 +458,28 @@ export const createApp = (
   apiRouter.use(createRoleRoutes(config, resolvedDependencies));
   apiRouter.use(createUserRoutes(config, resolvedDependencies));
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
+  apiRouter.use(createShopTaxonomyRoutes(config, resolvedDependencies));
+  apiRouter.use(createEntityEngagementRoutes(config, resolvedDependencies));
   apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipCardPlanRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
   apiRouter.use(createMembershipAnalyticsRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipCardAdjustmentRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipCardTopUpRoutes(config, resolvedDependencies));
+  apiRouter.use(createShopMembershipCardRedemptionRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
+  apiRouter.use(createTechnicianDataCenterRoutes(config, resolvedDependencies));
+  apiRouter.use(createMerchantProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
+  apiRouter.use(createPlatformMembershipRoutes(config, resolvedDependencies));
+  apiRouter.use(createUserExperienceRoutes(config, resolvedDependencies));
+  apiRouter.use(createBackofficeUserGroupRoutes(config, resolvedDependencies));
+  apiRouter.use(createUserGlobalPolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));
+  apiRouter.use(createOrderPerformanceRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createNdpExchangeRateRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
@@ -391,6 +510,8 @@ export const createApp = (
   apiRouter.use(createImMessageTranslationRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeClaimRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));

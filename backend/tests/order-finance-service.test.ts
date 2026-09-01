@@ -42,6 +42,11 @@ const orderFinanceRecord: OrderFinanceRecord = {
   financial: {
     id: 301,
     serviceAmountJpy: 8800,
+    baseServiceAmountJpy: null,
+    extensionAmountJpy: null,
+    nominationChargeAmountJpy: null,
+    wasTechnicianNominated: null,
+    compensationBasisVersion: null,
     platformCollectedServiceAmountJpy: 0,
     offlineReportedServiceAmountJpy: 0,
     unknownOrUnreportedServiceAmountJpy: 8800,
@@ -80,6 +85,8 @@ const orderFinanceRecord: OrderFinanceRecord = {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 1000,
     commissionRatePercent: 50,
+    extensionCommissionRatePercent: 50,
+    nominationFeeJpy: 0,
     guaranteedMinimumJpy: 0,
     ndpFeeBearer: "split",
     technicianNdpSharePercent: 30,
@@ -98,6 +105,11 @@ const createRepository = (): jest.Mocked<OrderFinanceRepositoryPort> =>
       financial: {
         ...orderFinanceRecord.financial!,
         serviceAmountJpy: input.serviceAmountJpy,
+        baseServiceAmountJpy: input.baseServiceAmountJpy,
+        extensionAmountJpy: input.extensionAmountJpy,
+        nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+        wasTechnicianNominated: input.wasTechnicianNominated,
+        compensationBasisVersion: input.compensationBasisVersion,
         platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy,
         offlineReportedServiceAmountJpy: input.offlineReportedServiceAmountJpy,
         unknownOrUnreportedServiceAmountJpy: input.unknownOrUnreportedServiceAmountJpy,
@@ -238,6 +250,64 @@ describe("OrderFinanceService", () => {
         targetId: 101
       })
     );
+  });
+
+  it("persists component snapshots and previews each technician income component", async () => {
+    const repository = createRepository();
+    repository.findOrderFinance.mockResolvedValueOnce({
+      ...orderFinanceRecord,
+      priceAmountJpy: 15_500,
+      financial: {
+        ...orderFinanceRecord.financial!,
+        serviceAmountJpy: 15_500,
+        baseServiceAmountJpy: 10_000,
+        extensionAmountJpy: 4_000,
+        nominationChargeAmountJpy: 1_500,
+        wasTechnicianNominated: true,
+        compensationBasisVersion: "technician_override:3",
+        bPlatformFeeActualNdp: 0,
+        bPlatformFeeHoldNdp: 0
+      },
+      activeCompensationRule: {
+        ...orderFinanceRecord.activeCompensationRule!,
+        fixedOrderPayJpy: 0,
+        commissionRatePercent: 20,
+        extensionCommissionRatePercent: 60,
+        nominationFeeJpy: 1_500,
+        ndpFeeBearer: "shop"
+      }
+    });
+    const service = new OrderFinanceService(repository, { record: jest.fn() });
+
+    const detail = await service.getMerchantOrderFinance(merchantActor, context, 101);
+    expect(detail.technicianIncomePreview).toMatchObject({
+      baseServiceAmountJpy: 10_000,
+      extensionAmountJpy: 4_000,
+      nominationChargeAmountJpy: 1_500,
+      serviceCommissionPayJpy: 2_000,
+      extensionCommissionPayJpy: 2_400,
+      nominationPayJpy: 1_500,
+      technicianNetIncomeJpy: 5_900
+    });
+
+    await service.reportMerchantServiceIncome(merchantActor, context, 101, {
+      serviceAmountJpy: 15_500,
+      baseServiceAmountJpy: 10_000,
+      extensionAmountJpy: 4_000,
+      nominationChargeAmountJpy: 1_500,
+      wasTechnicianNominated: true,
+      platformCollectedServiceAmountJpy: 15_500,
+      offlineReportedServiceAmountJpy: 0,
+      paymentChannel: "platform_online",
+      confirmNow: true
+    } as never);
+    expect(repository.upsertServiceIncomeReport).toHaveBeenCalledWith(expect.objectContaining({
+      baseServiceAmountJpy: 10_000,
+      extensionAmountJpy: 4_000,
+      nominationChargeAmountJpy: 1_500,
+      wasTechnicianNominated: true,
+      compensationBasisVersion: "shop_default:1"
+    }));
   });
 
   it("rejects merchant finance order access outside the current shop scope", async () => {

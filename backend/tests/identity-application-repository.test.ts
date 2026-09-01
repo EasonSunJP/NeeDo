@@ -95,6 +95,26 @@ describe("IdentityApplicationRepository", () => {
     });
   });
 
+  it("validates that application keywords are active and belong to a selected category", async () => {
+    const category = { findMany: jest.fn().mockResolvedValue([{ id: 1 }]) };
+    const businessKeyword = { findMany: jest.fn().mockResolvedValue([{ id: 10, categoryId: 1 }]) };
+    const repository = new IdentityApplicationRepository({ category, businessKeyword } as unknown as PrismaClient);
+
+    await expect(repository.assertMerchantTaxonomySelection({
+      serviceCategoryIds: [1],
+      businessKeywordIds: [10]
+    })).resolves.toBeUndefined();
+    expect(businessKeyword.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ category: { isActive: true, deletedAt: null } })
+    }));
+
+    businessKeyword.findMany.mockResolvedValueOnce([{ id: 10, categoryId: 2 }]);
+    await expect(repository.assertMerchantTaxonomySelection({
+      serviceCategoryIds: [1],
+      businessKeywordIds: [10]
+    })).rejects.toMatchObject({ message: "error.identity_application.taxonomy_selection_invalid", statusCode: 400 });
+  });
+
   it("creates a technician application and typed detail in one nested write", async () => {
     const identityApplication = {
       create: jest.fn().mockResolvedValue(applicationRow)
@@ -132,6 +152,65 @@ describe("IdentityApplicationRepository", () => {
         }
       })
     );
+  });
+
+  it("creates merchant taxonomy joins in the same nested draft write", async () => {
+    const merchantRow = {
+      ...applicationRow,
+      type: "merchant",
+      technicianDetail: null,
+      merchantDetail: {
+        applicantKind: "individual",
+        corporateLegalName: null,
+        corporateLegalNameKana: null,
+        representativeName: "山本太郎",
+        representativeNameKana: "ヤマモトタロウ",
+        shopName: "NeeDo 银座店",
+        businessAddress: "東京都中央区",
+        contactPhone: "0312345678",
+        responsiblePersonName: "山本太郎",
+        showcaseDraft: { description: "リラクゼーション" },
+        bankAccountId: null,
+        contractAcceptanceId: null,
+        bankAccount: null
+      },
+      serviceCategories: [{ categoryId: 1 }],
+      businessKeywords: [{ businessKeywordId: 10 }]
+    };
+    const identityApplication = { create: jest.fn().mockResolvedValue(merchantRow) };
+    const repository = new IdentityApplicationRepository({ identityApplication } as unknown as PrismaClient);
+
+    await expect(repository.createMerchantDraft({
+      userId: 3,
+      activeKey: "3:merchant",
+      detail: {
+        applicantKind: "individual",
+        corporateLegalName: null,
+        corporateLegalNameKana: null,
+        representativeName: "山本太郎",
+        representativeNameKana: "ヤマモトタロウ",
+        shopName: "NeeDo 银座店",
+        businessAddress: "東京都中央区",
+        contactPhone: "0312345678",
+        responsiblePersonName: "山本太郎",
+        showcaseDraft: { description: "リラクゼーション" },
+        serviceCategoryIds: [1],
+        businessKeywordIds: [10],
+        bankAccountId: null,
+        contractAcceptanceId: null,
+        mediaPurposes: [],
+        bankVerificationStatus: null,
+        eKycVerified: false
+      }
+    })).resolves.toMatchObject({
+      merchantDetail: { serviceCategoryIds: [1], businessKeywordIds: [10] }
+    });
+    expect(identityApplication.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        serviceCategories: { create: [{ categoryId: 1, selectedByUserId: 3 }] },
+        businessKeywords: { create: [{ businessKeywordId: 10, selectedByUserId: 3 }] }
+      })
+    }));
   });
 
   it("paginates only the current user's non-deleted applications", async () => {

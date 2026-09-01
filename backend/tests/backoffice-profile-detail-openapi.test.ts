@@ -48,7 +48,13 @@ describe("formal profile detail OpenAPI contract", () => {
       additionalProperties: false,
       required: ["membershipLevel", "grantMode", "durationUnit", "durationValue", "startsAt"]
     });
-    expect(input.properties.durationUnit.enum).toEqual(["forever", "day", "month"]);
+    expect(input.properties.membershipLevel.enum).toEqual([
+      "silver",
+      "gold",
+      "black_diamond"
+    ]);
+    expect(input.properties.durationUnit.enum).toEqual(["month"]);
+    expect(input.properties.durationValue.enum).toEqual([1, 12]);
     expect(detail.allOf[1].required).toEqual(expect.arrayContaining([
       "membershipGrantMode",
       "membershipDurationUnit",

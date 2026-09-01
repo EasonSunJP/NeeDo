@@ -9,6 +9,8 @@ import {
   backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeManagedUserListQuerySchema,
+  backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
@@ -92,6 +94,22 @@ export class BackofficeController {
     }
   };
 
+  public managedUsers = this.createListHandler((service, request, response) =>
+    service.listManagedUsers(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeManagedUserListQuerySchema.parse(request.query)
+    )
+  );
+
+  public managedUser = this.createListHandler((service, request, response) =>
+    service.getManagedUser(
+      backofficeManagedUserParamSchema.parse(request.params).userId,
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
+  );
+
   public merchantDashboard = async (
     request: Request,
     response: Response,
@@ -141,6 +159,14 @@ export class BackofficeController {
       getAuthenticatedAccess(response),
       getRequestContext(request),
       backofficeListQuerySchema.parse(request.query)
+    )
+  );
+
+  public platformOrder = this.createListHandler((service, request, response) =>
+    service.getPlatformOrder(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
     )
   );
 
