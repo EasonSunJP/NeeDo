@@ -11,6 +11,7 @@ import {
 } from "../order-detail/serviceReviewTagCatalog";
 import { cn } from "../../lib/utils";
 import type { ServicePaymentMethod, Technician } from "../../types/domain";
+import type { TechnicianFormalContactCardData } from "./types";
 
 const paymentMethodLabels: Record<ServicePaymentMethod, string> = {
   platform: "平台支付",
@@ -63,8 +64,9 @@ function formatTechnicianHeightValue(value?: string) {
   return value?.trim().replace(/\s*(cm|厘米|センチ|㎝)$/i, "").trim() ?? "";
 }
 
-function formatTechnicianRating(value: number) {
-  return Number.isFinite(value) ? value.toFixed(1) : "5.0";
+function formatTechnicianRating(value: number | string) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(1) : "—";
 }
 
 function getTechnicianIdentityDisplayLabel(label?: Technician["identityLabel"]) {
@@ -75,9 +77,19 @@ function getTechnicianIdentityDisplayLabel(label?: Technician["identityLabel"]) 
   return label ?? "个人技师";
 }
 
-function formatPaymentMethodLabels(paymentMethods?: ServicePaymentMethod[]) {
-  const labels = paymentMethods?.map((method) => paymentMethodLabels[method]).filter(Boolean) ?? [];
-  return labels.length > 0 ? labels.join("、") : "未设置";
+function formatPaymentMethodLabels(paymentMethods: string[]) {
+  return paymentMethods
+    .map((method) => paymentMethodLabels[method as ServicePaymentMethod] ?? method)
+    .join("、");
+}
+
+function formatAcceptanceRate(value: number) {
+  const percent = value / 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2)}%`;
+}
+
+function formatJpy(value: number) {
+  return `¥${value.toLocaleString("ja-JP")}`;
 }
 
 function renderTechnicianReviewStampLabel(label: string) {
@@ -123,23 +135,26 @@ export function TechnicianReviewStampList({ className }: { className?: string })
 export function TechnicianPublicInfoCard({
   className,
   dynamicTo,
+  formalData,
   onClose,
   technician,
   themeScope = "user"
 }: {
   className?: string;
-  dynamicTo: string;
+  dynamicTo?: string;
+  formalData?: TechnicianFormalContactCardData;
   onClose?: () => void;
   technician: Technician;
   themeScope?: TechnicianPublicInfoCardThemeScope;
 }) {
   const surface = publicInfoCardSurface;
   const themeStyle = getTechnicianPublicInfoCardThemeStyle();
-  const technicianInfoTags = (technician.profileTags?.length ? technician.profileTags : technician.skills).filter(Boolean);
   const displayName = technician.nickname?.trim() || technician.name;
   const introductionText = technician.bio?.trim() || "这个技师暂时还没有补充介绍。";
-  const rating = formatTechnicianRating(technician.rating);
-  const reviewCount = Math.max(0, technician.reviewCount);
+  const details = formalData?.contactDetails;
+  const completedOrderCount = formalData?.metrics.completedOrderCount ?? technician.orderCount;
+  const rating = formatTechnicianRating(formalData?.metrics.ratingAverage ?? technician.rating);
+  const reviewCount = Math.max(0, formalData?.metrics.reviewCount ?? technician.reviewCount);
   const actionButtonClassName = cn("focus-ring grid h-11 w-11 place-items-center rounded-full border text-[color:var(--profile-card-primary-strong)] shadow-[0_14px_30px_color-mix(in_srgb,var(--profile-card-primary)_18%,rgba(0,0,0,0.26))]", surface.metric);
 
   return (
@@ -155,9 +170,11 @@ export function TechnicianPublicInfoCard({
             <AppIcon className="h-5 w-5" name="close" />
           </button>
         ) : null}
-        <Link aria-label={`查看${displayName}动态页`} className={actionButtonClassName} to={dynamicTo}>
-          <AppIcon className="h-5 w-5" name="moments" />
-        </Link>
+        {dynamicTo ? (
+          <Link aria-label={`查看${displayName}动态页`} className={actionButtonClassName} to={dynamicTo}>
+            <AppIcon className="h-5 w-5" name="moments" />
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex min-w-0 items-start gap-3">
@@ -183,15 +200,30 @@ export function TechnicianPublicInfoCard({
       <div className="mt-4 grid grid-cols-2 gap-2">
         <div className={cn("rounded-[18px] border p-2.5", surface.metric)}>
           <p className={cn("text-xs font-bold", surface.label)}>完成订单</p>
-          <strong className="mt-1 block truncate text-[20px] leading-none">{technician.orderCount.toLocaleString("ja-JP")}</strong>
+          <strong className="mt-1 block truncate text-[20px] leading-none">{completedOrderCount.toLocaleString("ja-JP")}</strong>
         </div>
         <div className={cn("rounded-[18px] border p-2.5", surface.metric)}>
-          <p className={cn("text-xs font-bold", surface.label)}>服务评分</p>
-          <div className="mt-1 flex min-w-0 items-end gap-1">
-            <strong className={cn("block truncate text-[20px] leading-none", surface.accent)}>{rating}</strong>
-            <span className={cn("pb-0.5 text-xs font-black leading-none", surface.muted)}>/5</span>
+          <div className={cn("grid min-w-0", formalData ? "grid-cols-[1fr_auto_1fr] gap-2" : "grid-cols-1")}>
+            <div className="min-w-0">
+              <p className={cn("text-xs font-bold", surface.label)}>服务评分</p>
+              <div className="mt-1 flex min-w-0 items-end gap-1">
+                <strong className={cn("block truncate text-[20px] leading-none", surface.accent)}>{rating}</strong>
+                <span className={cn("pb-0.5 text-xs font-black leading-none", surface.muted)}>/5</span>
+              </div>
+              <p className={cn("mt-2 truncate text-[10px] font-black leading-none", surface.muted)}>{reviewCount.toLocaleString("ja-JP")} 人评价</p>
+            </div>
+            {formalData ? (
+              <>
+                <div className={cn("w-px", surface.divider)} />
+                <div className="min-w-0">
+                  <p className={cn("text-xs font-bold", surface.label)}>接单率</p>
+                  <strong className={cn("mt-1 block truncate text-[20px] leading-none", surface.accent)}>
+                    {formatAcceptanceRate(formalData.metrics.acceptanceRateBps)}
+                  </strong>
+                </div>
+              </>
+            ) : null}
           </div>
-          <p className={cn("mt-2 truncate text-[10px] font-black leading-none", surface.muted)}>{reviewCount.toLocaleString("ja-JP")} 人评价</p>
         </div>
       </div>
 
@@ -227,37 +259,70 @@ export function TechnicianPublicInfoCard({
           </div>
         </div>
 
-        <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
-          <p className={cn("text-xs font-bold", surface.label)}>支持支付方式</p>
-          <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
-            {formatPaymentMethodLabels(technician.paymentMethods)}
-          </p>
-        </div>
+        {details ? (
+          <>
+            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
+              <p className={cn("text-xs font-bold", surface.label)}>接单预算</p>
+              <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
+                {details.bidBudgetMinJpy === null && details.bidBudgetMaxJpy === null
+                  ? "未设置接单预算"
+                  : `${details.bidBudgetMinJpy === null ? "—" : formatJpy(details.bidBudgetMinJpy)} - ${details.bidBudgetMaxJpy === null ? "—" : formatJpy(details.bidBudgetMaxJpy)}`}
+              </p>
+            </div>
+
+            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
+              <p className={cn("text-xs font-bold", surface.label)}>支持支付方式</p>
+              <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
+                {details.paymentMethods.length > 0
+                  ? formatPaymentMethodLabels(details.paymentMethods)
+                  : "未设置支付方式"}
+              </p>
+            </div>
+          </>
+        ) : null}
 
         <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", surface.panel)}>
           <p className={cn("text-xs font-bold", surface.label)}>自我介绍</p>
           <p className={cn("mt-2 text-sm leading-6", surface.muted)}>{introductionText}</p>
         </div>
 
-        <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-special-tags">
-          <p className={cn("text-xs font-bold", surface.label)}>特殊标签</p>
-          <TechnicianReviewStampList className="mt-2" />
-        </div>
+        {details ? (
+          <>
+            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-special-tags">
+              <p className={cn("text-xs font-bold", surface.label)}>特殊标签</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {details.specialTags.length > 0 ? details.specialTags.map((tag) => (
+                  <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>{tag}</span>
+                )) : <span className={cn("text-sm font-bold", surface.muted)}>暂无特殊标签</span>}
+              </div>
+            </div>
 
-        <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-tags">
-          <p className={cn("text-xs font-bold", surface.label)}>标签</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {technicianInfoTags.length > 0 ? (
-              technicianInfoTags.map((tag) => (
-                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>
-                  {tag}
-                </span>
-              ))
-            ) : (
-              <span className={cn("text-sm font-bold", surface.muted)}>未设置</span>
-            )}
-          </div>
-        </div>
+            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-tags">
+              <p className={cn("text-xs font-bold", surface.label)}>标签</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {details.profileTags.length > 0 ? details.profileTags.map((tag) => (
+                  <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>{tag}</span>
+                )) : <span className={cn("text-sm font-bold", surface.muted)}>暂无标签</span>}
+              </div>
+            </div>
+
+            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-services">
+              <p className={cn("text-xs font-bold", surface.label)}>服务信息</p>
+              {details.services.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {details.services.map((service) => (
+                    <article className={cn("rounded-[16px] border p-3", surface.metric)} key={service.id}>
+                      <strong className="block text-sm">{service.name}</strong>
+                      <p className={cn("mt-1 text-xs font-bold", surface.muted)}>
+                        {formatJpy(service.priceAmount)} / {service.durationMinutes} 分钟（含税）
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : <p className={cn("mt-2 text-sm font-bold", surface.muted)}>暂无服务信息</p>}
+            </div>
+          </>
+        ) : null}
       </div>
     </section>
   );

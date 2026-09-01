@@ -57,7 +57,11 @@ import {
 import { cn } from "../../lib/utils";
 import { useI18n, useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
-import { PlatformMembershipSimpleCard } from "../../shared/profile-card";
+import {
+  PlatformMembershipSimpleCard,
+  TechnicianPublicInfoCard,
+  type TechnicianFormalContactCardData,
+} from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { getTechnicianScheduleStoreSnapshot } from "../../state/technicianScheduleStore";
@@ -180,6 +184,7 @@ import {
   type ImUser,
   type MessageCampaignImageInput,
   type MessageExt,
+  type TechnicianContactDetails,
   type TagMessageCampaignEstimate,
   type TagMessageCampaignResult
 } from "./model";
@@ -258,6 +263,71 @@ export type DirectoryProfileAction =
   | "accept"
   | "waiting"
   | "status";
+
+type FormalTechnicianProfileCard = {
+  technician: Technician;
+  formalData: TechnicianFormalContactCardData;
+};
+
+function buildFormalTechnicianProfileCard(
+  profile: DirectoryProfile | null | undefined,
+): FormalTechnicianProfileCard | null {
+  if (
+    !profile ||
+    profile.identityCard.entityType !== "technician" ||
+    !profile.technicianContactDetails
+  ) {
+    return null;
+  }
+
+  const details: TechnicianContactDetails = profile.technicianContactDetails;
+  const identityCard = profile.identityCard;
+  const rating = identityCard.creditValue ?? 0;
+
+  return {
+    technician: {
+      id: identityCard.profileId ?? profile.user.id,
+      systemId: profile.user.userIdLabel,
+      name: identityCard.displayName,
+      nickname: identityCard.displayName,
+      storeId: details.services[0] ? String(details.services[0].shopId) : "",
+      role: "therapist",
+      status: "available",
+      rating,
+      orderCount: details.completedOrderCount,
+      income: 0,
+      skills: [],
+      serviceAreas: identityCard.serviceArea ? [identityCard.serviceArea] : [],
+      acceptRate: details.acceptanceRateBps / 100,
+      cancelRate: 0,
+      reviewCount: identityCard.creditReviewCount,
+      languages: identityCard.languages,
+      avatar: profile.user.avatar,
+      age: identityCard.age === undefined ? undefined : String(identityCard.age),
+      height: identityCard.heightCm === undefined ? undefined : String(identityCard.heightCm),
+      bio: identityCard.bio,
+      identityLabel: identityCard.identityLabel === "店铺所属技师"
+        ? "店铺所属技师"
+        : "个人技师",
+    },
+    formalData: {
+      metrics: {
+        completedOrderCount: details.completedOrderCount,
+        ratingAverage: rating.toFixed(2),
+        reviewCount: identityCard.creditReviewCount,
+        acceptanceRateBps: details.acceptanceRateBps,
+      },
+      contactDetails: {
+        bidBudgetMinJpy: details.bidBudgetMinJpy,
+        bidBudgetMaxJpy: details.bidBudgetMaxJpy,
+        paymentMethods: details.paymentMethods,
+        specialTags: details.specialTags,
+        profileTags: details.profileTags,
+        services: details.services,
+      },
+    },
+  };
+}
 
 export function isActiveFriendRequest(
   request: FriendRequest | null | undefined,
@@ -2857,6 +2927,7 @@ export function ImDirectoryProfilePage() {
     : undefined;
   const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend" && !activePendingRequest;
   const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
+  const formalTechnicianProfileCard = buildFormalTechnicianProfileCard(profile);
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -3030,11 +3101,20 @@ export function ImDirectoryProfilePage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <ConversationIdentityProfileCard
-              identityCard={profile.identityCard}
-              user={profile.user}
-              viewerScope={scope}
-            />
+            {formalTechnicianProfileCard ? (
+              <TechnicianPublicInfoCard
+                dynamicTo={activityTo}
+                formalData={formalTechnicianProfileCard.formalData}
+                technician={formalTechnicianProfileCard.technician}
+                themeScope={scope}
+              />
+            ) : (
+              <ConversationIdentityProfileCard
+                identityCard={profile.identityCard}
+                user={profile.user}
+                viewerScope={scope}
+              />
+            )}
             {!isSelfProfile ? (
               <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
                 <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
@@ -7755,6 +7835,9 @@ export function ImConversationInfoPage() {
         languages: [],
       }
     : undefined;
+  const infoFormalTechnicianProfileCard = buildFormalTechnicianProfileCard(
+    conversationDirectoryProfile,
+  );
   const infoIdentityCardDetailTo = infoIdentityCard?.profileId && infoIdentityCard.entityType !== "account"
     ? getScopedProfileDetailPath(scope, infoIdentityCard.entityType, infoIdentityCard.profileId)
     : infoCardDetailTo;
@@ -7829,12 +7912,21 @@ export function ImConversationInfoPage() {
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
         {conversation.type === "single" && user && infoIdentityCard ? (
-          <ConversationIdentityProfileCard
-            detailTo={infoIdentityCardDetailTo}
-            identityCard={infoIdentityCard}
-            user={user}
-            viewerScope={scope}
-          />
+          infoFormalTechnicianProfileCard ? (
+            <TechnicianPublicInfoCard
+              dynamicTo={infoActivityTo}
+              formalData={infoFormalTechnicianProfileCard.formalData}
+              technician={infoFormalTechnicianProfileCard.technician}
+              themeScope={scope}
+            />
+          ) : (
+            <ConversationIdentityProfileCard
+              detailTo={infoIdentityCardDetailTo}
+              identityCard={infoIdentityCard}
+              user={user}
+              viewerScope={scope}
+            />
+          )
         ) : null}
 
         <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">

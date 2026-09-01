@@ -559,12 +559,15 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(profileSource).not.toContain("gradient");
   });
 
-  it("uses the formal identity information card on the directory profile", () => {
+  it("uses the expanded formal technician card only when contact details are authorized", () => {
     const start = source.indexOf("export function ImDirectoryProfilePage");
     const end = source.indexOf("export function ImContactDetailPage", start);
     const profileSource = source.slice(start, end);
 
     expect(profileSource).toContain("<ConversationIdentityProfileCard");
+    expect(profileSource).toContain("<TechnicianPublicInfoCard");
+    expect(profileSource).toContain("formalData={formalTechnicianProfileCard.formalData}");
+    expect(profileSource).toContain("buildFormalTechnicianProfileCard(profile)");
     expect(profileSource).toContain("identityCard={profile.identityCard}");
     expect(profileSource).toContain("viewerScope={scope}");
     expect(profileSource).not.toContain("<ContactSummaryCard");
