@@ -2952,6 +2952,113 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      ImContactCardV2: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "targetUserPublicId",
+          "needoId",
+          "nickname",
+          "avatarUrl",
+          "entityKind",
+          "ekycVerified",
+          "level",
+          "bio",
+          "tierCode",
+          "themeVersionPublicId",
+          "simpleTopColor",
+          "simpleBottomColor"
+        ],
+        properties: {
+          targetUserPublicId: { type: "string", minLength: 1, maxLength: 191 },
+          needoId: { type: "string", minLength: 1, maxLength: 160 },
+          nickname: { type: "string", minLength: 1, maxLength: 160 },
+          avatarUrl: {
+            type: ["string", "null"],
+            maxLength: 2_048,
+            pattern: "^(?:https?://|/)[^\\s]+$"
+          },
+          entityKind: {
+            type: "string",
+            enum: ["customer", "technician", "shop", "service"]
+          },
+          ekycVerified: { type: "boolean" },
+          level: { type: ["integer", "null"], minimum: 1, maximum: 100 },
+          bio: { type: ["string", "null"], maxLength: 500 },
+          tierCode: {
+            type: ["string", "null"],
+            enum: ["free", "silver", "gold", "black_diamond", null]
+          },
+          themeVersionPublicId: { type: ["string", "null"], minLength: 1, maxLength: 191 },
+          simpleTopColor: {
+            type: ["string", "null"],
+            pattern: "^#[0-9A-Fa-f]{6}$"
+          },
+          simpleBottomColor: {
+            type: ["string", "null"],
+            pattern: "^#[0-9A-Fa-f]{6}$"
+          }
+        },
+        description:
+          "Immutable server-authored display snapshot captured when the contact card is sent."
+      },
+      ImContactCardSnapshotV2: {
+        type: "object",
+        additionalProperties: false,
+        required: ["snapshotVersion", "type", "contactCard"],
+        properties: {
+          snapshotVersion: { type: "integer", enum: [2] },
+          type: { type: "string", enum: ["contact-card"] },
+          contactCard: { $ref: "#/components/schemas/ImContactCardV2" }
+        }
+      },
+      LegacyImContactCard: {
+        type: "object",
+        required: ["userId", "displayName", "profileKind"],
+        properties: {
+          userId: { type: "string", minLength: 1, maxLength: 191 },
+          displayName: { type: "string", minLength: 1, maxLength: 160 },
+          avatar: { type: "string", maxLength: 2_048 },
+          profileKind: {
+            type: "string",
+            enum: ["person", "technician", "store", "service"]
+          },
+          entityType: { type: "string", enum: ["user", "technician", "shop"] },
+          entityId: { type: "string", maxLength: 191 },
+          userIdLabel: { type: "string", maxLength: 160 },
+          headline: { type: "string", maxLength: 500 }
+        }
+      },
+      LegacyImContactCardMetadata: {
+        type: "object",
+        required: ["needoMessageType", "needoMessageExt"],
+        properties: {
+          needoMessageType: { type: "string", enum: ["contact-card"] },
+          needoMessageExt: {
+            type: "object",
+            required: ["contactCard"],
+            properties: {
+              contactCard: { $ref: "#/components/schemas/LegacyImContactCard" }
+            }
+          }
+        },
+        description:
+          "Legacy read-only contact-card metadata retained for historical message compatibility."
+      },
+      ContactCardMessage: {
+        allOf: [
+          { $ref: "#/components/schemas/RealtimeMessage" },
+          {
+            type: "object",
+            required: ["metadata"],
+            properties: {
+              metadata: { $ref: "#/components/schemas/ImContactCardSnapshotV2" }
+            }
+          }
+        ],
+        description:
+          "A normal realtime message whose metadata contains one immutable V2 contact-card snapshot."
+      },
       ContactCardSendRequest: {
         type: "object",
         additionalProperties: false,
@@ -2965,7 +3072,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["message", "replayed"],
         properties: {
-          message: { $ref: "#/components/schemas/RealtimeMessage" },
+          message: { $ref: "#/components/schemas/ContactCardMessage" },
           replayed: { type: "boolean" }
         }
       },
@@ -3014,7 +3121,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           type: { type: "string", enum: ["text", "system", "orderStatus"] },
           content: { type: ["string", "null"] },
-          metadata: {},
+          metadata: {
+            anyOf: [
+              { $ref: "#/components/schemas/ImContactCardSnapshotV2" },
+              { $ref: "#/components/schemas/LegacyImContactCardMetadata" },
+              { type: ["object", "null"], additionalProperties: true }
+            ],
+            description:
+              "Message-specific metadata. Contact cards use V2 snapshots; legacy cards remain read-only."
+          },
           reactions: {
             type: "array",
             items: { $ref: "#/components/schemas/RealtimeMessageReaction" }
