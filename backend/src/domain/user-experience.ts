@@ -42,6 +42,14 @@ export interface UserExperienceEntrySnapshot {
   campaignVersionId: string | null;
   occurredAt: Date;
   reversalOfEntryId: number | null;
+  ledgerTransactionId?: number | null;
+  entitlementId?: number | null;
+  ndpAmount?: number | null;
+  ndpPerBaseExp?: number | null;
+  extraThresholdNdp?: number | null;
+  extraAwardUnits?: bigint | null;
+  accumulatorBeforeNumerator?: bigint | null;
+  accumulatorAfterNumerator?: bigint | null;
 }
 
 export interface UserExperienceCalculatedEvent {
@@ -61,6 +69,37 @@ export interface UserExperienceCalculatedEvent {
   campaignVersionId: string | null;
   occurredAt: Date;
   reversalOfEntryId: number | null;
+}
+
+export interface NdpConsumptionExperienceSource {
+  kind: "qualifying_consumption";
+  userId: number;
+  settledNdp: number;
+  ledgerTransactionId: number;
+  transactionNo: string;
+  occurredAt: Date;
+}
+
+export interface NdpConsumptionCalculatedEvent {
+  userId: number;
+  eventType: "ndp_consumed";
+  sourceType: "ledger_transaction";
+  sourcePublicId: string;
+  idempotencyKey: string;
+  baseUnits: bigint;
+  campaignFactorBps: number;
+  membershipMultiplierBps: number;
+  membershipTierCode: PlatformMembershipTierCodeValue;
+  membershipTierVersionId: string;
+  policyVersionId: string;
+  campaignVersionId: string | null;
+  occurredAt: Date;
+  ledgerTransactionId: number;
+  ndpAmount: number;
+  ndpPerBaseExp: number;
+  tierBenefitId: number;
+  extraThresholdNdp: number | null;
+  extraAwardUnits: bigint;
 }
 
 export interface UserExperienceRecordEventInput {
@@ -100,6 +139,10 @@ export interface UserExperienceRepositoryPort {
     event: UserExperienceCalculatedEvent,
     options?: { transactionClient?: unknown }
   ) => Promise<UserExperienceMutationResult>;
+  recordNdpConsumptionEvent: (
+    event: NdpConsumptionCalculatedEvent,
+    options?: { transactionClient?: unknown }
+  ) => Promise<UserExperienceMutationResult>;
 }
 
 export interface UserExperienceMembershipResolverPort {
@@ -113,6 +156,58 @@ export interface UserExperienceMembershipResolverPort {
     benefits: Array<{
       code: PlatformMembershipBenefitCodeValue;
       configuration: unknown;
+      tierBenefitId?: number;
+      tierBenefitPublicId?: string;
     }>;
   }>;
 }
+
+export interface UserExperienceGlobalPolicyResolverPort {
+  resolvePolicyAt: (occurredAt: Date) => Promise<{
+    versionPublicId: string;
+    ndpPerBaseExp: number;
+    baseExpUnitsPerThreshold: number;
+  }>;
+}
+
+export interface UserExperienceCampaignResolverPort {
+  resolveCampaignAt: (occurredAt: Date) => Promise<{
+    factorBps: number;
+    versionPublicId: string | null;
+  }>;
+}
+
+const BPS_SCALE = 10_000n;
+
+export const calculateFinalExperienceUnits = (input: {
+  baseUnits: bigint;
+  campaignFactorBps: number;
+  membershipMultiplierBps: number;
+  extraUnits: bigint;
+}): bigint =>
+  (input.baseUnits *
+    BigInt(input.campaignFactorBps) *
+    BigInt(input.membershipMultiplierBps)) /
+    (BPS_SCALE * BPS_SCALE) +
+  input.extraUnits;
+
+export const calculateNdpBonus = (input: {
+  ndpAmount: number;
+  extraThresholdNdp: number | null;
+  extraAwardUnits: bigint;
+  accumulatorBeforeNumerator: bigint;
+}): {
+  extraUnits: bigint;
+  accumulatorAfterNumerator: bigint;
+} => {
+  if (input.extraThresholdNdp === null) {
+    return { extraUnits: 0n, accumulatorAfterNumerator: 0n };
+  }
+  const numerator =
+    input.accumulatorBeforeNumerator + BigInt(input.ndpAmount) * input.extraAwardUnits;
+  const threshold = BigInt(input.extraThresholdNdp);
+  return {
+    extraUnits: numerator / threshold,
+    accumulatorAfterNumerator: numerator % threshold
+  };
+};

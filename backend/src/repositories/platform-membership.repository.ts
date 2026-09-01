@@ -28,6 +28,8 @@ import {
 export interface ResolvedPlatformMembershipBenefit {
   code: PlatformMembershipBenefitCodeValue;
   configuration: unknown;
+  tierBenefitId?: number;
+  tierBenefitPublicId?: string;
 }
 
 export interface ResolvedPlatformMembership {
@@ -171,6 +173,8 @@ const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionS
     },
     orderBy: [{ benefit: { sortOrder: "asc" } }, { id: "asc" }],
     select: {
+      id: true,
+      publicId: true,
       configurationJson: true,
       benefit: { select: { code: true } }
     }
@@ -1100,7 +1104,9 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       expiresAt,
       benefits: version.benefits.map((item) => ({
         code: benefitCodeFromDb[item.benefit.code],
-        configuration: item.configurationJson
+        configuration: item.configurationJson,
+        tierBenefitId: item.id,
+        tierBenefitPublicId: item.publicId
       })),
       theme: {
         detailAccentColor: version.detailAccentColor,

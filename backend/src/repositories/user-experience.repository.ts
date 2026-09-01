@@ -5,12 +5,17 @@ import {
   type PrismaClient
 } from "@prisma/client";
 import type {
+  NdpConsumptionCalculatedEvent,
   UserExperienceAccountSnapshot,
   UserExperienceCalculatedEvent,
   UserExperienceEntrySnapshot,
   UserExperienceEventTypeValue,
   UserExperienceMutationResult,
   UserExperienceRepositoryPort
+} from "../domain/user-experience";
+import {
+  calculateFinalExperienceUnits,
+  calculateNdpBonus
 } from "../domain/user-experience";
 import type { PlatformMembershipTierCodeValue } from "../domain/platform-membership";
 import { resolveLevel } from "../domain/user-experience-levels";
@@ -89,7 +94,15 @@ const entrySelect = Prisma.validator<Prisma.UserExperienceEntrySelect>()({
   policyVersionId: true,
   campaignVersionId: true,
   occurredAt: true,
-  reversalOfEntryId: true
+  reversalOfEntryId: true,
+  ledgerTransactionId: true,
+  entitlementId: true,
+  ndpAmount: true,
+  ndpPerBaseExp: true,
+  extraThresholdNdp: true,
+  extraAwardUnits: true,
+  accumulatorBeforeNumerator: true,
+  accumulatorAfterNumerator: true
 });
 
 type AccountRecord = Prisma.UserExperienceAccountGetPayload<{
@@ -126,7 +139,15 @@ const mapEntry = (record: EntryRecord): UserExperienceEntrySnapshot => ({
   policyVersionId: record.policyVersionId,
   campaignVersionId: record.campaignVersionId,
   occurredAt: record.occurredAt,
-  reversalOfEntryId: record.reversalOfEntryId
+  reversalOfEntryId: record.reversalOfEntryId,
+  ledgerTransactionId: record.ledgerTransactionId,
+  entitlementId: record.entitlementId,
+  ndpAmount: record.ndpAmount,
+  ndpPerBaseExp: record.ndpPerBaseExp,
+  extraThresholdNdp: record.extraThresholdNdp,
+  extraAwardUnits: record.extraAwardUnits,
+  accumulatorBeforeNumerator: record.accumulatorBeforeNumerator,
+  accumulatorAfterNumerator: record.accumulatorAfterNumerator
 });
 
 export class UserExperienceRepository implements UserExperienceRepositoryPort {
@@ -188,6 +209,166 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
       }
     }
     throw new UserExperienceOptimisticConflict("experience account update conflicted");
+  }
+
+  public async recordNdpConsumptionEvent(
+    event: NdpConsumptionCalculatedEvent,
+    options: { transactionClient?: unknown } = {}
+  ): Promise<UserExperienceMutationResult> {
+    if (options.transactionClient) {
+      return this.recordNdpOnceWithClient(
+        event,
+        options.transactionClient as Prisma.TransactionClient
+      );
+    }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.client.$transaction((transaction) =>
+          this.recordNdpOnceWithClient(event, transaction)
+        );
+      } catch (error) {
+        if (this.isUniqueConflict(error)) {
+          const duplicate = await this.findDuplicate(event.idempotencyKey);
+          if (duplicate) return duplicate;
+        }
+        if (error instanceof UserExperienceOptimisticConflict && attempt < 2) continue;
+        throw error;
+      }
+    }
+    throw new UserExperienceOptimisticConflict("NDP experience update conflicted");
+  }
+
+  private async recordNdpOnceWithClient(
+    event: NdpConsumptionCalculatedEvent,
+    transaction: Prisma.TransactionClient
+  ): Promise<UserExperienceMutationResult> {
+    const existing = await transaction.userExperienceEntry.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [
+          { idempotencyKey: event.idempotencyKey },
+          { ledgerTransactionId: event.ledgerTransactionId }
+        ]
+      },
+      select: entrySelect
+    });
+    if (existing) {
+      const account = await transaction.userExperienceAccount.findFirst({
+        where: { userId: event.userId, deletedAt: null },
+        select: accountSelect
+      });
+      return account
+        ? { status: "duplicate", account: mapAccount(account), entry: mapEntry(existing) }
+        : { status: "ineligible", account: null };
+    }
+
+    const account = await transaction.userExperienceAccount.findFirst({
+      where: {
+        userId: event.userId,
+        deletedAt: null,
+        user: { customerProfile: { is: { deletedAt: null } }, deletedAt: null }
+      },
+      select: { id: true, ...accountSelect }
+    });
+    if (!account) return { status: "ineligible", account: null };
+
+    let accumulatorBeforeNumerator: bigint | null = null;
+    let accumulatorAfterNumerator: bigint | null = null;
+    let extraUnits = 0n;
+    if (event.extraThresholdNdp !== null) {
+      const accumulator = await transaction.userNdpExperienceAccumulator.upsert({
+        where: {
+          userId_tierBenefitId: {
+            userId: event.userId,
+            tierBenefitId: event.tierBenefitId
+          }
+        },
+        create: {
+          userId: event.userId,
+          tierBenefitId: event.tierBenefitId,
+          remainderNumerator: 0n
+        },
+        update: {},
+        select: { id: true, remainderNumerator: true, lockVersion: true }
+      });
+      accumulatorBeforeNumerator = accumulator.remainderNumerator;
+      const bonus = calculateNdpBonus({
+        ndpAmount: event.ndpAmount,
+        extraThresholdNdp: event.extraThresholdNdp,
+        extraAwardUnits: event.extraAwardUnits,
+        accumulatorBeforeNumerator
+      });
+      extraUnits = bonus.extraUnits;
+      accumulatorAfterNumerator = bonus.accumulatorAfterNumerator;
+      const accumulatorUpdated = await transaction.userNdpExperienceAccumulator.updateMany({
+        where: {
+          id: accumulator.id,
+          lockVersion: accumulator.lockVersion,
+          deletedAt: null
+        },
+        data: {
+          remainderNumerator: accumulatorAfterNumerator,
+          lockVersion: { increment: 1 }
+        }
+      });
+      if (accumulatorUpdated.count !== 1) throw new UserExperienceOptimisticConflict();
+    }
+
+    const finalUnits = calculateFinalExperienceUnits({
+      baseUnits: event.baseUnits,
+      campaignFactorBps: event.campaignFactorBps,
+      membershipMultiplierBps: event.membershipMultiplierBps,
+      extraUnits
+    });
+    const entry = await transaction.userExperienceEntry.create({
+      data: {
+        accountId: account.id,
+        userId: event.userId,
+        eventType: UserExperienceEventType.NDP_CONSUMED,
+        sourceType: event.sourceType,
+        sourcePublicId: event.sourcePublicId,
+        idempotencyKey: event.idempotencyKey,
+        baseUnits: event.baseUnits,
+        campaignFactorBps: event.campaignFactorBps,
+        membershipMultiplierBps: event.membershipMultiplierBps,
+        extraUnits,
+        finalUnits,
+        membershipTierCode: tierCodeToDb[event.membershipTierCode],
+        membershipTierVersionId: event.membershipTierVersionId,
+        policyVersionId: event.policyVersionId,
+        campaignVersionId: event.campaignVersionId,
+        occurredAt: event.occurredAt,
+        ledgerTransactionId: event.ledgerTransactionId,
+        ndpAmount: event.ndpAmount,
+        ndpPerBaseExp: event.ndpPerBaseExp,
+        extraThresholdNdp: event.extraThresholdNdp,
+        extraAwardUnits: event.extraAwardUnits,
+        accumulatorBeforeNumerator,
+        accumulatorAfterNumerator
+      },
+      select: entrySelect
+    });
+    const totalUnits = account.totalExpUnits + finalUnits;
+    const updated = await transaction.userExperienceAccount.updateMany({
+      where: { id: account.id, lockVersion: account.lockVersion, deletedAt: null },
+      data: {
+        totalExpUnits: totalUnits,
+        currentLevel: resolveLevel(totalUnits),
+        lockVersion: { increment: 1 }
+      }
+    });
+    if (updated.count !== 1) throw new UserExperienceOptimisticConflict();
+    return {
+      status: "awarded",
+      account: {
+        publicId: account.publicId,
+        userId: account.userId,
+        totalUnits,
+        currentLevel: resolveLevel(totalUnits),
+        lockVersion: account.lockVersion + 1
+      },
+      entry: mapEntry(entry)
+    };
   }
 
   private recordOnce(event: UserExperienceCalculatedEvent) {

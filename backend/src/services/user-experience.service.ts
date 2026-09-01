@@ -1,5 +1,9 @@
 import {
+  calculateFinalExperienceUnits,
   USER_EXPERIENCE_EVENT_TYPES,
+  type NdpConsumptionExperienceSource,
+  type UserExperienceCampaignResolverPort,
+  type UserExperienceGlobalPolicyResolverPort,
   type UserExperienceMembershipResolverPort,
   type UserExperienceMutationResult,
   type UserExperienceRecordEventInput,
@@ -13,7 +17,6 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 
-const BPS_SCALE = 10_000n;
 const eventTypeSet = new Set<string>(USER_EXPERIENCE_EVENT_TYPES);
 
 const formatExperienceUnits = (units: bigint): string => {
@@ -27,22 +30,14 @@ const formatExperienceUnits = (units: bigint): string => {
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
 };
 
-export const calculateFinalExperienceUnits = (input: {
-  baseUnits: bigint;
-  campaignFactorBps: number;
-  membershipMultiplierBps: number;
-  extraUnits: bigint;
-}): bigint =>
-  (input.baseUnits *
-    BigInt(input.campaignFactorBps) *
-    BigInt(input.membershipMultiplierBps)) /
-    (BPS_SCALE * BPS_SCALE) +
-  input.extraUnits;
+export { calculateFinalExperienceUnits } from "../domain/user-experience";
 
 export class UserExperienceService {
   public constructor(
     private readonly repository: UserExperienceRepositoryPort,
-    private readonly membershipResolver: UserExperienceMembershipResolverPort
+    private readonly membershipResolver: UserExperienceMembershipResolverPort,
+    private readonly globalPolicyResolver?: UserExperienceGlobalPolicyResolverPort,
+    private readonly campaignResolver?: UserExperienceCampaignResolverPort
   ) {}
 
   public async getSummary(userId: number) {
@@ -156,6 +151,124 @@ export class UserExperienceService {
     return options.transactionClient
       ? this.repository.recordCalculatedEvent(calculatedEvent, options)
       : this.repository.recordCalculatedEvent(calculatedEvent);
+  }
+
+  public async recordNdpConsumption(
+    source: NdpConsumptionExperienceSource,
+    options: { transactionClient?: unknown } = {}
+  ): Promise<UserExperienceMutationResult> {
+    this.assertNdpSource(source);
+    const account = await this.repository.findActiveAccount(source.userId);
+    if (!account) return { status: "ineligible", account: null };
+    if (!this.globalPolicyResolver || !this.campaignResolver) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.user_experience.ndp_policy_unavailable",
+        statusCode: 500
+      });
+    }
+
+    const [membership, policy, campaign] = await Promise.all([
+      this.membershipResolver.resolveMembershipAt(source.userId, source.occurredAt),
+      this.globalPolicyResolver.resolvePolicyAt(source.occurredAt),
+      this.campaignResolver.resolveCampaignAt(source.occurredAt)
+    ]);
+    const ndpBenefit = membership.benefits.find(
+      (benefit) => benefit.code === "ndp_experience"
+    );
+    if (!ndpBenefit) return { status: "ineligible", account };
+    if (!Number.isSafeInteger(ndpBenefit.tierBenefitId) || (ndpBenefit.tierBenefitId ?? 0) < 1) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.user_experience.ndp_benefit_version_unavailable",
+        statusCode: 500
+      });
+    }
+    const { extraThresholdNdp, extraAwardUnits } = this.parseNdpBenefitConfiguration(
+      ndpBenefit.configuration
+    );
+    const membershipMultiplierBps = Math.round(membership.multiplier * 10_000);
+    if (
+      !Number.isSafeInteger(membershipMultiplierBps) ||
+      membershipMultiplierBps <= 0 ||
+      !Number.isSafeInteger(policy.ndpPerBaseExp) ||
+      policy.ndpPerBaseExp <= 0 ||
+      !Number.isSafeInteger(policy.baseExpUnitsPerThreshold) ||
+      policy.baseExpUnitsPerThreshold <= 0 ||
+      !Number.isSafeInteger(campaign.factorBps) ||
+      campaign.factorBps <= 0
+    ) {
+      throw new RangeError("NDP experience policy is invalid");
+    }
+
+    const event = {
+      userId: source.userId,
+      eventType: "ndp_consumed" as const,
+      sourceType: "ledger_transaction" as const,
+      sourcePublicId: source.transactionNo,
+      idempotencyKey: `ndp-consumption:${source.transactionNo}`,
+      baseUnits:
+        (BigInt(source.settledNdp) * BigInt(policy.baseExpUnitsPerThreshold)) /
+        BigInt(policy.ndpPerBaseExp),
+      campaignFactorBps: campaign.factorBps,
+      membershipMultiplierBps,
+      membershipTierCode: membership.tierCode,
+      membershipTierVersionId: membership.tierVersionPublicId,
+      policyVersionId: policy.versionPublicId,
+      campaignVersionId: campaign.versionPublicId,
+      occurredAt: source.occurredAt,
+      ledgerTransactionId: source.ledgerTransactionId,
+      ndpAmount: source.settledNdp,
+      ndpPerBaseExp: policy.ndpPerBaseExp,
+      tierBenefitId: ndpBenefit.tierBenefitId!,
+      extraThresholdNdp,
+      extraAwardUnits
+    };
+    return this.repository.recordNdpConsumptionEvent(
+      event,
+      options.transactionClient ? options : undefined
+    );
+  }
+
+  private parseNdpBenefitConfiguration(configuration: unknown): {
+    extraThresholdNdp: number | null;
+    extraAwardUnits: bigint;
+  } {
+    if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
+      throw new RangeError("NDP experience benefit configuration is invalid");
+    }
+    const value = configuration as Record<string, unknown>;
+    const threshold = value.extraThresholdNdp;
+    const award = value.extraAwardExpUnits;
+    if (threshold === null && award === null) {
+      return { extraThresholdNdp: null, extraAwardUnits: 0n };
+    }
+    if (
+      !Number.isSafeInteger(threshold) ||
+      Number(threshold) <= 0 ||
+      !Number.isSafeInteger(award) ||
+      Number(award) <= 0
+    ) {
+      throw new RangeError("NDP experience benefit configuration is invalid");
+    }
+    return { extraThresholdNdp: Number(threshold), extraAwardUnits: BigInt(Number(award)) };
+  }
+
+  private assertNdpSource(source: NdpConsumptionExperienceSource): void {
+    if (
+      source.kind !== "qualifying_consumption" ||
+      !Number.isSafeInteger(source.userId) ||
+      source.userId < 1 ||
+      !Number.isSafeInteger(source.settledNdp) ||
+      source.settledNdp < 1 ||
+      !Number.isSafeInteger(source.ledgerTransactionId) ||
+      source.ledgerTransactionId < 1 ||
+      source.transactionNo.length < 1 ||
+      source.transactionNo.length > 96 ||
+      Number.isNaN(source.occurredAt.getTime())
+    ) {
+      throw new RangeError("NDP experience source is invalid");
+    }
   }
 
   private assertInput(input: UserExperienceRecordEventInput): void {
