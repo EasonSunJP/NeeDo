@@ -4,6 +4,7 @@ import type { AppConfig } from "../config/env";
 import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { PRISMA_INT_MAX } from "../constants/database";
+import { ERROR_CODES } from "../constants/error-codes";
 
 type OpenApiDocument = Record<string, unknown>;
 const safeIntegerMaximum = PRISMA_INT_MAX;
@@ -5002,6 +5003,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           rejectionReason: { type: ["string", "null"] }
         }
       },
+      UserPolicyComplianceRequirement: {
+        type: "string",
+        enum: ["phone_binding_required", "email_binding_required", "ekyc_required"]
+      },
+      UserPolicyComplianceErrorData: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "complianceRequirements",
+          "policyVersionPublicId",
+          "effectiveAt",
+          "permittedNextRoutes"
+        ],
+        properties: {
+          complianceRequirements: {
+            type: "array",
+            items: { $ref: "#/components/schemas/UserPolicyComplianceRequirement" }
+          },
+          policyVersionPublicId: { type: "string" },
+          effectiveAt: { type: "string", format: "date-time" },
+          permittedNextRoutes: { type: "array", items: { type: "string" } }
+        }
+      },
       AuthMe: {
         type: "object",
         required: [
@@ -5054,7 +5078,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           roles: { type: "array", items: { type: "string" } },
           permissions: { type: "array", items: { type: "string" } },
-          menus: { type: "array", items: { type: "string" } }
+          menus: { type: "array", items: { type: "string" } },
+          complianceRequirements: {
+            type: "array",
+            items: { $ref: "#/components/schemas/UserPolicyComplianceRequirement" }
+          },
+          compliancePolicyVersionPublicId: { type: "string" },
+          complianceEffectiveAt: { type: "string", format: "date-time" },
+          compliancePermittedNextRoutes: {
+            type: "array",
+            items: { type: "string" }
+          }
         }
       },
       AuthIdentity: {
@@ -12237,7 +12271,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           "401": { description: "Access token invalid, expired, or blacklisted" },
-          "403": { description: "Missing auth me permission" }
+          "403": {
+            description: "Missing auth me permission or account compliance is required",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: {
+                      type: "integer",
+                      enum: [ERROR_CODES.FORBIDDEN, ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED]
+                    },
+                    message: { type: "string" },
+                    data: {
+                      oneOf: [
+                        { type: "null" },
+                        { $ref: "#/components/schemas/UserPolicyComplianceErrorData" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

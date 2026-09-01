@@ -6,6 +6,7 @@ import { merchantPreviewShopHeaderSchema } from "../validators/merchant-preview.
 
 export interface AuthenticateOptions {
   requiredPermission?: string;
+  allowDuringCompliance?: boolean;
 }
 
 export const createAuthenticateMiddleware =
@@ -16,7 +17,8 @@ export const createAuthenticateMiddleware =
       const token = getBearerToken(request);
       const auth = await authService.authenticateAccessToken(
         token,
-        options.requiredPermission
+        options.requiredPermission,
+        { allowDuringCompliance: options.allowDuringCompliance }
       );
       response.locals.auth = applyReadOnlyMerchantPreview(request, auth);
       next();

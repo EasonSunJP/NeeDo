@@ -21,6 +21,7 @@ import { RealtimeRepository } from "./repositories/realtime.repository";
 import { PlatformMembershipRepository } from "./repositories/platform-membership.repository";
 import { NdpExperienceCampaignRepository } from "./repositories/ndp-experience-campaign.repository";
 import { UserGlobalPolicyRepository } from "./repositories/user-global-policy.repository";
+import { UserPolicyEnforcementRepository } from "./repositories/user-policy-enforcement.repository";
 import { UserExperienceRepository } from "./repositories/user-experience.repository";
 import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
@@ -40,6 +41,7 @@ import { NdpExperienceCampaignService } from "./services/ndp-experience-campaign
 import { PlatformMembershipService } from "./services/platform-membership.service";
 import { UserExperienceService } from "./services/user-experience.service";
 import { UserGlobalPolicyService } from "./services/user-global-policy.service";
+import { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
@@ -72,6 +74,11 @@ const authRepository = new AuthRepository();
 const platformMembershipRepository = new PlatformMembershipRepository();
 const userExperienceRepository = new UserExperienceRepository();
 const userGlobalPolicyRepository = new UserGlobalPolicyRepository();
+const userPolicyEnforcementRepository = new UserPolicyEnforcementRepository();
+const userPolicyEnforcementService = new UserPolicyEnforcementService(
+  userPolicyEnforcementRepository,
+  new UserGlobalPolicyService(userGlobalPolicyRepository)
+);
 const ndpExperienceCampaignRepository = new NdpExperienceCampaignRepository();
 const platformMembershipResolver = new PlatformMembershipService(
   platformMembershipRepository
@@ -168,6 +175,8 @@ const app = createApp(env, {
   userExperienceService,
   userExperienceRepository,
   userGlobalPolicyRepository,
+  userPolicyEnforcementRepository,
+  userPolicyEnforcementService,
   ndpExperienceCampaignRepository,
   merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });

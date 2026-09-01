@@ -39,6 +39,11 @@ import {
   resolveMerchantShopScope,
   type ResolvedMerchantShopScope
 } from "./merchant-shop-scope";
+import type {
+  UserPolicyComplianceDecision,
+  UserPolicyComplianceRequirement
+} from "../domain/user-policy-enforcement";
+import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 
 export interface AuthRequestContext {
   ip: string;
@@ -88,6 +93,7 @@ export interface AuthenticatedAccessContext {
   selectedMerchantShopPublicId?: string;
   roles: string[];
   permissions: string[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
 }
@@ -135,6 +141,10 @@ export interface AuthMePayload {
   roles: string[];
   permissions: string[];
   menus: string[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
 }
 
 interface LoginFailureInput {
@@ -215,7 +225,11 @@ export class AuthService {
     ),
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository(),
     private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger,
-    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
+    private readonly userPolicyEnforcementService?: Pick<
+      UserPolicyEnforcementService,
+      "evaluateAccountCompliance"
+    >
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -1202,12 +1216,15 @@ export class AuthService {
     const user = await this.repository.findUserById(auth.userId);
     this.assertActiveUser(user);
 
-    return this.buildMePayload(user, auth.currentIdentityId);
+    const payload = this.buildMePayload(user, auth.currentIdentityId);
+    const compliance = await this.evaluateAccountCompliance(user.id, new Date());
+    return compliance ? this.withCompliance(payload, compliance) : payload;
   }
 
   public async authenticateAccessToken(
     token: string,
-    requiredPermission?: string
+    requiredPermission?: string,
+    options: { allowDuringCompliance?: boolean } = {}
   ): Promise<AuthenticatedAccessContext> {
     const payload = this.tokenService.verifyAccessToken(token);
 
@@ -1229,6 +1246,10 @@ export class AuthService {
       payload.currentIdentityId,
       payload.merchantShopPublicId
     );
+    const compliance = await this.evaluateAccountCompliance(userId, new Date());
+    if (compliance && !compliance.compliant && !options.allowDuringCompliance) {
+      throw this.accountComplianceRequired(compliance);
+    }
 
     if (requiredPermission && !me.permissions.includes(requiredPermission)) {
       throw new AppError({
@@ -1258,8 +1279,53 @@ export class AuthService {
           }
         : {}),
       roles: me.roles,
-      permissions: me.permissions
+      permissions: me.permissions,
+      ...(compliance ? { complianceRequirements: compliance.requirements } : {})
     };
+  }
+
+  private async evaluateAccountCompliance(
+    userId: number,
+    occurredAt: Date
+  ): Promise<UserPolicyComplianceDecision | null> {
+    if (!this.userPolicyEnforcementService) return null;
+    return this.userPolicyEnforcementService.evaluateAccountCompliance(userId, occurredAt);
+  }
+
+  private withCompliance(
+    payload: AuthMePayload,
+    compliance: UserPolicyComplianceDecision
+  ): AuthMePayload {
+    return {
+      ...payload,
+      complianceRequirements: compliance.requirements,
+      compliancePolicyVersionPublicId: compliance.policyVersionPublicId,
+      complianceEffectiveAt: compliance.effectiveAt,
+      compliancePermittedNextRoutes: this.compliancePermittedNextRoutes()
+    };
+  }
+
+  private accountComplianceRequired(compliance: UserPolicyComplianceDecision): AppError {
+    return new AppError({
+      code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
+      message: "error.user_policy.account_compliance_required",
+      statusCode: 403,
+      data: {
+        complianceRequirements: compliance.requirements,
+        policyVersionPublicId: compliance.policyVersionPublicId,
+        effectiveAt: compliance.effectiveAt,
+        permittedNextRoutes: this.compliancePermittedNextRoutes()
+      }
+    });
+  }
+
+  private compliancePermittedNextRoutes(): string[] {
+    return [
+      "/api/v1/auth/me",
+      "/api/v1/auth/logout",
+      "/api/v1/auth/google/link",
+      "/api/v1/auth/password/setup"
+    ];
   }
 
   private async completeSuccessfulLogin(

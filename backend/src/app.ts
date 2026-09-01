@@ -42,7 +42,9 @@ import type { PlatformMembershipRepositoryPort } from "./repositories/platform-m
 import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
+import type { UserPolicyEnforcementRepositoryPort } from "./domain/user-policy-enforcement";
 import type { NdpExperienceCampaignRepositoryPort } from "./domain/ndp-experience-campaign";
+import type { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
 import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
@@ -329,6 +331,11 @@ export interface AppDependencies {
     "getCurrentAndDraft" | "saveDraft" | "publishDraft"
   >;
   userGlobalPolicyRepository?: UserGlobalPolicyRepositoryPort;
+  userPolicyEnforcementRepository?: UserPolicyEnforcementRepositoryPort;
+  userPolicyEnforcementService?: Pick<
+    UserPolicyEnforcementService,
+    "evaluateAccountCompliance" | "assertServiceEkyc"
+  >;
   ndpExperienceCampaignService?: Pick<
     NdpExperienceCampaignService,
     "listCampaigns" | "saveDraft" | "publishDraft" | "archiveCampaign"
