@@ -724,6 +724,11 @@ export class RealtimeService implements OrderStatusNotificationPort {
     if (!profile) {
       throw this.notFoundError("error.realtime.user_not_found");
     }
+    if (profile.identityCard.entityType !== "technician" && profile.technicianContactDetails) {
+      const safeProfile = { ...profile };
+      delete safeProfile.technicianContactDetails;
+      return safeProfile;
+    }
     return profile;
   }
 

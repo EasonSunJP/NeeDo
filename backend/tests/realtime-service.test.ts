@@ -213,6 +213,45 @@ describe("RealtimeService fuzzy search", () => {
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
 
+  it("strips technician-only details from a non-technician directory response", async () => {
+    const repository = {
+      findCanonicalIdentityIdForUser: jest.fn(async () => 1670),
+      getDirectoryProfile: jest.fn(async () => ({
+        user: { userId: 167, needoId: "u0000000167", username: "Target", avatarUrl: null },
+        identityCard: {
+          entityType: "user" as const,
+          profileId: 67,
+          displayName: "Target"
+        },
+        relationship: "friend" as const,
+        contactId: 9,
+        friendRequest: null,
+        technicianContactDetails: {
+          bidBudgetMinJpy: 12_000,
+          bidBudgetMaxJpy: 28_000,
+          paymentMethods: ["platform"],
+          specialTags: ["internal"],
+          profileTags: ["tag"],
+          services: [],
+          completedOrderCount: 12,
+          acceptanceRateBps: 9_800
+        }
+      }))
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    const result = await service.getDirectoryProfile(
+      { userId: 41, currentIdentityId: 410 } as never,
+      167
+    );
+
+    expect(result.identityCard.entityType).toBe("user");
+    expect(result).not.toHaveProperty("technicianContactDetails");
+  });
+
   it("loads the authenticated account as a read-only directory profile in the active identity", async () => {
     const profile = {
       user: { userId: 41, needoId: "u0000000041", username: "Requester", avatarUrl: null },

@@ -206,12 +206,35 @@ export type CreateFriendRequestOutcome =
   | { status: "already_friends" }
   | { status: "target_unavailable" };
 
+export interface TechnicianContactServicePayload {
+  id: number;
+  shopId: number;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+}
+
+export interface TechnicianContactDetailsPayload {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: TechnicianContactServicePayload[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+}
+
 export interface DirectoryProfilePayload {
   user: ParticipantPayload;
   identityCard: DirectoryIdentityCardPayload;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: FriendRequestPayload | null;
+  technicianContactDetails?: TechnicianContactDetailsPayload;
 }
 
 export interface DirectoryIdentityCardPayload {
@@ -962,6 +985,8 @@ type DirectoryProfileUserRecord = {
     city: string;
     serviceArea: string | null;
     yearsExperience: number;
+    age?: number | null;
+    heightCm?: { toString: () => string } | null;
     languages: unknown;
     visibility: string;
     employmentType: string;
@@ -2856,6 +2881,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             city: true,
             serviceArea: true,
             yearsExperience: true,
+            age: true,
+            heightCm: true,
             languages: true,
             visibility: true,
             employmentType: true,
@@ -2890,18 +2917,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       where: {
         ownerIdentityId: viewerIdentityId,
         contactIdentityId: targetIdentityId,
-        source: "friend_request",
-        deletedAt: null
+        deletedAt: null,
+        blockedAt: null
       },
       select: { id: true }
     });
+    const technicianContactDetails =
+      contact && identityCard.entityType === "technician" && user.technicianProfile
+        ? await this.loadTechnicianContactDetails(user.technicianProfile.id, dbNow)
+        : undefined;
     const reciprocalContact = contact
       ? await this.client.contact.findFirst({
           where: {
             ownerIdentityId: targetIdentityId,
             contactIdentityId: viewerIdentityId,
             source: "friend_request",
-            deletedAt: null
+            deletedAt: null,
+            blockedAt: null
           },
           select: { id: true }
         })
@@ -2912,7 +2944,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         identityCard,
         relationship: "friend",
         contactId: contact.id,
-        friendRequest: null
+        friendRequest: null,
+        ...(technicianContactDetails ? { technicianContactDetails } : {})
       };
     }
     const friendRequest = await this.client.friendRequest.findFirst({
@@ -2938,7 +2971,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           : "incoming_pending"
         : "none",
       contactId: null,
-      friendRequest: friendRequest ? this.mapFriendRequest(friendRequest, dbNow) : null
+      friendRequest: friendRequest ? this.mapFriendRequest(friendRequest, dbNow) : null,
+      ...(technicianContactDetails ? { technicianContactDetails } : {})
     };
   }
 
@@ -5324,8 +5358,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         creditValue: review?.ratingAverage.toString() ?? null,
         creditReviewCount: review?.reviewCount ?? 0,
         gender: null,
-        age: null,
-        heightCm: null,
+        age: profile.age ?? null,
+        heightCm: profile.heightCm?.toString() ?? null,
         languages:
           profile.visibility === "public" ? toDirectoryLanguages(profile.languages) : [],
         city: profile.city,
@@ -5387,6 +5421,78 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return fallback;
+  }
+
+  private async loadTechnicianContactDetails(
+    technicianProfileId: number,
+    dbNow: Date
+  ): Promise<TechnicianContactDetailsPayload | undefined> {
+    const profile = await this.client.technicianProfile.findFirst({
+      where: {
+        id: technicianProfileId,
+        status: "published",
+        deletedAt: null
+      },
+      select: {
+        bidBudgetMinJpy: true,
+        bidBudgetMaxJpy: true,
+        paymentMethods: true,
+        profileTags: true,
+        backofficeProfileTags: {
+          where: {
+            isActive: true,
+            deletedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: dbNow } }]
+          },
+          select: { id: true, label: true },
+          orderBy: [{ id: "asc" }]
+        },
+        performanceSummary: {
+          select: {
+            completedOrderCount: true,
+            acceptanceRateBps: true,
+            deletedAt: true
+          }
+        },
+        technicianServices: {
+          where: {
+            deletedAt: null,
+            isActive: true,
+            reviewStatus: "APPROVED"
+          },
+          select: {
+            id: true,
+            shopId: true,
+            name: true,
+            priceAmount: true,
+            currency: true,
+            durationMinutes: true,
+            sortOrder: true
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          take: 5
+        }
+      }
+    });
+    if (!profile) {
+      return undefined;
+    }
+    const summary =
+      profile.performanceSummary?.deletedAt === null ? profile.performanceSummary : null;
+
+    return {
+      bidBudgetMinJpy: profile.bidBudgetMinJpy,
+      bidBudgetMaxJpy: profile.bidBudgetMaxJpy,
+      paymentMethods: toDirectoryLanguages(profile.paymentMethods),
+      specialTags: profile.backofficeProfileTags.map(({ label }) => label),
+      profileTags: toDirectoryLanguages(profile.profileTags),
+      services: profile.technicianServices.map((service) => ({
+        ...service,
+        taxIncluded: true
+      })),
+      completedOrderCount: summary?.completedOrderCount ?? 0,
+      acceptanceRateBps: summary?.acceptanceRateBps ?? 10_000
+    };
   }
 
   private mapFriendRequest(friendRequest: FriendRequestRecord, dbNow?: Date): FriendRequestPayload {
