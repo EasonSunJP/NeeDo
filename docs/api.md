@@ -352,3 +352,20 @@ The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, 
 Top-up, redemption, refund, and reward ledger settlement remain outside these configuration, issuance, and adjustment endpoints and must be implemented as separate state-machine microsteps.
 
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
+
+## Shop Service Taxonomy
+
+The shop taxonomy is a platform-owned, localized catalog. It initially contains 18 service categories and 180 business keywords, each translated into `zh-CN`, `zh-TW`, `ja`, `en`, and `ko`. Category names and keyword labels participate in shop search. Only selected business-keyword labels are rendered in the public shop keyword row; category labels remain a separate searchable classification.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/service-categories` | Paginated active category catalog in the requested locale | Public |
+| `GET` | `/api/v1/service-categories/:id/keywords` | Paginated active keywords belonging to one active category | Public |
+| `GET` | `/api/v1/merchant-admin/shop/service-taxonomy` | Current shop selection, revision, and server-owned limits | `merchant-admin:shop:service-taxonomy:read` |
+| `PUT` | `/api/v1/merchant-admin/shop/service-taxonomy` | Replace the complete current-shop selection | `merchant-admin:shop:service-taxonomy:write` |
+
+Catalog reads accept `locale` (default `ja`) and standard page parameters. The merchant response separates `selectedCategories` from `selectedKeywords` and returns `categoryLimit`, `keywordLimit`, `revision`, and `removedKeywordIds`.
+
+The replacement body is strict JSON with complete `categoryIds` and `keywordIds` arrays, `expectedRevision`, and a 16–160 character `idempotencyKey`. The default server policy permits five categories and five total keywords across all categories. A future paid Option may increase these values through the server quota policy without changing the frontend contract. Duplicate, inactive, foreign-category, over-quota, or unqualified selections return `400`; stale revisions or conflicting key reuse return `409`. Removing a category soft-deletes its dependent keyword selections atomically, and every successful change writes command replay and audit evidence.
+
+Merchant identity applications require one to five category IDs and zero to five keyword IDs. Draft selections are stored in application joins and do not create shop selections. Operations review exposes the selected localized records. Approval copies them into the new shop, creates taxonomy revision 1, and records exact qualifications for every approved non-open category or keyword in the same transaction; rejection creates none.

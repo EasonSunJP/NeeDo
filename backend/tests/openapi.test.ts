@@ -206,6 +206,45 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/ops/merchant-applications/{id}/approve",
       "/api/v1/ops/merchant-applications/{id}/reject"
     ].forEach((path) => expect(response.body.paths[path]).toBeDefined());
+    [
+      "/api/v1/service-categories",
+      "/api/v1/service-categories/{id}/keywords",
+      "/api/v1/merchant-admin/shop/service-taxonomy"
+    ].forEach((path) => expect(response.body.paths[path]).toBeDefined());
+    const categoryLocale = response.body.paths["/api/v1/service-categories"].get.parameters.find(
+      (parameter: { name: string }) => parameter.name === "locale"
+    );
+    expect(categoryLocale.schema).toEqual(expect.objectContaining({
+      enum: ["zh-CN", "zh-TW", "ja", "en", "ko"],
+      default: "ja"
+    }));
+    const taxonomyPut = response.body.paths["/api/v1/merchant-admin/shop/service-taxonomy"].put;
+    expect(taxonomyPut).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      "x-permission": "merchant-admin:shop:service-taxonomy:write"
+    });
+    expect(taxonomyPut.requestBody.content["application/json"].schema).toMatchObject({
+      additionalProperties: false,
+      required: ["categoryIds", "keywordIds", "expectedRevision", "idempotencyKey"],
+      properties: {
+        categoryIds: { type: "array", maxItems: 100, uniqueItems: true },
+        keywordIds: { type: "array", maxItems: 100, uniqueItems: true },
+        expectedRevision: { type: "integer", minimum: 0 },
+        idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+      }
+    });
+    expect(taxonomyPut.responses["200"].content["application/json"].schema.properties.data).toEqual({
+      $ref: "#/components/schemas/ShopServiceTaxonomySelection"
+    });
+    expect(taxonomyPut.responses["400"].description).toContain("qualification");
+    expect(taxonomyPut.responses["409"].description).toContain("version_conflict");
+    expect(response.body.components.schemas.ShopServiceTaxonomySelection.required).toEqual(
+      expect.arrayContaining(["categoryLimit", "keywordLimit", "selectedCategories", "selectedKeywords", "removedKeywordIds"])
+    );
+    const merchantApplicationBody = response.body.paths["/api/v1/identity-applications/merchant"].post.requestBody.content["application/json"].schema;
+    expect(merchantApplicationBody.required).toEqual(expect.arrayContaining(["serviceCategoryIds", "businessKeywordIds"]));
+    expect(merchantApplicationBody.properties.serviceCategoryIds).toMatchObject({ minItems: 1, maxItems: 5, uniqueItems: true });
+    expect(merchantApplicationBody.properties.businessKeywordIds).toMatchObject({ maxItems: 5, uniqueItems: true });
     expect(
       response.body.paths["/api/v1/identity-applications/{id}/media"].post.requestBody.content
     ).toHaveProperty("image/jpeg");

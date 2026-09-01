@@ -2013,6 +2013,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     schemas: {
       ...shopMembershipCardPlanOpenApiSchemas,
+      LocalizedShopServiceCategory: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "code", "label", "qualificationPolicy"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          code: { type: "string", minLength: 1, maxLength: 120 },
+          label: { type: "string", minLength: 1, maxLength: 120 },
+          qualificationPolicy: {
+            type: "string",
+            enum: ["OPEN", "PLATFORM_REVIEW", "CONDITIONAL", "QUALIFICATION_REVIEW"]
+          }
+        }
+      },
+      LocalizedShopBusinessKeyword: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "code", "categoryId", "label", "qualificationPolicy"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          code: { type: "string", minLength: 1, maxLength: 120 },
+          categoryId: { type: "integer", minimum: 1 },
+          label: { type: "string", minLength: 1, maxLength: 120 },
+          qualificationPolicy: {
+            type: "string",
+            enum: ["OPEN", "PLATFORM_REVIEW", "CONDITIONAL", "QUALIFICATION_REVIEW"]
+          }
+        }
+      },
+      ShopServiceTaxonomySelection: {
+        type: "object",
+        additionalProperties: false,
+        required: ["revision", "categoryLimit", "keywordLimit", "selectedCategories", "selectedKeywords", "removedKeywordIds"],
+        properties: {
+          revision: { type: "integer", minimum: 0 },
+          categoryLimit: { type: "integer", minimum: 1 },
+          keywordLimit: { type: "integer", minimum: 1 },
+          selectedCategories: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopServiceCategory" } },
+          selectedKeywords: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopBusinessKeyword" } },
+          removedKeywordIds: { type: "array", uniqueItems: true, items: { type: "integer", minimum: 1 } }
+        }
+      },
       DashboardPeriod: {
         type: "string",
         enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
@@ -18333,6 +18375,99 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/service-categories`]: {
+      get: {
+        tags: ["Shop Service Taxonomy"],
+        summary: "List localized active shop service categories",
+        parameters: [
+          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated localized service categories", {
+            type: "object",
+            additionalProperties: false,
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopServiceCategory" } },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/service-categories/{id}/keywords`]: {
+      get: {
+        tags: ["Shop Service Taxonomy"],
+        summary: "List localized active business keywords under one category",
+        parameters: [
+          idPathParameter(),
+          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated localized business keywords", {
+            type: "object",
+            additionalProperties: false,
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopBusinessKeyword" } },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop/service-taxonomy`]: {
+      get: {
+        tags: ["Shop Service Taxonomy"],
+        summary: "Read the authenticated shop's category and keyword selection",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:shop:service-taxonomy:read",
+        parameters: [
+          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Current selection and server-owned quotas", { $ref: "#/components/schemas/ShopServiceTaxonomySelection" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.auth.merchant_shop_scope_required")
+        }
+      },
+      put: {
+        tags: ["Shop Service Taxonomy"],
+        summary: "Replace the authenticated shop's complete category and keyword selection",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:shop:service-taxonomy:write",
+        parameters: [
+          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } }
+        ],
+        requestBody: identityJsonBody(
+          {
+            categoryIds: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "integer", minimum: 1 } },
+            keywordIds: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "integer", minimum: 1 } },
+            expectedRevision: { type: "integer", minimum: 0 },
+            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+          },
+          ["categoryIds", "keywordIds", "expectedRevision", "idempotencyKey"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Authoritative replacement result, including dependent removals", { $ref: "#/components/schemas/ShopServiceTaxonomySelection" }),
+          "400": jsonErrorResponse("error.validation, quota exceeded, inactive selection, foreign-category keyword, or missing qualification"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.auth.merchant_shop_scope_required"),
+          "409": jsonErrorResponse("error.shop_taxonomy.version_conflict or error.shop_taxonomy.idempotency_conflict")
+        }
+      }
+    },
     [`${config.API_PREFIX}/identity-applications/mine`]: {
       get: identityWorkflowOperation("List the authenticated user's identity applications", {
         parameters: [
@@ -18429,7 +18564,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             businessAddress: { type: "string", minLength: 1, maxLength: 255 },
             contactPhone: { type: "string", minLength: 1, maxLength: 32 },
             responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
-            showcaseDraft: { type: "object", additionalProperties: true }
+            showcaseDraft: { type: "object", additionalProperties: true },
+            serviceCategoryIds: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } },
+            businessKeywordIds: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } }
           },
           [
             "applicantKind",
@@ -18441,7 +18578,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "businessAddress",
             "contactPhone",
             "responsiblePersonName",
-            "showcaseDraft"
+            "showcaseDraft",
+            "serviceCategoryIds",
+            "businessKeywordIds"
           ]
         )
       })
@@ -18461,7 +18600,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             businessAddress: { type: "string", minLength: 1, maxLength: 255 },
             contactPhone: { type: "string", minLength: 1, maxLength: 32 },
             responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
-            showcaseDraft: { type: "object", additionalProperties: true }
+            showcaseDraft: { type: "object", additionalProperties: true },
+            serviceCategoryIds: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } },
+            businessKeywordIds: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } }
           },
           [
             "expectedVersion",
@@ -18474,7 +18615,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "businessAddress",
             "contactPhone",
             "responsiblePersonName",
-            "showcaseDraft"
+            "showcaseDraft",
+            "serviceCategoryIds",
+            "businessKeywordIds"
           ]
         )
       })
