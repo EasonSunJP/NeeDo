@@ -1145,3 +1145,82 @@ describe("LedgerService shop membership reward settlement", () => {
     expect(repository.entries).toHaveLength(2);
   });
 });
+
+describe("LedgerService shop membership reward reversal", () => {
+  it("exposes the formal reversal transaction type to finance filters", () => {
+    expect(
+      ledgerTransactionListQuerySchema.parse({ type: "shop_membership_reward_reversal" })
+    ).toMatchObject({ type: "shop_membership_reward_reversal" });
+  });
+
+  it("reverses customer reward and platform fee exactly while allowing a negative customer balance", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const shopWallet = repository.seedWallet({ ownerType: "shop", ownerId: 64, availableBalance: 0 });
+    const customerWallet = repository.seedWallet({ ownerType: "user", ownerId: 84, availableBalance: 500 });
+    const platformWallet = repository.seedWallet({ ownerType: "platform", ownerId: 1, availableBalance: 20 });
+    const service = new LedgerService(repository);
+
+    const result = await service.reverseShopMembershipReward({
+      redemptionId: 74,
+      shopId: 64,
+      customerUserId: 84,
+      customerRewardNdp: 1_000,
+      platformFeeNdp: 100,
+      shopWalletId: shopWallet.id,
+      customerWalletId: customerWallet.id,
+      platformWalletId: platformWallet.id,
+      idempotencyKey: "membership-redemption:74:refund:reversal",
+      actorUserId: 94
+    });
+
+    expect(result).toMatchObject({
+      customerBalanceBeforeNdp: 500,
+      customerBalanceAfterNdp: -500,
+      transaction: {
+        type: "shop_membership_reward_reversal",
+        referenceType: "shop_membership_card_redemption_refund",
+        referenceId: 74,
+        amount: 1_100
+      }
+    });
+    expect(repository.wallets.get("user:84:NDP")?.availableBalance).toBe(-500);
+    expect(repository.wallets.get("platform:1:NDP")?.availableBalance).toBe(-80);
+    expect(repository.wallets.get("shop:64:NDP")?.availableBalance).toBe(1_100);
+    expect(repository.entries).toEqual([
+      expect.objectContaining({ direction: "available_debit", amount: 1_000, reason: "shop_membership_reward_refund_customer_debit" }),
+      expect.objectContaining({ direction: "available_debit", amount: 100, reason: "shop_membership_reward_refund_platform_debit" }),
+      expect.objectContaining({ direction: "available_credit", amount: 1_100, reason: "shop_membership_reward_refund_shop_credit" })
+    ]);
+    expect(repository.reconciliationRows).toEqual([
+      expect.objectContaining({ expectedAmount: 1_100, actualAmount: 1_100 })
+    ]);
+    expect(repository.auditRows).toEqual([
+      expect.objectContaining({ action: "ledger.shop_membership_reward.reversal", actorUserId: 94 })
+    ]);
+  });
+
+  it("replays the exact reversal without a second wallet mutation", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const shopWallet = repository.seedWallet({ ownerType: "shop", ownerId: 65, availableBalance: 0 });
+    const customerWallet = repository.seedWallet({ ownerType: "user", ownerId: 85, availableBalance: 1_000 });
+    const service = new LedgerService(repository);
+    const input = {
+      redemptionId: 75,
+      shopId: 65,
+      customerUserId: 85,
+      customerRewardNdp: 1_000,
+      platformFeeNdp: 0,
+      shopWalletId: shopWallet.id,
+      customerWalletId: customerWallet.id,
+      platformWalletId: null,
+      idempotencyKey: "membership-redemption:75:refund:reversal",
+      actorUserId: 95
+    };
+    const first = await service.reverseShopMembershipReward(input);
+    const second = await service.reverseShopMembershipReward(input);
+    expect(second).toEqual(first);
+    expect(repository.wallets.get("user:85:NDP")?.availableBalance).toBe(0);
+    expect(repository.wallets.get("shop:65:NDP")?.availableBalance).toBe(1_000);
+    expect(repository.entries).toHaveLength(2);
+  });
+});

@@ -115,12 +115,15 @@ const record = (overrides: Partial<ShopMembershipCardRedemptionRecord> = {}): Sh
     serviceCategoryCode: "body-care",
     serviceStartedAt: now,
     serviceCompletedAt: now,
-    eligibleAmountJpy: 10_000
+    eligibleAmountJpy: 10_000,
+    paymentStatus: "confirmed",
+    paymentRefundedAt: null
   },
   shop: { shopNo: "s000000071", name: "青山护理店" },
   customer: { userId: 41, needoId: "u0000000041", displayName: "王小美" },
   redeemedBy: { needoId: "u0000000009", displayName: "店员" },
   ledgerTransactionNo: "LT-001",
+  refund: null,
   ...overrides
 });
 

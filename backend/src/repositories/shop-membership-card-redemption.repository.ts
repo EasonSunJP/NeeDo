@@ -1,6 +1,7 @@
 import {
   BookingOrderStatus,
   Prisma,
+  ServicePaymentStatus,
   ShopCustomerMembershipStatus,
   ShopMembershipCardAdjustmentStatus,
   ShopMembershipCardPlanVersionStatus,
@@ -8,6 +9,7 @@ import {
   ShopMembershipCardRewardStatus,
   ShopMembershipCardStatus,
   ShopMembershipCardType,
+  ShopMembershipRewardReversalMode,
   type PrismaClient
 } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -158,7 +160,27 @@ const redemptionSelect = Prisma.validator<Prisma.ShopMembershipCardRedemptionSel
   shop: { select: { shopNo: true, name: true } },
   customer: { select: { id: true, needoId: true, customerProfile: { select: { displayName: true } } } },
   redeemedBy: { select: { needoId: true, username: true } },
-  ledgerTransaction: { select: { transactionNo: true } }
+  ledgerTransaction: { select: { transactionNo: true } },
+  bookingOrder: {
+    select: { paymentStatus: true, paymentRefundedAt: true }
+  },
+  refund: {
+    select: {
+      publicId: true,
+      reason: true,
+      reversalMode: true,
+      restoredPrincipalJpy: true,
+      restoredUses: true,
+      customerRewardReversedNdp: true,
+      platformFeeReversedNdp: true,
+      totalShopCreditNdp: true,
+      customerBalanceBeforeNdp: true,
+      customerBalanceAfterNdp: true,
+      refundedAt: true,
+      refundedBy: { select: { needoId: true, username: true } },
+      reversalLedgerTransaction: { select: { transactionNo: true } }
+    }
+  }
 });
 
 type CardRecord = Prisma.ShopMembershipCardGetPayload<{ select: typeof cardSelect }>;
@@ -954,7 +976,9 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
         serviceCategoryCode: record.serviceCategoryCode,
         serviceStartedAt: record.serviceStartedAt,
         serviceCompletedAt: record.serviceCompletedAt,
-        eligibleAmountJpy: record.eligibleAmountJpy
+        eligibleAmountJpy: record.eligibleAmountJpy,
+        paymentStatus: this.paymentStatus(record.bookingOrder.paymentStatus),
+        paymentRefundedAt: record.bookingOrder.paymentRefundedAt
       },
       shop: record.shop,
       customer: {
@@ -966,8 +990,37 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
         needoId: record.redeemedBy.needoId,
         displayName: record.redeemedBy.username
       },
-      ledgerTransactionNo: record.ledgerTransaction?.transactionNo ?? null
+      ledgerTransactionNo: record.ledgerTransaction?.transactionNo ?? null,
+      refund: record.refund ? {
+        publicId: record.refund.publicId,
+        reason: record.refund.reason,
+        reversalMode: record.refund.reversalMode === ShopMembershipRewardReversalMode.CANCELLED_PENDING
+          ? "cancelled_pending"
+          : record.refund.reversalMode === ShopMembershipRewardReversalMode.LEDGER_REVERSED
+            ? "ledger_reversed"
+            : "none",
+        restoredPrincipalJpy: record.refund.restoredPrincipalJpy,
+        restoredUses: record.refund.restoredUses,
+        customerRewardReversedNdp: record.refund.customerRewardReversedNdp,
+        platformFeeReversedNdp: record.refund.platformFeeReversedNdp,
+        totalShopCreditNdp: record.refund.totalShopCreditNdp,
+        customerBalanceBeforeNdp: record.refund.customerBalanceBeforeNdp,
+        customerBalanceAfterNdp: record.refund.customerBalanceAfterNdp,
+        refundedAt: record.refund.refundedAt,
+        refundedBy: {
+          needoId: record.refund.refundedBy.needoId,
+          displayName: record.refund.refundedBy.username
+        },
+        reversalLedgerTransactionNo: record.refund.reversalLedgerTransaction?.transactionNo ?? null
+      } : null
     };
+  }
+
+  private paymentStatus(value: ServicePaymentStatus): ShopMembershipCardRedemptionRecord["order"]["paymentStatus"] {
+    if (value === ServicePaymentStatus.CONFIRMED) return "confirmed";
+    if (value === ServicePaymentStatus.REFUND_PENDING) return "refundPending";
+    if (value === ServicePaymentStatus.REFUNDED) return "refunded";
+    return "pending";
   }
 
   private rewardStatus(value: ShopMembershipCardRewardStatus): ShopMembershipCardRedemptionRecord["rewardStatus"] {

@@ -301,6 +301,14 @@ const shopMembershipCardRedemptionErrorResponses = {
   "409": { description: "invalid card, order, pending adjustment, card balance, concurrency, or idempotency conflict" }
 };
 
+const shopMembershipCardRefundErrorResponses = {
+  "400": { description: "error.validation or error.shop_membership_card_refund.invalid_value" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden — shop.member.card.refund is owner/admin only" },
+  "404": { description: "error.shop_membership_card_refund.not_found — redemption is outside the active shop" },
+  "409": { description: "order not refunded, terminal redemption, live adjustment, concurrency, or idempotency conflict" }
+};
+
 const membershipRewardScopeOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -8941,6 +8949,57 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
         }
       },
+      ShopMembershipCardRefundCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason", "idempotencyKey"],
+        properties: {
+          reason: { type: "string", minLength: 2, maxLength: 500 },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+        }
+      },
+      ShopMembershipCardRefund: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "status", "reason", "reversalMode", "restoredPrincipalJpy",
+          "restoredUses", "principalBalanceBeforeJpy", "principalBalanceAfterJpy",
+          "remainingUsesBefore", "remainingUsesAfter", "customerRewardReversedNdp",
+          "platformFeeReversedNdp", "totalShopCreditNdp", "customerBalanceBeforeNdp",
+          "customerBalanceAfterNdp", "orderPaymentRefundedAt", "refundedAt", "createdAt",
+          "updatedAt", "redemption", "card", "order", "shop", "customer", "refundedBy",
+          "reversalLedgerTransactionNo", "replayed"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["applied"] },
+          reason: { type: "string", minLength: 2, maxLength: 500 },
+          reversalMode: { type: "string", enum: ["none", "cancelled_pending", "ledger_reversed"] },
+          restoredPrincipalJpy: { type: "integer", minimum: 0 },
+          restoredUses: { type: "integer", minimum: 0 },
+          principalBalanceBeforeJpy: { type: ["integer", "null"], minimum: 0 },
+          principalBalanceAfterJpy: { type: ["integer", "null"], minimum: 0 },
+          remainingUsesBefore: { type: ["integer", "null"], minimum: 0 },
+          remainingUsesAfter: { type: ["integer", "null"], minimum: 0 },
+          customerRewardReversedNdp: { type: "integer", minimum: 0 },
+          platformFeeReversedNdp: { type: "integer", minimum: 0 },
+          totalShopCreditNdp: { type: "integer", minimum: 0 },
+          customerBalanceBeforeNdp: { type: ["integer", "null"] },
+          customerBalanceAfterNdp: { type: ["integer", "null"] },
+          orderPaymentRefundedAt: { type: "string", format: "date-time" },
+          refundedAt: { type: "string", format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          redemption: { type: "object" },
+          card: { type: "object" },
+          order: { type: "object" },
+          shop: { type: "object" },
+          customer: { type: "object" },
+          refundedBy: { type: "object" },
+          reversalLedgerTransactionNo: { type: ["string", "null"] },
+          replayed: { type: "boolean" }
+        }
+      },
       ShopMembershipCardRedemptionCandidate: {
         type: "object",
         additionalProperties: false,
@@ -9011,7 +9070,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "rewardCapped", "outstandingRewardNdp", "consumedPrincipalJpy", "consumedUses",
           "principalBalanceBeforeJpy", "principalBalanceAfterJpy", "remainingUsesBefore",
           "remainingUsesAfter", "redeemedAt", "rewardSettledAt", "refundedAt", "createdAt",
-          "updatedAt", "card", "order", "shop", "customer", "redeemedBy", "ledgerTransactionNo", "replayed"
+          "updatedAt", "card", "order", "shop", "customer", "redeemedBy", "ledgerTransactionNo", "replayed",
+          "refund"
         ],
         properties: {
           publicId: { type: "string", format: "uuid" },
@@ -9043,6 +9103,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           customer: { type: "object" },
           redeemedBy: { type: "object" },
           ledgerTransactionNo: { type: ["string", "null"] },
+          refund: {
+            oneOf: [
+              { type: "null" },
+              { type: "object", additionalProperties: true }
+            ]
+          },
           replayed: { type: "boolean" }
         }
       },
@@ -9843,6 +9909,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": jsonDataResponse("Paginated shop redemption history", { $ref: "#/components/schemas/ShopMembershipCardRedemptionPage" }),
           ...shopMembershipCardRedemptionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-redemptions/{publicId}/refunds`]: {
+      post: {
+        tags: ["Shop Membership Card Refund"],
+        summary: "Restore one refunded order's card consumption and reverse its NDP reward",
+        description: "Requires the linked booking payment to be formally refunded. Restores immutable principal or uses, cancels pending rewards, or exactly reverses paid customer NDP and platform fee; negative customer/platform available balances remain visible and are offset by future credits.",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardRefundCreateRequest" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Idempotent replay of an existing refund", { $ref: "#/components/schemas/ShopMembershipCardRefund" }),
+          "201": jsonDataResponse("Applied card refund and exact reward reversal", { $ref: "#/components/schemas/ShopMembershipCardRefund" }),
+          ...shopMembershipCardRefundErrorResponses
         }
       }
     },

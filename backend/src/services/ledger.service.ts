@@ -49,7 +49,8 @@ export type LedgerTransactionType =
   | "exchange_request_publication_freeze"
   | "exchange_request_publication_capture"
   | "exchange_request_publication_release"
-  | "shop_membership_reward_settlement";
+  | "shop_membership_reward_settlement"
+  | "shop_membership_reward_reversal";
 export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported" | "test_only";
 export type LedgerTransactionClient = unknown;
@@ -639,6 +640,28 @@ export interface ShopMembershipRewardLedgerResult {
   shopWalletId: number;
   customerWalletId: number;
   platformWalletId: number | null;
+}
+
+export interface ReverseShopMembershipRewardInput {
+  redemptionId: number;
+  shopId: number;
+  customerUserId: number;
+  customerRewardNdp: number;
+  platformFeeNdp: number;
+  shopWalletId: number;
+  customerWalletId: number;
+  platformWalletId: number | null;
+  idempotencyKey: string;
+  actorUserId: number;
+}
+
+export interface ShopMembershipRewardReversalLedgerResult {
+  transaction: LedgerTransactionPayload;
+  shopWalletId: number;
+  customerWalletId: number;
+  platformWalletId: number | null;
+  customerBalanceBeforeNdp: number;
+  customerBalanceAfterNdp: number;
 }
 
 export interface AffiliateRewardSettlementPort {
@@ -1432,6 +1455,171 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         shopWalletId: lockedShopWallet.id,
         customerWalletId: customerWallet.id,
         platformWalletId: platformWallet?.id ?? null
+      };
+    }, context.transactionClient);
+  }
+
+  public async reverseShopMembershipReward(
+    input: ReverseShopMembershipRewardInput,
+    context: LedgerMutationContext = {}
+  ): Promise<ShopMembershipRewardReversalLedgerResult> {
+    if (
+      !Number.isSafeInteger(input.redemptionId) || input.redemptionId <= 0
+      || !Number.isSafeInteger(input.shopId) || input.shopId <= 0
+      || !Number.isSafeInteger(input.customerUserId) || input.customerUserId <= 0
+      || !Number.isSafeInteger(input.actorUserId) || input.actorUserId <= 0
+      || !Number.isSafeInteger(input.customerRewardNdp) || input.customerRewardNdp <= 0
+      || !Number.isSafeInteger(input.platformFeeNdp) || input.platformFeeNdp < 0
+      || !Number.isSafeInteger(input.shopWalletId) || input.shopWalletId <= 0
+      || !Number.isSafeInteger(input.customerWalletId) || input.customerWalletId <= 0
+      || (input.platformFeeNdp > 0
+        ? !Number.isSafeInteger(input.platformWalletId) || input.platformWalletId! <= 0
+        : input.platformWalletId !== null)
+      || !input.idempotencyKey.trim()
+    ) throw this.walletMutationError();
+    const totalShopCreditNdp = input.customerRewardNdp + input.platformFeeNdp;
+    if (!Number.isSafeInteger(totalShopCreditNdp)) throw this.walletMutationError();
+
+    return this.repository.runInTransaction(async (repository) => {
+      const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        const metadata = this.metadataRecord(existing.metadata);
+        if (
+          existing.type !== "shop_membership_reward_reversal"
+          || existing.referenceType !== "shop_membership_card_redemption_refund"
+          || existing.referenceId !== input.redemptionId
+          || existing.amount !== totalShopCreditNdp
+          || metadata.shopId !== input.shopId
+          || metadata.customerUserId !== input.customerUserId
+          || metadata.customerRewardNdp !== input.customerRewardNdp
+          || metadata.platformFeeNdp !== input.platformFeeNdp
+          || metadata.shopWalletId !== input.shopWalletId
+          || metadata.customerWalletId !== input.customerWalletId
+          || metadata.platformWalletId !== input.platformWalletId
+          || typeof metadata.customerBalanceBeforeNdp !== "number"
+          || typeof metadata.customerBalanceAfterNdp !== "number"
+        ) throw this.walletMutationError();
+        return {
+          transaction: existing,
+          shopWalletId: input.shopWalletId,
+          customerWalletId: input.customerWalletId,
+          platformWalletId: input.platformWalletId,
+          customerBalanceBeforeNdp: metadata.customerBalanceBeforeNdp,
+          customerBalanceAfterNdp: metadata.customerBalanceAfterNdp
+        };
+      }
+
+      const shopWallet = await this.lockWalletById(repository, input.shopWalletId);
+      const customerWallet = await this.lockWalletById(repository, input.customerWalletId);
+      const platformWallet = input.platformWalletId === null
+        ? null
+        : await this.lockWalletById(repository, input.platformWalletId);
+      if (
+        shopWallet.ownerType !== "shop" || shopWallet.ownerId !== input.shopId || shopWallet.currency !== "NDP"
+        || customerWallet.ownerType !== "user" || customerWallet.ownerId !== input.customerUserId || customerWallet.currency !== "NDP"
+        || (input.platformFeeNdp > 0 && (
+          !platformWallet || platformWallet.ownerType !== "platform"
+          || platformWallet.ownerId !== PLATFORM_WALLET_OWNER_ID || platformWallet.currency !== "NDP"
+        ))
+      ) throw this.walletMutationError();
+
+      const customerBalanceBeforeNdp = customerWallet.availableBalance;
+      const updatedCustomerWallet = await repository.applyWalletDelta({
+        walletId: customerWallet.id,
+        availableDelta: -input.customerRewardNdp,
+        frozenDelta: 0
+      });
+      const updatedPlatformWallet = platformWallet
+        ? await repository.applyWalletDelta({
+            walletId: platformWallet.id,
+            availableDelta: -input.platformFeeNdp,
+            frozenDelta: 0
+          })
+        : null;
+      const updatedShopWallet = await repository.applyWalletDelta({
+        walletId: shopWallet.id,
+        availableDelta: totalShopCreditNdp,
+        frozenDelta: 0
+      });
+      if (!updatedCustomerWallet || (platformWallet && !updatedPlatformWallet) || !updatedShopWallet) {
+        throw this.walletMutationError();
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: input.idempotencyKey,
+        type: "shop_membership_reward_reversal",
+        referenceType: "shop_membership_card_redemption_refund",
+        referenceId: input.redemptionId,
+        actorUserId: input.actorUserId,
+        amount: totalShopCreditNdp,
+        currency: "NDP",
+        metadata: {
+          shopId: input.shopId,
+          shopWalletId: shopWallet.id,
+          customerUserId: input.customerUserId,
+          customerWalletId: customerWallet.id,
+          customerRewardNdp: input.customerRewardNdp,
+          platformFeeNdp: input.platformFeeNdp,
+          platformWalletId: platformWallet?.id ?? null,
+          customerBalanceBeforeNdp,
+          customerBalanceAfterNdp: updatedCustomerWallet.availableBalance
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: customerWallet.id,
+        direction: "available_debit",
+        amount: input.customerRewardNdp,
+        availableDelta: -input.customerRewardNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedCustomerWallet.availableBalance,
+        frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+        reason: "shop_membership_reward_refund_customer_debit"
+      });
+      if (platformWallet && updatedPlatformWallet) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: platformWallet.id,
+          direction: "available_debit",
+          amount: input.platformFeeNdp,
+          availableDelta: -input.platformFeeNdp,
+          frozenDelta: 0,
+          availableBalanceAfter: updatedPlatformWallet.availableBalance,
+          frozenBalanceAfter: updatedPlatformWallet.frozenBalance,
+          reason: "shop_membership_reward_refund_platform_debit"
+        });
+      }
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: shopWallet.id,
+        direction: "available_credit",
+        amount: totalShopCreditNdp,
+        availableDelta: totalShopCreditNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedShopWallet.availableBalance,
+        frozenBalanceAfter: updatedShopWallet.frozenBalance,
+        reason: "shop_membership_reward_refund_shop_credit"
+      });
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.shop_membership_reward.reversal",
+        expectedAmount: totalShopCreditNdp,
+        actualAmount: totalShopCreditNdp,
+        metadata: {
+          shopId: input.shopId,
+          customerUserId: input.customerUserId,
+          customerRewardNdp: input.customerRewardNdp,
+          platformFeeNdp: input.platformFeeNdp,
+          customerBalanceBeforeNdp,
+          customerBalanceAfterNdp: updatedCustomerWallet.availableBalance
+        }
+      });
+      return {
+        transaction: (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
+        shopWalletId: shopWallet.id,
+        customerWalletId: customerWallet.id,
+        platformWalletId: platformWallet?.id ?? null,
+        customerBalanceBeforeNdp,
+        customerBalanceAfterNdp: updatedCustomerWallet.availableBalance
       };
     }, context.transactionClient);
   }
