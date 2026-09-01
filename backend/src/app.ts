@@ -42,6 +42,7 @@ import type { CustomerProfileRepositoryPort } from "./repositories/customer-prof
 import type { ShopMembershipRepositoryPort } from "./repositories/shop-membership.repository";
 import type { ShopMembershipCardPlanRepositoryPort } from "./repositories/shop-membership-card-plan.repository";
 import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-membership-card-issuance.service";
+import type { MembershipAnalyticsRepositoryPort } from "./repositories/membership-analytics.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
@@ -125,6 +126,7 @@ import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
 import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-card-plan.routes";
 import { createShopMembershipCardIssuanceRoutes } from "./routes/shop-membership-card-issuance.routes";
+import { createMembershipAnalyticsRoutes } from "./routes/membership-analytics.routes";
 import { createTechnicianProfileRoutes } from "./routes/technician-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
@@ -211,6 +213,7 @@ export interface AppDependencies {
   shopMembershipRepository?: ShopMembershipRepositoryPort;
   shopMembershipCardPlanRepository?: ShopMembershipCardPlanRepositoryPort;
   shopMembershipCardIssuanceRepository?: ShopMembershipCardIssuanceRepositoryPort;
+  membershipAnalyticsRepository?: MembershipAnalyticsRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
@@ -352,6 +355,7 @@ export const createApp = (
   apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipCardPlanRoutes(config, resolvedDependencies));
   apiRouter.use(createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
+  apiRouter.use(createMembershipAnalyticsRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));

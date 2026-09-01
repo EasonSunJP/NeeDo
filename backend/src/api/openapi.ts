@@ -1321,6 +1321,87 @@ const dashboardQueryParameters = [
   dashboardToQueryParameter
 ];
 
+const membershipAnalyticsCityQueryParameter = {
+  name: "city",
+  in: "query",
+  required: false,
+  schema: {
+    type: "string",
+    "x-min-utf16-code-units": 1,
+    "x-max-utf16-code-units": 100,
+    "x-normalization": "trim"
+  }
+};
+
+const membershipAnalyticsNeedoIdQueryParameter = {
+  name: "needoId",
+  in: "query",
+  required: false,
+  description: "Exact canonical customer NeeDoID after trimming",
+  schema: { type: "string", pattern: "^u[0-9]{10}$", "x-normalization": "trim" }
+};
+
+const membershipAnalyticsNicknameQueryParameter = {
+  name: "nickname",
+  in: "query",
+  required: false,
+  description:
+    "Case-insensitive nickname substring after trimming. SQL wildcard characters are treated literally.",
+  schema: {
+    type: "string",
+    "x-min-utf16-code-units": 1,
+    "x-max-utf16-code-units": 100,
+    "x-normalization": "trim"
+  }
+};
+
+const membershipAnalyticsPageQueryParameters = [
+  { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    required: false,
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
+
+const membershipAnalyticsErrorResponse = (
+  code: number,
+  message: string,
+  description: string
+) => ({
+  description: `${code} ${message} — ${description}`,
+  content: {
+    "application/json": {
+      schema: { $ref: "#/components/schemas/ApiError" },
+      example: { code, message, data: null }
+    }
+  }
+});
+
+const membershipAnalyticsErrorResponses = {
+  "400": membershipAnalyticsErrorResponse(
+    40001,
+    "error.validation",
+    "strict period, date, search, or pagination validation failed"
+  ),
+  "401": membershipAnalyticsErrorResponse(
+    40105,
+    "error.auth.token_invalid",
+    "missing, expired, or invalid bearer token"
+  ),
+  "403": membershipAnalyticsErrorResponse(
+    40301,
+    "error.forbidden",
+    "the authenticated identity lacks the required permission or shop scope"
+  ),
+  "409": membershipAnalyticsErrorResponse(
+    40966,
+    "error.membership_analytics.incomplete_history",
+    "the persisted membership lifecycle is missing, ambiguous, or internally inconsistent"
+  )
+};
+
 const dashboardErrorResponses = {
   "400": { description: "error.validation — strict dashboard query validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" }
@@ -1608,6 +1689,178 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "string",
         enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
         default: "last7days"
+      },
+      MembershipAnalyticsFilter: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "period",
+          "from",
+          "to",
+          "previousFrom",
+          "previousTo",
+          "timeZone",
+          "granularity",
+          "city",
+          "evaluatedAt"
+        ],
+        description:
+          "The previous window is contiguous with and has the same inclusive length as the current Tokyo calendar window.",
+        properties: {
+          period: { $ref: "#/components/schemas/DashboardPeriod" },
+          from: dashboardAnalyticsDateSchema,
+          to: dashboardAnalyticsDateSchema,
+          previousFrom: dashboardAnalyticsDateSchema,
+          previousTo: dashboardAnalyticsDateSchema,
+          timeZone: { type: "string", const: "Asia/Tokyo" },
+          granularity: { type: "string", enum: ["hour", "day", "month"] },
+          city: {
+            oneOf: [
+              {
+                type: "string",
+                "x-min-utf16-code-units": 1,
+                "x-max-utf16-code-units": 100,
+                "x-normalization": "trim"
+              },
+              { type: "null" }
+            ]
+          },
+          evaluatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      MembershipTrendPoint: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "label", "value"],
+        properties: {
+          key: { type: "string", minLength: 1 },
+          label: { type: "string", minLength: 1 },
+          value: { type: "integer", minimum: 0 }
+        }
+      },
+      MembershipTrendSeriesItem: {
+        type: "object",
+        additionalProperties: false,
+        required: ["seriesKey", "label", "unit", "points"],
+        properties: {
+          seriesKey: { type: "string", enum: ["added", "removed", "net"] },
+          label: { type: "string", enum: ["Added members", "Removed members", "Net members"] },
+          unit: { type: "string", const: "people" },
+          points: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MembershipTrendPoint" }
+          }
+        }
+      },
+      MembershipTrendSeries: {
+        type: "array",
+        minItems: 3,
+        maxItems: 3,
+        description:
+          "Fixed ordered series: added, removed, then net. Added/removed are grouped shop-user state transitions, not card event counts.",
+        prefixItems: [
+          {
+            allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
+            properties: {
+              seriesKey: { type: "string", const: "added" },
+              label: { type: "string", const: "Added members" }
+            }
+          },
+          {
+            allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
+            properties: {
+              seriesKey: { type: "string", const: "removed" },
+              label: { type: "string", const: "Removed members" }
+            }
+          },
+          {
+            allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
+            properties: {
+              seriesKey: { type: "string", const: "net" },
+              label: { type: "string", const: "Net members" }
+            }
+          }
+        ],
+        items: false
+      },
+      MembershipTrendPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["dataStatus", "filter", "series"],
+        properties: {
+          dataStatus: { type: "string", const: "ready" },
+          filter: { $ref: "#/components/schemas/MembershipAnalyticsFilter" },
+          series: { $ref: "#/components/schemas/MembershipTrendSeries" }
+        }
+      },
+      MemberAnalyticsListItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "userNeedoId",
+          "nickname",
+          "city",
+          "shopPublicId",
+          "shopName",
+          "membershipPublicId",
+          "planName",
+          "cardPublicId",
+          "cardNoMasked",
+          "acquisitionSource",
+          "addedAt",
+          "firstPaidAt",
+          "memberStatus",
+          "cardStatus",
+          "expiresAt"
+        ],
+        properties: {
+          userNeedoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          nickname: { type: "string" },
+          city: { type: "string" },
+          shopPublicId: { type: "string" },
+          shopName: { type: "string" },
+          membershipPublicId: { type: "string" },
+          planName: { oneOf: [{ type: "string" }, { type: "null" }] },
+          cardPublicId: { type: "string" },
+          cardNoMasked: {
+            type: "string",
+            description:
+              "Canonical masked card number: •••• for short inputs, otherwise only the final four characters are exposed."
+          },
+          acquisitionSource: {
+            type: "string",
+            enum: [
+              "offline_paid",
+              "online_paid",
+              "gift",
+              "trial",
+              "renewal",
+              "historical_replacement",
+              "manual_grant"
+            ]
+          },
+          addedAt: { type: "string", format: "date-time" },
+          firstPaidAt: { oneOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+          memberStatus: { type: "string", enum: ["active", "inactive"] },
+          cardStatus: { type: "string", enum: ["active", "expired", "frozen", "void"] },
+          expiresAt: { oneOf: [{ type: "string", format: "date-time" }, { type: "null" }] }
+        }
+      },
+      MemberAnalyticsListPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        description:
+          "Paginated distinct shop/user additions. total counts distinct shop/user additions and may be lower than the summed added trend when one member leaves and rejoins within the window.",
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MemberAnalyticsListItem" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
       },
       DashboardAnalyticsMetricKey: {
         type: "string",
@@ -13119,6 +13372,89 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...dashboardErrorResponses,
           "403": { description: "Missing backoffice dashboard permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/analytics/members/trend`]: {
+      get: {
+        operationId: "getBackofficeMembershipTrend",
+        tags: ["Membership Analytics"],
+        summary: "Read platform membership additions, removals, and net trend",
+        description:
+          "Counts grouped shop-user state transitions from the formal immutable membership lifecycle. Missing or ambiguous history fails closed.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice.member.analytics.view",
+        parameters: [...dashboardQueryParameters, membershipAnalyticsCityQueryParameter],
+        responses: {
+          "200": jsonDataResponse("Fixed ordered membership trend", {
+            $ref: "#/components/schemas/MembershipTrendPayload"
+          }),
+          ...membershipAnalyticsErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/analytics/members`]: {
+      get: {
+        operationId: "listBackofficeMembershipAdditions",
+        tags: ["Membership Analytics"],
+        summary: "List distinct members added in the selected window",
+        description:
+          "Returns one representative row for each distinct shop-user addition in the selected window. Raw card numbers and internal numeric identifiers are never returned.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice.member.analytics.view",
+        parameters: [
+          ...dashboardQueryParameters,
+          membershipAnalyticsCityQueryParameter,
+          membershipAnalyticsNeedoIdQueryParameter,
+          membershipAnalyticsNicknameQueryParameter,
+          ...membershipAnalyticsPageQueryParameters
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated distinct member additions", {
+            $ref: "#/components/schemas/MemberAnalyticsListPayload"
+          }),
+          ...membershipAnalyticsErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/analytics/members/trend`]: {
+      get: {
+        operationId: "getMerchantMembershipTrend",
+        tags: ["Membership Analytics"],
+        summary: "Read selected-shop membership additions, removals, and net trend",
+        description:
+          "Shop scope is derived only from the authenticated merchant identity. Client city and shop identifiers are rejected.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "shop.member.analytics.view",
+        parameters: dashboardQueryParameters,
+        responses: {
+          "200": jsonDataResponse("Fixed ordered selected-shop membership trend", {
+            $ref: "#/components/schemas/MembershipTrendPayload"
+          }),
+          ...membershipAnalyticsErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/analytics/members`]: {
+      get: {
+        operationId: "listMerchantMembershipAdditions",
+        tags: ["Membership Analytics"],
+        summary: "List distinct members added to the selected shop",
+        description:
+          "Shop scope is derived only from the authenticated merchant identity. Client city and shop identifiers are rejected; raw card numbers and internal numeric identifiers are never returned.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "shop.member.analytics.view",
+        parameters: [
+          ...dashboardQueryParameters,
+          membershipAnalyticsNeedoIdQueryParameter,
+          membershipAnalyticsNicknameQueryParameter,
+          ...membershipAnalyticsPageQueryParameters
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated distinct selected-shop member additions", {
+            $ref: "#/components/schemas/MemberAnalyticsListPayload"
+          }),
+          ...membershipAnalyticsErrorResponses
         }
       }
     },

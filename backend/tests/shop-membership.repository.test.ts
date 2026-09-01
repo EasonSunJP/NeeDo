@@ -188,5 +188,8 @@ describe("ShopMembershipRepository", () => {
     client.shopMembershipCard.count.mockResolvedValue(1);
     const repository = new ShopMembershipRepository(client as unknown as PrismaClient);
     await expect(repository.listCards(71, { page: 1, pageSize: 20 })).resolves.toMatchObject({ list: [{ issuanceSource: expected }] });
+    await expect(repository.listCards(71, { page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{ cardNoMasked: "•••• •••• •••• MC-1" }]
+    });
   });
 });

@@ -2375,4 +2375,102 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.components.schemas.ShopMembershipCardIssuanceResult.properties.issuanceSource.enum).toEqual(expected);
     expect(document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource.description).toContain("platform-global first-paid");
   });
+
+  it("documents the four formal membership analytics operations without exposing card secrets", () => {
+    type Operation = {
+      description: string;
+      parameters: Array<{ name: string; schema: Record<string, unknown> }>;
+      responses: Record<string, { description: string; content?: Record<string, unknown> }>;
+      security: Array<Record<string, unknown>>;
+      "x-required-permission": string;
+    };
+    type Schema = {
+      description?: string;
+      required?: string[];
+      properties?: Record<string, unknown>;
+      minItems?: number;
+      maxItems?: number;
+      prefixItems?: Array<Record<string, unknown>>;
+    };
+    const document = createOpenApiDocument(env) as {
+      paths: Record<string, { get: Operation }>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const contracts = [
+      ["/api/v1/backoffice/analytics/members/trend", "backoffice.member.analytics.view", ["period", "from", "to", "city"]],
+      ["/api/v1/backoffice/analytics/members", "backoffice.member.analytics.view", ["period", "from", "to", "city", "needoId", "nickname", "page", "pageSize"]],
+      ["/api/v1/merchant-admin/analytics/members/trend", "shop.member.analytics.view", ["period", "from", "to"]],
+      ["/api/v1/merchant-admin/analytics/members", "shop.member.analytics.view", ["period", "from", "to", "needoId", "nickname", "page", "pageSize"]]
+    ] as const;
+
+    for (const [path, permission, parameterNames] of contracts) {
+      const operation = document.paths[path].get;
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-required-permission"]).toBe(permission);
+      expect(operation.parameters.map((parameter) => parameter.name)).toEqual(parameterNames);
+      expect(operation.responses).toMatchObject({
+        "200": { content: { "application/json": expect.any(Object) } },
+        "400": { description: expect.stringContaining("error.validation") },
+        "401": { description: expect.stringContaining("error.auth.token_invalid") },
+        "403": { description: expect.stringContaining("error.forbidden") },
+        "409": { description: expect.stringContaining("error.membership_analytics.incomplete_history") }
+      });
+      expect(operation.responses["409"].description).toContain("40966");
+    }
+
+    for (const path of contracts.slice(2).map(([value]) => value)) {
+      const parameterNames = document.paths[path].get.parameters.map((parameter) => parameter.name);
+      expect(parameterNames).not.toContain("city");
+      expect(parameterNames).not.toContain("shopId");
+    }
+
+    expect(document.components.schemas.MembershipAnalyticsFilter.required).toEqual([
+      "period",
+      "from",
+      "to",
+      "previousFrom",
+      "previousTo",
+      "timeZone",
+      "granularity",
+      "city",
+      "evaluatedAt"
+    ]);
+    expect(document.components.schemas.MembershipTrendSeries).toMatchObject({
+      minItems: 3,
+      maxItems: 3,
+      prefixItems: [
+        { properties: { seriesKey: { const: "added" } } },
+        { properties: { seriesKey: { const: "removed" } } },
+        { properties: { seriesKey: { const: "net" } } }
+      ]
+    });
+
+    const itemSchema = document.components.schemas.MemberAnalyticsListItem;
+    expect(itemSchema.required).toEqual([
+      "userNeedoId",
+      "nickname",
+      "city",
+      "shopPublicId",
+      "shopName",
+      "membershipPublicId",
+      "planName",
+      "cardPublicId",
+      "cardNoMasked",
+      "acquisitionSource",
+      "addedAt",
+      "firstPaidAt",
+      "memberStatus",
+      "cardStatus",
+      "expiresAt"
+    ]);
+    expect(itemSchema.properties).not.toHaveProperty("cardNo");
+    expect(itemSchema.properties).not.toHaveProperty("userId");
+    expect(itemSchema.properties).not.toHaveProperty("shopId");
+    expect(document.components.schemas.MemberAnalyticsListPayload.description).toContain(
+      "distinct shop/user additions"
+    );
+    expect(document.components.schemas.MemberAnalyticsListPayload.description).toContain(
+      "lower than the summed added trend"
+    );
+  });
 });

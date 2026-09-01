@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import { AppError } from "../utils/app-error";
+import { maskMembershipCardNumber } from "../utils/membership-card-mask";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
@@ -310,7 +311,7 @@ export class ShopMembershipCardIssuanceService {
   private toPublic(record: IssuedMembershipCardRecord, replayed: boolean) {
     return {
       publicId: record.publicId,
-      cardNoMasked: this.maskCardNumber(record.cardNo),
+      cardNoMasked: maskMembershipCardNumber(record.cardNo),
       name: record.name,
       type: record.type,
       status: record.status,
@@ -354,11 +355,6 @@ export class ShopMembershipCardIssuanceService {
 
   private assertWithinRange(value: number, minimum: number | null, maximum: number | null): void {
     if ((minimum !== null && value < minimum) || (maximum !== null && value > maximum)) throw this.invalidValue();
-  }
-
-  private maskCardNumber(cardNo: string): string {
-    if (cardNo.length <= 8) return "****";
-    return `${cardNo.slice(0, 4)}${"*".repeat(cardNo.length - 8)}${cardNo.slice(-4)}`;
   }
 
   private notFound(): AppError {

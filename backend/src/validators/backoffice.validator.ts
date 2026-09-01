@@ -78,7 +78,7 @@ const technicianRankingPeriodSchema = z.enum([
 ]);
 const technicianRankingSortSchema = z.enum(["revenue", "completedOrders", "workingDays"]);
 
-const dashboardPeriodSchema = z.enum(DASHBOARD_PERIODS);
+export const dashboardPeriodSchema = z.enum(DASHBOARD_PERIODS);
 
 export const DASHBOARD_METRIC_KEYS = [
   "gross_revenue",
@@ -106,7 +106,7 @@ export const backofficeDashboardMetricParamSchema = z
 
 export type DashboardMetricKey = (typeof DASHBOARD_METRIC_KEYS)[number];
 
-const dashboardQueryBaseSchema = z
+export const dashboardQueryBaseSchema = z
   .object({
     period: dashboardPeriodSchema.default("last7days"),
     from: calendarDateSchema.optional(),
@@ -115,7 +115,7 @@ const dashboardQueryBaseSchema = z
   })
   .strict();
 
-const refineDashboardQuery = (
+export const refineDashboardQuery = (
   value: { period: DashboardPeriod; from?: string; to?: string },
   context: z.RefinementCtx
 ) => {

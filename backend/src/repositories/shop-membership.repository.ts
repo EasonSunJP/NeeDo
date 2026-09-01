@@ -10,6 +10,7 @@ import { prisma } from "../prisma/client";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import { buildPaginatedResponse, toPrismaPagination, type PaginatedResponse, type PaginationInput } from "../utils/pagination";
+import { maskMembershipCardNumber } from "../utils/membership-card-mask";
 
 export type ShopMembershipStatusPayload = "active" | "ended";
 export type ShopMembershipCardTypePayload = "stored_value" | "count" | "benefit";
@@ -682,7 +683,7 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
   private mapCard(record: MembershipCardRecord): ShopMembershipCardPayload {
     return {
       publicId: record.publicId,
-      cardNoMasked: this.maskCardNumber(record.cardNo),
+      cardNoMasked: maskMembershipCardNumber(record.cardNo),
       name: record.name,
       type: this.cardTypeFromDb(record.type),
       status: this.cardStatusFromDb(record.status),
@@ -747,11 +748,6 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     const mapped = values[value];
     if (!mapped) throw new RangeError("Unknown shop membership card issuance source");
     return mapped;
-  }
-
-  private maskCardNumber(cardNo: string): string {
-    const suffix = cardNo.slice(-4);
-    return `•••• •••• •••• ${suffix}`;
   }
 
   private japanDateKey(value: Date): string {

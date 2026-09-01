@@ -133,7 +133,7 @@ describe("ShopMembershipCardIssuanceService", () => {
 
     const result = await service.issue(owner(), { ip: "127.0.0.1", userAgent: "jest" }, membershipPublicId, storedValueInput);
 
-    expect(result).toMatchObject({ replayed: false, cardNoMasked: "NMC-********************AABB", initialPrincipalJpy: 10_000, platformFeeRateBpsSnapshot: 1_000 });
+    expect(result).toMatchObject({ replayed: false, cardNoMasked: "•••• •••• •••• AABB", initialPrincipalJpy: 10_000, platformFeeRateBpsSnapshot: 1_000 });
     expect(repo.issueCardWithAuditAndNotification).toHaveBeenCalledWith(expect.objectContaining({
       shopId: 71,
       actorId: 9,
