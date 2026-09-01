@@ -7,6 +7,7 @@ import { AuthService } from "../services/auth.service";
 import { RedisVerificationChallengeStore } from "../services/auth-verification-challenge.store";
 import { GoogleCredentialVerifierService } from "../services/google-credential-verifier.service";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
 
 export const createAuthServiceForRoutes = (
   config: AppConfig,
@@ -21,5 +22,6 @@ export const createAuthServiceForRoutes = (
     dependencies.testOnlyAllowLegacyAuthAdapters ?? false,
     dependencies.googleCredentialVerifier ?? new GoogleCredentialVerifierService(undefined, config),
     dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
-    dependencies.merchantShopAuditOutboxTrigger
+    dependencies.merchantShopAuditOutboxTrigger,
+    createUserExperienceServiceForRoutes(dependencies)
   );

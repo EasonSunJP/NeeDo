@@ -4125,6 +4125,68 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isPublic: { type: "boolean" }
         }
       },
+      UserExperienceSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["level", "totalExp", "currentLevelExp", "nextLevelExp", "progressBps"],
+        properties: {
+          level: { type: "integer", minimum: 1, maximum: 100 },
+          totalExp: { type: "string", pattern: "^-?[0-9]+(?:\\.[0-9]{1,4})?$" },
+          currentLevelExp: { type: "string", pattern: "^-?[0-9]+(?:\\.[0-9]{1,4})?$" },
+          nextLevelExp: { type: "string", pattern: "^[0-9]+(?:\\.[0-9]{1,4})?$" },
+          progressBps: { type: "integer", minimum: 0, maximum: 10000 }
+        }
+      },
+      UserExperienceEntry: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "eventType",
+          "sourceType",
+          "sourcePublicId",
+          "baseExp",
+          "campaignFactorBps",
+          "membershipMultiplierBps",
+          "extraExp",
+          "finalExp",
+          "membershipTierCode",
+          "membershipTierVersionId",
+          "policyVersionId",
+          "campaignVersionId",
+          "occurredAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          eventType: {
+            type: "string",
+            enum: [
+              "member_sign_in",
+              "service_completed",
+              "social_post_liked",
+              "ndp_consumed",
+              "membership_renewed",
+              "adjustment",
+              "reversal"
+            ]
+          },
+          sourceType: { type: "string", maxLength: 80 },
+          sourcePublicId: { type: ["string", "null"], maxLength: 96 },
+          baseExp: { type: "string", pattern: "^-?[0-9]+(?:\\.[0-9]{1,4})?$" },
+          campaignFactorBps: { type: "integer", minimum: 1 },
+          membershipMultiplierBps: { type: "integer", minimum: 1 },
+          extraExp: { type: "string", pattern: "^-?[0-9]+(?:\\.[0-9]{1,4})?$" },
+          finalExp: { type: "string", pattern: "^-?[0-9]+(?:\\.[0-9]{1,4})?$" },
+          membershipTierCode: {
+            type: ["string", "null"],
+            enum: ["free", "silver", "gold", "black_diamond", null]
+          },
+          membershipTierVersionId: { type: ["string", "null"] },
+          policyVersionId: { type: ["string", "null"] },
+          campaignVersionId: { type: ["string", "null"] },
+          occurredAt: { type: "string", format: "date-time" }
+        }
+      },
       PlatformMembershipTierCode: {
         type: "string",
         enum: ["free", "silver", "gold", "black_diamond"]
@@ -14129,6 +14191,59 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "Customer not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/experience`]: {
+      get: {
+        tags: ["User Experience"],
+        summary: "Read the authenticated customer's level and experience progress",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Customer experience summary", {
+            $ref: "#/components/schemas/UserExperienceSummary"
+          }),
+          "401": { description: "Authentication required" },
+          "422": { description: "Experience levels do not apply to this identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/experience-entries`]: {
+      get: {
+        tags: ["User Experience"],
+        summary: "List immutable experience entries for one customer",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated experience entries", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/UserExperienceEntry" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": { description: "Invalid pagination or user id" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
         }
       }
     },

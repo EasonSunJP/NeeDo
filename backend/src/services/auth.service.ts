@@ -31,6 +31,7 @@ import {
 } from "./auth-token.service";
 import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import type { UserExperienceService } from "./user-experience.service";
 import {
   FORMAL_MERCHANT_IDENTITY_TYPES,
   merchantShopIdentityForbidden,
@@ -213,7 +214,8 @@ export class AuthService {
       config
     ),
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository(),
-    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger
+    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger,
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -1597,6 +1599,7 @@ export class AuthService {
         userAgent: context.userAgent,
         status: "success"
       });
+      await this.recordMemberSignInExperience(user, loggedInAt);
     } catch (error) {
       if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
       throw error;
@@ -1627,6 +1630,7 @@ export class AuthService {
     providerSubject: string,
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
+    const loggedInAt = new Date();
     const sessionGeneration = this.userSessionGeneration(user);
     const { me, subject } = await this.buildAuthTokenContext(user);
     const accessToken = this.tokenService.issueAccessToken(subject);
@@ -1647,10 +1651,11 @@ export class AuthService {
         providerSubject,
         expectedUserId: user.id,
         expectedIdentityId: me.currentIdentity.id,
-        loggedInAt: new Date(),
+        loggedInAt,
         context: { ip: context.ip, userAgent: context.userAgent }
       });
       this.assertActiveUser(fresh);
+      await this.recordMemberSignInExperience(fresh, loggedInAt);
     } catch (error) {
       if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
       if (error instanceof GoogleLoginStateError) {
@@ -1681,6 +1686,40 @@ export class AuthService {
       refreshJti: refreshToken.jti,
       userId: user.id
     };
+  }
+
+  private async recordMemberSignInExperience(
+    user: AuthUserRecord,
+    occurredAt: Date
+  ): Promise<void> {
+    if (!this.userExperienceService) return;
+    const date = this.japanCalendarDate(occurredAt);
+    try {
+      await this.userExperienceService.recordEvent({
+        userId: user.id,
+        eventType: "member_sign_in",
+        sourceType: "member_sign_in",
+        sourcePublicId: date,
+        idempotencyKey: `member-sign-in:${user.needoId}:${date}`,
+        baseUnits: 10_000n,
+        requiredBenefit: "member_sign_in",
+        occurredAt
+      });
+    } catch {
+      // Authentication already succeeded. A later real login retries this idempotent daily event.
+    }
+  }
+
+  private japanCalendarDate(occurredAt: Date): string {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(occurredAt);
+    const value = (type: Intl.DateTimeFormatPartTypes): string =>
+      parts.find((part) => part.type === type)?.value ?? "";
+    return `${value("year")}-${value("month")}-${value("day")}`;
   }
 
   private async revokeRefreshTokenAfterFailedLogin(

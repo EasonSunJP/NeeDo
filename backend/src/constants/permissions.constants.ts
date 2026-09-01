@@ -577,6 +577,13 @@ export const SYSTEM_PERMISSIONS = [
     "发放、续费、升级、降级或终止用户平台会员资格"
   ),
   createPermission(
+    "backoffice:user-experience:read",
+    "用户经验明细读取",
+    "api",
+    "backoffice",
+    "分页读取用户经验变动明细"
+  ),
+  createPermission(
     "backoffice:user-group:read",
     "用户分组读取",
     "api",
@@ -1596,6 +1603,7 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "permission:list",
   "backoffice:membership-tier:read",
   "backoffice:membership-benefit:read",
+  "backoffice:user-experience:read",
   "backoffice:user-group:read",
   "backoffice:user-policy:read",
   "backoffice:ndp-experience-campaign:read"

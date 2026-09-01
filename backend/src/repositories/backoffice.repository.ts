@@ -882,6 +882,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       const customerProfile = await transaction.customerProfile.create({
         data: { userId: owner.id, displayName: input.ownerUsername }
       });
+      await transaction.userExperienceAccount.create({
+        data: { userId: owner.id, currentLevel: 1, totalExpUnits: 0n }
+      });
       const customerIdentity = await transaction.userIdentity.create({
         data: {
           userId: owner.id,

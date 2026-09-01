@@ -590,6 +590,18 @@ enum UserPolicyPublicationStatus {
   @@map("user_policy_publication_status")
 }
 
+enum UserExperienceEventType {
+  MEMBER_SIGN_IN     @map("member_sign_in")
+  SERVICE_COMPLETED  @map("service_completed")
+  SOCIAL_POST_LIKED  @map("social_post_liked")
+  NDP_CONSUMED       @map("ndp_consumed")
+  MEMBERSHIP_RENEWED @map("membership_renewed")
+  ADJUSTMENT         @map("adjustment")
+  REVERSAL           @map("reversal")
+
+  @@map("user_experience_event_type")
+}
+
 enum ShopCustomerMembershipStatus {
   ACTIVE @map("active")
   ENDED  @map("ended")
@@ -896,6 +908,7 @@ model User {
   conversationParticipants                ConversationParticipant[]
   sentMessages                            Message[]                             @relation("MessageSender")
   experienceAccount                       UserExperienceAccount?
+  experienceEntries                       UserExperienceEntry[]
   platformMembershipEntitlements          PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementOwner")
   createdPlatformMembershipEntitlements   PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementCreator")
   createdPlatformMembershipTierVersions   PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionCreator")
@@ -1409,11 +1422,49 @@ model UserExperienceAccount {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  entries UserExperienceEntry[]
 
   @@index([currentLevel, deletedAt], map: "user_experience_level_deleted_idx")
   @@index([deletedAt])
   @@map("user_experience_accounts")
+}
+
+model UserExperienceEntry {
+  id                      Int                         @id @default(autoincrement())
+  publicId                String                      @unique @default(uuid()) @map("public_id") @db.Char(36)
+  accountId               Int                         @map("account_id")
+  userId                  Int                         @map("user_id")
+  eventType               UserExperienceEventType     @map("event_type")
+  sourceType              String                      @map("source_type") @db.VarChar(80)
+  sourcePublicId          String?                     @map("source_public_id") @db.VarChar(96)
+  idempotencyKey          String                      @unique @map("idempotency_key") @db.VarChar(191)
+  baseUnits               BigInt                      @map("base_units")
+  campaignFactorBps       Int                         @default(10000) @map("campaign_factor_bps")
+  membershipMultiplierBps Int                         @default(10000) @map("membership_multiplier_bps")
+  extraUnits              BigInt                      @default(0) @map("extra_units")
+  finalUnits              BigInt                      @map("final_units")
+  membershipTierCode      PlatformMembershipTierCode? @map("membership_tier_code")
+  membershipTierVersionId String?                     @map("membership_tier_version_id") @db.Char(36)
+  policyVersionId         String?                     @map("policy_version_id") @db.Char(36)
+  campaignVersionId       String?                     @map("campaign_version_id") @db.Char(36)
+  occurredAt              DateTime                    @map("occurred_at")
+  reversalOfEntryId       Int?                        @map("reversal_of_entry_id")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  deletedAt               DateTime?                   @map("deleted_at")
+
+  account         UserExperienceAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reversalOfEntry UserExperienceEntry?  @relation("UserExperienceEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
+  reversals       UserExperienceEntry[] @relation("UserExperienceEntryReversal")
+
+  @@index([userId, occurredAt, id], map: "user_experience_entries_user_occurred_idx")
+  @@index([sourceType, sourcePublicId], map: "user_experience_entries_source_idx")
+  @@index([accountId, occurredAt, id], map: "user_experience_entries_account_occurred_idx")
+  @@index([reversalOfEntryId], map: "user_experience_entries_reversal_idx")
+  @@index([deletedAt])
+  @@map("user_experience_entries")
 }
 
 model PlatformMembershipTier {

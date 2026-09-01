@@ -166,6 +166,7 @@ export interface TestUserIdentityRecord {
 
 export interface TestUserRecord {
   id: number;
+  needoId: string;
   email: string;
   phone: string | null;
   passwordHash: string;
@@ -407,6 +408,7 @@ export const createStep06Fixture = async (
   const users: TestUserRecord[] = [
     {
       id: 1,
+      needoId: "needo0000000001",
       email: "admin@example.com",
       phone: null,
       passwordHash,
@@ -449,6 +451,7 @@ export const createStep06Fixture = async (
     },
     {
       id: 2,
+      needoId: "needo0000000002",
       email: "operator@example.com",
       phone: "+819012345678",
       passwordHash,
@@ -479,6 +482,7 @@ export const createStep06Fixture = async (
     },
     {
       id: 3,
+      needoId: "needo0000000003",
       email: "second-admin@example.com",
       phone: null,
       passwordHash,
@@ -700,6 +704,7 @@ export const createStep06Fixture = async (
       }) => {
         const user: TestUserRecord = {
           id: Math.max(...users.map((item) => item.id)) + 1,
+          needoId: `needo${String(Math.max(...users.map((item) => item.id)) + 1).padStart(10, "0")}`,
           email: input.email,
           phone: input.phone ?? null,
           passwordHash: input.passwordHash,
@@ -845,7 +850,11 @@ export const createStep06Fixture = async (
 
   const replaceAdminPermissions = (codes: string[]): void => {
     roles[0].rolePermissions = codes.map((code, index) => {
-      const permission = permissions.find((item) => item.code === code) ?? permissions[0];
+      let permission = permissions.find((item) => item.code === code);
+      if (!permission) {
+        permission = makeAuthOnlyPermission(code);
+        permissions.push(permission);
+      }
       return {
         id: 5000 + index,
         roleId: 1,
