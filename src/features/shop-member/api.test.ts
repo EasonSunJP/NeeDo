@@ -113,6 +113,8 @@ describe("shop membership API clients", () => {
     await merchantShopMembershipApi.redeemCard(" card/1 ", body);
     await merchantShopMembershipApi.redemptions({ page: 3, pageSize: 20, cardPublicId: "card-id" });
     await customerShopMembershipApi.redemptions({ page: 1, pageSize: 20, cardPublicId: "customer-card" });
+    const refundBody = { reason: "订单已退款", idempotencyKey: "refund-request-001" };
+    await merchantShopMembershipApi.refundRedemption(" redemption/1 ", refundBody);
 
     expect(httpClient.request).toHaveBeenNthCalledWith(1, "/merchant-admin/shop-membership-cards/card%2F1/redemption-candidates", {
       query: { page: 2, pageSize: 10 }
@@ -123,6 +125,10 @@ describe("shop membership API clients", () => {
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(4, "/customer-profile/me/shop-membership-card-redemptions", {
       query: { page: 1, pageSize: 20, cardPublicId: "customer-card" }
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(5, "/merchant-admin/shop-membership-card-redemptions/redemption%2F1/refunds", {
+      method: "POST",
+      body: refundBody
     });
   });
 

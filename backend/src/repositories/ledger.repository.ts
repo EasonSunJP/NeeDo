@@ -1658,6 +1658,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "shop_membership_reward_reversal") {
+      return "SHOP_MEMBERSHIP_REWARD_REVERSAL" as const;
+    }
     if (type === "service_consumption_settlement") {
       return "SERVICE_CONSUMPTION_SETTLEMENT" as const;
     }
@@ -1729,6 +1732,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "SHOP_MEMBERSHIP_REWARD_REVERSAL") {
+      return "shop_membership_reward_reversal";
+    }
     if (type === "SERVICE_CONSUMPTION_SETTLEMENT") {
       return "service_consumption_settlement";
     }

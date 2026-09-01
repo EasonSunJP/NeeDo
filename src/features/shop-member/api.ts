@@ -384,6 +384,39 @@ export type ShopMembershipCardRedemptionCandidate = {
   reward: ShopMembershipCardRedemptionReward;
 };
 
+export type ShopMembershipCardRefundSummary = {
+  publicId: string;
+  reason: string;
+  reversalMode: "none" | "cancelled_pending" | "ledger_reversed";
+  restoredPrincipalJpy: number;
+  restoredUses: number;
+  customerRewardReversedNdp: number;
+  platformFeeReversedNdp: number;
+  totalShopCreditNdp: number;
+  customerBalanceBeforeNdp: number | null;
+  customerBalanceAfterNdp: number | null;
+  refundedAt: string;
+  refundedBy: { needoId: string; displayName: string };
+  reversalLedgerTransactionNo: string | null;
+};
+
+export type ShopMembershipCardRefund = ShopMembershipCardRefundSummary & {
+  status: "applied";
+  principalBalanceBeforeJpy: number | null;
+  principalBalanceAfterJpy: number | null;
+  remainingUsesBefore: number | null;
+  remainingUsesAfter: number | null;
+  orderPaymentRefundedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  redemption: { publicId: string; rewardStatusBefore: "none" | "pending_funds" | "paid" };
+  card: Pick<ShopMembershipCard, "publicId" | "cardNoMasked" | "name" | "type" | "status" | "principalBalanceJpy" | "bonusBalanceJpy" | "remainingUses">;
+  order: { orderNo: string; serviceName: string };
+  shop: { shopNo: string | null; name: string };
+  customer: { needoId: string; displayName: string };
+  replayed: boolean;
+};
+
 export type ShopMembershipCardRedemption = {
   publicId: string;
   status: "applied" | "refunded";
@@ -417,11 +450,14 @@ export type ShopMembershipCardRedemption = {
     serviceStartedAt: string;
     serviceCompletedAt: string;
     eligibleAmountJpy: number;
+    paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
+    paymentRefundedAt: string | null;
   };
   shop: { shopNo: string | null; name: string };
   customer: { needoId: string; displayName: string };
   redeemedBy: { needoId: string; displayName: string };
   ledgerTransactionNo: string | null;
+  refund: ShopMembershipCardRefundSummary | null;
   replayed: boolean;
 };
 
@@ -530,6 +566,12 @@ export const merchantShopMembershipApi = {
   redemptions(query: ShopMembershipCardRedemptionQuery = {}) {
     return httpClient.request<PaginatedShopMemberships<ShopMembershipCardRedemption>>("/merchant-admin/shop-membership-card-redemptions", {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
+    });
+  },
+  refundRedemption(redemptionPublicId: string, body: { reason: string; idempotencyKey: string }) {
+    return httpClient.request<ShopMembershipCardRefund>(`${publicPath("/merchant-admin/shop-membership-card-redemptions", redemptionPublicId)}/refunds`, {
+      method: "POST",
+      body
     });
   },
   activities(query: MembershipActivityQuery = {}) {

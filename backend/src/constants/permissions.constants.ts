@@ -1130,6 +1130,13 @@ export const SYSTEM_PERMISSIONS = [
     "用当前店铺有效会员卡核销同一客户已完成的正式订单并执行 NDP 返点"
   ),
   createPermission(
+    "shop.member.card.refund",
+    "店铺会员卡核销退款",
+    "api",
+    "shop-membership",
+    "在正式订单退款后恢复会员卡核销并冲正已发放的客户返点和平台费"
+  ),
+  createPermission(
     "page:backoffice-membership-reward-fee",
     "会员返点平台费读取",
     "page",
@@ -1809,7 +1816,8 @@ const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
   "shop.member.card_plan.publish",
   "shop.member.card.issue",
   "shop.member.card.adjust.request",
-  "shop.member.card.topup.create"
+  "shop.member.card.topup.create",
+  "shop.member.card.refund"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AFFILIATE_ENTRY_PERMISSION_CODES = [

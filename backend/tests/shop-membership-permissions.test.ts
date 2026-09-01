@@ -36,7 +36,8 @@ describe("shop membership permissions", () => {
       create: "shop.member.card.redeem",
       candidates: "shop.member.card.redeem",
       merchantRead: "shop.member.view",
-      customerRead: "customer-profile:read"
+      customerRead: "customer-profile:read",
+      refund: "shop.member.card.refund"
     });
   });
 
@@ -52,6 +53,8 @@ describe("shop membership permissions", () => {
     expect(assignments.merchant_staff).not.toContain("shop.member.card.adjust.request");
     expect(assignments.merchant_staff).not.toContain("shop.member.card.topup.create");
     expect(assignments.merchant_staff).toContain("shop.member.card.redeem");
+    expect(assignments.merchant_owner).toContain("shop.member.card.refund");
+    expect(assignments.merchant_staff).not.toContain("shop.member.card.refund");
   });
 
   it("deploys the same role grants when migrations run without a seed", () => {

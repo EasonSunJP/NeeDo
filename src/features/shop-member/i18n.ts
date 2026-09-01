@@ -434,10 +434,54 @@ const shopMembershipCardRedemptionTranslations: Record<string, TranslationEntry>
   "shop_membership.card_redemption.reward_settled.body": { "zh-Hant": "店鋪錢包已補足，你的會員卡核銷返點已發放。", ja: "店舗ウォレットへの入金後、会員カード利用の還元が付与されました。", en: "The shop wallet was funded and your membership-card redemption reward has been issued.", ko: "매장 지갑이 충전되어 회원 카드 사용 리워드가 지급되었습니다." }
 };
 
+const shopMembershipCardRefundTranslations: Record<string, TranslationEntry> = {
+  "开卡、客户确认调整与充值不会产生 NDP；核销与退款已接入正式数据库、RBAC、审计、通知与 NDP 账本。订单正式退款后可恢复卡消费，并按原记录冲正客户返点和平台费。": { "zh-Hant": "開卡、客戶確認調整與儲值不會產生 NDP；核銷與退款已接入正式資料庫、RBAC、稽核、通知與 NDP 台帳。訂單正式退款後可恢復卡消費，並按原記錄沖正客戶返點和平台費。", ja: "カード発行、顧客承認付き変更、チャージでは NDP は発生しません。利用処理と返金は正式DB、RBAC、監査、通知、NDP台帳に接続済みです。注文の正式返金後、カード消費を戻し、元の記録どおり顧客還元と手数料を取り消します。", en: "Issuance, customer-approved changes, and top-up create no NDP. Redemption and refunds use the formal database, RBAC, audit, notifications, and NDP ledger. After the order payment is formally refunded, card consumption is restored and the original customer reward and platform fee are reversed.", ko: "카드 발급, 고객 승인 변경 및 충전은 NDP를 생성하지 않습니다. 사용 처리와 환불은 정식 데이터베이스, RBAC, 감사, 알림 및 NDP 원장에 연결됩니다. 주문 대금이 정식 환불되면 카드 사용분을 복원하고 원래 고객 리워드와 플랫폼 수수료를 취소합니다." },
+  "先定义发卡边界与 NDP 返点。开卡、客户确认调整、充值、核销与退款均已接入各自的正式流程。": { "zh-Hant": "先定義發卡邊界與 NDP 返點。開卡、客戶確認調整、儲值、核銷與退款均已接入各自的正式流程。", ja: "発行条件と NDP 還元を定義します。発行、顧客承認付き変更、チャージ、利用処理、返金はそれぞれ正式フローに接続済みです。", en: "Define issuance boundaries and NDP rewards. Issuance, customer-approved changes, top-up, redemption, and refunds now use their own formal flows.", ko: "발급 범위와 NDP 리워드를 정의합니다. 카드 발급, 고객 승인 변경, 충전, 사용 처리 및 환불은 각각 정식 흐름에 연결되었습니다." },
+  "Card refund & NDP reversal": { "zh-Hant": "會員卡退款與 NDP 沖正", ja: "会員カード返金と NDP 取消", en: "Card refund & NDP reversal", ko: "회원 카드 환불 및 NDP 취소" },
+  "会员卡退款": { "zh-Hant": "會員卡退款", ja: "会員カード返金", en: "Membership card refund", ko: "회원 카드 환불" },
+  "订单款项已完成正式退款后，恢复本次卡消费，并处理对应返点与平台费。": { "zh-Hant": "訂單款項完成正式退款後，恢復本次卡消費，並處理對應返點與平台費。", ja: "注文代金の正式返金後、今回のカード消費を戻し、対応する還元と手数料を処理します。", en: "After the order payment is formally refunded, restore this card consumption and process the related reward and platform fee.", ko: "주문 대금이 정식 환불된 후 이번 카드 사용분을 복원하고 해당 리워드와 플랫폼 수수료를 처리합니다." },
+  "关闭会员卡退款": { "zh-Hant": "關閉會員卡退款", ja: "会員カード返金を閉じる", en: "Close membership card refund", ko: "회원 카드 환불 닫기" },
+  "订单已退款": { "zh-Hant": "訂單已退款", ja: "注文返金済み", en: "Order refunded", ko: "주문 환불 완료" },
+  "卡内恢复": { "zh-Hant": "卡內恢復", ja: "カードへ復元", en: "Card restoration", ko: "카드 복원" },
+  "店铺钱包回补": { "zh-Hant": "店鋪錢包回補", ja: "店舗ウォレット返還", en: "Shop wallet credit", ko: "매장 지갑 복구" },
+  "无需钱包冲正": { "zh-Hant": "無需錢包沖正", ja: "ウォレット取消不要", en: "No wallet reversal", ko: "지갑 취소 불필요" },
+  "客户返点与平台费按原记录处理": { "zh-Hant": "客戶返點與平台費按原記錄處理", ja: "顧客還元と手数料を元の記録どおり処理", en: "Customer reward and platform fee follow the original record", ko: "고객 리워드와 플랫폼 수수료는 원래 기록대로 처리" },
+  "若客户当前余额不足，余额会显示为负数；之后获得的 NDP 会自动抵扣，不冻结账户。": { "zh-Hant": "若客戶目前餘額不足，餘額會顯示為負數；之後獲得的 NDP 會自動抵扣，不凍結帳戶。", ja: "顧客の現在残高が不足する場合はマイナス残高を表示し、今後獲得する NDP で自動相殺します。アカウントは凍結しません。", en: "If the customer balance is insufficient, it becomes visibly negative. Future NDP credits offset it automatically without freezing the account.", ko: "고객 현재 잔액이 부족하면 음수 잔액으로 표시됩니다. 이후 획득한 NDP가 자동으로 상계되며 계정은 동결되지 않습니다." },
+  "待发放返点将直接取消，不会发生客户、平台或店铺钱包扣款。": { "zh-Hant": "待發放返點將直接取消，不會發生客戶、平台或店鋪錢包扣款。", ja: "支給待ち還元はそのまま取り消し、顧客・プラットフォーム・店舗ウォレットには入出金しません。", en: "A pending reward is cancelled directly with no customer, platform, or shop wallet movement.", ko: "지급 대기 리워드는 즉시 취소되며 고객, 플랫폼 또는 매장 지갑 변동은 없습니다." },
+  "该卡当前为非有效状态。退款只恢复原消费，不会自动解冻、续期或重新启用会员卡。": { "zh-Hant": "該卡目前為非有效狀態。退款只恢復原消費，不會自動解凍、續期或重新啟用會員卡。", ja: "このカードは現在有効ではありません。返金は元の消費だけを戻し、自動で凍結解除・延長・再有効化はしません。", en: "This card is not active. Refund restores only the original consumption and does not unfreeze, renew, or reactivate the card.", ko: "이 카드는 현재 유효하지 않습니다. 환불은 원래 사용분만 복원하며 자동 해제, 연장 또는 재활성화하지 않습니다." },
+  "退款原因": { "zh-Hant": "退款原因", ja: "返金理由", en: "Refund reason", ko: "환불 사유" },
+  "退款处理中": { "zh-Hant": "退款處理中", ja: "返金処理中", en: "Refunding", ko: "환불 처리 중" },
+  "确认退卡并冲正": { "zh-Hant": "確認退卡並沖正", ja: "カード返金と取消を確定", en: "Confirm card refund and reversal", ko: "카드 환불 및 취소 확인" },
+  "核销与退款": { "zh-Hant": "核銷與退款", ja: "利用処理と返金", en: "Redemption & refunds", ko: "사용 처리 및 환불" },
+  "Redemption & refund ledger": { "zh-Hant": "核銷與退款台帳", ja: "利用処理・返金台帳", en: "Redemption & refund ledger", ko: "사용 및 환불 원장" },
+  "核销与退款记录": { "zh-Hant": "核銷與退款記錄", ja: "利用処理・返金履歴", en: "Redemption & refund history", ko: "사용 및 환불 내역" },
+  "核对真实订单、会员卡扣减/恢复、客户返点、平台费与退款冲正。待发放记录不会冻结 NDP。": { "zh-Hant": "核對真實訂單、會員卡扣減／恢復、客戶返點、平台費與退款沖正。待發放記錄不會凍結 NDP。", ja: "正式注文、カード消費／復元、顧客還元、手数料、返金取消を確認できます。支給待ち記録でも NDP は凍結しません。", en: "Review persisted orders, card consumption/restoration, customer rewards, platform fees, and refund reversals. Pending records never freeze NDP.", ko: "정식 주문, 카드 차감/복원, 고객 리워드, 플랫폼 수수료 및 환불 취소를 확인합니다. 지급 대기 기록은 NDP를 동결하지 않습니다." },
+  "Refund completed": { "zh-Hant": "退款已完成", ja: "返金完了", en: "Refund completed", ko: "환불 완료" },
+  "会员卡消费已恢复": { "zh-Hant": "會員卡消費已恢復", ja: "カード消費を復元しました", en: "Card consumption restored", ko: "회원 카드 사용분 복원 완료" },
+  "退款 TEST": { "zh-Hant": "退款 TEST", ja: "返金 TEST", en: "Refund TEST", ko: "환불 TEST" },
+  "卡内退回": { "zh-Hant": "卡內退回", ja: "カードへ返還", en: "Returned to card", ko: "카드로 반환" },
+  "返点冲正": { "zh-Hant": "返點沖正", ja: "還元取消", en: "Reward reversal", ko: "리워드 취소" },
+  "已取消待发放": { "zh-Hant": "已取消待發放", ja: "支給待ちを取消済み", en: "Pending reward cancelled", ko: "지급 대기 취소됨" },
+  "无需冲正": { "zh-Hant": "無需沖正", ja: "取消不要", en: "No reversal", ko: "취소 불필요" },
+  "返点扣回后当前 NDP 余额为": { "zh-Hant": "返點扣回後目前 NDP 餘額為", ja: "還元取消後の現在 NDP 残高は", en: "Current NDP balance after reward reversal:", ko: "리워드 취소 후 현재 NDP 잔액:" },
+  "之后获得的 NDP 会自动抵扣，不会冻结账户。": { "zh-Hant": "之後獲得的 NDP 會自動抵扣，不會凍結帳戶。", ja: "今後獲得する NDP で自動相殺し、アカウントは凍結しません。", en: "Future NDP credits offset it automatically without freezing the account.", ko: "이후 획득한 NDP가 자동으로 상계되며 계정은 동결되지 않습니다." },
+  "订单款已退": { "zh-Hant": "訂單款已退", ja: "注文代金返金済み", en: "Order payment refunded", ko: "주문 대금 환불 완료" },
+  "订单退款中": { "zh-Hant": "訂單退款中", ja: "注文返金処理中", en: "Order refund pending", ko: "주문 환불 처리 중" },
+  "订单未退款": { "zh-Hant": "訂單未退款", ja: "注文未返金", en: "Order not refunded", ko: "주문 미환불" },
+  "恢复卡消费并冲正 NDP": { "zh-Hant": "恢復卡消費並沖正 NDP", ja: "カード消費を戻して NDP を取り消す", en: "Restore card consumption and reverse NDP", ko: "카드 사용분 복원 및 NDP 취소" },
+  "关联订单完成正式退款后才可退卡": { "zh-Hant": "關聯訂單完成正式退款後才可退卡", ja: "関連注文の正式返金後にカード返金できます", en: "Card refund is available only after the linked order is formally refunded", ko: "연결된 주문이 정식 환불된 후에만 카드 환불이 가능합니다" },
+  "当前账号没有会员卡退款权限": { "zh-Hant": "目前帳號沒有會員卡退款權限", ja: "現在のアカウントには会員カード返金権限がありません", en: "This account cannot refund membership cards", ko: "현재 계정에는 회원 카드 환불 권한이 없습니다" },
+  "退款未提交，请检查网络后重试": { "zh-Hant": "退款未提交，請檢查網路後重試", ja: "返金を送信できませんでした。通信環境を確認して再試行してください", en: "Refund was not submitted. Check your connection and try again.", ko: "환불이 제출되지 않았습니다. 네트워크를 확인한 후 다시 시도하세요." },
+  "shop_membership.card_refund.applied.title": { "zh-Hant": "會員卡退款已完成", ja: "会員カード返金が完了しました", en: "Membership card refund completed", ko: "회원 카드 환불 완료" },
+  "shop_membership.card_refund.applied.body": { "zh-Hant": "店鋪已恢復本次會員卡消費，並按原記錄處理返點與平台費。", ja: "店舗が今回のカード消費を復元し、元の記録どおり還元と手数料を処理しました。", en: "The shop restored this membership-card consumption and processed the reward and platform fee from the original record.", ko: "매장에서 이번 회원 카드 사용분을 복원하고 원래 기록에 따라 리워드와 플랫폼 수수료를 처리했습니다." },
+  "shop_membership.card_refund.applied_negative.body": { "zh-Hant": "會員卡消費已恢復；返點扣回後 NDP 餘額為負數，之後獲得的 NDP 將自動抵扣。", ja: "カード消費を復元しました。還元取消後の NDP 残高はマイナスで、今後獲得する NDP で自動相殺します。", en: "Card consumption was restored. The reward reversal left a negative NDP balance, which future NDP credits will offset automatically.", ko: "카드 사용분이 복원되었습니다. 리워드 취소 후 NDP 잔액이 음수이며 이후 획득한 NDP로 자동 상계됩니다." }
+};
+
 Object.assign(shopMembershipTranslations, shopMembershipCardPlanTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardIssuanceTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardAdjustmentTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardTopUpTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardRedemptionTranslations);
+Object.assign(shopMembershipTranslations, shopMembershipCardRefundTranslations);
 
 Object.assign(translations, shopMembershipTranslations);

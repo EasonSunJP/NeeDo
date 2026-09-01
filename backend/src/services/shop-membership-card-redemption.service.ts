@@ -94,11 +94,28 @@ export interface ShopMembershipCardRedemptionRecord {
     serviceStartedAt: Date;
     serviceCompletedAt: Date;
     eligibleAmountJpy: number;
+    paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
+    paymentRefundedAt: Date | null;
   };
   shop: { shopNo: string | null; name: string };
   customer: { userId: number; needoId: string; displayName: string };
   redeemedBy: { needoId: string; displayName: string };
   ledgerTransactionNo: string | null;
+  refund: null | {
+    publicId: string;
+    reason: string;
+    reversalMode: "none" | "cancelled_pending" | "ledger_reversed";
+    restoredPrincipalJpy: number;
+    restoredUses: number;
+    customerRewardReversedNdp: number;
+    platformFeeReversedNdp: number;
+    totalShopCreditNdp: number;
+    customerBalanceBeforeNdp: number | null;
+    customerBalanceAfterNdp: number | null;
+    refundedAt: Date;
+    refundedBy: { needoId: string; displayName: string };
+    reversalLedgerTransactionNo: string | null;
+  };
 }
 
 export interface CreateShopMembershipCardRedemptionRepositoryInput {
@@ -350,6 +367,7 @@ export class ShopMembershipCardRedemptionService {
       },
       redeemedBy: record.redeemedBy,
       ledgerTransactionNo: record.ledgerTransactionNo,
+      refund: record.refund,
       replayed
     };
   }

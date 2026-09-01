@@ -13,8 +13,7 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).not.toContain("shopMemberStore");
   });
 
-  it("opens formal top-up and redemption while refund remains separate", () => {
-    expect(source).not.toContain("申请退款");
+  it("opens formal top-up, redemption, and owner-only refund", () => {
     expect(source).not.toContain("开卡演示");
     expect(source).not.toContain("开卡将在后续");
     expect(source).toContain("开通会员");
@@ -25,9 +24,10 @@ describe("ShopMemberCenterPage formal UI", () => {
     expect(source).toContain("<CardRedemptionHistory");
     expect(source).toContain('hasPermission("shop.member.card.topup.create")');
     expect(source).toContain('hasPermission("shop.member.card.redeem")');
-    expect(source).toContain("核销记录");
+    expect(source).toContain('hasPermission("shop.member.card.refund")');
+    expect(source).toContain("核销与退款");
     expect(source).toContain("核销 TEST");
-    expect(source).toContain("核销已接入正式数据库、审计、通知与 NDP 账本");
+    expect(source).toContain("核销与退款已接入正式数据库、RBAC、审计、通知与 NDP 账本");
     expect(source).not.toContain("充值、核销、退款仍会分别接入");
   });
 
