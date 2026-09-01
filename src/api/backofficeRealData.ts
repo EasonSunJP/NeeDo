@@ -821,6 +821,30 @@ function calendarDayNumber(value: string) {
   return Date.parse(`${value}T00:00:00.000Z`) / 86_400_000;
 }
 
+function isExactAnalyticsPeriodWindow(
+  period: DashboardPeriod,
+  from: string,
+  to: string,
+  dayCount: number
+) {
+  if (period === "custom") return true;
+  if (period === "today") return dayCount === 1;
+  if (period === "last7days") return dayCount === 7;
+  if (period === "last30days") return dayCount === 30;
+  if (period === "week") {
+    return dayCount === 7 &&
+      new Date(`${from}T00:00:00.000Z`).getUTCDay() === 1 &&
+      new Date(`${to}T00:00:00.000Z`).getUTCDay() === 0;
+  }
+  if (period === "month") {
+    const [year, month] = from.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    return from === `${from.slice(0, 7)}-01` && to === lastDay;
+  }
+  const year = from.slice(0, 4);
+  return from === `${year}-01-01` && to === `${year}-12-31`;
+}
+
 function requireAnalyticsFilter(
   value: unknown,
   expectedQuery: DashboardQuery
@@ -859,6 +883,12 @@ function requireAnalyticsFilter(
     currentDayCount < 1 ||
     previousDayCount !== currentDayCount ||
     previousTo + 1 !== currentFrom ||
+    !isExactAnalyticsPeriodWindow(
+      value.period as DashboardPeriod,
+      value.from as string,
+      value.to as string,
+      currentDayCount
+    ) ||
     value.period !== expectedQuery.period ||
     value.city !== (expectedQuery.city ?? null) ||
     value.granularity !== expectedGranularity ||

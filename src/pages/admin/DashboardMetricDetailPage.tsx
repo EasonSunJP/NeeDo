@@ -18,7 +18,7 @@ import {
   type DashboardFilterValue
 } from "../../features/dashboard/DashboardFilterBar";
 import { useI18n } from "../../i18n/I18nProvider";
-import { translateTextForContext } from "../../i18n/translations";
+import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 import { analyticsFiltersMatch, getAnalyticsMetricTitleSource } from "./DashboardPage";
 
 const validPeriods = new Set<DashboardPeriod>([
@@ -178,7 +178,7 @@ export function DashboardMetricDetailPage() {
         {visiblePair ? (
           <>
             <AnalyticsMetricGrid
-              getInfoLabel={(title) => `${title} — ${t("查看指标说明和计算公式")}`}
+              getInfoLabel={(title) => getAnalyticsMetricInfoLabel(title, language)}
               getMetricTitle={() => metricTitle}
               groupTitle={t("指标概要")}
               metrics={[visiblePair.detail.metric]}

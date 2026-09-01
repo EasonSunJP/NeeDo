@@ -146,7 +146,7 @@ describe("DashboardMetricDetailPage", () => {
     await act(async () => { dashboardRequest.resolve(dashboard); });
 
     expect(container.textContent).toContain("new_users backend formula");
-    expect(container.querySelector('button[aria-label="新增用户 — 查看指标说明和计算公式"]')).toBeTruthy();
+    expect(container.querySelector('button[aria-label="查看新增用户说明和计算公式"]')).toBeTruthy();
     expect(container.textContent).toContain("0");
     expect([...container.querySelector<HTMLSelectElement>('select[aria-label="所属城市"]')!.options]
       .map((option) => option.value))

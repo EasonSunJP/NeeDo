@@ -548,6 +548,110 @@ describe("formal dashboard frontend API contract", () => {
   });
 
   it.each([
+    [{ period: "today" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "today" as const,
+      from: "2026-08-31",
+      to: "2026-09-01",
+      previousFrom: "2026-08-29",
+      previousTo: "2026-08-30",
+      granularity: "hour" as const
+    }],
+    [{ period: "last7days" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      from: "2026-08-27",
+      previousFrom: "2026-08-21",
+      previousTo: "2026-08-26"
+    }],
+    [{ period: "last30days" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "last30days" as const,
+      from: "2026-08-04",
+      previousFrom: "2026-07-06",
+      previousTo: "2026-08-03"
+    }],
+    [{ period: "week" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "week" as const,
+      from: "2026-08-26",
+      to: "2026-09-01",
+      previousFrom: "2026-08-19",
+      previousTo: "2026-08-25"
+    }],
+    [{ period: "month" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "month" as const,
+      from: "2026-08-02",
+      to: "2026-09-01",
+      previousFrom: "2026-07-02",
+      previousTo: "2026-08-01"
+    }],
+    [{ period: "year" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "year" as const,
+      from: "2025-09-02",
+      to: "2026-09-01",
+      previousFrom: "2024-09-02",
+      previousTo: "2025-09-01",
+      granularity: "month" as const
+    }]
+  ])("rejects a contiguous but semantically invalid non-custom period window", async (query, responseFilter) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      ...analyticsOverview(),
+      filter: responseFilter
+    });
+    await expect(backofficeRealDataApi.dashboardOverview(query)).rejects.toThrow("error.api");
+  });
+
+  it.each([
+    [{ period: "today" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "today" as const,
+      from: "2026-09-01",
+      to: "2026-09-01",
+      previousFrom: "2026-08-31",
+      previousTo: "2026-08-31",
+      granularity: "hour" as const
+    }],
+    [{ period: "last30days" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "last30days" as const,
+      from: "2026-08-03",
+      previousFrom: "2026-07-04",
+      previousTo: "2026-08-02"
+    }],
+    [{ period: "week" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "week" as const,
+      from: "2026-08-31",
+      to: "2026-09-06",
+      previousFrom: "2026-08-24",
+      previousTo: "2026-08-30"
+    }],
+    [{ period: "month" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "month" as const,
+      from: "2026-08-01",
+      to: "2026-08-31",
+      previousFrom: "2026-07-01",
+      previousTo: "2026-07-31"
+    }],
+    [{ period: "year" as const, city: "Tokyo" }, {
+      ...analyticsFilter,
+      period: "year" as const,
+      from: "2026-01-01",
+      to: "2026-12-31",
+      previousFrom: "2025-01-01",
+      previousTo: "2025-12-31",
+      granularity: "month" as const
+    }]
+  ])("accepts the exact formal non-custom period window", async (query, responseFilter) => {
+    const payload = { ...analyticsOverview(), filter: responseFilter };
+    vi.mocked(httpClient.request).mockResolvedValueOnce(payload);
+    await expect(backofficeRealDataApi.dashboardOverview(query)).resolves.toEqual(payload);
+  });
+
+  it.each([
     [[{ seriesKey: "gross_revenue", label: "x", unit: "jpy", points: [] }]],
     [[{
       seriesKey: "wrong",

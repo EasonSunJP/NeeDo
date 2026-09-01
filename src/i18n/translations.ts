@@ -94,6 +94,14 @@ const analyticsTask6Translations: TranslationMap = {
   "暂无可展示的序列数据": fourLanguageTranslation("暫無可展示的序列資料", "表示できる系列データがありません", "No series data to display", "표시할 시계열 데이터가 없습니다")
 };
 
+export function getAnalyticsMetricInfoLabel(title: string, language: Language) {
+  if (language === "zh") return `查看${title}说明和计算公式`;
+  if (language === "zh-Hant") return `查看${title}說明與計算公式`;
+  if (language === "ja") return `${title}の説明と計算式を表示`;
+  if (language === "en") return `View description and formula for ${title}`;
+  return `${title} 설명 및 계산식 보기`;
+}
+
 export const authTrustGatewayTranslations: TranslationMap = {
   保存密码: {
     "zh-Hant": "儲存密碼",

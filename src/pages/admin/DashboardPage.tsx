@@ -16,13 +16,14 @@ import { DashboardFilterBar, type DashboardFilterValue } from "../../features/da
 import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCard";
 import { AnalyticsMetricGrid } from "../../features/dashboard/AnalyticsMetricGrid";
 import { useI18n } from "../../i18n/I18nProvider";
-import { translateTextForContext } from "../../i18n/translations";
+import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
 const defaultQuery: DashboardQuery = { period: "last7days" };
 
 type DashboardPair = {
   dashboard: BackofficeDashboardPayload;
   overview: DashboardOverviewPayload;
+  query: DashboardQuery;
 };
 
 export function analyticsFiltersMatch(
@@ -99,7 +100,7 @@ export function DashboardPage() {
         if (!analyticsFiltersMatch(dashboard.filter, overview.filter)) {
           throw new Error("error.dashboard.filter_mismatch");
         }
-        setPair({ dashboard, overview });
+        setPair({ dashboard, overview, query: { ...query } });
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
@@ -115,6 +116,7 @@ export function DashboardPage() {
 
   const dashboard = pair?.dashboard ?? null;
   const overview = pair?.overview ?? null;
+  const committedQuery = pair?.query ?? defaultQuery;
 
   const headlineMetrics = dashboard
     ? [
@@ -319,14 +321,14 @@ export function DashboardPage() {
                       metric.metricKey === "franchisee_onboarding" || metric.metricKey === "supplier_onboarding"
                         ? t("TEST 功能暂未开放")
                         : undefined}
-                    getInfoLabel={(title) => `${title} — ${t("查看指标说明和计算公式")}`}
+                    getInfoLabel={(title) => getAnalyticsMetricInfoLabel(title, language)}
                     getMetricTitle={(metric) => t(getAnalyticsMetricTitleSource(metric.metricKey))}
                     groupTitle={t(groupTitle as string)}
                     key={groupTitle as string}
                     metrics={metrics as DashboardOverviewPayload["operationsFinance"]}
                     onNavigate={(route) => navigate({
                       pathname: route,
-                      search: `?${serializeDashboardQuerySearch(query)}`
+                      search: `?${serializeDashboardQuerySearch(committedQuery)}`
                     })}
                     previousLabel={t("上一周期")}
                     statusMessages={{

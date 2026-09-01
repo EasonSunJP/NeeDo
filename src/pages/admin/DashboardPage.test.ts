@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
 import { DashboardPage } from "./DashboardPage";
 import { DashboardMetricDetailPage } from "./DashboardMetricDetailPage";
-import { translateTextForContext } from "../../i18n/translations";
+import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -31,9 +31,9 @@ vi.mock("../../features/dashboard/DashboardCharts", () => ({
 
 const filter = {
   period: "last7days",
-  from: "2026-08-25",
+  from: "2026-08-26",
   to: "2026-09-01",
-  previousFrom: "2026-08-18",
+  previousFrom: "2026-08-19",
   previousTo: "2026-08-25",
   timeZone: "Asia/Tokyo",
   granularity: "day",
@@ -90,8 +90,12 @@ const overviewPayload = {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => { resolve = next; });
-  return { promise, resolve };
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((next, fail) => {
+    resolve = next;
+    reject = fail;
+  });
+  return { promise, reject, resolve };
 }
 
 describe("operations unified data dashboard", () => {
@@ -131,8 +135,45 @@ describe("operations unified data dashboard", () => {
     expect(text).toContain("0");
     expect(text).toContain("TEST 功能暂未开放");
     expect([...container.querySelectorAll("button")].some((item) => item.textContent?.includes("TEST"))).toBe(false);
-    expect(container.querySelector('button[aria-label="营业总额 — 查看指标说明和计算公式"]')).toBeTruthy();
+    expect(container.querySelector('button[aria-label="查看营业总额说明和计算公式"]')).toBeTruthy();
   });
+
+  it.each(["pending", "failed"] as const)(
+    "opens detail with the committed pair query while a newer refresh is %s",
+    async (refreshState) => {
+      const nextDashboard = deferred<typeof dashboardPayload>();
+      const nextOverview = deferred<typeof overviewPayload>();
+      apiMocks.dashboard
+        .mockResolvedValueOnce(dashboardPayload)
+        .mockReturnValueOnce(nextDashboard.promise);
+      apiMocks.dashboardOverview
+        .mockResolvedValueOnce(overviewPayload)
+        .mockReturnValueOnce(nextOverview.promise);
+      const router = createMemoryRouter([
+        { path: "/admin", element: createElement(DashboardPage) },
+        { path: "/admin/analytics/metrics/:metricKey", element: createElement("div", null, "detail") }
+      ], { initialEntries: ["/admin"] });
+      await act(async () => { root.render(createElement(RouterProvider, { router })); });
+
+      const period = container.querySelector<HTMLSelectElement>('select[aria-label="统计期间"]')!;
+      act(() => {
+        period.value = "month";
+        period.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      const apply = [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "查询")!;
+      await act(async () => { apply.click(); });
+      if (refreshState === "failed") {
+        await act(async () => { nextOverview.reject(new Error("refresh failed")); });
+      }
+
+      const details = [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "查看详细数据")!;
+      await act(async () => { details.click(); });
+      expect(router.state.location.pathname).toBe("/admin/analytics/metrics/gross_revenue");
+      expect(router.state.location.search).toBe("?period=last7days");
+    }
+  );
 
   it("preserves the exact applied custom range and city when opening metric detail", async () => {
     const customFilter = {
@@ -238,6 +279,11 @@ describe("operations unified data dashboard", () => {
     expect(translateTextForContext("暂无数据", "ja", { portal: "admin" })).toBe("データなし");
     expect(translateTextForContext("暂无数据", "en", { portal: "admin" })).toBe("No data");
     expect(translateTextForContext("暂无数据", "ko", { portal: "admin" })).toBe("데이터 없음");
+    expect(getAnalyticsMetricInfoLabel("营业总额", "zh")).toBe("查看营业总额说明和计算公式");
+    expect(getAnalyticsMetricInfoLabel("營業總額", "zh-Hant")).toBe("查看營業總額說明與計算公式");
+    expect(getAnalyticsMetricInfoLabel("売上総額", "ja")).toBe("売上総額の説明と計算式を表示");
+    expect(getAnalyticsMetricInfoLabel("Gross revenue", "en")).toBe("View description and formula for Gross revenue");
+    expect(getAnalyticsMetricInfoLabel("총매출", "ko")).toBe("총매출 설명 및 계산식 보기");
   });
 
   it("fails closed on mismatched independently resolved windows and preserves the coherent pair", async () => {
@@ -248,7 +294,7 @@ describe("operations unified data dashboard", () => {
       .mockResolvedValueOnce(overviewPayload)
       .mockResolvedValueOnce({
         ...overviewPayload,
-        filter: { ...overviewPayload.filter, from: "2026-08-26" }
+        filter: { ...overviewPayload.filter, from: "2026-08-27" }
       });
     await act(async () => {
       root.render(createElement(MemoryRouter, null, createElement(DashboardPage)));
