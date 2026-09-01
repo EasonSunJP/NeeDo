@@ -2,7 +2,6 @@ import { identityApplicationTranslations } from "../features/identity-applicatio
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { dashboardTranslations } from "../features/dashboard/dashboardTranslations";
-import { platformUserManagementTranslations } from "../features/platform-user-management/i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -746,7 +745,6 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
-  ...platformUserManagementTranslations,
   "回复中": {
     "zh-Hant": "回覆中",
     ja: "返信中",
@@ -16058,6 +16056,14 @@ const coreReadApiSourceTranslationOverrides: Record<string, LocalizedText> = {
   "搜索订单、用户、员工、财务": { zh: "搜索订单、用户、员工、财务", "zh-Hant": "搜尋訂單、使用者、員工、財務", ja: "注文、ユーザー、スタッフ、経理を検索", en: "Search orders, users, employees, or finance", ko: "주문, 사용자, 직원, 재무 검색" },
   "wellness": { zh: "健康护理", "zh-Hant": "健康護理", ja: "ウェルネス", en: "wellness", ko: "웰니스" }
 };
+
+export function registerTranslationEntries(entries: Readonly<Record<string, TranslationEntry>>) {
+  Object.entries(entries).forEach(([source, entry]) => {
+    if (!(source in translations)) {
+      translations[source] = entry;
+    }
+  });
+}
 
 function cleanupRuntimeTranslation(value: string, language: Language) {
   if (language === "zh") {

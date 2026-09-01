@@ -169,8 +169,14 @@ async function loadTranslations() {
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
-    const loaded = await import(`file://${tempFile}`);
-    return loaded.translations ?? {};
+    const [loaded, platformUserManagementLoaded] = await Promise.all([
+      import(`file://${tempFile}`),
+      import(`file://${platformUserManagementTempFile}`)
+    ]);
+    return {
+      ...(platformUserManagementLoaded.platformUserManagementTranslations ?? {}),
+      ...(loaded.translations ?? {})
+    };
   } finally {
     await fs.unlink(tempFile).catch(() => {});
     await fs.unlink(identityApplicationTempFile).catch(() => {});

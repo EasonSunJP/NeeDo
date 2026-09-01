@@ -3,9 +3,19 @@ import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { translateImUiText } from "../features/im/ui-copy";
-import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
+import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("registers lazy feature copy without overriding the global source of truth", () => {
+    registerTranslationEntries({
+      "lazy feature probe": { ja: "遅延機能", en: "Lazy feature", ko: "지연 기능" },
+      "取消": { ja: "上書き禁止" },
+    });
+
+    expect(translateText("lazy feature probe", "ja")).toBe("遅延機能");
+    expect(translateText("取消", "ja")).not.toBe("上書き禁止");
+  });
+
   it("localizes automatic chat translation controls in all five App languages", () => {
     const expected = {
       "聊天内容自动翻译": {
