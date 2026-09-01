@@ -69,7 +69,12 @@ const post = {
   serviceEndAt: demandInput.serviceEndAt.toISOString(),
   expiresAt: demandInput.expiresAt.toISOString(),
   publishedAt: now.toISOString(),
-  publisher: { publicId: actor.publicId, identityType: "customer", displayName: "Customer", avatarUrl: null },
+  publisher: {
+    publicId: actor.publicId,
+    identityType: "customer",
+    displayName: "Customer",
+    avatarUrl: null
+  },
   counts: { comments: 0, likes: 0, shares: 0 },
   viewer: { liked: false, canWithdraw: true },
   demand: {
@@ -82,16 +87,25 @@ const post = {
     budgetMode: "total" as const,
     budgetMinJpy: null,
     budgetMaxJpy: 10_000,
-    address: { line1: "Tokyo", line2: null, line3: null, line2GenerallyVisible: false, line3GenerallyVisible: false, disclosure: "owner" as const }
+    address: {
+      line1: "Tokyo",
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "owner" as const
+    }
   },
   intelligence: null
 };
 
 function fixture() {
   let reject = true;
-  let repository: Record<string, jest.Mock>;
-  repository = {
-    runInTransaction: jest.fn(async (handler: (repository: unknown, tx: unknown) => Promise<unknown>) => handler(repository, { tx: true })),
+  const repository: Record<string, jest.Mock> = {
+    runInTransaction: jest.fn(
+      async (handler: (repository: unknown, tx: unknown) => Promise<unknown>) =>
+        handler(repository, { tx: true })
+    ),
     resolveActor: jest.fn(async () => actor),
     findPostByIdempotencyKey: jest.fn(async () => null),
     createPost: jest.fn(async () => ({ id: 51 })),
@@ -100,11 +114,15 @@ function fixture() {
   };
   const enforcement = {
     assertServiceEkyc: jest.fn(async () => {
-      if (reject) throw new AppError({ code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED, message: "error.user_policy.ekyc_required", statusCode: 403 });
+      if (reject)
+        throw new AppError({
+          code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
+          message: "error.user_policy.ekyc_required",
+          statusCode: 403
+        });
     })
   };
-  let fee: Record<string, jest.Mock>;
-  fee = {
+  const fee: Record<string, jest.Mock> = {
     resolveCurrent: jest.fn(async () => ({ amountNdp: 1_000, ruleSetVersion: 1 })),
     recordPublicationCalculation: jest.fn(async () => 71),
     withTransactionClient: jest.fn(() => fee)
@@ -122,13 +140,22 @@ function fixture() {
     ledger as never,
     enforcement as never
   );
-  return { enforcement, repository, service, allow: () => { reject = false; } };
+  return {
+    enforcement,
+    repository,
+    service,
+    allow: () => {
+      reject = false;
+    }
+  };
 }
 
 describe("Exchange demand eKYC policy", () => {
   it("rejects a Request before transaction, post, fee, ledger or audit mutation", async () => {
     const state = fixture();
-    await expect(state.service.publish(access, demandInput, "request-policy-0001")).rejects.toMatchObject({
+    await expect(
+      state.service.publish(access, demandInput, "request-policy-0001")
+    ).rejects.toMatchObject({
       code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
       statusCode: 403
     });
@@ -140,9 +167,13 @@ describe("Exchange demand eKYC policy", () => {
 
   it("allows an idempotent retry after eKYC becomes valid", async () => {
     const state = fixture();
-    await expect(state.service.publish(access, demandInput, "request-policy-0002")).rejects.toBeInstanceOf(AppError);
+    await expect(
+      state.service.publish(access, demandInput, "request-policy-0002")
+    ).rejects.toBeInstanceOf(AppError);
     state.allow();
-    await expect(state.service.publish(access, demandInput, "request-policy-0002")).resolves.toEqual(post);
+    await expect(
+      state.service.publish(access, demandInput, "request-policy-0002")
+    ).resolves.toEqual(post);
     expect(state.repository.createPost).toHaveBeenCalledTimes(1);
     expect(state.repository.createAudit).toHaveBeenCalledTimes(1);
   });
@@ -154,24 +185,28 @@ describe("Exchange demand eKYC policy", () => {
       identityType: "technician",
       customerMembership: null
     });
-    await state.service.publish({
-      ...access,
-      currentIdentityType: "technician"
-    }, {
-      type: "intelligence",
-      title: "Offer",
-      detail: "Available",
-      contentLocale: "en",
-      serviceStartAt: demandInput.serviceStartAt,
-      serviceEndAt: demandInput.serviceEndAt,
-      expiresAt: demandInput.expiresAt,
-      areaLabel: "Tokyo",
-      serviceMode: "store",
-      addressLabel: null,
-      serviceAreas: ["Tokyo"],
-      originalPriceJpy: null,
-      campaignPriceJpy: 8_000
-    }, "intelligence-policy-1");
+    await state.service.publish(
+      {
+        ...access,
+        currentIdentityType: "technician"
+      },
+      {
+        type: "intelligence",
+        title: "Offer",
+        detail: "Available",
+        contentLocale: "en",
+        serviceStartAt: demandInput.serviceStartAt,
+        serviceEndAt: demandInput.serviceEndAt,
+        expiresAt: demandInput.expiresAt,
+        areaLabel: "Tokyo",
+        serviceMode: "store",
+        addressLabel: null,
+        serviceAreas: ["Tokyo"],
+        originalPriceJpy: null,
+        campaignPriceJpy: 8_000
+      },
+      "intelligence-policy-1"
+    );
     expect(state.enforcement.assertServiceEkyc).not.toHaveBeenCalled();
   });
 });

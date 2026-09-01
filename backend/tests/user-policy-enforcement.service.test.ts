@@ -8,9 +8,7 @@ import { UserPolicyEnforcementService } from "../src/services/user-policy-enforc
 
 const occurredAt = new Date("2026-09-01T10:00:00.000Z");
 
-const policy = (
-  overrides: Partial<ResolvedUserGlobalPolicy> = {}
-): ResolvedUserGlobalPolicy => ({
+const policy = (overrides: Partial<ResolvedUserGlobalPolicy> = {}): ResolvedUserGlobalPolicy => ({
   versionPublicId: "policy-v1",
   version: 1,
   status: "published",
@@ -27,9 +25,7 @@ const policy = (
   ...overrides
 });
 
-const facts = (
-  overrides: Partial<UserPolicyAccountFacts> = {}
-): UserPolicyAccountFacts => ({
+const facts = (overrides: Partial<UserPolicyAccountFacts> = {}): UserPolicyAccountFacts => ({
   phoneBound: true,
   emailVerified: true,
   ekycVerified: true,
@@ -39,7 +35,11 @@ const facts = (
 const repository = (
   value: UserPolicyAccountFacts | null = facts()
 ): jest.Mocked<UserPolicyEnforcementRepositoryPort> => ({
-  findAccountFactsAt: jest.fn(async (_userId: number, _occurredAt: Date) => value)
+  findAccountFactsAt: jest.fn(async (userId: number, occurredAt: Date) => {
+    void userId;
+    void occurredAt;
+    return value;
+  })
 });
 
 const resolver = (value: ResolvedUserGlobalPolicy = policy()) => ({
@@ -89,10 +89,12 @@ describe("UserPolicyEnforcementService", () => {
   ])("enforces %s eKYC independently", async (mode, requireHome, requireStore) => {
     const service = new UserPolicyEnforcementService(
       repository(facts({ ekycVerified: false })),
-      resolver(policy({
-        requireHomeServiceEkyc: requireHome,
-        requireStoreServiceEkyc: requireStore
-      }))
+      resolver(
+        policy({
+          requireHomeServiceEkyc: requireHome,
+          requireStoreServiceEkyc: requireStore
+        })
+      )
     );
 
     await expect(service.assertServiceEkyc(44, mode, occurredAt)).rejects.toMatchObject({

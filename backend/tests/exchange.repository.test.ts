@@ -443,10 +443,13 @@ describe("ExchangePostRepository", () => {
       id: 42,
       createdAt: new Date("2026-08-30T02:30:00.000Z")
     };
-    const queryRaw = jest.fn(async (_query: unknown) => [
-      { id: 42, priorityActive: 1, tierRank: 3, tierCode: "black_diamond" },
-      { id: 41, priorityActive: 0, tierRank: 0, tierCode: "free" }
-    ]);
+    const queryRaw = jest.fn(async (queryInput: unknown) => {
+      void queryInput;
+      return [
+        { id: 42, priorityActive: 1, tierRank: 3, tierCode: "black_diamond" },
+        { id: 41, priorityActive: 0, tierRank: 0, tierCode: "free" }
+      ];
+    });
     const findMany = jest.fn(async () => [demandRow, blackDiamond]);
     const count = jest.fn(async () => 2);
     const repository = new ExchangePostRepository({
