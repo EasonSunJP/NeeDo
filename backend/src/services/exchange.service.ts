@@ -24,6 +24,7 @@ import { resolveEffectiveCustomerMembershipLevel } from "./customer-membership.s
 import type { ExchangeRequestFeeService } from "./exchange-request-fee.service";
 import type { LedgerService } from "./ledger.service";
 import { sha256StableJson } from "../utils/stable-json";
+import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 
 export interface ExchangeActorLookup {
   userId: number;
@@ -212,7 +213,11 @@ export class ExchangeService {
     private readonly now: () => Date = () => new Date(),
     private readonly personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">,
     private readonly exchangeRequestFeeService?: ExchangeRequestFeePublicationPort,
-    private readonly ledgerService?: ExchangeRequestLedgerPublicationPort
+    private readonly ledgerService?: ExchangeRequestLedgerPublicationPort,
+    private readonly userPolicyEnforcementService?: Pick<
+      UserPolicyEnforcementService,
+      "assertServiceEkyc"
+    >
   ) {}
 
   public async getRequestPublicationContext(
@@ -283,6 +288,13 @@ export class ExchangeService {
   ): Promise<ExchangePostPayload> {
     const occurredAt = this.now();
     const idempotencyKey = exchangeIdempotencyKeySchema.parse(key);
+    if (input.type === "demand") {
+      await this.userPolicyEnforcementService?.assertServiceEkyc(
+        access.userId,
+        input.serviceMode,
+        occurredAt
+      );
+    }
     try {
       return await this.repository.runInTransaction(async (repository, transactionClient) => {
         const actor = await this.resolveActor(access, repository);

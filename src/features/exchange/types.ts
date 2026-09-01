@@ -1,6 +1,7 @@
 export type ExchangePostType = "demand" | "intelligence";
 export type ExchangePostStatus = "published" | "withdrawn" | "expired";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
+export type ExchangeDemandServiceMode = "home" | "store";
 export type ExchangeContentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type ExchangeMatchMode = "quick" | "selective";
 export type ExchangeBudgetMode = "total" | "per_provider";
@@ -27,6 +28,7 @@ export type ExchangeViewerState = {
 };
 
 export type ExchangeDemand = {
+  serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;
   publisherCapacitySource: ExchangePublisherCapacitySource;
@@ -122,6 +124,7 @@ type ExchangePublishCommon = {
 
 export type PublishExchangeDemandInput = ExchangePublishCommon & {
   type: "demand";
+  serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   matchMode: ExchangeMatchMode;
   budgetMode: ExchangeBudgetMode;

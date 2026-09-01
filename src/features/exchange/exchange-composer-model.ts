@@ -1,5 +1,6 @@
 import type {
   ExchangeContentLocale,
+  ExchangeDemandServiceMode,
   ExchangeRequestPublicationContext,
   ExchangeServiceMode,
   PublishExchangeDemandInput,
@@ -15,6 +16,7 @@ export type ExchangeComposerErrorKey =
   | "contextFailed"
   | "requestFeeUnavailable"
   | "requestNotAllowed"
+  | "ekycRequired"
   | "insufficientFunds"
   | "publishFailed";
 
@@ -53,6 +55,7 @@ export type RequestComposerDraft = {
   expiresDate: string;
   expiresTime: string;
   targetProviderCount: string;
+  serviceMode: ExchangeDemandServiceMode;
   matchMode: "quick" | "selective";
   budgetMode: "total" | "per_provider";
   budgetMinJpy: string;
@@ -114,6 +117,7 @@ export function normalizeRequestDraft(
       serviceEndAt,
       expiresAt,
       targetProviderCount,
+      serviceMode: draft.serviceMode,
       matchMode: draft.matchMode,
       budgetMode: draft.budgetMode,
       budgetMinJpy,

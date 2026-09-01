@@ -1603,6 +1603,10 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
               $ref: "#/components/schemas/ExchangePost"
             }),
             ...exchangeErrorResponses,
+            "403": {
+              description:
+                "error.forbidden, error.identity.forbidden, or error.user_policy.ekyc_required — denied permission, identity, or the selected service mode requires eKYC"
+            },
             "503": {
               description:
                 "error.exchange.request_fee_unavailable — no valid Request publication fee is effective"
@@ -2186,6 +2190,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
+          "serviceMode",
           "targetProviderCount",
           "targetProviderLimitSnapshot",
           "publisherCapacitySource",
@@ -2197,6 +2202,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "address"
         ],
         properties: {
+          serviceMode: { type: "string", enum: ["home", "store"] },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           targetProviderLimitSnapshot: { type: "integer", minimum: 1, maximum: 20 },
           publisherCapacitySource: {
@@ -2426,6 +2432,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "serviceStartAt",
           "serviceEndAt",
           "expiresAt",
+          "serviceMode",
           "targetProviderCount",
           "matchMode",
           "budgetMode",
@@ -2450,6 +2457,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceStartAt: { type: "string", format: "date-time" },
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
+          serviceMode: { type: "string", enum: ["home", "store"] },
           targetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           matchMode: { type: "string", enum: ["quick", "selective"] },
           budgetMode: { type: "string", enum: ["total", "per_provider"] },

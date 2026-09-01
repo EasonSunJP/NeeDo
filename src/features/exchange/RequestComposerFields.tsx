@@ -120,6 +120,16 @@ export function RequestComposerFields({
           </div>
         </Field>
 
+        <SegmentedChoice
+          label={t("serviceMode")}
+          onChange={(serviceMode) => onChange({ serviceMode })}
+          options={[
+            { label: t("store"), value: "store" },
+            { label: t("home"), value: "home" }
+          ]}
+          value={draft.serviceMode}
+        />
+
         <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3">
           <p className="text-xs font-black text-[color:var(--client-text)]">
             {t("requestProviderLimit")}: {context.maxTargetProviderCount}

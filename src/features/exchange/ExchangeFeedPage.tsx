@@ -84,6 +84,9 @@ function postTags(post: ExchangePost, language: Language) {
   const identity = post.publisher
     ? `${post.publisher.displayName} · ${post.publisher.publicId}`
     : exchangeText("publisherHidden", language);
+  if (post.demand) {
+    return [identity, exchangeText(post.demand.serviceMode === "home" ? "home" : "store", language), post.areaLabel];
+  }
   if (!post.intelligence) return [identity, post.areaLabel];
   const tags = [
     identity,

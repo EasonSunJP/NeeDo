@@ -350,7 +350,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     : [t("flowReviewDemand"), t("flowContact"), t("flowConfirmScope"), t("flowAwaitMatching"), t("flowReview")];
   const requirementTags = post.intelligence
     ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel, post.contentLocale]
-    : [post.areaLabel, post.contentLocale];
+    : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
 
   return (
     <MobileFullscreenPage innerClassName="client-glass-page-surface">

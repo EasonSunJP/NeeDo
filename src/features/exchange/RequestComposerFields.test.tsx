@@ -117,6 +117,7 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(document.body.querySelector<HTMLInputElement>('[name="targetProviderCount"]')?.getAttribute("max")).toBe("3");
     expect(document.body.textContent).toContain("地址1 *");
     expect(document.body.textContent).toContain("预算上限 *");
+    expect(document.body.textContent).toContain("服务方式 *");
     expect(document.body.querySelector('[name="addressLine1Public"]')).toBeNull();
 
     fillValidRequestDraft();
@@ -181,16 +182,19 @@ describe("RequestComposerFields formal publication contract", () => {
     const line2Visible = document.body.querySelector<HTMLInputElement>('[name="addressLine2Public"]')!;
     const selective = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "选配");
     const perProvider = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "单价");
-    if (!selective || !perProvider) throw new Error("missing Request mode controls");
+    const home = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "上门");
+    if (!selective || !perProvider || !home) throw new Error("missing Request mode controls");
 
     await act(async () => setInputValue(minimum, ""));
     await act(async () => selective.click());
     await act(async () => perProvider.click());
+    await act(async () => home.click());
     await act(async () => line2Visible.click());
     await act(async () => clickAction("composer-next"));
 
     expect(document.body.textContent).toContain("选配");
     expect(document.body.textContent).toContain("单价");
+    expect(document.body.textContent).toContain("上门");
     expect(document.body.textContent).toContain("3-2-1 · 匹配前可见");
     expect(document.body.textContent).toContain("¥30,000");
     expect(publishExchangePost).not.toHaveBeenCalled();

@@ -86,6 +86,7 @@ const post: ExchangePostPayload = {
   counts: { comments: 4, likes: 21, shares: 5 },
   viewer: { liked: false, canWithdraw: true },
   demand: {
+    serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "customer_membership",
@@ -313,6 +314,7 @@ describe("formal Exchange routes", () => {
     const scopedMerchantStaffToken = await login("merchant-staff-scoped-demand@example.test");
     const demandBody = {
       type: "demand",
+      serviceMode: "store",
       title: post.title,
       detail: post.detail,
       contentLocale: "ja",

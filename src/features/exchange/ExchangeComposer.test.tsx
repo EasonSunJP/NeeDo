@@ -43,6 +43,7 @@ const publishedPost: ExchangePost = {
   counts: { comments: 0, likes: 0, shares: 0 },
   viewer: { liked: false, canWithdraw: true },
   demand: {
+    serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "customer_membership",
@@ -98,6 +99,8 @@ describe("ExchangeComposer identity boundary", () => {
       expect(exchangeText("addressLine1", language)).toBeTruthy();
       expect(exchangeText("publisherIdentityVisible", language)).toBeTruthy();
       expect(exchangeText("requestFeeFreezeNotice", language)).toBeTruthy();
+      expect(exchangeText("home", language)).toBeTruthy();
+      expect(exchangeText("ekycRequired", language)).toBeTruthy();
     }
   });
 });
@@ -196,6 +199,7 @@ describe("ExchangeComposer publication", () => {
     expect(publishExchangePost).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "demand",
+        serviceMode: "store",
         title: "正式发布的需求",
         budgetMinJpy: 5000,
         budgetMaxJpy: 8000,

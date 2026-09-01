@@ -18,6 +18,7 @@ const common = {
 const validDemand = (overrides: Record<string, unknown> = {}) => ({
   ...common,
   type: "demand" as const,
+  serviceMode: "store" as const,
   targetProviderCount: 1,
   matchMode: "quick" as const,
   budgetMode: "total" as const,

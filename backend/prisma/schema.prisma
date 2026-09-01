@@ -793,6 +793,13 @@ enum ExchangeServiceMode {
   @@map("exchange_service_mode")
 }
 
+enum ExchangeDemandServiceMode {
+  HOME  @map("home")
+  STORE @map("store")
+
+  @@map("exchange_demand_service_mode")
+}
+
 enum ExchangeMatchMode {
   QUICK     @map("quick")
   SELECTIVE @map("selective")
@@ -3566,12 +3573,14 @@ model ExchangeDemand {
   addressLine2Public          Boolean                         @default(false) @map("address_line_2_public")
   addressLine3Public          Boolean                         @default(false) @map("address_line_3_public")
   publisherIdentityPublic     Boolean                         @default(false) @map("publisher_identity_public")
+  serviceMode                 ExchangeDemandServiceMode       @default(STORE) @map("service_mode")
   createdAt                   DateTime                        @default(now()) @map("created_at")
   updatedAt                   DateTime                        @updatedAt @map("updated_at")
   deletedAt                   DateTime?                       @map("deleted_at")
 
   post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
 
+  @@index([serviceMode, deletedAt])
   @@index([deletedAt])
   @@map("exchange_demands")
 }

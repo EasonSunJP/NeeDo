@@ -67,7 +67,8 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       dependencies.exchangeRequestFeeService ??
         new ExchangeRequestFeeService(new ExchangeRequestFeeRepository()),
       dependencies.ledgerService ??
-        new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository())
+        new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
+      dependencies.userPolicyEnforcementService
     );
   const controller = new ExchangeController(service);
 

@@ -22,6 +22,7 @@ const demandPostSchema = z
   .object({
     type: z.literal("demand"),
     ...commonPostShape,
+    serviceMode: z.enum(["home", "store"]),
     targetProviderCount: z.coerce.number().int().min(1).max(20),
     matchMode: z.enum(["quick", "selective"]),
     budgetMode: z.enum(["total", "per_provider"]),

@@ -38,6 +38,7 @@ const formalPost = {
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true },
   demand: {
+    serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "customer_membership",
@@ -112,6 +113,7 @@ describe("formal Exchange API client", () => {
   it("publishes each subtype without client-controlled actor fields", async () => {
     await publishExchangePost({
       type: "demand",
+      serviceMode: "store",
       title: formalPost.title,
       detail: formalPost.detail,
       contentLocale: "zh-CN",
@@ -134,6 +136,7 @@ describe("formal Exchange API client", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/exchange/posts", {
       body: {
         type: "demand",
+        serviceMode: "store",
         title: formalPost.title,
         detail: formalPost.detail,
         contentLocale: "zh-CN",

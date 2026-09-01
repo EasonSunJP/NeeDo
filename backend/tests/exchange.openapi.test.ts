@@ -182,6 +182,7 @@ describe("formal Exchange OpenAPI contract", () => {
     const publish = schemas.ExchangeDemandPublishRequest;
     expect(publish.required).toEqual(
       expect.arrayContaining([
+        "serviceMode",
         "targetProviderCount",
         "matchMode",
         "budgetMode",
@@ -191,6 +192,10 @@ describe("formal Exchange OpenAPI contract", () => {
     );
     expect(publish.required).not.toContain("budgetMinJpy");
     expect(publish.properties).not.toHaveProperty("areaLabel");
+    expect(publish.properties.serviceMode.enum).toEqual(["home", "store"]);
+    expect(document().paths["/api/v1/exchange/posts"].post.responses["403"].description).toContain(
+      "error.user_policy.ekyc_required"
+    );
     expect(publish.properties.matchMode.enum).toEqual(["quick", "selective"]);
     expect(publish.properties.budgetMode.enum).toEqual(["total", "per_provider"]);
     expect(publish.properties).toEqual(
@@ -207,6 +212,7 @@ describe("formal Exchange OpenAPI contract", () => {
     const demand = schemas.ExchangeDemand;
     expect(demand.required).toEqual(
       expect.arrayContaining([
+        "serviceMode",
         "targetProviderCount",
         "targetProviderLimitSnapshot",
         "publisherCapacitySource",

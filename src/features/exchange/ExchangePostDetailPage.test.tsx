@@ -54,6 +54,7 @@ const demandPost: ExchangePost = {
   counts: { comments: 4, likes: 21, shares: 6 },
   viewer: { liked: false, canWithdraw: true },
   demand: {
+    serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "customer_membership",

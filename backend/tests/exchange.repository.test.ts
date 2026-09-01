@@ -27,6 +27,7 @@ const demandRow = {
   updatedAt: new Date("2026-08-30T02:00:00.000Z"),
   deletedAt: null,
   demand: {
+    serviceMode: "STORE",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "CUSTOMER_MEMBERSHIP",
@@ -356,6 +357,7 @@ describe("ExchangePostRepository", () => {
           counts: { comments: 4, likes: 21, shares: 5 },
           viewer: { liked: true, canWithdraw: true },
           demand: {
+            serviceMode: "store",
             targetProviderCount: 1,
             targetProviderLimitSnapshot: 1,
             publisherCapacitySource: "customer_membership",
@@ -630,6 +632,7 @@ describe("ExchangePostRepository", () => {
       },
       input: {
         type: "demand" as const,
+        serviceMode: "store" as const,
         title: demandRow.title,
         detail: demandRow.detail,
         contentLocale: "ja" as const,
@@ -693,6 +696,7 @@ describe("ExchangePostRepository", () => {
           payloadFingerprint: "a".repeat(64),
           demand: {
             create: {
+              serviceMode: "STORE",
               targetProviderCount: 1,
               targetProviderLimitSnapshot: 1,
               publisherCapacitySource: "CUSTOMER_MEMBERSHIP",

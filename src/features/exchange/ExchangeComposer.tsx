@@ -60,6 +60,7 @@ function createEmptyRequestDraft(contentLocale: ExchangeContentLocale): RequestC
     expiresDate: "",
     expiresTime: "",
     targetProviderCount: "1",
+    serviceMode: "store",
     matchMode: "quick",
     budgetMode: "total",
     budgetMinJpy: "",
@@ -131,6 +132,7 @@ function errorKeyFromPublicationFailure(error: unknown): ExchangeComposerErrorKe
   if (message === "error.exchange.request_target_limit") return "targetProviderLimit";
   if (message === "error.exchange.request_fee_unavailable") return "requestFeeUnavailable";
   if (message === "error.wallet.insufficient_available") return "insufficientFunds";
+  if (message === "error.user_policy.ekyc_required") return "ekycRequired";
   return "publishFailed";
 }
 
@@ -332,6 +334,7 @@ export function ExchangeComposer({
           { label: t("authoredLanguage"), value: contentLocaleLabel(normalizedPayload.contentLocale) },
           ...(normalizedPayload.type === "demand"
             ? [
+              { label: t("serviceMode"), value: t(normalizedPayload.serviceMode === "home" ? "home" : "store") },
               { label: t("addressLine1"), value: normalizedPayload.addressLine1 },
               { label: t("serviceWindow"), value: `${formatComposerDateTime(normalizedPayload.serviceStartAt, language)} ～ ${formatComposerDateTime(normalizedPayload.serviceEndAt, language)}` },
               { label: t("expiry"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },

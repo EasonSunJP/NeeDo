@@ -4,6 +4,7 @@ import type { PaginatedResponse } from "../utils/pagination";
 export type ExchangePostType = "demand" | "intelligence";
 export type ExchangePostStatus = "published" | "withdrawn" | "expired";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
+export type ExchangeDemandServiceMode = "home" | "store";
 export type ExchangeMatchMode = "quick" | "selective";
 export type ExchangeBudgetMode = "total" | "per_provider";
 export type ExchangePublisherCapacitySource = "customer_membership" | "shop_merchant";
@@ -29,6 +30,7 @@ export interface ExchangeViewerState {
 }
 
 export interface ExchangeDemandPayload {
+  serviceMode: ExchangeDemandServiceMode;
   targetProviderCount: number;
   targetProviderLimitSnapshot: number;
   publisherCapacitySource: ExchangePublisherCapacitySource;

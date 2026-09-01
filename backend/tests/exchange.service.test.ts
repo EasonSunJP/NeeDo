@@ -66,6 +66,7 @@ const post: ExchangePostPayload = {
   counts: { comments: 0, likes: 0, shares: 0 },
   viewer: { liked: false, canWithdraw: true },
   demand: {
+    serviceMode: "store",
     targetProviderCount: 1,
     targetProviderLimitSnapshot: 1,
     publisherCapacitySource: "customer_membership",
@@ -98,6 +99,7 @@ const counts: ExchangeInteractionCounts = { comments: 4, likes: 21, shares: 5 };
 
 const demandInput = {
   type: "demand" as const,
+  serviceMode: "store" as const,
   title: post.title,
   detail: post.detail,
   contentLocale: "ja" as const,

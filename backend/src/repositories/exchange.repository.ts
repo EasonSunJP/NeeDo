@@ -1,6 +1,7 @@
 import {
   ContentLocale,
   ExchangeBudgetMode as DatabaseExchangeBudgetMode,
+  ExchangeDemandServiceMode as DatabaseExchangeDemandServiceMode,
   ExchangeMatchMode as DatabaseExchangeMatchMode,
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
@@ -28,6 +29,7 @@ import type {
   ExchangeCommentPayload,
   ExchangeBudgetMode,
   ExchangeCustomerMembershipLevel,
+  ExchangeDemandServiceMode,
   ExchangeInteractionCounts,
   ExchangeListInput,
   ExchangeMatchMode,
@@ -72,6 +74,14 @@ const serviceModeFromDatabase: Record<DatabaseExchangeServiceMode, ExchangeServi
   [DatabaseExchangeServiceMode.FLEXIBLE]: "flexible"
 };
 
+const demandServiceModeFromDatabase: Record<
+  DatabaseExchangeDemandServiceMode,
+  ExchangeDemandServiceMode
+> = {
+  [DatabaseExchangeDemandServiceMode.HOME]: "home",
+  [DatabaseExchangeDemandServiceMode.STORE]: "store"
+};
+
 const localeFromDatabase: Record<ContentLocale, ContentLocaleCode> = {
   [ContentLocale.ZH_CN]: "zh-CN",
   [ContentLocale.ZH_TW]: "zh-TW",
@@ -92,6 +102,14 @@ const serviceModeToDatabase: Record<ExchangeServiceMode, DatabaseExchangeService
   store: DatabaseExchangeServiceMode.STORE,
   onsite: DatabaseExchangeServiceMode.ONSITE,
   flexible: DatabaseExchangeServiceMode.FLEXIBLE
+};
+
+const demandServiceModeToDatabase: Record<
+  ExchangeDemandServiceMode,
+  DatabaseExchangeDemandServiceMode
+> = {
+  home: DatabaseExchangeDemandServiceMode.HOME,
+  store: DatabaseExchangeDemandServiceMode.STORE
 };
 
 const matchModeFromDatabase: Record<DatabaseExchangeMatchMode, ExchangeMatchMode> = {
@@ -414,7 +432,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   addressLine3: input.input.addressLine3,
                   addressLine2Public: input.input.addressLine2Public,
                   addressLine3Public: input.input.addressLine3Public,
-                  publisherIdentityPublic: input.input.publisherIdentityPublic
+                  publisherIdentityPublic: input.input.publisherIdentityPublic,
+                  serviceMode: demandServiceModeToDatabase[input.input.serviceMode]
                 }
               }
             }
@@ -701,6 +720,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
 
     const demand = row.demand
       ? {
+          serviceMode: demandServiceModeFromDatabase[row.demand.serviceMode],
           targetProviderCount: row.demand.targetProviderCount,
           targetProviderLimitSnapshot: row.demand.targetProviderLimitSnapshot,
           publisherCapacitySource: capacitySourceFromDatabase[row.demand.publisherCapacitySource],
