@@ -30,6 +30,7 @@ describe("BackofficeRepository shop owner account identifiers", () => {
         update: jest.fn(async () => ({ id: 7 }))
       },
       customerProfile: { create: jest.fn(async () => ({ id: 17 })) },
+      userExperienceAccount: { create: jest.fn(async () => ({ id: 27 })) },
       userIdentity: {
         create: jest.fn(async () => ({ id: nextIdentityId++ })),
         update: jest.fn(async () => ({ id: 70 }))
@@ -86,6 +87,9 @@ describe("BackofficeRepository shop owner account identifiers", () => {
     expect(transaction.user.update).toHaveBeenCalledWith({
       where: { id: 7 },
       data: { needoId: "u5831047296" }
+    });
+    expect(transaction.userExperienceAccount.create).toHaveBeenCalledWith({
+      data: { userId: 7, currentLevel: 1, totalExpUnits: 0n }
     });
     expect(createIdentifier).toHaveBeenCalledWith({
       data: expect.objectContaining({

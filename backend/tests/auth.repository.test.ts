@@ -157,6 +157,7 @@ describe("AuthRepository formal login identifiers", () => {
         create: jest.fn(async () => ({ id: 8 })),
         update: jest.fn(async () => ({ id: 8 }))
       },
+      userExperienceAccount: { create: jest.fn(async () => ({ id: 18 })) },
       userIdentity: {
         create: jest.fn(async () => ({ id: 72 })),
         update: updateIdentity
@@ -212,6 +213,9 @@ describe("AuthRepository formal login identifiers", () => {
     expect(updateUser).toHaveBeenCalledWith({
       where: { id: 8 },
       data: { needoId: "u5831047296", username: "u5831047296" }
+    });
+    expect(transaction.userExperienceAccount.create).toHaveBeenCalledWith({
+      data: { userId: 8, currentLevel: 1, totalExpUnits: 0n }
     });
     expect(result).toMatchObject({ needoId: "u5831047296" });
     expect(result).not.toHaveProperty("loginIdentityId");

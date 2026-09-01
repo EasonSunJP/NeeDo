@@ -148,6 +148,7 @@ describe("UserRepository formal account creation", () => {
         findUniqueOrThrow: jest.fn(async () => stored)
       },
       customerProfile: { create: jest.fn(async () => ({ id: 17 })) },
+      userExperienceAccount: { create: jest.fn(async () => ({ id: 27 })) },
       userIdentity: {
         create: jest.fn(async () => ({ id: 70 })),
         update: jest.fn(async () => ({ id: 70 }))
@@ -195,6 +196,9 @@ describe("UserRepository formal account creation", () => {
         scopeType: "customer_profile",
         scopeId: 17
       }
+    });
+    expect(transaction.userExperienceAccount.create).toHaveBeenCalledWith({
+      data: { userId: 7, currentLevel: 1, totalExpUnits: 0n }
     });
     expect(result).toMatchObject({
       needoId: "u5831047296",
