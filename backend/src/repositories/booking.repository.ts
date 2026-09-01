@@ -1367,6 +1367,20 @@ export class BookingRepository implements BookingRepositoryPort {
               }
               return null;
             }
+            if (
+              slot.technicianProfileId &&
+              (await this.hasExchangeMatchParticipantOverlap(
+                tx,
+                slot.technicianProfileId,
+                slot.startsAt,
+                slot.endsAt
+              ))
+            ) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
 
             if (options.invalidateSupersededAffiliate) {
               for (const bookingOrderId of supersededOrderIds) {
@@ -2537,7 +2551,15 @@ export class BookingRepository implements BookingRepositoryPort {
               },
               select: { id: true }
             });
-            if (conflict) {
+            if (
+              conflict ||
+              (await this.hasExchangeMatchParticipantOverlap(
+                tx,
+                current.technicianProfileId,
+                current.startsAt,
+                current.endsAt
+              ))
+            ) {
               return { outcome: "schedule_conflict" as const };
             }
           }
@@ -3165,6 +3187,25 @@ export class BookingRepository implements BookingRepositoryPort {
           endsAt: { gt: startsAt },
           deletedAt: null,
           ...(excludeScheduleSlotId ? { scheduleSlotId: { not: excludeScheduleSlotId } } : {})
+        },
+        select: { id: true }
+      })
+    );
+  }
+
+  private async hasExchangeMatchParticipantOverlap(
+    transaction: Prisma.TransactionClient,
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    return Boolean(
+      await transaction.exchangeMatchParticipant.findFirst({
+        where: {
+          technicianProfileId,
+          estimatedStartsAt: { lt: endsAt },
+          estimatedEndsAt: { gt: startsAt },
+          deletedAt: null
         },
         select: { id: true }
       })

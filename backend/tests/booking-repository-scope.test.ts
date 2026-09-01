@@ -543,6 +543,58 @@ describe("BookingRepository order list scope", () => {
     expect(settle).not.toHaveBeenCalled();
   });
 
+  it("treats an overlapping Exchange match participant as a confirmation conflict", async () => {
+    const settle = jest.fn();
+    const updateMany = jest.fn();
+    const current = {
+      id: 101,
+      status: "PENDING",
+      shopId: 16,
+      technicianProfileId: 47,
+      scheduleSlotId: 201,
+      startsAt: new Date("2026-08-29T13:00:00.000Z"),
+      endsAt: new Date("2026-08-29T15:00:00.000Z")
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 16 }]).mockResolvedValueOnce([]),
+      bookingOrder: {
+        findFirst: jest.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(null),
+        updateMany
+      },
+      exchangeMatchParticipant: {
+        findFirst: jest.fn().mockResolvedValue({ id: 71 })
+      },
+      orderAcceptancePause: { findMany: jest.fn().mockResolvedValue([]) },
+      technicianProfile: { update: jest.fn().mockResolvedValue({ id: 47 }) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrderWithScheduleGuard(
+        {
+          id: 101,
+          actorUserId: 7,
+          fromStatus: "pending",
+          toStatus: "confirmed"
+        },
+        { settle }
+      )
+    ).resolves.toEqual({ outcome: "schedule_conflict" });
+    expect(tx.exchangeMatchParticipant.findFirst).toHaveBeenCalledWith({
+      where: {
+        technicianProfileId: 47,
+        estimatedStartsAt: { lt: current.endsAt },
+        estimatedEndsAt: { gt: current.startsAt },
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+  });
+
   it("merges public performance revisions into a stable timeline without exposing internal notes", async () => {
     const order = {
       ...makeTransitionOrderRecord("CANCELLED"),

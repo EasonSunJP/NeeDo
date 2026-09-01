@@ -182,6 +182,7 @@ const createRepository = () => {
     markWithdrawnIfPublished: jest.fn(async () => true),
     markExpiredIfPublished: jest.fn(async () => true),
     cancelActiveClaimsByPost: jest.fn(async () => 0),
+    closeOpenMatchingForTerminalPost: jest.fn(async () => true),
     listDuePostIds: jest.fn(async () => []),
     createComment: jest.fn(async () => ({ kind: "success" as const, value: comment })),
     setLike: jest.fn(async () => ({ kind: "success" as const, value: counts })),
@@ -398,6 +399,20 @@ describe("ExchangeService", () => {
     await expect(service.getPost(access, 41)).resolves.toMatchObject({
       viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true }
     });
+  });
+
+  it("keeps a matched selective Request readable by its owner after reload", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    const matchedPost = {
+      ...post,
+      status: "matched" as const,
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: true },
+      demand: { ...post.demand!, matchMode: "selective" as const }
+    };
+    repository.findPostById.mockResolvedValue(matchedPost);
+
+    await expect(service.getPost(access, 41)).resolves.toEqual(matchedPost);
   });
 
   it("returns not found before exposing or mutating another customer's demand interactions", async () => {
@@ -885,6 +900,13 @@ describe("ExchangeService", () => {
       "request_withdrawn",
       now
     );
+    expect(repository.closeOpenMatchingForTerminalPost).toHaveBeenCalledWith({
+      exchangePostId: 41,
+      reason: "request_withdrawn",
+      actorUserId: 7,
+      actorIdentityId: 17,
+      at: now
+    });
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "exchange.claim.request_withdrawn",
@@ -1022,6 +1044,13 @@ describe("ExchangeService", () => {
       "request_expired",
       now
     );
+    expect(repository.closeOpenMatchingForTerminalPost).toHaveBeenCalledWith({
+      exchangePostId: 41,
+      reason: "request_expired",
+      actorUserId: null,
+      actorIdentityId: null,
+      at: now
+    });
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "exchange.claim.request_expired",

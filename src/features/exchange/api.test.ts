@@ -4,6 +4,7 @@ import { httpClient } from "../../api/httpClient";
 import {
   createExchangeClaim,
   createExchangeComment,
+  getExchangeMatching,
   getMyExchangeClaim,
   getExchangePost,
   getRequestPublicationContext,
@@ -14,6 +15,7 @@ import {
   listReceivedExchangeClaims,
   publishExchangePost,
   recordExchangeShare,
+  selectExchangeMatching,
   unlikeExchangePost,
   withdrawExchangeClaim,
   withdrawExchangePost
@@ -246,6 +248,26 @@ describe("formal Exchange API client", () => {
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(5, "/exchange/claims/73/withdraw", {
       headers: { "Idempotency-Key": "exchange-claim-withdraw-0001" },
+      method: "POST"
+    });
+  });
+
+  it("reads and completes selective matching through the versioned formal routes", async () => {
+    const signal = new AbortController().signal;
+
+    await getExchangeMatching("41", signal);
+    await selectExchangeMatching(
+      "41",
+      { selectedClaimIds: [73, 75], expectedVersion: 6 },
+      "exchange-match-select-0001"
+    );
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/exchange/posts/41/matching", {
+      signal
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/exchange/posts/41/matching/select", {
+      body: { selectedClaimIds: [73, 75], expectedVersion: 6 },
+      headers: { "Idempotency-Key": "exchange-match-select-0001" },
       method: "POST"
     });
   });

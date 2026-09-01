@@ -2,7 +2,7 @@ import type { ContentLocaleCode } from "../constants/content-locales";
 import type { PaginatedResponse } from "../utils/pagination";
 
 export type ExchangePostType = "demand" | "intelligence";
-export type ExchangePostStatus = "published" | "withdrawn" | "expired";
+export type ExchangePostStatus = "published" | "withdrawn" | "expired" | "matched" | "closed";
 export type ExchangeServiceMode = "store" | "onsite" | "flexible";
 export type ExchangeDemandServiceMode = "home" | "store";
 export type ExchangeMatchMode = "quick" | "selective";
@@ -55,7 +55,7 @@ export interface ExchangeRequestAddressPayload {
   line3: string | null;
   line2GenerallyVisible: boolean;
   line3GenerallyVisible: boolean;
-  disclosure: "owner" | "general";
+  disclosure: "owner" | "matched_participant" | "general";
 }
 
 export interface ExchangePublisherCapacity {

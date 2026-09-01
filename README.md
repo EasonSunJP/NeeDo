@@ -134,7 +134,7 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 ```
 
-The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming is enabled as the first formal fulfillment slice; quick matching, provider selection, matching completion, budget augmentation, booking/order creation, appointments, and payment remain explicitly deferred.
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming and exact owner selection are enabled as formal fulfillment slices. Quick matching, budget augmentation, target reduction, manual matching close, bilateral cancellation, booking/order creation, appointments, and payment remain explicitly deferred.
 
 ### Formal Selective Exchange Claim
 
@@ -162,7 +162,32 @@ The lifecycle checker creates its Request, schedule, service and identities as e
 
 On the current local database, migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. The older unrelated migration `20260831160000_im_chat_records_translation` remains pending and was deliberately left untouched; do not use a blanket migrate-deploy command for this acceptance slice.
 
-The current slice does not implement quick-mode auto matching, Request-owner provider selection, total-budget augmentation, early-close half-fee settlement, bilateral cancellation after matching, `BookingOrder`, or `Payment` creation.
+Claim creation and withdrawal remain separate from the final owner-selection command documented below. Neither flow creates a `BookingOrder`, moves wallet value, or reserves schedule capacity through `bookedCount`.
+
+### Formal Selective Exact Matching
+
+Selective exact matching adds a one-to-one `ExchangeRequestMatching` aggregate, immutable `ExchangeMatchParticipant` reservation snapshots, and append-only `ExchangeMatchEvent` history. It reuses the existing Request, claim, identity, shop, service, technician, schedule, RBAC, notification, privacy, and audit authorities. It does not create a parallel booking or financial system.
+
+The two authenticated endpoints are:
+
+- `GET /api/v1/exchange/posts/{id}/matching` — Request-owner matching state, or the current matched participant's privacy-scoped result.
+- `POST /api/v1/exchange/posts/{id}/matching/select` — Request-owner exact selection with `Idempotency-Key` and optimistic `expectedVersion`.
+
+The write command succeeds only when the selected active-claim count exactly equals the current effective target and the selected quote total does not exceed the current effective total budget. A successful transaction creates Participant time reservations, changes selected claims to `matched`, changes all other active claims to `not_selected`, changes the Request and matching aggregate to `matched`, appends one `selective_matched` event, notifies selected and non-selected providers, and writes the audit entry. Stale versions, changed idempotency payloads, invalid claim sets, budget overflow, and schedule conflicts fail without partial writes.
+
+Only the publisher and matched participants can read the matching result. A matched participant receives the filled Request address and publisher identity; non-selected providers keep the general public projection. No Exchange response exposes publisher telephone or email. Claim options, new claims, and Booking creation/confirmation now also treat active Match Participants as technician-time conflicts, while Participant creation does not increment `ScheduleSlot.bookedCount`.
+
+Run the local-only, rollback-contained real-database flow checker from `backend/`:
+
+```bash
+ENV_FILE=.env.dev npm run check:exchange-selective-matching-flow
+```
+
+The checker creates its own marker-scoped Request, two providers, claims, publication hold, and schedule records inside one outer transaction. It invokes the real matching service and proves terminal states, notifications, audit/event evidence, owner and participant privacy, idempotent replay, changed-payload conflict, retained publication hold, unchanged wallet/ledger values, unchanged schedule capacity, and zero Booking/financial-row creation. The outer transaction is deliberately rolled back and marker cleanup is independently verified.
+
+Migration `20260901232000_exchange_selective_exact_matching` is additive and backfills one OPEN matching aggregate and OPENED event for every non-deleted Demand. On the accepted local database it was applied independently of unrelated pending migrations, then reconciled against the physical tables, backfill counts, checks, indexes, Restrict foreign keys, permissions, grants, and Prisma migration history.
+
+This microstep does not implement quick-mode auto matching, total-budget augmentation, target reduction, manual close or half-fee settlement, bilateral cancellation after matching, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep.
 
 ### Exchange Test NDP Foundation
 

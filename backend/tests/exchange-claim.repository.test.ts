@@ -119,6 +119,7 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("technician_service.`technician_id` = slot.`technician_profile_id`");
     expect(sql).toContain("NOT EXISTS");
     expect(sql).toContain("FROM `exchange_claims` AS active_claim");
+    expect(sql).toContain("FROM `exchange_match_participants` AS matched_participant");
     expect(sql).toContain("FROM `booking_orders` AS busy_order");
     expect(sql).toContain("slot.`shop_id` =");
     expect(sql).toContain("suspension.`active_key` IS NOT NULL");
@@ -155,6 +156,78 @@ describe("ExchangeClaimRepository option projection", () => {
 });
 
 describe("ExchangeClaimRepository mutation primitives", () => {
+  it("locks and advances the matching version with one append-only claim event", async () => {
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const eventCreate = jest.fn(async () => ({ id: 81 }));
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: jest.fn(async () => [{ id: 51 }]),
+      exchangeRequestMatching: {
+        findUnique: jest.fn(async () => ({ id: 51, status: "OPEN", version: 3 })),
+        updateMany
+      },
+      exchangeMatchEvent: { create: eventCreate }
+    } as unknown as PrismaClient);
+
+    await expect(repository.lockMatching(41)).resolves.toEqual({
+      id: 51,
+      status: "open",
+      version: 3
+    });
+    await expect(
+      repository.advanceMatchingForClaimEvent({
+        matchingId: 51,
+        exchangePostId: 41,
+        claimId: 301,
+        type: "claim_added",
+        actorUserId: 7,
+        actorIdentityId: 17,
+        versionBefore: 3,
+        at: now
+      })
+    ).resolves.toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 51,
+        exchangePostId: 41,
+        status: "OPEN",
+        version: 3,
+        deletedAt: null
+      },
+      data: { version: 4, updatedAt: now }
+    });
+    expect(eventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        matchingId: 51,
+        sequence: 4,
+        type: "CLAIM_ADDED",
+        versionBefore: 3,
+        versionAfter: 4,
+        payload: { exchangePostId: 41, exchangeClaimId: 301 }
+      })
+    });
+  });
+
+  it("detects an overlapping selected participant without touching a schedule slot", async () => {
+    const findFirst = jest.fn(async () => ({ id: 71 }));
+    const repository = new ExchangeClaimRepository({
+      exchangeMatchParticipant: { findFirst }
+    } as unknown as PrismaClient);
+    const startsAt = new Date("2026-09-02T01:00:00.000Z");
+    const endsAt = new Date("2026-09-02T02:00:00.000Z");
+    await expect(
+      repository.hasOverlappingMatchParticipant(81, startsAt, endsAt)
+    ).resolves.toBe(true);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        technicianProfileId: 81,
+        estimatedStartsAt: { lt: endsAt },
+        estimatedEndsAt: { gt: startsAt },
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  });
+
   it("runs request, technician and schedule locks before conflict checks and creation", async () => {
     const events: string[] = [];
     const queryRaw = jest.fn(async (query: SqlQuery) => {

@@ -3,7 +3,9 @@ import {
   ExchangeBudgetMode as DatabaseExchangeBudgetMode,
   ExchangeClaimStatus as DatabaseExchangeClaimStatus,
   ExchangeDemandServiceMode as DatabaseExchangeDemandServiceMode,
+  ExchangeMatchEventType as DatabaseExchangeMatchEventType,
   ExchangeMatchMode as DatabaseExchangeMatchMode,
+  ExchangeMatchingStatus as DatabaseExchangeMatchingStatus,
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
   ExchangePublisherCapacitySource as DatabaseExchangePublisherCapacitySource,
@@ -58,7 +60,9 @@ const typeFromDatabase: Record<DatabaseExchangePostType, ExchangePostType> = {
 const statusFromDatabase: Record<DatabaseExchangePostStatus, ExchangePostStatus> = {
   [DatabaseExchangePostStatus.PUBLISHED]: "published",
   [DatabaseExchangePostStatus.WITHDRAWN]: "withdrawn",
-  [DatabaseExchangePostStatus.EXPIRED]: "expired"
+  [DatabaseExchangePostStatus.EXPIRED]: "expired",
+  [DatabaseExchangePostStatus.MATCHED]: "matched",
+  [DatabaseExchangePostStatus.CLOSED]: "closed"
 };
 
 const requestFinancialStateFromDatabase: Record<
@@ -177,6 +181,11 @@ const postInclude = (viewerIdentityId: number) =>
     intelligence: { where: { deletedAt: null } },
     likes: {
       where: { actorIdentityId: viewerIdentityId, deletedAt: null },
+      select: { id: true },
+      take: 1
+    },
+    matchParticipants: {
+      where: { participantIdentityId: viewerIdentityId, deletedAt: null },
       select: { id: true },
       take: 1
     },
@@ -566,6 +575,37 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
                   publisherIdentityPublic: input.input.publisherIdentityPublic,
                   serviceMode: demandServiceModeToDatabase[input.input.serviceMode]
                 }
+              },
+              matching: {
+                create: {
+                  status: DatabaseExchangeMatchingStatus.OPEN,
+                  effectiveTargetProviderCount: input.input.targetProviderCount,
+                  effectiveBudgetMaxJpy:
+                    input.input.budgetMode === "per_provider"
+                      ? input.input.budgetMaxJpy * input.input.targetProviderCount
+                      : input.input.budgetMaxJpy,
+                  selectedQuoteTotalJpy: 0,
+                  version: 1,
+                  createdAt: input.now,
+                  updatedAt: input.now,
+                  events: {
+                    create: {
+                      sequence: 1,
+                      type: DatabaseExchangeMatchEventType.OPENED,
+                      versionBefore: 0,
+                      versionAfter: 1,
+                      payload: {
+                        effectiveTargetProviderCount: input.input.targetProviderCount,
+                        effectiveBudgetMaxJpy:
+                          input.input.budgetMode === "per_provider"
+                            ? input.input.budgetMaxJpy * input.input.targetProviderCount
+                            : input.input.budgetMaxJpy
+                      },
+                      createdAt: input.now,
+                      updatedAt: input.now
+                    }
+                  }
+                }
               }
             }
           : {
@@ -687,6 +727,60 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       }
     });
     return updated.count;
+  }
+
+  public async closeOpenMatchingForTerminalPost(input: {
+    exchangePostId: number;
+    reason: "request_withdrawn" | "request_expired";
+    actorUserId: number | null;
+    actorIdentityId: number | null;
+    at: Date;
+  }): Promise<boolean> {
+    const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT id
+      FROM \`exchange_request_matchings\`
+      WHERE exchange_post_id = ${input.exchangePostId}
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `);
+    if (!locked[0]) return false;
+    const matching = await this.client.exchangeRequestMatching.findUnique({
+      where: { exchangePostId: input.exchangePostId },
+      select: { id: true, status: true, version: true }
+    });
+    if (!matching || matching.status !== DatabaseExchangeMatchingStatus.OPEN) return false;
+    const versionAfter = matching.version + 1;
+    const updated = await this.client.exchangeRequestMatching.updateMany({
+      where: {
+        id: matching.id,
+        exchangePostId: input.exchangePostId,
+        status: DatabaseExchangeMatchingStatus.OPEN,
+        version: matching.version,
+        deletedAt: null
+      },
+      data: {
+        status: DatabaseExchangeMatchingStatus.CLOSED,
+        version: versionAfter,
+        closedAt: input.at,
+        updatedAt: input.at
+      }
+    });
+    if (updated.count !== 1) return false;
+    await this.client.exchangeMatchEvent.create({
+      data: {
+        matchingId: matching.id,
+        sequence: versionAfter,
+        type: DatabaseExchangeMatchEventType.CLOSED,
+        actorUserId: input.actorUserId,
+        actorIdentityId: input.actorIdentityId,
+        versionBefore: matching.version,
+        versionAfter,
+        payload: { exchangePostId: input.exchangePostId, reason: input.reason },
+        createdAt: input.at,
+        updatedAt: input.at
+      }
+    });
+    return true;
   }
 
   public async createComment(
@@ -860,6 +954,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
     const ownerView = row.ownerIdentityId === viewerIdentityId;
+    const matchedParticipantView = row.matchParticipants.length > 0;
     const claimableByProviderUser =
       claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
     const intelligence = row.intelligence
@@ -892,15 +987,26 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           budgetMaxJpy: row.demand.budgetMaxJpy,
           address: {
             line1: row.demand.addressLine1,
-            line2: ownerView || row.demand.addressLine2Public ? row.demand.addressLine2 : null,
-            line3: ownerView || row.demand.addressLine3Public ? row.demand.addressLine3 : null,
+            line2:
+              ownerView || matchedParticipantView || row.demand.addressLine2Public
+                ? row.demand.addressLine2
+                : null,
+            line3:
+              ownerView || matchedParticipantView || row.demand.addressLine3Public
+                ? row.demand.addressLine3
+                : null,
             line2GenerallyVisible: row.demand.addressLine2Public,
             line3GenerallyVisible: row.demand.addressLine3Public,
-            disclosure: ownerView ? ("owner" as const) : ("general" as const)
+            disclosure: ownerView
+              ? ("owner" as const)
+              : matchedParticipantView
+                ? ("matched_participant" as const)
+                : ("general" as const)
           }
         }
       : null;
-    const showPublisher = !row.demand || ownerView || row.demand.publisherIdentityPublic;
+    const showPublisher =
+      !row.demand || ownerView || matchedParticipantView || row.demand.publisherIdentityPublic;
 
     return {
       id: row.id,
@@ -935,7 +1041,11 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           status === "published" &&
           Boolean(row.demand) &&
           row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
-        canViewClaims: false
+        canViewClaims:
+          ownerView &&
+          status !== "withdrawn" &&
+          status !== "expired" &&
+          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE
       },
       ...(priority ? { priority } : {}),
       demand,

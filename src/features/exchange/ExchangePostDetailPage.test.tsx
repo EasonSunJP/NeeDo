@@ -290,7 +290,7 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).not.toContain("情报");
   });
 
-  it("distinguishes an invalid route, missing post, and expired status", async () => {
+  it("distinguishes an invalid route, missing post, expired status, and a terminal match", async () => {
     await renderDetail("/needo/posts/not-a-number");
     expect(document.body.textContent).toContain("链接无效");
     expect(getExchangePost).not.toHaveBeenCalled();
@@ -302,6 +302,17 @@ describe("ExchangePostDetailPage", () => {
     vi.mocked(getExchangePost).mockResolvedValueOnce({ ...demandPost, status: "expired" });
     await renderDetail();
     await waitFor(() => expect(document.body.textContent).toContain("这条内容已过期"));
+
+    vi.mocked(getExchangePost).mockResolvedValueOnce({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: true },
+      demand: { ...demandPost.demand!, matchMode: "selective" }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，预约与支付尚未开放"));
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull();
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(true);
   });
 
   it("requires confirmation and renders the server-authoritative withdrawn state", async () => {
@@ -334,7 +345,7 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
   });
 
-  it("composes the read-only received list only from the owner capability flag", async () => {
+  it("composes the formal matching inbox only from the owner capability flag", async () => {
     vi.mocked(getExchangePost).mockResolvedValue({
       ...demandPost,
       viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
@@ -344,7 +355,8 @@ describe("ExchangePostDetailPage", () => {
     await waitFor(() => expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull());
 
     expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).toBeNull();
-    expect(document.body.querySelector<HTMLButtonElement>('[data-action="booking-deferred"]')?.disabled).toBe(true);
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(false);
+    expect(document.body.textContent).toContain("选择服务者完成匹配");
   });
 
   it("keeps the formal claim composition free of local or fake workflow bridges", () => {
