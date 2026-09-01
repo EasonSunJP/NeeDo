@@ -11,7 +11,7 @@ describe("UserMembershipsPage formal UI", () => {
     expect(source).toContain("<MembershipCardAdjustmentInbox");
   });
 
-  it("supports real membership, card states, and read-only top-up history", () => {
+  it("supports real membership, card states, and read-only top-up and redemption history", () => {
     for (const copy of ["有效", "已结束", "已冻结", "已到期", "暂无会员卡", "查看店铺"]) {
       expect(source).toContain(copy);
     }
@@ -22,6 +22,7 @@ describe("UserMembershipsPage formal UI", () => {
       expect(source).toContain(copy);
     }
     expect(source).toContain("<CardTopUpHistory");
+    expect(source).toContain("<CardRedemptionHistory");
     expect(source).toContain('mode="customer"');
   });
 

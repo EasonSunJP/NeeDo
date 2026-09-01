@@ -355,6 +355,82 @@ export type ShopMembershipCardTopUpQuery = {
   cardPublicId?: string;
 };
 
+export type ShopMembershipCardRedemptionReward = {
+  hits: Array<{ ruleIndex: number; kind: MembershipRewardRuleKind; basis: Record<string, string | number | boolean | null>; rewardNdp: number }>;
+  rawCustomerRewardNdp: number;
+  customerRewardNdp: number;
+  platformFeeRateBps: number;
+  platformFeeNdp: number;
+  totalShopDebitNdp: number;
+  capped: boolean;
+};
+
+export type ShopMembershipCardRedemptionCandidate = {
+  orderNo: string;
+  serviceName: string;
+  servicePublicId: string | null;
+  serviceCategoryCode: string | null;
+  serviceStartedAt: string;
+  serviceCompletedAt: string;
+  eligibleAmountJpy: number;
+  consumption: {
+    principalJpy: number;
+    uses: number;
+    principalBalanceBeforeJpy: number | null;
+    principalBalanceAfterJpy: number | null;
+    remainingUsesBefore: number | null;
+    remainingUsesAfter: number | null;
+  };
+  reward: ShopMembershipCardRedemptionReward;
+};
+
+export type ShopMembershipCardRedemption = {
+  publicId: string;
+  status: "applied" | "refunded";
+  rewardStatus: "none" | "pending_funds" | "paid" | "reversed";
+  rewardFacts: Record<string, unknown>;
+  rewardHits: ShopMembershipCardRedemptionReward["hits"];
+  rawRewardNdp: number;
+  customerRewardNdp: number;
+  platformFeeRateBps: number;
+  platformFeeNdp: number;
+  totalShopDebitNdp: number;
+  rewardCapped: boolean;
+  outstandingRewardNdp: number;
+  consumedPrincipalJpy: number;
+  consumedUses: number;
+  principalBalanceBeforeJpy: number | null;
+  principalBalanceAfterJpy: number | null;
+  remainingUsesBefore: number | null;
+  remainingUsesAfter: number | null;
+  redeemedAt: string;
+  rewardSettledAt: string | null;
+  refundedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  card: Pick<ShopMembershipCard, "publicId" | "cardNoMasked" | "name" | "type" | "status" | "principalBalanceJpy" | "bonusBalanceJpy" | "remainingUses">;
+  order: {
+    orderNo: string;
+    serviceName: string;
+    servicePublicId: string | null;
+    serviceCategoryCode: string | null;
+    serviceStartedAt: string;
+    serviceCompletedAt: string;
+    eligibleAmountJpy: number;
+  };
+  shop: { shopNo: string | null; name: string };
+  customer: { needoId: string; displayName: string };
+  redeemedBy: { needoId: string; displayName: string };
+  ledgerTransactionNo: string | null;
+  replayed: boolean;
+};
+
+export type ShopMembershipCardRedemptionQuery = {
+  page?: number;
+  pageSize?: number;
+  cardPublicId?: string;
+};
+
 export type MembershipListQuery = {
   page?: number;
   pageSize?: number;
@@ -440,6 +516,22 @@ export const merchantShopMembershipApi = {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
     });
   },
+  redemptionCandidates(cardPublicId: string, query: Pick<ShopMembershipCardRedemptionQuery, "page" | "pageSize"> = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardRedemptionCandidate>>(`${publicPath("/merchant-admin/shop-membership-cards", cardPublicId)}/redemption-candidates`, {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20 }
+    });
+  },
+  redeemCard(cardPublicId: string, body: { orderNo: string; idempotencyKey: string }) {
+    return httpClient.request<ShopMembershipCardRedemption>(`${publicPath("/merchant-admin/shop-membership-cards", cardPublicId)}/redemptions`, {
+      method: "POST",
+      body
+    });
+  },
+  redemptions(query: ShopMembershipCardRedemptionQuery = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardRedemption>>("/merchant-admin/shop-membership-card-redemptions", {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
+    });
+  },
   activities(query: MembershipActivityQuery = {}) {
     return httpClient.request<PaginatedShopMemberships<ShopMembershipActivity>>("/merchant-admin/shop-membership-activities", {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20 }
@@ -495,6 +587,11 @@ export const customerShopMembershipApi = {
   },
   topUps(query: ShopMembershipCardTopUpQuery = {}) {
     return httpClient.request<PaginatedShopMemberships<ShopMembershipCardTopUp>>("/customer-profile/me/shop-membership-card-top-ups", {
+      query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
+    });
+  },
+  redemptions(query: ShopMembershipCardRedemptionQuery = {}) {
+    return httpClient.request<PaginatedShopMemberships<ShopMembershipCardRedemption>>("/customer-profile/me/shop-membership-card-redemptions", {
       query: { page: query.page ?? 1, pageSize: query.pageSize ?? 20, cardPublicId: query.cardPublicId }
     });
   }

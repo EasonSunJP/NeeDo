@@ -371,9 +371,73 @@ const shopMembershipCardTopUpTranslations: Record<string, TranslationEntry> = {
   "shop_membership.card_topup.created.body": { "zh-Hant": "店鋪已將線下收款金額增加到你的會員卡本金，請查看儲值記錄。", ja: "店舗で受け取った金額が会員カード元本に加算されました。チャージ履歴をご確認ください。", en: "The store added the offline payment to your card principal. Review the top-up record.", ko: "매장에서 오프라인 결제 금액을 카드 원금에 추가했습니다. 충전 내역을 확인하세요." }
 };
 
+const shopMembershipCardRedemptionTranslations: Record<string, TranslationEntry> = {
+  "完整会员卡流程": { "zh-Hant": "完整會員卡流程", ja: "会員カードの正式フロー", en: "Complete card flow", ko: "완전한 회원 카드 흐름" },
+  "开卡、客户确认调整与充值不会产生 NDP；核销已接入正式数据库、审计、通知与 NDP 账本，并按已发布规则执行返点和平台费。退款仍作为下一独立步骤。": { "zh-Hant": "開卡、客戶確認調整與儲值不會產生 NDP；核銷已接入正式資料庫、稽核、通知與 NDP 台帳，並按已發布規則執行返點與平台費。退款仍為下一個獨立步驟。", ja: "カード発行、顧客承認付き変更、チャージでは NDP は発生しません。利用処理は正式DB、監査、通知、NDP台帳に接続され、公開済みルールで還元と手数料を処理します。返金は次の独立ステップです。", en: "Issuance, customer-approved changes, and top-up create no NDP. Redemption now uses the formal database, audit, notifications, and NDP ledger, applying the published reward and fee rules. Refund remains the next separate step.", ko: "카드 발급, 고객 승인 변경 및 충전은 NDP를 생성하지 않습니다. 사용 처리는 정식 데이터베이스, 감사, 알림 및 NDP 원장에 연결되어 게시된 리워드와 수수료 규칙을 적용합니다. 환불은 다음 독립 단계입니다." },
+  "先定义发卡边界与 NDP 返点。开卡、客户确认调整、充值与核销已分别接入正式流程；退款仍是后续独立步骤。": { "zh-Hant": "先定義發卡邊界與 NDP 返點。開卡、客戶確認調整、儲值與核銷已分別接入正式流程；退款仍是後續獨立步驟。", ja: "発行条件と NDP 還元を定義します。発行、顧客承認付き変更、チャージ、利用処理は正式フローに接続済みで、返金は後続の独立ステップです。", en: "Define issuance boundaries and NDP rewards. Issuance, customer-approved changes, top-up, and redemption now use separate formal flows; refund remains a later step.", ko: "발급 범위와 NDP 리워드를 정의합니다. 카드 발급, 고객 승인 변경, 충전 및 사용 처리는 각각 정식 흐름에 연결되었으며 환불은 후속 독립 단계입니다." },
+  "Completed service redemption": { "zh-Hant": "已完成服務核銷", ja: "完了サービスの利用処理", en: "Completed service redemption", ko: "완료 서비스 사용 처리" },
+  "会员卡核销": { "zh-Hant": "會員卡核銷", ja: "会員カード利用処理", en: "Membership card redemption", ko: "회원 카드 사용 처리" },
+  "从该客户真实完成的订单中选择一笔；金额、次数与返点均由系统计算。": { "zh-Hant": "從該客戶真實完成的訂單中選擇一筆；金額、次數與返點均由系統計算。", ja: "この顧客の正式な完了注文から選択します。金額、回数、還元はシステムが計算します。", en: "Select one persisted completed order for this customer. Amount, uses, and rewards are calculated by the system.", ko: "해당 고객의 정식 완료 주문에서 선택합니다. 금액, 횟수 및 리워드는 시스템이 계산합니다." },
+  "关闭会员卡核销": { "zh-Hant": "關閉會員卡核銷", ja: "会員カード利用処理を閉じる", en: "Close membership card redemption", ko: "회원 카드 사용 처리 닫기" },
+  "真实订单": { "zh-Hant": "真實訂單", ja: "正式注文", en: "Persisted order", ko: "정식 주문" },
+  "Eligible orders": { "zh-Hant": "可核銷訂單", ja: "利用可能な注文", en: "Eligible orders", ko: "사용 가능한 주문" },
+  "已完成服务": { "zh-Hant": "已完成服務", ja: "完了済みサービス", en: "Completed services", ko: "완료된 서비스" },
+  "笔可核销": { "zh-Hant": "筆可核銷", ja: "件利用可能", en: "eligible", ko: "건 사용 가능" },
+  "正在读取可核销订单": { "zh-Hant": "正在讀取可核銷訂單", ja: "利用可能な注文を読み込んでいます", en: "Loading eligible orders", ko: "사용 가능한 주문을 불러오는 중" },
+  "暂无可核销订单": { "zh-Hant": "暫無可核銷訂單", ja: "利用可能な注文はありません", en: "No eligible orders", ko: "사용 가능한 주문이 없습니다" },
+  "只有同一客户已完成、未核销且当前会员卡足额可用的订单会显示。": { "zh-Hant": "僅顯示同一客戶已完成、未核銷且目前會員卡足額可用的訂單。", ja: "同じ顧客の完了済み・未利用処理で、現在のカード残高が足りる注文のみ表示します。", en: "Only completed, unredeemed orders for the same customer that the current card can fully cover are shown.", ko: "동일 고객의 완료되고 미사용 상태이며 현재 카드로 전액 처리 가능한 주문만 표시됩니다." },
+  "本次扣减": { "zh-Hant": "本次扣減", ja: "今回の消費", en: "Card consumption", ko: "이번 차감" },
+  "核销后": { "zh-Hant": "核銷後", ja: "利用処理後", en: "After redemption", ko: "사용 처리 후" },
+  "使用权益，不扣余额": { "zh-Hant": "使用權益，不扣餘額", ja: "特典利用・残高消費なし", en: "Benefit use; no balance consumed", ko: "혜택 사용, 잔액 차감 없음" },
+  "权益卡状态不变": { "zh-Hant": "權益卡狀態不變", ja: "特典カードの状態は変更なし", en: "Benefit card state unchanged", ko: "혜택 카드 상태 변경 없음" },
+  "可核销订单分页": { "zh-Hant": "可核銷訂單分頁", ja: "利用可能注文のページ移動", en: "Eligible order pagination", ko: "사용 가능 주문 페이지" },
+  "NDP settlement": { "zh-Hant": "NDP 結算", ja: "NDP 決済", en: "NDP settlement", ko: "NDP 정산" },
+  "返点与平台费": { "zh-Hant": "返點與平台費", ja: "還元とプラットフォーム手数料", en: "Reward and platform fee", ko: "리워드 및 플랫폼 수수료" },
+  "已按上限调整": { "zh-Hant": "已按上限調整", ja: "上限適用済み", en: "Cap applied", ko: "한도 적용됨" },
+  "客户获得": { "zh-Hant": "客戶獲得", ja: "顧客への還元", en: "Customer receives", ko: "고객 수령" },
+  "平台费": { "zh-Hant": "平台費", ja: "プラットフォーム手数料", en: "Platform fee", ko: "플랫폼 수수료" },
+  "店铺钱包合计扣除": { "zh-Hant": "店鋪錢包合計扣除", ja: "店舗ウォレット合計引落", en: "Total shop-wallet debit", ko: "매장 지갑 총 차감" },
+  "余额不足也会完成核销，不会冻结 NDP": { "zh-Hant": "餘額不足仍會完成核銷，不會凍結 NDP", ja: "残高不足でも利用処理は完了し、NDP は凍結しません", en: "Redemption completes even if funds are short; NDP is never frozen", ko: "잔액이 부족해도 사용 처리는 완료되며 NDP는 동결되지 않습니다" },
+  "会员卡扣减会先正式入账；返点记录标记为待发放。下次店铺钱包有足够余额时，系统从钱包一次性扣除客户返点与平台费，再向客户发放。": { "zh-Hant": "會員卡扣減會先正式入帳；返點記錄標記為待發放。下次店鋪錢包餘額充足時，系統一次性扣除客戶返點與平台費，再向客戶發放。", ja: "カード消費は先に正式記録され、還元は支給待ちになります。店舗ウォレットに十分な残高が入ると、顧客還元と手数料を一括で引き落として顧客へ付与します。", en: "Card consumption is recorded first and the reward is marked pending. Once the shop wallet has enough funds, the customer reward and platform fee are debited together before the reward is issued.", ko: "카드 차감은 먼저 정식 기록되고 리워드는 지급 대기로 표시됩니다. 매장 지갑 잔액이 충분해지면 고객 리워드와 플랫폼 수수료를 한 번에 차감한 뒤 지급합니다." },
+  "核销中": { "zh-Hant": "核銷中", ja: "利用処理中", en: "Redeeming", ko: "사용 처리 중" },
+  "确认核销": { "zh-Hant": "確認核銷", ja: "利用処理を確定", en: "Confirm redemption", ko: "사용 처리 확인" },
+  "Redemption ledger": { "zh-Hant": "核銷台帳", ja: "利用処理台帳", en: "Redemption ledger", ko: "사용 처리 원장" },
+  "核销记录": { "zh-Hant": "核銷記錄", ja: "利用履歴", en: "Redemption history", ko: "사용 처리 내역" },
+  "核对真实订单、会员卡扣减、客户返点与平台费。待发放记录不会冻结 NDP。": { "zh-Hant": "核對真實訂單、會員卡扣減、客戶返點與平台費。待發放記錄不會凍結 NDP。", ja: "正式注文、カード消費、顧客還元、手数料を確認できます。支給待ちでも NDP は凍結しません。", en: "Review the persisted order, card consumption, customer reward, and platform fee. Pending rewards never freeze NDP.", ko: "정식 주문, 카드 차감, 고객 리워드 및 플랫폼 수수료를 확인합니다. 지급 대기 리워드는 NDP를 동결하지 않습니다." },
+  "正在读取核销记录": { "zh-Hant": "正在讀取核銷記錄", ja: "利用履歴を読み込んでいます", en: "Loading redemption history", ko: "사용 처리 내역을 불러오는 중" },
+  "暂无核销记录": { "zh-Hant": "暫無核銷記錄", ja: "利用履歴はありません", en: "No redemption history", ko: "사용 처리 내역이 없습니다" },
+  "使用会员卡核销正式完成订单后，记录会显示在这里。": { "zh-Hant": "使用會員卡核銷正式完成訂單後，記錄會顯示在這裡。", ja: "正式な完了注文を会員カードで利用処理すると、ここに表示されます。", en: "Records appear here after a persisted completed order is redeemed with a membership card.", ko: "정식 완료 주문을 회원 카드로 처리하면 여기에 표시됩니다." },
+  "已核销": { "zh-Hant": "已核銷", ja: "利用済み", en: "Redeemed", ko: "사용 처리됨" },
+  "已退款": { "zh-Hant": "已退款", ja: "返金済み", en: "Refunded", ko: "환불됨" },
+  "本次无返点": { "zh-Hant": "本次無返點", ja: "今回の還元なし", en: "No reward", ko: "이번 리워드 없음" },
+  "返点待发放": { "zh-Hant": "返點待發放", ja: "還元支給待ち", en: "Reward pending", ko: "리워드 지급 대기" },
+  "返点已到账": { "zh-Hant": "返點已到帳", ja: "還元付与済み", en: "Reward paid", ko: "리워드 지급 완료" },
+  "返点已撤回": { "zh-Hant": "返點已撤回", ja: "還元取消済み", en: "Reward reversed", ko: "리워드 회수됨" },
+  "订单金额": { "zh-Hant": "訂單金額", ja: "注文金額", en: "Order amount", ko: "주문 금액" },
+  "客户返点": { "zh-Hant": "客戶返點", ja: "顧客還元", en: "Customer reward", ko: "고객 리워드" },
+  "店铺合计": { "zh-Hant": "店鋪合計", ja: "店舗合計", en: "Shop total", ko: "매장 합계" },
+  "店铺钱包余额不足；核销已生效。钱包补足后会一次性扣除": { "zh-Hant": "店鋪錢包餘額不足；核銷已生效。錢包補足後會一次性扣除", ja: "店舗ウォレット残高不足ですが、利用処理は有効です。入金後に一括で引き落とします", en: "The shop wallet is short, but redemption is effective. Once funded, it will debit", ko: "매장 지갑 잔액이 부족하지만 사용 처리는 유효합니다. 충전 후 한 번에 차감합니다" },
+  "并发放返点。": { "zh-Hant": "並發放返點。", ja: "NDP 還元を付与します。", en: "and issue the reward.", ko: "리워드를 지급합니다." },
+  "经办：": { "zh-Hant": "經辦：", ja: "担当：", en: "Operator: ", ko: "처리자: " },
+  "核销记录分页": { "zh-Hant": "核銷記錄分頁", ja: "利用履歴のページ移動", en: "Redemption history pagination", ko: "사용 처리 내역 페이지" },
+  "当前身份没有查看核销记录的权限": { "zh-Hant": "目前身分沒有查看核銷記錄的權限", ja: "現在のIDには利用履歴を表示する権限がありません", en: "The current identity cannot view redemption history", ko: "현재 신원에는 사용 처리 내역 조회 권한이 없습니다" },
+  "核销记录读取失败，请稍后重试": { "zh-Hant": "核銷記錄讀取失敗，請稍後重試", ja: "利用履歴を読み込めませんでした。後でもう一度お試しください", en: "Could not load redemption history. Try again later.", ko: "사용 처리 내역을 불러오지 못했습니다. 잠시 후 다시 시도하세요." },
+  "当前账号没有查看核销候选订单的权限": { "zh-Hant": "目前帳號沒有查看核銷候選訂單的權限", ja: "現在のアカウントには利用候補注文の閲覧権限がありません", en: "This account cannot view eligible redemption orders", ko: "현재 계정에는 사용 처리 후보 주문 조회 권한이 없습니다" },
+  "当前账号没有会员卡核销权限": { "zh-Hant": "目前帳號沒有會員卡核銷權限", ja: "現在のアカウントには会員カード利用処理権限がありません", en: "This account cannot redeem membership cards", ko: "현재 계정에는 회원 카드 사용 처리 권한이 없습니다" },
+  "会员卡或已完成订单不存在，或不属于当前店铺": { "zh-Hant": "會員卡或已完成訂單不存在，或不屬於目前店鋪", ja: "会員カードまたは完了注文が存在しないか、現在の店舗に属していません", en: "The card or completed order does not exist or belongs to another store", ko: "회원 카드 또는 완료 주문이 없거나 현재 매장에 속하지 않습니다" },
+  "卡余额、次数、待确认调整或订单核销状态已变化，请刷新后重试": { "zh-Hant": "卡餘額、次數、待確認調整或訂單核銷狀態已變化，請重新整理後再試", ja: "カード残高、回数、確認待ち変更、または注文利用状態が変わりました。更新して再試行してください", en: "The card balance, uses, pending change, or order redemption state changed. Refresh and try again.", ko: "카드 잔액, 횟수, 대기 중 변경 또는 주문 사용 처리 상태가 바뀌었습니다. 새로고침 후 다시 시도하세요." },
+  "可核销订单读取失败，请稍后重试": { "zh-Hant": "可核銷訂單讀取失敗，請稍後重試", ja: "利用可能な注文を読み込めませんでした。後でもう一度お試しください", en: "Could not load eligible orders. Try again later.", ko: "사용 가능한 주문을 불러오지 못했습니다. 잠시 후 다시 시도하세요." },
+  "核销未提交，请检查网络后重试": { "zh-Hant": "核銷未提交，請檢查網路後重試", ja: "利用処理を送信できませんでした。通信環境を確認して再試行してください", en: "Redemption was not submitted. Check your connection and try again.", ko: "사용 처리가 제출되지 않았습니다. 네트워크를 확인한 후 다시 시도하세요." },
+  "shop_membership.card_redemption.created.title": { "zh-Hant": "會員卡核銷已完成", ja: "会員カードの利用処理が完了しました", en: "Membership card redeemed", ko: "회원 카드 사용 처리 완료" },
+  "shop_membership.card_redemption.created.body": { "zh-Hant": "店鋪已使用你的會員卡核銷已完成訂單，請查看扣減與返點狀態。", ja: "店舗が完了注文を会員カードで処理しました。カード消費と還元状況をご確認ください。", en: "The store redeemed a completed order with your membership card. Review the card consumption and reward status.", ko: "매장에서 완료 주문을 회원 카드로 처리했습니다. 카드 차감 및 리워드 상태를 확인하세요." },
+  "shop_membership.card_redemption.reward_settled.title": { "zh-Hant": "會員卡返點已到帳", ja: "会員カード還元が付与されました", en: "Membership reward paid", ko: "회원 카드 리워드 지급 완료" },
+  "shop_membership.card_redemption.reward_settled.body": { "zh-Hant": "店鋪錢包已補足，你的會員卡核銷返點已發放。", ja: "店舗ウォレットへの入金後、会員カード利用の還元が付与されました。", en: "The shop wallet was funded and your membership-card redemption reward has been issued.", ko: "매장 지갑이 충전되어 회원 카드 사용 리워드가 지급되었습니다." }
+};
+
 Object.assign(shopMembershipTranslations, shopMembershipCardPlanTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardIssuanceTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardAdjustmentTranslations);
 Object.assign(shopMembershipTranslations, shopMembershipCardTopUpTranslations);
+Object.assign(shopMembershipTranslations, shopMembershipCardRedemptionTranslations);
 
 Object.assign(translations, shopMembershipTranslations);
