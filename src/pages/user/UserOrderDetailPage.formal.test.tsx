@@ -46,7 +46,6 @@ vi.mock("../../components/client-ui/AppScaffold", () => ({
   PrimaryButton: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button onClick={onClick} type="button">{children}</button>
 }));
 vi.mock("../../components/mobile/ContactEventTimeline", () => ({ ContactEventTimelinePanel: () => <section>状态记录</section> }));
-vi.mock("../../shared/order-detail/OrderDynamicStatusCard", () => ({ OrderDynamicStatusCard: ({ providerName }: { providerName: string }) => <section>{providerName}</section> }));
 vi.mock("../../shared/order-detail/ServiceSessionUi", () => ({ ServiceCountdownPill: ({ seconds }: { seconds: number }) => <output data-testid="countdown">{seconds}</output> }));
 
 import { UserOrderDetailPage } from "./UserOrderDetailPage";
@@ -160,6 +159,16 @@ const coreService = {
 let container: HTMLDivElement;
 let root: Root;
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
   for (let index = 0; index < 30; index += 1) {
@@ -185,7 +194,7 @@ async function click(label: string) {
 
 describe("formal user order detail", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -237,6 +246,8 @@ describe("formal user order detail", () => {
     mocks.selectPaymentMethod.mockResolvedValue({ ...checkout, status: "awaitingPaymentConfirmation", paymentMethod: "cash" });
     await render();
     await waitFor(() => expect(container.textContent).toContain("19,000 NDP"));
+    expect(container.textContent).toContain("等待结账");
+    expect(container.textContent).not.toContain("服务已完成");
     expect(container.textContent).toContain("2 NDP = 1 JPY");
     expect(button("现金支付")).toBeTruthy();
     expect(button("NDP 支付")).toBeTruthy();
@@ -247,10 +258,48 @@ describe("formal user order detail", () => {
     expect(container.textContent).not.toContain("服务与结算已完成");
   });
 
+  it("keeps payment actions hidden while checkout is loading and until the exact pending snapshot arrives", async () => {
+    const pendingCheckout = deferred<OrderCheckout>();
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockReturnValue(pendingCheckout.promise);
+    await render();
+    expect(container.textContent).toContain("正在加载正式结算");
+    expect(container.textContent).not.toContain("现金支付");
+    expect(container.textContent).not.toContain("NDP 支付");
+    pendingCheckout.resolve(checkout);
+    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+  });
+
+  it("shows checkout failure with a read-only retry and no payment actions", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockRejectedValueOnce(new ApiClientError("error.order.checkout_unavailable", 50301, 503)).mockResolvedValueOnce(checkout);
+    await render();
+    await waitFor(() => expect(container.textContent).toContain("正式结算加载失败"));
+    expect(container.textContent).not.toContain("现金支付");
+    await click("重新加载正式结算");
+    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+    expect(mocks.getCheckout).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides payment actions immediately after selection and retries only the order projection when refetch fails", async () => {
+    mocks.getOrder.mockResolvedValueOnce(makeOrder("awaitingCheckout")).mockRejectedValueOnce(new Error("projection unavailable")).mockResolvedValueOnce(makeOrder("awaitingPaymentConfirmation"));
+    mocks.getCheckout.mockResolvedValue(checkout);
+    mocks.selectPaymentMethod.mockResolvedValue({ ...checkout, status: "awaitingPaymentConfirmation", paymentMethod: "cash" });
+    await render();
+    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+    await click("现金支付");
+    await waitFor(() => expect(container.textContent).toContain("订单状态读取失败"));
+    expect(container.textContent).not.toContain("NDP 支付");
+    expect(mocks.selectPaymentMethod).toHaveBeenCalledTimes(1);
+    await click("重新读取订单状态");
+    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
+    expect(mocks.selectPaymentMethod).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the NDP ledger endpoint and renders completed payment evidence", async () => {
     mocks.getOrder.mockResolvedValueOnce(makeOrder("awaitingCheckout")).mockResolvedValueOnce(makeOrder("completed"));
     mocks.payWithNdp.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
-    mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
+    mocks.getCheckout.mockResolvedValueOnce(checkout).mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
     await render();
     await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
     await click("NDP 支付");

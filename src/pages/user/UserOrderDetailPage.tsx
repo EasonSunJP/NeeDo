@@ -99,6 +99,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
+  const [checkoutStatus, setCheckoutStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutRevision, setCheckoutRevision] = useState(0);
+  const [projectionError, setProjectionError] = useState("");
+  const [projectionPending, setProjectionPending] = useState(false);
   const [services, setServices] = useState<CoreServiceCard[]>([]);
   const [queryStatus, setQueryStatus] = useState<"loading" | "success" | "error">("loading");
   const [queryError, setQueryError] = useState("");
@@ -139,14 +144,27 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   useEffect(() => {
     if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
       setCheckout(null);
+      setCheckoutStatus("idle");
+      setCheckoutError("");
       return;
     }
     let active = true;
+    setCheckout(null);
+    setCheckoutStatus("loading");
+    setCheckoutError("");
     bookingApi.getCheckout(order.id)
-      .then((data) => { if (active) setCheckout(data); })
-      .catch((error: unknown) => { if (active) setActionError(describeFormalOrderError(error)); });
+      .then((data) => {
+        if (!active) return;
+        setCheckout(data);
+        setCheckoutStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setCheckoutError(describeFormalOrderError(error));
+        setCheckoutStatus("error");
+      });
     return () => { active = false; };
-  }, [order]);
+  }, [checkoutRevision, order]);
 
   useEffect(() => {
     if (order?.status !== "inService") {
@@ -195,16 +213,45 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     setEndConfirmOpen(false);
     void runOrderMutation("customer-end", (idempotencyKey) => bookingApi.endService(orderId, { reason: "客户确认提前结束服务", idempotencyKey }));
   };
+  const applyCheckoutMutation = async (value: OrderCheckout) => {
+    setCheckout(value);
+    setCheckoutStatus("success");
+    setCheckoutError("");
+    try {
+      await loadOrder();
+      setProjectionError("");
+    } catch {
+      setProjectionError("订单状态读取失败，支付结果已经保存，请重新读取订单状态。");
+    }
+  };
   const selectPayment = (method: "cash" | "other") => {
     void runMutation(`payment-${method}`, (idempotencyKey) => bookingApi.selectPaymentMethod(orderId, method === "cash"
       ? { method: "cash", idempotencyKey }
       : { method: "other", otherMethodCode: "other_manual", otherMethodLabel: "其他方式", idempotencyKey }), async (value) => {
-      setCheckout(value);
-      await loadOrder();
+      await applyCheckoutMutation(value);
     });
   };
 
+  const retryOrderProjection = async () => {
+    if (projectionPending) return;
+    setProjectionPending(true);
+    try {
+      await loadOrder();
+      setProjectionError("");
+    } catch {
+      setProjectionError("订单状态读取失败，支付结果已经保存，请重新读取订单状态。");
+    } finally {
+      setProjectionPending(false);
+    }
+  };
+
   const remaining = getRemainingSeconds(order?.serviceSession?.expectedEndsAt, now);
+  const canChoosePayment =
+    order?.status === "awaitingCheckout" &&
+    checkoutStatus === "success" &&
+    checkout?.status === "awaitingCheckout" &&
+    checkout.paymentMethod === null &&
+    checkout.paymentEvidence === null;
   const closeDetail = () => navigate("/", { replace: true });
   const handleBack = () => {
     navigate(-1);
@@ -268,7 +315,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             </section>
           ) : null}
 
-          {checkout ? <DetailRows title="正式结算" rows={[
+          {checkoutStatus === "loading" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center text-sm font-black">正在加载正式结算</section> : null}
+          {checkoutStatus === "error" ? <section className="rounded-[24px] border border-red-400/35 bg-red-500/10 p-5 text-center" role="alert"><h2 className="text-base font-black text-red-500">正式结算加载失败</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkoutError}</p><button className="mt-4 h-11 w-full rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setCheckoutRevision((value) => value + 1)} type="button">重新加载正式结算</button></section> : null}
+          {checkoutStatus === "success" && checkout ? <DetailRows title="正式结算" rows={[
             ["基础金额", yen(checkout.baseAmountJpy)],
             ["追加服务", yen(checkout.addOnAmountJpy)],
             ["优惠", `-${yen(checkout.discountAmountJpy)}`],
@@ -283,11 +332,12 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "completed" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">服务与结算已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkout ? paymentEvidenceLabel(checkout.paymentEvidence) : "正在读取支付凭证"}</p></section> : null}
 
           <ContactEventTimelinePanel title="状态记录" events={order.statusHistory.map((history) => ({ actorName: history.actorUserId ? `用户 #${history.actorUserId}` : "系统", actorRole: "预约状态", atLabel: formatApiOrderDateTime(history.createdAt), id: String(history.id), message: history.reason ?? `${history.fromStatus ?? "created"} → ${history.toStatus}`, title: formalStatusLabel(history.toStatus), tone: history.toStatus === "cancelled" ? "red" : "green" }))} />
+          {projectionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert"><p>{projectionError}</p><button className="mt-3 h-10 w-full rounded-full border border-red-400/40" disabled={projectionPending} onClick={() => void retryOrderProjection()} type="button">{projectionPending ? "正在读取订单状态" : "重新读取订单状态"}</button></section> : null}
           {actionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert">{actionError}</section> : null}
           {order.status === "confirmed" ? <button className="h-12 w-full rounded-[20px] bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-50" disabled={Boolean(pendingAction)} onClick={() => setStartConfirmOpen(true)} type="button">开始服务</button> : null}
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
-          {order.status === "awaitingCheckout" ? <div className="grid grid-cols-3 gap-2"><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("cash")} type="button">现金支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), async (value) => { setCheckout(value); await loadOrder(); })} type="button">NDP 支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("other")} type="button">其他方式</button></div> : null}
+          {canChoosePayment ? <div className="grid grid-cols-3 gap-2"><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("cash")} type="button">现金支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("other")} type="button">其他方式</button></div> : null}
           {canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => void runOrderMutation("cancel", async () => bookingApi.cancelOrder(orderId, "客户从预约详情取消"))} type="button">取消预约</button> : null}
         </>
       ) : null}

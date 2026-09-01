@@ -14,6 +14,8 @@ export type OrderStatus =
   | "confirmed"
   | "scheduled"
   | "inService"
+  | "awaitingCheckout"
+  | "awaitingPaymentConfirmation"
   | "completed"
   | "cancelled"
   | "refunding"

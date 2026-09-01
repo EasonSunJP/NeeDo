@@ -32,6 +32,8 @@ export function statusLabel(status: string) {
     confirmed: "已确认",
     scheduled: "待服务",
     inService: "服务中",
+    awaitingCheckout: "等待结账",
+    awaitingPaymentConfirmation: "等待确认收款",
     completed: "已完成",
     cancelled: "已取消",
     refunding: "退款中",

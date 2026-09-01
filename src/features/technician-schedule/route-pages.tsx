@@ -573,7 +573,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [receiptReason, setReceiptReason] = useState("");
   const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const mutationKeys = useRef(new Map<string, string>());
+  const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
 
   useEffect(() => {
     setOrder(resource.data);
@@ -610,10 +610,21 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
 
   const canCancel = order.status === "pending" || order.status === "confirmed";
 
-  const runFormalMutation = async (slot: string, operation: (idempotencyKey: string) => Promise<BookingOrder>) => {
+  const retainedMutationKey = (slot: string, semantics: string) => {
+    const retained = mutationKeys.current.get(slot);
+    if (retained?.semantics === semantics) return retained.idempotencyKey;
+    const idempotencyKey = createBookingIdempotencyKey();
+    mutationKeys.current.set(slot, { idempotencyKey, semantics });
+    return idempotencyKey;
+  };
+
+  const runFormalMutation = async (
+    slot: string,
+    operation: (idempotencyKey: string) => Promise<BookingOrder>,
+    semantics = slot,
+  ) => {
     if (pending) return;
-    const key = mutationKeys.current.get(slot) ?? createBookingIdempotencyKey();
-    mutationKeys.current.set(slot, key);
+    const key = retainedMutationKey(slot, semantics);
     setPending(true);
     setActionError("");
     try {
@@ -631,13 +642,13 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
 
   const confirmReceipt = async () => {
     const slot = "confirm-receipt";
-    if (pending || receiptReason.trim().length === 0) return;
-    const key = mutationKeys.current.get(slot) ?? createBookingIdempotencyKey();
-    mutationKeys.current.set(slot, key);
+    const reason = receiptReason.trim();
+    if (pending || reason.length === 0) return;
+    const key = retainedMutationKey(slot, JSON.stringify([order.id, "technician_receipt_confirmation", reason]));
     setPending(true);
     setActionError("");
     try {
-      const updatedCheckout = await bookingApi.confirmReceipt(order.id, { reason: receiptReason.trim(), idempotencyKey: key });
+      const updatedCheckout = await bookingApi.confirmReceipt(order.id, { reason, idempotencyKey: key });
       const updatedOrder = await bookingApi.getOrder(order.id);
       mutationKeys.current.delete(slot);
       setCheckout(updatedCheckout);
@@ -742,7 +753,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
               placeholder="输入 6 位验证码"
               value={verificationCode}
             />
-            <Button className="mt-3 w-full" disabled={pending || !/^\d{6}$/.test(verificationCode)} onClick={() => void runFormalMutation("technician-start", (idempotencyKey) => bookingApi.startService(order.id, { actor: "technician", verificationCode, idempotencyKey }))}>
+            <Button className="mt-3 w-full" disabled={pending || !/^\d{6}$/.test(verificationCode)} onClick={() => void runFormalMutation("technician-start", (idempotencyKey) => bookingApi.startService(order.id, { actor: "technician", verificationCode, idempotencyKey }), JSON.stringify([order.id, "technician", verificationCode]))}>
               验证并开始服务
             </Button>
           </section>

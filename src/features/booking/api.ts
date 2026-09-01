@@ -266,10 +266,7 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     scheduleSlotId: String(order.scheduleSlotId),
     orderNo: order.orderNo,
     mode: order.fulfillmentMode,
-    status:
-      order.status === "awaitingCheckout" || order.status === "awaitingPaymentConfirmation"
-        ? "completed"
-        : order.status,
+    status: order.status,
     customerId: String(order.customerUserId),
     customerName: "NeeDo 用户",
     itemName: order.serviceName,

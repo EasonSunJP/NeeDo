@@ -242,6 +242,12 @@ describe("bookingApi", () => {
     });
   });
 
+  it.each(["awaitingCheckout", "awaitingPaymentConfirmation"] as const)("preserves the formal %s status for list and calendar projections", (status) => {
+    const apiOrder = { ...createBookingResponse("booking").data, status };
+
+    expect(mapBookingOrderToDomainOrder(apiOrder).status).toBe(status);
+  });
+
   it("calls every formal fulfillment and checkout route with its strict body", async () => {
     const orderEnvelope = createBookingResponse("booking");
     const checkoutEnvelope = {

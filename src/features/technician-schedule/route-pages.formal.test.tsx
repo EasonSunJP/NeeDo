@@ -522,7 +522,7 @@ describe("formal technician schedule routes", () => {
 
 describe("formal technician order detail route", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.getCheckout.mockResolvedValue(checkout);
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -583,6 +583,29 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("服务中");
   });
 
+  it("reuses a retained start key only while the verification-code semantics are unchanged", async () => {
+    mocks.startService.mockRejectedValue(new Error("ambiguous start"));
+    await renderOrder(makeOrder("confirmed"));
+    const code = container.querySelector('input[aria-label="六位服务验证码"]') as HTMLInputElement;
+    const setCode = async (value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(code, value);
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await setCode("482931");
+    await click("验证并开始服务");
+    await waitFor(() => expect(mocks.startService).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(textButton("验证并开始服务").disabled).toBe(false));
+    await click("验证并开始服务");
+    await waitFor(() => expect(mocks.startService).toHaveBeenCalledTimes(2));
+    const firstKey = mocks.startService.mock.calls[0]?.[1]?.idempotencyKey;
+    expect(mocks.startService.mock.calls[1]?.[1]?.idempotencyKey).toBe(firstKey);
+    await waitFor(() => expect(textButton("验证并开始服务").disabled).toBe(false));
+    await setCode("111111");
+    await click("验证并开始服务");
+    await waitFor(() => expect(mocks.startService).toHaveBeenCalledTimes(3));
+    expect(mocks.startService.mock.calls[2]?.[1]?.idempotencyKey).not.toBe(firstKey);
+  });
+
   it("accepts a customer add-on and ends service through formal endpoints", async () => {
     mocks.acceptAddOn.mockResolvedValue(makeOrder("inService"));
     mocks.rejectAddOn.mockResolvedValue(makeOrder("inService"));
@@ -641,6 +664,30 @@ describe("formal technician order detail route", () => {
     await waitFor(() => expect(container.textContent).toContain("正式订单操作失败"));
     expect(container.textContent).toContain("已确认");
     expect(container.textContent).not.toContain("服务中");
+  });
+
+  it("reuses a retained receipt key only while the visible reason is unchanged", async () => {
+    mocks.confirmReceipt.mockRejectedValue(new Error("ambiguous receipt"));
+    await renderOrder(makeOrder("awaitingPaymentConfirmation"));
+    await waitFor(() => expect(container.textContent).toContain("确认已经收款"));
+    const reason = container.querySelector('textarea[aria-label="收款确认理由"]') as HTMLTextAreaElement;
+    const setReason = async (value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(reason, value);
+      reason.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await setReason("现金已当面确认");
+    await click("确认收款并完成订单");
+    await waitFor(() => expect(mocks.confirmReceipt).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(textButton("确认收款并完成订单").disabled).toBe(false));
+    await click("确认收款并完成订单");
+    await waitFor(() => expect(mocks.confirmReceipt).toHaveBeenCalledTimes(2));
+    const firstKey = mocks.confirmReceipt.mock.calls[0]?.[1]?.idempotencyKey;
+    expect(mocks.confirmReceipt.mock.calls[1]?.[1]?.idempotencyKey).toBe(firstKey);
+    await waitFor(() => expect(textButton("确认收款并完成订单").disabled).toBe(false));
+    await setReason("PayPay 到账确认");
+    await click("确认收款并完成订单");
+    await waitFor(() => expect(mocks.confirmReceipt).toHaveBeenCalledTimes(3));
+    expect(mocks.confirmReceipt.mock.calls[2]?.[1]?.idempotencyKey).not.toBe(firstKey);
   });
 
   it("requires two clicks to cancel and keeps the returned persisted order", async () => {

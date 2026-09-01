@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { paymentStatusLabel, paymentStatusTone } from "./utils";
+import { paymentStatusLabel, paymentStatusTone, statusLabel } from "./utils";
 
 describe("payment status UI helpers", () => {
   it("maps payment status codes to display labels", () => {
@@ -14,5 +14,12 @@ describe("payment status UI helpers", () => {
     expect(paymentStatusTone("unpaid")).toBe("red");
     expect(paymentStatusTone("depositPaid")).toBe("blue");
     expect(paymentStatusTone("refunded")).toBe("neutral");
+  });
+});
+
+describe("formal order status labels", () => {
+  it("keeps both checkout transition states visible", () => {
+    expect(statusLabel("awaitingCheckout")).toBe("等待结账");
+    expect(statusLabel("awaitingPaymentConfirmation")).toBe("等待确认收款");
   });
 });
