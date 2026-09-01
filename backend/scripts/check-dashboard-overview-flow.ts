@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { parse } from "dotenv";
 import type { PrismaClient } from "@prisma/client";
 import type { AnalyticsMetricPayload } from "../src/domain/analytics-metric";
@@ -115,16 +115,42 @@ export type WitnessNamespace =
   | "affiliate_reward"
   | "user";
 
+export type WitnessIdentifierKind =
+  | "order_no"
+  | "numeric_id"
+  | "transaction_no"
+  | "public_id"
+  | "needo_id";
+
+export type WitnessProvenanceField =
+  | "service_snapshot_json.fixtureMarker"
+  | "booking_order.service_snapshot_json.fixtureMarker"
+  | "metadata.fixtureMarker"
+  | "issuance_reference"
+  | "user.needo_id"
+  | "technician.user.needo_id"
+  | "ledger.metadata.fixtureMarker"
+  | "needo_id";
+
+export interface WitnessProvenance {
+  field: WitnessProvenanceField;
+  value: string;
+}
+
 export interface FixtureWitnessRef {
   namespace: WitnessNamespace;
   id: string;
   period: PeriodKey;
+  identifierKind: WitnessIdentifierKind;
+  provenance: WitnessProvenance;
 }
 
 export interface MetricWitnessRef {
   namespace: WitnessNamespace;
   id: string;
   expectation: "positive" | "zero";
+  identifierKind: WitnessIdentifierKind;
+  provenance: WitnessProvenance;
 }
 
 export interface IndependentEvidenceRow {
@@ -140,12 +166,11 @@ export interface FixtureWitnessRow {
   witnessNamespace: WitnessNamespace;
   witnessId: string;
   period: PeriodKey;
-  fixtureNamespace: string;
-  fixtureMarker: string;
-  withinAuthoritativeWindow: boolean | number | bigint;
-  cityScope: "target" | "other";
-  allOtherPredicatesSatisfied: boolean | number | bigint;
-  intendedPredicateMatched: boolean | number | bigint;
+  identifierKind: WitnessIdentifierKind;
+  resolvedIdentifier: string;
+  provenanceField: WitnessProvenanceField;
+  resolvedProvenance: string;
+  resolvedCount: number | bigint;
 }
 
 export type IndependentReadyValues = Record<DashboardCheckReadyMetricKey, {
@@ -160,6 +185,7 @@ interface CheckerFileSystem {
   statSync: (path: string) => { mode: number; isFile: () => boolean };
   lstatSync: (path: string) => { isSymbolicLink: () => boolean };
   realpathSync: (path: string) => string;
+  readdirSync: (path: string) => Array<{ name: string; isDirectory: () => boolean }>;
 }
 
 const fileSystem: CheckerFileSystem = {
@@ -168,7 +194,8 @@ const fileSystem: CheckerFileSystem = {
   readFileSync: (path) => readFileSync(path, "utf8"),
   statSync,
   lstatSync,
-  realpathSync
+  realpathSync,
+  readdirSync: (path) => readdirSync(path, { withFileTypes: true })
 };
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/u;
@@ -199,6 +226,37 @@ const toTokyoDate = (date: Date): string => {
     String(tokyo.getUTCMonth() + 1).padStart(2, "0"),
     String(tokyo.getUTCDate()).padStart(2, "0")
   ].join("-");
+};
+
+const gitControlBoundaries = (repositoryRoot: string, fs: CheckerFileSystem): string[] => {
+  const gitEntry = join(repositoryRoot, ".git");
+  let commonGitDirectory: string;
+  if (fs.existsSync(gitEntry) && fs.statSync(gitEntry).isFile()) {
+    const gitDirectoryMatch = /^gitdir:\s*(.+)\s*$/imu.exec(fs.readFileSync(gitEntry));
+    if (!gitDirectoryMatch) throw new Error("Dashboard checker cannot resolve Git worktree authority");
+    const gitDirectory = fs.realpathSync(resolve(repositoryRoot, gitDirectoryMatch[1]!));
+    const commonDirectoryFile = join(gitDirectory, "commondir");
+    commonGitDirectory = fs.existsSync(commonDirectoryFile)
+      ? fs.realpathSync(resolve(gitDirectory, fs.readFileSync(commonDirectoryFile).trim()))
+      : gitDirectory;
+  } else {
+    commonGitDirectory = fs.realpathSync(gitEntry);
+  }
+
+  const checkoutRoots = new Set<string>([repositoryRoot, fs.realpathSync(dirname(commonGitDirectory))]);
+  const worktreesDirectory = join(commonGitDirectory, "worktrees");
+  if (fs.existsSync(worktreesDirectory)) {
+    for (const entry of fs.readdirSync(worktreesDirectory)) {
+      if (!entry.isDirectory()) continue;
+      const gitDirectoryFile = join(worktreesDirectory, entry.name, "gitdir");
+      if (!fs.existsSync(gitDirectoryFile)) continue;
+      const checkoutGitFile = fs.readFileSync(gitDirectoryFile).trim();
+      if (checkoutGitFile !== "" && fs.existsSync(checkoutGitFile)) {
+        checkoutRoots.add(fs.realpathSync(dirname(checkoutGitFile)));
+      }
+    }
+  }
+  return [...checkoutRoots, commonGitDirectory];
 };
 
 export function loadDashboardCheckerAuthority(
@@ -248,8 +306,11 @@ export function loadDashboardCheckerAuthority(
   }
   const manifestFilePath = fs.realpathSync(requestedManifestPath);
   const repositoryRoot = fs.realpathSync(resolve(__dirname, "../.."));
-  if (manifestFilePath === repositoryRoot || manifestFilePath.startsWith(`${repositoryRoot}/`)) {
-    throw new Error("Dashboard fixture manifest must be outside the canonical repository root");
+  const controlledBoundary = gitControlBoundaries(repositoryRoot, fs).find((boundary) =>
+    manifestFilePath === boundary || manifestFilePath.startsWith(`${boundary}/`)
+  );
+  if (controlledBoundary) {
+    throw new Error("Dashboard fixture manifest must be outside every repository-controlled path");
   }
   const manifestStat = fs.statSync(manifestFilePath);
   if (!manifestStat.isFile()) throw new Error("Dashboard fixture manifest must be a file");
@@ -273,7 +334,7 @@ const requireVisible = (value: unknown, label: string): string => {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`Dashboard fixture manifest is incomplete: ${label}`);
   }
-  return value;
+  return value.trim();
 };
 
 const metricWitnessNamespace: Record<DashboardCheckReadyMetricKey, WitnessNamespace> = {
@@ -304,9 +365,77 @@ const fixtureWitnessNamespace: Record<keyof DashboardFixtureManifest["witnesses"
   affiliateRewardIds: "affiliate_reward"
 };
 
+const identifierKindByNamespace: Record<WitnessNamespace, WitnessIdentifierKind> = {
+  booking_order: "order_no",
+  order_financial: "numeric_id",
+  ledger_transaction: "transaction_no",
+  membership_card: "public_id",
+  user_identity: "numeric_id",
+  compensation_profile: "numeric_id",
+  affiliate_reward: "numeric_id",
+  user: "needo_id"
+};
+
+const provenanceFieldByNamespace: Record<WitnessNamespace, WitnessProvenanceField> = {
+  booking_order: "service_snapshot_json.fixtureMarker",
+  order_financial: "booking_order.service_snapshot_json.fixtureMarker",
+  ledger_transaction: "metadata.fixtureMarker",
+  membership_card: "issuance_reference",
+  user_identity: "user.needo_id",
+  compensation_profile: "technician.user.needo_id",
+  affiliate_reward: "ledger.metadata.fixtureMarker",
+  user: "needo_id"
+};
+
+const canonicalWitnessId = (
+  value: unknown,
+  identifierKind: WitnessIdentifierKind,
+  label: string
+): string => {
+  const id = requireVisible(value, label).normalize("NFKC");
+  if (identifierKind === "numeric_id") {
+    if (!/^[1-9]\d{0,9}$/u.test(id) || Number(id) > 2_147_483_647) {
+      throw new Error(`Dashboard fixture manifest identifier is invalid: ${label}`);
+    }
+    return String(Number(id));
+  }
+  if (!/^[\x21-\x7e]+$/u.test(id)) {
+    throw new Error(`Dashboard fixture manifest identifier is invalid: ${label}`);
+  }
+  return id;
+};
+
+const requireTypedWitness = (
+  candidate: Record<string, unknown>,
+  namespace: WitnessNamespace,
+  label: string,
+  marker: string
+): Pick<FixtureWitnessRef, "id" | "identifierKind" | "provenance"> => {
+  const expectedIdentifierKind = identifierKindByNamespace[namespace];
+  const identifierKind = requireVisible(candidate.identifierKind, `${label}.identifierKind`);
+  if (identifierKind !== expectedIdentifierKind) {
+    throw new Error(`Dashboard fixture manifest identifier kind is invalid: ${label}`);
+  }
+  if (!isObject(candidate.provenance)) {
+    throw new Error(`Dashboard fixture manifest provenance is invalid: ${label}`);
+  }
+  const expectedField = provenanceFieldByNamespace[namespace];
+  const field = requireVisible(candidate.provenance.field, `${label}.provenance.field`);
+  const value = requireVisible(candidate.provenance.value, `${label}.provenance.value`).normalize("NFKC");
+  if (field !== expectedField || !value.includes(marker)) {
+    throw new Error(`Dashboard fixture manifest provenance is invalid: ${label}`);
+  }
+  return {
+    id: canonicalWitnessId(candidate.id, expectedIdentifierKind, `${label}.id`),
+    identifierKind: expectedIdentifierKind,
+    provenance: { field: expectedField, value }
+  };
+};
+
 const requireFixtureWitnesses = (
   value: unknown,
-  label: keyof DashboardFixtureManifest["witnesses"]
+  label: keyof DashboardFixtureManifest["witnesses"],
+  marker: string
 ): FixtureWitnessRef[] => {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`Dashboard fixture manifest is incomplete: ${label}`);
@@ -323,7 +452,7 @@ const requireFixtureWitnesses = (
     }
     return {
       namespace: namespace as WitnessNamespace,
-      id: requireVisible(candidate.id, `${label}.id`),
+      ...requireTypedWitness(candidate, namespace as WitnessNamespace, label, marker),
       period: period as PeriodKey
     };
   });
@@ -337,7 +466,8 @@ const requireFixtureWitnesses = (
 const requireMetricWitnesses = (
   value: unknown,
   metricKey: DashboardCheckReadyMetricKey,
-  period: PeriodKey
+  period: PeriodKey,
+  marker: string
 ): MetricWitnessRef[] => {
   const label = `${metricKey}.${period}`;
   if (!Array.isArray(value) || value.length === 0) {
@@ -355,7 +485,7 @@ const requireMetricWitnesses = (
     }
     return {
       namespace: namespace as WitnessNamespace,
-      id: requireVisible(candidate.id, `${label}.id`),
+      ...requireTypedWitness(candidate, namespace as WitnessNamespace, label, marker),
       expectation: expectation as MetricWitnessRef["expectation"]
     };
   });
@@ -547,14 +677,14 @@ export function calculateIndependentNdpIncome(
     }
     const paymentPeriod = periodForTimestamp(row.paymentConfirmedAt, windows);
     if (paymentPeriod) result[paymentPeriod] += row.platformFeeNdp + row.requestFeeNdp;
-    if (row.userRewardNdp > 0) {
-      if (
-        row.userRewardGrantedAt === null || !row.rewardLedgerValid || !row.rewardWalletValid
-      ) {
-        throw new Error(`Independent NDP reward evidence is incomplete: ${row.financialId}`);
-      }
+    if (row.userRewardNdp > 0 && row.userRewardGrantedAt !== null) {
       const rewardPeriod = periodForTimestamp(row.userRewardGrantedAt, windows);
-      if (rewardPeriod) result[rewardPeriod] -= row.userRewardNdp;
+      if (rewardPeriod) {
+        if (!row.rewardLedgerValid || !row.rewardWalletValid) {
+          throw new Error(`Independent NDP reward evidence is incomplete: ${row.financialId}`);
+        }
+        result[rewardPeriod] -= row.userRewardNdp;
+      }
     }
   }
   if (
@@ -654,31 +784,37 @@ export function parseDashboardFixtureManifest(
     "compensationProfileIds", "ndpIncomeFinancialIds", "affiliateRewardIds"
   ] as const;
   const witnesses = Object.fromEntries(
-    witnessKeys.map((key) => [key, requireFixtureWitnesses(rawWitnesses[key], key)])
+    witnessKeys.map((key) => [key, requireFixtureWitnesses(rawWitnesses[key], key, marker)])
   ) as unknown as DashboardFixtureManifest["witnesses"];
   const fixtureIds = new Set<string>();
+  const fixtureProvenance = new Set<string>();
   for (const [kind, entries] of Object.entries(witnesses)) {
     for (const entry of entries) {
-      const key = `${entry.namespace}:${entry.id}`;
+      const key = `${entry.namespace}:${entry.identifierKind}:${entry.id.toLowerCase()}`;
       if (fixtureIds.has(key)) {
-        throw new Error(`Dashboard fixture manifest has incompatible witness reuse: ${kind}`);
+        throw new Error(`Dashboard fixture manifest has canonical identifier collision: ${kind}`);
       }
       fixtureIds.add(key);
+      const provenanceKey = `${entry.provenance.field}:${entry.provenance.value}`;
+      if (fixtureProvenance.has(provenanceKey)) {
+        throw new Error(`Dashboard fixture manifest has provenance collision: ${kind}`);
+      }
+      fixtureProvenance.add(provenanceKey);
     }
   }
   const readyMetricWitnesses = Object.fromEntries(DASHBOARD_CHECK_READY_METRIC_KEYS.map((key) => {
     const family = rawReadyMetricWitnesses[key];
     if (!isObject(family)) throw new Error(`Dashboard fixture manifest is incomplete: ${key}`);
     return [key, {
-      current: requireMetricWitnesses(family.current, key, "current"),
-      previous: requireMetricWitnesses(family.previous, key, "previous")
+      current: requireMetricWitnesses(family.current, key, "current", marker),
+      previous: requireMetricWitnesses(family.previous, key, "previous", marker)
     }];
   })) as DashboardFixtureManifest["readyMetricWitnesses"];
   const metricUses = new Map<string, Array<{ metricKey: DashboardCheckReadyMetricKey; period: PeriodKey }>>();
   for (const metricKey of DASHBOARD_CHECK_READY_METRIC_KEYS) {
     for (const period of ["current", "previous"] as const) {
       for (const entry of readyMetricWitnesses[metricKey][period]) {
-        const typedId = `${entry.namespace}:${entry.id}`;
+        const typedId = `${entry.namespace}:${entry.identifierKind}:${entry.id.toLowerCase()}`;
         const uses = metricUses.get(typedId) ?? [];
         const compatibleCrossPeriodNdp = entry.namespace === "order_financial" &&
           metricKey === "ndp_income" && uses.every((use) => use.metricKey === "ndp_income");
@@ -718,16 +854,20 @@ export function parseDashboardFixtureManifest(
   };
 }
 
-const forbiddenGrant = /\b(?:ALL(?:\s+PRIVILEGES)?|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRIGGER|EXECUTE|EVENT|LOCK(?:\s+TABLES)?)\b/iu;
-
 export function assertSelectOnlyGrants(grants: readonly string[]): void {
-  if (grants.length === 0 || grants.some((grant) => forbiddenGrant.test(grant))) {
-    throw new Error("Dashboard checker requires a SELECT-only MySQL credential");
-  }
-  const allowed = grants.every((grant) =>
-    /\bGRANT\s+(?:SELECT|USAGE)\b/iu.test(grant)
-  );
-  if (!allowed || !grants.some((grant) => /\bGRANT\s+SELECT\b/iu.test(grant))) {
+  let hasSelect = false;
+  const allowed = grants.length > 0 && grants.every((grant) => {
+    if (/\b(?:PROXY|WITH\s+(?:GRANT|ADMIN)\s+OPTION|AS\s+\S+)\b/iu.test(grant)) return false;
+    const match = /^\s*GRANT\s+(.+?)\s+ON\s+.+?\s+TO\s+.+\s*$/iu.exec(grant);
+    if (!match) return false;
+    const privileges = match[1]!.split(",").map((privilege) => privilege.trim().toUpperCase());
+    if (privileges.length === 0 || privileges.some((privilege) => privilege !== "USAGE" && privilege !== "SELECT")) {
+      return false;
+    }
+    if (privileges.includes("SELECT")) hasSelect = true;
+    return true;
+  });
+  if (!allowed || !hasSelect) {
     throw new Error("Dashboard checker requires a SELECT-only MySQL credential");
   }
 }
@@ -745,7 +885,7 @@ const queryText = (query: unknown): string => {
 };
 
 const sqlWriteKeyword = /\b(?:INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|CALL|LOAD|HANDLER|DO|SET|USE|GRANT|REVOKE|ANALYZE|OPTIMIZE|REPAIR|FLUSH|KILL|LOCK|UNLOCK|START|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/iu;
-const sqlReadSideEffect = /\b(?:FOR\s+UPDATE|LOCK\s+IN\s+SHARE\s+MODE|INTO\s+(?:OUTFILE|DUMPFILE))\b/iu;
+const sqlReadSideEffect = /(?:\b(?:FOR\s+UPDATE|LOCK\s+IN\s+SHARE\s+MODE|INTO\s+(?:OUTFILE|DUMPFILE)|GET_LOCK|RELEASE_LOCK|IS_FREE_LOCK|IS_USED_LOCK|SERVICE_GET_WRITE_LOCKS|SERVICE_RELEASE_LOCKS|SLEEP|BENCHMARK)\b|:=|@{1,2}[A-Za-z_$])/iu;
 
 const lexicalSql = (input: string): string => {
   let output = "";
@@ -784,12 +924,20 @@ const lexicalSql = (input: string): string => {
       }
       continue;
     }
-    if ((character === "-" && next === "-") || character === "#") {
+    const commentFollower = input.charCodeAt(index + 2);
+    if (character === "-" && next === "-" && Number.isFinite(commentFollower) && commentFollower <= 0x20) {
       state = "line";
-      if (character === "-") index += 1;
+      index += 1;
+      continue;
+    }
+    if (character === "#") {
+      state = "line";
       continue;
     }
     if (character === "/" && next === "*") {
+      if (input[index + 2] === "!" || input[index + 2] === "+") {
+        throw new Error("Dashboard checker read-only facade rejected a non-read-only query");
+      }
       state = "block";
       index += 1;
       continue;
@@ -949,33 +1097,30 @@ export function assertFixtureWitnessRows(
   fixture: DashboardFixtureManifest,
   rows: readonly FixtureWitnessRow[]
 ): void {
-  const expected = new Set<string>();
+  const expected = new Map<string, FixtureWitnessRef>();
   for (const [kind, witnesses] of Object.entries(fixture.witnesses)) {
     for (const witness of witnesses) {
-      expected.add(`${kind}:${witness.namespace}:${witness.id}:${witness.period}`);
+      expected.set(`${kind}:${witness.namespace}:${witness.id}:${witness.period}`, witness);
     }
   }
   const seen = new Set<string>();
   for (const row of rows) {
     const key = `${row.kind}:${row.witnessNamespace}:${row.witnessId}:${row.period}`;
-    if (!expected.has(key)) throw new Error("Fixture witness row is not manifest-authorized");
+    const witness = expected.get(key);
+    if (!witness) throw new Error("Fixture witness row is not manifest-authorized");
     if (seen.has(key)) throw new Error("Fixture witness query returned a duplicate row");
-    if (row.fixtureNamespace !== fixture.namespace || row.fixtureMarker !== fixture.marker) {
-      throw new Error("Fixture witness marker or namespace does not match immutable authority");
+    if (Number(row.resolvedCount) !== 1) {
+      throw new Error("Fixture witness must resolve to exactly one physical row");
     }
-    if (Number(row.withinAuthoritativeWindow) !== 1) {
-      throw new Error("Fixture witness is outside its authoritative window");
+    if (row.identifierKind !== witness.identifierKind || row.resolvedIdentifier !== witness.id) {
+      throw new Error("Fixture witness resolved identifier is not an exact canonical match");
     }
-    const expectedCityScope = row.kind === "otherCityOrderIds" ? "other" : "target";
-    if (row.cityScope !== expectedCityScope) {
-      throw new Error("Fixture witness has the wrong city scope");
-    }
-    if (Number(row.allOtherPredicatesSatisfied) !== 1 || Number(row.intendedPredicateMatched) !== 1) {
-      throw new Error("Fixture witness is otherwise ineligible for its asserted exclusion");
+    if (row.provenanceField !== witness.provenance.field || row.resolvedProvenance !== witness.provenance.value) {
+      throw new Error("Fixture witness persisted provenance does not match immutable authority");
     }
     seen.add(key);
   }
-  for (const key of expected) {
+  for (const key of expected.keys()) {
     if (!seen.has(key)) throw new Error(`Fixture witness query is missing ${key}`);
   }
 }
@@ -1123,30 +1268,34 @@ const authorizedEvidenceCte = (fixture: DashboardFixtureManifest): string =>
   Object.entries(fixture.readyMetricWitnesses).flatMap(([metricKey, periods]) =>
     (["current", "previous"] as const).flatMap((period) =>
       periods[period].map((witness) =>
-        `SELECT ${sqlLiteral(metricKey)} AS metric_key, ${sqlLiteral(period)} AS period_key, ${sqlLiteral(witness.namespace)} AS witness_namespace, ${sqlLiteral(witness.id)} AS witness_id`
+        `SELECT ${sqlLiteral(metricKey)} AS metric_key, ${sqlLiteral(period)} AS period_key, ${sqlLiteral(witness.namespace)} AS witness_namespace, ${sqlLiteral(witness.id)} AS witness_id, ${sqlLiteral(witness.identifierKind)} AS identifier_kind, ${sqlLiteral(witness.provenance.field)} AS provenance_field, ${sqlLiteral(witness.provenance.value)} AS provenance_value`
       )
     )
   ).join(" UNION ALL ");
 
-const validCompletedCheckoutPredicate = `
+const coherentCheckoutCorePredicate = `
   booking.deleted_at IS NULL
-  AND booking.status = 'completed'
-  AND booking.payment_status = 'confirmed'
   AND booking.payment_confirmed_by_id IS NOT NULL
-  AND booking.payment_refunded_at IS NULL
-  AND booking.payment_refunded_by_id IS NULL
-  AND booking.payment_refund_reference IS NULL
-  AND booking.payment_refund_reason IS NULL
   AND checkout.deleted_at IS NULL
   AND checkout.base_amount_jpy >= 0
   AND checkout.add_on_amount_jpy >= 0
   AND checkout.discount_amount_jpy >= 0
   AND checkout.checkout_amount_jpy >= 0
+  AND checkout.payable_ndp >= 0
   AND checkout.base_amount_jpy + checkout.add_on_amount_jpy - checkout.discount_amount_jpy = checkout.checkout_amount_jpy
   AND booking.payment_amount_jpy = checkout.checkout_amount_jpy
   AND booking.payment_method = checkout.payment_method
   AND checkout.payment_selected_at IS NOT NULL
   AND checkout.payment_selected_at <= booking.payment_confirmed_at`;
+
+const validCompletedCheckoutPredicate = `
+  ${coherentCheckoutCorePredicate}
+  AND booking.status = 'completed'
+  AND booking.payment_status = 'confirmed'
+  AND booking.payment_refunded_at IS NULL
+  AND booking.payment_refunded_by_id IS NULL
+  AND booking.payment_refund_reference IS NULL
+  AND booking.payment_refund_reason IS NULL`;
 
 const validCheckoutPaymentEvidencePredicate = `
   (
@@ -1214,10 +1363,14 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
       INNER JOIN booking_orders AS booking
-        ON (booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR) = authorized.witness_id)
+        ON authorized.identifier_kind = 'order_no'
+        AND BINARY TRIM(booking.order_no) = BINARY authorized.witness_id
       INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
       INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
       WHERE authorized.metric_key IN ('gross_revenue', 'discount_amount')
+        AND authorized.provenance_field = 'service_snapshot_json.fixtureMarker'
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value
         AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
         AND booking.payment_confirmed_at >= period.from_inclusive
         AND booking.payment_confirmed_at < period.to_exclusive
@@ -1413,7 +1566,8 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
       INNER JOIN booking_orders AS booking
-        ON (booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR) = authorized.witness_id)
+        ON authorized.identifier_kind = 'order_no'
+        AND BINARY TRIM(booking.order_no) = BINARY authorized.witness_id
       INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
       INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
       INNER JOIN order_service_sessions AS session ON session.booking_order_id = booking.id
@@ -1422,6 +1576,9 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
       INNER JOIN technician_profiles AS technician ON technician.id = booking.technician_profile_id
         AND technician.deleted_at IS NULL
       WHERE authorized.metric_key IN ('dedicated_technician_commission', 'part_time_technician_commission')
+        AND authorized.provenance_field = 'service_snapshot_json.fixtureMarker'
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value
         AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
         AND ${validCompletedCheckoutPredicate}
         AND session.started_at IS NOT NULL AND session.started_by_user_id IS NOT NULL
@@ -1512,7 +1669,9 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
           ELSE reward.platform_fee_ndp END AS contribution_value
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
-      INNER JOIN affiliate_rewards AS reward ON CAST(reward.id AS CHAR) = authorized.witness_id
+      INNER JOIN affiliate_rewards AS reward
+        ON authorized.identifier_kind = 'numeric_id'
+        AND CAST(reward.id AS CHAR) = authorized.witness_id
       INNER JOIN affiliate_attributions AS attribution ON attribution.id = reward.attribution_id
         AND attribution.booking_order_id = reward.booking_order_id
         AND attribution.task_id = reward.task_id AND attribution.claim_id = reward.claim_id
@@ -1541,6 +1700,9 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
         AND JSON_UNQUOTE(JSON_EXTRACT(ledger.metadata, '$.platformFeeNdp')) = CAST(reward.platform_fee_ndp AS CHAR)
         AND ledger.deleted_at IS NULL
       WHERE authorized.metric_key IN ('marketing_commission', 'affiliate_platform_income')
+        AND authorized.provenance_field = 'ledger.metadata.fixtureMarker'
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value
         AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
         AND reward.status = 'settled' AND reward.deleted_at IS NULL
         AND reward.settled_at >= period.from_inclusive AND reward.settled_at < period.to_exclusive
@@ -1569,18 +1731,21 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
           THEN financial.user_reward_ndp ELSE 0 END AS contribution_value
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
-      INNER JOIN order_financials AS financial ON CAST(financial.id AS CHAR) = authorized.witness_id
+      INNER JOIN order_financials AS financial
+        ON authorized.identifier_kind = 'numeric_id'
+        AND CAST(financial.id AS CHAR) = authorized.witness_id
       INNER JOIN booking_orders AS booking ON booking.id = financial.booking_order_id
       INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
       INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
       WHERE authorized.metric_key = 'ndp_income'
+        AND authorized.provenance_field = 'booking_order.service_snapshot_json.fixtureMarker'
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value
         AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
         AND ${validCompletedCheckoutPredicate}
         AND financial.ndp_currency = 'NDP' AND financial.settlement_status = 'settled'
         AND financial.b_platform_fee_actual_ndp >= 0
         AND financial.c_request_fee_actual_ndp >= 0 AND financial.user_reward_ndp >= 0
-        AND (financial.user_reward_ndp = 0
-          OR financial.user_reward_status IN ('immediate', 'paid'))
         AND financial.deleted_at IS NULL
         AND ((booking.payment_confirmed_at >= period.from_inclusive
             AND booking.payment_confirmed_at < period.to_exclusive)
@@ -1639,7 +1804,15 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
                 AND checkout.other_method_code IS NOT NULL AND TRIM(checkout.other_method_code) <> ''
                 AND checkout.other_method_label IS NOT NULL AND TRIM(checkout.other_method_label) <> '')))
         )
-        AND (financial.user_reward_ndp = 0 OR EXISTS (
+        AND (
+          NOT (
+            financial.user_reward_ndp > 0
+            AND financial.user_reward_granted_at >= period.from_inclusive
+            AND financial.user_reward_granted_at < period.to_exclusive
+          )
+          OR (
+            financial.user_reward_status IN ('immediate', 'paid')
+            AND EXISTS (
           SELECT 1 FROM ledger_transactions AS reward_ledger
           INNER JOIN wallet_ledgers AS reward_entry
             ON reward_entry.transaction_id = reward_ledger.id
@@ -1660,7 +1833,9 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
             AND financial.user_reward_granted_at IS NOT NULL
             AND reward_ledger.created_at >= financial.user_reward_granted_at
             AND reward_ledger.deleted_at IS NULL
-        ))
+          )
+          )
+        )
     ),
     ndp_period_totals AS (
       SELECT period_key, SUM(contribution_value) AS contribution_value,
@@ -1682,21 +1857,28 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
       INNER JOIN users AS registered_user
-        ON (registered_user.needo_id = authorized.witness_id OR CAST(registered_user.id AS CHAR) = authorized.witness_id)
+        ON authorized.identifier_kind = 'needo_id'
+        AND BINARY TRIM(registered_user.needo_id) = BINARY authorized.witness_id
       INNER JOIN customer_profiles AS customer ON customer.user_id = registered_user.id
         AND customer.deleted_at IS NULL
       WHERE authorized.metric_key = 'new_users'
+        AND authorized.provenance_field = 'needo_id'
+        AND BINARY TRIM(registered_user.needo_id) = BINARY authorized.provenance_value
         AND registered_user.created_at >= period.from_inclusive
         AND registered_user.created_at < period.to_exclusive
         AND registered_user.is_active = TRUE AND registered_user.is_test_account = FALSE
         AND registered_user.deleted_at IS NULL AND TRIM(customer.city) = ${sqlLiteral(fixture.city)}
     ),
-    member_rows AS (
-      SELECT authorized.metric_key, authorized.period_key, authorized.witness_namespace, authorized.witness_id, 1 AS contribution_value
+    member_candidates AS (
+      SELECT authorized.metric_key, authorized.period_key, authorized.witness_namespace,
+        authorized.witness_id, member_user.id AS member_user_id,
+        ROW_NUMBER() OVER (PARTITION BY authorized.period_key, member_user.id
+          ORDER BY card.issued_at, card.id) AS user_period_rank
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
       INNER JOIN shop_membership_cards AS card
-        ON (card.public_id = authorized.witness_id OR CAST(card.id AS CHAR) = authorized.witness_id)
+        ON authorized.identifier_kind = 'public_id'
+        AND BINARY TRIM(card.public_id) = BINARY authorized.witness_id
       INNER JOIN shop_customer_memberships AS membership ON membership.id = card.membership_id
         AND membership.status = 'active' AND membership.deleted_at IS NULL
       INNER JOIN customer_profiles AS customer ON customer.id = membership.customer_profile_id
@@ -1706,6 +1888,8 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
         AND member_user.deleted_at IS NULL
       INNER JOIN shops AS shop ON shop.id = membership.shop_id AND shop.deleted_at IS NULL
       WHERE authorized.metric_key = 'new_paid_members'
+        AND authorized.provenance_field = 'issuance_reference'
+        AND BINARY TRIM(card.issuance_reference) = BINARY authorized.provenance_value
         AND card.issued_at >= period.from_inclusive AND card.issued_at < period.to_exclusive
         AND card.issuance_source = 'offline_paid' AND card.status = 'active'
         AND card.deleted_at IS NULL AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
@@ -1714,9 +1898,16 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
           FROM shop_membership_cards AS historical_card
           INNER JOIN shop_customer_memberships AS historical_membership
             ON historical_membership.id = historical_card.membership_id
-          WHERE historical_membership.customer_profile_id = customer.id
+          INNER JOIN customer_profiles AS historical_customer
+            ON historical_customer.id = historical_membership.customer_profile_id
+          WHERE historical_customer.user_id = member_user.id
             AND historical_card.issuance_source = 'offline_paid'
         )
+    ),
+    member_rows AS (
+      SELECT metric_key, period_key, witness_namespace, witness_id,
+        CASE WHEN user_period_rank = 1 THEN 1 ELSE 0 END AS contribution_value
+      FROM member_candidates
     ),
     technician_candidates AS (
       SELECT authorized.metric_key, authorized.period_key, authorized.witness_namespace,
@@ -1724,13 +1915,17 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
         technician.id AS technician_profile_id, technician.shop_id AS direct_shop_id
       FROM authorized
       INNER JOIN periods AS period ON period.period_key = authorized.period_key
-      INNER JOIN user_identities AS identity_row ON CAST(identity_row.id AS CHAR) = authorized.witness_id
+      INNER JOIN user_identities AS identity_row
+        ON authorized.identifier_kind = 'numeric_id'
+        AND CAST(identity_row.id AS CHAR) = authorized.witness_id
       INNER JOIN users AS technician_user ON technician_user.id = identity_row.user_id
         AND technician_user.is_active = TRUE AND technician_user.is_test_account = FALSE
         AND technician_user.deleted_at IS NULL
       INNER JOIN technician_profiles AS technician ON technician.user_id = identity_row.user_id
         AND technician.deleted_at IS NULL
       WHERE authorized.metric_key = 'technician_onboarding'
+        AND authorized.provenance_field = 'user.needo_id'
+        AND BINARY TRIM(technician_user.needo_id) = BINARY authorized.provenance_value
         AND identity_row.type = 'technician' AND identity_row.is_active = TRUE
         AND identity_row.deleted_at IS NULL
         AND identity_row.created_at >= period.from_inclusive
@@ -1792,17 +1987,151 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       TIMESTAMP(${sqlLiteral(mysqlTimestamp(windows.previous.toExclusive))})`;
   const authorized = Object.entries(fixture.witnesses).flatMap(([kind, witnesses]) =>
     witnesses.map((witness) =>
-      `SELECT ${sqlLiteral(kind)} AS kind, ${sqlLiteral(witness.namespace)} AS witness_namespace, ${sqlLiteral(witness.id)} AS witness_id, ${sqlLiteral(witness.period)} AS period_key, ${sqlLiteral(fixture.namespace)} AS fixture_namespace, ${sqlLiteral(fixture.marker)} AS fixture_marker`
+      `SELECT ${sqlLiteral(kind)} AS kind, ${sqlLiteral(witness.namespace)} AS witness_namespace, ${sqlLiteral(witness.id)} AS witness_id, ${sqlLiteral(witness.period)} AS period_key, ${sqlLiteral(witness.identifierKind)} AS identifier_kind, ${sqlLiteral(witness.provenance.field)} AS provenance_field, ${sqlLiteral(witness.provenance.value)} AS provenance_value`
     )
   ).join(" UNION ALL ");
+  const resolvedIdentifier = `CASE authorized.witness_namespace
+    WHEN 'booking_order' THEN (SELECT MIN(TRIM(row_booking.order_no)) FROM booking_orders AS row_booking
+      WHERE BINARY TRIM(row_booking.order_no) = BINARY authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'order_financial' THEN (SELECT MIN(CAST(row_financial.id AS CHAR))
+      FROM order_financials AS row_financial
+      INNER JOIN booking_orders AS row_financial_booking ON row_financial_booking.id = row_financial.booking_order_id
+      WHERE CAST(row_financial.id AS CHAR) = authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_financial_booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'ledger_transaction' THEN (SELECT MIN(TRIM(row_ledger.transaction_no))
+      FROM ledger_transactions AS row_ledger
+      WHERE BINARY TRIM(row_ledger.transaction_no) = BINARY authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'membership_card' THEN (SELECT MIN(TRIM(row_card.public_id))
+      FROM shop_membership_cards AS row_card
+      WHERE BINARY TRIM(row_card.public_id) = BINARY authorized.witness_id
+        AND BINARY TRIM(row_card.issuance_reference) = BINARY authorized.provenance_value)
+    WHEN 'user_identity' THEN (SELECT MIN(CAST(row_identity.id AS CHAR))
+      FROM user_identities AS row_identity
+      INNER JOIN users AS row_identity_user ON row_identity_user.id = row_identity.user_id
+      WHERE CAST(row_identity.id AS CHAR) = authorized.witness_id
+        AND BINARY TRIM(row_identity_user.needo_id) = BINARY authorized.provenance_value)
+    WHEN 'compensation_profile' THEN (SELECT MIN(CAST(row_profile.id AS CHAR))
+      FROM technician_compensation_profiles AS row_profile
+      INNER JOIN technician_profiles AS row_profile_technician
+        ON row_profile_technician.id = row_profile.technician_profile_id
+      INNER JOIN users AS row_profile_user ON row_profile_user.id = row_profile_technician.user_id
+      WHERE CAST(row_profile.id AS CHAR) = authorized.witness_id
+        AND BINARY TRIM(row_profile_user.needo_id) = BINARY authorized.provenance_value)
+    WHEN 'affiliate_reward' THEN (SELECT MIN(CAST(row_reward.id AS CHAR))
+      FROM affiliate_rewards AS row_reward
+      INNER JOIN affiliate_reward_transactions AS row_reward_transaction
+        ON row_reward_transaction.reward_id = row_reward.id AND row_reward_transaction.kind = 'settlement'
+        AND row_reward_transaction.deleted_at IS NULL
+      INNER JOIN ledger_transactions AS row_reward_ledger
+        ON row_reward_ledger.id = row_reward_transaction.ledger_transaction_id
+      WHERE CAST(row_reward.id AS CHAR) = authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_reward_ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'user' THEN (SELECT MIN(TRIM(row_user.needo_id)) FROM users AS row_user
+      WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
+        AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
+    ELSE NULL END`;
+  const resolvedProvenance = `CASE authorized.witness_namespace
+    WHEN 'booking_order' THEN (SELECT MIN(JSON_UNQUOTE(JSON_EXTRACT(row_booking.service_snapshot_json, '$.fixtureMarker')))
+      FROM booking_orders AS row_booking
+      WHERE BINARY TRIM(row_booking.order_no) = BINARY authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'order_financial' THEN (SELECT MIN(JSON_UNQUOTE(JSON_EXTRACT(row_financial_booking.service_snapshot_json, '$.fixtureMarker')))
+      FROM order_financials AS row_financial
+      INNER JOIN booking_orders AS row_financial_booking ON row_financial_booking.id = row_financial.booking_order_id
+      WHERE CAST(row_financial.id AS CHAR) = authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_financial_booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'ledger_transaction' THEN (SELECT MIN(JSON_UNQUOTE(JSON_EXTRACT(row_ledger.metadata, '$.fixtureMarker')))
+      FROM ledger_transactions AS row_ledger
+      WHERE BINARY TRIM(row_ledger.transaction_no) = BINARY authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'membership_card' THEN (SELECT MIN(TRIM(row_card.issuance_reference))
+      FROM shop_membership_cards AS row_card
+      WHERE BINARY TRIM(row_card.public_id) = BINARY authorized.witness_id
+        AND BINARY TRIM(row_card.issuance_reference) = BINARY authorized.provenance_value)
+    WHEN 'user_identity' THEN (SELECT MIN(TRIM(row_identity_user.needo_id))
+      FROM user_identities AS row_identity
+      INNER JOIN users AS row_identity_user ON row_identity_user.id = row_identity.user_id
+      WHERE CAST(row_identity.id AS CHAR) = authorized.witness_id
+        AND BINARY TRIM(row_identity_user.needo_id) = BINARY authorized.provenance_value)
+    WHEN 'compensation_profile' THEN (SELECT MIN(TRIM(row_profile_user.needo_id))
+      FROM technician_compensation_profiles AS row_profile
+      INNER JOIN technician_profiles AS row_profile_technician
+        ON row_profile_technician.id = row_profile.technician_profile_id
+      INNER JOIN users AS row_profile_user ON row_profile_user.id = row_profile_technician.user_id
+      WHERE CAST(row_profile.id AS CHAR) = authorized.witness_id
+        AND BINARY TRIM(row_profile_user.needo_id) = BINARY authorized.provenance_value)
+    WHEN 'affiliate_reward' THEN (SELECT MIN(JSON_UNQUOTE(JSON_EXTRACT(row_reward_ledger.metadata, '$.fixtureMarker')))
+      FROM affiliate_rewards AS row_reward
+      INNER JOIN affiliate_reward_transactions AS row_reward_transaction
+        ON row_reward_transaction.reward_id = row_reward.id AND row_reward_transaction.kind = 'settlement'
+        AND row_reward_transaction.deleted_at IS NULL
+      INNER JOIN ledger_transactions AS row_reward_ledger
+        ON row_reward_ledger.id = row_reward_transaction.ledger_transaction_id
+      WHERE CAST(row_reward.id AS CHAR) = authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_reward_ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'user' THEN (SELECT MIN(TRIM(row_user.needo_id)) FROM users AS row_user
+      WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
+        AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
+    ELSE NULL END`;
+  const resolvedCount = `CASE authorized.witness_namespace
+    WHEN 'booking_order' THEN (SELECT COUNT(*) FROM booking_orders AS row_booking
+      WHERE BINARY TRIM(row_booking.order_no) = BINARY authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'order_financial' THEN (SELECT COUNT(*) FROM order_financials AS row_financial
+      INNER JOIN booking_orders AS row_financial_booking ON row_financial_booking.id = row_financial.booking_order_id
+      WHERE CAST(row_financial.id AS CHAR) = authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_financial_booking.service_snapshot_json, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'ledger_transaction' THEN (SELECT COUNT(*) FROM ledger_transactions AS row_ledger
+      WHERE BINARY TRIM(row_ledger.transaction_no) = BINARY authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'membership_card' THEN (SELECT COUNT(*) FROM shop_membership_cards AS row_card
+      WHERE BINARY TRIM(row_card.public_id) = BINARY authorized.witness_id
+        AND BINARY TRIM(row_card.issuance_reference) = BINARY authorized.provenance_value)
+    WHEN 'user_identity' THEN (SELECT COUNT(*) FROM user_identities AS row_identity
+      INNER JOIN users AS row_identity_user ON row_identity_user.id = row_identity.user_id
+      WHERE CAST(row_identity.id AS CHAR) = authorized.witness_id
+        AND BINARY TRIM(row_identity_user.needo_id) = BINARY authorized.provenance_value)
+    WHEN 'compensation_profile' THEN (SELECT COUNT(*) FROM technician_compensation_profiles AS row_profile
+      INNER JOIN technician_profiles AS row_profile_technician
+        ON row_profile_technician.id = row_profile.technician_profile_id
+      INNER JOIN users AS row_profile_user ON row_profile_user.id = row_profile_technician.user_id
+      WHERE CAST(row_profile.id AS CHAR) = authorized.witness_id
+        AND BINARY TRIM(row_profile_user.needo_id) = BINARY authorized.provenance_value)
+    WHEN 'affiliate_reward' THEN (SELECT COUNT(*) FROM affiliate_rewards AS row_reward
+      INNER JOIN affiliate_reward_transactions AS row_reward_transaction
+        ON row_reward_transaction.reward_id = row_reward.id AND row_reward_transaction.kind = 'settlement'
+        AND row_reward_transaction.deleted_at IS NULL
+      INNER JOIN ledger_transactions AS row_reward_ledger
+        ON row_reward_ledger.id = row_reward_transaction.ledger_transaction_id
+      WHERE CAST(row_reward.id AS CHAR) = authorized.witness_id
+        AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_reward_ledger.metadata, '$.fixtureMarker'))
+          = BINARY authorized.provenance_value)
+    WHEN 'user' THEN (SELECT COUNT(*) FROM users AS row_user
+      WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
+        AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
+    ELSE 0 END`;
   return `/* dashboard_checker_fixture_witnesses */
     WITH authorized AS (${authorized}), periods AS (${periodBounds})
     SELECT authorized.kind, authorized.witness_namespace AS witnessNamespace,
       authorized.witness_id AS witnessId, authorized.period_key AS period,
-      authorized.fixture_namespace AS fixtureNamespace, authorized.fixture_marker AS fixtureMarker,
-      1 AS withinAuthoritativeWindow,
-      CASE WHEN authorized.kind = 'otherCityOrderIds' THEN 'other' ELSE 'target' END AS cityScope,
-      1 AS allOtherPredicatesSatisfied, 1 AS intendedPredicateMatched
+      authorized.identifier_kind AS identifierKind,
+      ${resolvedIdentifier} AS resolvedIdentifier,
+      authorized.provenance_field AS provenanceField,
+      ${resolvedProvenance} AS resolvedProvenance,
+      ${resolvedCount} AS resolvedCount
     FROM authorized
     INNER JOIN periods AS period ON period.period_key = authorized.period_key
     WHERE
@@ -1810,7 +2139,11 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
         SELECT 1 FROM booking_orders AS booking
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
-        WHERE (booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR) = authorized.witness_id)
+        WHERE authorized.identifier_kind = 'order_no'
+          AND authorized.provenance_field = 'service_snapshot_json.fixtureMarker'
+          AND BINARY TRIM(booking.order_no) = BINARY authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
           AND booking.payment_confirmed_at >= period.from_inclusive
           AND booking.payment_confirmed_at < period.to_exclusive
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
@@ -1819,22 +2152,33 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       OR (authorized.kind = 'cancelledOrderIds' AND EXISTS (
         SELECT 1 FROM booking_orders AS booking
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
         INNER JOIN order_status_histories AS history ON history.booking_order_id = booking.id
           AND history.to_status = 'cancelled' AND history.deleted_at IS NULL
           AND history.created_at >= period.from_inclusive AND history.created_at < period.to_exclusive
-        WHERE
-          (booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR) = authorized.witness_id)
-          AND booking.status = 'cancelled' AND booking.deleted_at IS NULL
-          AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}))
+        WHERE authorized.identifier_kind = 'order_no'
+          AND authorized.provenance_field = 'service_snapshot_json.fixtureMarker'
+          AND BINARY TRIM(booking.order_no) = BINARY authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
+          AND ${coherentCheckoutCorePredicate}
+          AND booking.status = 'cancelled' AND booking.payment_status = 'confirmed'
+          AND booking.payment_refunded_at IS NULL AND booking.payment_refunded_by_id IS NULL
+          AND booking.payment_refund_reference IS NULL AND booking.payment_refund_reason IS NULL
+          AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
+          AND ${validCheckoutPaymentEvidencePredicate}))
       OR (authorized.kind = 'refundedOrderIds' AND EXISTS (
         SELECT 1 FROM booking_orders AS booking
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
           AND checkout.deleted_at IS NULL
-        WHERE
-          (booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR) = authorized.witness_id)
-          AND booking.status = 'completed' AND booking.payment_status = 'confirmed'
-          AND booking.payment_confirmed_by_id IS NOT NULL AND booking.deleted_at IS NULL
+        WHERE authorized.identifier_kind = 'order_no'
+          AND authorized.provenance_field = 'service_snapshot_json.fixtureMarker'
+          AND BINARY TRIM(booking.order_no) = BINARY authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
+          AND ${coherentCheckoutCorePredicate}
+          AND booking.status = 'completed' AND booking.payment_status = 'refunded'
           AND booking.payment_confirmed_at >= period.from_inclusive
           AND booking.payment_confirmed_at < period.to_exclusive
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
@@ -1843,21 +2187,17 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND booking.payment_refund_reference IS NOT NULL
           AND TRIM(booking.payment_refund_reference) <> ''
           AND booking.payment_refund_reason IS NOT NULL AND TRIM(booking.payment_refund_reason) <> ''
-          AND checkout.base_amount_jpy >= 0 AND checkout.add_on_amount_jpy >= 0
-          AND checkout.discount_amount_jpy >= 0 AND checkout.checkout_amount_jpy >= 0
-          AND checkout.base_amount_jpy + checkout.add_on_amount_jpy - checkout.discount_amount_jpy
-            = checkout.checkout_amount_jpy
-          AND booking.payment_amount_jpy = checkout.checkout_amount_jpy
-          AND booking.payment_method = checkout.payment_method
-          AND checkout.payment_selected_at IS NOT NULL
-          AND checkout.payment_selected_at <= booking.payment_confirmed_at
           AND ${validCheckoutPaymentEvidencePredicate}))
       OR (authorized.kind = 'reversedFinancialIds' AND EXISTS (
         SELECT 1 FROM order_financials AS financial
         INNER JOIN booking_orders AS booking ON booking.id = financial.booking_order_id
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
-        WHERE CAST(financial.id AS CHAR) = authorized.witness_id
+        WHERE authorized.identifier_kind = 'numeric_id'
+          AND authorized.provenance_field = 'booking_order.service_snapshot_json.fixtureMarker'
+          AND CAST(financial.id AS CHAR) = authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
           AND financial.settlement_status <> 'settled' AND financial.deleted_at IS NULL
           AND financial.ndp_currency = 'NDP'
           AND financial.b_platform_fee_actual_ndp >= 0
@@ -1871,7 +2211,11 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
         SELECT 1 FROM booking_orders AS booking
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
-        WHERE (booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR) = authorized.witness_id)
+        WHERE authorized.identifier_kind = 'order_no'
+          AND authorized.provenance_field = 'service_snapshot_json.fixtureMarker'
+          AND BINARY TRIM(booking.order_no) = BINARY authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
           AND booking.payment_confirmed_at >= period.from_inclusive
           AND booking.payment_confirmed_at < period.to_exclusive
           AND TRIM(shop.city) <> '' AND TRIM(shop.city) <> ${sqlLiteral(fixture.city)}
@@ -1882,12 +2226,39 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
         INNER JOIN order_checkouts AS checkout ON checkout.ledger_transaction_id = ledger.id
         INNER JOIN booking_orders AS booking ON booking.id = checkout.booking_order_id
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
-        WHERE (ledger.transaction_no = authorized.witness_id OR CAST(ledger.id AS CHAR) = authorized.witness_id)
+        WHERE authorized.identifier_kind = 'transaction_no'
+          AND authorized.provenance_field = 'metadata.fixtureMarker'
+          AND BINARY TRIM(ledger.transaction_no) = BINARY authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(ledger.metadata, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
           AND ledger.currency = 'TEST_NDP' AND ledger.type = 'booking_complete_settlement'
           AND ledger.status = 'applied' AND ledger.reference_type = 'order_checkout_payment'
           AND ledger.reference_id = checkout.id AND ledger.amount = checkout.payable_ndp
           AND ledger.actor_user_id = booking.payment_confirmed_by_id AND ledger.deleted_at IS NULL
           AND ledger.created_at BETWEEN checkout.payment_selected_at AND booking.payment_confirmed_at
+          AND checkout.payment_method = 'ndp'
+          AND checkout.receipt_confirmed_by_id IS NULL
+          AND checkout.receipt_confirmed_at IS NULL
+          AND checkout.receipt_confirmation_reason IS NULL
+          AND booking.payment_note IS NULL
+          AND EXISTS (
+            SELECT 1 FROM wallet_ledgers AS payment_entry
+            INNER JOIN wallets AS payment_wallet ON payment_wallet.id = payment_entry.wallet_id
+              AND payment_wallet.currency = 'TEST_NDP' AND payment_wallet.deleted_at IS NULL
+            WHERE payment_entry.transaction_id = ledger.id
+              AND payment_entry.direction = 'available_debit'
+              AND payment_entry.amount = checkout.payable_ndp
+              AND payment_entry.available_delta = -checkout.payable_ndp
+              AND payment_entry.frozen_delta = 0 AND payment_entry.deleted_at IS NULL)
+          AND EXISTS (
+            SELECT 1 FROM finance_reconciliations AS reconciliation
+            WHERE reconciliation.transaction_id = ledger.id
+              AND reconciliation.reference_type = 'order_checkout_payment'
+              AND reconciliation.reference_id = checkout.id
+              AND reconciliation.currency = 'TEST_NDP' AND reconciliation.status = 'pending'
+              AND reconciliation.expected_amount = checkout.payable_ndp
+              AND reconciliation.actual_amount = checkout.payable_ndp
+              AND reconciliation.difference_amount = 0 AND reconciliation.deleted_at IS NULL)
           AND booking.payment_confirmed_at >= period.from_inclusive
           AND booking.payment_confirmed_at < period.to_exclusive
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
@@ -1903,7 +2274,10 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND member_user.is_active = TRUE AND member_user.is_test_account = FALSE
           AND member_user.deleted_at IS NULL
         INNER JOIN shops AS shop ON shop.id = membership.shop_id AND shop.deleted_at IS NULL
-        WHERE (card.public_id = authorized.witness_id OR CAST(card.id AS CHAR) = authorized.witness_id)
+        WHERE authorized.identifier_kind = 'public_id'
+          AND authorized.provenance_field = 'issuance_reference'
+          AND BINARY TRIM(card.public_id) = BINARY authorized.witness_id
+          AND BINARY TRIM(card.issuance_reference) = BINARY authorized.provenance_value
           AND card.issued_at >= period.from_inclusive AND card.issued_at < period.to_exclusive
           AND card.issuance_source = 'offline_paid' AND card.status = 'active'
           AND card.deleted_at IS NULL AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
@@ -1926,19 +2300,24 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND member_user.is_active = TRUE AND member_user.is_test_account = FALSE
           AND member_user.deleted_at IS NULL
         INNER JOIN shops AS shop ON shop.id = membership.shop_id AND shop.deleted_at IS NULL
-        WHERE (card.public_id = authorized.witness_id OR CAST(card.id AS CHAR) = authorized.witness_id)
+        WHERE authorized.identifier_kind = 'public_id'
+          AND authorized.provenance_field = 'issuance_reference'
+          AND BINARY TRIM(card.public_id) = BINARY authorized.witness_id
+          AND BINARY TRIM(card.issuance_reference) = BINARY authorized.provenance_value
           AND card.issued_at >= period.from_inclusive AND card.issued_at < period.to_exclusive
           AND card.status = 'active' AND card.deleted_at IS NULL
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}
           AND (card.issuance_source IS NULL OR card.issuance_source <> 'offline_paid')
-          AND card.issued_at = (
-            SELECT MIN(historical_card.issued_at)
+          AND NOT EXISTS (
+            SELECT 1
             FROM shop_membership_cards AS historical_card
             INNER JOIN shop_customer_memberships AS historical_membership
               ON historical_membership.id = historical_card.membership_id
             INNER JOIN customer_profiles AS historical_customer
               ON historical_customer.id = historical_membership.customer_profile_id
-            WHERE historical_customer.user_id = customer.user_id)))
+            WHERE historical_customer.user_id = customer.user_id
+              AND historical_card.issuance_source = 'offline_paid'
+              AND historical_card.issued_at < card.issued_at)))
       OR (authorized.kind = 'technicianIdentityIds' AND EXISTS (
         SELECT 1 FROM user_identities AS identity_row
         INNER JOIN users AS technician_user ON technician_user.id = identity_row.user_id
@@ -1954,7 +2333,10 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
             AND affiliation.starts_at <= identity_row.created_at
             AND (affiliation.ends_at IS NULL OR affiliation.ends_at >= identity_row.created_at)
         ), technician.shop_id) AND shop.deleted_at IS NULL
-        WHERE CAST(identity_row.id AS CHAR) = authorized.witness_id
+        WHERE authorized.identifier_kind = 'numeric_id'
+          AND authorized.provenance_field = 'user.needo_id'
+          AND CAST(identity_row.id AS CHAR) = authorized.witness_id
+          AND BINARY TRIM(technician_user.needo_id) = BINARY authorized.provenance_value
           AND identity_row.type = 'technician' AND identity_row.is_active = TRUE
           AND identity_row.deleted_at IS NULL
           AND identity_row.created_at >= period.from_inclusive AND identity_row.created_at < period.to_exclusive
@@ -1964,8 +2346,15 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND TRIM(shop.city) = ${sqlLiteral(fixture.city)}))
       OR (authorized.kind = 'compensationProfileIds' AND EXISTS (
         SELECT 1 FROM technician_compensation_profiles AS profile
+        INNER JOIN technician_profiles AS technician ON technician.id = profile.technician_profile_id
+          AND technician.deleted_at IS NULL
+        INNER JOIN users AS technician_user ON technician_user.id = technician.user_id
+          AND technician_user.deleted_at IS NULL
         INNER JOIN shops AS shop ON shop.id = profile.shop_id AND shop.deleted_at IS NULL
-        WHERE CAST(profile.id AS CHAR) = authorized.witness_id
+        WHERE authorized.identifier_kind = 'numeric_id'
+          AND authorized.provenance_field = 'technician.user.needo_id'
+          AND CAST(profile.id AS CHAR) = authorized.witness_id
+          AND BINARY TRIM(technician_user.needo_id) = BINARY authorized.provenance_value
           AND profile.status IN ('active', 'archived') AND profile.deleted_at IS NULL
           AND profile.wage_mode IN ('fixed_per_order', 'commission', 'base_plus_commission', 'hourly')
           AND profile.base_salary_jpy >= 0
@@ -1979,7 +2368,11 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
         INNER JOIN booking_orders AS booking ON booking.id = financial.booking_order_id
         INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout ON checkout.booking_order_id = booking.id
-        WHERE CAST(financial.id AS CHAR) = authorized.witness_id
+        WHERE authorized.identifier_kind = 'numeric_id'
+          AND authorized.provenance_field = 'booking_order.service_snapshot_json.fixtureMarker'
+          AND CAST(financial.id AS CHAR) = authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
           AND financial.ndp_currency = 'NDP' AND financial.settlement_status = 'settled'
           AND financial.deleted_at IS NULL AND financial.b_platform_fee_actual_ndp >= 0
           AND financial.c_request_fee_actual_ndp >= 0 AND financial.user_reward_ndp >= 0
@@ -2014,7 +2407,11 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND ledger.reference_id = reward.id
           AND ledger.amount = reward.reward_ndp + reward.platform_fee_ndp
           AND ledger.deleted_at IS NULL
-        WHERE CAST(reward.id AS CHAR) = authorized.witness_id
+        WHERE authorized.identifier_kind = 'numeric_id'
+          AND authorized.provenance_field = 'ledger.metadata.fixtureMarker'
+          AND CAST(reward.id AS CHAR) = authorized.witness_id
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(ledger.metadata, '$.fixtureMarker'))
+            = BINARY authorized.provenance_value
           AND reward.status = 'settled' AND reward.deleted_at IS NULL
           AND reward.settled_at >= period.from_inclusive AND reward.settled_at < period.to_exclusive
           AND reward.reversal_required_ndp = 0 AND reward.reversed_ndp = 0

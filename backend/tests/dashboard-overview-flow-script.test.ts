@@ -2,12 +2,14 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   DASHBOARD_CHECK_METRIC_ORACLE,
   aggregateIndependentEvidence,
@@ -56,16 +58,58 @@ const metricNamespace = {
   technician_onboarding: "user_identity"
 } as const;
 
+const fixtureMarker = "dashboard-overview-fixture-2026-08";
+
+const identifierKind = {
+  booking_order: "order_no",
+  order_financial: "numeric_id",
+  ledger_transaction: "transaction_no",
+  membership_card: "public_id",
+  user_identity: "numeric_id",
+  compensation_profile: "numeric_id",
+  affiliate_reward: "numeric_id",
+  user: "needo_id"
+} as const;
+
+const provenanceField = {
+  booking_order: "service_snapshot_json.fixtureMarker",
+  order_financial: "booking_order.service_snapshot_json.fixtureMarker",
+  ledger_transaction: "metadata.fixtureMarker",
+  membership_card: "issuance_reference",
+  user_identity: "user.needo_id",
+  compensation_profile: "technician.user.needo_id",
+  affiliate_reward: "ledger.metadata.fixtureMarker",
+  user: "needo_id"
+} as const;
+
+const stableNumericId = (value: string): string => String(
+  [...value].reduce((sum, character) => (sum * 33 + character.codePointAt(0)!) % 2_000_000_000, 17) + 1
+);
+
+const typedIdentity = (namespace: keyof typeof identifierKind, logicalId: string) => {
+  const id = identifierKind[namespace] === "numeric_id"
+    ? stableNumericId(`${namespace}:${logicalId}`)
+    : `${fixtureMarker}:${logicalId}`;
+  return {
+    id,
+    identifierKind: identifierKind[namespace],
+    provenance: {
+      field: provenanceField[namespace],
+      value: provenanceField[namespace] === identifierKind[namespace] ? id : `${fixtureMarker}:${namespace}:${logicalId}`
+    }
+  };
+};
+
 const ref = (
   namespace: DashboardFixtureManifest["witnesses"]["cancelledOrderIds"][number]["namespace"],
   id: string,
   period: "current" | "previous" = "current"
-) => ({ namespace, id, period });
+) => ({ namespace, ...typedIdentity(namespace, id), period });
 
 const manifest = (): DashboardFixtureManifest => ({
   version: 2,
   namespace: "analytics-task8-immutable-v1",
-  marker: "dashboard-overview-fixture-2026-08",
+  marker: fixtureMarker,
   city: "Tokyo",
   windows: {
     current: { from: "2026-08-25", to: "2026-08-31" },
@@ -99,12 +143,12 @@ const manifest = (): DashboardFixtureManifest => ({
     readyMetricKeys.map((metricKey, index) => [metricKey, {
       current: [{
         namespace: metricNamespace[metricKey],
-        id: `${metricKey}-current-${index}`,
+        ...typedIdentity(metricNamespace[metricKey], `${metricKey}-current-${index}`),
         expectation: "positive"
       }],
       previous: [{
         namespace: metricNamespace[metricKey],
-        id: `${metricKey}-previous-${index}`,
+        ...typedIdentity(metricNamespace[metricKey], `${metricKey}-previous-${index}`),
         expectation: metricKey === "gross_revenue" ? "zero" : "positive"
       }]
     }])
@@ -136,12 +180,11 @@ const fixtureWitnessRows = (): FixtureWitnessRow[] => Object.entries(manifest().
     witnessNamespace: witness.namespace,
     witnessId: witness.id,
     period: witness.period,
-    fixtureNamespace: manifest().namespace,
-    fixtureMarker: manifest().marker,
-    withinAuthoritativeWindow: 1,
-    cityScope: kind === "otherCityOrderIds" ? "other" : "target",
-    allOtherPredicatesSatisfied: 1,
-    intendedPredicateMatched: 1
+    identifierKind: witness.identifierKind,
+    resolvedIdentifier: witness.id,
+    provenanceField: witness.provenance.field,
+    resolvedProvenance: witness.provenance.value,
+    resolvedCount: 1
   })));
 
 const createTempAuthority = (overrides: string[] = []) => {
@@ -222,7 +265,7 @@ describe("zero-write comprehensive dashboard checker", () => {
     })).toThrow("DASHBOARD_OVERVIEW_CHECK_CITY");
   });
 
-  it("rejects symlink manifests and canonical in-repository targets", () => {
+  it("rejects symlinks plus current, main, sibling, and common-git repository paths", () => {
     const authority = createTempAuthority();
     const repositoryTarget = resolve(backendRoot, "package.json");
     const symlinkPath = join(authority.directory, "external-link.json");
@@ -241,7 +284,37 @@ describe("zero-write comprehensive dashboard checker", () => {
     ));
     expect(() => loadDashboardCheckerAuthority({
       FORMAL_BACKEND_ENV_FILE: authority.envPath
-    })).toThrow("canonical repository root");
+    })).toThrow("repository-controlled");
+
+    const mainCheckout = resolve(backendRoot, "../../..");
+    const commonGitDirectory = join(mainCheckout, ".git");
+    const forbiddenTargets = [
+      join(mainCheckout, "package.json"),
+      join(commonGitDirectory, "HEAD")
+    ];
+    const sibling = readdirSync(join(commonGitDirectory, "worktrees"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name !== "operations-dashboard-program")
+      .map((entry) => readFileSync(join(commonGitDirectory, "worktrees", entry.name, "gitdir"), "utf8").trim())
+      .map((gitFile) => dirname(gitFile))
+      .find((checkout) => existsSync(join(checkout, "package.json")));
+    expect(sibling).toBeDefined();
+    forbiddenTargets.push(join(sibling!, "package.json"));
+
+    for (const forbiddenTarget of forbiddenTargets) {
+      const candidate = createTempAuthority();
+      writeFileSync(candidate.envPath, readFileSync(candidate.envPath, "utf8").replace(
+        candidate.manifestPath,
+        forbiddenTarget
+      ));
+      expect(() => loadDashboardCheckerAuthority({
+        FORMAL_BACKEND_ENV_FILE: candidate.envPath
+      })).toThrow("repository-controlled");
+    }
+
+    const allowed = createTempAuthority();
+    expect(loadDashboardCheckerAuthority({
+      FORMAL_BACKEND_ENV_FILE: allowed.envPath
+    }).manifestFilePath).toBe(realpathSync(allowed.manifestPath));
   });
 
   it("validates immutable manifest completeness, unique ids, exclusions, and exact windows", () => {
@@ -267,7 +340,7 @@ describe("zero-write comprehensive dashboard checker", () => {
     const incompatible = manifest();
     incompatible.readyMetricWitnesses.new_users.current[0] = {
       namespace: "booking_order" as never,
-      id: incompatible.readyMetricWitnesses.gross_revenue.current[0]!.id,
+      ...typedIdentity("booking_order", "incompatible"),
       expectation: "positive"
     };
     expect(() => parseDashboardFixtureManifest(JSON.stringify(incompatible), {
@@ -283,6 +356,44 @@ describe("zero-write comprehensive dashboard checker", () => {
       city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
     })).toThrow("reuse");
 
+    const wrongIdentifier = manifest();
+    wrongIdentifier.witnesses.cancelledOrderIds[0]!.identifierKind = "numeric_id" as never;
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(wrongIdentifier), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("identifier");
+
+    const missingProvenance = manifest();
+    delete (missingProvenance.witnesses.cancelledOrderIds[0] as unknown as { provenance?: unknown }).provenance;
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(missingProvenance), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("provenance");
+
+    const caseCollision = manifest();
+    caseCollision.witnesses.coherentCompletedCheckoutIds = [
+      { ...ref("booking_order", "Case-Collision"), id: `${fixtureMarker}:Case-Collision` },
+      { ...ref("booking_order", "case-collision", "previous"), id: `${fixtureMarker}:case-collision` }
+    ];
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(caseCollision), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("collision");
+
+    const typedNumericLooking = manifest();
+    typedNumericLooking.witnesses.coherentCompletedCheckoutIds[0] = {
+      ...typedNumericLooking.witnesses.coherentCompletedCheckoutIds[0]!,
+      id: "123",
+      provenance: {
+        field: "service_snapshot_json.fixtureMarker",
+        value: `${fixtureMarker}:booking_order:123`
+      }
+    };
+    typedNumericLooking.witnesses.reversedFinancialIds[0] = {
+      ...typedNumericLooking.witnesses.reversedFinancialIds[0]!,
+      id: "123"
+    };
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(typedNumericLooking), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).not.toThrow();
+
     expect(() => parseDashboardFixtureManifest(JSON.stringify(manifest()), {
       city: "Osaka", from: "2026-08-25", to: "2026-08-31"
     })).toThrow("authority");
@@ -296,10 +407,20 @@ describe("zero-write comprehensive dashboard checker", () => {
       "GRANT USAGE ON *.* TO `reader`@`localhost`",
       "GRANT SELECT ON `needo_analytics_test`.* TO `reader`@`localhost`"
     ])).not.toThrow();
-    for (const grant of ["ALL PRIVILEGES", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TRIGGER", "EXECUTE", "EVENT", "LOCK TABLES"]) {
+    for (const grant of [
+      "ALL PRIVILEGES", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
+      "TRIGGER", "EXECUTE", "EVENT", "LOCK TABLES", "FILE", "SUPER"
+    ]) {
       expect(() => assertSelectOnlyGrants([
         `GRANT SELECT, ${grant} ON *.* TO reader@localhost`
       ])).toThrow("SELECT-only");
+    }
+    for (const grant of [
+      "GRANT PROXY ON ''@'' TO reader@localhost",
+      "GRANT SELECT ON *.* TO reader@localhost WITH GRANT OPTION",
+      "GRANT `analytics_admin`@`%` TO `reader`@`localhost`"
+    ]) {
+      expect(() => assertSelectOnlyGrants([grant])).toThrow("SELECT-only");
     }
 
     const queryRaw = jest.fn(async () => [{ ok: 1 }]);
@@ -337,7 +458,14 @@ describe("zero-write comprehensive dashboard checker", () => {
       "SELECT * FROM users INTO OUTFILE '/tmp/users'",
       "EXPLAIN UPDATE users SET is_active = 0",
       "SET SESSION TRANSACTION READ WRITE",
-      "LOCK TABLES users WRITE"
+      "LOCK TABLES users WRITE",
+      "SELECT 1--1; DELETE FROM users",
+      "SELECT /*!50000 1 INTO OUTFILE '/tmp/users' */ 1",
+      "SELECT /*+ SET_VAR(sort_buffer_size=16M) */ 1",
+      "SELECT GET_LOCK('dashboard', 1)",
+      "SELECT RELEASE_LOCK('dashboard')",
+      "SELECT @x := 1",
+      "SELECT @@session.sql_mode := ''"
     ]) {
       await expect(facade.$queryRaw(statement)).rejects.toThrow("read-only");
     }
@@ -456,6 +584,17 @@ describe("zero-write comprehensive dashboard checker", () => {
       paymentWalletValid: true,
       paymentReconciliationValid: false
     }], windows)).toThrow("evidence");
+
+    for (const userRewardGrantedAt of [null, "2026-09-15T01:00:00.000Z"]) {
+      expect(calculateIndependentNdpIncome([{
+        ...missingEvidence,
+        paymentWalletValid: true,
+        userRewardNdp: 20,
+        userRewardGrantedAt,
+        rewardLedgerValid: false,
+        rewardWalletValid: false
+      }], windows)).toEqual({ current: 30, previous: 0 });
+    }
   });
 
   it("counts first technician activation through an effective affiliation when no direct shop exists", () => {
@@ -516,33 +655,27 @@ describe("zero-write comprehensive dashboard checker", () => {
       ...fixtureWitnessRows(), {
         kind: "cancelledOrderIds",
         witnessNamespace: "booking_order",
-        witnessId: "outside-manifest",
+        witnessId: `${fixtureMarker}:outside-manifest`,
         period: "current",
-        fixtureNamespace: manifest().namespace,
-        fixtureMarker: manifest().marker,
-        withinAuthoritativeWindow: 1,
-        cityScope: "target",
-        allOtherPredicatesSatisfied: 1,
-        intendedPredicateMatched: 1
+        identifierKind: "order_no",
+        resolvedIdentifier: `${fixtureMarker}:outside-manifest`,
+        provenanceField: "service_snapshot_json.fixtureMarker",
+        resolvedProvenance: `${fixtureMarker}:booking_order:outside-manifest`,
+        resolvedCount: 1
       }
     ])).toThrow("authorized");
 
     const ineligible = fixtureWitnessRows();
-    ineligible[2] = { ...ineligible[2]!, allOtherPredicatesSatisfied: 0 };
-    expect(() => assertFixtureWitnessRows(manifest(), ineligible)).toThrow("ineligible");
-
-    const outsideWindow = fixtureWitnessRows();
-    outsideWindow[3] = { ...outsideWindow[3]!, withinAuthoritativeWindow: 0 };
-    expect(() => assertFixtureWitnessRows(manifest(), outsideWindow)).toThrow("window");
-
-    const wrongCity = fixtureWitnessRows();
-    const otherCityIndex = wrongCity.findIndex((row) => row.kind === "otherCityOrderIds");
-    wrongCity[otherCityIndex] = { ...wrongCity[otherCityIndex]!, cityScope: "target" };
-    expect(() => assertFixtureWitnessRows(manifest(), wrongCity)).toThrow("city scope");
+    ineligible[2] = { ...ineligible[2]!, resolvedCount: 0 };
+    expect(() => assertFixtureWitnessRows(manifest(), ineligible)).toThrow("exactly one");
 
     const wrongMarker = fixtureWitnessRows();
-    wrongMarker[0] = { ...wrongMarker[0]!, fixtureMarker: "another-fixture" };
-    expect(() => assertFixtureWitnessRows(manifest(), wrongMarker)).toThrow("marker");
+    wrongMarker[0] = { ...wrongMarker[0]!, resolvedProvenance: "another-fixture" };
+    expect(() => assertFixtureWitnessRows(manifest(), wrongMarker)).toThrow("provenance");
+
+    const wrongCanonicalId = fixtureWitnessRows();
+    wrongCanonicalId[0] = { ...wrongCanonicalId[0]!, resolvedIdentifier: `${wrongCanonicalId[0]!.resolvedIdentifier} ` };
+    expect(() => assertFixtureWitnessRows(manifest(), wrongCanonicalId)).toThrow("identifier");
   });
 
   it("keeps an independent exact 17-metric order and catches every projection field mutation", () => {
@@ -627,6 +760,49 @@ describe("zero-write comprehensive dashboard checker", () => {
       createProjection: async () => { throw new Error("projection failed"); }
     })).rejects.toThrow("projection failed");
     expect(projectionDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("executes typed, persisted-provenance SQL with exact exclusion and growth predicates", async () => {
+    const authority = createTempAuthority();
+    const executed: string[] = [];
+    await runDashboardOverviewCheck({
+      runtimeEnvironment: { FORMAL_BACKEND_ENV_FILE: authority.envPath },
+      connect: async () => ({
+        client: {
+          $queryRaw: jest.fn(async (query: unknown) => {
+            const sql = String(query);
+            executed.push(sql);
+            if (/SHOW GRANTS/iu.test(sql)) {
+              return [{ Grants: "GRANT SELECT ON `needo_analytics_test`.* TO `reader`@`localhost`" }];
+            }
+            return /fixture_witnesses/iu.test(sql) ? fixtureWitnessRows() : evidenceRows();
+          })
+        },
+        disconnect: async () => undefined
+      }),
+      createProjection: async (_facade, fixture, facts) => testProjection(facts, fixture)
+    });
+
+    const witnessSql = executed.find((sql) => /fixture_witnesses/iu.test(sql))!;
+    const evidenceSql = executed.find((sql) => /independent_evidence/iu.test(sql))!;
+    expect(witnessSql).toContain("authorized.identifier_kind");
+    expect(witnessSql).toContain("BINARY TRIM(booking.order_no) = BINARY authorized.witness_id");
+    expect(witnessSql).not.toContain("booking.order_no = authorized.witness_id OR CAST(booking.id AS CHAR)");
+    expect(witnessSql).toContain("JSON_UNQUOTE(JSON_EXTRACT(booking.service_snapshot_json, '$.fixtureMarker'))");
+    expect(witnessSql).toContain("AS resolvedIdentifier");
+    expect(witnessSql).toContain("AS resolvedProvenance");
+    expect(witnessSql).toContain("AS resolvedCount");
+    expect(witnessSql).not.toMatch(/AS fixture_marker|AS allOtherPredicatesSatisfied|1 AS withinAuthoritativeWindow/iu);
+    expect(witnessSql).toMatch(/payment_status\s*=\s*'refunded'/iu);
+    expect(witnessSql).toMatch(/currency\s*=\s*'TEST_NDP'[\s\S]*receipt_confirmed_by_id\s+IS\s+NULL/iu);
+    expect(witnessSql).toMatch(/payment_wallet\.currency\s*=\s*'TEST_NDP'[\s\S]*reconciliation\.currency\s*=\s*'TEST_NDP'/iu);
+    expect(witnessSql).toContain("card.issuance_source <> 'offline_paid'");
+    expect(witnessSql).toMatch(/excludedMembershipCardIds[\s\S]*NOT EXISTS \([\s\S]*historical_card\.issuance_source = 'offline_paid'[\s\S]*historical_card\.issued_at < card\.issued_at/iu);
+    expect(evidenceSql).toContain("checkout.payable_ndp >= 0");
+    expect(evidenceSql).toContain("historical_customer.user_id = member_user.id");
+    expect(evidenceSql).toContain("ROW_NUMBER() OVER (PARTITION BY authorized.period_key, member_user.id");
+    expect(evidenceSql).toContain("financial.user_reward_granted_at >= period.from_inclusive");
+    expect(evidenceSql).toMatch(/NOT \([\s\S]*financial\.user_reward_ndp > 0[\s\S]*financial\.user_reward_granted_at >= period\.from_inclusive[\s\S]*OR \([\s\S]*financial\.user_reward_status IN \('immediate', 'paid'\)/iu);
   });
 
   it("rejects missing manifest before constructing Prisma", async () => {
