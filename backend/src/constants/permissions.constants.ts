@@ -117,6 +117,11 @@ export const CONTENT_PUBLICATION_PERMISSIONS = {
   contentMediaUpload: "button:backoffice-content-media-upload"
 } as const;
 
+export const ENTITY_FAVORITE_PERMISSIONS = {
+  read: "entity-favorite:read",
+  write: "entity-favorite:write"
+} as const;
+
 export const EXCHANGE_PERMISSIONS = {
   postList: "exchange:posts:list",
   postDetail: "exchange:posts:detail",
@@ -206,6 +211,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "technician-profile",
     "更新当前技师身份的个人资料"
+  ),
+  createPermission(
+    ENTITY_FAVORITE_PERMISSIONS.read,
+    "查看账号收藏",
+    "api",
+    "entity-engagement",
+    "读取当前账号的店铺与技师收藏状态和收藏夹"
+  ),
+  createPermission(
+    ENTITY_FAVORITE_PERMISSIONS.write,
+    "管理账号收藏",
+    "api",
+    "entity-engagement",
+    "以当前账号收藏或取消收藏已发布的店铺与技师"
   ),
   createPermission(
     "identity-application:own",
@@ -1650,6 +1669,8 @@ const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
   "auth:google:link",
   "auth:google:unlink",
   "auth:password:setup",
+  ENTITY_FAVORITE_PERMISSIONS.read,
+  ENTITY_FAVORITE_PERMISSIONS.write,
   "menu:dashboard",
   "page:dashboard"
 ] as const satisfies readonly SystemPermissionCode[];
