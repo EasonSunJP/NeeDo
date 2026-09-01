@@ -6,7 +6,7 @@ import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreen
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
-import { ServiceCountdownPill } from "../../shared/order-detail/ServiceSessionUi";
+import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
@@ -14,7 +14,8 @@ import {
   type BookingOrder,
   type BookingOrderStatus,
   type BookingScheduleSlot,
-  type OrderCheckout
+  type OrderCheckout,
+  type OrderReview
 } from "../booking/api";
 import { schedulingApi } from "../scheduling/api";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
@@ -572,6 +573,11 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [verificationCode, setVerificationCode] = useState("");
   const [receiptReason, setReceiptReason] = useState("");
   const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
+  const [ownReview, setOwnReview] = useState<OrderReview | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewPending, setReviewPending] = useState(false);
+  const [reviewSkipped, setReviewSkipped] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
 
@@ -590,6 +596,35 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       .catch((error: unknown) => { if (active) setActionError(orderMutationError(error)); });
     return () => { active = false; };
   }, [order]);
+
+  const reviewEligible =
+    order?.status === "completed" &&
+    checkout?.status === "completed" &&
+    checkout.paymentEvidence !== null;
+
+  useEffect(() => {
+    if (!reviewEligible || !order) {
+      setOwnReview(null);
+      setReviewStatus("idle");
+      setReviewError("");
+      return;
+    }
+    let active = true;
+    setReviewStatus("loading");
+    setReviewError("");
+    bookingApi.getOwnReview(order.id)
+      .then(({ review }) => {
+        if (!active) return;
+        setOwnReview(review);
+        setReviewStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setReviewError(orderMutationError(error));
+        setReviewStatus("error");
+      });
+    return () => { active = false; };
+  }, [order?.id, reviewEligible]);
 
   useEffect(() => {
     if (order?.status !== "inService") return;
@@ -671,6 +706,41 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       setActionError(orderMutationError(error));
     } finally {
       setPending(false);
+    }
+  };
+
+  const submitReview = async (submission: ServiceReviewSubmission) => {
+    if (reviewPending) return;
+    const tags = [...submission.tags].sort((left, right) => {
+      const leftBytes = new TextEncoder().encode(left);
+      const rightBytes = new TextEncoder().encode(right);
+      const limit = Math.min(leftBytes.length, rightBytes.length);
+      for (let index = 0; index < limit; index += 1) {
+        if (leftBytes[index] !== rightBytes[index]) return leftBytes[index]! - rightBytes[index]!;
+      }
+      return leftBytes.length - rightBytes.length;
+    });
+    const comment = submission.comment?.normalize("NFKC").trim() || null;
+    const semantics = JSON.stringify([order.id, "customer", submission.rating, tags, comment]);
+    const key = retainedMutationKey("submit-review", semantics);
+    setReviewPending(true);
+    setReviewError("");
+    try {
+      const result = await bookingApi.createReview(order.id, {
+        targetType: "customer",
+        rating: submission.rating,
+        tags,
+        comment,
+        idempotencyKey: key
+      });
+      mutationKeys.current.delete("submit-review");
+      setOwnReview(result.review);
+      setReviewStatus("success");
+    } catch (error) {
+      if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete("submit-review");
+      setReviewError(`评价提交失败：${orderMutationError(error)}`);
+    } finally {
+      setReviewPending(false);
     }
   };
 
@@ -795,6 +865,8 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
         {order.status === "completed" ? <section className={panelClass}><h2 className="text-base font-black">订单已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkoutEvidenceLabel(checkout)}</p></section> : null}
 
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
+        {reviewEligible && reviewStatus === "loading" ? <p className="text-center text-sm font-black">正在读取评价状态</p> : null}
+        {reviewEligible && reviewStatus === "error" ? <p className="text-sm font-black text-red-500" role="alert">{reviewError}</p> : null}
         {order.status === "pending" || canCancel ? (
           <section className="grid gap-2 sm:grid-cols-2">
             {canCancel ? (
@@ -806,6 +878,21 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           </section>
         ) : null}
       </div>
+      {reviewEligible && reviewStatus === "success" && ownReview === null && !reviewSkipped ? (
+        <ServiceReviewPrompt
+          commentEnabled
+          error={reviewError || undefined}
+          helperMessage="本次订单评价提交后不可修改"
+          integerRating
+          message="请根据本次已完成服务评价客户"
+          onSkip={() => setReviewSkipped(true)}
+          onSubmit={(submission) => void submitReview(submission)}
+          pending={reviewPending}
+          showTagCounts={false}
+          tagOptions={["礼貌友好", "准时到达", "沟通顺畅", "支付顺利"]}
+          title="评价客户"
+        />
+      ) : null}
     </TechnicianSchedulePageShell>
   );
 }

@@ -1,4 +1,5 @@
 import { ERROR_CODES } from "../constants/error-codes";
+import { createHash } from "node:crypto";
 import { logger } from "../config/logger";
 import type {
   AvailabilityListInput,
@@ -19,6 +20,8 @@ import type {
   OrderTransitionRepositoryInput,
   OrderTransitionRepositoryOptions,
   OrderListInput,
+  OrderReviewMutationResult,
+  OrderReviewPayload,
   ScheduleListInput,
   ScheduleMutationResult,
   ScheduleScope,
@@ -31,6 +34,7 @@ import type {
   ConfirmReceiptInput,
   EndServiceInput,
   OrderAddOnDecisionInput,
+  OrderReviewCreateInput,
   PayWithNdpInput,
   SelectPaymentMethodInput,
   StartServiceInput
@@ -463,6 +467,74 @@ export class BookingService {
       });
     }
     return mutation.order;
+  }
+
+  public async createOrderReview(
+    actor: AuthenticatedAccessContext,
+    orderId: number,
+    input: OrderReviewCreateInput,
+    context: AuthRequestContext
+  ): Promise<{ applied: boolean; review: OrderReviewPayload }> {
+    const reviewActor = this.getFulfillmentActor(actor);
+    const permittedTarget = reviewActor.actor === "customer" ? "technician" : "customer";
+    if (input.targetType !== permittedTarget) throw this.notFoundError();
+    await this.assertFulfillmentOrderAccess(actor, orderId, reviewActor.actor);
+    if (!this.auditLogService?.createInput) throw this.dependencyUnavailableError();
+    const tags = [...input.tags].sort((left, right) =>
+      Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"))
+    );
+    const comment = input.comment?.normalize("NFKC").trim() || null;
+    const requestFingerprint = createHash("sha256")
+      .update(JSON.stringify({
+        orderId,
+        reviewerUserId: actor.userId,
+        targetType: permittedTarget,
+        rating: input.rating,
+        tags,
+        comment
+      }))
+      .digest("hex");
+    return this.requireOrderReviewMutation(
+      await this.repository.createOrderReview({
+        ...reviewActor,
+        orderId,
+        targetType: permittedTarget,
+        rating: input.rating,
+        tags,
+        comment,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint,
+        audit: this.auditLogService.createInput({
+          actor,
+          action: "order.review.create",
+          targetType: "BookingOrder",
+          targetId: orderId,
+          context,
+          metadata: {
+            orderId,
+            reviewTargetType: permittedTarget,
+            rating: input.rating,
+            tagCount: tags.length
+          }
+        })
+      })
+    );
+  }
+
+  public async getOwnOrderReview(
+    actor: AuthenticatedBookingActor,
+    orderId: number
+  ): Promise<{ review: OrderReviewPayload | null }> {
+    const reviewActor = this.getFulfillmentActor(actor);
+    const targetType = reviewActor.actor === "customer" ? "technician" : "customer";
+    await this.assertFulfillmentOrderAccess(actor, orderId, reviewActor.actor);
+    const result = await this.repository.findOwnOrderReview({
+      ...reviewActor,
+      orderId,
+      targetType
+    });
+    if (result.outcome === "not_found") throw this.notFoundError();
+    return { review: result.review };
   }
 
   public async getCheckout(
@@ -957,6 +1029,41 @@ export class BookingService {
       });
     }
     throw this.invalidTransitionError();
+  }
+
+  private requireOrderReviewMutation(
+    result: OrderReviewMutationResult
+  ): { applied: boolean; review: OrderReviewPayload } {
+    if (result.outcome === "ok") {
+      return { applied: result.applied, review: result.review };
+    }
+    if (result.outcome === "not_found") throw this.notFoundError();
+    if (result.outcome === "invalid_state") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_INVALID_TRANSITION,
+        message: "error.order.review_requires_completion",
+        statusCode: 409
+      });
+    }
+    if (result.outcome === "invalid_evidence") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_CHECKOUT_INVALID_SNAPSHOT,
+        message: "error.order.review_invalid_settlement",
+        statusCode: 409
+      });
+    }
+    if (result.outcome === "already_submitted") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.order.review_already_submitted",
+        statusCode: 409
+      });
+    }
+    throw new AppError({
+      code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+      message: "error.idempotency.key_reused",
+      statusCode: 409
+    });
   }
 
   private async notifyOrderStatusChangedBestEffort(

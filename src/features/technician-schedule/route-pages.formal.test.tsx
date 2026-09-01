@@ -14,11 +14,13 @@ const mocks = vi.hoisted(() => ({
   cancelOrder: vi.fn(),
   confirmReceipt: vi.fn(),
   confirmOrder: vi.fn(),
+  createReview: vi.fn(),
   createSlot: vi.fn(),
   deleteSlot: vi.fn(),
   endService: vi.fn(),
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
+  getOwnReview: vi.fn(),
   orderResource: vi.fn(),
   rejectAddOn: vi.fn(),
   retryOrder: vi.fn(),
@@ -42,9 +44,11 @@ vi.mock("../booking/api", async () => {
       cancelOrder: mocks.cancelOrder,
       confirmReceipt: mocks.confirmReceipt,
       confirmOrder: mocks.confirmOrder,
+      createReview: mocks.createReview,
       endService: mocks.endService,
       getCheckout: mocks.getCheckout,
       getOrder: mocks.getOrder,
+      getOwnReview: mocks.getOwnReview,
       rejectAddOn: mocks.rejectAddOn,
       startService: mocks.startService
     }
@@ -524,6 +528,7 @@ describe("formal technician order detail route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.getCheckout.mockResolvedValue(checkout);
+    mocks.getOwnReview.mockResolvedValue({ review: null });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -688,6 +693,69 @@ describe("formal technician order detail route", () => {
     await click("确认收款并完成订单");
     await waitFor(() => expect(mocks.confirmReceipt).toHaveBeenCalledTimes(3));
     expect(mocks.confirmReceipt.mock.calls[2]?.[1]?.idempotencyKey).not.toBe(firstKey);
+  });
+
+  it("submits the assigned technician's completed-order review toward the customer", async () => {
+    const completedCheckout = { ...checkout, status: "completed" as const, paymentEvidence: "technician_receipt_confirmation" as const, receiptConfirmedAt: "2026-09-01T11:01:00.000+09:00", receiptConfirmationReason: "现金已确认" };
+    mocks.getCheckout.mockResolvedValue(completedCheckout);
+    mocks.createReview.mockResolvedValue({ applied: true, review: { targetType: "customer", rating: 5, tags: ["礼貌友好"], comment: "谢谢", createdAt: "2026-09-01T12:00:00.000Z" } });
+    await renderOrder(makeOrder("completed"));
+    await waitFor(() => expect(container.textContent).toContain("礼貌友好"));
+    expect(mocks.getOwnReview).toHaveBeenCalledWith(29);
+    await click("礼貌友好");
+    const comment = container.querySelector('textarea[aria-label="评价留言"]') as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(comment, "谢谢");
+      comment.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledWith(29, {
+      targetType: "customer",
+      rating: 5,
+      tags: ["礼貌友好"],
+      comment: "谢谢",
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
+    }));
+    await waitFor(() => expect(container.textContent).not.toContain("提交评价"));
+  });
+
+  it("supports retry, edited-command key rotation, local skip, and existing-review hiding", async () => {
+    const completedCheckout = { ...checkout, status: "completed" as const, paymentEvidence: "ndp_ledger" as const, paymentMethod: "ndp" as const, receiptConfirmedAt: null, receiptConfirmationReason: null };
+    mocks.getCheckout.mockResolvedValue(completedCheckout);
+    mocks.createReview.mockRejectedValue(new Error("ambiguous review"));
+    await renderOrder(makeOrder("completed"));
+    await waitFor(() => expect(container.textContent).toContain("提交评价"));
+    await click("提交评价");
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败"));
+    const firstKey = mocks.createReview.mock.calls[0]?.[1]?.idempotencyKey;
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(2));
+    expect(mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey).toBe(firstKey);
+    const fourStars = container.querySelector('[aria-label="4星"]') as HTMLButtonElement;
+    await waitFor(() => expect(fourStars.disabled).toBe(false));
+    await act(async () => fourStars.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await click("提交评价");
+    await waitFor(() => expect(mocks.createReview).toHaveBeenCalledTimes(3));
+    expect(mocks.createReview.mock.calls[2]?.[1]?.idempotencyKey).not.toBe(firstKey);
+    await waitFor(() => expect(textButton("跳过不评价").disabled).toBe(false));
+    await click("跳过不评价");
+    expect(mocks.createReview).toHaveBeenCalledTimes(3);
+    expect(container.textContent).not.toContain("提交评价");
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    mocks.getOwnReview.mockResolvedValue({ review: { targetType: "customer", rating: 5, tags: [], comment: null, createdAt: "2026-09-01T12:00:00.000Z" } });
+    await renderOrder(makeOrder("completed"));
+    await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalled());
+    expect(container.textContent).not.toContain("提交评价");
+  });
+
+  it("does not query or render a review for a status-only completion without evidence", async () => {
+    mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentEvidence: null });
+    await renderOrder(makeOrder("completed"));
+    await waitFor(() => expect(mocks.getCheckout).toHaveBeenCalledWith(29));
+    expect(mocks.getOwnReview).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("提交评价");
   });
 
   it("requires two clicks to cancel and keeps the returned persisted order", async () => {

@@ -2179,6 +2179,8 @@ model OrderReview {
   targetType          OrderReviewTargetType @map("target_type")
   customerProfileId   Int?                  @map("customer_profile_id")
   technicianProfileId Int?                  @map("technician_profile_id")
+  idempotencyKey      String                @unique(map: "order_reviews_idempotency_key_key") @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint  String                @map("request_fingerprint") @db.Char(64)
   rating              Int
   comment             String?               @db.Text
   createdAt           DateTime              @default(now()) @map("created_at")

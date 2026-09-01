@@ -35,6 +35,11 @@ class CheckoutTransactionAbort extends Error {
     super(outcome);
   }
 }
+class ReviewTransactionAbort extends Error {
+  public constructor(public readonly outcome: OrderReviewMutationFailure) {
+    super(outcome);
+  }
+}
 
 export const deriveOrderServiceVerificationCode = (orderId: number): string => {
   const digest = createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
@@ -506,6 +511,42 @@ export interface CheckoutReceiptOptions {
   settleAffiliate: (context: CheckoutMutationContext) => Promise<void>;
 }
 
+export type OrderReviewTargetTypePayload = "customer" | "technician";
+export interface OrderReviewPayload {
+  targetType: OrderReviewTargetTypePayload;
+  rating: number;
+  tags: string[];
+  comment: string | null;
+  createdAt: Date;
+}
+export type OrderReviewMutationFailure =
+  | "not_found"
+  | "invalid_state"
+  | "invalid_evidence"
+  | "conflict"
+  | "already_submitted";
+export type OrderReviewMutationResult =
+  | { outcome: "ok"; applied: boolean; review: OrderReviewPayload }
+  | { outcome: OrderReviewMutationFailure };
+export type OrderReviewReadResult =
+  | { outcome: "ok"; review: OrderReviewPayload | null }
+  | { outcome: "not_found" };
+export interface OrderReviewActorInput {
+  orderId: number;
+  actorUserId: number;
+  actor: FulfillmentParticipant;
+  technicianProfileId: number | null;
+  targetType: OrderReviewTargetTypePayload;
+}
+export interface CreateOrderReviewRepositoryInput extends OrderReviewActorInput {
+  rating: number;
+  tags: string[];
+  comment: string | null;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  audit: AuditLogCreateInput;
+}
+
 export interface BookingOrderPayload {
   id: number;
   orderNo: string;
@@ -652,6 +693,10 @@ export interface BookingRepositoryPort {
     input: ConfirmCheckoutReceiptRepositoryInput,
     options: CheckoutReceiptOptions
   ) => Promise<CheckoutMutationResult>;
+  createOrderReview: (
+    input: CreateOrderReviewRepositoryInput
+  ) => Promise<OrderReviewMutationResult>;
+  findOwnOrderReview: (input: OrderReviewActorInput) => Promise<OrderReviewReadResult>;
   transitionOrder: (
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
@@ -718,6 +763,9 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
   };
 }>;
 type CheckoutRecord = Prisma.OrderCheckoutGetPayload<Record<string, never>>;
+type OrderReviewRecord = Prisma.OrderReviewGetPayload<{
+  include: { tags: true };
+}>;
 
 const ACTIVE_ORDER_DB_STATUSES = ["PENDING", "CONFIRMED", "IN_SERVICE"] as const;
 const HARD_LOCK_ORDER_DB_STATUSES = ["CONFIRMED", "IN_SERVICE"] as const;
@@ -2226,6 +2274,125 @@ export class BookingRepository implements BookingRepositoryPort {
     });
   }
 
+  public createOrderReview(
+    input: CreateOrderReviewRepositoryInput
+  ): Promise<OrderReviewMutationResult> {
+    if (
+      (input.actor !== "customer" && input.actor !== "technician") ||
+      (input.targetType !== "customer" && input.targetType !== "technician") ||
+      (input.actor === "customer" && input.targetType !== "technician") ||
+      (input.actor === "technician" && input.targetType !== "customer")
+    ) {
+      return Promise.resolve({ outcome: "not_found" });
+    }
+    return this.runReviewTransaction(async (tx) => {
+      await this.lockFulfillmentOrder(tx, input.orderId);
+      const current = await this.findFulfillmentOrder(tx, input.orderId);
+      if (!current || !this.reviewActorMatches(current, input)) return { outcome: "not_found" };
+      if (
+        input.audit.actorId !== input.actorUserId ||
+        input.audit.action !== "order.review.create" ||
+        input.audit.targetType !== "BookingOrder" ||
+        input.audit.targetId !== input.orderId
+      ) {
+        return { outcome: "conflict" };
+      }
+      if (current.status !== DatabaseBookingOrderStatus.COMPLETED) {
+        return { outcome: "invalid_state" };
+      }
+      const target = await this.resolveAndLockReviewTarget(tx, current, input);
+      if (!target || target.userId === input.actorUserId) return { outcome: "not_found" };
+      const checkout = await tx.orderCheckout.findUnique({ where: { bookingOrderId: current.id } });
+      if (!checkout || checkout.deletedAt) return { outcome: "invalid_evidence" };
+      try {
+        const evidence = await this.resolveStoredCheckoutEvidence(tx, current, checkout);
+        if (!evidence) return { outcome: "invalid_evidence" };
+      } catch (error) {
+        if (error instanceof CheckoutTransactionAbort) return { outcome: "invalid_evidence" };
+        throw error;
+      }
+
+      const replay = await tx.orderReview.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+        include: { tags: { where: { deletedAt: null }, orderBy: { label: "asc" } } }
+      });
+      if (replay) {
+        if (
+          replay.idempotencyKey !== input.idempotencyKey ||
+          replay.requestFingerprint !== input.requestFingerprint ||
+          replay.bookingOrderId !== current.id ||
+          replay.reviewerUserId !== input.actorUserId ||
+          replay.targetType !== this.reviewTargetTypeToDb(input.targetType)
+        ) {
+          return { outcome: "conflict" };
+        }
+        return { outcome: "ok", applied: false, review: this.mapOrderReview(replay) };
+      }
+
+      const natural = await tx.orderReview.findUnique({
+        where: {
+          bookingOrderId_reviewerUserId_targetType: {
+            bookingOrderId: current.id,
+            reviewerUserId: input.actorUserId,
+            targetType: this.reviewTargetTypeToDb(input.targetType)
+          }
+        },
+        select: { id: true }
+      });
+      if (natural) return { outcome: "already_submitted" };
+
+      const now = new Date();
+      const review = await tx.orderReview.create({
+        data: {
+          bookingOrderId: current.id,
+          reviewerUserId: input.actorUserId,
+          targetType: this.reviewTargetTypeToDb(input.targetType),
+          customerProfileId: input.targetType === "customer" ? target.id : null,
+          technicianProfileId: input.targetType === "technician" ? target.id : null,
+          idempotencyKey: input.idempotencyKey,
+          requestFingerprint: input.requestFingerprint,
+          rating: input.rating,
+          comment: input.comment,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      for (const label of input.tags) {
+        await tx.orderReviewTag.create({
+          data: { orderReviewId: review.id, label, createdAt: now, updatedAt: now }
+        });
+      }
+      await this.recomputeReviewSummary(tx, input.targetType, target.id, now);
+      await tx.auditLog.create({ data: toAuditLogCreateData(input.audit) });
+      const created = await tx.orderReview.findUnique({
+        where: { id: review.id },
+        include: { tags: { where: { deletedAt: null }, orderBy: { label: "asc" } } }
+      });
+      if (!created) throw new ReviewTransactionAbort("conflict");
+      return { outcome: "ok", applied: true, review: this.mapOrderReview(created) };
+    });
+  }
+
+  public async findOwnOrderReview(input: OrderReviewActorInput): Promise<OrderReviewReadResult> {
+    const current = await this.client.bookingOrder.findFirst({
+      where: { id: input.orderId, deletedAt: null },
+      include: this.orderInclude()
+    });
+    if (!current || !this.reviewActorMatches(current, input)) return { outcome: "not_found" };
+    const target = await this.resolveReviewTargetForRead(current, input);
+    if (!target || target.userId === input.actorUserId) return { outcome: "not_found" };
+    const review = await this.client.orderReview.findFirst({
+      where: {
+        bookingOrderId: current.id,
+        reviewerUserId: input.actorUserId,
+        targetType: this.reviewTargetTypeToDb(input.targetType),
+        deletedAt: null
+      },
+      include: { tags: { where: { deletedAt: null }, orderBy: { label: "asc" } } }
+    });
+    return { outcome: "ok", review: review ? this.mapOrderReview(review) : null };
+  }
+
   public async transitionOrder(
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
@@ -2945,6 +3112,33 @@ export class BookingRepository implements BookingRepositoryPort {
     }
   }
 
+  private async runReviewTransaction(
+    mutation: (transaction: Prisma.TransactionClient) => Promise<OrderReviewMutationResult>
+  ): Promise<OrderReviewMutationResult> {
+    const operation = () => this.client.$transaction((transaction) => mutation(transaction));
+    try {
+      return await runWithTransactionConflictRetry(operation);
+    } catch (error) {
+      if (error instanceof ReviewTransactionAbort) return { outcome: error.outcome };
+      if (isRetryableTransactionConflict(error)) return { outcome: "conflict" };
+      if (!this.isPrismaUniqueConflict(error)) throw error;
+      try {
+        return await runWithTransactionConflictRetry(operation);
+      } catch (replayedError) {
+        if (replayedError instanceof ReviewTransactionAbort) {
+          return { outcome: replayedError.outcome };
+        }
+        if (
+          isRetryableTransactionConflict(replayedError) ||
+          this.isPrismaUniqueConflict(replayedError)
+        ) {
+          return { outcome: "conflict" };
+        }
+        throw replayedError;
+      }
+    }
+  }
+
   private checkoutParticipantMatches(order: OrderRecord, input: CheckoutActorInput): boolean {
     if (order.customerUserId === input.actorUserId && input.technicianProfileId === null) {
       return true;
@@ -3407,6 +3601,159 @@ export class BookingRepository implements BookingRepositoryPort {
         : {}),
       ...extra
     };
+  }
+
+  private reviewActorMatches(order: OrderRecord, input: OrderReviewActorInput): boolean {
+    if (!order.technicianProfileId || !order.technicianProfile) return false;
+    if (input.actor === "customer") {
+      return (
+        input.targetType === "technician" &&
+        input.technicianProfileId === null &&
+        order.customerUserId === input.actorUserId
+      );
+    }
+    if (input.actor !== "technician") return false;
+    return (
+      input.targetType === "customer" &&
+      input.technicianProfileId === order.technicianProfileId &&
+      order.technicianProfile.userId === input.actorUserId
+    );
+  }
+
+  private async resolveAndLockReviewTarget(
+    transaction: Prisma.TransactionClient,
+    order: OrderRecord,
+    input: OrderReviewActorInput
+  ): Promise<{ id: number; userId: number } | null> {
+    if (input.targetType === "technician") {
+      if (!order.technicianProfile || order.technicianProfile.deletedAt) return null;
+      await transaction.$queryRaw`
+        SELECT id FROM technician_profiles
+        WHERE id = ${order.technicianProfile.id} AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      const target = await transaction.technicianProfile.findFirst({
+        where: { id: order.technicianProfile.id, deletedAt: null },
+        select: { id: true, userId: true }
+      });
+      return target;
+    }
+    const target = await transaction.customerProfile.findFirst({
+      where: { userId: order.customerUserId, deletedAt: null },
+      select: { id: true, userId: true }
+    });
+    if (!target) return null;
+    await transaction.$queryRaw`
+      SELECT id FROM customer_profiles
+      WHERE id = ${target.id} AND deleted_at IS NULL
+      FOR UPDATE
+    `;
+    return transaction.customerProfile.findFirst({
+      where: { id: target.id, userId: order.customerUserId, deletedAt: null },
+      select: { id: true, userId: true }
+    });
+  }
+
+  private async resolveReviewTargetForRead(
+    order: OrderRecord,
+    input: OrderReviewActorInput
+  ): Promise<{ id: number; userId: number } | null> {
+    if (input.targetType === "technician") {
+      return order.technicianProfile && !order.technicianProfile.deletedAt
+        ? { id: order.technicianProfile.id, userId: order.technicianProfile.userId }
+        : null;
+    }
+    return this.client.customerProfile.findFirst({
+      where: { userId: order.customerUserId, deletedAt: null },
+      select: { id: true, userId: true }
+    });
+  }
+
+  private async recomputeReviewSummary(
+    transaction: Prisma.TransactionClient,
+    targetType: OrderReviewTargetTypePayload,
+    targetId: number,
+    now: Date
+  ): Promise<void> {
+    const reviews = await transaction.orderReview.findMany({
+      where: {
+        targetType: this.reviewTargetTypeToDb(targetType),
+        ...(targetType === "technician"
+          ? { technicianProfileId: targetId }
+          : { customerProfileId: targetId }),
+        deletedAt: null
+      },
+      include: { tags: { where: { deletedAt: null } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    if (reviews.length === 0) throw new ReviewTransactionAbort("conflict");
+    const latestReviewAt = reviews.reduce(
+      (latest, review) => review.createdAt > latest ? review.createdAt : latest,
+      reviews[0]!.createdAt
+    );
+    const average = reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length;
+    const tagCounts = new Map<string, number>();
+    for (const review of reviews) {
+      for (const tag of review.tags) {
+        tagCounts.set(tag.label, (tagCounts.get(tag.label) ?? 0) + 1);
+      }
+    }
+    const highlights = [...tagCounts.entries()]
+      .sort(([left, leftCount], [right, rightCount]) =>
+        rightCount - leftCount || this.compareUtf8Bytes(left, right)
+      )
+      .slice(0, 5)
+      .map(([label]) => label);
+    await transaction.reviewSummary.upsert({
+      where: { targetType_targetId: { targetType, targetId } },
+      create: {
+        targetType,
+        targetId,
+        shopId: null,
+        serviceId: null,
+        technicianProfileId: targetType === "technician" ? targetId : null,
+        customerProfileId: targetType === "customer" ? targetId : null,
+        ratingAverage: average,
+        reviewCount: reviews.length,
+        latestReviewAt,
+        highlights,
+        createdAt: now,
+        updatedAt: now
+      },
+      update: {
+        shopId: null,
+        serviceId: null,
+        technicianProfileId: targetType === "technician" ? targetId : null,
+        customerProfileId: targetType === "customer" ? targetId : null,
+        ratingAverage: average,
+        reviewCount: reviews.length,
+        latestReviewAt,
+        highlights,
+        deletedAt: null,
+        updatedAt: now
+      }
+    });
+  }
+
+  private mapOrderReview(review: OrderReviewRecord): OrderReviewPayload {
+    return {
+      targetType: review.targetType === "TECHNICIAN" ? "technician" : "customer",
+      rating: review.rating,
+      tags: review.tags
+        .filter((tag) => !tag.deletedAt)
+        .map((tag) => tag.label)
+        .sort((left, right) => this.compareUtf8Bytes(left, right)),
+      comment: review.comment,
+      createdAt: review.createdAt
+    };
+  }
+
+  private reviewTargetTypeToDb(targetType: OrderReviewTargetTypePayload) {
+    return targetType === "technician" ? "TECHNICIAN" as const : "CUSTOMER" as const;
+  }
+
+  private compareUtf8Bytes(left: string, right: string): number {
+    return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
   }
 
   private constantTimeTextEquals(left: string, right: string): boolean {

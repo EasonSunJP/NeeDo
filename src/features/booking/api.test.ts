@@ -178,6 +178,27 @@ describe("bookingApi", () => {
     expect(lastRequestBody()).toEqual({ reason: "客户退款", reference: "REF-001" });
   });
 
+  it("reads and submits the current participant's formal review without fake counts", async () => {
+    const review = { targetType: "technician", rating: 5, tags: ["服务精神"], comment: "很好", createdAt: "2026-09-01T12:00:00.000Z" };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { review: null } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { applied: true, review } }));
+
+    await bookingApi.getOwnReview(88);
+    await bookingApi.createReview(88, {
+      targetType: "technician",
+      rating: 5,
+      tags: ["服务精神"],
+      comment: "很好",
+      idempotencyKey: "review-browser-key-0001"
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/v1/orders/88/reviews/mine", expect.objectContaining({ method: "GET" }));
+    expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/orders/88/reviews", expect.objectContaining({ method: "POST" }));
+    expect(requestBodyAt(1)).toEqual({ targetType: "technician", rating: 5, tags: ["服务精神"], comment: "很好", idempotencyKey: "review-browser-key-0001" });
+    expect(requestBodyAt(1)).not.toHaveProperty("tagCounts");
+  });
+
   it("calls the authenticated merchant schedule-slot CRUD endpoints", async () => {
     const slot = {
       id: 33,

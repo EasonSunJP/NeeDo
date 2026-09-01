@@ -15,6 +15,7 @@ import {
   orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  orderReviewCreateBodySchema,
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
@@ -279,6 +280,46 @@ export class BookingController {
       response.status(200).json(
         successResponse(
           await this.bookingService.getCheckout(this.getActor(response), this.getOrderId(request))
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createOrderReview = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.createOrderReview(
+            this.getActor(response),
+            this.getOrderId(request),
+            orderReviewCreateBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getOwnOrderReview = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.getOwnOrderReview(
+            this.getActor(response),
+            this.getOrderId(request)
+          )
         )
       );
     } catch (error) {

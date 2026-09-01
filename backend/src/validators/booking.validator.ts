@@ -27,6 +27,31 @@ const idempotencyKeySchema = z
 const fulfillmentReasonSchema = visibleTextSchema(500);
 const serviceCatalogIdSchema = z.number().int().positive().max(2_147_483_647);
 const routeIdSchema = z.coerce.number().int().positive().max(2_147_483_647);
+const normalizeReviewText = (value: string): string => value.normalize("NFKC").trim();
+const unicodeCodePointLength = (value: string): number => Array.from(value).length;
+const reviewTagSchema = z.string().transform(normalizeReviewText).superRefine((value, context) => {
+  if (!hasVisibleCodePoint(value)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "tag must contain a visible character" });
+  }
+  if (unicodeCodePointLength(value) > 40) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "tag must not exceed 40 code points" });
+  }
+});
+const reviewCommentSchema = z.union([
+  z.null(),
+  z.string().transform((value) => {
+    const normalized = normalizeReviewText(value);
+    return normalized.length === 0 ? null : normalized;
+  })
+]).superRefine((value, context) => {
+  if (value === null) return;
+  if (!hasVisibleCodePoint(value)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "comment must contain a visible character" });
+  }
+  if (unicodeCodePointLength(value) > 1000) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "comment must not exceed 1000 code points" });
+  }
+});
 
 export const availabilityListQuerySchema = z
   .object({
@@ -180,6 +205,30 @@ export const confirmReceiptBodySchema = z
   })
   .strict();
 
+export const orderReviewCreateBodySchema = z
+  .object({
+    targetType: z.enum(["technician", "customer"]),
+    rating: z.number().int().min(1).max(5),
+    tags: z.array(reviewTagSchema).max(8),
+    comment: reviewCommentSchema,
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const seen = new Set<string>();
+    value.tags.forEach((tag, index) => {
+      const folded = tag.toLocaleLowerCase("und");
+      if (seen.has(folded)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "review tags must be unique after Unicode normalization and case folding",
+          path: ["tags", index]
+        });
+      }
+      seen.add(folded);
+    });
+  });
+
 export const orderListQuerySchema = z.object({
   ...paginationQuerySchema,
   customerUserId: z.coerce.number().int().positive().optional(),
@@ -293,6 +342,7 @@ export type EndServiceInput = z.infer<typeof endServiceBodySchema>;
 export type SelectPaymentMethodInput = z.infer<typeof selectPaymentMethodBodySchema>;
 export type PayWithNdpInput = z.infer<typeof payWithNdpBodySchema>;
 export type ConfirmReceiptInput = z.infer<typeof confirmReceiptBodySchema>;
+export type OrderReviewCreateInput = z.infer<typeof orderReviewCreateBodySchema>;
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 export type OrderCancelBody = z.infer<typeof orderCancelBodySchema>;
 export type ManualPaymentConfirmBody = z.infer<typeof manualPaymentConfirmBodySchema>;

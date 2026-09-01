@@ -90,6 +90,20 @@ export type SelectCheckoutPaymentMethodInput = BookingIdempotencyInput & (
   | { method: "other"; otherMethodCode: string; otherMethodLabel: string }
 );
 export type ConfirmCheckoutReceiptInput = BookingIdempotencyInput & { reason: string };
+export type OrderReviewTargetType = "customer" | "technician";
+export type OrderReview = {
+  targetType: OrderReviewTargetType;
+  rating: number;
+  tags: string[];
+  comment: string | null;
+  createdAt: string;
+};
+export type CreateOrderReviewInput = BookingIdempotencyInput & {
+  targetType: OrderReviewTargetType;
+  rating: number;
+  tags: string[];
+  comment: string | null;
+};
 
 export type BookingScheduleSlot = {
   id: number;
@@ -375,6 +389,15 @@ export const bookingApi = {
   },
   confirmReceipt(id: number, input: ConfirmCheckoutReceiptInput) {
     return httpClient.request<OrderCheckout>(`/orders/${id}/checkout/confirm-receipt`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  getOwnReview(id: number) {
+    return httpClient.request<{ review: OrderReview | null }>(`/orders/${id}/reviews/mine`);
+  },
+  createReview(id: number, input: CreateOrderReviewInput) {
+    return httpClient.request<{ applied: boolean; review: OrderReview }>(`/orders/${id}/reviews`, {
       body: input,
       method: "POST"
     });

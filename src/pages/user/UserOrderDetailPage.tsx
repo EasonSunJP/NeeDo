@@ -11,12 +11,13 @@ import {
   mapBookingOrderToDomainOrder,
   type BookingOrder,
   type BookingOrderAddOn,
-  type OrderCheckout
+  type OrderCheckout,
+  type OrderReview
 } from "../../features/booking/api";
 import { coreReadApi, type CoreServiceCard } from "../../features/core-read/api";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
-import { ServiceCountdownPill } from "../../shared/order-detail/ServiceSessionUi";
+import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { useUserOrders } from "../../state/userOrderStore";
 
 function describeFormalOrderError(error: unknown) {
@@ -109,11 +110,18 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [queryError, setQueryError] = useState("");
   const [actionError, setActionError] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [ownReview, setOwnReview] = useState<OrderReview | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewPending, setReviewPending] = useState(false);
+  const [reviewSkipped, setReviewSkipped] = useState(false);
+  const [reviewRevision, setReviewRevision] = useState(0);
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [queryRevision, setQueryRevision] = useState(0);
   const mutationKeys = useRef(new Map<string, string>());
+  const retainedReviewCommand = useRef<{ fingerprint: string; key: string } | null>(null);
   const routeState = location.state as { notice?: string } | null;
 
   const loadOrder = useCallback(async () => {
@@ -165,6 +173,36 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       });
     return () => { active = false; };
   }, [checkoutRevision, order]);
+
+  const reviewEligible =
+    order?.status === "completed" &&
+    checkoutStatus === "success" &&
+    checkout?.status === "completed" &&
+    checkout.paymentEvidence !== null;
+
+  useEffect(() => {
+    if (!reviewEligible || !order) {
+      setOwnReview(null);
+      setReviewStatus("idle");
+      setReviewError("");
+      return;
+    }
+    let active = true;
+    setReviewStatus("loading");
+    setReviewError("");
+    bookingApi.getOwnReview(order.id)
+      .then(({ review }) => {
+        if (!active) return;
+        setOwnReview(review);
+        setReviewStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setReviewError(describeFormalOrderError(error));
+        setReviewStatus("error");
+      });
+    return () => { active = false; };
+  }, [order?.id, reviewEligible, reviewRevision]);
 
   useEffect(() => {
     if (order?.status !== "inService") {
@@ -242,6 +280,37 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       setProjectionError("订单状态读取失败，支付结果已经保存，请重新读取订单状态。");
     } finally {
       setProjectionPending(false);
+    }
+  };
+
+  const submitReview = async (submission: ServiceReviewSubmission) => {
+    if (reviewPending) return;
+    const tags = [...submission.tags].sort((left, right) =>
+      new TextEncoder().encode(left).join(",").localeCompare(new TextEncoder().encode(right).join(","))
+    );
+    const comment = submission.comment?.normalize("NFKC").trim() || null;
+    const fingerprint = JSON.stringify({ rating: submission.rating, tags, comment });
+    const retained = retainedReviewCommand.current;
+    const key = retained?.fingerprint === fingerprint ? retained.key : createBookingIdempotencyKey();
+    retainedReviewCommand.current = { fingerprint, key };
+    setReviewPending(true);
+    setReviewError("");
+    try {
+      const result = await bookingApi.createReview(orderId, {
+        targetType: "technician",
+        rating: submission.rating,
+        tags,
+        comment,
+        idempotencyKey: key
+      });
+      retainedReviewCommand.current = null;
+      setOwnReview(result.review);
+      setReviewStatus("success");
+    } catch (error) {
+      if (!isAmbiguousMutationError(error)) retainedReviewCommand.current = null;
+      setReviewError(`评价提交失败：${describeFormalOrderError(error)}`);
+    } finally {
+      setReviewPending(false);
     }
   };
 
@@ -334,6 +403,8 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ContactEventTimelinePanel title="状态记录" events={order.statusHistory.map((history) => ({ actorName: history.actorUserId ? `用户 #${history.actorUserId}` : "系统", actorRole: "预约状态", atLabel: formatApiOrderDateTime(history.createdAt), id: String(history.id), message: history.reason ?? `${history.fromStatus ?? "created"} → ${history.toStatus}`, title: formalStatusLabel(history.toStatus), tone: history.toStatus === "cancelled" ? "red" : "green" }))} />
           {projectionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert"><p>{projectionError}</p><button className="mt-3 h-10 w-full rounded-full border border-red-400/40" disabled={projectionPending} onClick={() => void retryOrderProjection()} type="button">{projectionPending ? "正在读取订单状态" : "重新读取订单状态"}</button></section> : null}
           {actionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert">{actionError}</section> : null}
+          {reviewEligible && reviewStatus === "loading" ? <section className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">正在读取评价状态</section> : null}
+          {reviewEligible && reviewStatus === "error" && !reviewPending ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert"><p>{reviewError}</p><button className="mt-3 h-10 w-full rounded-full border border-red-400/40" onClick={() => setReviewRevision((value) => value + 1)} type="button">重新读取评价状态</button></section> : null}
           {order.status === "confirmed" ? <button className="h-12 w-full rounded-[20px] bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-50" disabled={Boolean(pendingAction)} onClick={() => setStartConfirmOpen(true)} type="button">开始服务</button> : null}
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
@@ -344,6 +415,21 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
       {startConfirmOpen ? <div className="fixed inset-0 z-[130] grid place-items-center bg-black/55 px-4"><section className="w-full max-w-[360px] rounded-[28px] bg-[color:var(--client-elevated)] p-5"><h2 className="text-lg font-black">现在开始服务？</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">确认后以服务器记录的开始时间计算。</p><div className="mt-5 grid grid-cols-2 gap-3"><button className="h-11 rounded-full bg-[color:var(--client-surface)] font-black" onClick={() => setStartConfirmOpen(false)} type="button">取消</button><PrimaryButton onClick={startService}>开始计算</PrimaryButton></div></section></div> : null}
       {endConfirmOpen ? <div className="fixed inset-0 z-[130] grid place-items-center bg-black/55 px-4"><section className="w-full max-w-[360px] rounded-[28px] bg-[color:var(--client-elevated)] p-5"><h2 className="text-lg font-black">服务时间还没有到</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">是否提前结束本次服务？此理由会写入正式状态记录。</p><div className="mt-5 grid grid-cols-2 gap-3"><button className="h-11 rounded-full bg-[color:var(--client-surface)] font-black" onClick={() => setEndConfirmOpen(false)} type="button">取消</button><button className="h-11 rounded-full bg-red-500 font-black text-white" onClick={finishService} type="button">确认结束服务</button></div></section></div> : null}
+      {reviewEligible && reviewStatus === "success" && ownReview === null && !reviewSkipped ? (
+        <ServiceReviewPrompt
+          commentEnabled
+          error={reviewError || undefined}
+          helperMessage="本次订单评价提交后不可修改"
+          integerRating
+          message="请根据本次已完成服务评价担当技师"
+          onSkip={() => setReviewSkipped(true)}
+          onSubmit={(submission) => void submitReview(submission)}
+          pending={reviewPending}
+          showTagCounts={false}
+          tagOptions={["魅力值", "服务精神", "情绪价值", "元气"]}
+          title="评价技师"
+        />
+      ) : null}
     </PageScaffold>
   );
 }

@@ -387,6 +387,13 @@ export const SYSTEM_PERMISSIONS = [
     "order",
     "订单顾客或指派技师结束服务并进入待结账"
   ),
+  createPermission(
+    "order:review:create",
+    "提交订单评价",
+    "api",
+    "order",
+    "订单顾客或指派技师在正式结算完成后提交一次评价"
+  ),
   createPermission("order:checkout:read", "查看订单结账", "api", "order", "订单顾客或指派技师查看正式结账证据"),
   createPermission("order:checkout:payment-method:write", "选择结账方式", "api", "order", "订单顾客选择现金、NDP 或其他支付方式"),
   createPermission("order:checkout:ndp:pay", "NDP 结账", "api", "order", "订单顾客使用快照汇率完成 NDP 支付"),
@@ -1510,6 +1517,7 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "order:service:start",
   "order:add-on:write",
   "order:service:end",
+  "order:review:create",
   "order:checkout:read",
   "order:checkout:payment-method:write",
   "order:checkout:ndp:pay",
@@ -1855,6 +1863,7 @@ export const buildRolePermissionAssignments = (): Record<
     "order:service:start",
     "order:add-on:write",
     "order:service:end",
+    "order:review:create",
     "order:checkout:read",
     "order:checkout:receipt:confirm",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,

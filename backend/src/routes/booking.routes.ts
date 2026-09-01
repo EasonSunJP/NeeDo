@@ -34,6 +34,7 @@ import {
   orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  orderReviewCreateBodySchema,
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
@@ -52,6 +53,7 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   serviceStart: "order:service:start",
   addOnWrite: "order:add-on:write",
   serviceEnd: "order:service:end",
+  reviewCreate: "order:review:create",
   checkoutRead: "order:checkout:read",
   checkoutPaymentMethodWrite: "order:checkout:payment-method:write",
   checkoutNdpPay: "order:checkout:ndp:pay",
@@ -186,6 +188,20 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.serviceEnd),
     validateRequest({ params: orderIdParamSchema, body: endServiceBodySchema }),
     controller.endService
+  );
+  router.post(
+    "/orders/:id/reviews",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.reviewCreate),
+    validateRequest({ params: orderIdParamSchema, body: orderReviewCreateBodySchema }),
+    controller.createOrderReview
+  );
+  router.get(
+    "/orders/:id/reviews/mine",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.reviewCreate),
+    validateRequest({ params: orderIdParamSchema }),
+    controller.getOwnOrderReview
   );
   router.get(
     "/orders/:id/checkout",
