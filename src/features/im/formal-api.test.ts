@@ -1209,6 +1209,154 @@ describe("formal IM adapter", () => {
     expect(createFriendRequest).toHaveBeenCalledWith({ targetUserId: 201 });
   });
 
+  it("maps formal technician contact details without changing integer money, duration, or basis points", async () => {
+    vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
+      user: {
+        userId: 201,
+        needoId: "u0000000201",
+        username: "小林技师",
+        avatarUrl: null,
+      },
+      relationship: "friend",
+      contactId: 31,
+      friendRequest: null,
+      identityCard: {
+        entityType: "technician",
+        profileId: 81,
+        displayName: "小林技师",
+        identityLabel: "个人技师",
+        verified: true,
+        creditValue: "4.80",
+        creditReviewCount: 132,
+        gender: "male",
+        age: 29,
+        heightCm: "178.00",
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: "新宿区",
+        yearsExperience: 6,
+        bio: "预约前请先联系。",
+      },
+      technicianContactDetails: {
+        bidBudgetMinJpy: 12_001,
+        bidBudgetMaxJpy: 28_009,
+        paymentMethods: ["platform", "offline"],
+        specialTags: ["准时"],
+        profileTags: ["深度放松"],
+        services: [
+          {
+            id: 901,
+            shopId: 71,
+            name: "肩颈调理",
+            priceAmount: 8_801,
+            currency: "JPY",
+            durationMinutes: 61,
+            taxIncluded: true,
+            sortOrder: 0,
+          },
+        ],
+        completedOrderCount: 1_281,
+        acceptanceRateBps: 9_876,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    const profile = await api.getDirectoryProfile("201");
+
+    expect(profile.identityCard.entityType).toBe("technician");
+    expect(profile.technicianContactDetails).toEqual({
+      bidBudgetMinJpy: 12_001,
+      bidBudgetMaxJpy: 28_009,
+      paymentMethods: ["platform", "offline"],
+      specialTags: ["准时"],
+      profileTags: ["深度放松"],
+      services: [
+        {
+          id: 901,
+          shopId: 71,
+          name: "肩颈调理",
+          priceAmount: 8_801,
+          currency: "JPY",
+          durationMinutes: 61,
+          taxIncluded: true,
+          sortOrder: 0,
+        },
+      ],
+      completedOrderCount: 1_281,
+      acceptanceRateBps: 9_876,
+    });
+  });
+
+  it("keeps technician details absent and drops them from non-technician responses", async () => {
+    const base = {
+      user: {
+        userId: 201,
+        needoId: "u0000000201",
+        username: "普通用户",
+        avatarUrl: null,
+      },
+      relationship: "friend" as const,
+      contactId: 31,
+      friendRequest: null,
+      identityCard: {
+        entityType: "user" as const,
+        profileId: 81,
+        displayName: "普通用户",
+        identityLabel: "free",
+        verified: true,
+        creditValue: "4.80",
+        creditReviewCount: 12,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null,
+      },
+    };
+    const getProfile = vi.spyOn(realtimeApi, "getDirectoryProfile");
+    getProfile.mockResolvedValueOnce(base);
+    getProfile.mockResolvedValueOnce({
+      ...base,
+      technicianContactDetails: {
+        bidBudgetMinJpy: 1,
+        bidBudgetMaxJpy: 2,
+        paymentMethods: [],
+        specialTags: [],
+        profileTags: [],
+        services: [],
+        completedOrderCount: 0,
+        acceptanceRateBps: 10_000,
+      },
+    } as never);
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.getDirectoryProfile("201")).resolves.not.toHaveProperty(
+      "technicianContactDetails",
+    );
+    await expect(api.getDirectoryProfile("201")).resolves.not.toHaveProperty(
+      "technicianContactDetails",
+    );
+  });
+
   it("maps the authenticated account directory profile as self", async () => {
     vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
       user: {

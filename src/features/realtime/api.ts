@@ -154,13 +154,46 @@ export type RealtimeFriendRequest = {
   expiredAt: string | null;
 };
 
-export type RealtimeDirectoryProfile = {
+type RealtimeDirectoryProfileBase = {
   user: RealtimeParticipant;
-  identityCard: RealtimeDirectoryIdentityCard;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: RealtimeFriendRequest | null;
 };
+
+export type RealtimeTechnicianContactService = {
+  id: number;
+  shopId: number;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+};
+
+export type RealtimeTechnicianContactDetails = {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: RealtimeTechnicianContactService[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+};
+
+export type RealtimeDirectoryProfile =
+  | RealtimeDirectoryProfileBase & {
+      identityCard: RealtimeDirectoryIdentityCard & { entityType: "technician" };
+      technicianContactDetails?: RealtimeTechnicianContactDetails;
+    }
+  | RealtimeDirectoryProfileBase & {
+      identityCard: RealtimeDirectoryIdentityCard & {
+        entityType: "user" | "shop" | "account";
+      };
+      technicianContactDetails?: never;
+    };
 
 export type RealtimeDirectoryIdentityCard = {
   entityType: "user" | "technician" | "shop" | "account";

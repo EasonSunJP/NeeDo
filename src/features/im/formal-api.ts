@@ -16,6 +16,7 @@ import {
   type RealtimeFriendRequest,
   type RealtimeMessage,
   type RealtimeParticipant,
+  type RealtimeTechnicianContactDetails,
 } from "../realtime/api";
 import type { ImApi } from "./contract";
 import { buildConversationLastMessageSummary } from "./model";
@@ -35,6 +36,7 @@ import type {
   ImRoleType,
   ImUser,
   MessageExt,
+  TechnicianContactDetails,
 } from "./model";
 
 type FormalCurrentUser = {
@@ -652,6 +654,30 @@ function toImUser(participant: RealtimeParticipant): ImUser {
   };
 }
 
+function toTechnicianContactDetails(
+  details: RealtimeTechnicianContactDetails,
+): TechnicianContactDetails {
+  return {
+    bidBudgetMinJpy: details.bidBudgetMinJpy,
+    bidBudgetMaxJpy: details.bidBudgetMaxJpy,
+    paymentMethods: [...details.paymentMethods],
+    specialTags: [...details.specialTags],
+    profileTags: [...details.profileTags],
+    services: details.services.map((service) => ({
+      id: service.id,
+      shopId: service.shopId,
+      name: service.name,
+      priceAmount: service.priceAmount,
+      currency: service.currency,
+      durationMinutes: service.durationMinutes,
+      taxIncluded: service.taxIncluded,
+      sortOrder: service.sortOrder,
+    })),
+    completedOrderCount: details.completedOrderCount,
+    acceptanceRateBps: details.acceptanceRateBps,
+  };
+}
+
 function getOrganizationTechnicianTags(
   technician: BackofficeTechnicianPayload,
 ) {
@@ -1150,36 +1176,61 @@ export function createFormalImApi({
     },
     async getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
       const profile = await realtimeApi.getDirectoryProfile(toNumericId(userId));
-      return {
+      const identityCard = {
+        entityType: profile.identityCard.entityType,
+        profileId: profile.identityCard.profileId === null
+          ? undefined
+          : String(profile.identityCard.profileId),
+        displayName: profile.identityCard.displayName,
+        identityLabel: profile.identityCard.identityLabel ?? undefined,
+        verified: profile.identityCard.verified,
+        creditValue: profile.identityCard.creditValue === null
+          ? undefined
+          : Number(profile.identityCard.creditValue),
+        creditReviewCount: profile.identityCard.creditReviewCount,
+        gender: profile.identityCard.gender ?? undefined,
+        age: profile.identityCard.age ?? undefined,
+        heightCm: profile.identityCard.heightCm === null
+          ? undefined
+          : Number(profile.identityCard.heightCm),
+        languages: profile.identityCard.languages,
+        city: profile.identityCard.city ?? undefined,
+        serviceArea: profile.identityCard.serviceArea ?? undefined,
+        yearsExperience: profile.identityCard.yearsExperience ?? undefined,
+        bio: profile.identityCard.bio ?? undefined,
+      };
+      const baseProfile = {
         user: toImUser(profile.user),
-        identityCard: {
-          entityType: profile.identityCard.entityType,
-          profileId: profile.identityCard.profileId === null
-            ? undefined
-            : String(profile.identityCard.profileId),
-          displayName: profile.identityCard.displayName,
-          identityLabel: profile.identityCard.identityLabel ?? undefined,
-          verified: profile.identityCard.verified,
-          creditValue: profile.identityCard.creditValue === null
-            ? undefined
-            : Number(profile.identityCard.creditValue),
-          creditReviewCount: profile.identityCard.creditReviewCount,
-          gender: profile.identityCard.gender ?? undefined,
-          age: profile.identityCard.age ?? undefined,
-          heightCm: profile.identityCard.heightCm === null
-            ? undefined
-            : Number(profile.identityCard.heightCm),
-          languages: profile.identityCard.languages,
-          city: profile.identityCard.city ?? undefined,
-          serviceArea: profile.identityCard.serviceArea ?? undefined,
-          yearsExperience: profile.identityCard.yearsExperience ?? undefined,
-          bio: profile.identityCard.bio ?? undefined,
-        },
         relationship: profile.relationship,
         contactId: profile.contactId === null ? undefined : String(profile.contactId),
         friendRequest: profile.friendRequest
           ? toFriendRequest(profile.friendRequest)
           : undefined,
+      };
+
+      if (profile.identityCard.entityType === "technician") {
+        return {
+          ...baseProfile,
+          identityCard: {
+            ...identityCard,
+            entityType: "technician",
+          },
+          ...(profile.technicianContactDetails
+            ? {
+                technicianContactDetails: toTechnicianContactDetails(
+                  profile.technicianContactDetails,
+                ),
+              }
+            : {}),
+        };
+      }
+
+      return {
+        ...baseProfile,
+        identityCard: {
+          ...identityCard,
+          entityType: profile.identityCard.entityType,
+        },
       };
     },
     async sendFriendRequest(targetUserId: string, message?: string) {

@@ -91,13 +91,46 @@ export type FriendRequest = {
   handledAt?: string;
 };
 
-export type DirectoryProfile = {
+type DirectoryProfileBase = {
   user: ImUser;
-  identityCard: DirectoryIdentityCard;
   relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId?: string;
   friendRequest?: FriendRequest;
 };
+
+export type TechnicianContactService = {
+  id: number;
+  shopId: number;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+};
+
+export type TechnicianContactDetails = {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: TechnicianContactService[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+};
+
+export type DirectoryProfile =
+  | DirectoryProfileBase & {
+      identityCard: DirectoryIdentityCard & { entityType: "technician" };
+      technicianContactDetails?: TechnicianContactDetails;
+    }
+  | DirectoryProfileBase & {
+      identityCard: DirectoryIdentityCard & {
+        entityType: "user" | "shop" | "account";
+      };
+      technicianContactDetails?: never;
+    };
 
 export type DirectoryIdentityCard = {
   entityType: "user" | "technician" | "shop" | "account";
