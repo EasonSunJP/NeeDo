@@ -28,6 +28,7 @@ export type TechnicianServicePayload = {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
@@ -116,6 +117,23 @@ export const pricingModeApi = {
     return httpClient.request<PaginatedPricingData<TechnicianServicePayload>>(
       `/technicians/me/shops/${shopId}/services`,
       { query }
+    );
+  },
+
+  listMyTechnicianServices(query: { page?: number; pageSize?: number; activeOnly?: boolean } = {}) {
+    return httpClient.request<PaginatedPricingData<TechnicianServicePayload>>(
+      "/technicians/me/services",
+      { query }
+    );
+  },
+
+  reorderMyTechnicianServices(orderedServiceIds: number[], idempotencyKey: string) {
+    return httpClient.request<TechnicianServicePayload[]>(
+      "/technicians/me/services/order",
+      {
+        body: { orderedServiceIds, idempotencyKey },
+        method: "PUT"
+      }
     );
   },
 

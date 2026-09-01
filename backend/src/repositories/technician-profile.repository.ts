@@ -51,6 +51,7 @@ export interface TechnicianProfilePayload {
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
+  specialTags: string[];
   profileTags: string[];
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
@@ -76,6 +77,11 @@ export interface TechnicianProfileRepositoryPort {
 }
 
 const profileInclude = {
+  backofficeProfileTags: {
+    where: { isActive: true, deletedAt: null },
+    select: { id: true, label: true, isActive: true, expiresAt: true },
+    orderBy: { id: "asc" as const }
+  },
   mediaAssets: {
     where: { usageType: "avatar", isActive: true, deletedAt: null },
     orderBy: { id: "desc" as const },
@@ -209,6 +215,9 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.stringArray(profile.languages, "languages"),
       serviceAreas: this.stringArray(profile.serviceAreasJson, "service_areas"),
+      specialTags: profile.backofficeProfileTags
+        .filter((tag) => tag.expiresAt === null || tag.expiresAt.getTime() > Date.now())
+        .map((tag) => tag.label),
       profileTags: this.stringArray(profile.profileTags, "profile_tags"),
       canServeForeigners: profile.canServeForeigners,
       bidBudgetMinJpy: profile.bidBudgetMinJpy,

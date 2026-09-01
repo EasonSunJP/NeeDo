@@ -24,6 +24,7 @@ export type TechnicianSelfProfile = {
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
+  specialTags: string[];
   profileTags: string[];
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;

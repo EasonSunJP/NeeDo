@@ -139,6 +139,7 @@ const service: TechnicianServicePayload = {
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],

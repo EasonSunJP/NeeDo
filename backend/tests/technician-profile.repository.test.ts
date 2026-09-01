@@ -31,6 +31,10 @@ const record = {
   createdAt: now,
   updatedAt: now,
   deletedAt: null,
+  backofficeProfileTags: [
+    { id: 1, label: "准时", isActive: true, expiresAt: null },
+    { id: 2, label: "已过期", isActive: true, expiresAt: new Date("2020-01-01T00:00:00.000Z") }
+  ],
   mediaAssets: [],
   user: {
     avatarBootstrapUrl: null,
@@ -53,6 +57,7 @@ describe("TechnicianProfileRepository", () => {
     const repository = new TechnicianProfileRepository(client);
 
     await expect(repository.findMine(9, 31)).resolves.toMatchObject({
+      specialTags: ["准时"],
       serviceBase: { latitude: 35.6762, longitude: 139.6503 }
     });
   });
