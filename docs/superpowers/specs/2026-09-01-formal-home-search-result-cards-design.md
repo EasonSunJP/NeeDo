@@ -12,7 +12,7 @@ Replace the compact generic shop/technician rows on the home category search pag
 
 The public shop card adds only persisted aggregate values: active favorite count and non-deleted share-event count. Existing localized business keywords remain the only keyword chips shown on the card; service category names remain searchable but are not rendered as keyword chips.
 
-The public technician card adds age, persisted active favorite count, non-deleted share-event count, calculated acceptance rate, completed-order count, and the first active/bookable/approved technician service ordered by recommended status, configured sort order, then ID. The service payload contains its real name, price, currency, and duration. Missing optional values remain null and are hidden; no mock or inferred value is substituted.
+The public technician card adds age, persisted active favorite count, non-deleted share-event count, calculated acceptance rate, completed-order count, and the first active/bookable/approved technician service ordered by configured sort order then ID. The first configured service is the primary business. The service payload contains its real name, price, currency, and duration. Missing optional values remain null and are hidden; no mock or inferred value is substituted.
 
 Nearby rank remains authoritative from the existing distance-first algorithm: start at 3 km, expand by 1 km until three eligible technicians exist or all eligible technicians have been found, then order by rating, completed orders, review count, and registration time. Only ranks 1–3 receive gold/silver/bronze badges.
 
