@@ -81,7 +81,7 @@ const REQUIRED_INDEXES = [
 ] as const;
 
 const productionEnvironment = /^(?:prod|production|staging)$/i;
-const productionDatabaseName = /(?:^|[_-])(?:prod|production|staging|live)(?:[_-]|$)/i;
+const productionDatabaseName = /(?:prod(?:uction)?|staging|live)/i;
 const allowedDatabasePurpose = /(?:test|dev|local)/i;
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -108,7 +108,7 @@ export function loadAndValidateFormalEnvironment(
       throw new Error("Formal order checker refuses a production environment");
     }
   }
-  const databaseUrl = values.DATABASE_URL?.trim();
+  const databaseUrl = parsed.DATABASE_URL?.trim();
   if (!databaseUrl) throw new Error("DATABASE_URL is required in FORMAL_BACKEND_ENV_FILE");
   let target: URL;
   try {
@@ -177,6 +177,96 @@ export function createTransactionBoundPrismaFacade<TTransaction extends object>(
       return typeof value === "function" ? value.bind(target) : value;
     }
   }) as TransactionBoundPrismaFacade<TTransaction>;
+}
+
+export async function resolveFixtureLedgerCurrency(
+  transaction: Prisma.TransactionClient,
+  userId: number
+): Promise<"NDP" | "TEST_NDP"> {
+  const [{ LedgerCurrencyService }, { LedgerRepository }] = await Promise.all([
+    import("../src/services/ledger-currency.service"),
+    import("../src/repositories/ledger.repository")
+  ]);
+  const facade = createTransactionBoundPrismaFacade(transaction) as unknown as PrismaClient;
+  return new LedgerCurrencyService(new LedgerRepository(facade)).resolveForUser(userId);
+}
+
+export type CashNoDebitEvidence = {
+  checkoutId: number;
+  walletAvailableBalance: number;
+  walletFrozenBalance: number;
+  ledgerTransactionCount: number;
+  walletLedgerCount: number;
+  reconciliationCount: number;
+};
+
+export async function captureCashNoDebitEvidence(
+  transaction: Pick<
+    Prisma.TransactionClient,
+    "orderCheckout" | "wallet" | "ledgerTransaction" | "walletLedger" | "financeReconciliation"
+  >,
+  orderId: number,
+  customerUserId: number,
+  currency: "NDP" | "TEST_NDP"
+): Promise<CashNoDebitEvidence> {
+  const checkout = await transaction.orderCheckout.findUnique({
+    where: { bookingOrderId: orderId },
+    select: { id: true }
+  });
+  if (!checkout) throw new Error("Formal order checker cash checkout is missing");
+  const [wallet, ledgerTransactionCount, walletLedgerCount, reconciliationCount] =
+    await Promise.all([
+      transaction.wallet.findUnique({
+        where: {
+          ownerType_ownerId_currency: {
+            ownerType: "USER", ownerId: customerUserId, currency
+          }
+        },
+        select: { availableBalance: true, frozenBalance: true }
+      }),
+      transaction.ledgerTransaction.count({
+        where: { referenceType: "order_checkout_payment", referenceId: checkout.id, currency }
+      }),
+      transaction.walletLedger.count({
+        where: {
+          wallet: { ownerType: "USER", ownerId: customerUserId, currency },
+          transaction: {
+            referenceType: "order_checkout_payment", referenceId: checkout.id, currency
+          }
+        }
+      }),
+      transaction.financeReconciliation.count({
+        where: { referenceType: "order_checkout_payment", referenceId: checkout.id, currency }
+      })
+    ]);
+  if (!wallet) throw new Error("Formal order checker customer wallet is missing");
+  return {
+    checkoutId: checkout.id,
+    walletAvailableBalance: wallet.availableBalance,
+    walletFrozenBalance: wallet.frozenBalance,
+    ledgerTransactionCount,
+    walletLedgerCount,
+    reconciliationCount
+  };
+}
+
+export function assertNoCashDebit(
+  before: CashNoDebitEvidence,
+  after: CashNoDebitEvidence
+): void {
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    throw new Error("Formal order checker assertion failed: cash payment changed wallet or checkout ledger evidence");
+  }
+}
+
+export function assertDeepSnapshotEqual(
+  before: unknown,
+  after: unknown,
+  label: string
+): void {
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    throw new Error(`Formal order checker assertion failed: ${label} left partial writes`);
+  }
 }
 
 export class RollbackCompleted extends Error {
@@ -297,6 +387,8 @@ type CheckerFixture = {
   serviceId: number;
   addOnServiceId: number;
   rateId: number;
+  rateVersion: number;
+  rateEffectiveFrom: Date;
 };
 
 async function createCheckerFixture(
@@ -306,7 +398,7 @@ async function createCheckerFixture(
   const marker = `order-flow-${now.getTime()}-${Math.random().toString(36).slice(2, 10)}`;
   const customer = await tx.user.create({ data: {
     needoId: `${marker}-customer`, email: `${marker}-customer@example.invalid`,
-    username: "Formal flow customer", isTestAccount: true
+    username: "Formal flow customer", isTestAccount: false
   } });
   const technician = await tx.user.create({ data: {
     needoId: `${marker}-technician`, email: `${marker}-technician@example.invalid`,
@@ -353,7 +445,8 @@ async function createCheckerFixture(
   return {
     marker, customer, technician, customerProfileId: customerProfile.id,
     technicianProfileId: technicianProfile.id, shopId: shop.id, serviceId: service.id,
-    addOnServiceId: addOn.id, rateId: rate.id
+    addOnServiceId: addOn.id, rateId: rate.id, rateVersion: rate.version,
+    rateEffectiveFrom: rate.effectiveFrom
   };
 }
 
@@ -364,6 +457,7 @@ async function createConfirmedOrder(
   fixture: CheckerFixture,
   sequence: number,
   now: Date,
+  currency: "NDP" | "TEST_NDP",
   walletBalance = 0
 ): Promise<CheckerOrder> {
   const startsAt = new Date(now.getTime() + sequence * 3_600_000);
@@ -390,12 +484,12 @@ async function createConfirmedOrder(
   await tx.orderFinancial.create({ data: {
     bookingOrderId: order.id, customerUserId: fixture.customer.id,
     shopId: fixture.shopId, technicianProfileId: fixture.technicianProfileId,
-    serviceAmountJpy: 8_800, platformFeeEnabledSnapshot: false
+    serviceAmountJpy: 8_800, ndpCurrency: currency, platformFeeEnabledSnapshot: false
   } });
   if (walletBalance > 0) {
     await tx.wallet.upsert({
-      where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency: "NDP" } },
-      create: { ownerType: "USER", ownerId: fixture.customer.id, currency: "NDP", availableBalance: walletBalance },
+      where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency } },
+      create: { ownerType: "USER", ownerId: fixture.customer.id, currency, availableBalance: walletBalance },
       update: { availableBalance: walletBalance, frozenBalance: 0 }
     });
   }
@@ -408,6 +502,13 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+const asRecord = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Formal order checker expected structured evidence");
+  }
+  return value as Record<string, unknown>;
+};
 
 async function assertRejectedWithMessage(
   operation: () => Promise<unknown>,
@@ -423,8 +524,8 @@ async function assertRejectedWithMessage(
 }
 
 async function captureOrderMutationState(tx: Prisma.TransactionClient, orderId: number) {
-  const [order, session, eventCount, historyCount, checkout, ledgerCount,
-    walletLedgerCount, reviewCount, auditCount, financial] = await Promise.all([
+  const [order, session, events, histories, checkout, ledgerTransactions,
+    reconciliations, reviews, audits, financial] = await Promise.all([
     tx.bookingOrder.findUnique({
       where: { id: orderId },
       select: {
@@ -444,8 +545,8 @@ async function captureOrderMutationState(tx: Prisma.TransactionClient, orderId: 
         }
       }
     }),
-    tx.orderServiceEvent.count({ where: { bookingOrderId: orderId } }),
-    tx.orderStatusHistory.count({ where: { bookingOrderId: orderId } }),
+    tx.orderServiceEvent.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
+    tx.orderStatusHistory.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
     tx.orderCheckout.findUnique({
       where: { bookingOrderId: orderId },
       select: {
@@ -453,28 +554,27 @@ async function captureOrderMutationState(tx: Prisma.TransactionClient, orderId: 
         receiptConfirmedById: true, receiptConfirmedAt: true
       }
     }),
-    tx.ledgerTransaction.count(),
-    tx.walletLedger.count(),
-    tx.orderReview.count(),
-    tx.auditLog.count(),
-    tx.orderFinancial.findUnique({
-      where: { bookingOrderId: orderId },
-      select: { settlementStatus: true, paymentChannel: true, serviceIncomeStatus: true }
-    })
+    tx.ledgerTransaction.findMany({
+      include: { entries: true, reconciliation: true }, orderBy: { id: "asc" }
+    }),
+    tx.financeReconciliation.findMany({ orderBy: { id: "asc" } }),
+    tx.orderReview.findMany({ include: { tags: true }, orderBy: { id: "asc" } }),
+    tx.auditLog.findMany({ orderBy: { id: "asc" } }),
+    tx.orderFinancial.findUnique({ where: { bookingOrderId: orderId } })
   ]);
-  const wallet = order
+  const wallet = order && (financial?.ndpCurrency === "NDP" || financial?.ndpCurrency === "TEST_NDP")
     ? await tx.wallet.findUnique({
         where: {
           ownerType_ownerId_currency: {
-            ownerType: "USER", ownerId: order.customerUserId, currency: "NDP"
+            ownerType: "USER", ownerId: order.customerUserId, currency: financial.ndpCurrency
           }
         },
         select: { availableBalance: true, frozenBalance: true }
       })
     : null;
   return {
-    order, session, eventCount, historyCount, checkout, ledgerCount,
-    walletLedgerCount, reviewCount, auditCount, financial, wallet
+    order, session, events, histories, checkout, ledgerTransactions,
+    reconciliations, reviews, audits, financial, wallet
   };
 }
 
@@ -483,11 +583,13 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const fixture = await createCheckerFixture(tx, now);
   const facade = createTransactionBoundPrismaFacade(tx) as unknown as PrismaClient;
   const [bookingModule, bookingRepositoryModule, ledgerModule, ledgerRepositoryModule,
-    auditModule, auditRepositoryModule, rateModule, rateRepositoryModule] = await Promise.all([
+    auditModule, auditRepositoryModule, rateModule, rateRepositoryModule,
+    validatorModule] = await Promise.all([
     import("../src/services/booking.service"), import("../src/repositories/booking.repository"),
     import("../src/services/ledger.service"), import("../src/repositories/ledger.repository"),
     import("../src/services/audit-log.service"), import("../src/repositories/audit-log.repository"),
-    import("../src/services/ndp-exchange-rate.service"), import("../src/repositories/ndp-exchange-rate.repository")
+    import("../src/services/ndp-exchange-rate.service"), import("../src/repositories/ndp-exchange-rate.repository"),
+    import("../src/validators/booking.validator")
   ]);
   const audit = new auditModule.AuditLogService(new auditRepositoryModule.AuditLogRepository(facade));
   const ledger = new ledgerModule.LedgerService(new ledgerRepositoryModule.LedgerRepository(facade));
@@ -498,6 +600,8 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     new bookingRepositoryModule.BookingRepository(facade), ledger, undefined, audit,
     undefined, rate, () => now
   );
+  const currency = await resolveFixtureLedgerCurrency(tx, fixture.customer.id);
+  assert(currency === "NDP", "non-test fixture did not resolve to formal NDP currency");
   const customer: AuthenticatedAccessContext = {
     userId: fixture.customer.id, email: fixture.customer.email, accessTokenJti: fixture.marker,
     accessTokenExpiresAt: Math.floor(now.getTime() / 1000) + 600, roles: ["customer"],
@@ -519,7 +623,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   };
   const context = { ip: "127.0.0.1", userAgent: "order-flow-checker" };
 
-  const ndpOrder = await createConfirmedOrder(tx, fixture, 1, now, 100_000);
+  const ndpOrder = await createConfirmedOrder(tx, fixture, 1, now, currency, 100_000);
   const ndpStart = { actor: "customer" as const, idempotencyKey: `${fixture.marker}-ndp-start` };
   await service.startService(customer, ndpOrder.id, ndpStart, context);
   await service.startService(customer, ndpOrder.id, ndpStart, context);
@@ -565,15 +669,31 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     }, context),
     "error.idempotency.key_reused"
   );
+  const ndpWalletBefore = await tx.wallet.findUniqueOrThrow({
+    where: {
+      ownerType_ownerId_currency: {
+        ownerType: "USER", ownerId: fixture.customer.id, currency
+      }
+    }
+  });
   const paymentInput = { idempotencyKey: `${fixture.marker}-ndp-payment` };
   const paid = await service.payCheckoutWithNdp(customer, ndpOrder.id, paymentInput, context);
   const paidReplay = await service.payCheckoutWithNdp(customer, ndpOrder.id, paymentInput, context);
   assert(paid.status === "completed" && paid.paymentEvidence === "ndp_ledger" && paidReplay.id === paid.id,
     "NDP settlement evidence/replay mismatch");
-  const customerReviewInput = {
-    targetType: "technician" as const, rating: 5, tags: ["服务精神"], comment: "正式流程",
+  assert(!validatorModule.orderReviewCreateBodySchema.safeParse({
+    targetType: "technician", rating: 5, tags: ["Straße", "STRASSE"], comment: null,
+    idempotencyKey: `${fixture.marker}-unicode-collision`
+  }).success, "review validator accepted a Unicode full-fold collision");
+  assert(!validatorModule.orderReviewCreateBodySchema.safeParse({
+    targetType: "technician", rating: 5, tags: ["Σ", "ς"], comment: null,
+    idempotencyKey: `${fixture.marker}-sigma-collision`
+  }).success, "review validator accepted a final-sigma collision");
+  const customerReviewInput = validatorModule.orderReviewCreateBodySchema.parse({
+    targetType: "technician", rating: 5, tags: ["ＳＰＡ", "ı", "i"],
+    comment: "  Ｆｏｒｍａｌ  ",
     idempotencyKey: `${fixture.marker}-customer-review`
-  };
+  });
   const customerReview = await service.createOrderReview(customer, ndpOrder.id, customerReviewInput, context);
   const customerReviewReplay = await service.createOrderReview(customer, ndpOrder.id, customerReviewInput, context);
   assert(customerReview.applied && !customerReviewReplay.applied,
@@ -594,16 +714,27 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     }, context),
     "error.order.review_already_submitted"
   );
-  const ndpEvidence = await tx.bookingOrder.findUnique({
-    where: { id: ndpOrder.id },
-    include: {
-      statusHistory: { where: { deletedAt: null } },
-      serviceSession: { include: { events: true, addOns: true } },
-      checkout: { include: { ledgerTransaction: { include: { entries: true, reconciliation: true } } } },
-      financial: true,
-      reviews: { include: { tags: true } }
-    }
-  });
+  const [ndpEvidence, ndpWalletAfter] = await Promise.all([
+    tx.bookingOrder.findUnique({
+      where: { id: ndpOrder.id },
+      include: {
+        statusHistory: { where: { deletedAt: null } },
+        serviceSession: { include: { events: true, addOns: true } },
+        checkout: {
+          include: { ledgerTransaction: { include: { entries: true, reconciliation: true } } }
+        },
+        financial: true,
+        reviews: { include: { tags: true } }
+      }
+    }),
+    tx.wallet.findUniqueOrThrow({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "USER", ownerId: fixture.customer.id, currency
+        }
+      }
+    })
+  ]);
   assert(ndpEvidence?.status === "COMPLETED" && ndpEvidence.statusHistory.length === 4,
     "NDP order history is not coherent");
   assert(ndpEvidence.serviceSession?.events.length === 7 &&
@@ -611,16 +742,78 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     ndpEvidence.serviceSession.addOns[0]?.status === "ACCEPTED" &&
     ndpEvidence.serviceSession.addOns[0]?.serviceId === fixture.addOnServiceId,
   "NDP service/add-on event chain is not coherent");
-  assert(ndpEvidence.checkout?.calculationSnapshotJson && ndpEvidence.checkout.rateSnapshotJson &&
-    ndpEvidence.checkout.ledgerTransaction?.entries.length === 1 &&
-    ndpEvidence.checkout.ledgerTransaction.reconciliation &&
+  const persistedCheckout = ndpEvidence.checkout;
+  assert(persistedCheckout?.baseAmountJpy === 8_800 &&
+    persistedCheckout.addOnAmountJpy === 2_200 &&
+    persistedCheckout.discountAmountJpy === 0 &&
+    persistedCheckout.checkoutAmountJpy === 11_000 && persistedCheckout.payableNdp === 11_000,
+  "NDP checkout amount evidence is not exact");
+  const rateSnapshot = asRecord(persistedCheckout.rateSnapshotJson);
+  const calculationSnapshot = asRecord(persistedCheckout.calculationSnapshotJson);
+  assert(rateSnapshot.ruleId === fixture.rateId && rateSnapshot.version === fixture.rateVersion &&
+    rateSnapshot.ndpUnits === 1 && rateSnapshot.jpyUnits === 1 &&
+    rateSnapshot.effectiveFrom === fixture.rateEffectiveFrom.toISOString(),
+  "NDP exchange-rate snapshot is not exact");
+  assert(calculationSnapshot.formula === "base_plus_accepted_add_ons_minus_discount" &&
+    calculationSnapshot.baseAmountJpy === 8_800 && calculationSnapshot.addOnAmountJpy === 2_200 &&
+    calculationSnapshot.discountAmountJpy === 0 && calculationSnapshot.checkoutAmountJpy === 11_000 &&
+    Array.isArray(calculationSnapshot.acceptedAddOnIds) &&
+    calculationSnapshot.acceptedAddOnIds.length === 1 &&
+    calculationSnapshot.acceptedAddOnIds[0] === addOnId,
+  "NDP calculation snapshot is not exact");
+  const paymentTransaction = persistedCheckout.ledgerTransaction;
+  const paymentEntry = paymentTransaction?.entries[0];
+  const reconciliation = paymentTransaction?.reconciliation;
+  assert(paymentTransaction?.referenceType === "order_checkout_payment" &&
+    paymentTransaction.referenceId === persistedCheckout.id &&
+    paymentTransaction.actorUserId === fixture.customer.id &&
+    paymentTransaction.amount === 11_000 && paymentTransaction.currency === currency &&
+    paymentEntry?.walletId === ndpWalletBefore.id && paymentEntry.direction === "AVAILABLE_DEBIT" &&
+    paymentEntry.amount === 11_000 && paymentEntry.availableDelta === -11_000 &&
+    paymentEntry.frozenDelta === 0 && paymentEntry.availableBalanceAfter === 89_000 &&
+    paymentEntry.frozenBalanceAfter === 0 && ndpWalletBefore.availableBalance === 100_000 &&
+    ndpWalletAfter.availableBalance === 89_000 && ndpWalletAfter.frozenBalance === 0,
+  "NDP wallet/ledger balance evidence is not exact");
+  assert(reconciliation?.referenceType === "order_checkout_payment" &&
+    reconciliation.referenceId === persistedCheckout.id && reconciliation.currency === currency &&
+    reconciliation.expectedAmount === 11_000 && reconciliation.actualAmount === 11_000 &&
+    reconciliation.differenceAmount === 0 && reconciliation.status === "PENDING" &&
     ndpEvidence.financial?.settlementStatus === "settled",
-  "NDP checkout/ledger/reconciliation/settlement chain is not coherent");
-  assert(ndpEvidence.reviews.length === 2 &&
-    ndpEvidence.reviews.every((review) => review.tags.length === 1),
-  "NDP directional reviews/tags are not coherent");
+  "NDP reconciliation/settlement evidence is not exact");
+  const paymentAudit = await tx.auditLog.findFirst({
+    where: {
+      action: "ledger.checkout.ndp_payment", targetType: "ledger_transaction",
+      targetId: paymentTransaction.id, actorId: fixture.customer.id, deletedAt: null
+    }
+  });
+  const paymentAuditMetadata = asRecord(paymentAudit?.metadata);
+  assert(paymentAuditMetadata.referenceType === "order_checkout_payment" &&
+    paymentAuditMetadata.referenceId === persistedCheckout.id &&
+    paymentAuditMetadata.amount === 11_000 && paymentAuditMetadata.currency === currency &&
+    paymentAuditMetadata.bookingOrderId === ndpOrder.id &&
+    paymentAuditMetadata.checkoutId === persistedCheckout.id,
+  "NDP payment audit is not exact");
+  assert(ndpEvidence.reviews.length === 2, "NDP directional review count is not exact");
+  const technicianTargetReview = ndpEvidence.reviews.find(
+    (review) => review.targetType === "TECHNICIAN"
+  );
+  const customerTargetReview = ndpEvidence.reviews.find(
+    (review) => review.targetType === "CUSTOMER"
+  );
+  assert(technicianTargetReview?.reviewerUserId === fixture.customer.id &&
+    technicianTargetReview.technicianProfileId === fixture.technicianProfileId &&
+    technicianTargetReview.customerProfileId === null && technicianTargetReview.rating === 5 &&
+    technicianTargetReview.comment === "Formal" &&
+    JSON.stringify(technicianTargetReview.tags.map((tag) => tag.label).sort()) ===
+      JSON.stringify(["SPA", "i", "ı"].sort()),
+  "technician-target review normalization/ownership is not exact");
+  assert(customerTargetReview?.reviewerUserId === fixture.technician.id &&
+    customerTargetReview.customerProfileId === fixture.customerProfileId &&
+    customerTargetReview.technicianProfileId === null && customerTargetReview.rating === 5 &&
+    customerTargetReview.tags[0]?.label === "准时到达",
+  "customer-target review ownership is not exact");
 
-  const cashOrder = await createConfirmedOrder(tx, fixture, 2, now);
+  const cashOrder = await createConfirmedOrder(tx, fixture, 2, now, currency);
   const verificationCode = bookingRepositoryModule.deriveOrderServiceVerificationCode(cashOrder.id);
   await service.startService(technician, cashOrder.id, {
     actor: "technician", verificationCode, idempotencyKey: `${fixture.marker}-cash-start`
@@ -637,6 +830,9 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     reason: "completed", idempotencyKey: `${fixture.marker}-cash-end`
   }, context);
   await service.getCheckout(customer, cashOrder.id);
+  const cashNoDebitBefore = await captureCashNoDebitEvidence(
+    tx, cashOrder.id, fixture.customer.id, currency
+  );
   const awaitingPaymentConfirmation = await service.selectCheckoutPaymentMethod(customer, cashOrder.id, {
     method: "cash", idempotencyKey: `${fixture.marker}-cash-select`
   }, context);
@@ -658,9 +854,10 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     }, context),
     "error.idempotency.key_reused"
   );
-  const cashWalletBefore = await tx.wallet.findUnique({
-    where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency: "NDP" } }
-  });
+  const cashNoDebitAfter = await captureCashNoDebitEvidence(
+    tx, cashOrder.id, fixture.customer.id, currency
+  );
+  assertNoCashDebit(cashNoDebitBefore, cashNoDebitAfter);
   const cashCustomerReview = {
     targetType: "technician" as const, rating: 4, tags: ["服务精神"], comment: "现金流程",
     idempotencyKey: `${fixture.marker}-cash-customer-review`
@@ -671,7 +868,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     targetType: "customer", rating: 4, tags: ["准时到达"], comment: "现金流程",
     idempotencyKey: `${fixture.marker}-cash-technician-review`
   }, context);
-  const [cashEvidence, cashWalletAfter, summaryRows, reviewAuditCount] = await Promise.all([
+  const [cashEvidence, summaryRows, reviewAuditCount] = await Promise.all([
     tx.bookingOrder.findUnique({
       where: { id: cashOrder.id },
       include: {
@@ -679,9 +876,6 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
         serviceSession: { include: { events: true, addOns: true } },
         checkout: true, financial: true, reviews: { include: { tags: true } }
       }
-    }),
-    tx.wallet.findUnique({
-      where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency: "NDP" } }
     }),
     tx.reviewSummary.findMany({
       where: {
@@ -705,12 +899,27 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     cashEvidence.checkout.receiptConfirmedById === fixture.technician.id &&
     cashEvidence.financial?.settlementStatus === "settled" && cashEvidence.reviews.length === 2,
   "cash receipt/settlement/review chain is not coherent");
-  assert(cashWalletBefore?.availableBalance === cashWalletAfter?.availableBalance,
-  "cash order debited NDP");
-  assert(summaryRows.length === 2 && summaryRows.every((summary) => summary.reviewCount === 2) &&
-    reviewAuditCount === 4, "review summaries/audits were not recomputed atomically");
+  const technicianSummary = summaryRows.find(
+    (summary) => summary.technicianProfileId === fixture.technicianProfileId
+  );
+  const customerSummary = summaryRows.find(
+    (summary) => summary.customerProfileId === fixture.customerProfileId
+  );
+  const expectedTechnicianHighlights = ["SPA", "i", "ı", "服务精神"]
+    .sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+  assert(summaryRows.length === 2 && technicianSummary?.targetType === "technician" &&
+    technicianSummary.targetId === fixture.technicianProfileId &&
+    technicianSummary.reviewCount === 2 && technicianSummary.ratingAverage.toString() === "4.5" &&
+    Array.isArray(technicianSummary.highlights) &&
+    JSON.stringify(technicianSummary.highlights) === JSON.stringify(expectedTechnicianHighlights) &&
+    customerSummary?.targetType === "customer" &&
+    customerSummary.targetId === fixture.customerProfileId && customerSummary.reviewCount === 2 &&
+    customerSummary.ratingAverage.toString() === "4.5" &&
+    JSON.stringify(customerSummary.highlights) === JSON.stringify(["准时到达"]) &&
+    reviewAuditCount === 4,
+  "review ownership/summaries/highlights/audits were not recomputed atomically");
 
-  const invalidCodeOrder = await createConfirmedOrder(tx, fixture, 3, now);
+  const invalidCodeOrder = await createConfirmedOrder(tx, fixture, 3, now, currency);
   const invalidCodeBefore = await captureOrderMutationState(tx, invalidCodeOrder.id);
   const wrongCode = bookingRepositoryModule.deriveOrderServiceVerificationCode(invalidCodeOrder.id) === "000000"
     ? "999999" : "000000";
@@ -718,10 +927,13 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     actor: "technician", verificationCode: wrongCode,
     idempotencyKey: `${fixture.marker}-invalid-code`
   }, context), "error.order.verification_code_invalid");
-  assert(JSON.stringify(await captureOrderMutationState(tx, invalidCodeOrder.id)) ===
-    JSON.stringify(invalidCodeBefore), "invalid verification code left partial writes");
+  assertDeepSnapshotEqual(
+    invalidCodeBefore,
+    await captureOrderMutationState(tx, invalidCodeOrder.id),
+    "invalid verification code"
+  );
 
-  const insufficientOrder = await createConfirmedOrder(tx, fixture, 4, now);
+  const insufficientOrder = await createConfirmedOrder(tx, fixture, 4, now, currency);
   await service.startService(customer, insufficientOrder.id, {
     actor: "customer", idempotencyKey: `${fixture.marker}-insufficient-start`
   }, context);
@@ -733,19 +945,20 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     method: "ndp", idempotencyKey: `${fixture.marker}-insufficient-select`
   }, context);
   await tx.wallet.update({
-    where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency: "NDP" } },
+    where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency } },
     data: { availableBalance: 0 }
   });
   const insufficientBefore = await captureOrderMutationState(tx, insufficientOrder.id);
-  const ledgerCountBefore = await tx.ledgerTransaction.count();
   await assertRejectedWithMessage(() => service.payCheckoutWithNdp(customer, insufficientOrder.id, {
     idempotencyKey: `${fixture.marker}-insufficient-pay`
   }, context), "error.wallet.insufficient_available");
-  assert(JSON.stringify(await captureOrderMutationState(tx, insufficientOrder.id)) ===
-    JSON.stringify(insufficientBefore) && await tx.ledgerTransaction.count() === ledgerCountBefore,
-  "insufficient NDP left partial writes");
+  assertDeepSnapshotEqual(
+    insufficientBefore,
+    await captureOrderMutationState(tx, insufficientOrder.id),
+    "insufficient NDP"
+  );
 
-  const pendingAddOnOrder = await createConfirmedOrder(tx, fixture, 5, now);
+  const pendingAddOnOrder = await createConfirmedOrder(tx, fixture, 5, now, currency);
   await service.startService(customer, pendingAddOnOrder.id, {
     actor: "customer", idempotencyKey: `${fixture.marker}-pending-start`
   }, context);
@@ -756,8 +969,11 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   await assertRejectedWithMessage(() => service.endService(customer, pendingAddOnOrder.id, {
     reason: "completed", idempotencyKey: `${fixture.marker}-pending-end`
   }, context), "error.order.invalid_transition");
-  assert(JSON.stringify(await captureOrderMutationState(tx, pendingAddOnOrder.id)) ===
-    JSON.stringify(pendingBefore), "unresolved add-on end left partial writes");
+  assertDeepSnapshotEqual(
+    pendingBefore,
+    await captureOrderMutationState(tx, pendingAddOnOrder.id),
+    "unresolved add-on end"
+  );
 }
 
 export async function runOrderFulfillmentCheckoutCheck(): Promise<void> {

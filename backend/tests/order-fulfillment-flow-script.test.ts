@@ -2,12 +2,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   RollbackCompleted,
+  assertDeepSnapshotEqual,
+  assertNoCashDebit,
   assertFormalDatabaseSchema,
+  captureCashNoDebitEvidence,
   createTransactionBoundPrismaFacade,
   loadAndValidateFormalEnvironment,
+  resolveFixtureLedgerCurrency,
   runRollbackOnlyTransaction,
   type FormalDatabaseSchemaEvidence
 } from "../scripts/check-order-fulfillment-checkout-flow";
+import { LedgerRepository } from "../src/repositories/ledger.repository";
+import { LedgerService } from "../src/services/ledger.service";
 
 const backendRoot = resolve(__dirname, "..");
 const scriptPath = resolve(backendRoot, "scripts/check-order-fulfillment-checkout-flow.ts");
@@ -55,13 +61,45 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     });
   });
 
+  it("takes the database target only from the explicit file and lets file safety values override runtime", () => {
+    const envFile = "/tmp/authoritative-order-flow.env";
+    const makeFileSystem = (contents: string) => ({
+      resolve: (value: string) => value,
+      existsSync: () => true,
+      readFileSync: () => contents
+    });
+
+    expect(() => loadAndValidateFormalEnvironment({
+      FORMAL_BACKEND_ENV_FILE: envFile,
+      DATABASE_URL: "mysql://needo@127.0.0.1/runtime_test"
+    }, makeFileSystem("NODE_ENV=test\nDEPLOY_ENV=local"))).toThrow(
+      "DATABASE_URL is required in FORMAL_BACKEND_ENV_FILE"
+    );
+
+    expect(loadAndValidateFormalEnvironment({
+      FORMAL_BACKEND_ENV_FILE: envFile,
+      NODE_ENV: "production",
+      DEPLOY_ENV: "staging",
+      DATABASE_URL: "mysql://needo@remote.example/runtime_prod"
+    }, makeFileSystem([
+      "NODE_ENV=test",
+      "DEPLOY_ENV=local",
+      "DATABASE_URL=mysql://needo@127.0.0.1/authoritative_order_test"
+    ].join("\n")))).toMatchObject({
+      databaseHost: "127.0.0.1",
+      databaseName: "authoritative_order_test"
+    });
+  });
+
   it.each([
     ["NODE_ENV=production", "production environment"],
     ["DEPLOY_ENV=staging", "production environment"],
     ["DATABASE_URL=postgresql://needo@127.0.0.1/needo_test", "MySQL"],
     ["DATABASE_URL=mysql://needo@db.example.com/needo_test", "loopback"],
     ["DATABASE_URL=mysql://needo@localhost/needo", "test, dev, or local"],
-    ["DATABASE_URL=mysql://needo@localhost/needo_prod_test", "production-looking"]
+    ["DATABASE_URL=mysql://needo@localhost/needo_prod_test", "production-looking"],
+    ["DATABASE_URL=mysql://needo@localhost/needo_productiontest", "production-looking"],
+    ["DATABASE_URL=mysql://needo@localhost/needo_proddev", "production-looking"]
   ])("rejects unsafe formal environment file value %s", (line, message) => {
     const envFile = "/tmp/unsafe-order-flow.env";
     const fileSystem = {
@@ -165,6 +203,90 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(globalTransaction).not.toHaveBeenCalled();
     expect(facade.bookingOrder).toBe(transaction.bookingOrder);
     await expect(facade.$transaction([] as never)).rejects.toThrow("callback transaction");
+  });
+
+  it("resolves the fixture currency through the transaction facade and formal ledger services", async () => {
+    const createdAt = new Date("2026-09-01T00:00:00.000Z");
+    const transaction = {
+      user: {
+        findFirst: jest.fn(async () => ({ isTestAccount: true }))
+      },
+      wallet: {
+        findFirst: jest.fn(async ({ where }: { where: { currency: string } }) => ({
+          id: 91,
+          ownerType: "USER",
+          ownerId: 501,
+          currency: where.currency,
+          availableBalance: 400,
+          frozenBalance: 0,
+          createdAt,
+          updatedAt: createdAt,
+          deletedAt: null
+        }))
+      }
+    };
+    const facade = createTransactionBoundPrismaFacade(transaction);
+    const repository = new LedgerRepository(facade as never);
+    const ledger = new LedgerService(repository);
+
+    await expect(resolveFixtureLedgerCurrency(transaction as never, 501)).resolves.toBe("TEST_NDP");
+    await expect(ledger.getMyWallet({
+      userId: 501,
+      email: "fixture@example.invalid",
+      accessTokenJti: "fixture-currency-test",
+      accessTokenExpiresAt: 2_000_000_000,
+      roles: ["customer"],
+      permissions: [],
+      currentIdentityType: "customer",
+      currentIdentityScopeType: "customer_profile",
+      currentIdentityScopeId: 701
+    })).resolves.toMatchObject({ currency: "TEST_NDP", availableBalance: 400 });
+    expect(transaction.wallet.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ currency: "TEST_NDP" })
+    }));
+  });
+
+  it("captures checkout-specific cash evidence and detects any wallet or ledger delta", async () => {
+    const transaction = {
+      orderCheckout: {
+        findUnique: jest.fn(async () => ({ id: 77 }))
+      },
+      wallet: {
+        findUnique: jest.fn(async () => ({ availableBalance: 900, frozenBalance: 10 }))
+      },
+      ledgerTransaction: { count: jest.fn(async () => 2) },
+      walletLedger: { count: jest.fn(async () => 1) },
+      financeReconciliation: { count: jest.fn(async () => 1) }
+    };
+
+    const before = await captureCashNoDebitEvidence(transaction as never, 41, 501, "TEST_NDP");
+    expect(before).toEqual({
+      checkoutId: 77,
+      walletAvailableBalance: 900,
+      walletFrozenBalance: 10,
+      ledgerTransactionCount: 2,
+      walletLedgerCount: 1,
+      reconciliationCount: 1
+    });
+    expect(transaction.ledgerTransaction.count).toHaveBeenCalledWith({
+      where: { referenceType: "order_checkout_payment", referenceId: 77, currency: "TEST_NDP" }
+    });
+    expect(() => assertNoCashDebit(before, before)).not.toThrow();
+    expect(() => assertNoCashDebit(before, { ...before, ledgerTransactionCount: 3 })).toThrow(
+      "cash payment changed wallet or checkout ledger evidence"
+    );
+  });
+
+  it("deep-compares reconciliation and settlement evidence in failed-command snapshots", () => {
+    const before = {
+      financial: { settlementStatus: "pending", platformFeeActual: 0 },
+      reconciliations: [{ id: 9, expectedAmount: 20, actualAmount: 20, differenceAmount: 0 }]
+    };
+    expect(() => assertDeepSnapshotEqual(before, structuredClone(before), "failure")).not.toThrow();
+    expect(() => assertDeepSnapshotEqual(before, {
+      ...before,
+      reconciliations: [{ ...before.reconciliations[0]!, actualAmount: 19 }]
+    }, "failure")).toThrow("failure left partial writes");
   });
 
   it("recognizes only its rollback sentinel and verifies the external baseline after rollback", async () => {
