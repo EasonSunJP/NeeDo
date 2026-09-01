@@ -46,6 +46,22 @@ const baseMe = {
 } satisfies AuthMePayload;
 
 describe("frontend RBAC session helpers", () => {
+  it("carries server-owned compliance requirements into the limited session", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        complianceRequirements: ["phone_binding_required"],
+        compliancePolicyVersionPublicId: "policy-v2",
+        complianceEffectiveAt: "2026-09-01T10:00:00.000Z",
+        compliancePermittedNextRoutes: ["/api/v1/auth/me"]
+      },
+      "admin",
+      "password"
+    );
+    expect(session.complianceRequirements).toEqual(["phone_binding_required"]);
+    expect(session.compliancePolicyVersionPublicId).toBe("policy-v2");
+  });
+
   it("keeps an organization O identity inside the merchant portal", () => {
     const organizationIdentity = {
       id: 9,

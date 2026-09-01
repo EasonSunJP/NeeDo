@@ -189,6 +189,7 @@ import {
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
 import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
+import { AccountComplianceGate } from "./features/auth/AccountComplianceGate";
 import {
   SocialAccountProfilePage,
   SocialComposerPage,
@@ -216,6 +217,7 @@ const UserGroupsPage = lazy(() => import("./features/platform-user-management/Us
 const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-management/UserGlobalSettingsPage").then((module) => ({ default: module.UserGlobalSettingsPage })));
 const MembershipTiersPage = lazy(() => import("./features/platform-user-management/MembershipTiersPage").then((module) => ({ default: module.MembershipTiersPage })));
 const MembershipBenefitsPage = lazy(() => import("./features/platform-user-management/MembershipBenefitsPage").then((module) => ({ default: module.MembershipBenefitsPage })));
+const AccountCompliancePage = lazy(() => import("./features/auth/AccountCompliancePage").then((module) => ({ default: module.AccountCompliancePage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -1080,6 +1082,7 @@ export default function App() {
                 <ShareFeedbackViewport />
                 <OfficialNoticeAutoPopup disabled={Boolean(splashPortal)} />
                 <NeedoPet disabled={Boolean(splashPortal)} />
+                <AccountComplianceGate>
                 <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />
@@ -1091,6 +1094,7 @@ export default function App() {
               <Route path="/login/cps-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/business-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/:portal" element={<LoginPage />} />
+              <Route path="/account-compliance" element={<Suspense fallback={null}><AccountCompliancePage /></Suspense>} />
 
               <Route path="/" element={protect("user", <HomePage />)} />
               <Route path="/categories" element={protect("user", <CategoryPage />)} />
@@ -1429,6 +1433,7 @@ export default function App() {
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>
+                </AccountComplianceGate>
               </SocialProvider>
             </I18nRuntime>
           </ClientThemeProvider>

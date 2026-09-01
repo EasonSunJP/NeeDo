@@ -1,6 +1,10 @@
 import type { TokenPairPayload } from "../api/auth";
 import type { IdentityAvailability } from "../features/identity-applications/model";
-import type { AuthIdentityPayload, AuthMePayload } from "./rbac";
+import type {
+  AuthIdentityPayload,
+  AuthMePayload,
+  UserPolicyComplianceRequirement
+} from "./rbac";
 
 export const formalAccessTokenTtlSeconds = 900;
 
@@ -46,6 +50,17 @@ const authMeKeys = [
   "menus",
   "identityAvailability"
 ] as const;
+const authMeComplianceKeys = [
+  "complianceRequirements",
+  "compliancePolicyVersionPublicId",
+  "complianceEffectiveAt",
+  "compliancePermittedNextRoutes"
+] as const;
+const complianceRequirements = new Set<UserPolicyComplianceRequirement>([
+  "phone_binding_required",
+  "email_binding_required",
+  "ekyc_required"
+]);
 const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type"] as const;
 const identityAvailabilityKeys = [
   "kind",
@@ -56,9 +71,12 @@ const identityAvailabilityKeys = [
 ] as const;
 const tokenPairKeys = ["accessToken", "refreshToken", "expiresIn"] as const;
 
-function hasExactKeys(value: object, keys: readonly string[]) {
+function hasExactKeys(value: object, keys: readonly string[], optional: readonly string[] = []) {
   const actual = Object.keys(value);
-  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+  return (
+    keys.every((key) => Object.hasOwn(value, key)) &&
+    actual.every((key) => keys.includes(key) || optional.includes(key))
+  );
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -155,11 +173,23 @@ function isFormalIdentityAvailability(value: unknown): value is IdentityAvailabi
 }
 
 export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
-  if (!value || typeof value !== "object" || !hasExactKeys(value, authMeKeys)) {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, authMeKeys, authMeComplianceKeys)) {
     return false;
   }
 
   const me = value as Partial<AuthMePayload>;
+
+  const complianceFields = authMeComplianceKeys.filter((key) => Object.hasOwn(me, key));
+  const complianceValid =
+    complianceFields.length === 0 ||
+    (complianceFields.length === authMeComplianceKeys.length &&
+      Array.isArray(me.complianceRequirements) &&
+      me.complianceRequirements.every((item) => complianceRequirements.has(item)) &&
+      typeof me.compliancePolicyVersionPublicId === "string" &&
+      me.compliancePolicyVersionPublicId.length > 0 &&
+      typeof me.complianceEffectiveAt === "string" &&
+      isRfc3339DateTimeOrNull(me.complianceEffectiveAt) &&
+      isStringArray(me.compliancePermittedNextRoutes));
 
   return (
     isPositiveInteger(me.id) &&
@@ -199,7 +229,8 @@ export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
     me.identityAvailability.every(isFormalIdentityAvailability) &&
     isStringArray(me.roles) &&
     isStringArray(me.permissions) &&
-    isStringArray(me.menus)
+    isStringArray(me.menus) &&
+    complianceValid
   );
 }
 
