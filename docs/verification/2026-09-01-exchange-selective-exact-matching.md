@@ -15,8 +15,10 @@
 | `cda11e32` | Participant time locks and existing lifecycle integration |
 | `cffb3e7d` | Five-language exact-selection interface |
 | `1a2b2e86` | Transactional selected/non-selected notifications |
+| `2792980a` | Rollback-only real MySQL flow checker and focused regression gate |
+| `dae7d4e9` | Browser-discovered matched-owner reload readability fix |
 
-No checkpoint was pushed, merged, or deployed.
+No checkpoint was pushed or deployed. Local `main` integration is performed only after the acceptance gates in this document pass.
 
 ## Local database migration evidence
 
@@ -68,7 +70,24 @@ The flow also verifies the active publication hold, wallet balances, ledger coun
 
 ## Browser acceptance
 
-Pending final local browser verification. This section must record the exact frontend/backend listener ownership, route, identity, network result, console result, terminal matched state, privacy projection, and narrow-viewport overflow check before completion is claimed.
+The browser run used an isolated current-worktree runtime rather than the already occupied standard ports:
+
+- frontend `127.0.0.1:5181`, PID `38074`, cwd `/Users/eason/.codex/worktrees/3625/New project`;
+- backend `127.0.0.1:3002`, PID `38075`, cwd `/Users/eason/.codex/worktrees/3625/New project/backend`;
+- `/api/v1/health` and `/api/v1/ready` both returned `code: 0`; MySQL and Redis were ready;
+- the generated Prisma client was refreshed before the run because the shared dependency runtime predated the matching schema.
+
+Using formal local test identities against Request `62`:
+
+1. Technician `s7325776482` submitted a real `JPY 15,000` claim for schedule slot `80724`; the claim request returned `201` and the UI displayed the persisted waiting state.
+2. Owner `needo0000000002` selected exactly that one claim against target `1` and effective budget `JPY 30,000`; the matching command returned `200` and the UI changed to the terminal matched state with Booking/payment controls disabled.
+3. A reload initially exposed a real regression: the matched owner received `404 error.exchange.post_not_found`. The focused service test reproduced it, `dae7d4e9` changed the read guard to admit the owner's persisted `canViewClaims` capability, and the same browser retry then returned `200` with the matched state, selected provider, and disabled terminal action intact.
+4. On the technician route, selected participant `s7325776482` could see publisher `needo0000000002` and the filled private address line `Prince Tower 12F`, but could not see the withdrawn competitor claim or the owner's claim inbox.
+5. On the same technician route, nonparticipant `s8168105245` could still read the public terminal Request, but publisher identity, `Prince Tower 12F`, selected provider `s7325776482`, and the owner's claim inbox were all absent.
+
+The successful owner command and persisted refresh produced no browser warning/error console entries. At `440x956` and `320x956`, the terminal owner view retained the matched banner and selected provider, no element crossed the viewport, `overflow-x` remained clipped, and an attempted horizontal scroll stayed at `0`; the temporary viewport override was reset afterward.
+
+The browser-created database aggregate ended at version `3` with events `OPENED -> CLAIM_ADDED -> SELECTIVE_MATCHED`, one participant, quote total `JPY 15,000`, matched claim `16`, and audit action `exchange.matching.select`. The publication financial remained `HELD` for `1,000 TEST_NDP`; its hold remained active with zero captured/released amounts; slot `80724` remained `AVAILABLE` with `bookedCount = 0`; and global counts stayed at 20,472 Bookings, 358 ledger transactions, and 107 reconciliations. Because the other pre-existing claim was already withdrawn, this browser fixture emitted one selected notification; the rollback-only real-flow checker above separately proves selected plus active-loser notifications and loser privacy.
 
 ## Explicitly deferred
 
