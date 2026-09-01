@@ -10,7 +10,7 @@ export const shopMembershipCardIssuanceBodySchema = z.object({
   planPublicId: z.string().trim().uuid(),
   initialPrincipalJpy: safeNonNegativeInt.nullable(),
   initialUses: safeNonNegativeInt.nullable(),
-  issuanceSource: z.enum(["offline_paid", "historical_replacement", "manual_grant"]),
+  issuanceSource: z.enum(["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"]),
   issuanceReference: z.string().trim().max(160).nullable(),
   issuanceNote: z.string().trim().max(500).nullable(),
   idempotencyKey: z.string().trim().min(8).max(160)

@@ -7,6 +7,10 @@ import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.serv
 
 export type ShopMembershipCardIssuanceSourcePayload =
   | "offline_paid"
+  | "online_paid"
+  | "gift"
+  | "trial"
+  | "renewal"
   | "historical_replacement"
   | "manual_grant";
 export type ShopMembershipCardIssuanceTypePayload = "stored_value" | "count" | "benefit";
@@ -54,6 +58,7 @@ export interface ShopMembershipCardIssuanceContext {
 
 export interface IssuedMembershipCardRecord {
   internalId: number;
+  shopId: number;
   publicId: string;
   cardNo: string;
   name: string;
@@ -119,7 +124,7 @@ export type ShopMembershipCardIssuanceMutationResult =
   | { kind: "card_number_conflict" };
 
 export interface ShopMembershipCardIssuanceRepositoryPort {
-  findByIdempotencyKey: (shopId: number, idempotencyKey: string) => Promise<IssuedMembershipCardRecord | null>;
+  findByIdempotencyKey: (idempotencyKey: string) => Promise<IssuedMembershipCardRecord | null>;
   getIssuanceContext: (shopId: number, membershipPublicId: string, planPublicId: string) => Promise<ShopMembershipCardIssuanceContextResult>;
   issueCardWithAuditAndNotification: (input: CreateMembershipCardIssuanceRepositoryInput) => Promise<ShopMembershipCardIssuanceMutationResult>;
 }
@@ -128,6 +133,10 @@ type AuditInputFactory = Pick<AuditLogService, "createInput">;
 const merchantIdentityTypes = new Set(["merchant", "merchant_owner", "merchant_staff"]);
 const validSources = new Set<ShopMembershipCardIssuanceSourcePayload>([
   "offline_paid",
+  "online_paid",
+  "gift",
+  "trial",
+  "renewal",
   "historical_replacement",
   "manual_grant"
 ]);
@@ -149,9 +158,9 @@ export class ShopMembershipCardIssuanceService {
     const shopId = this.requireMerchantShop(actor);
     const input = this.normalizeInput(rawInput);
     const issuanceFingerprint = this.fingerprint(membershipPublicId, input);
-    const existing = await this.repository.findByIdempotencyKey(shopId, input.idempotencyKey);
+    const existing = await this.repository.findByIdempotencyKey(input.idempotencyKey);
     if (existing) {
-      if (existing.issuanceFingerprint !== issuanceFingerprint) throw this.idempotencyConflict();
+      if (existing.shopId !== shopId || existing.issuanceFingerprint !== issuanceFingerprint) throw this.idempotencyConflict();
       return this.toPublic(existing, true);
     }
 
@@ -210,7 +219,7 @@ export class ShopMembershipCardIssuanceService {
       });
       if (result.kind === "created") return this.toPublic(result.value, false);
       if (result.kind === "replayed") {
-        if (result.value.issuanceFingerprint !== issuanceFingerprint) throw this.idempotencyConflict();
+        if (result.value.shopId !== shopId || result.value.issuanceFingerprint !== issuanceFingerprint) throw this.idempotencyConflict();
         return this.toPublic(result.value, true);
       }
       if (result.kind === "not_found") throw this.notFound();
@@ -229,8 +238,9 @@ export class ShopMembershipCardIssuanceService {
     if (!planPublicId || !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160 || !validSources.has(input.issuanceSource)) {
       throw this.invalidValue();
     }
-    if (input.issuanceSource === "offline_paid" && !issuanceReference && !issuanceNote) throw this.invalidValue();
-    if (input.issuanceSource !== "offline_paid" && !issuanceNote) throw this.invalidValue();
+    if ((input.issuanceSource === "offline_paid" || input.issuanceSource === "online_paid") && !issuanceReference && !issuanceNote) throw this.invalidValue();
+    if (input.issuanceSource === "renewal" && !issuanceReference && !issuanceNote) throw this.invalidValue();
+    if (["gift", "trial", "historical_replacement", "manual_grant"].includes(input.issuanceSource) && !issuanceNote) throw this.invalidValue();
     this.assertOptionalSafeNonNegativeInteger(input.initialPrincipalJpy);
     this.assertOptionalSafeNonNegativeInteger(input.initialUses);
     return { ...input, planPublicId, idempotencyKey, issuanceReference, issuanceNote };

@@ -1025,6 +1025,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取当前店铺的会员与会员卡状态分析"
   ),
   createPermission(
+    "backoffice.member.analytics.view",
+    "平台会员分析读取",
+    "api",
+    "shop-membership",
+    "读取平台范围的正式会员与会员卡分析"
+  ),
+  createPermission(
     "shop.member.operation_log.view",
     "店铺会员活动读取",
     "api",
@@ -1623,6 +1630,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "menu:admin-console",
   "backoffice:dashboard:read",
   "backoffice:dashboard-detail:read",
+  "backoffice.member.analytics.view",
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
   "backoffice:ndp-exchange-rate:read",

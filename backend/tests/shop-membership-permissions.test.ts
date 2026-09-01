@@ -36,6 +36,24 @@ describe("shop membership permissions", () => {
     expect(assignments.merchant_staff).not.toContain("shop.member.operation_log.view");
   });
 
+  it("grants platform membership analytics only to admin and operator", () => {
+    const permission = "backoffice.member.analytics.view";
+    const assignments = buildRolePermissionAssignments();
+    expect(SYSTEM_PERMISSION_CODES).toContain(permission);
+    expect(assignments.admin).toContain(permission);
+    expect(assignments.operator).toContain(permission);
+    for (const [role, permissions] of Object.entries(assignments)) {
+      if (role !== "admin" && role !== "operator") expect(permissions).not.toContain(permission);
+    }
+    const migration = readFileSync(
+      join(process.cwd(), "prisma/migrations/20260901103000_membership_acquisition_sources/migration.sql"),
+      "utf8"
+    );
+    expect(migration).toMatch(/VALUES \(\s*'平台会员分析读取', 'backoffice\.member\.analytics\.view', 'api', 'shop-membership'/u);
+    expect(migration).toContain("`roles`.`code` IN ('admin', 'operator')");
+    expect(migration).not.toMatch(/merchant_(?:owner|staff).*backoffice\.member\.analytics\.view/u);
+  });
+
   it("deploys the same role grants when migrations run without a seed", () => {
     const migration = readFileSync(
       join(process.cwd(), "prisma/migrations/20260831123000_shop_membership_permissions/migration.sql"),

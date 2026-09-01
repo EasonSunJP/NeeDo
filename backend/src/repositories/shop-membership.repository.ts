@@ -14,7 +14,7 @@ import { buildPaginatedResponse, toPrismaPagination, type PaginatedResponse, typ
 export type ShopMembershipStatusPayload = "active" | "ended";
 export type ShopMembershipCardTypePayload = "stored_value" | "count" | "benefit";
 export type ShopMembershipCardStatusPayload = "active" | "frozen" | "expired" | "void";
-export type ShopMembershipCardIssuanceSourcePayload = "offline_paid" | "historical_replacement" | "manual_grant";
+export type ShopMembershipCardIssuanceSourcePayload = "offline_paid" | "online_paid" | "gift" | "trial" | "renewal" | "historical_replacement" | "manual_grant";
 export type ShopMembershipAnalyticsPeriod = "last7days" | "last30days" | "last90days";
 
 export interface ShopMembershipStorePayload {
@@ -735,11 +735,18 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
   }
 
   private cardIssuanceSourceFromDb(value: ShopMembershipCardIssuanceSource): ShopMembershipCardIssuanceSourcePayload {
-    return value === ShopMembershipCardIssuanceSource.OFFLINE_PAID
-      ? "offline_paid"
-      : value === ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT
-        ? "historical_replacement"
-        : "manual_grant";
+    const values: Record<ShopMembershipCardIssuanceSource, ShopMembershipCardIssuanceSourcePayload> = {
+      [ShopMembershipCardIssuanceSource.OFFLINE_PAID]: "offline_paid",
+      [ShopMembershipCardIssuanceSource.ONLINE_PAID]: "online_paid",
+      [ShopMembershipCardIssuanceSource.GIFT]: "gift",
+      [ShopMembershipCardIssuanceSource.TRIAL]: "trial",
+      [ShopMembershipCardIssuanceSource.RENEWAL]: "renewal",
+      [ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT]: "historical_replacement",
+      [ShopMembershipCardIssuanceSource.MANUAL_GRANT]: "manual_grant"
+    };
+    const mapped = values[value];
+    if (!mapped) throw new RangeError("Unknown shop membership card issuance source");
+    return mapped;
   }
 
   private maskCardNumber(cardNo: string): string {

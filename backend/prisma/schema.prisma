@@ -583,10 +583,21 @@ enum ShopMembershipCardStatus {
 
 enum ShopMembershipCardIssuanceSource {
   OFFLINE_PAID           @map("offline_paid")
+  ONLINE_PAID            @map("online_paid")
+  GIFT                   @map("gift")
+  TRIAL                  @map("trial")
+  RENEWAL                @map("renewal")
   HISTORICAL_REPLACEMENT @map("historical_replacement")
   MANUAL_GRANT           @map("manual_grant")
 
   @@map("shop_membership_card_issuance_source")
+}
+
+enum ShopMembershipCardStatusEventSource {
+  ISSUANCE           @map("issuance")
+  MIGRATION_BACKFILL @map("migration_backfill")
+
+  @@map("shop_membership_card_status_event_source")
 }
 
 enum MembershipRewardFeePolicyStatus {
@@ -750,6 +761,7 @@ model User {
   updatedShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanUpdatedBy")
   publishedShopMembershipPlanVersions   ShopMembershipCardPlanVersion[]     @relation("ShopMembershipCardPlanVersionPublishedBy")
   issuedShopMembershipCards             ShopMembershipCard[]                @relation("ShopMembershipCardIssuedBy")
+  actedShopMembershipCardStatusEvents    ShopMembershipCardStatusEvent[]     @relation("ShopMembershipCardStatusEventActor")
   createdMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyCreatedBy")
   updatedMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyUpdatedBy")
   ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
@@ -1340,14 +1352,46 @@ model ShopMembershipCard {
   plan        ShopMembershipCardPlan?          @relation("ShopMembershipCardPlanCards", fields: [planId], references: [id], onDelete: Restrict)
   planVersion ShopMembershipCardPlanVersion?   @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
   issuedBy    User?                            @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  statusEvents ShopMembershipCardStatusEvent[]
 
   @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
   @@index([planId, deletedAt], map: "shop_membership_cards_plan_idx")
   @@index([planVersionId, deletedAt], map: "shop_membership_cards_plan_version_idx")
   @@index([issuedById], map: "shop_membership_cards_issued_by_idx")
   @@index([status, expiresAt, deletedAt], map: "shop_membership_cards_status_expiry_idx")
+  @@index([issuanceSource, issuedAt, id], map: "shop_membership_cards_source_issued_id_idx")
+  @@index([membershipId, issuanceSource, issuedAt, id], map: "shop_membership_cards_membership_source_issued_id_idx")
+  @@index([status, issuedAt, expiresAt, deletedAt, membershipId], map: "shop_membership_cards_status_issued_expiry_idx")
   @@index([deletedAt], map: "shop_membership_cards_deleted_idx")
   @@map("shop_membership_cards")
+}
+
+/// Append-only lifecycle authority. Member trends aggregate per-(shop,user) eligible-card
+/// count transitions (0->1 additions, 1->0 removals) in Tokyo half-open buckets. Overlapping
+/// eligible cards suppress false removals; explicit frozen/void events outrank mutable rows.
+model ShopMembershipCardStatusEvent {
+  id             Int                       @id @default(autoincrement())
+  cardId         Int                       @map("card_id")
+  fromStatus     ShopMembershipCardStatus? @map("from_status")
+  toStatus       ShopMembershipCardStatus  @map("to_status")
+  source         ShopMembershipCardStatusEventSource
+  occurredAt     DateTime                  @map("occurred_at")
+  reasonCode     String                    @map("reason_code") @db.VarChar(160)
+  actorUserId    Int?                      @map("actor_user_id")
+  metadata       Json?
+  eventKey       String                    @unique(map: "shop_membership_card_status_events_event_key") @map("event_key") @db.VarChar(160)
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+  deletedAt      DateTime?                 @map("deleted_at")
+
+  card      ShopMembershipCard @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  actorUser User?              @relation("ShopMembershipCardStatusEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([cardId, occurredAt, id, deletedAt], map: "shop_membership_card_status_events_card_time_idx")
+  @@index([toStatus, occurredAt, id, deletedAt], map: "shop_membership_card_status_events_status_time_idx")
+  @@index([actorUserId], map: "shop_membership_card_status_events_actor_idx")
+  @@index([deletedAt], map: "shop_membership_card_status_events_deleted_idx")
+  @@map("shop_membership_card_status_events")
 }
 
 model MembershipRewardFeePolicyVersion {

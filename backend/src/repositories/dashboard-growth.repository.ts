@@ -35,6 +35,7 @@ interface GrowthRow {
 }
 
 export interface PaidMembershipGrowthEvent {
+  cardId: number;
   userId: number;
   issuedAt: string;
   issuanceSource: string;
@@ -145,23 +146,22 @@ export const countNewUserEvents = (
 export const countFirstPaidMemberEvents = (
   input: GrowthFixtureInput<PaidMembershipGrowthEvent>
 ): number => {
-  const firstPaidByUser = new Map<number, number>();
+  const firstPaidByUser = new Map<number, { issuedAt: number; cardId: number }>();
   for (const event of input.events) {
-    if (event.issuanceSource !== "offline_paid") continue;
+    if (event.issuanceSource !== "offline_paid" && event.issuanceSource !== "online_paid") continue;
     const time = eventTime(event.issuedAt);
     const existing = firstPaidByUser.get(event.userId);
-    if (existing === undefined || time < existing) firstPaidByUser.set(event.userId, time);
+    if (!existing || time < existing.issuedAt || (time === existing.issuedAt && event.cardId < existing.cardId)) {
+      firstPaidByUser.set(event.userId, { issuedAt: time, cardId: event.cardId });
+    }
   }
   const counted = new Set<number>();
   for (const event of input.events) {
     if (
-      event.issuanceSource !== "offline_paid" ||
-      eventTime(event.issuedAt) !== firstPaidByUser.get(event.userId) ||
+      (event.issuanceSource !== "offline_paid" && event.issuanceSource !== "online_paid") ||
+      event.cardId !== firstPaidByUser.get(event.userId)?.cardId ||
+      eventTime(event.issuedAt) !== firstPaidByUser.get(event.userId)?.issuedAt ||
       !isInRange(event.issuedAt, input.range) ||
-      event.cardStatus !== "active" ||
-      event.cardDeleted ||
-      event.membershipStatus !== "active" ||
-      event.membershipDeleted ||
       !event.userActive ||
       event.userDeleted ||
       event.isTestUser ||
@@ -302,42 +302,34 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
           ON customer.user_id = registered_user.id AND customer.deleted_at IS NULL
         WHERE ${newUserScope}
       ),
-      historical_first_paid_at AS (
-        SELECT customer.user_id, MIN(card.issued_at) AS issued_at
+      historical_paid_ranked AS (
+        SELECT customer.user_id, card.id AS card_id, card.issued_at, card.membership_id,
+          ROW_NUMBER() OVER (PARTITION BY customer.user_id ORDER BY card.issued_at ASC, card.id ASC) AS acquisition_rank
         FROM shop_membership_cards AS card
         INNER JOIN shop_customer_memberships AS membership
           ON membership.id = card.membership_id
         INNER JOIN customer_profiles AS customer
           ON customer.id = membership.customer_profile_id
-        WHERE card.issuance_source = ${"offline_paid"}
-        GROUP BY customer.user_id
+        WHERE card.issuance_source IN (${"offline_paid"}, ${"online_paid"})
       ),
       first_paid_members AS (
         SELECT period.period_key, first_paid.user_id
         FROM periods AS period
-        INNER JOIN historical_first_paid_at AS first_paid
+        INNER JOIN historical_paid_ranked AS first_paid
           ON first_paid.issued_at >= period.from_inclusive
           AND first_paid.issued_at < period.to_exclusive
-        INNER JOIN customer_profiles AS customer
-          ON customer.user_id = first_paid.user_id AND customer.deleted_at IS NULL
         INNER JOIN users AS member_user
-          ON member_user.id = customer.user_id
+          ON member_user.id = first_paid.user_id
           AND member_user.is_active = ${true}
           AND member_user.is_test_account = ${false}
           AND member_user.deleted_at IS NULL
         INNER JOIN shop_customer_memberships AS membership
-          ON membership.customer_profile_id = customer.id
-          AND membership.status = ${"active"}
-          AND membership.deleted_at IS NULL
+          ON membership.id = first_paid.membership_id
         INNER JOIN shop_membership_cards AS card
-          ON card.membership_id = membership.id
-          AND card.issued_at = first_paid.issued_at
-          AND card.issuance_source = ${"offline_paid"}
-          AND card.status = ${"active"}
-          AND card.deleted_at IS NULL
+          ON card.id = first_paid.card_id
         INNER JOIN shops AS shop
-          ON membership.shop_id = shop.id AND shop.deleted_at IS NULL
-        WHERE ${membershipScope}
+          ON membership.shop_id = shop.id
+        WHERE first_paid.acquisition_rank = 1 AND ${membershipScope}
       ),
       historical_first_technician_identity AS (
         SELECT identity_row.user_id, MIN(identity_row.created_at) AS activated_at

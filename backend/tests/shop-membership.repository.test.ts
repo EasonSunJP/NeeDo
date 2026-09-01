@@ -172,4 +172,21 @@ describe("ShopMembershipRepository", () => {
       }]
     });
   });
+
+  it.each([
+    ["ONLINE_PAID", "online_paid"], ["GIFT", "gift"], ["TRIAL", "trial"], ["RENEWAL", "renewal"]
+  ])("maps %s acquisition without defaulting to a manual grant", async (persisted, expected) => {
+    const { client } = prismaClient();
+    client.shopMembershipCard.findMany.mockResolvedValue([{
+      id: 82, publicId: "00000000-0000-4000-8000-000000000482", cardNo: "NMC-1", name: "卡",
+      type: "BENEFIT", status: "ACTIVE", principalBalanceJpy: null, bonusBalanceJpy: null,
+      remainingUses: null, totalUses: null, initialPrincipalJpy: null, initialUses: null,
+      issuanceSource: persisted, platformFeeRateBpsSnapshot: 1000, issuedAt: new Date(), expiresAt: null,
+      frozenAt: null, plan: null, planVersion: null,
+      membership: { publicId: membership.publicId, customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
+    } as never]);
+    client.shopMembershipCard.count.mockResolvedValue(1);
+    const repository = new ShopMembershipRepository(client as unknown as PrismaClient);
+    await expect(repository.listCards(71, { page: 1, pageSize: 20 })).resolves.toMatchObject({ list: [{ issuanceSource: expected }] });
+  });
 });

@@ -2364,4 +2364,15 @@ describe("GET /api/v1/openapi.json", () => {
       search.responses["200"].content?.["application/json"].schema.properties.data
     ).not.toHaveProperty("oneOf");
   });
+
+  it("documents every formal membership acquisition source end to end", () => {
+    type AcquisitionSchema = { properties: { issuanceSource: { enum: string[]; description?: string } } };
+    const document = createOpenApiDocument(env) as {
+      components: { schemas: Record<string, AcquisitionSchema> };
+    };
+    const expected = ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"];
+    expect(document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource.enum).toEqual(expected);
+    expect(document.components.schemas.ShopMembershipCardIssuanceResult.properties.issuanceSource.enum).toEqual(expected);
+    expect(document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource.description).toContain("platform-global first-paid");
+  });
 });

@@ -60,7 +60,7 @@ const card = {
   issuanceFingerprint: "fingerprint",
   plan: { publicId: planPublicId },
   planVersion: { publicId: planVersionPublicId, version: 3 },
-  membership: { customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
+  membership: { shopId: 71, customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
 };
 
 const issuanceInput = {
@@ -96,6 +96,17 @@ const issuanceInput = {
 };
 
 describe("ShopMembershipCardIssuanceRepository", () => {
+  it("looks up semantic replay globally and includes deleted card or membership state", async () => {
+    const client = { shopMembershipCard: { findFirst: jest.fn().mockResolvedValue(card) } } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardIssuanceRepository(client);
+    await expect(repository.findByIdempotencyKey(issuanceInput.issuanceIdempotencyKey)).resolves.toMatchObject({ shopId: 71 });
+    expect(client.shopMembershipCard.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { issuanceIdempotencyKey: issuanceInput.issuanceIdempotencyKey }
+    }));
+    const query = (client.shopMembershipCard.findFirst as jest.Mock).mock.calls[0]![0];
+    expect(JSON.stringify(query.where)).not.toContain("deletedAt");
+    expect(JSON.stringify(query.where)).not.toContain("shopId");
+  });
   it("loads only the current shop active membership and published current version", async () => {
     const client = {
       shopCustomerMembership: { findFirst: jest.fn().mockResolvedValue(membership) },
@@ -139,8 +150,10 @@ describe("ShopMembershipCardIssuanceRepository", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(card)
       },
+      shopMembershipCardStatusEvent: { create: jest.fn().mockResolvedValue({ id: 101 }) },
       shopCustomerMembership: { findFirst: jest.fn().mockResolvedValue(membership) },
       shopMembershipCardPlan: { findFirst: jest.fn().mockResolvedValue(plan) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 41 }]),
       userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 91 }) },
       notification: { create: jest.fn().mockResolvedValue({ id: 92 }) }
@@ -171,6 +184,26 @@ describe("ShopMembershipCardIssuanceRepository", () => {
         issuanceFingerprint: "fingerprint"
       })
     }));
+    expect(transaction.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transaction.shopMembershipCard.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({
+        issuanceSource: { in: ["OFFLINE_PAID", "ONLINE_PAID", "RENEWAL"] },
+        membership: { customerProfile: { userId: 41 } }
+      })
+    }));
+    expect(transaction.shopMembershipCardStatusEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        cardId: 81,
+        fromStatus: null,
+        toStatus: "ACTIVE",
+        source: "ISSUANCE",
+        occurredAt: now,
+        actorUserId: 9,
+        reasonCode: "card_issued",
+        metadata: { issuanceSource: "offline_paid" },
+        eventKey: `membership-card:${card.publicId}:issued`
+      })
+    });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: "merchant.shop_membership_card.issue",
@@ -219,5 +252,144 @@ describe("ShopMembershipCardIssuanceRepository", () => {
 
     await expect(repository.issueCardWithAuditAndNotification(issuanceInput)).resolves.toEqual({ kind: "idempotency_conflict" });
     expect(transaction.shopMembershipCard.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a same-key replay owned by another shop", async () => {
+    const transaction = {
+      shopMembershipCard: { findFirst: jest.fn().mockResolvedValue({ ...card, membership: { ...card.membership, shopId: 72 } }), create: jest.fn() }
+    };
+    const client = { $transaction: jest.fn(async (callback) => callback(transaction)) } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardIssuanceRepository(client);
+    await expect(repository.issueCardWithAuditAndNotification(issuanceInput)).resolves.toEqual({ kind: "idempotency_conflict" });
+    expect(transaction.shopMembershipCard.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["offline_paid", { id: 1 }, "invalid_state", "OFFLINE_PAID"],
+    ["online_paid", { id: 1 }, "invalid_state", "ONLINE_PAID"],
+    ["renewal", null, "invalid_state", "RENEWAL"],
+    ["renewal", { id: 1 }, "created", "RENEWAL"],
+    ["gift", null, "created", "GIFT"],
+    ["trial", null, "created", "TRIAL"],
+    ["historical_replacement", null, "created", "HISTORICAL_REPLACEMENT"],
+    ["manual_grant", null, "created", "MANUAL_GRANT"]
+  ] as const)("enforces platform-global history and maps %s inside the locked transaction", async (source, prior, expectedKind, persistedSource) => {
+    const issued = { ...card, issuanceSource: persistedSource };
+    const transaction = {
+      shopMembershipCard: {
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(prior),
+        create: jest.fn().mockResolvedValue(issued)
+      },
+      shopMembershipCardStatusEvent: { create: jest.fn().mockResolvedValue({ id: 101 }) },
+      shopCustomerMembership: { findFirst: jest.fn().mockResolvedValue(membership) },
+      shopMembershipCardPlan: { findFirst: jest.fn().mockResolvedValue(plan) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 41 }]),
+      userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 91 }) },
+      notification: { create: jest.fn().mockResolvedValue({ id: 92 }) }
+    };
+    const client = { $transaction: jest.fn(async (callback) => callback(transaction)) } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardIssuanceRepository(client);
+    const result = await repository.issueCardWithAuditAndNotification({ ...issuanceInput, issuanceSource: source });
+    expect(result.kind).toBe(expectedKind);
+    if (result.kind === "created") expect(result.value.issuanceSource).toBe(source);
+    expect(transaction.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(transaction.shopMembershipCard.create.mock.invocationCallOrder[0] ?? Infinity);
+    expect(transaction.shopMembershipCard.findFirst.mock.invocationCallOrder[1]).toBeLessThan(transaction.shopMembershipCard.create.mock.invocationCallOrder[0] ?? Infinity);
+    const historyWhere = transaction.shopMembershipCard.findFirst.mock.calls[1]![0].where;
+    expect(JSON.stringify(historyWhere)).not.toMatch(/deletedAt|status/u);
+    expect(transaction.shopMembershipCard.create).toHaveBeenCalledTimes(expectedKind === "created" ? 1 : 0);
+    if (expectedKind === "created") expect(transaction.shopMembershipCard.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ issuanceSource: persistedSource }) }));
+    expect(transaction.shopMembershipCardStatusEvent.create).toHaveBeenCalledTimes(expectedKind === "created" ? 1 : 0);
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(expectedKind === "created" ? 1 : 0);
+    expect(transaction.notification.create).toHaveBeenCalledTimes(expectedKind === "created" ? 1 : 0);
+  });
+
+  it("does not apply source sequencing or acquire a user lock before exact replay", async () => {
+    const transaction = {
+      shopMembershipCard: { findFirst: jest.fn().mockResolvedValue(card), create: jest.fn() },
+      $queryRaw: jest.fn(),
+      shopMembershipCardStatusEvent: { create: jest.fn() }
+    };
+    const client = { $transaction: jest.fn(async (callback) => callback(transaction)) } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardIssuanceRepository(client);
+    await expect(repository.issueCardWithAuditAndNotification(issuanceInput)).resolves.toMatchObject({ kind: "replayed" });
+    expect(transaction.$queryRaw).not.toHaveBeenCalled();
+    expect(transaction.shopMembershipCardStatusEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["lifecycle", "audit", "notification"] as const)("rolls back every issuance write when %s persistence fails", async (failure) => {
+    const state = { cards: [] as unknown[], events: [] as unknown[], audits: [] as unknown[], notifications: [] as unknown[] };
+    const transaction = {
+      shopMembershipCard: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(async () => { state.cards.push(card); return card; })
+      },
+      shopMembershipCardStatusEvent: { create: jest.fn(async (value) => {
+        if (failure === "lifecycle") throw new Error("lifecycle failed");
+        state.events.push(value); return { id: 101 };
+      }) },
+      shopCustomerMembership: { findFirst: jest.fn().mockResolvedValue(membership) },
+      shopMembershipCardPlan: { findFirst: jest.fn().mockResolvedValue(plan) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 41 }]),
+      userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
+      auditLog: { create: jest.fn(async (value) => {
+        if (failure === "audit") throw new Error("audit failed");
+        state.audits.push(value); return { id: 91 };
+      }) },
+      notification: { create: jest.fn(async (value) => {
+        if (failure === "notification") throw new Error("notification failed");
+        state.notifications.push(value); return { id: 92 };
+      }) }
+    };
+    const client = { $transaction: jest.fn(async (callback) => {
+      const snapshot = JSON.parse(JSON.stringify(state));
+      try { return await callback(transaction); } catch (error) { Object.assign(state, snapshot); throw error; }
+    }) } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardIssuanceRepository(client);
+    await expect(repository.issueCardWithAuditAndNotification(issuanceInput)).rejects.toThrow(`${failure} failed`);
+    expect(state).toEqual({ cards: [], events: [], audits: [], notifications: [] });
+  });
+
+  it("serializes different-key cross-shop first-paid commands for the same canonical user", async () => {
+    const persisted: Array<{ key: string; source: string; shopId: number }> = [];
+    let tail = Promise.resolve();
+    const client = {
+      $transaction: jest.fn(async (callback: (transaction: unknown) => Promise<unknown>) => {
+        let release!: () => void;
+        const previous = tail;
+        tail = new Promise<void>((resolve) => { release = resolve; });
+        await previous;
+        let currentShopId = 0;
+        const transaction = {
+          shopMembershipCard: {
+            findFirst: jest.fn(async (args) => args.where.issuanceIdempotencyKey
+              ? null
+              : persisted.find((item) => ["OFFLINE_PAID", "ONLINE_PAID", "RENEWAL"].includes(item.source)) ?? null),
+            create: jest.fn(async (args) => {
+              persisted.push({ key: args.data.issuanceIdempotencyKey, source: args.data.issuanceSource, shopId: currentShopId });
+              return { ...card, id: 80 + persisted.length, publicId: `00000000-0000-4000-8000-00000000048${persisted.length}`, issuanceFingerprint: args.data.issuanceFingerprint, issuanceSource: args.data.issuanceSource, membership: { ...card.membership, shopId: currentShopId } };
+            })
+          },
+          shopMembershipCardStatusEvent: { create: jest.fn(async () => ({ id: 100 + persisted.length })) },
+          shopCustomerMembership: { findFirst: jest.fn(async (args) => {
+            currentShopId = args.where.shopId;
+            return { ...membership, id: 30 + currentShopId, shop: { ...membership.shop, id: currentShopId } };
+          }) },
+          shopMembershipCardPlan: { findFirst: jest.fn(async (args) => ({ ...plan, id: 50 + args.where.shopId })) },
+          $queryRaw: jest.fn().mockResolvedValue([{ id: 41 }]),
+          userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
+          auditLog: { create: jest.fn(async () => ({ id: 91 })) },
+          notification: { create: jest.fn(async () => ({ id: 92 })) }
+        };
+        try { return await callback(transaction); } finally { release(); }
+      })
+    } as unknown as PrismaClient;
+    const repository = new ShopMembershipCardIssuanceRepository(client);
+    const [first, second] = await Promise.all([
+      repository.issueCardWithAuditAndNotification({ ...issuanceInput, shopId: 71, issuanceIdempotencyKey: "first-key", issuanceFingerprint: "first" }),
+      repository.issueCardWithAuditAndNotification({ ...issuanceInput, shopId: 72, issuanceIdempotencyKey: "second-key", issuanceFingerprint: "second", issuanceSource: "online_paid" })
+    ]);
+    expect([first.kind, second.kind].sort()).toEqual(["created", "invalid_state"]);
+    expect(persisted).toHaveLength(1);
   });
 });

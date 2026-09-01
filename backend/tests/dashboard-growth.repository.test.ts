@@ -81,6 +81,7 @@ describe("DashboardGrowthRepository", () => {
   });
 
   const paidMember = {
+    cardId: 30,
     userId: 3,
     issuedAt: "2026-08-25T00:00:00.000Z",
     issuanceSource: "offline_paid",
@@ -99,13 +100,10 @@ describe("DashboardGrowthRepository", () => {
     ["inactive user", { userActive: false }],
     ["deleted user", { userDeleted: true }],
     ["test user", { isTestUser: true }],
-    ["inactive membership", { membershipStatus: "ended" }],
-    ["deleted membership", { membershipDeleted: true }],
-    ["inactive card", { cardStatus: "void" }],
-    ["deleted card", { cardDeleted: true }],
     ["gift source", { issuanceSource: "gift" }],
     ["manual grant source", { issuanceSource: "manual_grant" }],
     ["historical replacement source", { issuanceSource: "historical_replacement" }],
+    ["renewal source", { issuanceSource: "renewal" }],
     ["different city", { shopCity: "Osaka" }]
   ])("excludes a paid-member event for each independent %s condition", (_label, change) => {
     expect(countFirstPaidMemberEvents({
@@ -116,9 +114,35 @@ describe("DashboardGrowthRepository", () => {
     })).toBe(0);
   });
 
+  it("does not erase the winning acquisition after card or membership mutation", () => {
+    expect(countFirstPaidMemberEvents({
+      events: [{ ...paidMember, cardStatus: "void", cardDeleted: true, membershipStatus: "ended", membershipDeleted: true }],
+      range, scope: { kind: "platform" }, city: "Tokyo"
+    })).toBe(1);
+  });
+
+  it("treats online paid as first-paid acquisition and groups history platform-wide", () => {
+    const online = { ...paidMember, userId: 33, issuanceSource: "online_paid" };
+    expect(countFirstPaidMemberEvents({ events: [online], range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
+    expect(countFirstPaidMemberEvents({ events: [
+      { ...online, cardId: 1, issuedAt: "2026-08-01T00:00:00.000Z", shopId: 92, shopCity: "Osaka", cardDeleted: true },
+      { ...paidMember, userId: 33, cardId: 2 }
+    ], range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(0);
+  });
+
+  it("uses card id as the deterministic tie breaker and attributes the winning shop", () => {
+    const sameTime = "2026-08-25T00:00:00.000Z";
+    expect(countFirstPaidMemberEvents({
+      events: [
+        { ...paidMember, userId: 44, cardId: 20, issuedAt: sameTime, shopId: 91 },
+        { ...paidMember, userId: 44, cardId: 10, issuedAt: sameTime, shopId: 92 }
+      ], range, scope: { kind: "shop", shopId: 91 }, city: null
+    })).toBe(0);
+  });
+
   it.each([
     ["a prior deleted paid card", [
-      { ...paidMember, issuedAt: "2026-08-01T00:00:00.000Z", cardStatus: "void", cardDeleted: true },
+      { ...paidMember, cardId: 29, issuedAt: "2026-08-01T00:00:00.000Z", cardStatus: "void", cardDeleted: true },
       paidMember
     ], { kind: "platform" } as const, "Tokyo"],
     ["a different merchant shop", [paidMember], { kind: "shop", shopId: 92 } as const, null]
@@ -228,10 +252,9 @@ describe("DashboardGrowthRepository", () => {
     expect(sql).toContain("registered_user.is_active =");
     expect(sql).toContain("registered_user.is_test_account =");
     expect(sql).toContain("customer.deleted_at IS NULL");
-    expect(sql).toContain("historical_first_paid_at");
-    expect(sql).toContain("MIN(card.issued_at)");
+    expect(sql).toContain("historical_paid_ranked");
+    expect(sql).toContain("ORDER BY card.issued_at ASC, card.id ASC");
     expect(sql).toContain("card.issuance_source");
-    expect(sql).toContain("card.status");
     expect(sql).toContain("membership.shop_id = shop.id");
     expect(sql).toContain("historical_first_technician_identity");
     expect(sql).toContain("MIN(identity_row.created_at)");
@@ -242,16 +265,16 @@ describe("DashboardGrowthRepository", () => {
     expect(sql).toContain("affiliation.starts_at <= first_identity.activated_at");
     expect(sql).toContain("TRIM(shop.city) =");
     expect(query.values).toEqual(expect.arrayContaining([
-      "current", "previous", "offline_paid", "active", "technician", "Tokyo"
+      "current", "previous", "offline_paid", "online_paid", "active", "technician", "Tokyo"
     ]));
     expect(query.values).not.toEqual(expect.arrayContaining(["manual_grant", "historical_replacement"]));
 
     const firstPaidDefinition = sql.slice(
-      sql.indexOf("historical_first_paid_at AS"),
+      sql.indexOf("historical_paid_ranked AS"),
       sql.indexOf("first_paid_members AS")
     );
     expect(firstPaidDefinition).not.toContain("card.status =");
-    expect(sql.slice(sql.indexOf("first_paid_members AS"))).toContain("card.status =");
+    expect(sql.slice(sql.indexOf("first_paid_members AS"))).not.toContain("card.status =");
   });
 
   it("uses authoritative membership/affiliation shops for merchant scope", async () => {

@@ -338,9 +338,13 @@ const shopMembershipCardPlanOpenApiSchemas = {
       planPublicId: { type: "string", format: "uuid" },
       initialPrincipalJpy: nullableNonNegativeInteger,
       initialUses: nullableNonNegativeInteger,
-      issuanceSource: { type: "string", enum: ["offline_paid", "historical_replacement", "manual_grant"] },
-      issuanceReference: { type: ["string", "null"], maxLength: 160 },
-      issuanceNote: { type: ["string", "null"], maxLength: 500 },
+      issuanceSource: {
+        type: "string",
+        enum: ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"],
+        description: "offline_paid/online_paid are platform-global first-paid acquisitions; renewal requires historical paid evidence; gift/trial/replacement/grant are non-paid."
+      },
+      issuanceReference: { type: ["string", "null"], maxLength: 160, description: "Trimmed payment or renewal evidence. Paid and renewal sources require this or issuanceNote." },
+      issuanceNote: { type: ["string", "null"], maxLength: 500, description: "Trimmed visible evidence. Gift, trial, historical replacement and manual grant require this field." },
       idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
     }
   },
@@ -359,7 +363,7 @@ const shopMembershipCardPlanOpenApiSchemas = {
       totalUses: nullableNonNegativeInteger,
       initialPrincipalJpy: nullableNonNegativeInteger,
       initialUses: nullableNonNegativeInteger,
-      issuanceSource: { type: "string", enum: ["offline_paid", "historical_replacement", "manual_grant"] },
+      issuanceSource: { type: "string", enum: ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"] },
       issuanceReference: { type: ["string", "null"], maxLength: 160 },
       issuanceNote: { type: ["string", "null"], maxLength: 500 },
       issuedAt: { type: "string", format: "date-time" },
@@ -8373,7 +8377,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           totalUses: { type: ["integer", "null"], minimum: 0 },
           initialPrincipalJpy: { type: ["integer", "null"], minimum: 0 },
           initialUses: { type: ["integer", "null"], minimum: 0 },
-          issuanceSource: { type: ["string", "null"], enum: ["offline_paid", "historical_replacement", "manual_grant", null] },
+          issuanceSource: { type: ["string", "null"], enum: ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant", null] },
           platformFeeRateBpsSnapshot: { type: ["integer", "null"], minimum: 0, maximum: 10_000 },
           planPublicId: { type: ["string", "null"], format: "uuid" },
           planVersionPublicId: { type: ["string", "null"], format: "uuid" },

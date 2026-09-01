@@ -65,6 +65,7 @@ const storedValueInput = {
 function issuedCard(overrides: Partial<IssuedMembershipCardRecord> = {}): IssuedMembershipCardRecord {
   return {
     internalId: 81,
+    shopId: 71,
     publicId: "00000000-0000-4000-8000-000000000481",
     cardNo: "NMC-00112233445566778899AABB",
     name: "青山储值会员卡",
@@ -99,7 +100,7 @@ function repository(overrides: Partial<ShopMembershipCardIssuanceRepositoryPort>
     getIssuanceContext: jest.fn(async () => ({ kind: "ready" as const, value: context() })),
     issueCardWithAuditAndNotification: jest.fn(async (input) => ({
       kind: "created" as const,
-      value: issuedCard({ issuanceFingerprint: input.issuanceFingerprint })
+      value: issuedCard({ issuanceFingerprint: input.issuanceFingerprint, issuanceSource: input.issuanceSource })
     })),
     ...overrides
   } as jest.Mocked<ShopMembershipCardIssuanceRepositoryPort>;
@@ -177,6 +178,59 @@ describe("ShopMembershipCardIssuanceService", () => {
       .rejects.toMatchObject({ statusCode: 400 });
   });
 
+  it.each(["offline_paid", "online_paid"] as const)("accepts %s with visible payment evidence", async (issuanceSource) => {
+    const repo = repository();
+    const service = new ShopMembershipCardIssuanceService(repo, audit, () => now, () => "NMC-00112233445566778899AABB");
+    await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, {
+      ...storedValueInput, issuanceSource, issuanceNote: null
+    })).resolves.toMatchObject({ replayed: false, issuanceSource });
+    expect(repo.issueCardWithAuditAndNotification).toHaveBeenCalledWith(expect.objectContaining({ issuanceSource }));
+  });
+
+  it.each(["gift", "trial"] as const)("requires a visible note for %s while allowing no reference", async (issuanceSource) => {
+    const repo = repository();
+    const service = new ShopMembershipCardIssuanceService(repo, audit, () => now, () => "NMC-00112233445566778899AABB");
+    await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, {
+      ...storedValueInput, issuanceSource, issuanceReference: null, issuanceNote: " "
+    })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, {
+      ...storedValueInput, issuanceSource, issuanceReference: null, issuanceNote: "活动赠送"
+    })).resolves.toMatchObject({ replayed: false });
+  });
+
+  it.each([
+    ["offline_paid", null, null],
+    ["online_paid", null, null],
+    ["renewal", null, null],
+    ["gift", "reference-only", null],
+    ["trial", "reference-only", null],
+    ["historical_replacement", "reference-only", null],
+    ["manual_grant", "reference-only", null]
+  ] as const)("rejects missing required evidence for %s", async (issuanceSource, issuanceReference, issuanceNote) => {
+    const repo = repository();
+    const service = new ShopMembershipCardIssuanceService(repo, audit, () => now);
+    await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, {
+      ...storedValueInput, issuanceSource, issuanceReference, issuanceNote
+    })).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_VALUE });
+    expect(repo.issueCardWithAuditAndNotification).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["offline_paid", "paid-ref", null],
+    ["online_paid", null, "gateway evidence"],
+    ["renewal", "renewal-ref", null],
+    ["gift", null, "gift campaign"],
+    ["trial", null, "trial campaign"],
+    ["historical_replacement", null, "historical repair"],
+    ["manual_grant", null, "operator reason"]
+  ] as const)("accepts exact evidence contract for %s", async (issuanceSource, issuanceReference, issuanceNote) => {
+    const repo = repository();
+    const service = new ShopMembershipCardIssuanceService(repo, audit, () => now, () => "NMC-00112233445566778899AABB");
+    await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, {
+      ...storedValueInput, issuanceSource, issuanceReference, issuanceNote
+    })).resolves.toMatchObject({ issuanceSource });
+  });
+
   it("replays the same normalized request without creating a second card", async () => {
     const firstRepo = repository();
     const firstService = new ShopMembershipCardIssuanceService(firstRepo, audit, () => now, () => "NMC-00112233445566778899AABB");
@@ -209,6 +263,20 @@ describe("ShopMembershipCardIssuanceService", () => {
       code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_IDEMPOTENCY_CONFLICT,
       statusCode: 409
     });
+  });
+
+  it("rejects a globally reused key from another shop even with the same fingerprint", async () => {
+    const existing = issuedCard({ shopId: 72 });
+    const fingerprintRepo = repository();
+    const fingerprintService = new ShopMembershipCardIssuanceService(fingerprintRepo, audit, () => now);
+    await fingerprintService.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, storedValueInput);
+    const fingerprint = fingerprintRepo.issueCardWithAuditAndNotification.mock.calls[0]![0].issuanceFingerprint;
+    const repo = repository({ findByIdempotencyKey: jest.fn(async () => ({ ...existing, issuanceFingerprint: fingerprint })) });
+    const service = new ShopMembershipCardIssuanceService(repo, audit, () => now);
+    await expect(service.issue(owner(), { ip: "127.0.0.1" }, membershipPublicId, storedValueInput)).rejects.toMatchObject({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_IDEMPOTENCY_CONFLICT
+    });
+    expect(repo.getIssuanceContext).not.toHaveBeenCalled();
   });
 
   it("rejects an already expired fixed-date version", async () => {

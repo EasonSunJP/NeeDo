@@ -6,6 +6,7 @@ import {
   ShopMembershipCardPlanValidityMode,
   ShopMembershipCardPlanVersionStatus,
   ShopMembershipCardStatus,
+  ShopMembershipCardStatusEventSource,
   ShopMembershipCardType,
   type PrismaClient
 } from "@prisma/client";
@@ -88,6 +89,7 @@ const issuedCardSelect = Prisma.validator<Prisma.ShopMembershipCardSelect>()({
   planVersion: { select: { publicId: true, version: true } },
   membership: {
     select: {
+      shopId: true,
       customerProfile: {
         select: { displayName: true, user: { select: { needoId: true } } }
       }
@@ -101,12 +103,10 @@ type IssuedCardRecord = Prisma.ShopMembershipCardGetPayload<{ select: typeof iss
 export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardIssuanceRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async findByIdempotencyKey(shopId: number, idempotencyKey: string): Promise<IssuedMembershipCardRecord | null> {
+  public async findByIdempotencyKey(idempotencyKey: string): Promise<IssuedMembershipCardRecord | null> {
     const record = await this.client.shopMembershipCard.findFirst({
       where: {
-        issuanceIdempotencyKey: idempotencyKey,
-        membership: { shopId, deletedAt: null },
-        deletedAt: null
+        issuanceIdempotencyKey: idempotencyKey
       },
       select: issuedCardSelect
     });
@@ -122,14 +122,12 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
       return await this.client.$transaction(async (transaction) => {
         const existing = await transaction.shopMembershipCard.findFirst({
           where: {
-            issuanceIdempotencyKey: input.issuanceIdempotencyKey,
-            membership: { shopId: input.shopId, deletedAt: null },
-            deletedAt: null
+            issuanceIdempotencyKey: input.issuanceIdempotencyKey
           },
           select: issuedCardSelect
         });
         if (existing) {
-          return existing.issuanceFingerprint === input.issuanceFingerprint
+          return existing.membership.shopId === input.shopId && existing.issuanceFingerprint === input.issuanceFingerprint
             ? { kind: "replayed" as const, value: this.mapCard(existing) }
             : { kind: "idempotency_conflict" as const };
         }
@@ -148,6 +146,32 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
           context.version.name !== input.name ||
           context.version.platformFeeRateBps !== input.platformFeeRateBpsSnapshot
         ) {
+          return { kind: "invalid_state" as const };
+        }
+
+        const lockedUsers = await transaction.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+          SELECT id FROM users
+          WHERE id = ${context.membership.customerUserId}
+          FOR UPDATE
+        `);
+        if (lockedUsers.length !== 1 || lockedUsers[0]?.id !== context.membership.customerUserId) {
+          return { kind: "invalid_state" as const };
+        }
+        const priorPaidCard = await transaction.shopMembershipCard.findFirst({
+          where: {
+            issuanceSource: {
+              in: [
+                ShopMembershipCardIssuanceSource.OFFLINE_PAID,
+                ShopMembershipCardIssuanceSource.ONLINE_PAID,
+                ShopMembershipCardIssuanceSource.RENEWAL
+              ]
+            },
+            membership: { customerProfile: { userId: context.membership.customerUserId } }
+          },
+          select: { id: true }
+        });
+        const isFirstPaidSource = input.issuanceSource === "offline_paid" || input.issuanceSource === "online_paid";
+        if ((isFirstPaidSource && priorPaidCard) || (input.issuanceSource === "renewal" && !priorPaidCard)) {
           return { kind: "invalid_state" as const };
         }
 
@@ -177,6 +201,21 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
             expiresAt: input.expiresAt
           },
           select: issuedCardSelect
+        });
+        await transaction.shopMembershipCardStatusEvent.create({
+          data: {
+            cardId: created.id,
+            fromStatus: null,
+            toStatus: ShopMembershipCardStatus.ACTIVE,
+            source: ShopMembershipCardStatusEventSource.ISSUANCE,
+            occurredAt: input.issuedAt,
+            reasonCode: "card_issued",
+            actorUserId: input.actorId,
+            metadata: { issuanceSource: input.issuanceSource },
+            eventKey: `membership-card:${created.publicId}:issued`,
+            createdAt: input.issuedAt,
+            updatedAt: input.issuedAt
+          }
         });
 
         const recipientIdentityId = await resolveCanonicalPersonalIdentityId(transaction, context.membership.customerUserId);
@@ -229,9 +268,9 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
       if (!this.isUniqueConflict(error)) throw error;
       const targets = this.uniqueTargets(error);
       if (targets.some((target) => target.includes("issuance_idempotency_key"))) {
-        const existing = await this.findByIdempotencyKey(input.shopId, input.issuanceIdempotencyKey);
+        const existing = await this.findByIdempotencyKey(input.issuanceIdempotencyKey);
         if (!existing) throw error;
-        return existing.issuanceFingerprint === input.issuanceFingerprint
+        return existing.shopId === input.shopId && existing.issuanceFingerprint === input.issuanceFingerprint
           ? { kind: "replayed", value: existing }
           : { kind: "idempotency_conflict" };
       }
@@ -304,6 +343,7 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
     }
     return {
       internalId: record.id,
+      shopId: record.membership.shopId,
       publicId: record.publicId,
       cardNo: record.cardNo,
       name: record.name,
@@ -340,11 +380,33 @@ export class ShopMembershipCardIssuanceRepository implements ShopMembershipCardI
   }
 
   private sourceToDb(source: ShopMembershipCardIssuanceSourcePayload): ShopMembershipCardIssuanceSource {
-    return source === "offline_paid" ? ShopMembershipCardIssuanceSource.OFFLINE_PAID : source === "historical_replacement" ? ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT : ShopMembershipCardIssuanceSource.MANUAL_GRANT;
+    const values: Record<ShopMembershipCardIssuanceSourcePayload, ShopMembershipCardIssuanceSource> = {
+      offline_paid: ShopMembershipCardIssuanceSource.OFFLINE_PAID,
+      online_paid: ShopMembershipCardIssuanceSource.ONLINE_PAID,
+      gift: ShopMembershipCardIssuanceSource.GIFT,
+      trial: ShopMembershipCardIssuanceSource.TRIAL,
+      renewal: ShopMembershipCardIssuanceSource.RENEWAL,
+      historical_replacement: ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT,
+      manual_grant: ShopMembershipCardIssuanceSource.MANUAL_GRANT
+    };
+    const mapped = values[source];
+    if (!mapped) throw new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_STATE, message: "error.shop_membership_card_issuance.invalid_state", statusCode: 409 });
+    return mapped;
   }
 
   private sourceFromDb(source: ShopMembershipCardIssuanceSource): ShopMembershipCardIssuanceSourcePayload {
-    return source === ShopMembershipCardIssuanceSource.OFFLINE_PAID ? "offline_paid" : source === ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT ? "historical_replacement" : "manual_grant";
+    const values: Record<ShopMembershipCardIssuanceSource, ShopMembershipCardIssuanceSourcePayload> = {
+      [ShopMembershipCardIssuanceSource.OFFLINE_PAID]: "offline_paid",
+      [ShopMembershipCardIssuanceSource.ONLINE_PAID]: "online_paid",
+      [ShopMembershipCardIssuanceSource.GIFT]: "gift",
+      [ShopMembershipCardIssuanceSource.TRIAL]: "trial",
+      [ShopMembershipCardIssuanceSource.RENEWAL]: "renewal",
+      [ShopMembershipCardIssuanceSource.HISTORICAL_REPLACEMENT]: "historical_replacement",
+      [ShopMembershipCardIssuanceSource.MANUAL_GRANT]: "manual_grant"
+    };
+    const mapped = values[source];
+    if (!mapped) throw new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_STATE, message: "error.shop_membership_card_issuance.invalid_state", statusCode: 409 });
+    return mapped;
   }
 
   private cardStatusFromDb(status: ShopMembershipCardStatus): "active" | "frozen" | "expired" | "void" {
