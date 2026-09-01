@@ -6,6 +6,10 @@ import type {
   ShopMembershipCardRedemptionRecord,
   ShopMembershipCardRedemptionRepositoryPort
 } from "../src/services/shop-membership-card-redemption.service";
+import type {
+  ShopMembershipCardRefundRecord,
+  ShopMembershipCardRefundRepositoryPort
+} from "../src/services/shop-membership-card-refund.service";
 import { AuthTokenService } from "../src/services/auth-token.service";
 import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
@@ -99,13 +103,72 @@ const record = (overrides: Partial<ShopMembershipCardRedemptionRecord> = {}): Sh
     serviceCategoryCode: "body-care",
     serviceStartedAt: now,
     serviceCompletedAt: now,
-    eligibleAmountJpy: 10_000
+    eligibleAmountJpy: 10_000,
+    paymentStatus: "confirmed",
+    paymentRefundedAt: null
   },
   shop: { shopNo: "s000000071", name: "青山护理店" },
   customer: { userId: 41, needoId: "u0000000041", displayName: "王小美" },
   redeemedBy: { needoId: "u0000000090", displayName: "店员" },
   ledgerTransactionNo: "LT-001",
+  refund: null,
   ...overrides
+});
+
+const refundRecord = (overrides: Partial<ShopMembershipCardRefundRecord> = {}): ShopMembershipCardRefundRecord => ({
+  internalId: 301,
+  publicId: "00000000-0000-4000-8000-000000000803",
+  requestFingerprint: "fingerprint",
+  status: "applied",
+  reason: "订单已完成原路退款",
+  reversalMode: "ledger_reversed",
+  restoredPrincipalJpy: 10_000,
+  restoredUses: 0,
+  principalBalanceBeforeJpy: 10_000,
+  principalBalanceAfterJpy: 20_000,
+  remainingUsesBefore: null,
+  remainingUsesAfter: null,
+  customerRewardReversedNdp: 1_000,
+  platformFeeReversedNdp: 100,
+  totalShopCreditNdp: 1_100,
+  customerBalanceBeforeNdp: 500,
+  customerBalanceAfterNdp: -500,
+  orderPaymentRefundedAt: now,
+  refundedAt: now,
+  createdAt: now,
+  updatedAt: now,
+  redemption: { publicId: redemptionPublicId, rewardStatusBefore: "paid" },
+  card: {
+    publicId: cardPublicId,
+    cardNo: "NMC-00112233445566778899AABB",
+    name: "青山储值会员卡",
+    type: "stored_value",
+    status: "active",
+    principalBalanceJpy: 20_000,
+    bonusBalanceJpy: 3_000,
+    remainingUses: null
+  },
+  order: { orderNo: createBody.orderNo, serviceName: "护理服务" },
+  shop: { shopNo: "s000000071", name: "青山护理店" },
+  customer: { needoId: "u0000000041", displayName: "王小美" },
+  refundedBy: { needoId: "u0000000090", displayName: "店主" },
+  reversalLedgerTransactionNo: "LT-REV-001",
+  ...overrides
+});
+
+const refundRepository = (): jest.Mocked<ShopMembershipCardRefundRepositoryPort> => ({
+  findByIdempotencyKey: jest.fn(async (shopId, idempotencyKey) => {
+    void shopId;
+    void idempotencyKey;
+    return null;
+  }),
+  refundWithReversalAuditAndNotification: jest.fn(async (input, reverse) => {
+    void reverse;
+    return {
+      kind: "created" as const,
+      value: refundRecord({ requestFingerprint: input.requestFingerprint })
+    };
+  })
 });
 
 const repository = (overrides: Partial<ShopMembershipCardRedemptionRepositoryPort> = {}) => ({
@@ -166,13 +229,19 @@ function makeUser(kind: "merchant" | "customer", permissions: string[]) {
 function fixture(kind: "merchant" | "customer", permissions: string[]) {
   const user = makeUser(kind, permissions);
   const redemptionRepository = repository();
+  const cardRefundRepository = refundRepository();
   const app = createApp(env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: { findUserById: jest.fn(async (id: number) => id === user.id ? user : null) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository({ shopId: 71 }),
-    shopMembershipCardRedemptionRepository: redemptionRepository
+    shopMembershipCardRedemptionRepository: redemptionRepository,
+    shopMembershipCardRefundRepository: cardRefundRepository,
+    ledgerService: {
+      reverseShopMembershipReward: jest.fn(),
+      settleShopMembershipReward: jest.fn()
+    }
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
@@ -180,13 +249,14 @@ function fixture(kind: "merchant" | "customer", permissions: string[]) {
     currentIdentityId: user.identities[0].id,
     sessionGeneration: 0
   }).token;
-  return { app, repository: redemptionRepository, token };
+  return { app, repository: redemptionRepository, refundRepository: cardRefundRepository, token };
 }
 
 const candidatesPath = `/api/v1/merchant-admin/shop-membership-cards/${cardPublicId}/redemption-candidates`;
 const createPath = `/api/v1/merchant-admin/shop-membership-cards/${cardPublicId}/redemptions`;
 const merchantListPath = "/api/v1/merchant-admin/shop-membership-card-redemptions";
 const customerListPath = "/api/v1/customer-profile/me/shop-membership-card-redemptions";
+const refundPath = `/api/v1/merchant-admin/shop-membership-card-redemptions/${redemptionPublicId}/refunds`;
 
 describe("shop membership card redemption API", () => {
   it("requires authentication and the exact daily redemption permission", async () => {
@@ -231,5 +301,31 @@ describe("shop membership card redemption API", () => {
       .set("Authorization", `Bearer ${customer.token}`).expect(200);
     expect(history.body.data.list[0]).toMatchObject({ publicId: redemptionPublicId });
     expect(customer.repository.listCustomer).toHaveBeenCalledWith(41, expect.any(Object));
+  });
+
+  it("requires the owner-only refund permission and returns safe exact reversal evidence", async () => {
+    const denied = fixture("merchant", ["shop.member.card.redeem", "shop.member.view"]);
+    await request(denied.app).post(refundPath).set("Authorization", `Bearer ${denied.token}`)
+      .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001" }).expect(403);
+    expect(denied.refundRepository.refundWithReversalAuditAndNotification).not.toHaveBeenCalled();
+
+    const owner = fixture("merchant", ["shop.member.card.refund"]);
+    await request(owner.app).post(refundPath).set("Authorization", `Bearer ${owner.token}`)
+      .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001", shopId: 999 })
+      .expect(400);
+    const response = await request(owner.app).post(refundPath)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001" })
+      .expect(201);
+    expect(response.body.data).toMatchObject({
+      restoredPrincipalJpy: 10_000,
+      customerRewardReversedNdp: 1_000,
+      platformFeeReversedNdp: 100,
+      totalShopCreditNdp: 1_100,
+      customerBalanceAfterNdp: -500,
+      card: { cardNoMasked: "NMC-********************AABB" }
+    });
+    expect(response.body.data).not.toHaveProperty("internalId");
+    expect(response.body.data.card).not.toHaveProperty("cardNo");
   });
 });

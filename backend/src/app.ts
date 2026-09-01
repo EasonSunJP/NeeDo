@@ -49,6 +49,7 @@ import type { ShopMembershipCardIssuanceRepositoryPort } from "./services/shop-m
 import type { ShopMembershipCardAdjustmentRepositoryPort } from "./services/shop-membership-card-adjustment.service";
 import type { ShopMembershipCardTopUpRepositoryPort } from "./services/shop-membership-card-topup.service";
 import type { ShopMembershipCardRedemptionRepositoryPort } from "./services/shop-membership-card-redemption.service";
+import type { ShopMembershipCardRefundRepositoryPort } from "./services/shop-membership-card-refund.service";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
@@ -234,6 +235,7 @@ export interface AppDependencies {
   shopMembershipCardAdjustmentRepository?: ShopMembershipCardAdjustmentRepositoryPort;
   shopMembershipCardTopUpRepository?: ShopMembershipCardTopUpRepositoryPort;
   shopMembershipCardRedemptionRepository?: ShopMembershipCardRedemptionRepositoryPort;
+  shopMembershipCardRefundRepository?: ShopMembershipCardRefundRepositoryPort;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;

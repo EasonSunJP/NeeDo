@@ -32,12 +32,36 @@ const redemption: ShopMembershipCardRedemption = {
   createdAt: "2026-09-01T03:00:00.000Z",
   updatedAt: "2026-09-01T03:00:00.000Z",
   card: { publicId: "00000000-0000-4000-8000-000000000902", cardNoMasked: "NMC-********************AABB", name: "青山储值卡", type: "stored_value", status: "active", principalBalanceJpy: 11_200, bonusBalanceJpy: 500, remainingUses: null },
-  order: { orderNo: "B202609010001", serviceName: "全身护理", servicePublicId: null, serviceCategoryCode: "body-care", serviceStartedAt: "2026-09-01T01:00:00.000Z", serviceCompletedAt: "2026-09-01T02:00:00.000Z", eligibleAmountJpy: 8_800 },
+  order: { orderNo: "B202609010001", serviceName: "全身护理", servicePublicId: null, serviceCategoryCode: "body-care", serviceStartedAt: "2026-09-01T01:00:00.000Z", serviceCompletedAt: "2026-09-01T02:00:00.000Z", eligibleAmountJpy: 8_800, paymentStatus: "refunded", paymentRefundedAt: "2026-09-01T04:00:00.000Z" },
   shop: { shopNo: "s000000071", name: "青山护理店" },
   customer: { needoId: "u0000000041", displayName: "王小美" },
   redeemedBy: { needoId: "u0000000009", displayName: "青山店员" },
   ledgerTransactionNo: null,
+  refund: null,
   replayed: false
+};
+
+const refundedRedemption: ShopMembershipCardRedemption = {
+  ...redemption,
+  status: "refunded",
+  rewardStatus: "reversed",
+  outstandingRewardNdp: 0,
+  refundedAt: "2026-09-01T05:00:00.000Z",
+  refund: {
+    publicId: "00000000-0000-4000-8000-000000000903",
+    reason: "订单已完成原路退款",
+    reversalMode: "ledger_reversed",
+    restoredPrincipalJpy: 8_800,
+    restoredUses: 0,
+    customerRewardReversedNdp: 1_000,
+    platformFeeReversedNdp: 100,
+    totalShopCreditNdp: 1_100,
+    customerBalanceBeforeNdp: 500,
+    customerBalanceAfterNdp: -500,
+    refundedAt: "2026-09-01T05:00:00.000Z",
+    refundedBy: { needoId: "u0000000009", displayName: "青山店主" },
+    reversalLedgerTransactionNo: "LT-REV-001"
+  }
 };
 
 async function flush() {
@@ -63,7 +87,7 @@ describe("CardRedemptionHistory", () => {
   });
 
   it("shows card consumption, reward status, platform fee, and no frozen-NDP claim", () => {
-    for (const copy of ["核销记录", "已核销", "返点待发放", "客户返点", "平台费", "店铺合计", "不会冻结 NDP"]) expect(source).toContain(copy);
+    for (const copy of ["核销与退款记录", "已核销", "返点待发放", "客户返点", "平台费", "店铺合计", "不会冻结 NDP", "关联订单完成正式退款后才可退卡", "退款 TEST"]) expect(source).toContain(copy);
     expect(source).toContain("<TestFeatureBadge");
     expect(source).not.toContain("折扣");
   });
@@ -81,5 +105,27 @@ describe("CardRedemptionHistory", () => {
     await flush();
     expect(customerList).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
     expect(document.body.textContent).toContain("青山护理店");
+  });
+
+  it("opens owner refund only after formal order refund", async () => {
+    vi.spyOn(merchantShopMembershipApi, "redemptions").mockResolvedValue({ list: [{ ...redemption, rewardStatus: "paid", outstandingRewardNdp: 0 }], total: 1, page: 1, page_size: 20 });
+    await act(async () => root.render(<CardRedemptionHistory canRefund mode="merchant" revision={0} />));
+    await flush();
+    const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent?.includes("退款"));
+    expect(button?.disabled).toBe(false);
+    await act(async () => button?.click());
+    expect(document.body.textContent).toContain("会员卡退款");
+    expect(document.body.textContent).toContain("余额会显示为负数");
+  });
+
+  it("shows customer restoration, reversal, and negative-balance evidence", async () => {
+    vi.spyOn(customerShopMembershipApi, "redemptions").mockResolvedValue({ list: [refundedRedemption], total: 1, page: 1, page_size: 20 });
+    await act(async () => root.render(<CardRedemptionHistory mode="customer" revision={0} />));
+    await flush();
+    expect(document.body.textContent).toContain("会员卡消费已恢复");
+    expect(document.body.textContent).toContain("8,800 本金");
+    expect(document.body.textContent).toContain("-1,000 NDP");
+    expect(document.body.textContent).toContain("-500");
+    expect(document.body.textContent).toContain("自动抵扣");
   });
 });

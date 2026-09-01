@@ -113,7 +113,8 @@ describe("shop membership OpenAPI", () => {
       document.paths["/api/v1/merchant-admin/shop-membership-cards/{publicId}/redemption-candidates"].get,
       document.paths["/api/v1/merchant-admin/shop-membership-cards/{publicId}/redemptions"].post,
       document.paths["/api/v1/merchant-admin/shop-membership-card-redemptions"].get,
-      document.paths["/api/v1/customer-profile/me/shop-membership-card-redemptions"].get
+      document.paths["/api/v1/customer-profile/me/shop-membership-card-redemptions"].get,
+      document.paths["/api/v1/merchant-admin/shop-membership-card-redemptions/{publicId}/refunds"].post
     ];
     for (const operation of redemptionOperations) {
       expect(operation.security).toEqual([{ bearerAuth: [] }]);
@@ -125,6 +126,10 @@ describe("shop membership OpenAPI", () => {
     expect(redemptionOperations[1].requestBody?.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/ShopMembershipCardRedemptionCreateRequest"
     });
+    expect(redemptionOperations[4].requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ShopMembershipCardRefundCreateRequest"
+    });
+    expect(document.components.schemas.ShopMembershipCardRefund).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardRedemptionCreateRequest).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardRedemptionCandidate).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardRedemption).toMatchObject({ additionalProperties: false });
