@@ -909,6 +909,7 @@ model User {
   sentMessages                            Message[]                             @relation("MessageSender")
   experienceAccount                       UserExperienceAccount?
   experienceEntries                       UserExperienceEntry[]
+  ndpExperienceAccumulators               UserNdpExperienceAccumulator[]
   platformMembershipEntitlements          PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementOwner")
   createdPlatformMembershipEntitlements   PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementCreator")
   createdPlatformMembershipTierVersions   PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionCreator")
@@ -1450,6 +1451,14 @@ model UserExperienceEntry {
   campaignVersionId       String?                     @map("campaign_version_id") @db.Char(36)
   occurredAt              DateTime                    @map("occurred_at")
   reversalOfEntryId       Int?                        @map("reversal_of_entry_id")
+  ledgerTransactionId     Int?                        @unique(map: "user_experience_entries_ledger_transaction_id_key") @map("ledger_transaction_id")
+  entitlementId           Int?                        @unique(map: "user_experience_entries_entitlement_id_key") @map("entitlement_id")
+  ndpAmount               Int?                        @map("ndp_amount")
+  ndpPerBaseExp           Int?                        @map("ndp_per_base_exp")
+  extraThresholdNdp       Int?                        @map("extra_threshold_ndp")
+  extraAwardUnits         BigInt?                     @map("extra_award_units")
+  accumulatorBeforeNumerator BigInt?                  @map("accumulator_before_numerator")
+  accumulatorAfterNumerator  BigInt?                  @map("accumulator_after_numerator")
   createdAt               DateTime                    @default(now()) @map("created_at")
   updatedAt               DateTime                    @updatedAt @map("updated_at")
   deletedAt               DateTime?                   @map("deleted_at")
@@ -1458,6 +1467,8 @@ model UserExperienceEntry {
   user            User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
   reversalOfEntry UserExperienceEntry?  @relation("UserExperienceEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
   reversals       UserExperienceEntry[] @relation("UserExperienceEntryReversal")
+  ledgerTransaction LedgerTransaction?  @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  entitlement       PlatformMembershipEntitlement? @relation(fields: [entitlementId], references: [id], onDelete: Restrict)
 
   @@index([userId, occurredAt, id], map: "user_experience_entries_user_occurred_idx")
   @@index([sourceType, sourcePublicId], map: "user_experience_entries_source_idx")
@@ -1465,6 +1476,25 @@ model UserExperienceEntry {
   @@index([reversalOfEntryId], map: "user_experience_entries_reversal_idx")
   @@index([deletedAt])
   @@map("user_experience_entries")
+}
+
+model UserNdpExperienceAccumulator {
+  id                 Int       @id @default(autoincrement())
+  userId             Int       @map("user_id")
+  tierBenefitId      Int       @map("tier_benefit_id")
+  remainderNumerator BigInt    @default(0) @map("remainder_numerator")
+  lockVersion        Int       @default(1) @map("lock_version")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  user        User                              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tierBenefit PlatformMembershipTierBenefit    @relation(fields: [tierBenefitId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, tierBenefitId], map: "user_ndp_experience_accumulator_key")
+  @@index([tierBenefitId], map: "user_ndp_experience_accumulators_tier_benefit_idx")
+  @@index([deletedAt])
+  @@map("user_ndp_experience_accumulators")
 }
 
 model PlatformMembershipTier {
@@ -1557,6 +1587,7 @@ model PlatformMembershipTierBenefit {
 
   tierVersion PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
   benefit     PlatformMembershipBenefit     @relation(fields: [benefitId], references: [id], onDelete: Restrict)
+  ndpExperienceAccumulators UserNdpExperienceAccumulator[]
 
   @@unique([tierVersionId, benefitId], map: "platform_membership_tier_benefit_key")
   @@index([benefitId, isEnabled, deletedAt], map: "platform_membership_tier_benefit_enabled_idx")
@@ -1586,6 +1617,7 @@ model PlatformMembershipEntitlement {
   user        User                          @relation("PlatformMembershipEntitlementOwner", fields: [userId], references: [id], onDelete: Restrict)
   tierVersion PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
   createdBy   User?                         @relation("PlatformMembershipEntitlementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  experienceEntry UserExperienceEntry?
 
   @@unique([userId, source, sourceReference], map: "platform_membership_entitlement_source_key")
   @@index([userId, startsAt, expiresAt, supersededAt, deletedAt], map: "platform_membership_entitlement_active_idx")
@@ -3993,6 +4025,7 @@ model LedgerTransaction {
   affiliateRewardTransactions  AffiliateRewardTransaction[]  @relation("AffiliateRewardLedgerTransaction")
   affiliateBudgetTransactions  AffiliateBudgetTransaction[]  @relation("AffiliateBudgetLedgerTransaction")
   shopMembershipCardRedemption ShopMembershipCardRedemption?
+  experienceEntry               UserExperienceEntry?
 
   @@index([type])
   @@index([status])
