@@ -569,8 +569,8 @@ export interface BackofficeDashboardPayload {
   };
   shop: DashboardMerchantSnapshot | null;
   membership: null | {
-    memberCount: null;
-    memberDataStatus: "not_available";
+    memberCount: number;
+    memberDataStatus: "ready";
     completedCustomerCount: number;
   };
   scope: { kind: "platform"; shopPublicId: null } | { kind: "shop"; shopPublicId: string };

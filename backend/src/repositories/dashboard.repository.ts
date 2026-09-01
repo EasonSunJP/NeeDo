@@ -30,6 +30,10 @@ import {
   type DashboardGrowthReader,
   type GrowthFacts
 } from "./dashboard-growth.repository";
+import {
+  DashboardMembershipRepository,
+  type DashboardMembershipReader
+} from "./dashboard-membership.repository";
 
 type NumericValue = bigint | number | string | { toString: () => string } | null | undefined;
 
@@ -106,21 +110,27 @@ export class DashboardRepository {
       new DashboardOperationsFinanceRepository(client),
     private readonly commissionReader: DashboardCommissionReader =
       new DashboardCommissionRepository(client),
-    private readonly growthReader: DashboardGrowthReader = new DashboardGrowthRepository(client)
+    private readonly growthReader: DashboardGrowthReader = new DashboardGrowthRepository(client),
+    private readonly membershipReader: DashboardMembershipReader =
+      new DashboardMembershipRepository(client)
   ) {}
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
-    const [activity, finance, merchant, availableCities] = await Promise.all([
+    const [activity, finance, merchant, availableCities, membership] = await Promise.all([
       this.getActivityFacts(input),
       this.getFinanceFacts(input),
       this.getMerchantFacts(input),
-      this.getAvailableCities(input)
+      this.getAvailableCities(input),
+      input.scope.kind === "shop"
+        ? this.membershipReader.getMembershipFacts(input)
+        : Promise.resolve(null)
     ]);
 
     return {
       ...activity,
       finance,
       merchant,
+      membership,
       availableCities
     };
   }

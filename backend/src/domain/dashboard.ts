@@ -30,6 +30,7 @@ export interface DashboardAggregateInput {
   scope: { kind: "platform" } | { kind: "shop"; shopId: number };
   city: string | null;
   window: DashboardWindow;
+  evaluatedAt?: Date;
 }
 
 export interface DashboardNdpPair {
@@ -134,9 +135,15 @@ export interface DashboardActivityFacts {
   >;
 }
 
+export interface DashboardMembershipFacts {
+  memberCount: number;
+  completedCustomerCount: number;
+}
+
 export interface DashboardAggregateFacts extends DashboardActivityFacts {
   finance: DashboardFinanceFacts;
   merchant: DashboardMerchantFacts | null;
+  membership: DashboardMembershipFacts | null;
   availableCities: string[];
 }
 
@@ -172,8 +179,8 @@ export interface BackofficeDashboardPayload {
   };
   shop: DashboardMerchantSnapshot | null;
   membership: null | {
-    memberCount: null;
-    memberDataStatus: "not_available";
+    memberCount: number;
+    memberDataStatus: "ready";
     completedCustomerCount: number;
   };
   scope:

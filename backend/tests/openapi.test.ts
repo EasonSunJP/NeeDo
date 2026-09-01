@@ -558,8 +558,8 @@ describe("GET /api/v1/openapi.json", () => {
       additionalProperties: false,
       required: ["memberCount", "memberDataStatus", "completedCustomerCount"],
       properties: {
-        memberCount: { type: "null" },
-        memberDataStatus: { type: "string", const: "not_available" },
+        memberCount: { type: "integer", minimum: 0 },
+        memberDataStatus: { type: "string", const: "ready" },
         completedCustomerCount: { type: "integer", minimum: 0 }
       }
     });

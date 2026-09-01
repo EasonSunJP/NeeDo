@@ -903,7 +903,8 @@ export class BackofficeService {
     context: AuthRequestContext,
     query: BackofficeDashboardQuery
   ): Promise<BackofficeDashboardPayload> {
-    const window = resolveDashboardWindow(query, this.now());
+    const evaluatedAt = this.now();
+    const window = resolveDashboardWindow(query, evaluatedAt);
     const city = query.city ?? null;
     await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard", {
       period: window.period,
@@ -915,9 +916,10 @@ export class BackofficeService {
     const aggregate = await this.repository.getDashboard({
       scope: { kind: "platform" },
       city,
-      window
+      window,
+      evaluatedAt
     });
-    return this.composeDashboard(aggregate, window, city, null);
+    return this.composeDashboard(aggregate, window, city, null, evaluatedAt);
   }
 
   public async getMerchantDashboard(
@@ -926,7 +928,8 @@ export class BackofficeService {
     query: MerchantDashboardQuery
   ): Promise<BackofficeDashboardPayload> {
     const scope = this.getMerchantScope(actor);
-    const window = resolveDashboardWindow(query, this.now());
+    const evaluatedAt = this.now();
+    const window = resolveDashboardWindow(query, evaluatedAt);
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
       period: window.period,
       from: window.fromDate,
@@ -937,9 +940,10 @@ export class BackofficeService {
     const aggregate = await this.repository.getDashboard({
       scope: { kind: "shop", shopId: scope.shopId },
       city: null,
-      window
+      window,
+      evaluatedAt
     });
-    return this.composeDashboard(aggregate, window, null, scope.shopId);
+    return this.composeDashboard(aggregate, window, null, scope.shopId, evaluatedAt);
   }
 
   public async listManageableMerchantShops(
@@ -1088,14 +1092,15 @@ export class BackofficeService {
     aggregate: DashboardAggregateFacts,
     window: ReturnType<typeof resolveDashboardWindow>,
     city: string | null,
-    shopId: number | null
+    shopId: number | null,
+    evaluatedAt: Date
   ): BackofficeDashboardPayload {
     const isPlatform = shopId === null;
     const merchantFacts = isPlatform
       ? null
       : this.requireResult(aggregate.merchant, "error.shop.not_found");
     const shop = merchantFacts
-      ? new DashboardMerchantSnapshotService(undefined, this.now).compose(merchantFacts)
+      ? new DashboardMerchantSnapshotService(undefined, () => evaluatedAt).compose(merchantFacts)
       : null;
     const globalPair = (pair: DashboardNdpPair | null): DashboardPlatformGlobalNdpPair => ({
       ...(pair ?? { ndp: 0, testNdp: 0 }),
@@ -1109,6 +1114,14 @@ export class BackofficeService {
           platformNdp: 0,
           userRewardNdp: 0
         });
+    const membershipFacts = aggregate.membership;
+    if (!isPlatform && !membershipFacts) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency_unavailable",
+        statusCode: 503
+      });
+    }
 
     return {
       filter: {
@@ -1168,12 +1181,12 @@ export class BackofficeService {
         shopNdpCost
       },
       shop,
-      membership: isPlatform
+      membership: isPlatform || !membershipFacts
         ? null
         : {
-            memberCount: null,
-            memberDataStatus: "not_available",
-            completedCustomerCount: aggregate.current.completedCustomerCount
+            memberCount: membershipFacts.memberCount,
+            memberDataStatus: "ready",
+            completedCustomerCount: membershipFacts.completedCustomerCount
           },
       scope: merchantFacts
         ? { kind: "shop", shopPublicId: merchantFacts.publicId }

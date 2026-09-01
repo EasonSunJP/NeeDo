@@ -65,11 +65,10 @@ describe("merchant unified data dashboard", () => {
     expect(source).not.toContain("尚未启用的商户模块");
   });
 
-  it("keeps member null distinct from zero and exposes the real completed-customer count", () => {
+  it("uses the ready formal member count and exposes the real completed-customer count", () => {
     expect(source).toContain('title={t("会员数")}');
-    expect(source).toContain('statusMessage={t("会员功能尚未开放")}');
     expect(source).toContain('label: t("利用者数")');
-    expect(source).not.toContain("memberCount ?? 0");
+    expect(source).toContain("value={dashboard.membership?.memberCount}");
   });
 
   it("freezes stale owner data only while loading and exposes retry after a switch-load failure", () => {

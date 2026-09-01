@@ -420,6 +420,10 @@ const createFixture = async (
                 wallet: null
               }
             : null,
+        membership:
+          input.scope.kind === "shop"
+            ? { memberCount: 6, completedCustomerCount: 4 }
+            : null,
         availableCities: input.scope.kind === "platform" ? ["Osaka", "Tokyo"] : []
       })
     ),
@@ -1313,9 +1317,9 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       },
       shop: { publicId: "shop0000000011" },
       membership: {
-        memberCount: null,
-        memberDataStatus: "not_available",
-        completedCustomerCount: 2
+        memberCount: 6,
+        memberDataStatus: "ready",
+        completedCustomerCount: 4
       },
       scope: { kind: "shop", shopPublicId: "shop0000000011" }
     });
