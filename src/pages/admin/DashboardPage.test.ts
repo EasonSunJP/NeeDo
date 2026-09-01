@@ -1,22 +1,32 @@
 // @vitest-environment jsdom
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
 import { DashboardPage } from "./DashboardPage";
+import { DashboardMetricDetailPage } from "./DashboardMetricDetailPage";
 import { translateTextForContext } from "../../i18n/translations";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const apiMocks = vi.hoisted(() => ({ dashboard: vi.fn(), dashboardOverview: vi.fn() }));
-vi.mock("../../api/backofficeRealData", () => ({ backofficeRealDataApi: apiMocks }));
+const apiMocks = vi.hoisted(() => ({
+  dashboard: vi.fn(),
+  dashboardOverview: vi.fn(),
+  dashboardMetricDetail: vi.fn()
+}));
+vi.mock("../../api/backofficeRealData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/backofficeRealData")>()),
+  backofficeRealDataApi: apiMocks
+}));
 vi.mock("../../components/admin/AdminLayout", () => ({
   AdminLayout: ({ children }: { children: ReactNode }) => createElement("div", null, children)
 }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
 vi.mock("../../features/dashboard/DashboardCharts", () => ({
-  DualAxisLineChart: ({ title }: { title: string }) => createElement("div", null, title)
+  DualAxisLineChart: ({ title }: { title: string }) => createElement("div", null, title),
+  FixedAnalyticsSeriesChart: () => createElement("div", null, "series"),
+  getAnalyticsSeriesColor: (index: number) => `color-${index}`
 }));
 
 const filter = {
@@ -121,6 +131,84 @@ describe("operations unified data dashboard", () => {
     expect(text).toContain("0");
     expect(text).toContain("TEST 功能暂未开放");
     expect([...container.querySelectorAll("button")].some((item) => item.textContent?.includes("TEST"))).toBe(false);
+    expect(container.querySelector('button[aria-label="营业总额 — 查看指标说明和计算公式"]')).toBeTruthy();
+  });
+
+  it("preserves the exact applied custom range and city when opening metric detail", async () => {
+    const customFilter = {
+      ...filter,
+      period: "custom" as const,
+      from: "2026-08-26",
+      to: "2026-09-01",
+      previousFrom: "2026-08-19",
+      previousTo: "2026-08-25",
+      city: "Tokyo"
+    };
+    apiMocks.dashboard
+      .mockResolvedValueOnce(dashboardPayload)
+      .mockResolvedValueOnce({ ...dashboardPayload, filter: customFilter })
+      .mockResolvedValue({ ...dashboardPayload, filter: customFilter });
+    apiMocks.dashboardOverview
+      .mockResolvedValueOnce(overviewPayload)
+      .mockResolvedValueOnce({
+        ...overviewPayload,
+        filter: (({ availableCities: _availableCities, ...rest }) => rest)(customFilter)
+      });
+    apiMocks.dashboardMetricDetail.mockResolvedValue({
+      filter: (({ availableCities: _availableCities, ...rest }) => rest)(customFilter),
+      metric: overviewPayload.operationsFinance[0],
+      series: []
+    });
+    const router = createMemoryRouter([
+      { path: "/admin", element: createElement(DashboardPage) },
+      {
+        path: "/admin/analytics/metrics/:metricKey",
+        element: createElement(DashboardMetricDetailPage)
+      }
+    ], { initialEntries: ["/admin"] });
+    await act(async () => { root.render(createElement(RouterProvider, { router })); });
+
+    const period = container.querySelector<HTMLSelectElement>('select[aria-label="统计期间"]')!;
+    act(() => {
+      period.value = "custom";
+      period.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const setInput = (label: string, value: string) => {
+      const input = container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      act(() => {
+        setter?.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    };
+    setInput("开始日期", "2026-08-26");
+    setInput("结束日期", "2026-09-01");
+    const city = container.querySelector<HTMLSelectElement>('select[aria-label="所属城市"]')!;
+    act(() => {
+      city.value = "Tokyo";
+      city.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const apply = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查询")!;
+    await act(async () => { apply.click(); });
+    const details = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "查看详细数据")!;
+    await act(async () => { details.click(); });
+
+    expect(router.state.location.pathname).toBe("/admin/analytics/metrics/gross_revenue");
+    expect(router.state.location.search)
+      .toBe("?period=custom&from=2026-08-26&to=2026-09-01&city=Tokyo");
+    expect(apiMocks.dashboardMetricDetail).toHaveBeenCalledWith(
+      "gross_revenue",
+      {
+        period: "custom",
+        from: "2026-08-26",
+        to: "2026-09-01",
+        city: "Tokyo"
+      },
+      expect.any(Object)
+    );
   });
 
   it("provides complete five-language dashboard analytics chrome", () => {
@@ -129,7 +217,14 @@ describe("operations unified data dashboard", () => {
       "消耗品销售总额", "专属技师佣金", "兼职技师佣金", "营销佣金", "代理商分佣",
       "NDP 收入", "联盟营销收益", "消耗品销售利润", "新增付费会员", "技师入住",
       "代理商入住", "加盟商入住", "供货商入住", "指标详细数据", "正在加载详细分析",
-      "暂无可展示的序列数据"
+      "暂无可展示的序列数据", "查看详细数据", "TEST 功能暂未开放",
+      "查看指标说明和计算公式", "上一周期", "数据已连接", "数据接口尚未连接",
+      "数据暂不可用", "环比暂不可用", "综合数据概要", "返回数据大盘",
+      "正在更新详细分析，当前仍显示同一指标的上次结果", "详细分析加载失败",
+      "重试加载详细分析", "当前身份没有查看详细分析的权限", "该分析指标或筛选条件无效",
+      "详细分析服务暂时不可用，请稍后重试", "详细分析加载失败，请检查网络后重试",
+      "指标概要", "计算公式", "至少选择一个图例以显示图表", "隐藏图例", "显示图例",
+      "周期对比趋势", "暂无数据"
     ];
     for (const sourceText of sources) {
       for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
@@ -139,6 +234,10 @@ describe("operations unified data dashboard", () => {
       expect(translateTextForContext(sourceText, "en", { portal: "admin" })).not.toBe(sourceText);
       expect(translateTextForContext(sourceText, "ko", { portal: "admin" })).not.toBe(sourceText);
     }
+    expect(translateTextForContext("暂无数据", "zh-Hant", { portal: "admin" })).toBe("暫無資料");
+    expect(translateTextForContext("暂无数据", "ja", { portal: "admin" })).toBe("データなし");
+    expect(translateTextForContext("暂无数据", "en", { portal: "admin" })).toBe("No data");
+    expect(translateTextForContext("暂无数据", "ko", { portal: "admin" })).toBe("데이터 없음");
   });
 
   it("fails closed on mismatched independently resolved windows and preserves the coherent pair", async () => {

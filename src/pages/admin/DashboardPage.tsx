@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   backofficeRealDataApi,
+  serializeDashboardQuerySearch,
   type BackofficeDashboardPayload,
   type DashboardOverviewPayload,
   type DashboardQuery
@@ -318,12 +319,15 @@ export function DashboardPage() {
                       metric.metricKey === "franchisee_onboarding" || metric.metricKey === "supplier_onboarding"
                         ? t("TEST 功能暂未开放")
                         : undefined}
-                    getInfoLabel={() => t("查看指标说明和计算公式")}
+                    getInfoLabel={(title) => `${title} — ${t("查看指标说明和计算公式")}`}
                     getMetricTitle={(metric) => t(getAnalyticsMetricTitleSource(metric.metricKey))}
                     groupTitle={t(groupTitle as string)}
                     key={groupTitle as string}
                     metrics={metrics as DashboardOverviewPayload["operationsFinance"]}
-                    onNavigate={(route) => navigate(route)}
+                    onNavigate={(route) => navigate({
+                      pathname: route,
+                      search: `?${serializeDashboardQuerySearch(query)}`
+                    })}
                     previousLabel={t("上一周期")}
                     statusMessages={{
                       ready: t("数据已连接"),

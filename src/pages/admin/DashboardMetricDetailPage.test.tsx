@@ -9,7 +9,10 @@ import { DashboardMetricDetailPage, describeMetricDetailError } from "./Dashboar
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const apiMocks = vi.hoisted(() => ({ dashboard: vi.fn(), dashboardMetricDetail: vi.fn() }));
-vi.mock("../../api/backofficeRealData", () => ({ backofficeRealDataApi: apiMocks }));
+vi.mock("../../api/backofficeRealData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/backofficeRealData")>()),
+  backofficeRealDataApi: apiMocks
+}));
 vi.mock("../../components/admin/AdminLayout", () => ({
   AdminLayout: ({ children }: { children: ReactNode }) => <>{children}</>
 }));
@@ -23,9 +26,9 @@ vi.mock("../../features/dashboard/DashboardCharts", () => ({
 
 const filter = {
   period: "last7days" as const,
-  from: "2026-08-25",
+  from: "2026-08-26",
   to: "2026-09-01",
-  previousFrom: "2026-08-18",
+  previousFrom: "2026-08-19",
   previousTo: "2026-08-25",
   timeZone: "Asia/Tokyo" as const,
   granularity: "day" as const,
@@ -54,11 +57,11 @@ const detail = (metricKey: string, currentValue: number | null = 0) => {
   },
   series: [{
     seriesKey: metricKey,
-    label: `${metricKey} server series`,
+    label: `${metricKey} backend description`,
     unit,
     points: [
-      { key: "previous", label: "previous server label", value: currentValue },
-      { key: "current", label: "current server label", value: currentValue }
+      { key: "previous", label: "2026-08-19 - 2026-08-25", value: currentValue },
+      { key: "current", label: "2026-08-26 - 2026-09-01", value: currentValue }
     ]
   }]
   });
@@ -143,6 +146,7 @@ describe("DashboardMetricDetailPage", () => {
     await act(async () => { dashboardRequest.resolve(dashboard); });
 
     expect(container.textContent).toContain("new_users backend formula");
+    expect(container.querySelector('button[aria-label="新增用户 — 查看指标说明和计算公式"]')).toBeTruthy();
     expect(container.textContent).toContain("0");
     expect([...container.querySelector<HTMLSelectElement>('select[aria-label="所属城市"]')!.options]
       .map((option) => option.value))
@@ -162,6 +166,27 @@ describe("DashboardMetricDetailPage", () => {
     expect(router.state.location.search).toBe("?period=month&city=Tokyo");
     expect(apiMocks.dashboardMetricDetail).toHaveBeenLastCalledWith(
       "new_users", { period: "month", city: "Tokyo" }, expect.any(Object)
+    );
+  });
+
+  it("replaces a noisy initial URL with the canonical normalized dashboard query before loading", async () => {
+    const monthFilter = { ...filter, period: "month" as const };
+    apiMocks.dashboardMetricDetail.mockResolvedValue({ ...detail("new_users"), filter: monthFilter });
+    apiMocks.dashboard.mockResolvedValue({
+      ...dashboard,
+      filter: { ...monthFilter, availableCities: ["Tokyo", "Osaka"] }
+    });
+    const router = await renderAt(
+      "/admin/analytics/metrics/new_users?period=month&from=2026-01-01&to=2026-01-31&city=%20Tokyo%20&city=Osaka&ignored=value"
+    );
+
+    expect(router.state.location.search).toBe("?period=month&city=Tokyo");
+    expect(apiMocks.dashboardMetricDetail).toHaveBeenCalledTimes(1);
+    expect(apiMocks.dashboardMetricDetail).toHaveBeenCalledWith(
+      "new_users", { period: "month", city: "Tokyo" }, expect.any(Object)
+    );
+    expect(apiMocks.dashboard).toHaveBeenCalledWith(
+      "backoffice", { period: "month", city: "Tokyo" }, expect.any(Object)
     );
   });
 

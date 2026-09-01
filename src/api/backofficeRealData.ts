@@ -732,6 +732,16 @@ function serializeDashboardQuery(scope: BackofficeScope, query: DashboardQuery):
   return serialized;
 }
 
+export function serializeDashboardQuerySearch(query: DashboardQuery) {
+  const serialized = serializeDashboardQuery("backoffice", query);
+  const search = new URLSearchParams();
+  search.set("period", serialized.period);
+  if (serialized.from) search.set("from", serialized.from);
+  if (serialized.to) search.set("to", serialized.to);
+  if (serialized.city) search.set("city", serialized.city);
+  return search.toString();
+}
+
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
@@ -807,7 +817,14 @@ function isCalendarDate(value: unknown): value is string {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-function requireAnalyticsFilter(value: unknown): AnalyticsDashboardFilter {
+function calendarDayNumber(value: string) {
+  return Date.parse(`${value}T00:00:00.000Z`) / 86_400_000;
+}
+
+function requireAnalyticsFilter(
+  value: unknown,
+  expectedQuery: DashboardQuery
+): AnalyticsDashboardFilter {
   const keys = [
     "period", "from", "to", "previousFrom", "previousTo", "timeZone", "granularity", "city"
   ];
@@ -823,6 +840,30 @@ function requireAnalyticsFilter(value: unknown): AnalyticsDashboardFilter {
     !(value.city === null || (
       typeof value.city === "string" && value.city.trim() === value.city &&
       value.city.length > 0 && value.city.length <= 100
+    ))
+  ) {
+    throw new Error("error.api");
+  }
+  const currentFrom = calendarDayNumber(value.from as string);
+  const currentTo = calendarDayNumber(value.to as string);
+  const previousFrom = calendarDayNumber(value.previousFrom as string);
+  const previousTo = calendarDayNumber(value.previousTo as string);
+  const currentDayCount = currentTo - currentFrom + 1;
+  const previousDayCount = previousTo - previousFrom + 1;
+  const expectedGranularity: DashboardGranularity = expectedQuery.period === "today"
+    ? "hour"
+    : expectedQuery.period === "year" || (expectedQuery.period === "custom" && currentDayCount > 92)
+      ? "month"
+      : "day";
+  if (
+    currentDayCount < 1 ||
+    previousDayCount !== currentDayCount ||
+    previousTo + 1 !== currentFrom ||
+    value.period !== expectedQuery.period ||
+    value.city !== (expectedQuery.city ?? null) ||
+    value.granularity !== expectedGranularity ||
+    (expectedQuery.period === "custom" && (
+      value.from !== expectedQuery.from || value.to !== expectedQuery.to
     ))
   ) {
     throw new Error("error.api");
@@ -893,12 +934,15 @@ function requireMetricList(value: unknown): AnalyticsMetricPayload[] {
   return value.map(requireAnalyticsMetric);
 }
 
-function requireDashboardOverview(value: unknown): DashboardOverviewPayload {
+function requireDashboardOverview(
+  value: unknown,
+  expectedQuery: DashboardQuery
+): DashboardOverviewPayload {
   if (!isExactObject(value, ["filter", "operationsFinance", "commissionMetrics", "growthMetrics"])) {
     throw new Error("error.api");
   }
   const payload = {
-    filter: requireAnalyticsFilter(value.filter),
+    filter: requireAnalyticsFilter(value.filter, expectedQuery),
     operationsFinance: requireMetricList(value.operationsFinance),
     commissionMetrics: requireMetricList(value.commissionMetrics),
     growthMetrics: requireMetricList(value.growthMetrics)
@@ -916,9 +960,12 @@ function requireDashboardOverview(value: unknown): DashboardOverviewPayload {
   return payload;
 }
 
-function requireDashboardMetricDetail(value: unknown): DashboardMetricDetailPayload {
+function requireDashboardMetricDetail(
+  value: unknown,
+  expectedQuery: DashboardQuery
+): DashboardMetricDetailPayload {
   if (!isExactObject(value, ["filter", "metric", "series"])) throw new Error("error.api");
-  const filter = requireAnalyticsFilter(value.filter);
+  const filter = requireAnalyticsFilter(value.filter, expectedQuery);
   const metric = requireAnalyticsMetric(value.metric);
   if (!Array.isArray(value.series) || value.series.length > 1) throw new Error("error.api");
   if (value.series.length === 0) return { filter, metric, series: [] };
@@ -926,19 +973,23 @@ function requireDashboardMetricDetail(value: unknown): DashboardMetricDetailPayl
   if (
     !isExactObject(seriesValue, ["seriesKey", "label", "unit", "points"]) ||
     seriesValue.seriesKey !== metric.metricKey ||
-    typeof seriesValue.label !== "string" || seriesValue.label.trim().length === 0 ||
+    seriesValue.label !== metric.description ||
     seriesValue.unit !== metric.unit ||
     !Array.isArray(seriesValue.points) || seriesValue.points.length !== 2
   ) {
     throw new Error("error.api");
   }
   const expectedPointKeys = ["previous", "current"];
+  const expectedPointLabels = [
+    `${filter.previousFrom} - ${filter.previousTo}`,
+    `${filter.from} - ${filter.to}`
+  ];
   const expectedValues = [metric.previousValue, metric.currentValue];
   const points = seriesValue.points.map((point, index) => {
     if (
       !isExactObject(point, ["key", "label", "value"]) ||
       point.key !== expectedPointKeys[index] ||
-      typeof point.label !== "string" || point.label.trim().length === 0 ||
+      point.label !== expectedPointLabels[index] ||
       point.value !== expectedValues[index] ||
       !(point.value === null || Number.isSafeInteger(point.value))
     ) {
@@ -1018,25 +1069,27 @@ export const backofficeRealDataApi = {
     });
   },
   async dashboardOverview(query: DashboardQuery, options?: { signal?: AbortSignal }) {
+    const serializedQuery = serializeDashboardQuery("backoffice", query);
     const payload = await httpClient.request<unknown>("/backoffice/dashboard/overview", {
-      query: serializeDashboardQuery("backoffice", query),
+      query: serializedQuery,
       ...(options?.signal ? { signal: options.signal } : {})
     });
-    return requireDashboardOverview(payload);
+    return requireDashboardOverview(payload, serializedQuery);
   },
   async dashboardMetricDetail(
     metricKey: string,
     query: DashboardQuery,
     options?: { signal?: AbortSignal }
   ) {
+    const serializedQuery = serializeDashboardQuery("backoffice", query);
     const payload = await httpClient.request<unknown>(
       `/backoffice/dashboard/metrics/${encodeURIComponent(metricKey)}`,
       {
-        query: serializeDashboardQuery("backoffice", query),
+        query: serializedQuery,
         ...(options?.signal ? { signal: options.signal } : {})
       }
     );
-    const detail = requireDashboardMetricDetail(payload);
+    const detail = requireDashboardMetricDetail(payload, serializedQuery);
     if (detail.metric.metricKey !== metricKey) throw new Error("error.api");
     return detail;
   },

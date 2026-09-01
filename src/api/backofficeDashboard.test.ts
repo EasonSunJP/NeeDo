@@ -328,9 +328,9 @@ describe("formal dashboard frontend API contract", () => {
 
   const analyticsFilter = {
     period: "last7days" as const,
-    from: "2026-08-25",
+    from: "2026-08-26",
     to: "2026-09-01",
-    previousFrom: "2026-08-18",
+    previousFrom: "2026-08-19",
     previousTo: "2026-08-25",
     timeZone: "Asia/Tokyo" as const,
     granularity: "day" as const,
@@ -388,13 +388,16 @@ describe("formal dashboard frontend API contract", () => {
   });
 
   it("loads and strictly projects the formal analytics overview with the serialized dashboard query", async () => {
-    const payload = analyticsOverview();
+    const payload = {
+      ...analyticsOverview(),
+      filter: { ...analyticsFilter, period: "custom" as const }
+    };
     const controller = new AbortController();
     vi.mocked(httpClient.request).mockResolvedValueOnce(payload);
 
     await expect(backofficeRealDataApi.dashboardOverview({
       period: "custom",
-      from: "2026-08-25",
+      from: "2026-08-26",
       to: "2026-09-01",
       city: "Tokyo"
     }, { signal: controller.signal })).resolves.toEqual(payload);
@@ -402,7 +405,7 @@ describe("formal dashboard frontend API contract", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/backoffice/dashboard/overview", {
       query: {
         period: "custom",
-        from: "2026-08-25",
+        from: "2026-08-26",
         to: "2026-09-01",
         city: "Tokyo"
       },
@@ -426,11 +429,11 @@ describe("formal dashboard frontend API contract", () => {
       metric: unavailableMetric,
       series: [{
         seriesKey: "travel_fare",
-        label: "Formal backend series label",
+        label: "Formal backend description",
         unit: "jpy",
         points: [
-          { key: "previous", label: "previous label", value: null },
-          { key: "current", label: "current label", value: null }
+          { key: "previous", label: "2026-08-19 - 2026-08-25", value: null },
+          { key: "current", label: "2026-08-26 - 2026-09-01", value: null }
         ]
       }]
     };
@@ -467,7 +470,11 @@ describe("formal dashboard frontend API contract", () => {
     { ...analyticsFilter, timeZone: "UTC" },
     { ...analyticsFilter, availableCities: ["must not be accepted"] },
     { ...analyticsFilter, city: 17 },
-    { ...analyticsFilter, from: "not-a-date" }
+    { ...analyticsFilter, from: "not-a-date" },
+    { ...analyticsFilter, from: "2026-09-02" },
+    { ...analyticsFilter, previousTo: "2026-08-26" },
+    { ...analyticsFilter, previousFrom: "2026-08-18" },
+    { ...analyticsFilter, granularity: "hour" }
   ])("rejects malformed analytics filters", async (filter) => {
     vi.mocked(httpClient.request).mockResolvedValueOnce({
       ...analyticsOverview(),
@@ -493,6 +500,54 @@ describe("formal dashboard frontend API contract", () => {
   });
 
   it.each([
+    [{ period: "last30days" as const }, analyticsOverview()],
+    [{ period: "last7days" as const, city: "Osaka" }, analyticsOverview()],
+    [{ period: "custom" as const, from: "2026-08-27", to: "2026-09-01" }, {
+      ...analyticsOverview(), filter: { ...analyticsFilter, period: "custom" as const }
+    }]
+  ])("binds the analytics response filter to the exact serialized request", async (query, payload) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce(payload);
+    await expect(backofficeRealDataApi.dashboardOverview(query)).rejects.toThrow("error.api");
+  });
+
+  it("requires the period-specific granularity while accepting a long custom monthly window", async () => {
+    const yearPayload = {
+      ...analyticsOverview(),
+      filter: {
+        ...analyticsFilter,
+        period: "year" as const,
+        from: "2026-01-01",
+        to: "2026-12-31",
+        previousFrom: "2025-01-01",
+        previousTo: "2025-12-31",
+        granularity: "day" as const
+      }
+    };
+    const longCustomPayload = {
+      ...analyticsOverview(),
+      filter: {
+        ...analyticsFilter,
+        period: "custom" as const,
+        from: "2026-01-01",
+        to: "2026-04-03",
+        previousFrom: "2025-09-30",
+        previousTo: "2025-12-31",
+        granularity: "month" as const,
+        city: null
+      }
+    };
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce(yearPayload)
+      .mockResolvedValueOnce(longCustomPayload);
+
+    await expect(backofficeRealDataApi.dashboardOverview({ period: "year" }))
+      .rejects.toThrow("error.api");
+    await expect(backofficeRealDataApi.dashboardOverview({
+      period: "custom", from: "2026-01-01", to: "2026-04-03"
+    })).resolves.toEqual(longCustomPayload);
+  });
+
+  it.each([
     [[{ seriesKey: "gross_revenue", label: "x", unit: "jpy", points: [] }]],
     [[{
       seriesKey: "wrong",
@@ -511,6 +566,24 @@ describe("formal dashboard frontend API contract", () => {
         { key: "previous", label: "p", value: 1000 },
         { key: "current", label: "c", value: Number.NaN }
       ]
+    }]],
+    [[{
+      seriesKey: "gross_revenue",
+      label: "not the metric description",
+      unit: "jpy",
+      points: [
+        { key: "previous", label: "2026-08-19 - 2026-08-25", value: 1000 },
+        { key: "current", label: "2026-08-26 - 2026-09-01", value: 1200 }
+      ]
+    }]],
+    [[{
+      seriesKey: "gross_revenue",
+      label: "Formal backend description",
+      unit: "jpy",
+      points: [
+        { key: "previous", label: "wrong previous label", value: 1000 },
+        { key: "current", label: "2026-08-26 - 2026-09-01", value: 1200 }
+      ]
     }]]
   ])("rejects malformed analytics detail series", async (series) => {
     vi.mocked(httpClient.request).mockResolvedValueOnce({
@@ -520,7 +593,7 @@ describe("formal dashboard frontend API contract", () => {
     });
 
     await expect(backofficeRealDataApi.dashboardMetricDetail("gross_revenue", {
-      period: "last7days"
+      period: "last7days", city: "Tokyo"
     })).rejects.toThrow("error.api");
   });
 
@@ -531,7 +604,7 @@ describe("formal dashboard frontend API contract", () => {
       series: []
     });
     await expect(backofficeRealDataApi.dashboardMetricDetail("gross_revenue", {
-      period: "last7days"
+      period: "last7days", city: "Tokyo"
     })).resolves.toMatchObject({ series: [] });
   });
 
@@ -542,7 +615,7 @@ describe("formal dashboard frontend API contract", () => {
       series: []
     });
     await expect(backofficeRealDataApi.dashboardMetricDetail("travel_fare", {
-      period: "last7days"
+      period: "last7days", city: "Tokyo"
     })).rejects.toThrow("error.api");
   });
 });

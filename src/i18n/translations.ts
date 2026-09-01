@@ -90,6 +90,7 @@ const analyticsTask6Translations: TranslationMap = {
   "隐藏图例": fourLanguageTranslation("隱藏圖例", "系列を非表示", "Hide series", "범례 숨기기"),
   "显示图例": fourLanguageTranslation("顯示圖例", "系列を表示", "Show series", "범례 표시"),
   "周期对比趋势": fourLanguageTranslation("週期對比趨勢", "期間比較", "Period comparison", "기간 비교 추이"),
+  "暂无数据": fourLanguageTranslation("暫無資料", "データなし", "No data", "데이터 없음"),
   "暂无可展示的序列数据": fourLanguageTranslation("暫無可展示的序列資料", "表示できる系列データがありません", "No series data to display", "표시할 시계열 데이터가 없습니다")
 };
 

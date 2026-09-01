@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
+  serializeDashboardQuerySearch,
   type BackofficeDashboardPayload,
   type DashboardMetricDetailPayload,
   type DashboardPeriod,
@@ -60,11 +61,21 @@ export function DashboardMetricDetailPage() {
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
   const searchKey = searchParams.toString();
   const query = useMemo(() => readDashboardQuery(new URLSearchParams(searchKey)), [searchKey]);
+  const canonicalSearch = useMemo(
+    () => query ? serializeDashboardQuerySearch(query) : null,
+    [query]
+  );
   const [pair, setPair] = useState<MetricDetailPair | null>(null);
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [revision, setRevision] = useState(0);
   const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    if (canonicalSearch !== null && canonicalSearch !== searchKey) {
+      setSearchParams(canonicalSearch, { replace: true });
+    }
+  }, [canonicalSearch, searchKey, setSearchParams]);
 
   useEffect(() => {
     const requestId = requestIdRef.current + 1;
@@ -78,6 +89,7 @@ export function DashboardMetricDetailPage() {
       setErrorMessage("该分析指标或筛选条件无效");
       return () => controller.abort();
     }
+    if (canonicalSearch !== searchKey) return () => controller.abort();
 
     void Promise.all([
       backofficeRealDataApi.dashboardMetricDetail(metricKey, query, { signal: controller.signal }),
@@ -98,7 +110,7 @@ export function DashboardMetricDetailPage() {
       });
 
     return () => controller.abort();
-  }, [metricKey, query, revision]);
+  }, [canonicalSearch, metricKey, query, revision, searchKey]);
 
   const visiblePair = pair?.detail.metric.metricKey === metricKey ? pair : null;
   const metricTitle = visiblePair
@@ -166,7 +178,7 @@ export function DashboardMetricDetailPage() {
         {visiblePair ? (
           <>
             <AnalyticsMetricGrid
-              getInfoLabel={() => t("查看指标说明和计算公式")}
+              getInfoLabel={(title) => `${title} — ${t("查看指标说明和计算公式")}`}
               getMetricTitle={() => metricTitle}
               groupTitle={t("指标概要")}
               metrics={[visiblePair.detail.metric]}
