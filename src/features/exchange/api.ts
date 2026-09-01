@@ -2,6 +2,7 @@ import { httpClient } from "../../api/httpClient";
 import type {
   CreateExchangeClaimInput,
   ExchangeClaim,
+  ExchangeClaimMine,
   ExchangeClaimOption,
   ExchangeClaimOptionListInput,
   ExchangeComment,
@@ -72,13 +73,17 @@ export function listReceivedExchangeClaims(
   });
 }
 
-export function getMyExchangeClaim(
+export async function getMyExchangeClaim(
   postId: string,
   signal?: AbortSignal
 ): Promise<ExchangeClaim | null> {
-  return httpClient.request<ExchangeClaim | null>(`/exchange/posts/${postId}/claims/mine`, {
-    signal
-  });
+  const payload = await httpClient.request<ExchangeClaimMine>(
+    `/exchange/posts/${postId}/claims/mine`,
+    {
+      signal
+    }
+  );
+  return payload.claim;
 }
 
 export function withdrawExchangeClaim(claimId: string, key: string): Promise<ExchangeClaim> {

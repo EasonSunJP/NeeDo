@@ -252,6 +252,23 @@ describe("formal Exchange claim routes", () => {
     );
   });
 
+  it("wraps an absent own claim in a non-null success payload", async () => {
+    const { app, login, service } = await createFixture();
+    service.getMine.mockResolvedValueOnce(null);
+    const token = await login("claim-enabled@example.test");
+
+    const response = await request(app)
+      .get("/api/v1/exchange/posts/41/claims/mine")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      code: 0,
+      message: "success",
+      data: { claim: null }
+    });
+  });
+
   it("requires a valid idempotency key for withdrawal", async () => {
     const { app, login, service } = await createFixture();
     const token = await login("claim-enabled@example.test");

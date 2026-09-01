@@ -130,7 +130,7 @@ NeeDo Exchange 已完成正式 Request 发布、真实数据库、正式 API、R
 读取接口：
 
 - `GET /api/v1/exchange/posts/{id}/claims?page=1&page_size=20`：仅 Request 所有者读取收到的抢单。
-- `GET /api/v1/exchange/posts/{id}/claims/mine`：返回当前身份在该 Request 下的有效或最近一条抢单，不是列表接口。
+- `GET /api/v1/exchange/posts/{id}/claims/mine`：返回 `{ claim: ExchangeClaim | null }`，其中 `claim` 是当前身份在该 Request 下的有效或最近一条抢单；使用非空对象包装，避免与统一失败响应的 `data: null` 冲突；该接口不是列表接口。
 
 审计动作：
 

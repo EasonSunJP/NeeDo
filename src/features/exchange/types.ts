@@ -65,6 +65,10 @@ export type ExchangeClaim = {
   terminalAt: string | null;
 };
 
+export type ExchangeClaimMine = {
+  claim: ExchangeClaim | null;
+};
+
 export type ExchangeClaimOptionListInput = PaginationInput & {
   shopId?: number;
   technicianProfileId?: number;

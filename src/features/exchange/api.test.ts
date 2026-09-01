@@ -249,4 +249,14 @@ describe("formal Exchange API client", () => {
       method: "POST"
     });
   });
+
+  it("unwraps the explicit nullable own-claim payload", async () => {
+    const signal = new AbortController().signal;
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ claim: null });
+
+    await expect(getMyExchangeClaim("41", signal)).resolves.toBeNull();
+    expect(httpClient.request).toHaveBeenCalledWith("/exchange/posts/41/claims/mine", {
+      signal
+    });
+  });
 });
