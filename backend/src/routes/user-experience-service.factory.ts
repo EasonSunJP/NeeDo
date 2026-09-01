@@ -11,7 +11,11 @@ export const createUserExperienceServiceForRoutes = (
   dependencies: AppDependencies
 ): Pick<
   UserExperienceService,
-  "recordEvent" | "recordNdpConsumption" | "getSummary" | "listEntries"
+  | "recordEvent"
+  | "recordNdpConsumption"
+  | "recordMembershipRenewal"
+  | "getSummary"
+  | "listEntries"
 > | undefined => {
   if (dependencies.userExperienceService) return dependencies.userExperienceService;
   if (!dependencies.userExperienceRepository) return undefined;

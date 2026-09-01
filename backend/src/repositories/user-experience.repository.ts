@@ -423,7 +423,15 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
           policyVersionId: event.policyVersionId,
           campaignVersionId: event.campaignVersionId,
           occurredAt: event.occurredAt,
-          reversalOfEntryId: event.reversalOfEntryId
+          reversalOfEntryId: event.reversalOfEntryId,
+          ledgerTransactionId: event.ledgerTransactionId ?? null,
+          entitlementId: event.entitlementId ?? null,
+          ndpAmount: event.ndpAmount ?? null,
+          ndpPerBaseExp: event.ndpPerBaseExp ?? null,
+          extraThresholdNdp: event.extraThresholdNdp ?? null,
+          extraAwardUnits: event.extraAwardUnits ?? null,
+          accumulatorBeforeNumerator: event.accumulatorBeforeNumerator ?? null,
+          accumulatorAfterNumerator: event.accumulatorAfterNumerator ?? null
         },
         select: entrySelect
       });

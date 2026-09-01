@@ -2,6 +2,7 @@ import {
   calculateFinalExperienceUnits,
   USER_EXPERIENCE_EVENT_TYPES,
   type NdpConsumptionExperienceSource,
+  type MembershipRenewalExperienceSource,
   type UserExperienceCampaignResolverPort,
   type UserExperienceGlobalPolicyResolverPort,
   type UserExperienceMembershipResolverPort,
@@ -228,6 +229,97 @@ export class UserExperienceService {
       event,
       options.transactionClient ? options : undefined
     );
+  }
+
+  public async recordMembershipRenewal(
+    source: MembershipRenewalExperienceSource,
+    options: { transactionClient?: unknown } = {}
+  ): Promise<UserExperienceMutationResult> {
+    this.assertMembershipRenewalSource(source);
+    const account = await this.repository.findActiveAccount(source.userId);
+    if (!account) return { status: "ineligible", account: null };
+    if (
+      source.experienceValueNdp === 0 ||
+      !source.benefits.some((benefit) => benefit.code === "ndp_experience")
+    ) {
+      return { status: "ineligible", account };
+    }
+    if (!this.globalPolicyResolver) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.user_experience.ndp_policy_unavailable",
+        statusCode: 500
+      });
+    }
+    const policy = await this.globalPolicyResolver.resolvePolicyAt(source.occurredAt);
+    const membershipMultiplierBps = Math.round(source.multiplier * 10_000);
+    if (
+      !Number.isSafeInteger(policy.ndpPerBaseExp) ||
+      policy.ndpPerBaseExp <= 0 ||
+      !Number.isSafeInteger(policy.baseExpUnitsPerThreshold) ||
+      policy.baseExpUnitsPerThreshold <= 0 ||
+      !Number.isSafeInteger(membershipMultiplierBps) ||
+      membershipMultiplierBps <= 0
+    ) {
+      throw new RangeError("membership renewal experience policy is invalid");
+    }
+    const baseUnits =
+      (BigInt(source.experienceValueNdp) *
+        BigInt(policy.baseExpUnitsPerThreshold)) /
+      BigInt(policy.ndpPerBaseExp);
+    const finalUnits = calculateFinalExperienceUnits({
+      baseUnits,
+      campaignFactorBps: 10_000,
+      membershipMultiplierBps,
+      extraUnits: 0n
+    });
+    const event = {
+      userId: source.userId,
+      eventType: "membership_renewed" as const,
+      sourceType: "platform_membership_entitlement",
+      sourcePublicId: source.entitlementPublicId,
+      idempotencyKey: `membership-renewal:${source.entitlementPublicId}`,
+      baseUnits,
+      campaignFactorBps: 10_000,
+      membershipMultiplierBps,
+      extraUnits: 0n,
+      finalUnits,
+      membershipTierCode: source.tierCode,
+      membershipTierVersionId: source.tierVersionPublicId,
+      policyVersionId: policy.versionPublicId,
+      campaignVersionId: null,
+      occurredAt: source.occurredAt,
+      reversalOfEntryId: null,
+      entitlementId: source.entitlementId,
+      ndpAmount: source.experienceValueNdp,
+      ndpPerBaseExp: policy.ndpPerBaseExp,
+      extraThresholdNdp: null,
+      extraAwardUnits: 0n,
+      accumulatorBeforeNumerator: null,
+      accumulatorAfterNumerator: null
+    };
+    return this.repository.recordCalculatedEvent(
+      event,
+      options.transactionClient ? options : undefined
+    );
+  }
+
+  private assertMembershipRenewalSource(source: MembershipRenewalExperienceSource): void {
+    if (
+      !Number.isSafeInteger(source.userId) ||
+      source.userId < 1 ||
+      !Number.isSafeInteger(source.entitlementId) ||
+      source.entitlementId < 1 ||
+      !source.entitlementPublicId ||
+      source.entitlementPublicId.length > 96 ||
+      !Number.isSafeInteger(source.experienceValueNdp) ||
+      source.experienceValueNdp < 0 ||
+      !Number.isFinite(source.multiplier) ||
+      source.multiplier <= 0 ||
+      Number.isNaN(source.occurredAt.getTime())
+    ) {
+      throw new RangeError("membership renewal experience source is invalid");
+    }
   }
 
   private parseNdpBenefitConfiguration(configuration: unknown): {

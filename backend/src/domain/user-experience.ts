@@ -69,6 +69,26 @@ export interface UserExperienceCalculatedEvent {
   campaignVersionId: string | null;
   occurredAt: Date;
   reversalOfEntryId: number | null;
+  ledgerTransactionId?: number | null;
+  entitlementId?: number | null;
+  ndpAmount?: number | null;
+  ndpPerBaseExp?: number | null;
+  extraThresholdNdp?: number | null;
+  extraAwardUnits?: bigint | null;
+  accumulatorBeforeNumerator?: bigint | null;
+  accumulatorAfterNumerator?: bigint | null;
+}
+
+export interface MembershipRenewalExperienceSource {
+  userId: number;
+  entitlementId: number;
+  entitlementPublicId: string;
+  experienceValueNdp: number;
+  tierCode: PlatformMembershipTierCodeValue;
+  tierVersionPublicId: string;
+  multiplier: number;
+  benefits: Array<{ code: PlatformMembershipBenefitCodeValue }>;
+  occurredAt: Date;
 }
 
 export interface NdpConsumptionExperienceSource {

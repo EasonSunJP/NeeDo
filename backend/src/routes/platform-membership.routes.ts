@@ -43,7 +43,9 @@ export const createPlatformMembershipRoutes = (
     dependencies.platformMembershipAdministrationService ??
     new PlatformMembershipService(
       dependencies.platformMembershipRepository ?? new PlatformMembershipRepository(),
-      audit
+      audit,
+      undefined,
+      dependencies.userExperienceService
     );
   const controller = new PlatformMembershipController(service as PlatformMembershipService);
 

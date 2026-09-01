@@ -10,6 +10,9 @@ import {
   type PlatformMembershipEntitlementCommand
 } from "../domain/platform-membership-entitlement";
 import type {
+  MembershipRenewalExperienceSource
+} from "../domain/user-experience";
+import type {
   PlatformMembershipBenefitAdministrationPayload,
   PlatformMembershipBenefitMutationResult,
   PlatformMembershipEntitlementMutationResult,
@@ -24,6 +27,13 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
+
+export interface PlatformMembershipExperienceRecorderPort {
+  recordMembershipRenewal: (
+    source: MembershipRenewalExperienceSource,
+    options?: { transactionClient?: unknown }
+  ) => Promise<unknown>;
+}
 
 export type PlatformMembershipTierDraftInput =
   PlatformMembershipTierDraftPersistenceInput;
@@ -47,7 +57,8 @@ export class PlatformMembershipService {
   public constructor(
     private readonly repository: PlatformMembershipRepositoryPort,
     private readonly auditInputFactory?: AuditInputFactory,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly experienceRecorder?: PlatformMembershipExperienceRecorderPort
   ) {}
 
   public async resolveMembershipAt(userId: number, occurredAt: Date) {
@@ -184,6 +195,15 @@ export class PlatformMembershipService {
       userId,
       occurredAt,
       command: normalized,
+      ...(this.experienceRecorder
+        ? {
+            onEntitlementCreated: async ({ transactionClient, ...source }) => {
+              await this.experienceRecorder!.recordMembershipRenewal(source, {
+                transactionClient
+              });
+            }
+          }
+        : {}),
       audit: this.requireAuditFactory().createInput({
         actor,
         context,

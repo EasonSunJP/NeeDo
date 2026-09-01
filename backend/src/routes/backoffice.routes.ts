@@ -86,7 +86,12 @@ export const createBackofficeRoutes = (
         config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
       ),
     dependencies.platformMembershipService ??
-      new PlatformMembershipService(new PlatformMembershipRepository(), auditLogService)
+      new PlatformMembershipService(
+        new PlatformMembershipRepository(),
+        auditLogService,
+        undefined,
+        dependencies.userExperienceService
+      )
   );
   const controller = new BackofficeController(service);
 
