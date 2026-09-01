@@ -137,6 +137,8 @@ export const EXCHANGE_PERMISSIONS = {
   claimReadOwn: "exchange:claims:read-own",
   claimListOwnedRequest: "exchange:claims:list-owned-request",
   claimWithdrawOwn: "exchange:claims:withdraw-own",
+  matchingReadOwn: "exchange:matching:read-own",
+  matchingSelectOwn: "exchange:matching:select-own",
   commentList: "exchange:comments:list",
   commentCreate: "exchange:comments:create",
   likeWrite: "exchange:likes:write",
@@ -1618,6 +1620,20 @@ export const SYSTEM_PERMISSIONS = [
     "撤回当前身份尚未匹配成立的正式抢单"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.matchingReadOwn,
+    "读取需求匹配",
+    "api",
+    "exchange",
+    "读取本人发布需求或本人入选需求的正式匹配状态"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.matchingSelectOwn,
+    "完成需求选配",
+    "api",
+    "exchange",
+    "为本人发布的选配需求选择准确人数的有效抢单"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.commentList,
     "需求情报评论列表",
     "api",
@@ -1694,7 +1710,9 @@ const EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES = [
-  EXCHANGE_PERMISSIONS.claimListOwnedRequest
+  EXCHANGE_PERMISSIONS.claimListOwnedRequest,
+  EXCHANGE_PERMISSIONS.matchingReadOwn,
+  EXCHANGE_PERMISSIONS.matchingSelectOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [

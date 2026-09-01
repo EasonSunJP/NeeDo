@@ -1,7 +1,9 @@
 import {
   BookingOrderStatus,
   ExchangeClaimStatus as DatabaseExchangeClaimStatus,
+  ExchangeMatchEventType as DatabaseExchangeMatchEventType,
   ExchangeMatchMode as DatabaseExchangeMatchMode,
+  ExchangeMatchingStatus as DatabaseExchangeMatchingStatus,
   ExchangePostStatus as DatabaseExchangePostStatus,
   ExchangePostType as DatabaseExchangePostType,
   Prisma,
@@ -214,6 +216,14 @@ export class ExchangeClaimRepository {
       )`,
       Prisma.sql`NOT EXISTS (
         SELECT 1
+        FROM \`exchange_match_participants\` AS matched_participant
+        WHERE matched_participant.\`technician_profile_id\` = slot.\`technician_profile_id\`
+          AND matched_participant.\`estimated_starts_at\` < slot.\`ends_at\`
+          AND matched_participant.\`estimated_ends_at\` > slot.\`starts_at\`
+          AND matched_participant.\`deleted_at\` IS NULL
+      )`,
+      Prisma.sql`NOT EXISTS (
+        SELECT 1
         FROM \`exchange_claims\` AS active_claim
         JOIN \`schedule_slots\` AS claimed_slot
           ON claimed_slot.\`id\` = active_claim.\`schedule_slot_id\`
@@ -393,6 +403,77 @@ export class ExchangeClaimRepository {
           }
         : null
     };
+  }
+
+  public async lockMatching(postId: number): Promise<{
+    id: number;
+    status: "open" | "matched" | "closed";
+    version: number;
+  } | null> {
+    const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT id
+      FROM \`exchange_request_matchings\`
+      WHERE exchange_post_id = ${postId}
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `);
+    if (!locked[0]) return null;
+    const row = await this.client.exchangeRequestMatching.findUnique({
+      where: { exchangePostId: postId },
+      select: { id: true, status: true, version: true }
+    });
+    return row
+      ? {
+          id: row.id,
+          status: row.status.toLowerCase() as "open" | "matched" | "closed",
+          version: row.version
+        }
+      : null;
+  }
+
+  public async advanceMatchingForClaimEvent(input: {
+    matchingId: number;
+    exchangePostId: number;
+    claimId: number;
+    type: "claim_added" | "claim_withdrawn";
+    actorUserId: number;
+    actorIdentityId: number;
+    versionBefore: number;
+    at: Date;
+  }): Promise<boolean> {
+    const versionAfter = input.versionBefore + 1;
+    const updated = await this.client.exchangeRequestMatching.updateMany({
+      where: {
+        id: input.matchingId,
+        exchangePostId: input.exchangePostId,
+        status: DatabaseExchangeMatchingStatus.OPEN,
+        version: input.versionBefore,
+        deletedAt: null
+      },
+      data: { version: versionAfter, updatedAt: input.at }
+    });
+    if (updated.count !== 1) return false;
+    await this.client.exchangeMatchEvent.create({
+      data: {
+        matchingId: input.matchingId,
+        sequence: versionAfter,
+        type:
+          input.type === "claim_added"
+            ? DatabaseExchangeMatchEventType.CLAIM_ADDED
+            : DatabaseExchangeMatchEventType.CLAIM_WITHDRAWN,
+        actorUserId: input.actorUserId,
+        actorIdentityId: input.actorIdentityId,
+        versionBefore: input.versionBefore,
+        versionAfter,
+        payload: {
+          exchangePostId: input.exchangePostId,
+          exchangeClaimId: input.claimId
+        },
+        createdAt: input.at,
+        updatedAt: input.at
+      }
+    });
+    return true;
   }
 
   public async findOptionCandidate(
@@ -575,6 +656,23 @@ export class ExchangeClaimRepository {
         scheduleSlot: {
           is: { startsAt: { lt: endsAt }, endsAt: { gt: startsAt }, deletedAt: null }
         }
+      },
+      select: { id: true }
+    });
+    return Boolean(row);
+  }
+
+  public async hasOverlappingMatchParticipant(
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    const row = await this.client.exchangeMatchParticipant.findFirst({
+      where: {
+        technicianProfileId,
+        estimatedStartsAt: { lt: endsAt },
+        estimatedEndsAt: { gt: startsAt },
+        deletedAt: null
       },
       select: { id: true }
     });
@@ -806,7 +904,13 @@ export class ExchangeClaimRepository {
             ? "withdrawn"
             : row.status === DatabaseExchangeClaimStatus.REQUEST_WITHDRAWN
               ? "request_withdrawn"
-              : "request_expired",
+              : row.status === DatabaseExchangeClaimStatus.REQUEST_EXPIRED
+                ? "request_expired"
+                : row.status === DatabaseExchangeClaimStatus.MATCHED
+                  ? "matched"
+                  : row.status === DatabaseExchangeClaimStatus.NOT_SELECTED
+                    ? "not_selected"
+                    : "matching_closed",
       provider: {
         publicId: providerPublicId,
         displayName:

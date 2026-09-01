@@ -837,6 +837,8 @@ enum ExchangePostStatus {
   PUBLISHED @map("published")
   WITHDRAWN @map("withdrawn")
   EXPIRED   @map("expired")
+  MATCHED   @map("matched")
+  CLOSED    @map("closed")
 
   @@map("exchange_post_status")
 }
@@ -890,8 +892,32 @@ enum ExchangeClaimStatus {
   WITHDRAWN         @map("withdrawn")
   REQUEST_WITHDRAWN @map("request_withdrawn")
   REQUEST_EXPIRED   @map("request_expired")
+  MATCHED           @map("matched")
+  NOT_SELECTED      @map("not_selected")
+  MATCHING_CLOSED   @map("matching_closed")
 
   @@map("exchange_claim_status")
+}
+
+enum ExchangeMatchingStatus {
+  OPEN    @map("open")
+  MATCHED @map("matched")
+  CLOSED  @map("closed")
+
+  @@map("exchange_matching_status")
+}
+
+enum ExchangeMatchEventType {
+  OPENED            @map("opened")
+  CLAIM_ADDED       @map("claim_added")
+  CLAIM_WITHDRAWN   @map("claim_withdrawn")
+  BUDGET_INCREASED  @map("budget_increased")
+  TARGET_REDUCED    @map("target_reduced")
+  SELECTIVE_MATCHED @map("selective_matched")
+  QUICK_MATCHED     @map("quick_matched")
+  CLOSED            @map("closed")
+
+  @@map("exchange_match_event_type")
 }
 
 enum CarouselScene {
@@ -1042,6 +1068,8 @@ model User {
   followers                               Follow[]                              @relation("FollowFollowing")
   exchangePosts                           ExchangePost[]                        @relation("ExchangePostAuthor")
   exchangeClaims                          ExchangeClaim[]
+  exchangeMatchParticipants               ExchangeMatchParticipant[]
+  exchangeMatchEvents                     ExchangeMatchEvent[]
   exchangeComments                        ExchangeComment[]                     @relation("ExchangeCommentAuthor")
   exchangeLikes                           ExchangeLike[]                        @relation("ExchangeLikeActor")
   exchangeShares                          ExchangeShare[]                       @relation("ExchangeShareActor")
@@ -1426,6 +1454,7 @@ model Shop {
   membershipCardRedemptions  ShopMembershipCardRedemption[]
   membershipCardRefunds      ShopMembershipCardRedemptionRefund[]
   exchangeClaims             ExchangeClaim[]
+  exchangeMatchParticipants  ExchangeMatchParticipant[]
   entityFavorites            EntityFavorite[]
   entityShareEvents          EntityShareEvent[]
   serviceCategorySelections  ShopServiceCategory[]
@@ -1576,6 +1605,7 @@ model TechnicianProfile {
   backofficeProfileTags      BackofficeProfileTag[]               @relation("BackofficeProfileTagTechnician")
   technicianShopAffiliations TechnicianShopAffiliation[]
   exchangeClaims             ExchangeClaim[]
+  exchangeMatchParticipants  ExchangeMatchParticipant[]
   carouselSlides             CarouselSlide[]
   performanceAssessments     OrderPerformanceAssessment[]         @relation("OrderPerformanceAssessmentTechnician")
   performanceRevisions       OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionTechnician")
@@ -2596,6 +2626,7 @@ model Service {
   affiliateTouches      AffiliateTouch[]
   affiliateAttributions AffiliateAttribution[]
   exchangeClaims        ExchangeClaim[]
+  exchangeMatchParticipants ExchangeMatchParticipant[]
   carouselSlides        CarouselSlide[]
 
   @@index([categoryId])
@@ -2644,6 +2675,7 @@ model TechnicianService {
   scheduleSlots     ScheduleSlot[]
   bookingOrders     BookingOrder[]
   exchangeClaims    ExchangeClaim[]
+  exchangeMatchParticipants ExchangeMatchParticipant[]
 
   @@index([shopId, technicianId, isActive, deletedAt])
   @@index([shopId, isRecommended, isActive, deletedAt])
@@ -3012,6 +3044,7 @@ model ScheduleSlot {
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   bookingOrders     BookingOrder[]
   exchangeClaims    ExchangeClaim[]
+  exchangeMatchParticipants ExchangeMatchParticipant[]
 
   @@index([availabilityId])
   @@index([serviceId])
@@ -3947,6 +3980,8 @@ model UserIdentity {
   exchangeLikes              ExchangeLike[]                @relation("ExchangeLikeActorIdentity")
   exchangeShares             ExchangeShare[]               @relation("ExchangeShareActorIdentity")
   exchangeClaims             ExchangeClaim[]
+  exchangeMatchParticipants  ExchangeMatchParticipant[]
+  exchangeMatchEvents        ExchangeMatchEvent[]
   createdConversations       Conversation[]                @relation("ConversationCreatorIdentity")
   conversationParticipants   ConversationParticipant[]     @relation("ConversationParticipantIdentity")
   sentMessages               Message[]                     @relation("MessageSenderIdentity")
@@ -4021,6 +4056,8 @@ model ExchangePost {
   walletHolds        WalletHold[]
   requestFinancial   ExchangeRequestFinancial?
   claims             ExchangeClaim[]
+  matching           ExchangeRequestMatching?
+  matchParticipants  ExchangeMatchParticipant[]
 
   @@index([type, status, expiresAt, createdAt])
   @@index([authorUserId, createdAt])
@@ -4093,6 +4130,7 @@ model ExchangeClaim {
   service           Service?          @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   scheduleSlot      ScheduleSlot      @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  matchParticipant  ExchangeMatchParticipant?
 
   @@index([exchangePostId, status, createdAt], map: "exchange_claims_post_status_created_idx")
   @@index([claimantIdentityId, createdAt], map: "exchange_claims_identity_created_idx")
@@ -4102,6 +4140,102 @@ model ExchangeClaim {
   @@index([scheduleSlotId], map: "exchange_claims_schedule_slot_idx")
   @@index([deletedAt], map: "exchange_claims_deleted_idx")
   @@map("exchange_claims")
+}
+
+model ExchangeRequestMatching {
+  id                           Int                    @id @default(autoincrement())
+  exchangePostId               Int                    @unique(map: "exchange_request_matchings_post_id_key") @map("exchange_post_id")
+  status                       ExchangeMatchingStatus @default(OPEN)
+  effectiveTargetProviderCount Int                    @map("effective_target_provider_count")
+  effectiveBudgetMaxJpy        Int                    @map("effective_budget_max_jpy")
+  selectedQuoteTotalJpy        Int                    @default(0) @map("selected_quote_total_jpy")
+  version                      Int                    @default(1)
+  matchedAt                    DateTime?              @map("matched_at")
+  closedAt                     DateTime?              @map("closed_at")
+  createdAt                    DateTime               @default(now()) @map("created_at")
+  updatedAt                    DateTime               @updatedAt @map("updated_at")
+  deletedAt                    DateTime?              @map("deleted_at")
+
+  exchangePost ExchangePost               @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  participants ExchangeMatchParticipant[]
+  events       ExchangeMatchEvent[]
+
+  @@index([status, updatedAt], map: "exchange_request_matchings_status_updated_idx")
+  @@index([deletedAt], map: "exchange_request_matchings_deleted_idx")
+  @@map("exchange_request_matchings")
+}
+
+model ExchangeMatchParticipant {
+  id                    Int       @id @default(autoincrement())
+  matchingId            Int       @map("matching_id")
+  exchangePostId        Int       @map("exchange_post_id")
+  exchangeClaimId       Int       @unique(map: "exchange_match_participants_claim_id_key") @map("exchange_claim_id")
+  participantUserId     Int       @map("participant_user_id")
+  participantIdentityId Int       @map("participant_identity_id")
+  shopId                Int       @map("shop_id")
+  technicianProfileId   Int       @map("technician_profile_id")
+  serviceId             Int?      @map("service_id")
+  technicianServiceId   Int?      @map("technician_service_id")
+  scheduleSlotId        Int       @map("schedule_slot_id")
+  quoteAmountJpy        Int       @map("quote_amount_jpy")
+  currency              String    @default("JPY") @db.VarChar(3)
+  estimatedStartsAt     DateTime  @map("estimated_starts_at")
+  estimatedEndsAt       DateTime  @map("estimated_ends_at")
+  activeReservationKey  String    @unique(map: "exchange_match_participants_reservation_key") @map("active_reservation_key") @db.VarChar(191)
+  matchedAt             DateTime  @map("matched_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  matching            ExchangeRequestMatching @relation(fields: [matchingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangePost        ExchangePost            @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangeClaim       ExchangeClaim           @relation(fields: [exchangeClaimId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  participantUser     User                    @relation(fields: [participantUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  participantIdentity UserIdentity            @relation(fields: [participantIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop                Shop                    @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianProfile   TechnicianProfile       @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  service             Service?                @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianService   TechnicianService?      @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  scheduleSlot        ScheduleSlot            @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([matchingId, technicianProfileId], map: "exchange_match_participants_matching_technician_key")
+  @@index([exchangePostId, deletedAt], map: "exchange_match_participants_post_deleted_idx")
+  @@index([technicianProfileId, estimatedStartsAt, estimatedEndsAt, deletedAt], map: "exchange_match_participants_technician_range_idx")
+  @@index([participantIdentityId, createdAt], map: "exchange_match_participants_identity_created_idx")
+  @@index([shopId, createdAt], map: "exchange_match_participants_shop_created_idx")
+  @@index([scheduleSlotId], map: "exchange_match_participants_schedule_slot_idx")
+  @@index([serviceId], map: "exchange_match_participants_service_idx")
+  @@index([technicianServiceId], map: "exchange_match_participants_technician_service_idx")
+  @@index([deletedAt], map: "exchange_match_participants_deleted_idx")
+  @@map("exchange_match_participants")
+}
+
+model ExchangeMatchEvent {
+  id                 Int                    @id @default(autoincrement())
+  matchingId         Int                    @map("matching_id")
+  sequence           Int
+  type               ExchangeMatchEventType
+  actorUserId        Int?                   @map("actor_user_id")
+  actorIdentityId    Int?                   @map("actor_identity_id")
+  versionBefore      Int                    @map("version_before")
+  versionAfter       Int                    @map("version_after")
+  idempotencyKey     String?                @unique(map: "exchange_match_events_idempotency_key") @map("idempotency_key") @db.VarChar(191)
+  payloadFingerprint String?                @map("payload_fingerprint") @db.Char(64)
+  payload            Json
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  deletedAt          DateTime?              @map("deleted_at")
+
+  matching      ExchangeRequestMatching @relation(fields: [matchingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorUser     User?                   @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorIdentity UserIdentity?           @relation(fields: [actorIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([matchingId, sequence], map: "exchange_match_events_matching_sequence_key")
+  @@index([actorUserId, createdAt], map: "exchange_match_events_actor_user_created_idx")
+  @@index([actorIdentityId, createdAt], map: "exchange_match_events_actor_identity_created_idx")
+  @@index([type, createdAt], map: "exchange_match_events_type_created_idx")
+  @@index([deletedAt], map: "exchange_match_events_deleted_idx")
+  @@map("exchange_match_events")
 }
 
 model ExchangeIntelligence {

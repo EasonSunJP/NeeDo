@@ -1566,6 +1566,20 @@ const exchangeClaimErrorResponses = {
   }
 };
 
+const exchangeMatchingErrorResponses = {
+  "400": { description: "error.validation — strict matching request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description:
+      "error.forbidden or error.exchange.match_not_allowed — permission or active owner identity denied"
+  },
+  "404": { description: "error.exchange.match_not_found — matching is not visible" },
+  "409": {
+    description:
+      "error.exchange.match_invalid_state, error.exchange.match_version_conflict, error.exchange.match_claim_set_invalid, error.exchange.match_count_mismatch, error.exchange.match_budget_exceeded, error.exchange.match_time_conflict, or error.exchange.match_idempotency_conflict"
+  }
+};
+
 const exchangeRequestFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
@@ -1841,6 +1855,41 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
               $ref: "#/components/schemas/ExchangeClaim"
             }),
             ...exchangeClaimErrorResponses
+          }
+        }
+      )
+    },
+    [`${base}/{id}/matching`]: {
+      get: exchangeOperation(
+        "Read the active identity's formal Request matching projection",
+        "exchange:matching:read-own",
+        {
+          description:
+            "Visible only to the Request owner or a selected participant. Participant reads contain only that participant's own row.",
+          parameters: [postId],
+          responses: {
+            "200": jsonDataResponse("Formal Exchange matching", {
+              $ref: "#/components/schemas/ExchangeMatching"
+            }),
+            ...exchangeMatchingErrorResponses
+          }
+        }
+      )
+    },
+    [`${base}/{id}/matching/select`]: {
+      post: exchangeOperation(
+        "Select the exact provider count within the current effective budget",
+        "exchange:matching:select-own",
+        {
+          description:
+            "Atomically records participants, terminal claim states and the matched Request. It does not create a booking, execute payment or move NDP.",
+          parameters: [postId, exchangeIdempotencyKeyParameter],
+          requestBody: body("ExchangeMatchSelectRequest"),
+          responses: {
+            "200": jsonDataResponse("Matched Exchange Request", {
+              $ref: "#/components/schemas/ExchangeMatching"
+            }),
+            ...exchangeMatchingErrorResponses
           }
         }
       )
@@ -2444,7 +2493,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           line3: { type: ["string", "null"], minLength: 1, maxLength: 255 },
           line2GenerallyVisible: { type: "boolean" },
           line3GenerallyVisible: { type: "boolean" },
-          disclosure: { type: "string", enum: ["owner", "general"] }
+          disclosure: {
+            type: "string",
+            enum: ["owner", "matched_participant", "general"]
+          }
         }
       },
       ExchangeRequestDemand: {
@@ -2721,7 +2773,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           exchangePostId: { type: "integer", minimum: 1 },
           status: {
             type: "string",
-            enum: ["active", "withdrawn", "request_withdrawn", "request_expired"]
+            enum: [
+              "active",
+              "withdrawn",
+              "request_withdrawn",
+              "request_expired",
+              "matched",
+              "not_selected",
+              "matching_closed"
+            ]
           },
           provider: { $ref: "#/components/schemas/ExchangeClaimProvider" },
           shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
@@ -2767,6 +2827,85 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           scheduleSlotId: { type: "integer", minimum: 1 },
           quoteAmountJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
           message: { type: ["string", "null"], maxLength: 1000, default: null }
+        }
+      },
+      ExchangeMatchParticipant: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "exchangeClaimId",
+          "provider",
+          "shop",
+          "technician",
+          "service",
+          "scheduleSlotId",
+          "quoteAmountJpy",
+          "currency",
+          "estimatedStartsAt",
+          "estimatedEndsAt",
+          "matchedAt"
+        ],
+        properties: {
+          exchangeClaimId: { type: "integer", minimum: 1 },
+          provider: { $ref: "#/components/schemas/ExchangeClaimProvider" },
+          shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
+          technician: { $ref: "#/components/schemas/ExchangeClaimTechnician" },
+          service: { $ref: "#/components/schemas/ExchangeClaimService" },
+          scheduleSlotId: { type: "integer", minimum: 1 },
+          quoteAmountJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
+          currency: { type: "string", enum: ["JPY"] },
+          estimatedStartsAt: { type: "string", format: "date-time" },
+          estimatedEndsAt: { type: "string", format: "date-time" },
+          matchedAt: { type: "string", format: "date-time" }
+        }
+      },
+      ExchangeMatching: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "exchangePostId",
+          "status",
+          "version",
+          "effectiveTargetProviderCount",
+          "effectiveBudgetMaxJpy",
+          "selectedQuoteTotalJpy",
+          "matchedAt",
+          "participants",
+          "viewer"
+        ],
+        properties: {
+          exchangePostId: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["open", "matched", "closed"] },
+          version: { type: "integer", minimum: 1 },
+          effectiveTargetProviderCount: { type: "integer", minimum: 1 },
+          effectiveBudgetMaxJpy: { type: "integer", minimum: 1 },
+          selectedQuoteTotalJpy: { type: "integer", minimum: 0 },
+          matchedAt: { type: ["string", "null"], format: "date-time" },
+          participants: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ExchangeMatchParticipant" }
+          },
+          viewer: {
+            type: "object",
+            additionalProperties: false,
+            required: ["canSelect"],
+            properties: { canSelect: { type: "boolean" } }
+          }
+        }
+      },
+      ExchangeMatchSelectRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["selectedClaimIds", "expectedVersion"],
+        properties: {
+          selectedClaimIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 20,
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          },
+          expectedVersion: { type: "integer", minimum: 1 }
         }
       },
       ExchangeDemandPublishRequest: {

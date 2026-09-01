@@ -4,7 +4,10 @@ export type ExchangeClaimStatus =
   | "active"
   | "withdrawn"
   | "request_withdrawn"
-  | "request_expired";
+  | "request_expired"
+  | "matched"
+  | "not_selected"
+  | "matching_closed";
 
 export type ExchangeClaimServiceRef = `shop:${number}` | `technician:${number}`;
 

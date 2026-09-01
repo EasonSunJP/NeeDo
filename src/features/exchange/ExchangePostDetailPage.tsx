@@ -84,6 +84,13 @@ function priceLabel(post: ExchangePost) {
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }
 
+function terminalStateTextKey(status: ExchangePost["status"]) {
+  if (status === "withdrawn") return "withdrawnState" as const;
+  if (status === "expired") return "expiredState" as const;
+  if (status === "matched") return "matchedState" as const;
+  return "closedState" as const;
+}
+
 type HeaderActionName = "translate" | "favorite" | "share";
 
 function HeaderActionButton({
@@ -357,6 +364,16 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const requirementTags = post.intelligence
     ? [t(post.intelligence.serviceMode), ...post.intelligence.serviceAreas, post.areaLabel, post.contentLocale]
     : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
+  const demandActionTarget = post.viewer.canViewClaims
+    ? '[data-testid="exchange-received-claims"]'
+    : post.viewer.canClaim
+      ? '[data-testid="exchange-claim-panel"]'
+      : null;
+
+  function revealDemandAction() {
+    if (!active || !demandActionTarget) return;
+    document.querySelector(demandActionTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return (
     <MobileFullscreenPage innerClassName="client-glass-page-surface">
@@ -417,13 +434,31 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
 
         {!active ? (
           <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]">
-            {t(post.status === "withdrawn" ? "withdrawnState" : "expiredState")}
+            {t(terminalStateTextKey(post.status))}
           </div>
         ) : null}
 
         {post.viewer.canClaim ? <ExchangeClaimPanel language={language} post={post} /> : null}
         {post.viewer.canViewClaims ? (
-          <ExchangeReceivedClaims language={language} postId={String(post.id)} />
+          <ExchangeReceivedClaims
+            language={language}
+            onMatched={() =>
+              setPost((current) =>
+                current
+                  ? {
+                      ...current,
+                      status: "matched",
+                      viewer: {
+                        ...current.viewer,
+                        canClaim: false,
+                        canWithdraw: false
+                      }
+                    }
+                  : current
+              )
+            }
+            postId={String(post.id)}
+          />
         ) : null}
 
         <section className={detailCardClassName} data-no-i18n="true">
@@ -478,14 +513,30 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           <p className="text-xs font-bold text-[color:var(--client-muted)]">{t(post.type === "demand" ? "budget" : "price")}</p>
           <strong className="text-xl font-black text-[color:var(--client-primary)]">{price}</strong>
         </div>
-        <button
-          className="min-h-12 min-w-[170px] rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
-          data-action="booking-deferred"
-          disabled
-          type="button"
-        >
-          {t(post.type === "demand" ? "matchingDeferred" : "bookingDeferred")}
-        </button>
+        {post.type === "demand" ? (
+          <button
+            className="min-h-12 min-w-[170px] rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+            data-action="matching-inbox"
+            disabled={!active || !demandActionTarget}
+            onClick={revealDemandAction}
+            type="button"
+          >
+            {active && post.viewer.canViewClaims
+              ? t("matchingSelectProviders")
+              : active && post.viewer.canClaim
+                ? t("claimSubmit")
+                : t(post.status === "matched" ? "matchingCompleted" : "claimStatusMatchingClosed")}
+          </button>
+        ) : (
+          <button
+            className="min-h-12 min-w-[170px] rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+            data-action="booking-deferred"
+            disabled
+            type="button"
+          >
+            {t("bookingDeferred")}
+          </button>
+        )}
       </footer>
     </MobileFullscreenPage>
   );

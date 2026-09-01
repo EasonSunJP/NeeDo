@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import type { Language } from "../../i18n/translations";
-import { listReceivedExchangeClaims } from "./api";
+import {
+  getExchangeMatching,
+  listReceivedExchangeClaims,
+  selectExchangeMatching
+} from "./api";
 import { exchangeText, type ExchangeTextKey } from "./i18n";
-import type { ExchangeClaim } from "./types";
+import type { ExchangeClaim, ExchangeMatching } from "./types";
 
 const fallbackProviderImage = "/icons/needo-nav-button-dark.png";
 const panelClassName =
@@ -30,18 +34,43 @@ function statusTextKey(status: ExchangeClaim["status"]): ExchangeTextKey {
   if (status === "withdrawn") return "claimStatusWithdrawn";
   if (status === "request_withdrawn") return "claimStatusRequestWithdrawn";
   if (status === "request_expired") return "claimStatusRequestExpired";
+  if (status === "matched") return "claimStatusMatched";
+  if (status === "not_selected") return "claimStatusNotSelected";
+  if (status === "matching_closed") return "claimStatusMatchingClosed";
   return "claimStatusActive";
 }
 
-function ClaimCard({ claim, language }: { claim: ExchangeClaim; language: Language }) {
+function ClaimCard({
+  claim,
+  language,
+  onToggle,
+  selectable,
+  selected
+}: {
+  claim: ExchangeClaim;
+  language: Language;
+  onToggle: () => void;
+  selectable: boolean;
+  selected: boolean;
+}) {
   const t = (key: ExchangeTextKey) => exchangeText(key, language);
   return (
     <article
-      className="overflow-hidden rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)]"
+      className={`overflow-hidden rounded-[24px] border bg-[color:var(--client-bg-soft)] transition-colors ${selected ? "border-[color:var(--client-primary)] ring-2 ring-[color:var(--client-primary-soft)]" : "border-[color:var(--client-line)]"}`}
       data-claim-id={claim.id}
       data-no-i18n="true"
     >
       <div className="flex items-center gap-3 border-b border-[color:var(--client-line)] p-4">
+        {selectable ? (
+          <input
+            aria-label={`${t("matchingSelectedCount")} ${claim.provider.displayName}`}
+            checked={selected}
+            className="focus-ring h-5 w-5 shrink-0 accent-[color:var(--client-primary)]"
+            data-match-claim-id={claim.id}
+            onChange={onToggle}
+            type="checkbox"
+          />
+        ) : null}
         <AvatarImage
           alt={claim.provider.displayName}
           className="h-12 w-12 shrink-0 rounded-2xl border border-[color:var(--client-line)] object-cover"
@@ -95,25 +124,49 @@ function ClaimCard({ claim, language }: { claim: ExchangeClaim; language: Langua
   );
 }
 
-export function ExchangeReceivedClaims({ language, postId }: { language: Language; postId: string }) {
+export function ExchangeReceivedClaims({
+  language,
+  onMatched,
+  postId
+}: {
+  language: Language;
+  onMatched?: () => void;
+  postId: string;
+}) {
   const t = (key: ExchangeTextKey) => exchangeText(key, language);
   const [claims, setClaims] = useState<ExchangeClaim[]>([]);
+  const [matching, setMatching] = useState<ExchangeMatching | null>(null);
+  const [selectedClaimIds, setSelectedClaimIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
+  const [matchingError, setMatchingError] = useState(false);
+  const [matchingPending, setMatchingPending] = useState(false);
+  const selectionAttemptRef = useRef<{ signature: string; key: string } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(false);
-    void listReceivedExchangeClaims(postId, { page: 1, pageSize: 10, signal: controller.signal })
-      .then((result) => {
+    setMatchingError(false);
+    setSelectedClaimIds([]);
+    selectionAttemptRef.current = null;
+    void Promise.all([
+      listReceivedExchangeClaims(postId, {
+        page: 1,
+        pageSize: 10,
+        signal: controller.signal
+      }),
+      getExchangeMatching(postId, controller.signal)
+    ])
+      .then(([claimPage, currentMatching]) => {
         if (controller.signal.aborted) return;
-        setClaims(result.list);
-        setPage(result.page);
-        setTotal(result.total);
+        setClaims(claimPage.list);
+        setPage(claimPage.page);
+        setTotal(claimPage.total);
+        setMatching(currentMatching);
       })
       .catch(() => {
         if (!controller.signal.aborted) setError(true);
@@ -123,6 +176,21 @@ export function ExchangeReceivedClaims({ language, postId }: { language: Languag
       });
     return () => controller.abort();
   }, [postId]);
+
+  async function refreshPersistedState() {
+    const [claimPage, currentMatching] = await Promise.all([
+      listReceivedExchangeClaims(postId, { page: 1, pageSize: 10 }),
+      getExchangeMatching(postId)
+    ]);
+    setClaims(claimPage.list);
+    setPage(claimPage.page);
+    setTotal(claimPage.total);
+    setMatching(currentMatching);
+    const activeIds = new Set(
+      claimPage.list.filter((claim) => claim.status === "active").map((claim) => claim.id)
+    );
+    setSelectedClaimIds((current) => current.filter((claimId) => activeIds.has(claimId)));
+  }
 
   async function loadMore() {
     if (loadingMore || claims.length >= total) return;
@@ -140,6 +208,73 @@ export function ExchangeReceivedClaims({ language, postId }: { language: Languag
     }
   }
 
+  function toggleClaim(claimId: number) {
+    if (!matching || matching.status !== "open" || !matching.viewer.canSelect) return;
+    setMatchingError(false);
+    setSelectedClaimIds((current) => {
+      if (current.includes(claimId)) return current.filter((id) => id !== claimId);
+      if (matching.effectiveTargetProviderCount === 1) return [claimId];
+      if (current.length >= matching.effectiveTargetProviderCount) return current;
+      return [...current, claimId].sort((left, right) => left - right);
+    });
+  }
+
+  const selectedQuoteTotalJpy = selectedClaimIds.reduce((sum, claimId) => {
+    const selected = claims.find((claim) => claim.id === claimId);
+    return sum + (selected?.quoteAmountJpy ?? 0);
+  }, 0);
+  const exactCount = Boolean(
+    matching && selectedClaimIds.length === matching.effectiveTargetProviderCount
+  );
+  const withinBudget = Boolean(
+    matching && selectedQuoteTotalJpy <= matching.effectiveBudgetMaxJpy
+  );
+  const canComplete = Boolean(
+    matching?.status === "open" &&
+      matching.viewer.canSelect &&
+      exactCount &&
+      withinBudget &&
+      !matchingPending
+  );
+
+  async function completeMatching() {
+    if (!matching || !canComplete) return;
+    const selectedClaimIdsSorted = [...selectedClaimIds].sort((left, right) => left - right);
+    const input = {
+      selectedClaimIds: selectedClaimIdsSorted,
+      expectedVersion: matching.version
+    };
+    const signature = JSON.stringify(input);
+    const attempt =
+      selectionAttemptRef.current?.signature === signature
+        ? selectionAttemptRef.current
+        : { signature, key: globalThis.crypto.randomUUID() };
+    selectionAttemptRef.current = attempt;
+    setMatchingPending(true);
+    setMatchingError(false);
+    try {
+      const completed = await selectExchangeMatching(postId, input, attempt.key);
+      setMatching(completed);
+      setSelectedClaimIds([]);
+      selectionAttemptRef.current = null;
+      onMatched?.();
+      void listReceivedExchangeClaims(postId, { page: 1, pageSize: 10 }).then((claimPage) => {
+        setClaims(claimPage.list);
+        setPage(claimPage.page);
+        setTotal(claimPage.total);
+      });
+    } catch {
+      setMatchingError(true);
+      try {
+        await refreshPersistedState();
+      } catch {
+        setError(true);
+      }
+    } finally {
+      setMatchingPending(false);
+    }
+  }
+
   return (
     <section className={panelClassName} data-testid="exchange-received-claims">
       <div className="flex items-start justify-between gap-4">
@@ -151,13 +286,91 @@ export function ExchangeReceivedClaims({ language, postId }: { language: Languag
       </div>
       <p className="mt-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{t("receivedClaimsIntro")}</p>
 
-      {loading ? <p className="mt-5 text-sm font-bold text-[color:var(--client-muted)]">{t("claimOptionsLoading")}</p> : null}
+      {loading ? <p className="mt-5 text-sm font-bold text-[color:var(--client-muted)]">{t("matchingLoading")}</p> : null}
       {error ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("receivedClaimsFailed")}</p> : null}
+      {matchingError ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("matchingFailed")}</p> : null}
       {!loading && !error && claims.length === 0 ? <p className="mt-5 rounded-[20px] bg-[color:var(--client-bg-soft)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">{t("receivedClaimsEmpty")}</p> : null}
 
+      {!loading && matching ? (
+        <div className="mt-4 rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] p-3">
+          <dl className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-2xl bg-[color:var(--client-bg)] p-3">
+              <dt className="font-black text-[color:var(--client-muted)]">{t("matchingTarget")}</dt>
+              <dd className="mt-1 text-lg font-black text-[color:var(--client-text)]">{matching.effectiveTargetProviderCount}</dd>
+            </div>
+            <div className="rounded-2xl bg-[color:var(--client-bg)] p-3 text-right">
+              <dt className="font-black text-[color:var(--client-muted)]">{t("matchingBudget")}</dt>
+              <dd className="mt-1 text-lg font-black text-[color:var(--client-primary)]">¥{matching.effectiveBudgetMaxJpy.toLocaleString("ja-JP")}</dd>
+            </div>
+          </dl>
+          {matching.status === "open" ? (
+            <>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs font-black">
+                <span className="text-[color:var(--client-muted)]">{t("matchingSelectedCount")} {selectedClaimIds.length}/{matching.effectiveTargetProviderCount}</span>
+                <span className={withinBudget ? "text-[color:var(--client-text)]" : "text-[color:var(--client-accent)]"}>{t("matchingSelectedQuote")} ¥{selectedQuoteTotalJpy.toLocaleString("ja-JP")}</span>
+              </div>
+              <p className={`mt-2 text-[11px] font-bold ${exactCount && withinBudget ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]"}`}>
+                {!exactCount
+                  ? t("matchingCountRequired")
+                  : withinBudget
+                    ? t("matchingComplete")
+                    : t("matchingBudgetExceeded")}
+              </p>
+            </>
+          ) : (
+            <div className="mt-3 rounded-2xl bg-[color:var(--client-primary-soft)] px-3 py-3">
+              <p className="text-sm font-black text-[color:var(--client-primary)]">{t("matchingCompleted")}</p>
+              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("matchingNoBooking")}</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div className="mt-5 grid gap-3">
-        {claims.map((claim) => <ClaimCard claim={claim} key={claim.id} language={language} />)}
+        {claims.map((claim) => (
+          <ClaimCard
+            claim={claim}
+            key={claim.id}
+            language={language}
+            onToggle={() => toggleClaim(claim.id)}
+            selectable={Boolean(
+              matching?.status === "open" &&
+                matching.viewer.canSelect &&
+                claim.status === "active"
+            )}
+            selected={selectedClaimIds.includes(claim.id)}
+          />
+        ))}
       </div>
+
+      {matching?.status === "open" && matching.viewer.canSelect ? (
+        <button
+          className="focus-ring mt-4 min-h-12 w-full rounded-2xl bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-40"
+          data-action="complete-exchange-match"
+          disabled={!canComplete}
+          onClick={() => void completeMatching()}
+          type="button"
+        >
+          {t(matchingPending ? "matchingCompleting" : "matchingComplete")}
+        </button>
+      ) : null}
+
+      {matching?.status === "matched" && matching.participants.length > 0 ? (
+        <div className="mt-4">
+          <h3 className="text-sm font-black text-[color:var(--client-text)]">{t("matchingParticipants")}</h3>
+          <div className="mt-2 grid gap-2">
+            {matching.participants.map((participant) => (
+              <div className="flex items-center justify-between gap-3 rounded-2xl bg-[color:var(--client-bg-soft)] px-3 py-3" key={participant.exchangeClaimId}>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-[color:var(--client-text)]">{participant.provider.displayName}</p>
+                  <p className="mt-0.5 truncate font-mono text-[10px] font-black text-[color:var(--client-primary)]">{participant.provider.publicId}</p>
+                </div>
+                <strong className="shrink-0 text-sm font-black text-[color:var(--client-primary)]">¥{participant.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {claims.length < total ? (
         <button

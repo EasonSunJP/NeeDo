@@ -37,6 +37,21 @@ export interface ExchangeClaimRepositoryPort {
     scope: ExchangeClaimProviderScope
   ): Promise<{ technicianProfileId: number } | null>;
   lockRequest(postId: number): Promise<ExchangeClaimRequestRecord | null>;
+  lockMatching(postId: number): Promise<{
+    id: number;
+    status: "open" | "matched" | "closed";
+    version: number;
+  } | null>;
+  advanceMatchingForClaimEvent(input: {
+    matchingId: number;
+    exchangePostId: number;
+    claimId: number;
+    type: "claim_added" | "claim_withdrawn";
+    actorUserId: number;
+    actorIdentityId: number;
+    versionBefore: number;
+    at: Date;
+  }): Promise<boolean>;
   lockTechnician(technicianProfileId: number): Promise<boolean>;
   lockOption(
     scheduleSlotId: number,
@@ -48,6 +63,11 @@ export interface ExchangeClaimRepositoryPort {
     technicianProfileId: number
   ): Promise<boolean>;
   hasOverlappingActiveClaim(
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean>;
+  hasOverlappingMatchParticipant(
     technicianProfileId: number,
     startsAt: Date,
     endsAt: Date
@@ -163,6 +183,8 @@ export class ExchangeClaimService {
         if (replay) return this.unwrapReplay(replay, fingerprint);
         const request = await repository.lockRequest(postId);
         this.assertRequestClaimable(request, actor, at);
+        const matching = await repository.lockMatching(postId);
+        if (!matching || matching.status !== "open") throw this.invalidState();
         this.assertQuoteWithinBudget(request!, input.quoteAmountJpy);
         const candidate = await repository.findOptionCandidate(input.scheduleSlotId, scope);
         if (!candidate) throw this.optionNotFound();
@@ -184,6 +206,11 @@ export class ExchangeClaimService {
         }
         if (
           (await repository.hasOverlappingActiveClaim(
+            option.technicianProfileId,
+            option.startsAt,
+            option.endsAt
+          )) ||
+          (await repository.hasOverlappingMatchParticipant(
             option.technicianProfileId,
             option.startsAt,
             option.endsAt
@@ -211,6 +238,20 @@ export class ExchangeClaimService {
           payloadFingerprint: fingerprint,
           now: at
         });
+        if (
+          !(await repository.advanceMatchingForClaimEvent({
+            matchingId: matching.id,
+            exchangePostId: postId,
+            claimId: created.id,
+            type: "claim_added",
+            actorUserId: actor.userId,
+            actorIdentityId: actor.identityId,
+            versionBefore: matching.version,
+            at
+          }))
+        ) {
+          throw this.invalidState();
+        }
         await repository.createAudit(
           this.audit(access, context, "exchange.claim.create", created.id, {
             exchangePostId: postId,
@@ -271,6 +312,7 @@ export class ExchangeClaimService {
     try {
       return await this.repository.runInTransaction(async (repository) => {
         const request = await repository.lockRequest(mine.exchangePostId);
+        const matching = await repository.lockMatching(mine.exchangePostId);
         const locked = await repository.lockClaim(claimId);
         if (!locked || locked.claimantIdentityId !== actor.identityId) {
           throw this.claimNotFound();
@@ -286,6 +328,8 @@ export class ExchangeClaimService {
         }
         if (
           !request ||
+          !matching ||
+          matching.status !== "open" ||
           request.type !== "demand" ||
           request.status !== "published" ||
           request.expiresAt <= at ||
@@ -301,6 +345,20 @@ export class ExchangeClaimService {
           fingerprint
         );
         if (!withdrawn) throw this.invalidState();
+        if (
+          !(await repository.advanceMatchingForClaimEvent({
+            matchingId: matching.id,
+            exchangePostId: mine.exchangePostId,
+            claimId,
+            type: "claim_withdrawn",
+            actorUserId: actor.userId,
+            actorIdentityId: actor.identityId,
+            versionBefore: matching.version,
+            at
+          }))
+        ) {
+          throw this.invalidState();
+        }
         await repository.createAudit(
           this.audit(access, context, "exchange.claim.withdraw", claimId, {
             exchangePostId: locked.exchangePostId,
