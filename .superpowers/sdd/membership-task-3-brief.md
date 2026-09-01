@@ -41,6 +41,14 @@ publicId String @unique(map: "technician_services_public_id_key") @default(uuid(
 
 The new forward migration must add `technician_services.public_id` as nullable, assign a real UUID to every existing row using MySQL `UUID()` only where it is null, make the column `CHAR(36) NOT NULL`, then create the exact unique index `technician_services_public_id_key`. New Prisma creates use `@default(uuid())`. Do not derive an ID from the numeric primary key, concatenate a type prefix, reuse a technician/user ID, or collapse a technician service into `sourceShopServiceId`; every shop service and technician service remains its own ranking entity.
 
+The same schema/migration change must add the exact bounded-window index below to `BookingOrder`; do not substitute a differently ordered collection of single-column indexes:
+
+```prisma
+@@index([status, paymentStatus, deletedAt, paymentConfirmedAt, shopId, id], map: "booking_orders_ranking_window_idx")
+```
+
+The physical migration statement is exactly `CREATE INDEX booking_orders_ranking_window_idx ON booking_orders(status, payment_status, deleted_at, payment_confirmed_at, shop_id, id)`. The ranking candidate query must be able to use this equality-prefix plus half-open payment-confirmation window; the migration/schema tests must assert the exact mapped name and column order.
+
 The same migration creates permission `backoffice:analytics-ranking:read` and grants it only to non-deleted `admin` and `operator` roles; `Role` has no active-status column. Use idempotent permission/role-permission inserts without modifying unrelated grants. The migration remains unapplied to the shared database.
 
 ## Domain contracts
@@ -101,7 +109,14 @@ export interface AnalyticsRankingResponse extends AnalyticsRankingPage {
 }
 ```
 
-`AnalyticsRankingRepository.listRankings(input)` returns `Promise<AnalyticsRankingPage>`. It performs bounded SQL aggregation with no N+1 queries and never invokes the existing `BackofficeRepository.listTechnicianRankings` method.
+`AnalyticsRankingRepositoryPort` exposes exactly two read methods:
+
+```ts
+findActiveCategoryById(categoryId: number): Promise<{ id: number } | null>;
+listRankings(input: AnalyticsRankingInput): Promise<AnalyticsRankingPage>;
+```
+
+`findActiveCategoryById` resolves only an active, non-deleted category. The service calls it exactly once when `categoryId` is present and maps `null` to the stable category 404 before calling `listRankings`; it is not called for an unfiltered request. `listRankings` performs bounded SQL aggregation with no N+1 queries and never invokes the existing `BackofficeRepository.listTechnicianRankings` method. Evidence/taxonomy corruption discovered while aggregating throws a dedicated `AnalyticsRankingIncompleteEvidenceError`, which the service maps only to the stable 409; it must never be confused with the requested-category 404.
 
 ## Formal completed-checkout authority
 
@@ -113,8 +128,8 @@ A candidate contributes only when all of the following are coherent:
 2. Exactly one non-deleted checkout belongs to the booking. Booking `payment_method`, `payment_amount_jpy`, confirmation actor/time/reference/note and checkout evidence agree exactly.
 3. Checkout base/add-on/discount/total/payable values are non-negative signed-INT integers and `base + addOn - discount = checkoutAmount = booking.paymentAmountJpy` without overflow. Base minus discount must also be non-negative.
 4. Checkout has a non-null selected method/time and `paymentSelectedAt <= paymentConfirmedAt`.
-5. For NDP, the checkout has exactly its one non-deleted applied `BOOKING_COMPLETE_SETTLEMENT` ledger transaction in currency `NDP`, reference type `order_checkout_payment`, reference ID equal to checkout ID, amount equal to `payableNdp`, actor equal to booking confirmation actor, and creation time between selection and confirmation. Booking reference is exactly `checkout:{checkoutId}:ledger:{ledgerId}`, booking note and all receipt fields are null. Exactly one non-deleted `NDP_PAYMENT_APPLIED` event links the same order/session/checkout and actor, has reason `checkout_ndp_payment_applied`, and has exact metadata `{ paymentEvidence: "ndp_ledger", ledgerTransactionId }` for that ledger.
-6. For cash/other, no checkout ledger is present. Receipt actor/time/reason are non-null, trimmed reason is visible, receipt time is between selection and booking confirmation, and booking actor/note equal the receipt actor/reason. Reference is exactly `checkout:{checkoutId}:technician-receipt` or `checkout:{checkoutId}:operations-receipt`. Cash has null other-method fields; other has visible bounded method code/label. Exactly one non-deleted `RECEIPT_CONFIRMED` event links the same order/session/checkout, actor and reason and has exact metadata `{ paymentEvidence, reason }`. Technician evidence requires the exact assigned technician user and `paymentEvidence = "technician_receipt_confirmation"`. Operations evidence requires `paymentEvidence = "operations_receipt_override"` plus exactly one non-deleted audit row whose actor is the receipt actor, action is `backoffice.order.checkout.receipt_override`, target type/ID are `BookingOrder`/booking ID, and whose metadata exactly cross-checks `orderId`, `checkoutId`, `selectedMethod`, `checkoutAmountJpy` and trimmed reason.
+5. For NDP, the checkout has exactly its one non-deleted applied `BOOKING_COMPLETE_SETTLEMENT` ledger transaction in currency `NDP`, reference type `order_checkout_payment`, reference ID equal to checkout ID, amount equal to `payableNdp`, actor equal to booking confirmation actor, and creation time between selection and confirmation. Booking reference is exactly `checkout:{checkoutId}:ledger:{ledgerId}`; booking note, `otherMethodCode`, `otherMethodLabel`, `otherPaymentReference` and all receipt actor/time/reason fields are null. Exactly one non-deleted `NDP_PAYMENT_APPLIED` event links the same order/session/checkout and actor, has reason `checkout_ndp_payment_applied`, and has exact metadata `{ paymentEvidence: "ndp_ledger", ledgerTransactionId }` for that ledger.
+6. For cash/other, `ledgerTransactionId` is null. Receipt actor/time/reason are non-null, trimmed reason is visible, receipt time is between selection and booking confirmation, and booking actor/note equal the receipt actor/reason. The evidence/reference pair is exact and cannot be crossed: `paymentEvidence = "technician_receipt_confirmation"` requires booking reference `checkout:{checkoutId}:technician-receipt` and the receipt actor must be the exact assigned technician user; `paymentEvidence = "operations_receipt_override"` requires booking reference `checkout:{checkoutId}:operations-receipt` and exactly one non-deleted audit row whose actor is the receipt actor, action is `backoffice.order.checkout.receipt_override`, target type/ID are `BookingOrder`/booking ID, and whose metadata exactly cross-checks `orderId`, `checkoutId`, `selectedMethod`, `checkoutAmountJpy` and trimmed reason. Cash requires `otherMethodCode`, `otherMethodLabel` and `otherPaymentReference` all null. Other requires visible bounded `otherMethodCode`/`otherMethodLabel` exactly matching the selected-method event and requires `otherPaymentReference` null because the formal writer does not populate it. Exactly one non-deleted `RECEIPT_CONFIRMED` event links the same order/session/checkout, actor and reason and has exact metadata `{ paymentEvidence, reason }`. Any stale ledger, receipt, other-method or refund field outside the selected method's exact shape is contradictory evidence, not an ignored value.
 7. Payment/receipt events occur no earlier than selection and no later than booking confirmation. A formal ended, non-deleted service session exists for the order and `endedAt <= paymentConfirmedAt`.
 8. The booking shop exists and is non-deleted. Every candidate, regardless of ranking kind, resolves an active, non-test, non-deleted customer user and the booking's exact non-deleted assigned `TechnicianProfile` with its active, non-test, non-deleted owning user. A missing/mismatched assigned technician on an otherwise formally completed order is corrupt evidence, not an anonymous service/customer contribution.
 
@@ -126,7 +141,8 @@ For each valid completed order build an exact line set:
 
 - One base line. Exactly one of `booking.serviceId` or `booking.technicianServiceId` must be present. Its GMV is `checkout.baseAmountJpy - checkout.discountAmountJpy`; the affiliate discount belongs entirely to the base line because checkout authority applies it to the immutable original base service price.
 - One line for every accepted, non-deleted add-on snapshotted by that checkout. Its GMV is `OrderAddOn.priceAmountJpy` and its entity is `OrderAddOn.serviceId` (`Service`). Proposed/rejected/deleted add-ons contribute nothing.
-- `calculationSnapshotJson.formula` must be `base_plus_accepted_add_ons_minus_discount`. Its base, discount, add-on total, checkout total and canonical unique positive `acceptedAddOnIds` must equal the checkout columns and the exact accepted/non-deleted add-on set. Every attributed service/add-on currency must be uppercase `JPY`. The line GMV sum must equal `checkoutAmountJpy` exactly.
+- `calculationSnapshotJson.formula` must be `base_plus_accepted_add_ons_minus_discount`. Its base, discount, add-on total and checkout total must equal the checkout columns. `acceptedAddOnIds` is not a set: it must be the exact unique positive-ID array produced by the formal writer from accepted, non-deleted add-ons in `OrderAddOn.proposedAt ASC, OrderAddOn.id ASC` order, including `id ASC` as the deterministic tie-break for equal proposal times. Length, position and value must all match; set equality, numeric-ID-only sorting or duplicate removal is forbidden.
+- Base-line currency authority is the persisted `BookingOrder.currency`; add-on-line currency authority is each persisted `OrderAddOn.currency`. Both must be exact uppercase `JPY`. Do not infer historical line currency from the current `Service`, `TechnicianService`, shop, checkout total or a default. The line GMV sum must equal `checkoutAmountJpy` exactly.
 
 Service ranking aggregates these lines by the actual service entity. Every base or accepted add-on line contributes `completedCount += 1`; if one order contains the same entity as base and/or more than one accepted add-on, every occurrence counts. Its GMV is the sum of those line amounts.
 
@@ -137,9 +153,17 @@ With a category filter, technician and customer rankings aggregate only matching
 ## City and taxonomy lens
 
 - `city` always means the current non-deleted booking shop's exact `shop.city`; never technician city, customer city or service city. A shop city edit intentionally reclassifies historical ranking rows at query time.
-- `categoryId` must resolve to one active, non-deleted `Category`; a missing/inactive/deleted ID is HTTP 404, code `ANALYTICS_RANKING_CATEGORY_NOT_FOUND` = `40419`, message `error.analytics_ranking.category_not_found`.
+- `categoryId` must resolve through `findActiveCategoryById` to one active, non-deleted `Category`; a missing/inactive/deleted requested ID is HTTP 404, code `ANALYTICS_RANKING_CATEGORY_NOT_FOUND` = `40419`, message `error.analytics_ranking.category_not_found`.
 - Category matching is the service entity's current direct `categoryId` at the captured query time. It does not include descendants and never reads a historical snapshot because existing order/add-on snapshots do not store category authority. A catalog reassignment intentionally reclassifies historical lines on later queries.
-- Every attributed service entity must resolve exactly one current non-deleted category row. Missing/duplicate/corrupt taxonomy for an otherwise valid line is the stable 409 incomplete-evidence error.
+- Deleted catalog entities are a deliberate current-catalog eligibility rule, not corrupt checkout evidence. Missing physical entities and broken taxonomy are corruption only for ranking shapes that need a catalog line. Apply this exact matrix independently to each base/add-on line:
+
+| Request shape | Deleted service entity | Missing physical service entity / duplicate projection | Inactive or deleted attached category | Missing/invalid attached category |
+|---|---|---|---|---|
+| `kind=service`, filtered or unfiltered | exclude line | 409 | exclude line | 409 |
+| `kind=technician|customer`, with `categoryId` | exclude line | 409 | exclude line | 409 |
+| `kind=technician|customer`, no `categoryId` | catalog row is not required; order still contributes | catalog row is not required; order still contributes | category row is not required; order still contributes | category row is not required; order still contributes |
+
+An excluded line never falls back to a name/snapshot/current source-shop service. If all lines are excluded, the order contributes no entity to a service/category-filtered result. The requested filter category's own missing/inactive/deleted case is always the separate pre-query 404 above.
 - For service items, `categoryId` is the current direct category. For technician/customer items it equals the requested category ID when filtered and is null when unfiltered.
 
 ## Entity projection and eligibility
@@ -149,7 +173,7 @@ With a category filter, technician and customer rankings aggregate only matching
 - Technician: `entityType = technician`, public ID is the assigned technician user's immutable `needoId`, numeric ID/registration/name from `TechnicianProfile.id/createdAt/displayName`, avatar from the user.
 - Customer: `entityType = customer`, public ID/numeric ID/registration from `User.needoId/id/createdAt`, display name from a current non-deleted `CustomerProfile.displayName` or else `User.username`, avatar from the user.
 
-Service-ranking entities must be non-deleted. Technician/customer entities must satisfy the active/non-test/non-deleted rules above. Current publication, suspension, recommendation and visibility flags do not rewrite already completed formal consumption. No name/avatar/snapshot fallback may create a second entity or synthetic identifier.
+Service-ranking entities must be non-deleted and must have an active, non-deleted current category; deleted entities and entities attached to an inactive/deleted category are normal current-catalog exclusions under the matrix above. Technician/customer entities must satisfy the active/non-test/non-deleted rules above; a candidate whose customer or assigned technician user is inactive/test/deleted is a normal exclusion, while a missing/mismatched profile/user relation on an otherwise eligible formal order is 409. Current publication, suspension, recommendation and visibility flags do not rewrite already completed formal consumption. No name/avatar/snapshot fallback may create a second entity or synthetic identifier.
 
 ## Deterministic ordering, ranking and numeric safety
 
@@ -210,27 +234,30 @@ Document examples for all three kinds and both metrics plus 400, 401, 403, 404 c
 Tests must inspect generated SQL and bound values rather than source markers alone. Cover:
 
 - NDP, technician cash, operations cash and other-method formal success;
-- missing/duplicate/wrong ledger, event, actor, reference, audit, receipt reason, time order or checkout arithmetic;
+- missing/duplicate/wrong ledger, event, actor, reference, audit, receipt reason, time order or checkout arithmetic; crossed technician/operations evidence-reference pairs; cash/NDP stale other-method fields; non-null `otherPaymentReference`; OTHER code/label mismatch; and any stale ledger/receipt field for the selected method;
 - pending/cancelled/awaiting/refund-pending/refunded and every individual refund residue;
 - exact `paymentConfirmedAt` lower inclusion/upper exclusion and a misleading `endsAt`;
 - current `shop.city` scope, moved city, exact direct category, inactive/missing category and no descendant expansion;
-- shop base, technician-service base, accepted add-on, rejected/proposed/deleted add-on, repeated same-service add-ons and base/add-on same entity;
+- shop base, technician-service base, accepted add-on, rejected/proposed/deleted add-on, repeated same-service add-ons and base/add-on same entity; `acceptedAddOnIds` exact writer order including equal-`proposedAt` ID ties, same-set/wrong-order rejection and duplicate/missing/extra IDs;
+- exact `BookingOrder.currency = JPY` and per-`OrderAddOn.currency = JPY`, rejection of either non-JPY source, and proof that a current catalog currency cannot override the persisted booking/add-on currency;
 - affiliate base discount attribution and exact line total reconciliation;
 - unfiltered technician/customer full-order GMV/count and filtered matching-line GMV/distinct-order count;
-- active/test/deleted users, missing assigned technician, deleted ranking entities and standalone technician services with real public IDs;
+- active/test/deleted users, missing assigned technician, deleted/missing service entities and inactive/deleted/missing category rows across the explicit service/filtered technician/filtered customer/unfiltered technician/unfiltered customer eligibility-versus-409 matrix, plus standalone technician services with real public IDs;
 - zero GMV, empty result, more than ten entities, later pages and global ranks;
 - selected/secondary metric ties, registration tie, numeric-ID tie across service tables and final binary entity-type tie;
 - malformed/duplicate/fractional/negative/unsafe aggregates and canonical numeric parsing.
 
-Service tests prove one clock call, exact dashboard window, category validation, repository input, response filter, audit allowlist/failure and stable 404/409 mapping. Real `createApp` Supertest proves 200 for admin/operator; 400 strict validation; 401; 403 for every unauthorized role; 404 category; 409 evidence; pagination; no extra route; and response/audit secrecy. Run the existing technician-ranking suites unchanged as regression evidence.
+Schema/migration tests prove the exact `booking_orders_ranking_window_idx` Prisma mapping and physical six-column order, the technician-service UUID migration/backfill/unique index, the one permission row, idempotent grants, and that `SYSTEM_PERMISSION_CODES` plus `buildRolePermissionAssignments()` grant `backoffice:analytics-ranking:read` to admin/operator only and to no merchant, merchant staff, customer, technician or unrelated role.
+
+Service tests prove one clock call, exact dashboard window, one `findActiveCategoryById` call only for filtered requests, no ranking query after its null result, repository input, response filter, audit allowlist/failure and stable requested-category 404 versus evidence/taxonomy 409 mapping. Real `createApp` Supertest proves 200 for admin/operator; 400 strict validation; 401; 403 for every unauthorized role; 404 category; 409 evidence; pagination; no extra route; and response/audit secrecy. Run the existing technician-ranking suites unchanged as regression evidence.
 
 ### Rollback-only local MySQL integration
 
 The integration suite is opt-in only with `RUN_ANALYTICS_RANKING_MYSQL_INTEGRATION=true`. Before importing/constructing Prisma or performing any write, require an explicit existing `FORMAL_BACKEND_ENV_FILE`, read `DATABASE_URL` only from that file, reject inherited-only/empty values, production/staging runtime flags, non-MySQL protocols, non-loopback hosts and every database name except exact `needo_test`. Reuse the dashboard loopback authority rules; never connect during ordinary import or default Jest runs.
 
-Preflight the Task3 migration and every required physical table/column/index before fixture writes. Create a unique fixture cohort inside one outer interactive transaction, instantiate the repository with that transaction-bound client, and terminate only by throwing a dedicated rollback sentinel. Compare external baseline counts before and after rollback. Do not call global Prisma from inside the transaction, use `deleteMany`, commit fixtures, clean unrelated rows or apply migrations.
+Preflight the Task3 migration and every required physical table/column/index before fixture writes, including exact existence and ordered columns of `booking_orders_ranking_window_idx`. Create a unique fixture cohort inside one outer interactive transaction, instantiate the repository with that transaction-bound client, and terminate only by throwing a dedicated rollback sentinel. Compare external baseline counts before and after rollback. Do not call global Prisma from inside the transaction, use `deleteMany`, commit fixtures, clean unrelated rows or apply migrations.
 
-The real database matrix must include NDP/cash/other evidence, base plus accepted add-ons, affiliate discount, all three ranking kinds, both metrics, category/city/payment boundaries, deterministic ties, and at least one malformed-evidence request whose failure leaves the external baseline unchanged.
+The real database matrix must include NDP/cash/other evidence, base plus accepted add-ons in formal writer order, affiliate discount, all three ranking kinds, both metrics, category/city/payment boundaries, deterministic ties, the deleted/missing entity-category matrix, and malformed evidence for crossed receipt/reference, stale method fields and non-JPY booking/add-on currency whose failures leave the external baseline unchanged.
 
 ## Verification gates
 
