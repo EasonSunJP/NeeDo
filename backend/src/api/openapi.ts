@@ -536,15 +536,37 @@ const affiliatePlatformFeeErrorResponses = {
   }
 };
 const ndpExchangeRateErrorResponses = {
-  "400": jsonErrorResponse("error.validation — strict request validation failed"),
-  "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+  "400": jsonErrorResponse("40001 error.validation — strict request validation failed"),
+  "401": jsonErrorResponse("40105 error.auth.token_invalid — missing or invalid access token"),
   "403": jsonErrorResponse(
-    "error.forbidden or error.identity.forbidden — denied permission or platform scope"
+    "40301 error.forbidden or 40305 error.identity.forbidden — denied permission or platform scope"
   ),
   "409": jsonErrorResponse(
-    "error.ndp_exchange_rate.conflict or error.idempotency.key_reused — version, transaction, uniqueness, or idempotency conflict"
+    "40963 error.ndp_exchange_rate.conflict or 40961 error.idempotency.key_reused — version, chronology, race, uniqueness, or idempotency conflict"
   )
 };
+const formalOrderCommonErrorResponses = {
+  "400": jsonErrorResponse("40001 error.validation — strict request validation failed"),
+  "401": jsonErrorResponse("40105 error.auth.token_invalid — missing, expired, or invalid bearer token"),
+  "403": jsonErrorResponse(
+    "40301 error.forbidden or error.auth.identity_forbidden — missing permission or authenticated actor identity mismatch"
+  ),
+  "404": jsonErrorResponse(
+    "40401 error.order.not_found — the order or participant is deliberately hidden from this actor"
+  )
+};
+const fulfillmentConflictResponse = jsonErrorResponse(
+  "40906 error.order.invalid_transition or error.order.unresolved_add_on; 40961 error.idempotency.key_reused"
+);
+const checkoutConflictResponse = jsonErrorResponse(
+  "40907 error.wallet.insufficient_balance; 40961 error.idempotency.key_reused; 40964 error.order.checkout_invalid_state; 40965 error.order.checkout_invalid_snapshot"
+);
+const reviewConflictResponse = jsonErrorResponse(
+  "40906 error.order.review_requires_completion; 40961 error.order.review_already_submitted or error.idempotency.key_reused; 40965 error.order.review_invalid_settlement"
+);
+const checkoutDependencyResponse = jsonErrorResponse(
+  "50301 error.dependency.unavailable or error.order.checkout_rate_required — required rate or settlement dependency unavailable"
+);
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -4238,11 +4260,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           orderId: { type: "integer" },
           fromStatus: {
             type: ["string", "null"],
-            enum: ["pending", "confirmed", "inService", "completed", "cancelled", null]
+            enum: [
+              "pending",
+              "confirmed",
+              "inService",
+              "awaitingCheckout",
+              "awaitingPaymentConfirmation",
+              "completed",
+              "cancelled",
+              null
+            ]
           },
           toStatus: {
             type: "string",
-            enum: ["pending", "confirmed", "inService", "completed", "cancelled"]
+            enum: [
+              "pending",
+              "confirmed",
+              "inService",
+              "awaitingCheckout",
+              "awaitingPaymentConfirmation",
+              "completed",
+              "cancelled"
+            ]
           },
           actorUserId: { type: ["integer", "null"] },
           reason: { type: ["string", "null"] },
@@ -4269,11 +4308,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "paymentRefundReason",
           "customerUserId",
           "serviceId",
+          "technicianServiceId",
           "shopId",
           "technicianProfileId",
           "scheduleSlotId",
           "fulfillmentMode",
           "serviceName",
+          "pricingModeSnapshot",
+          "serviceOwnerType",
+          "serviceOwnerId",
+          "serviceNameSnapshot",
+          "servicePriceSnapshot",
+          "serviceDurationSnapshot",
+          "serviceSnapshot",
+          "serviceSession",
           "shopName",
           "technicianName",
           "priceAmount",
@@ -4310,12 +4358,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           paymentRefundReference: { type: ["string", "null"], maxLength: 120 },
           paymentRefundReason: { type: ["string", "null"], maxLength: 500 },
           customerUserId: { type: "integer" },
-          serviceId: { type: "integer" },
+          serviceId: { type: ["integer", "null"], minimum: 1 },
+          technicianServiceId: { type: ["integer", "null"], minimum: 1 },
           shopId: { type: "integer" },
           technicianProfileId: { type: ["integer", "null"] },
           scheduleSlotId: { type: "integer" },
           fulfillmentMode: { type: "string", enum: ["home", "store"] },
           serviceName: { type: "string" },
+          pricingModeSnapshot: { type: "string", enum: ["merchant", "technician"] },
+          serviceOwnerType: { type: "string", enum: ["shop", "technician"] },
+          serviceOwnerId: { type: ["integer", "null"], minimum: 1 },
+          serviceNameSnapshot: { type: ["string", "null"] },
+          servicePriceSnapshot: { type: ["string", "null"] },
+          serviceDurationSnapshot: { type: ["integer", "null"], minimum: 1 },
+          serviceSnapshot: {
+            description: "Immutable formal service payload captured when the order was created"
+          },
+          serviceSession: {
+            oneOf: [{ $ref: "#/components/schemas/OrderServiceSession" }, { type: "null" }]
+          },
           shopName: { type: "string" },
           technicianName: { type: ["string", "null"] },
           priceAmount: { type: "string", example: "8800.00" },
@@ -4332,6 +4393,103 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           statusHistory: {
             type: "array",
             items: { $ref: "#/components/schemas/OrderStatusHistory" }
+          }
+        }
+      },
+      CustomerBookingOrderDetail: {
+        type: "object",
+        description:
+          "Owning-customer single-order detail extension. serviceVerificationCode is never returned by lists, technician, merchant, platform, or fulfillment mutation projections.",
+        allOf: [{ $ref: "#/components/schemas/BookingOrder" }],
+        properties: {
+          serviceVerificationCode: { type: "string", pattern: "^[0-9]{6}$" }
+        }
+      },
+      OrderAddOn: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "serviceId",
+          "status",
+          "serviceNameSnapshot",
+          "priceAmountJpy",
+          "currency",
+          "durationMinutes",
+          "serviceSnapshot",
+          "proposedBy",
+          "proposedAt",
+          "resolvedBy",
+          "resolvedAt",
+          "resolutionReason"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          serviceId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          status: { type: "string", enum: ["proposed", "accepted", "rejected"] },
+          serviceNameSnapshot: { type: "string", minLength: 1 },
+          priceAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          currency: { type: "string", enum: ["JPY"] },
+          durationMinutes: { type: "integer", minimum: 1 },
+          serviceSnapshot: {
+            description: "Immutable published same-shop service snapshot used for this proposal"
+          },
+          proposedBy: {
+            type: ["string", "null"],
+            enum: ["customer", "technician", null]
+          },
+          proposedAt: { type: "string", format: "date-time" },
+          resolvedBy: {
+            type: ["string", "null"],
+            enum: ["customer", "technician", null]
+          },
+          resolvedAt: { type: ["string", "null"], format: "date-time" },
+          resolutionReason: { type: ["string", "null"] }
+        }
+      },
+      OrderServiceSession: {
+        type: "object",
+        additionalProperties: false,
+        required: ["startedAt", "expectedEndsAt", "endedAt", "addOns"],
+        properties: {
+          startedAt: { type: ["string", "null"], format: "date-time" },
+          expectedEndsAt: { type: ["string", "null"], format: "date-time" },
+          endedAt: { type: ["string", "null"], format: "date-time" },
+          addOns: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrderAddOn" }
+          }
+        }
+      },
+      OrderCheckoutCalculation: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "formula",
+          "baseAmountJpy",
+          "acceptedAddOnIds",
+          "addOnAmountJpy",
+          "discountAmountJpy",
+          "checkoutAmountJpy",
+          "rateFormula"
+        ],
+        properties: {
+          formula: {
+            type: "string",
+            enum: ["base_plus_accepted_add_ons_minus_discount"]
+          },
+          baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          acceptedAddOnIds: {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
+          },
+          addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          rateFormula: {
+            type: "string",
+            enum: ["ceil(jpy_times_ndp_units_divided_by_jpy_units)"]
           }
         }
       },
@@ -4359,7 +4517,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               jpyUnits: { type: "integer", minimum: 1 }, effectiveFrom: { type: "string", format: "date-time" }
             }
           },
-          calculation: { type: "object", additionalProperties: true },
+          calculation: { $ref: "#/components/schemas/OrderCheckoutCalculation" },
           paymentMethod: { type: ["string", "null"], enum: ["cash", "ndp", "other", null] },
           paymentSelectedAt: { type: ["string", "null"], format: "date-time" },
           otherMethod: { oneOf: [{ type: "object", additionalProperties: false, required: ["code", "label"], properties: { code: { type: "string" }, label: { type: "string" } } }, { type: "null" }] },
@@ -4368,6 +4526,41 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           receiptConfirmationReason: { type: ["string", "null"], maxLength: 500 },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OrderReviewProjection: {
+        type: "object",
+        additionalProperties: false,
+        required: ["targetType", "rating", "tags", "comment", "createdAt"],
+        properties: {
+          targetType: { type: "string", enum: ["technician", "customer"] },
+          rating: { type: "integer", minimum: 1, maximum: 5 },
+          tags: {
+            type: "array",
+            maxItems: 8,
+            items: { type: "string", maxLength: 40 }
+          },
+          comment: { type: ["string", "null"], maxLength: 1000 },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      OrderReviewMutationResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["applied", "review"],
+        properties: {
+          applied: { type: "boolean" },
+          review: { $ref: "#/components/schemas/OrderReviewProjection" }
+        }
+      },
+      OrderReviewMineResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["review"],
+        properties: {
+          review: {
+            oneOf: [{ $ref: "#/components/schemas/OrderReviewProjection" }, { type: "null" }]
+          }
         }
       },
       Wallet: {
@@ -6213,6 +6406,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       NdpExchangeRate: {
         type: "object",
         additionalProperties: false,
+        description:
+          "Immutable published rate. status active|superseded is a latest-publication sentinel, not a classification at the caller's current time.",
         required: [
           "ruleId",
           "publicId",
@@ -6233,7 +6428,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           version: { type: "integer", minimum: 1 },
           ndpUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
           jpyUnits: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
-          status: { type: "string", enum: ["active", "superseded"] },
+          status: {
+            type: "string",
+            enum: ["active", "superseded"],
+            description:
+              "Publication sentinel only: active is the latest published version and superseded is an earlier version."
+          },
           effectiveFrom: { type: "string", format: "date-time" },
           effectiveTo: { type: ["string", "null"], format: "date-time" },
           reason: { type: "string", minLength: 1, maxLength: 500 },
@@ -6259,6 +6459,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       NdpExchangeRateOverview: {
         type: "object",
         additionalProperties: false,
+        description:
+          "current and nextScheduled are evaluated at evaluatedAt; history uses that same evaluatedAt across pagination.",
         required: ["current", "nextScheduled", "latestVersion", "evaluatedAt", "history"],
         properties: {
           current: {
@@ -7955,11 +8157,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...createExchangeOpenApiPaths(config),
     [`${config.API_PREFIX}/backoffice/ndp-exchange-rates`]: {
       get: {
+        operationId: "listNdpExchangeRates",
         tags: ["NDP Exchange Rate"],
         summary: "Read current, scheduled, and historical NDP exchange rates",
         description:
           "Requires backoffice:ndp-exchange-rate:read and a global or platform identity. Effective intervals are evaluated as [effectiveFrom, effectiveTo).",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:ndp-exchange-rate:read",
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           {
@@ -7967,7 +8171,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: { type: "integer", minimum: 1, maximum: 100 }
           },
-          { name: "at", in: "query", schema: { type: "string", format: "date-time" } }
+          {
+            name: "at",
+            in: "query",
+            description: "Optional offset ISO-8601 evaluation instant; when omitted the server time is used",
+            schema: { type: "string", format: "date-time" }
+          }
         ],
         responses: {
           "200": jsonDataResponse("Evaluated rate summary and paginated immutable history", {
@@ -7979,11 +8188,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       },
       post: {
+        operationId: "publishNdpExchangeRate",
         tags: ["NDP Exchange Rate"],
         summary: "Publish the next NDP exchange-rate version",
         description:
           "Requires backoffice:ndp-exchange-rate:write and a global or platform identity. Publication closes the prior version and writes its audit record atomically.",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:ndp-exchange-rate:write",
         requestBody: {
           required: true,
           content: {
@@ -11447,7 +11658,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
         ],
         responses: {
-          "200": { description: "Booking order detail" },
+          "200": jsonDataResponse(
+            "Booking order detail; only the owning customer can receive the optional service verification code",
+            { $ref: "#/components/schemas/CustomerBookingOrderDetail" }
+          ),
           "404": { description: "Order not found" }
         }
       }
@@ -11561,65 +11775,419 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/orders/{id}/service/start`]: {
+      post: {
+        operationId: "startOrderService",
+        tags: ["Booking Fulfillment"],
+        summary: "Start service as the owning customer or assigned technician",
+        description:
+          "The service derives actor identity from authentication. A technician supplies the six-digit customer-visible verification code; the code and its hash are never returned here.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:service:start",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                oneOf: [
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["actor", "idempotencyKey"],
+                    properties: {
+                      actor: { type: "string", enum: ["customer"] },
+                      idempotencyKey: {
+                        type: "string",
+                        minLength: 16,
+                        maxLength: 160,
+                        description: "Visible trimmed request key"
+                      }
+                    }
+                  },
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["actor", "verificationCode", "idempotencyKey"],
+                    properties: {
+                      actor: { type: "string", enum: ["technician"] },
+                      verificationCode: { type: "string", pattern: "^[0-9]{6}$" },
+                      idempotencyKey: {
+                        type: "string",
+                        minLength: 16,
+                        maxLength: 160,
+                        description: "Visible trimmed request key"
+                      }
+                    }
+                  }
+                ],
+                discriminator: { propertyName: "actor" }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Safe fulfillment order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "400": jsonErrorResponse(
+            "40001 error.validation or 40108 error.order.verification_code_invalid"
+          ),
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/add-ons`]: {
+      post: {
+        operationId: "proposeOrderAddOn",
+        tags: ["Booking Fulfillment"],
+        summary: "Propose a published same-shop service add-on",
+        description:
+          "The server resolves the formal Service and persists immutable name, JPY price, duration and service snapshots; client price or duration is never authoritative.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:add-on:write",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            serviceId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+            idempotencyKey: {
+              type: "string",
+              minLength: 16,
+              maxLength: 160,
+              description: "Visible trimmed request key"
+            }
+          },
+          ["serviceId", "idempotencyKey"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Safe fulfillment order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "400": jsonErrorResponse(
+            "40001 error.validation or error.order.add_on_service_invalid"
+          ),
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/add-ons/{addOnId}/accept`]: {
+      post: {
+        operationId: "acceptOrderAddOn",
+        tags: ["Booking Fulfillment"],
+        summary: "Accept one pending add-on as the opposite participant",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:add-on:write",
+        parameters: [
+          idPathParameter(),
+          {
+            name: "addOnId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
+          }
+        ],
+        requestBody: authJsonBody(
+          {
+            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+          },
+          ["idempotencyKey"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Safe fulfillment order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/add-ons/{addOnId}/reject`]: {
+      post: {
+        operationId: "rejectOrderAddOn",
+        tags: ["Booking Fulfillment"],
+        summary: "Reject one pending add-on as the opposite participant",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:add-on:write",
+        parameters: [
+          idPathParameter(),
+          {
+            name: "addOnId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
+          }
+        ],
+        requestBody: authJsonBody(
+          {
+            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+          },
+          ["idempotencyKey"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Safe fulfillment order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/service/end`]: {
+      post: {
+        operationId: "endOrderService",
+        tags: ["Booking Fulfillment"],
+        summary: "End service and enter awaiting checkout",
+        description: "Pending add-ons block service end. The authenticated participant is derived server-side.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:service:end",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            reason: {
+              type: "string",
+              minLength: 1,
+              maxLength: 500,
+              description: "Visible trimmed reason, limited to 500 Unicode code points"
+            },
+            idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+          },
+          ["reason", "idempotencyKey"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Safe fulfillment order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/reviews`]: {
+      post: {
+        operationId: "createOrderReview",
+        tags: ["Booking Reviews"],
+        summary: "Create the authenticated participant's one formal order review",
+        description:
+          "The service derives and enforces the valid reviewer-to-target direction. Tags are NFKC-normalized, visible, limited to 40 Unicode code points, and unique under Unicode 16 default case fold.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:review:create",
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["targetType", "rating", "tags", "comment", "idempotencyKey"],
+                description:
+                  "The service derives the reviewer and valid target direction. Tags use NFKC plus Unicode 16 default case fold for uniqueness.",
+                properties: {
+                  targetType: { type: "string", enum: ["technician", "customer"] },
+                  rating: { type: "integer", minimum: 1, maximum: 5 },
+                  tags: {
+                    type: "array",
+                    maxItems: 8,
+                    items: {
+                      type: "string",
+                      maxLength: 40,
+                      description: "NFKC-normalized visible text; maximum 40 Unicode code points"
+                    }
+                  },
+                  comment: {
+                    oneOf: [
+                      {
+                        type: "string",
+                        maxLength: 1000,
+                        description: "NFKC-normalized visible text; maximum 1000 Unicode code points"
+                      },
+                      { type: "null" }
+                    ]
+                  },
+                  idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Applied or semantically replayed review", {
+            $ref: "#/components/schemas/OrderReviewMutationResult"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": reviewConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/reviews/mine`]: {
+      get: {
+        operationId: "getOwnOrderReview",
+        tags: ["Booking Reviews"],
+        summary: "Read the authenticated participant's own formal review",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:review:create",
+        parameters: [idPathParameter()],
+        responses: {
+          "200": jsonDataResponse("Own review or null", {
+            $ref: "#/components/schemas/OrderReviewMineResult"
+          }),
+          ...formalOrderCommonErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/orders/{id}/checkout`]: {
       get: {
+        operationId: "getOrderCheckout",
         tags: ["Booking Checkout"],
         summary: "Read or create immutable checkout evidence as the owning customer or assigned technician",
         description: "Requires order:checkout:read. The service session must be ended. Existing evidence remains readable after completion and never exposes idempotency, wallet, ledger or audit internals.",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:checkout:read",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         responses: {
           "200": jsonDataResponse("Checkout projection", { $ref: "#/components/schemas/OrderCheckout" }),
-          "401": jsonErrorResponse("Authentication required"),
-          "403": jsonErrorResponse("Missing checkout read permission"),
-          "404": jsonErrorResponse("Order participant or order not found"),
-          "409": jsonErrorResponse("Checkout state or immutable snapshot is inconsistent")
+          ...formalOrderCommonErrorResponses,
+          "404": jsonErrorResponse(
+            "40401 error.order.not_found or 40418 error.ndp_exchange_rate.not_found — participant is hidden or no effective rate exists"
+          ),
+          "409": checkoutConflictResponse,
+          "503": checkoutDependencyResponse
         }
       }
     },
     [`${config.API_PREFIX}/orders/{id}/checkout/payment-method`]: {
       post: {
+        operationId: "selectOrderCheckoutPaymentMethod",
         tags: ["Booking Checkout"], summary: "Select cash, NDP, or other payment as the owning customer",
         description: "Requires order:checkout:payment-method:write. Selection never completes an order.",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:checkout:payment-method:write",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
-        requestBody: authJsonBody({
-          method: { type: "string", enum: ["cash", "ndp", "other"] },
-          otherMethodCode: { type: "string", maxLength: 40 },
-          otherMethodLabel: { type: "string", maxLength: 80 },
-          idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
-        }, ["method", "idempotencyKey"]),
-        responses: { "200": jsonDataResponse("Selected checkout method", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing permission"), "404": jsonErrorResponse("Owning customer or order not found"), "409": jsonErrorResponse("Invalid state or idempotency conflict") }
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                oneOf: [
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["method", "idempotencyKey"],
+                    properties: {
+                      method: { type: "string", enum: ["cash"] },
+                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                    }
+                  },
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["method", "idempotencyKey"],
+                    properties: {
+                      method: { type: "string", enum: ["ndp"] },
+                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                    }
+                  },
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: [
+                      "method",
+                      "otherMethodCode",
+                      "otherMethodLabel",
+                      "idempotencyKey"
+                    ],
+                    properties: {
+                      method: { type: "string", enum: ["other"] },
+                      otherMethodCode: {
+                        type: "string",
+                        minLength: 1,
+                        maxLength: 40,
+                        description: "Visible trimmed text"
+                      },
+                      otherMethodLabel: {
+                        type: "string",
+                        minLength: 1,
+                        maxLength: 80,
+                        description: "Visible trimmed text"
+                      },
+                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
+                    }
+                  }
+                ],
+                discriminator: { propertyName: "method" }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Selected checkout method", {
+            $ref: "#/components/schemas/OrderCheckout"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": checkoutConflictResponse
+        }
       }
     },
     [`${config.API_PREFIX}/orders/{id}/checkout/pay/ndp`]: {
       post: {
+        operationId: "payOrderCheckoutWithNdp",
         tags: ["Booking Checkout"], summary: "Atomically pay the snapshotted checkout amount with NDP",
         description: "Requires order:checkout:ndp:pay. Debits only the owning customer's classified NDP wallet and completes only after all booking, settlement and affiliate writes commit.",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:checkout:ndp:pay",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         requestBody: authJsonBody({ idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["idempotencyKey"]),
-        responses: { "200": jsonDataResponse("Completed NDP checkout", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing permission"), "404": jsonErrorResponse("Owning customer or order not found"), "409": jsonErrorResponse("Invalid state, insufficient balance, or idempotency conflict") }
+        responses: {
+          "200": jsonDataResponse("Completed NDP checkout", {
+            $ref: "#/components/schemas/OrderCheckout"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "404": jsonErrorResponse(
+            "40401 error.order.not_found or 40418 error.ndp_exchange_rate.not_found"
+          ),
+          "409": checkoutConflictResponse,
+          "503": checkoutDependencyResponse
+        }
       }
     },
     [`${config.API_PREFIX}/orders/{id}/checkout/confirm-receipt`]: {
       post: {
+        operationId: "confirmOrderCheckoutReceipt",
         tags: ["Booking Checkout"], summary: "Assigned technician confirms cash or other receipt",
         description: "Requires order:checkout:receipt:confirm and exact assigned-technician identity.",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:checkout:receipt:confirm",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 }, idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["reason", "idempotencyKey"]),
-        responses: { "200": jsonDataResponse("Completed receipt checkout", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing permission"), "404": jsonErrorResponse("Assigned technician or order not found"), "409": jsonErrorResponse("Invalid state or idempotency conflict") }
+        responses: {
+          "200": jsonDataResponse("Completed receipt checkout", {
+            $ref: "#/components/schemas/OrderCheckout"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": checkoutConflictResponse,
+          "503": checkoutDependencyResponse
+        }
       }
     },
     [`${config.API_PREFIX}/backoffice/orders/{id}/checkout/confirm-receipt`]: {
       post: {
+        operationId: "overrideOrderCheckoutReceipt",
         tags: ["Booking Checkout"], summary: "Audited operations receipt override",
         description: "Requires backoffice:order:checkout:receipt-override and a global/platform identity. Audit and completion commit in one transaction.",
         security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:order:checkout:receipt-override",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
         requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 }, idempotencyKey: { type: "string", minLength: 16, maxLength: 160 } }, ["reason", "idempotencyKey"]),
-        responses: { "200": jsonDataResponse("Completed operations override", { $ref: "#/components/schemas/OrderCheckout" }), "400": jsonErrorResponse("Strict body validation failed"), "401": jsonErrorResponse("Authentication required"), "403": jsonErrorResponse("Missing override permission"), "404": jsonErrorResponse("Order not found"), "409": jsonErrorResponse("Invalid state or idempotency conflict") }
+        responses: {
+          "200": jsonDataResponse("Completed operations override", {
+            $ref: "#/components/schemas/OrderCheckout"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "409": checkoutConflictResponse,
+          "503": checkoutDependencyResponse
+        }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {
