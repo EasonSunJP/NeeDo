@@ -33,6 +33,8 @@ describe("formal Exchange selective matching database checker", () => {
       expect(source).toContain(token);
     }
     expect(source).toContain("userSequence += 1");
+    expect(source).toContain("SELECT LAST_INSERT_ID() AS id");
+    expect(source).not.toContain("transaction.category.create");
     expect(source).not.toContain("digits(label.length)");
     const technicianFixture = source.slice(
       source.indexOf("const [selectedTechnician, losingTechnician]"),
