@@ -87,7 +87,9 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
         }),
         { rewardLedger: ledgerService }
       ),
-    createUserExperienceServiceForRoutes(dependencies)
+    createUserExperienceServiceForRoutes(dependencies),
+    undefined,
+    dependencies.userPolicyEnforcementService
   );
   const controller = new BookingController(bookingService);
 

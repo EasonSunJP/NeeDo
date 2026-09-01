@@ -32,6 +32,7 @@ import {
 } from "./affiliate-checkout.service";
 import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
 import type { UserExperienceService } from "./user-experience.service";
+import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -107,7 +108,11 @@ export class BookingService {
       | "settleCompletedBooking"
     >,
     private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly userPolicyEnforcementService?: Pick<
+      UserPolicyEnforcementService,
+      "assertServiceEkyc"
+    >
   ) {}
 
   public listAvailableSlots(input: AvailabilityListInput) {
@@ -208,6 +213,11 @@ export class BookingService {
         statusCode: 403
       });
     }
+    await this.userPolicyEnforcementService?.assertServiceEkyc(
+      actor.userId,
+      input.fulfillmentMode,
+      this.now()
+    );
     await this.assertShopNotSuspended(
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );

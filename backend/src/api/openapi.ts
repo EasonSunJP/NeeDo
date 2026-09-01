@@ -13539,6 +13539,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
+          "403": {
+            description:
+              "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
+          },
           "409": { description: "Slot unavailable or already booked" }
         }
       }
