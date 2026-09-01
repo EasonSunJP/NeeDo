@@ -2,6 +2,7 @@ import { identityApplicationTranslations } from "../features/identity-applicatio
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { dashboardTranslations } from "../features/dashboard/dashboardTranslations";
+import { platformUserManagementTranslations } from "../features/platform-user-management/i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -14938,6 +14939,7 @@ export const translations: TranslationMap = {
   ...affiliateProfileTranslations,
   ...affiliateMarketplaceTranslations,
   ...dashboardTranslations,
+  ...platformUserManagementTranslations,
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {
