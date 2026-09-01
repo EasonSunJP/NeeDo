@@ -480,6 +480,10 @@ describe("ExchangePostRepository", () => {
     expect(sql).toContain("platform_membership_tier_benefits");
     expect(sql).toContain("platform_membership_benefits");
     expect(sql).toMatch(/ORDER BY\s+priorityActive DESC/);
+    expect(sql).toContain("entitlement.expires_at >");
+    expect(sql).toContain("benefit.is_globally_enabled = TRUE");
+    expect(sql).toContain("tierBenefit.is_enabled = TRUE");
+    expect(sql).not.toContain("membership_level_snapshot");
     expect(query.values).toContain("priority_request");
     expect(query.values).toContain(now);
   });

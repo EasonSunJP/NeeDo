@@ -104,7 +104,9 @@ const exchangeService = new ExchangeService(
   undefined,
   new PersonalIdentityScopeService(authRepository),
   exchangeRequestFeeService,
-  exchangeLedgerService
+  exchangeLedgerService,
+  userPolicyEnforcementService,
+  platformMembershipResolver
 );
 const authSessionStore = new RedisAuthSessionStore(undefined, {
   onSecurityEvent: (event) => {
@@ -172,6 +174,7 @@ const app = createApp(env, {
   authRepository,
   authSessionStore,
   platformMembershipRepository,
+  platformMembershipResolverService: platformMembershipResolver,
   userExperienceService,
   userExperienceRepository,
   userGlobalPolicyRepository,

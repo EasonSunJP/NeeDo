@@ -2,6 +2,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthenticatedAccessContext } from "./auth.service";
 import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
+import type { PlatformMembershipService } from "./platform-membership.service";
 import type {
   ExchangeCommentPage,
   ExchangeCommentPayload,
@@ -217,6 +218,10 @@ export class ExchangeService {
     private readonly userPolicyEnforcementService?: Pick<
       UserPolicyEnforcementService,
       "assertServiceEkyc"
+    >,
+    private readonly platformMembershipResolverService?: Pick<
+      PlatformMembershipService,
+      "resolveMembershipAt"
     >
   ) {}
 
@@ -226,7 +231,7 @@ export class ExchangeService {
     const at = this.now();
     const actor = await this.resolveActor(access);
     this.assertCanPublish(actor.identityType, "demand");
-    const capacity = this.resolvePublisherCapacity(actor, at);
+    const capacity = await this.resolvePublisherCapacity(actor, at);
     if (!this.exchangeRequestFeeService) {
       throw new AppError({
         code: ERROR_CODES.EXCHANGE_REQUEST_FEE_UNAVAILABLE,
@@ -300,7 +305,9 @@ export class ExchangeService {
         const actor = await this.resolveActor(access, repository);
         this.assertCanPublish(actor.identityType, input.type);
         const capacity =
-          input.type === "demand" ? this.resolvePublisherCapacity(actor, occurredAt) : undefined;
+          input.type === "demand"
+            ? await this.resolvePublisherCapacity(actor, occurredAt)
+            : undefined;
         if (capacity && input.type === "demand") {
           this.assertTargetWithinCapacity(input.targetProviderCount, capacity.targetProviderLimit);
         }
@@ -729,10 +736,10 @@ export class ExchangeService {
     if (!allowed) throw this.identityForbidden();
   }
 
-  private resolvePublisherCapacity(
+  private async resolvePublisherCapacity(
     actor: ExchangeActorRecord,
     at: Date
-  ): ExchangePublisherCapacity {
+  ): Promise<ExchangePublisherCapacity> {
     const currency = actor.isTestAccount ? "TEST_NDP" : "NDP";
     if (PERSONAL_DEMAND_PUBLISHER_IDENTITIES.has(actor.identityType)) {
       const membership = actor.customerMembership;
@@ -743,9 +750,12 @@ export class ExchangeService {
       ) {
         throw this.identityForbidden();
       }
-      const effectiveMembership = resolveEffectiveCustomerMembershipLevel(membership, at)
-        .trim()
-        .toLowerCase();
+      const effectiveMembership = this.platformMembershipResolverService
+        ? this.toExchangeMembershipLevel(
+            (await this.platformMembershipResolverService.resolveMembershipAt(actor.userId, at))
+              .tierCode
+          )
+        : resolveEffectiveCustomerMembershipLevel(membership, at).trim().toLowerCase();
       if (!this.isCustomerMembershipLevel(effectiveMembership)) throw this.identityForbidden();
       return {
         source: "customer_membership",
@@ -789,6 +799,14 @@ export class ExchangeService {
 
   private isCustomerMembershipLevel(value: string): value is ExchangeCustomerMembershipLevel {
     return Object.prototype.hasOwnProperty.call(CUSTOMER_MEMBERSHIP_LIMITS, value);
+  }
+
+  private toExchangeMembershipLevel(
+    value: "free" | "silver" | "gold" | "black_diamond"
+  ): ExchangeCustomerMembershipLevel {
+    if (value === "free") return "standard";
+    if (value === "black_diamond") return "black";
+    return value;
   }
 
   private async assertPostReadable(actor: ExchangeActorRecord, postId: number): Promise<void> {
