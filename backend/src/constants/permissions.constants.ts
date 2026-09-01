@@ -1263,6 +1263,20 @@ export const SYSTEM_PERMISSIONS = [
     "切换店铺定价或技师定价模式"
   ),
   createPermission(
+    "merchant-admin:shop:service-taxonomy:read",
+    "店铺服务种类读取",
+    "api",
+    "merchant-admin",
+    "读取当前店铺已选择的服务种类与业务关键词"
+  ),
+  createPermission(
+    "merchant-admin:shop:service-taxonomy:write",
+    "店铺服务种类维护",
+    "api",
+    "merchant-admin",
+    "由店铺负责人维护当前店铺的服务种类与业务关键词"
+  ),
+  createPermission(
     "technician:services:list",
     "技师服务列表",
     "api",
@@ -1926,6 +1940,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:shop:write",
   "merchant-admin:shop:pricing-mode:read",
   "merchant-admin:shop:pricing-mode:update",
+  "merchant-admin:shop:service-taxonomy:read",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -2081,6 +2096,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
+    "merchant-admin:shop:service-taxonomy:write",
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,

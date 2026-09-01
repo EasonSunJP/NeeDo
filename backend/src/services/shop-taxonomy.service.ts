@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type {
@@ -9,8 +10,14 @@ import type {
   LocalizedServiceCategory,
   ShopTaxonomyRepositoryPort
 } from "../repositories/shop-taxonomy.repository";
+import type { ShopServiceTaxonomyPayload } from "../repositories/shop-taxonomy.repository";
 import type { PaginatedResponse } from "../utils/pagination";
-import type { ShopTaxonomyCatalogQuery } from "../validators/shop-taxonomy.validator";
+import type {
+  ShopTaxonomyCatalogQuery,
+  ShopTaxonomyReplaceBody
+} from "../validators/shop-taxonomy.validator";
+import type { AuthenticatedAccessContext } from "./auth.service";
+import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface ShopTaxonomyQualificationPort {
   assertSelectable(input: {
@@ -46,6 +53,53 @@ export class ShopTaxonomyService {
     input: ShopTaxonomyCatalogQuery
   ): Promise<PaginatedResponse<LocalizedBusinessKeyword>> {
     return this.requireRepository().listKeywords(categoryId, input);
+  }
+
+  public async getShopTaxonomy(
+    actor: AuthenticatedAccessContext,
+    locale: ShopTaxonomyCatalogQuery["locale"]
+  ): Promise<ShopServiceTaxonomyPayload> {
+    const shopId = requireMerchantShopId(actor);
+    const [selection, quota] = await Promise.all([
+      this.requireRepository().getShopSelectionState(shopId, locale),
+      this.quotaPolicy.resolve(shopId)
+    ]);
+
+    return {
+      ...selection,
+      categoryLimit: quota.categoryLimit,
+      keywordLimit: quota.keywordLimit,
+      removedKeywordIds: []
+    };
+  }
+
+  public async replaceShopTaxonomy(
+    actor: AuthenticatedAccessContext,
+    body: ShopTaxonomyReplaceBody,
+    locale: ShopTaxonomyCatalogQuery["locale"],
+    at: Date = new Date()
+  ): Promise<ShopServiceTaxonomyPayload> {
+    const shopId = requireMerchantShopId(actor);
+    const categoryIds = [...body.categoryIds].sort((a, b) => a - b);
+    const keywordIds = [...body.keywordIds].sort((a, b) => a - b);
+    const quota = await this.assertSelectionPolicy({ shopId, categoryIds, keywordIds, at });
+    const requestFingerprint = createHash("sha256")
+      .update(JSON.stringify({ categoryIds, keywordIds, expectedRevision: body.expectedRevision }))
+      .digest("hex");
+
+    return this.requireRepository().replaceShopSelection({
+      shopId,
+      actorUserId: actor.userId,
+      categoryIds,
+      keywordIds,
+      expectedRevision: body.expectedRevision,
+      idempotencyKey: body.idempotencyKey,
+      requestFingerprint,
+      locale,
+      categoryLimit: quota.categoryLimit,
+      keywordLimit: quota.keywordLimit,
+      at
+    });
   }
 
   public async assertSelectionPolicy(

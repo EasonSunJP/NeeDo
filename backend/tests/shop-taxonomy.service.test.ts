@@ -4,6 +4,7 @@ import {
   type ShopTaxonomyQualificationPort
 } from "../src/services/shop-taxonomy.service";
 import type { ShopTaxonomyQuotaPolicyPort } from "../src/services/shop-taxonomy-quota.service";
+import type { ShopTaxonomyRepositoryPort } from "../src/repositories/shop-taxonomy.repository";
 
 const defaultQuota: ShopTaxonomyQuotaPolicyPort = {
   resolve: async () => ({ categoryLimit: 5, keywordLimit: 5, source: "default" })
@@ -92,5 +93,64 @@ describe("shop taxonomy selection policy", () => {
         })
       ).rejects.toMatchObject({ message: `error.shop_taxonomy.qualification_${reason}` });
     }
+  });
+
+  it("reads and replaces the current merchant shop using normalized full-set commands", async () => {
+    const repository = {
+      listCategories: jest.fn(),
+      listKeywords: jest.fn(),
+      assertSelectable: jest.fn(async () => undefined),
+      getShopSelectionState: jest.fn(async () => ({
+        revision: 2,
+        selectedCategories: [],
+        selectedKeywords: []
+      })),
+      replaceShopSelection: jest.fn(async (input) => ({
+        revision: 3,
+        categoryLimit: input.categoryLimit,
+        keywordLimit: input.keywordLimit,
+        selectedCategories: [],
+        selectedKeywords: [],
+        removedKeywordIds: [99]
+      }))
+    } as unknown as jest.Mocked<ShopTaxonomyRepositoryPort>;
+    const service = new ShopTaxonomyService(defaultQuota, repository, repository);
+    const actor = {
+      userId: 7,
+      currentIdentityType: "merchant",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 9
+    } as never;
+
+    await expect(service.getShopTaxonomy(actor, "ja")).resolves.toMatchObject({
+      revision: 2,
+      categoryLimit: 5,
+      keywordLimit: 5
+    });
+    await service.replaceShopTaxonomy(
+      actor,
+      {
+        categoryIds: [2, 1],
+        keywordIds: [20, 10],
+        expectedRevision: 2,
+        idempotencyKey: "taxonomy-command-0001"
+      },
+      "ja",
+      new Date("2026-09-01T00:00:00.000Z")
+    );
+
+    expect(repository.replaceShopSelection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: 9,
+        actorUserId: 7,
+        categoryIds: [1, 2],
+        keywordIds: [10, 20],
+        expectedRevision: 2,
+        idempotencyKey: "taxonomy-command-0001",
+        requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        categoryLimit: 5,
+        keywordLimit: 5
+      })
+    );
   });
 });
