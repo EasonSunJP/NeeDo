@@ -19,6 +19,10 @@ import {
 import type { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { prisma } from "../prisma/client";
 import type { AuthRequestContext } from "../services/auth.service";
+import type {
+  EntityShareReceipt,
+  ResolvedEntityTarget
+} from "./entity-engagement.repository";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
@@ -444,6 +448,31 @@ export type CreateMessageOutcome =
   | { status: "recipient_blocked" }
   | { status: "not_friends" };
 
+export interface CreateNeedoEntityShareInput {
+  actorUserId: number;
+  actorIdentityId: number;
+  conversationId: number;
+  recipientIdentityId: number;
+  target: ResolvedEntityTarget;
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+export type CreateNeedoEntityShareOutcome =
+  | {
+      status: "created" | "replayed";
+      message: MessagePayload;
+      receipt: EntityShareReceipt;
+    }
+  | {
+      status:
+        | "idempotency_conflict"
+        | "recipient_not_found"
+        | "not_found"
+        | "recipient_blocked"
+        | "not_friends";
+    };
+
 export interface SendContactCardInput {
   conversationId: number;
   senderUserId: number;
@@ -671,6 +700,9 @@ export interface RealtimeRepositoryPort {
     input: CheckMessageSendEligibilityInput
   ) => Promise<MessageSendEligibility>;
   createMessage: (input: CreateMessageInput) => Promise<CreateMessageOutcome>;
+  createNeedoEntityShare: (
+    input: CreateNeedoEntityShareInput
+  ) => Promise<CreateNeedoEntityShareOutcome>;
   sendContactCard: (input: SendContactCardInput) => Promise<SendContactCardOutcome>;
   isMessageSenderBlocked: (
     conversationId: number,
@@ -1507,6 +1539,143 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         message: this.mapMessage(outcome.message, senderIdentityId)
       };
     });
+  }
+
+  public async createNeedoEntityShare(
+    input: CreateNeedoEntityShareInput
+  ): Promise<CreateNeedoEntityShareOutcome> {
+    const execute = async (): Promise<CreateNeedoEntityShareOutcome> =>
+      this.client.$transaction(async (tx) => {
+        const existing = await tx.entityShareEvent.findUnique({
+          where: {
+            actorUserId_idempotencyKey: {
+              actorUserId: input.actorUserId,
+              idempotencyKey: input.idempotencyKey
+            }
+          },
+          include: { message: { include: messageInclude } }
+        });
+        if (existing) {
+          if (
+            existing.requestFingerprint !== input.requestFingerprint ||
+            existing.message === null
+          ) {
+            return { status: "idempotency_conflict" };
+          }
+          const shareCount = await tx.entityShareEvent.count({
+            where: { ...this.entityShareTargetWhere(input.target), deletedAt: null }
+          });
+          return {
+            status: "replayed",
+            message: this.mapMessage(existing.message, input.actorIdentityId),
+            receipt: this.entityShareReceipt(
+              input.target,
+              existing.id,
+              existing.messageId,
+              shareCount,
+              true
+            )
+          };
+        }
+
+        const recipient = await tx.conversationParticipant.findFirst({
+          where: {
+            conversationId: input.conversationId,
+            identityId: input.recipientIdentityId,
+            deletedAt: null,
+            conversation: { deletedAt: null }
+          },
+          select: { userId: true, identityId: true }
+        });
+        if (!recipient || recipient.identityId === input.actorIdentityId) {
+          return { status: "recipient_not_found" };
+        }
+
+        const messageOutcome = await persistImMessageInTransaction(tx, {
+          conversationId: input.conversationId,
+          senderUserId: input.actorUserId,
+          senderIdentityId: input.actorIdentityId,
+          type: MessageType.SYSTEM,
+          content: input.target.publicId,
+          metadata: {
+            needoMessageType: "entity-share",
+            targetType: input.target.targetType,
+            publicId: input.target.publicId
+          },
+          transactionNow: new Date()
+        });
+        if (messageOutcome.status !== "created") {
+          return messageOutcome;
+        }
+
+        const event = await tx.entityShareEvent.create({
+          data: {
+            actorUserId: input.actorUserId,
+            actorIdentityId: input.actorIdentityId,
+            shopId: input.target.shopId,
+            technicianProfileId: input.target.technicianProfileId,
+            channel: "NEEDO_MESSAGE",
+            recipientUserId: recipient.userId,
+            recipientIdentityId: recipient.identityId,
+            conversationId: input.conversationId,
+            messageId: messageOutcome.message.id,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint
+          }
+        });
+        const shareCount = await tx.entityShareEvent.count({
+          where: { ...this.entityShareTargetWhere(input.target), deletedAt: null }
+        });
+        return {
+          status: "created",
+          message: this.mapMessage(messageOutcome.message, input.actorIdentityId),
+          receipt: this.entityShareReceipt(
+            input.target,
+            event.id,
+            messageOutcome.message.id,
+            shareCount,
+            false
+          )
+        };
+      });
+
+    try {
+      return await execute();
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+      const existing = await this.client.entityShareEvent.findUnique({
+        where: {
+          actorUserId_idempotencyKey: {
+            actorUserId: input.actorUserId,
+            idempotencyKey: input.idempotencyKey
+          }
+        },
+        include: { message: { include: messageInclude } }
+      });
+      if (
+        !existing ||
+        existing.requestFingerprint !== input.requestFingerprint ||
+        existing.message === null
+      ) {
+        return { status: "idempotency_conflict" };
+      }
+      const shareCount = await this.client.entityShareEvent.count({
+        where: { ...this.entityShareTargetWhere(input.target), deletedAt: null }
+      });
+      return {
+        status: "replayed",
+        message: this.mapMessage(existing.message, input.actorIdentityId),
+        receipt: this.entityShareReceipt(
+          input.target,
+          existing.id,
+          existing.messageId,
+          shareCount,
+          true
+        )
+      };
+    }
   }
 
   public async sendContactCard(
@@ -5519,6 +5688,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return "text";
+  }
+
+  private entityShareTargetWhere(target: ResolvedEntityTarget): Prisma.EntityShareEventWhereInput {
+    return target.targetType === "shop"
+      ? { shopId: target.shopId }
+      : { technicianProfileId: target.technicianProfileId };
+  }
+
+  private entityShareReceipt(
+    target: ResolvedEntityTarget,
+    eventId: number,
+    messageId: number | null,
+    shareCount: number,
+    replayed: boolean
+  ): EntityShareReceipt {
+    return {
+      targetType: target.targetType,
+      publicId: target.publicId,
+      eventId,
+      messageId,
+      shareCount,
+      replayed
+    };
   }
 
   private friendRequestStatusToDb(status: FriendRequestStatusPayload): FriendRequestStatus {

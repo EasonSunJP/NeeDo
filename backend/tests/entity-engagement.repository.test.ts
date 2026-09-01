@@ -106,4 +106,77 @@ describe("EntityEngagementRepository", () => {
     expect(client.technicianProfile.findMany).toHaveBeenCalledTimes(1);
     expect(client.entityFavorite.findMany).toHaveBeenCalledTimes(1);
   });
+
+  it("counts a successful system share once for a repeated idempotency key", async () => {
+    const event = {
+      id: 21,
+      requestFingerprint: "same-fingerprint",
+      messageId: null
+    };
+    const tx = {
+      entityShareEvent: {
+        findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(event),
+        create: jest.fn(async () => event),
+        count: jest.fn(async () => 9)
+      }
+    };
+    const client = {
+      shop: {
+        findMany: jest.fn(async () => [{ id: 7, publicIdentifier: { publicId: "shop0000000001" } }])
+      },
+      technicianProfile: { findMany: jest.fn(async () => []) },
+      $transaction: jest.fn(async (operation: (transaction: typeof tx) => unknown) => operation(tx))
+    };
+    const repository = new EntityEngagementRepository(client as never);
+    const input = {
+      actorUserId: 42,
+      actorIdentityId: 10,
+      target,
+      idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
+      requestFingerprint: "same-fingerprint"
+    };
+
+    await expect(repository.recordSystemShare(input)).resolves.toMatchObject({
+      status: "created",
+      receipt: { ...target, shareCount: 9, replayed: false, messageId: null }
+    });
+    await expect(repository.recordSystemShare(input)).resolves.toMatchObject({
+      status: "replayed",
+      receipt: { ...target, shareCount: 9, replayed: true, messageId: null }
+    });
+    expect(tx.entityShareEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an idempotency key reused for a different system-share payload", async () => {
+    const tx = {
+      entityShareEvent: {
+        findUnique: jest.fn(async () => ({
+          id: 21,
+          requestFingerprint: "previous-fingerprint",
+          messageId: null
+        })),
+        create: jest.fn(),
+        count: jest.fn()
+      }
+    };
+    const client = {
+      shop: {
+        findMany: jest.fn(async () => [{ id: 7, publicIdentifier: { publicId: "shop0000000001" } }])
+      },
+      technicianProfile: { findMany: jest.fn(async () => []) },
+      $transaction: jest.fn(async (operation: (transaction: typeof tx) => unknown) => operation(tx))
+    };
+    const repository = new EntityEngagementRepository(client as never);
+
+    await expect(
+      repository.recordSystemShare({
+        actorUserId: 42,
+        actorIdentityId: 10,
+        target,
+        idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
+        requestFingerprint: "different-fingerprint"
+      })
+    ).resolves.toEqual({ status: "idempotency_conflict" });
+    expect(tx.entityShareEvent.create).not.toHaveBeenCalled();
+  });
 });

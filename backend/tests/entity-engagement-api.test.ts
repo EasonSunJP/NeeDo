@@ -111,7 +111,8 @@ const createFixture = async () => {
     "auth:refresh",
     "auth:logout",
     "entity-favorite:read",
-    "entity-favorite:write"
+    "entity-favorite:write",
+    "entity-share:write"
   ].map(makePermission);
   const readOnlyPermissions = ["auth:me", "auth:refresh", "auth:logout"].map((code, index) =>
     makePermission(code, 100 + index)
@@ -226,6 +227,31 @@ const createFixture = async () => {
       total: 1,
       page: input.page,
       page_size: input.pageSize
+    })),
+    resolveTarget: jest.fn(async (target) => ({
+      ...target,
+      shopId: target.targetType === "shop" ? 7 : null,
+      technicianProfileId: target.targetType === "technician" ? 8 : null
+    })),
+    recordSystemShare: jest.fn(async (input) => ({
+      status: "created" as const,
+      receipt: {
+        ...input.target,
+        eventId: 21,
+        messageId: null,
+        shareCount: 9,
+        replayed: false
+      }
+    }))
+  };
+  const realtimeService = {
+    createNeedoEntityShare: jest.fn(async (_auth, input) => ({
+      targetType: input.target.targetType,
+      publicId: input.target.publicId,
+      eventId: 22,
+      messageId: 501,
+      shareCount: 10,
+      replayed: false
     }))
   };
   const app = createApp(undefined, {
@@ -234,7 +260,8 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    entityEngagementRepository
+    entityEngagementRepository,
+    realtimeService
   } as never);
   const login = async (email: string): Promise<string> => {
     const response = await request(app)
@@ -244,18 +271,26 @@ const createFixture = async () => {
     return response.body.data.accessToken as string;
   };
 
-  return { app, login, entityEngagementRepository };
+  return { app, login, entityEngagementRepository, realtimeService };
 };
 
 describe("entity favorites API", () => {
   it("registers and seeds favorite permissions for every authenticated system role", () => {
     expect(SYSTEM_PERMISSION_CODES).toEqual(
-      expect.arrayContaining(["entity-favorite:read", "entity-favorite:write"])
+      expect.arrayContaining([
+        "entity-favorite:read",
+        "entity-favorite:write",
+        "entity-share:write"
+      ])
     );
     const assignments = buildRolePermissionAssignments();
     Object.values(assignments).forEach((permissionCodes) => {
       expect(permissionCodes).toEqual(
-        expect.arrayContaining(["entity-favorite:read", "entity-favorite:write"])
+        expect.arrayContaining([
+          "entity-favorite:read",
+          "entity-favorite:write",
+          "entity-share:write"
+        ])
       );
     });
   });
@@ -336,5 +371,44 @@ describe("entity favorites API", () => {
         }))
       })
       .expect(400);
+  });
+
+  it("records NeeDo and successful system-share reports through separate formal endpoints", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("favorite@example.com");
+    const idempotencyKey = "d295f424-8be2-4a8a-a465-1eb538129bb3";
+
+    const needoResponse = await request(fixture.app)
+      .post("/api/v1/entities/shop/shop0000000001/shares/needo")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ conversationId: 91, recipientIdentityId: 11, idempotencyKey })
+      .expect(200);
+    expect(needoResponse.body.data).toMatchObject({
+      eventId: 22,
+      messageId: 501,
+      shareCount: 10,
+      replayed: false
+    });
+    expect(fixture.realtimeService.createNeedoEntityShare).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 42 }),
+      expect.objectContaining({
+        conversationId: 91,
+        recipientIdentityId: 11,
+        target: expect.objectContaining({ shopId: 7 }),
+        requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      })
+    );
+
+    const systemResponse = await request(fixture.app)
+      .post("/api/v1/entities/shop/shop0000000001/shares/system")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ idempotencyKey })
+      .expect(200);
+    expect(systemResponse.body.data).toMatchObject({
+      eventId: 21,
+      messageId: null,
+      shareCount: 9,
+      replayed: false
+    });
   });
 });

@@ -5,7 +5,9 @@ import { getAuthenticatedAccess } from "../utils/request-context";
 import {
   entityFavoriteListQuerySchema,
   entityFavoriteStatusesBodySchema,
-  entityFavoriteTargetParamSchema
+  entityFavoriteTargetParamSchema,
+  needoEntityShareBodySchema,
+  systemEntityShareBodySchema
 } from "../validators/entity-engagement.validator";
 
 export class EntityEngagementController {
@@ -46,6 +48,56 @@ export class EntityEngagementController {
           )
         })
       );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public recordNeedoShare = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const target = entityFavoriteTargetParamSchema.parse(request.params);
+      const body = needoEntityShareBodySchema.parse(request.body);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.recordNeedoShare(
+              getAuthenticatedAccess(response),
+              target.targetType,
+              target.publicId,
+              body
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public recordSystemShare = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const target = entityFavoriteTargetParamSchema.parse(request.params);
+      const body = systemEntityShareBodySchema.parse(request.body);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.recordSystemShare(
+              getAuthenticatedAccess(response),
+              target.targetType,
+              target.publicId,
+              body.idempotencyKey
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }

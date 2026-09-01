@@ -122,6 +122,10 @@ export const ENTITY_FAVORITE_PERMISSIONS = {
   write: "entity-favorite:write"
 } as const;
 
+export const ENTITY_SHARE_PERMISSIONS = {
+  write: "entity-share:write"
+} as const;
+
 export const EXCHANGE_PERMISSIONS = {
   postList: "exchange:posts:list",
   postDetail: "exchange:posts:detail",
@@ -225,6 +229,13 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "entity-engagement",
     "以当前账号收藏或取消收藏已发布的店铺与技师"
+  ),
+  createPermission(
+    ENTITY_SHARE_PERMISSIONS.write,
+    "记录实体分享",
+    "api",
+    "entity-engagement",
+    "记录通过 NeeDo 消息或系统能力成功分享的店铺与技师"
   ),
   createPermission(
     "identity-application:own",
@@ -1671,6 +1682,7 @@ const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
   "auth:password:setup",
   ENTITY_FAVORITE_PERMISSIONS.read,
   ENTITY_FAVORITE_PERMISSIONS.write,
+  ENTITY_SHARE_PERMISSIONS.write,
   "menu:dashboard",
   "page:dashboard"
 ] as const satisfies readonly SystemPermissionCode[];

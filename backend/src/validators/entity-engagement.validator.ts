@@ -31,6 +31,18 @@ export const entityFavoriteStatusesBodySchema = z
   })
   .strict();
 
+export const needoEntityShareBodySchema = z
+  .object({
+    conversationId: z.number().int().positive().max(2_147_483_647),
+    recipientIdentityId: z.number().int().positive().max(2_147_483_647),
+    idempotencyKey: z.string().uuid()
+  })
+  .strict();
+
+export const systemEntityShareBodySchema = z.object({ idempotencyKey: z.string().uuid() }).strict();
+
 export type EntityFavoriteTargetParams = z.infer<typeof entityFavoriteTargetParamSchema>;
 export type EntityFavoriteListQuery = z.infer<typeof entityFavoriteListQuerySchema>;
 export type EntityFavoriteStatusesBody = z.infer<typeof entityFavoriteStatusesBodySchema>;
+export type NeedoEntityShareBody = z.infer<typeof needoEntityShareBodySchema>;
+export type SystemEntityShareBody = z.infer<typeof systemEntityShareBodySchema>;

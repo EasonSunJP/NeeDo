@@ -10,7 +10,9 @@ import { EntityEngagementService } from "../services/entity-engagement.service";
 import {
   entityFavoriteListQuerySchema,
   entityFavoriteStatusesBodySchema,
-  entityFavoriteTargetParamSchema
+  entityFavoriteTargetParamSchema,
+  needoEntityShareBodySchema,
+  systemEntityShareBodySchema
 } from "../validators/entity-engagement.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -18,6 +20,8 @@ export const ENTITY_FAVORITE_ROUTE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
 } as const;
+
+export const ENTITY_SHARE_ROUTE_PERMISSION = "entity-share:write" as const;
 
 export const createEntityEngagementRoutes = (
   config: AppConfig,
@@ -28,7 +32,9 @@ export const createEntityEngagementRoutes = (
     createAuthServiceForRoutes(config, dependencies)
   );
   const service = new EntityEngagementService(
-    dependencies.entityEngagementRepository ?? new EntityEngagementRepository()
+    dependencies.entityEngagementRepository ?? new EntityEngagementRepository(),
+    dependencies.realtimeService,
+    dependencies.personalIdentityScopeService
   );
   const controller = new EntityEngagementController(service);
 
@@ -59,6 +65,26 @@ export const createEntityEngagementRoutes = (
     createAuthorizeMiddleware(ENTITY_FAVORITE_ROUTE_PERMISSIONS.read),
     validateRequest({ body: entityFavoriteStatusesBodySchema }),
     controller.getFavoriteStatuses
+  );
+  router.post(
+    "/entities/:targetType/:publicId/shares/needo",
+    authenticate(),
+    createAuthorizeMiddleware(ENTITY_SHARE_ROUTE_PERMISSION),
+    validateRequest({
+      params: entityFavoriteTargetParamSchema,
+      body: needoEntityShareBodySchema
+    }),
+    controller.recordNeedoShare
+  );
+  router.post(
+    "/entities/:targetType/:publicId/shares/system",
+    authenticate(),
+    createAuthorizeMiddleware(ENTITY_SHARE_ROUTE_PERMISSION),
+    validateRequest({
+      params: entityFavoriteTargetParamSchema,
+      body: systemEntityShareBodySchema
+    }),
+    controller.recordSystemShare
   );
 
   return router;

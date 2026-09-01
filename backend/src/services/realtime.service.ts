@@ -8,6 +8,7 @@ import type {
   CreateFollowInput,
   CreateFriendRequestInput,
   CreateMessageInput,
+  CreateNeedoEntityShareInput,
   CreateOrderStatusNotificationInput,
   CreateSocialPostInput,
   ContactCardCandidateListInput,
@@ -328,6 +329,75 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return message;
+  }
+
+  public async createNeedoEntityShare(
+    auth: AuthenticatedAccessContext,
+    input: Omit<CreateNeedoEntityShareInput, "actorUserId" | "actorIdentityId">
+  ) {
+    const scope = await this.assertMessageSendAllowed(auth, input.conversationId);
+    const outcome = await this.repository.createNeedoEntityShare({
+      ...input,
+      actorUserId: auth.userId,
+      actorIdentityId: scope.identityId
+    });
+    if (outcome.status === "idempotency_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency_key_reused",
+        statusCode: 409
+      });
+    }
+    if (outcome.status === "recipient_not_found") {
+      throw this.notFoundError("error.realtime.recipient_not_found");
+    }
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.conversation_not_found");
+    }
+    if (outcome.status === "recipient_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.recipient_blocked",
+        statusCode: 403
+      });
+    }
+    if (outcome.status === "not_friends") {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.im.not_friends",
+        statusCode: 403
+      });
+    }
+    if (outcome.status !== "created" && outcome.status !== "replayed") {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.internal_server_error",
+        statusCode: 500
+      });
+    }
+
+    if (outcome.status === "created") {
+      try {
+        await this.publishToConversation(
+          input.conversationId,
+          "message.created",
+          outcome.message,
+          auth.userId,
+          scope.identityId
+        );
+      } catch (error) {
+        logger.error(
+          {
+            conversationId: input.conversationId,
+            error,
+            eventType: "message.created",
+            messageId: outcome.message.id
+          },
+          "Realtime entity-share publication failed after message and share event commit"
+        );
+      }
+    }
+    return outcome.receipt;
   }
 
   public async sendContactCard(

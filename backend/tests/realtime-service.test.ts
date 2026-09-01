@@ -1187,3 +1187,173 @@ describe("RealtimeService group privacy and membership", () => {
     expect(repository.deleteMessagesForUser).not.toHaveBeenCalled();
   });
 });
+
+describe("NeeDo entity-share atomicity", () => {
+  const target = {
+    targetType: "shop" as const,
+    publicId: "shop0000000001",
+    shopId: 7,
+    technicianProfileId: null
+  };
+
+  it.each([
+    ["not_found", "error.realtime.conversation_not_found", 404],
+    ["recipient_blocked", "error.im.recipient_blocked", 403],
+    ["not_friends", "error.im.not_friends", 403]
+  ] as const)("creates no share event when preflight returns %s", async (status, message, statusCode) => {
+    const repository = {
+      checkMessageSendEligibility: jest.fn().mockResolvedValue(status),
+      createNeedoEntityShare: jest.fn()
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.createNeedoEntityShare(
+        { userId: 41 } as never,
+        {
+          conversationId: 91,
+          recipientIdentityId: 1670,
+          target,
+          idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
+          requestFingerprint: "fingerprint"
+        }
+      )
+    ).rejects.toMatchObject({ message, statusCode });
+    expect(repository.createNeedoEntityShare).not.toHaveBeenCalled();
+  });
+
+  it("publishes only a newly committed NeeDo share message", async () => {
+    const message = { id: 501, conversationId: 91 };
+    const repository = {
+      checkMessageSendEligibility: jest.fn().mockResolvedValue("allowed"),
+      createNeedoEntityShare: jest.fn().mockResolvedValue({
+        status: "created",
+        message,
+        receipt: {
+          targetType: "shop",
+          publicId: "shop0000000001",
+          eventId: 21,
+          messageId: 501,
+          shareCount: 4,
+          replayed: false
+        }
+      }),
+      listConversationRecipients: jest.fn(async () => [
+        { userId: 167, identityId: 1670 }
+      ])
+    };
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, gateway);
+
+    await expect(
+      service.createNeedoEntityShare(
+        { userId: 41 } as never,
+        {
+          conversationId: 91,
+          recipientIdentityId: 1670,
+          target,
+          idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
+          requestFingerprint: "fingerprint"
+        }
+      )
+    ).resolves.toMatchObject({ eventId: 21, shareCount: 4, replayed: false });
+    expect(gateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "message.created", payload: message })
+    );
+  });
+
+  it("persists the message and share event in one repository transaction", async () => {
+    const createdAt = new Date("2026-09-01T00:00:00.000Z");
+    const message = {
+      id: 501,
+      conversationId: 91,
+      senderUserId: 41,
+      senderIdentityId: 410,
+      type: "SYSTEM",
+      content: "shop0000000001",
+      metadata: null,
+      expiresAt: null,
+      expiredAt: null,
+      recallDeadlineAt: new Date("2026-09-01T00:03:00.000Z"),
+      recalledAt: null,
+      recallMode: null,
+      contentPurgedAt: null,
+      privacyPolicyVersionAtSend: null,
+      lifecycleVersion: 1,
+      reactionVersion: 0,
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+      reactions: []
+    };
+    const transaction = {
+      entityShareEvent: {
+        findUnique: jest.fn(async () => null),
+        create: jest.fn(async () => ({ id: 21 })),
+        count: jest.fn(async () => 4)
+      },
+      conversationParticipant: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({ userId: 167, identityId: 1670 })
+          .mockResolvedValueOnce({
+            id: 77,
+            createdAt,
+            conversation: {
+              type: "DIRECT",
+              privacyModeEnabled: false,
+              disappearingTtlSeconds: null,
+              privacyPolicyVersion: 1,
+              accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+              participants: [
+                { userId: 41, identityId: 410, identity: { ownedContacts: [] } },
+                { userId: 167, identityId: 1670, identity: { ownedContacts: [] } }
+              ]
+            }
+          }),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn(async () => 2) },
+      imPolicy: { findFirst: jest.fn(async () => null) },
+      message: { create: jest.fn(async () => message) },
+      conversation: { update: jest.fn() }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: typeof transaction) => unknown) =>
+        operation(transaction)
+      )
+    };
+
+    await expect(
+      new RealtimeRepository(client as never).createNeedoEntityShare({
+        actorUserId: 41,
+        actorIdentityId: 410,
+        conversationId: 91,
+        recipientIdentityId: 1670,
+        target,
+        idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
+        requestFingerprint: "fingerprint"
+      })
+    ).resolves.toMatchObject({
+      status: "created",
+      receipt: { eventId: 21, messageId: 501, shareCount: 4, replayed: false }
+    });
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.entityShareEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: 41,
+        actorIdentityId: 410,
+        shopId: 7,
+        technicianProfileId: null,
+        conversationId: 91,
+        messageId: 501,
+        recipientUserId: 167,
+        recipientIdentityId: 1670,
+        channel: "NEEDO_MESSAGE"
+      })
+    });
+  });
+});

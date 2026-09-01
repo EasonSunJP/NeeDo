@@ -19,6 +19,31 @@ export interface EntityFavoriteListItem extends EntityFavoriteState {
   favoritedAt: Date;
 }
 
+export interface EntityShareReceipt extends EntityTarget {
+  eventId: number;
+  messageId: number | null;
+  shareCount: number;
+  replayed: boolean;
+}
+
+export interface ResolvedEntityTarget extends EntityTarget {
+  shopId: number | null;
+  technicianProfileId: number | null;
+}
+
+export interface RecordSystemEntityShareInput {
+  actorUserId: number;
+  actorIdentityId: number;
+  target: EntityTarget;
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+export type RecordEntityShareOutcome =
+  | { status: "created" | "replayed"; receipt: EntityShareReceipt }
+  | { status: "idempotency_conflict" }
+  | { status: "target_not_found" };
+
 export interface EntityFavoriteListInput extends PaginationInput {
   userId: number;
   page: number;
@@ -34,11 +59,8 @@ export interface EntityEngagementRepositoryPort {
   ): Promise<EntityFavoriteState | null>;
   getFavoriteStatuses(userId: number, targets: EntityTarget[]): Promise<EntityFavoriteState[]>;
   listFavorites(input: EntityFavoriteListInput): Promise<PaginatedResponse<EntityFavoriteListItem>>;
-}
-
-interface ResolvedEntityTarget extends EntityTarget {
-  shopId: number | null;
-  technicianProfileId: number | null;
+  resolveTarget(target: EntityTarget): Promise<ResolvedEntityTarget | null>;
+  recordSystemShare(input: RecordSystemEntityShareInput): Promise<RecordEntityShareOutcome>;
 }
 
 interface ResolvedFavoriteListTarget extends ResolvedEntityTarget {
@@ -85,6 +107,11 @@ const activeTechnicianWhere = (publicIds: string[]): Prisma.TechnicianProfileWhe
 });
 
 const favoriteTargetWhere = (target: ResolvedEntityTarget): Prisma.EntityFavoriteWhereInput =>
+  target.targetType === "shop"
+    ? { shopId: target.shopId }
+    : { technicianProfileId: target.technicianProfileId };
+
+const shareTargetWhere = (target: ResolvedEntityTarget): Prisma.EntityShareEventWhereInput =>
   target.targetType === "shop"
     ? { shopId: target.shopId }
     : { technicianProfileId: target.technicianProfileId };
@@ -259,6 +286,95 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     );
   }
 
+  public async resolveTarget(target: EntityTarget): Promise<ResolvedEntityTarget | null> {
+    return (await this.resolveTargets([target]))[0] ?? null;
+  }
+
+  public async recordSystemShare(
+    input: RecordSystemEntityShareInput
+  ): Promise<RecordEntityShareOutcome> {
+    const target = await this.resolveTarget(input.target);
+    if (!target) {
+      return { status: "target_not_found" };
+    }
+
+    const execute = async (): Promise<RecordEntityShareOutcome> =>
+      this.client.$transaction(async (transaction) => {
+        const existing = await transaction.entityShareEvent.findUnique({
+          where: {
+            actorUserId_idempotencyKey: {
+              actorUserId: input.actorUserId,
+              idempotencyKey: input.idempotencyKey
+            }
+          }
+        });
+        if (existing) {
+          if (existing.requestFingerprint !== input.requestFingerprint) {
+            return { status: "idempotency_conflict" };
+          }
+          const shareCount = await transaction.entityShareEvent.count({
+            where: { ...shareTargetWhere(target), deletedAt: null }
+          });
+          return {
+            status: "replayed",
+            receipt: this.shareReceipt(target, existing.id, existing.messageId, shareCount, true)
+          };
+        }
+
+        const event = await transaction.entityShareEvent.create({
+          data: {
+            actorUserId: input.actorUserId,
+            actorIdentityId: input.actorIdentityId,
+            shopId: target.shopId,
+            technicianProfileId: target.technicianProfileId,
+            channel: "SYSTEM_SHARE",
+            recipientUserId: null,
+            recipientIdentityId: null,
+            conversationId: null,
+            messageId: null,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint
+          }
+        });
+        const shareCount = await transaction.entityShareEvent.count({
+          where: { ...shareTargetWhere(target), deletedAt: null }
+        });
+        return {
+          status: "created",
+          receipt: this.shareReceipt(target, event.id, null, shareCount, false)
+        };
+      });
+
+    try {
+      return await execute();
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+      const existing = await this.client.entityShareEvent.findUnique({
+        where: {
+          actorUserId_idempotencyKey: {
+            actorUserId: input.actorUserId,
+            idempotencyKey: input.idempotencyKey
+          }
+        }
+      });
+      if (!existing) {
+        throw error;
+      }
+      if (existing.requestFingerprint !== input.requestFingerprint) {
+        return { status: "idempotency_conflict" };
+      }
+      const shareCount = await this.client.entityShareEvent.count({
+        where: { ...shareTargetWhere(target), deletedAt: null }
+      });
+      return {
+        status: "replayed",
+        receipt: this.shareReceipt(target, existing.id, existing.messageId, shareCount, true)
+      };
+    }
+  }
+
   private async resolveTargets(targets: EntityTarget[]): Promise<ResolvedEntityTarget[]> {
     if (targets.length === 0) {
       return [];
@@ -420,5 +536,26 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
             : (technicianCountById.get(target.technicianProfileId as number) ?? 0)
       };
     });
+  }
+
+  private shareReceipt(
+    target: ResolvedEntityTarget,
+    eventId: number,
+    messageId: number | null,
+    shareCount: number,
+    replayed: boolean
+  ): EntityShareReceipt {
+    return {
+      targetType: target.targetType,
+      publicId: target.publicId,
+      eventId,
+      messageId,
+      shareCount,
+      replayed
+    };
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
   }
 }
