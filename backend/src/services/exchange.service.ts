@@ -171,6 +171,13 @@ export interface ExchangeRepositoryPort {
     status: "request_withdrawn" | "request_expired",
     now: Date
   ): Promise<number>;
+  closeOpenMatchingForTerminalPost(input: {
+    exchangePostId: number;
+    reason: "request_withdrawn" | "request_expired";
+    actorUserId: number | null;
+    actorIdentityId: number | null;
+    at: Date;
+  }): Promise<boolean>;
   listDuePostIds(now: Date, batchSize: number): Promise<number[]>;
   createComment(
     input: ExchangeCommentRepositoryInput
@@ -474,6 +481,18 @@ export class ExchangeService {
           }
         });
       }
+      if (
+        locked.type === "demand" &&
+        !(await repository.closeOpenMatchingForTerminalPost({
+          exchangePostId: locked.id,
+          reason: "request_withdrawn",
+          actorUserId: actor.userId,
+          actorIdentityId: actor.identityId,
+          at: occurredAt
+        }))
+      ) {
+        throw this.exchangeFinancialStateConflict();
+      }
       if (settlesRequestFinancial) {
         await ledgerService!.captureExchangeRequestPublication(
           {
@@ -603,6 +622,18 @@ export class ExchangeService {
             terminalAt: now.toISOString()
           }
         });
+      }
+      if (
+        locked.type === "demand" &&
+        !(await repository.closeOpenMatchingForTerminalPost({
+          exchangePostId: locked.id,
+          reason: "request_expired",
+          actorUserId: null,
+          actorIdentityId: null,
+          at: now
+        }))
+      ) {
+        throw this.exchangeFinancialStateConflict();
       }
       if (settlesRequestFinancial) {
         await ledgerService!.releaseExchangeRequestPublication(
@@ -898,11 +929,11 @@ export class ExchangeService {
     post: ExchangePostPayload,
     actor: ExchangeActorRecord
   ): ExchangePostPayload {
-    const selectiveLiveDemand =
+    const selectiveDemand =
       post.type === "demand" &&
-      post.status === "published" &&
       post.demand?.matchMode === "selective";
-    const ownerView = post.viewer.canWithdraw;
+    const selectiveLiveDemand = selectiveDemand && post.status === "published";
+    const ownerView = post.viewer.canWithdraw || post.viewer.canViewClaims;
     return {
       ...post,
       viewer: {
@@ -912,7 +943,10 @@ export class ExchangeService {
           CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) &&
           !ownerView &&
           post.viewer.canClaim,
-        canViewClaims: selectiveLiveDemand && ownerView
+        canViewClaims:
+          selectiveDemand &&
+          (post.status === "published" || post.status === "matched") &&
+          ownerView
       }
     };
   }

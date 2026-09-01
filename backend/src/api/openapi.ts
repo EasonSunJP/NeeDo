@@ -2451,7 +2451,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           line3: { type: ["string", "null"], minLength: 1, maxLength: 255 },
           line2GenerallyVisible: { type: "boolean" },
           line3GenerallyVisible: { type: "boolean" },
-          disclosure: { type: "string", enum: ["owner", "general"] }
+          disclosure: {
+            type: "string",
+            enum: ["owner", "matched_participant", "general"]
+          }
         }
       },
       ExchangeRequestDemand: {
@@ -2728,7 +2731,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           exchangePostId: { type: "integer", minimum: 1 },
           status: {
             type: "string",
-            enum: ["active", "withdrawn", "request_withdrawn", "request_expired"]
+            enum: [
+              "active",
+              "withdrawn",
+              "request_withdrawn",
+              "request_expired",
+              "matched",
+              "not_selected",
+              "matching_closed"
+            ]
           },
           provider: { $ref: "#/components/schemas/ExchangeClaimProvider" },
           shop: { $ref: "#/components/schemas/ExchangeClaimShop" },

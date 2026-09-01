@@ -44,6 +44,7 @@ const demandRow = {
     publisherIdentityPublic: false
   },
   intelligence: null,
+  matchParticipants: [],
   likes: [{ id: 91 }],
   _count: { comments: 4, likes: 21, shares: 5 }
 };
@@ -529,6 +530,47 @@ describe("ExchangePostRepository", () => {
     expect(JSON.stringify(result)).not.toMatch(/phone|email|phoneNumber/i);
   });
 
+  it("reveals the full publisher and entered address only to a selected participant", async () => {
+    const findFirst = jest.fn(async () => ({
+      ...demandRow,
+      status: "MATCHED",
+      matchParticipants: [{ id: 71 }]
+    }));
+    const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
+
+    await expect(repository.findPostById(41, 18, now, 8)).resolves.toMatchObject({
+      status: "matched",
+      publisher: {
+        publicId: "NC12345678",
+        displayName: "佐藤 美咲"
+      },
+      demand: {
+        address: {
+          line1: "渋谷区",
+          line2: "道玄坂1-2-3",
+          line3: "Prince Tower 12F",
+          disclosure: "matched_participant"
+        }
+      },
+      viewer: {
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: false
+      }
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          matchParticipants: {
+            where: { participantIdentityId: 18, deletedAt: null },
+            select: { id: true },
+            take: 1
+          }
+        })
+      })
+    );
+  });
+
   it("never grants claim capability to another provider identity of the author user", async () => {
     const selectiveRow = {
       ...demandRow,
@@ -803,6 +845,31 @@ describe("ExchangePostRepository", () => {
               addressLine3Public: true,
               publisherIdentityPublic: false
             }
+          },
+          matching: {
+            create: {
+              status: "OPEN",
+              effectiveTargetProviderCount: 1,
+              effectiveBudgetMaxJpy: 12_000,
+              selectedQuoteTotalJpy: 0,
+              version: 1,
+              createdAt: now,
+              updatedAt: now,
+              events: {
+                create: {
+                  sequence: 1,
+                  type: "OPENED",
+                  versionBefore: 0,
+                  versionAfter: 1,
+                  payload: {
+                    effectiveTargetProviderCount: 1,
+                    effectiveBudgetMaxJpy: 12_000
+                  },
+                  createdAt: now,
+                  updatedAt: now
+                }
+              }
+            }
           }
         }),
         select: { id: true }
@@ -997,6 +1064,63 @@ describe("ExchangePostRepository", () => {
         status: "REQUEST_EXPIRED",
         activeKey: null,
         terminalAt: now,
+        updatedAt: now
+      }
+    });
+  });
+
+  it("closes an open matching aggregate with an append-only terminal event", async () => {
+    const queryRaw = jest.fn(async () => [{ id: 51 }]);
+    const findUnique = jest.fn(async () => ({ id: 51, status: "OPEN", version: 4 }));
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const createEvent = jest.fn(async () => ({ id: 61 }));
+    const repository = new ExchangePostRepository({
+      $queryRaw: queryRaw,
+      exchangeRequestMatching: { findUnique, updateMany },
+      exchangeMatchEvent: { create: createEvent }
+    } as never);
+
+    await expect(
+      repository.closeOpenMatchingForTerminalPost({
+        exchangePostId: 41,
+        reason: "request_expired",
+        actorUserId: null,
+        actorIdentityId: null,
+        at: now
+      })
+    ).resolves.toBe(true);
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { exchangePostId: 41 },
+      select: { id: true, status: true, version: true }
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 51,
+        exchangePostId: 41,
+        status: "OPEN",
+        version: 4,
+        deletedAt: null
+      },
+      data: {
+        status: "CLOSED",
+        version: 5,
+        closedAt: now,
+        updatedAt: now
+      }
+    });
+    expect(createEvent).toHaveBeenCalledWith({
+      data: {
+        matchingId: 51,
+        sequence: 5,
+        type: "CLOSED",
+        actorUserId: null,
+        actorIdentityId: null,
+        versionBefore: 4,
+        versionAfter: 5,
+        payload: { exchangePostId: 41, reason: "request_expired" },
+        createdAt: now,
         updatedAt: now
       }
     });

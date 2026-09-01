@@ -55,7 +55,7 @@ export interface ExchangeRequestAddressPayload {
   line3: string | null;
   line2GenerallyVisible: boolean;
   line3GenerallyVisible: boolean;
-  disclosure: "owner" | "general";
+  disclosure: "owner" | "matched_participant" | "general";
 }
 
 export interface ExchangePublisherCapacity {

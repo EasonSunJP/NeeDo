@@ -182,6 +182,7 @@ const createRepository = () => {
     markWithdrawnIfPublished: jest.fn(async () => true),
     markExpiredIfPublished: jest.fn(async () => true),
     cancelActiveClaimsByPost: jest.fn(async () => 0),
+    closeOpenMatchingForTerminalPost: jest.fn(async () => true),
     listDuePostIds: jest.fn(async () => []),
     createComment: jest.fn(async () => ({ kind: "success" as const, value: comment })),
     setLike: jest.fn(async () => ({ kind: "success" as const, value: counts })),
@@ -885,6 +886,13 @@ describe("ExchangeService", () => {
       "request_withdrawn",
       now
     );
+    expect(repository.closeOpenMatchingForTerminalPost).toHaveBeenCalledWith({
+      exchangePostId: 41,
+      reason: "request_withdrawn",
+      actorUserId: 7,
+      actorIdentityId: 17,
+      at: now
+    });
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "exchange.claim.request_withdrawn",
@@ -1022,6 +1030,13 @@ describe("ExchangeService", () => {
       "request_expired",
       now
     );
+    expect(repository.closeOpenMatchingForTerminalPost).toHaveBeenCalledWith({
+      exchangePostId: 41,
+      reason: "request_expired",
+      actorUserId: null,
+      actorIdentityId: null,
+      at: now
+    });
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "exchange.claim.request_expired",

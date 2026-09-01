@@ -127,10 +127,13 @@ const createRepository = (overrides: Partial<ExchangeClaimRepositoryPort> = {}) 
     findRequest: jest.fn(async () => request),
     findOptionCandidate: jest.fn(async () => ({ technicianProfileId: 81 })),
     lockRequest: jest.fn(async () => request),
+    lockMatching: jest.fn(async () => ({ id: 51, status: "open" as const, version: 3 })),
+    advanceMatchingForClaimEvent: jest.fn(async () => true),
     lockTechnician: jest.fn(async () => true),
     lockOption: jest.fn(async () => option),
     hasActiveClaimForRequestTechnician: jest.fn(async () => false),
     hasOverlappingActiveClaim: jest.fn(async () => false),
+    hasOverlappingMatchParticipant: jest.fn(async () => false),
     hasConflictingBooking: jest.fn(async () => false),
     findIdempotent: jest.fn(async () => null),
     findMine: jest.fn(async () => claim),
@@ -219,6 +222,10 @@ describe("ExchangeClaimService", () => {
         events.push("lock-request");
         return request;
       }),
+      lockMatching: jest.fn(async () => {
+        events.push("lock-matching");
+        return { id: 51, status: "open" as const, version: 3 };
+      }),
       findOptionCandidate: jest.fn(async () => {
         events.push("read-option-candidate");
         return { technicianProfileId: 81 };
@@ -239,6 +246,10 @@ describe("ExchangeClaimService", () => {
         events.push("check-claim-conflict");
         return false;
       }),
+      hasOverlappingMatchParticipant: jest.fn(async () => {
+        events.push("check-match-conflict");
+        return false;
+      }),
       hasConflictingBooking: jest.fn(async () => {
         events.push("check-booking-conflict");
         return false;
@@ -256,6 +267,10 @@ describe("ExchangeClaimService", () => {
           quoteAmountJpy: 15_000
         });
         return claim;
+      }),
+      advanceMatchingForClaimEvent: jest.fn(async () => {
+        events.push("advance-matching");
+        return true;
       }),
       createAudit: jest.fn(async () => {
         events.push("audit");
@@ -275,13 +290,16 @@ describe("ExchangeClaimService", () => {
     ).resolves.toEqual(claim);
     expect(events).toEqual([
       "lock-request",
+      "lock-matching",
       "read-option-candidate",
       "lock-technician",
       "lock-slot",
       "check-duplicate",
       "check-claim-conflict",
+      "check-match-conflict",
       "check-booking-conflict",
       "create",
+      "advance-matching",
       "audit"
     ]);
     expect(repository.createAudit).toHaveBeenCalledWith(
@@ -355,6 +373,11 @@ describe("ExchangeClaimService", () => {
       40977
     ],
     ["soft lock conflict", { hasOverlappingActiveClaim: jest.fn(async () => true) }, 40976],
+    [
+      "matched participant conflict",
+      { hasOverlappingMatchParticipant: jest.fn(async () => true) },
+      40976
+    ],
     ["booking conflict", { hasConflictingBooking: jest.fn(async () => true) }, 40976]
   ])("rejects %s", async (_label, overrides, code) => {
     const repository = createRepository(overrides);
@@ -425,6 +448,10 @@ describe("ExchangeClaimService", () => {
         events.push("lock-request");
         return request;
       }),
+      lockMatching: jest.fn(async () => {
+        events.push("lock-matching");
+        return { id: 51, status: "open" as const, version: 3 };
+      }),
       lockClaim: jest.fn(async () => {
         events.push("lock-claim");
         return {
@@ -446,6 +473,10 @@ describe("ExchangeClaimService", () => {
           terminalAt: now.toISOString()
         };
       }),
+      advanceMatchingForClaimEvent: jest.fn(async () => {
+        events.push("advance-matching");
+        return true;
+      }),
       createAudit: jest.fn(async () => {
         events.push("audit");
       })
@@ -465,7 +496,14 @@ describe("ExchangeClaimService", () => {
         requestContext
       )
     ).resolves.toMatchObject({ id: 301, status: "withdrawn" });
-    expect(events).toEqual(["lock-request", "lock-claim", "withdraw", "audit"]);
+    expect(events).toEqual([
+      "lock-request",
+      "lock-matching",
+      "lock-claim",
+      "withdraw",
+      "advance-matching",
+      "audit"
+    ]);
     expect(repository.withdraw).toHaveBeenCalledWith(
       301,
       17,
