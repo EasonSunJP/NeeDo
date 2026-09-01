@@ -3,6 +3,8 @@ import {
   TAXONOMY_LOCALES,
   type TaxonomyLocaleCode
 } from "../prisma/catalogs/shop-service-taxonomy";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 describe("approved shop service taxonomy catalog", () => {
   it("contains the approved stable category order", () => {
@@ -93,5 +95,18 @@ describe("approved shop service taxonomy catalog", () => {
       legal_professional: "QUALIFICATION_REVIEW",
       events_conferences: "CONDITIONAL"
     });
+  });
+
+  it("seeds the catalog idempotently without recreating categories or granting qualifications", () => {
+    const seedSource = readFileSync(resolve(process.cwd(), "prisma/seed.ts"), "utf8");
+
+    expect(seedSource).toContain("SHOP_SERVICE_TAXONOMY");
+    expect(seedSource).toContain("tx.category.upsert");
+    expect(seedSource).toContain("tx.categoryTranslation.upsert");
+    expect(seedSource).toContain("tx.businessKeyword.upsert");
+    expect(seedSource).toContain("tx.businessKeywordTranslation.upsert");
+    expect(seedSource).not.toContain("tx.shopServiceQualification.create");
+    expect(seedSource).not.toContain("tx.shopServiceCategory.create");
+    expect(seedSource).not.toContain("tx.shopBusinessKeyword.create");
   });
 });
