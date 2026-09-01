@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   DASHBOARD_CHECK_METRIC_ORACLE,
+  DASHBOARD_PROVENANCE_STORAGE_CONTRACTS,
   aggregateIndependentEvidence,
   calculateIndependentNdpIncome,
   calculateIndependentTechnicianCommission,
@@ -78,10 +79,10 @@ const provenanceField = {
   order_financial: "booking_order.service_snapshot_json.fixtureMarker",
   ledger_transaction: "metadata.fixtureMarker",
   membership_card: "issuance_reference",
-  user_identity: "user.needo_id",
-  compensation_profile: "technician.user.needo_id",
+  user_identity: "user.email",
+  compensation_profile: "technician.user.email",
   affiliate_reward: "ledger.metadata.fixtureMarker",
-  user: "needo_id"
+  user: "email"
 } as const;
 
 const stableNumericId = (value: string): string => String(
@@ -90,15 +91,20 @@ const stableNumericId = (value: string): string => String(
 
 const typedIdentity = (namespace: keyof typeof identifierKind, logicalId: string) => {
   const structuredProvenance = `${fixtureMarker}:${fixtureNamespace}:${namespace}:${logicalId}`;
+  const emailProvenance = `${namespace}.${logicalId}@${fixtureMarker}.${fixtureNamespace}.fixture.needo.local`;
   const id = identifierKind[namespace] === "numeric_id"
     ? stableNumericId(`${namespace}:${logicalId}`)
-    : namespace === "user" ? structuredProvenance : `${fixtureMarker}:${logicalId}`;
+    : namespace === "user"
+      ? `u${stableNumericId(`${namespace}:${logicalId}`).padStart(10, "0")}`
+      : `${fixtureMarker}:${logicalId}`;
   return {
     id,
     identifierKind: identifierKind[namespace],
     provenance: {
       field: provenanceField[namespace],
-      value: provenanceField[namespace] === identifierKind[namespace] ? id : structuredProvenance
+      value: ["user", "user_identity", "compensation_profile"].includes(namespace)
+        ? emailProvenance
+        : structuredProvenance
     }
   };
 };
@@ -407,6 +413,74 @@ describe("zero-write comprehensive dashboard checker", () => {
       city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
     })).not.toThrow();
 
+    const parsed = parseDashboardFixtureManifest(JSON.stringify(manifest()), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    });
+    const everyWitness = [
+      ...Object.values(parsed.witnesses).flat(),
+      ...Object.values(parsed.readyMetricWitnesses).flatMap((family) => [
+        ...family.current,
+        ...family.previous
+      ])
+    ];
+    const prismaSchema = readFileSync(resolve(backendRoot, "prisma/schema.prisma"), "utf8");
+    expect(prismaSchema).toMatch(/needoId\s+String\s+@unique\s+@map\("needo_id"\)\s+@db\.VarChar\(32\)/u);
+    expect(prismaSchema).toMatch(/email\s+String\s+@unique\s+@db\.VarChar\(255\)/u);
+    expect(prismaSchema).toMatch(/issuanceReference\s+String\?\s+@map\("issuance_reference"\)\s+@db\.VarChar\(160\)/u);
+    expect(prismaSchema).toMatch(/serviceSnapshotJson\s+Json\?\s+@map\("service_snapshot_json"\)/u);
+    expect(prismaSchema).toMatch(/metadata\s+Json\?/u);
+    expect(DASHBOARD_PROVENANCE_STORAGE_CONTRACTS).toEqual({
+      "service_snapshot_json.fixtureMarker": { storage: "json_string", maxCharacters: null },
+      "booking_order.service_snapshot_json.fixtureMarker": { storage: "json_string", maxCharacters: null },
+      "metadata.fixtureMarker": { storage: "json_string", maxCharacters: null },
+      issuance_reference: { storage: "varchar", maxCharacters: 160 },
+      "user.email": { storage: "email_varchar", maxCharacters: 255 },
+      "technician.user.email": { storage: "email_varchar", maxCharacters: 255 },
+      "ledger.metadata.fixtureMarker": { storage: "json_string", maxCharacters: null },
+      email: { storage: "email_varchar", maxCharacters: 255 }
+    });
+    for (const witness of everyWitness) {
+      const contract = DASHBOARD_PROVENANCE_STORAGE_CONTRACTS[witness.provenance.field];
+      expect(contract).toBeDefined();
+      if (contract.storage === "json_string") {
+        expect(JSON.parse(JSON.stringify(witness.provenance.value))).toBe(witness.provenance.value);
+      } else {
+        expect(witness.provenance.value.length).toBeLessThanOrEqual(contract.maxCharacters!);
+      }
+      if (contract.storage === "email_varchar") {
+        const [local, ...domainParts] = witness.provenance.value.split("@");
+        expect(witness.provenance.value).toBe(witness.provenance.value.toLowerCase());
+        expect(local!.length).toBeLessThanOrEqual(64);
+        expect(domainParts).toHaveLength(1);
+        expect(domainParts[0]!.split(".").every((label) => label.length > 0 && label.length <= 63)).toBe(true);
+        expect(witness.provenance.value).toMatch(/^[a-z0-9._-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/u);
+      }
+    }
+    const userWitnesses = everyWitness.filter((witness) => [
+      "user", "user_identity", "compensation_profile"
+    ].includes(witness.namespace));
+    expect(userWitnesses.every((witness) => /email$/u.test(witness.provenance.field))).toBe(true);
+    expect(userWitnesses.every((witness) => witness.provenance.value.length > 40)).toBe(true);
+    expect(userWitnesses.every((witness) => witness.provenance.value !== witness.id)).toBe(true);
+    expect(everyWitness.filter((witness) => witness.namespace === "user")
+      .every((witness) => /^u\d{10}$/u.test(witness.id) && witness.id.length <= 32)).toBe(true);
+
+    const legacyNeedoIdProvenance = manifest();
+    legacyNeedoIdProvenance.readyMetricWitnesses.new_users.current[0]!.provenance = {
+      field: "needo_id" as never,
+      value: `${fixtureMarker}:${fixtureNamespace}:user:legacy`
+    };
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(legacyNeedoIdProvenance), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("provenance");
+
+    const nonCanonicalEmail = manifest();
+    nonCanonicalEmail.witnesses.technicianIdentityIds[0]!.provenance.value =
+      `user_identity.Identity@${fixtureMarker}.${fixtureNamespace}.fixture.needo.local`;
+    expect(() => parseDashboardFixtureManifest(JSON.stringify(nonCanonicalEmail), {
+      city: "Tokyo", from: "2026-08-25", to: "2026-08-31"
+    })).toThrow("structured provenance");
+
     const caseCollision = manifest();
     caseCollision.witnesses.coherentCompletedCheckoutIds = [
       { ...ref("booking_order", "Case-Collision"), id: `${fixtureMarker}:Case-Collision` },
@@ -483,11 +557,13 @@ describe("zero-write comprehensive dashboard checker", () => {
       "SHOW GRANTS",
       "DESCRIBE users",
       "EXPLAIN SELECT * FROM users",
-      "SELECT cOnCaT /* reviewed pure function */ ('a', 'b')"
+      "SELECT cOnCaT /* reviewed pure function */ ('a', 'b')",
+      "SELECT '東京都' AS city",
+      "SELECT 1 /* 恶意() remains inert fixture data */"
     ]) {
       await expect(facade.$queryRaw(statement)).resolves.toEqual([{ ok: 1 }]);
     }
-    expect(queryRaw).toHaveBeenCalledTimes(8);
+    expect(queryRaw).toHaveBeenCalledTimes(10);
 
     for (const statement of [
       "SELECT 1; DELETE FROM users",
@@ -511,12 +587,18 @@ describe("zero-write comprehensive dashboard checker", () => {
       "SELECT `evil_mutating_udf`()",
       "SELECT `WHERE`()",
       "SELECT MASTER_POS_WAIT('binlog.000001', 4)",
+      "SELECT 恶意()",
+      "SELECT π()",
+      "SELECT sys.恶意()",
+      "SELECT evil恶意()",
+      "SELECT sys.evil恶意()",
+      "SELECT sys.CONCAT('a', 'b')",
       "SELECT @x := 1",
       "SELECT @@session.sql_mode := ''"
     ]) {
       await expect(facade.$queryRaw(statement)).rejects.toThrow("read-only");
     }
-    expect(queryRaw).toHaveBeenCalledTimes(8);
+    expect(queryRaw).toHaveBeenCalledTimes(10);
     expect(extractSqlFunctionCalls(
       "SELECT CONCAT('safe(', TRIM(name)), `evil_mutating_udf` FROM users"
     )).toEqual(["CONCAT", "TRIM"]);
@@ -869,6 +951,12 @@ describe("zero-write comprehensive dashboard checker", () => {
       "ROW_NUMBER", "SUM", "TIMESTAMP", "TRIM", "YEAR"
     ]);
     expect(witnessSql).toContain("authorized.identifier_kind");
+    expect(witnessSql).toContain("BINARY TRIM(row_identity_user.email) = BINARY authorized.provenance_value");
+    expect(witnessSql).toContain("BINARY TRIM(row_profile_user.email) = BINARY authorized.provenance_value");
+    expect(witnessSql).toContain("BINARY TRIM(row_user.email) = BINARY authorized.provenance_value");
+    expect(witnessSql).not.toMatch(
+      /BINARY\s+TRIM\([^)]*needo_id\)\s*=\s*BINARY\s+authorized\.provenance_value/iu
+    );
     const cancelledSql = witnessSql.match(
       /authorized\.kind = 'cancelledOrderIds'[\s\S]*?(?=\n\s+OR \(authorized\.kind = 'refundedOrderIds')/iu
     )?.[0] ?? "";

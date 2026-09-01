@@ -127,10 +127,24 @@ export type WitnessProvenanceField =
   | "booking_order.service_snapshot_json.fixtureMarker"
   | "metadata.fixtureMarker"
   | "issuance_reference"
-  | "user.needo_id"
-  | "technician.user.needo_id"
+  | "user.email"
+  | "technician.user.email"
   | "ledger.metadata.fixtureMarker"
-  | "needo_id";
+  | "email";
+
+export const DASHBOARD_PROVENANCE_STORAGE_CONTRACTS = {
+  "service_snapshot_json.fixtureMarker": { storage: "json_string", maxCharacters: null },
+  "booking_order.service_snapshot_json.fixtureMarker": { storage: "json_string", maxCharacters: null },
+  "metadata.fixtureMarker": { storage: "json_string", maxCharacters: null },
+  issuance_reference: { storage: "varchar", maxCharacters: 160 },
+  "user.email": { storage: "email_varchar", maxCharacters: 255 },
+  "technician.user.email": { storage: "email_varchar", maxCharacters: 255 },
+  "ledger.metadata.fixtureMarker": { storage: "json_string", maxCharacters: null },
+  email: { storage: "email_varchar", maxCharacters: 255 }
+} as const satisfies Record<WitnessProvenanceField, {
+  storage: "json_string" | "varchar" | "email_varchar";
+  maxCharacters: number | null;
+}>;
 
 export interface WitnessProvenance {
   field: WitnessProvenanceField;
@@ -339,7 +353,7 @@ const requireVisible = (value: unknown, label: string): string => {
   return value.trim();
 };
 
-const structuredAuthorityToken = /^(?=.{16,80}$)(?=.*[a-z])(?=.*\d)[a-z0-9]+(?:[-_][a-z0-9]+)+$/u;
+const structuredAuthorityToken = /^(?=.{16,63}$)(?=.*[a-z])(?=.*\d)[a-z0-9]+(?:-[a-z0-9]+)+$/u;
 
 const requireAuthorityToken = (value: unknown, label: "marker" | "namespace"): string => {
   const token = requireVisible(value, label).normalize("NFKC");
@@ -394,10 +408,10 @@ const provenanceFieldByNamespace: Record<WitnessNamespace, WitnessProvenanceFiel
   order_financial: "booking_order.service_snapshot_json.fixtureMarker",
   ledger_transaction: "metadata.fixtureMarker",
   membership_card: "issuance_reference",
-  user_identity: "user.needo_id",
-  compensation_profile: "technician.user.needo_id",
+  user_identity: "user.email",
+  compensation_profile: "technician.user.email",
   affiliate_reward: "ledger.metadata.fixtureMarker",
-  user: "needo_id"
+  user: "email"
 };
 
 const canonicalWitnessId = (
@@ -411,6 +425,9 @@ const canonicalWitnessId = (
       throw new Error(`Dashboard fixture manifest identifier is invalid: ${label}`);
     }
     return String(Number(id));
+  }
+  if (identifierKind === "needo_id" && !/^u\d{10}$/u.test(id)) {
+    throw new Error(`Dashboard fixture manifest identifier is invalid: ${label}`);
   }
   if (!/^[\x21-\x7e]+$/u.test(id)) {
     throw new Error(`Dashboard fixture manifest identifier is invalid: ${label}`);
@@ -436,18 +453,32 @@ const requireTypedWitness = (
   const expectedField = provenanceFieldByNamespace[namespace];
   const field = requireVisible(candidate.provenance.field, `${label}.provenance.field`);
   const value = requireVisible(candidate.provenance.value, `${label}.provenance.value`).normalize("NFKC");
-  const provenancePrefix = `${marker}:${fixtureNamespace}:${namespace}:`;
-  const suffix = value.slice(provenancePrefix.length);
+  const storage = DASHBOARD_PROVENANCE_STORAGE_CONTRACTS[expectedField];
+  const emailStorage = storage.storage === "email_varchar";
+  const provenancePrefix = emailStorage
+    ? `${namespace}.`
+    : `${marker}:${fixtureNamespace}:${namespace}:`;
+  const emailDomain = `${marker}.${fixtureNamespace}.fixture.needo.local`;
+  const [emailLocal = "", ...emailDomains] = value.split("@");
+  const suffix = emailStorage
+    ? emailLocal.slice(provenancePrefix.length)
+    : value.slice(provenancePrefix.length);
+  const emailValid = !emailStorage || (
+    value === value.toLowerCase() && value.length <= storage.maxCharacters &&
+    emailDomains.length === 1 && emailDomains[0] === emailDomain &&
+    emailLocal.length <= 64 && emailLocal.startsWith(provenancePrefix) &&
+    emailDomain.split(".").every((part) => part.length > 0 && part.length <= 63) &&
+    /^[a-z0-9][a-z0-9._-]*$/u.test(suffix)
+  );
+  const varcharValid = storage.storage !== "varchar" || value.length <= storage.maxCharacters;
   if (
-    field !== expectedField || !value.startsWith(provenancePrefix) ||
-    suffix === "" || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(suffix)
+    field !== expectedField || suffix === "" ||
+    (!emailStorage && (!value.startsWith(provenancePrefix) || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(suffix))) ||
+    !emailValid || !varcharValid
   ) {
     throw new Error(`Dashboard fixture manifest structured provenance is invalid: ${label}`);
   }
   const id = canonicalWitnessId(candidate.id, expectedIdentifierKind, `${label}.id`);
-  if (namespace === "user" && id !== value) {
-    throw new Error(`Dashboard fixture manifest structured provenance is invalid: ${label}`);
-  }
   return {
     id,
     identifierKind: expectedIdentifierKind,
@@ -914,6 +945,7 @@ const queryText = (query: unknown): string => {
 
 const sqlWriteKeyword = /\b(?:INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|CALL|LOAD|HANDLER|DO|SET|USE|GRANT|REVOKE|ANALYZE|OPTIMIZE|REPAIR|FLUSH|KILL|LOCK|UNLOCK|START|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/iu;
 const sqlReadSideEffect = /(?:\b(?:FOR\s+UPDATE|LOCK\s+IN\s+SHARE\s+MODE|INTO\s+(?:OUTFILE|DUMPFILE))\b|:=|@{1,2}[A-Za-z_$])/iu;
+const sqlQualifiedFunctionCall = /(?:[A-Za-z_][A-Za-z0-9_$]*|\?)\s*\.\s*(?:[A-Za-z_][A-Za-z0-9_$]*|\?)\s*\(/u;
 
 const checkerSqlFunctions = new Set([
   "CAST", "COALESCE", "CONCAT", "CONVERT_TZ", "COUNT", "DATE", "DAY",
@@ -1126,7 +1158,11 @@ const topLevelWords = (statement: string): string[] => {
 
 export function assertReadOnlySql(query: unknown): void {
   const statement = oneSqlStatement(queryText(query));
-  if (statement === "" || sqlWriteKeyword.test(statement) || sqlReadSideEffect.test(statement)) {
+  const containsNonAsciiSqlToken = [...statement].some((character) => character.codePointAt(0)! > 0x7f);
+  if (
+    statement === "" || containsNonAsciiSqlToken || sqlQualifiedFunctionCall.test(statement) ||
+    sqlWriteKeyword.test(statement) || sqlReadSideEffect.test(statement)
+  ) {
     throw new Error("Dashboard checker read-only facade rejected a non-read-only query");
   }
   const unsupportedFunctions = extractSqlFunctionCalls(query)
@@ -2016,8 +2052,8 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
       INNER JOIN customer_profiles AS customer ON customer.user_id = registered_user.id
         AND customer.deleted_at IS NULL
       WHERE authorized.metric_key = 'new_users'
-        AND authorized.provenance_field = 'needo_id'
-        AND BINARY TRIM(registered_user.needo_id) = BINARY authorized.provenance_value
+        AND authorized.provenance_field = 'email'
+        AND BINARY TRIM(registered_user.email) = BINARY authorized.provenance_value
         AND registered_user.created_at >= period.from_inclusive
         AND registered_user.created_at < period.to_exclusive
         AND registered_user.is_active = TRUE AND registered_user.is_test_account = FALSE
@@ -2078,8 +2114,8 @@ const independentEvidenceStatement = (fixture: DashboardFixtureManifest): string
       INNER JOIN technician_profiles AS technician ON technician.user_id = identity_row.user_id
         AND technician.deleted_at IS NULL
       WHERE authorized.metric_key = 'technician_onboarding'
-        AND authorized.provenance_field = 'user.needo_id'
-        AND BINARY TRIM(technician_user.needo_id) = BINARY authorized.provenance_value
+        AND authorized.provenance_field = 'user.email'
+        AND BINARY TRIM(technician_user.email) = BINARY authorized.provenance_value
         AND identity_row.type = 'technician' AND identity_row.is_active = TRUE
         AND identity_row.deleted_at IS NULL
         AND identity_row.created_at >= period.from_inclusive
@@ -2168,14 +2204,14 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       FROM user_identities AS row_identity
       INNER JOIN users AS row_identity_user ON row_identity_user.id = row_identity.user_id
       WHERE CAST(row_identity.id AS CHAR) = authorized.witness_id
-        AND BINARY TRIM(row_identity_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_identity_user.email) = BINARY authorized.provenance_value)
     WHEN 'compensation_profile' THEN (SELECT MIN(CAST(row_profile.id AS CHAR))
       FROM technician_compensation_profiles AS row_profile
       INNER JOIN technician_profiles AS row_profile_technician
         ON row_profile_technician.id = row_profile.technician_profile_id
       INNER JOIN users AS row_profile_user ON row_profile_user.id = row_profile_technician.user_id
       WHERE CAST(row_profile.id AS CHAR) = authorized.witness_id
-        AND BINARY TRIM(row_profile_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_profile_user.email) = BINARY authorized.provenance_value)
     WHEN 'affiliate_reward' THEN (SELECT MIN(CAST(row_reward.id AS CHAR))
       FROM affiliate_rewards AS row_reward
       INNER JOIN affiliate_reward_transactions AS row_reward_transaction
@@ -2188,7 +2224,7 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           = BINARY authorized.provenance_value)
     WHEN 'user' THEN (SELECT MIN(TRIM(row_user.needo_id)) FROM users AS row_user
       WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
-        AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_user.email) = BINARY authorized.provenance_value)
     ELSE NULL END`;
   const resolvedProvenance = `CASE authorized.witness_namespace
     WHEN 'booking_order' THEN (SELECT MIN(JSON_UNQUOTE(JSON_EXTRACT(row_booking.service_snapshot_json, '$.fixtureMarker')))
@@ -2211,18 +2247,18 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       FROM shop_membership_cards AS row_card
       WHERE BINARY TRIM(row_card.public_id) = BINARY authorized.witness_id
         AND BINARY TRIM(row_card.issuance_reference) = BINARY authorized.provenance_value)
-    WHEN 'user_identity' THEN (SELECT MIN(TRIM(row_identity_user.needo_id))
+    WHEN 'user_identity' THEN (SELECT MIN(TRIM(row_identity_user.email))
       FROM user_identities AS row_identity
       INNER JOIN users AS row_identity_user ON row_identity_user.id = row_identity.user_id
       WHERE CAST(row_identity.id AS CHAR) = authorized.witness_id
-        AND BINARY TRIM(row_identity_user.needo_id) = BINARY authorized.provenance_value)
-    WHEN 'compensation_profile' THEN (SELECT MIN(TRIM(row_profile_user.needo_id))
+        AND BINARY TRIM(row_identity_user.email) = BINARY authorized.provenance_value)
+    WHEN 'compensation_profile' THEN (SELECT MIN(TRIM(row_profile_user.email))
       FROM technician_compensation_profiles AS row_profile
       INNER JOIN technician_profiles AS row_profile_technician
         ON row_profile_technician.id = row_profile.technician_profile_id
       INNER JOIN users AS row_profile_user ON row_profile_user.id = row_profile_technician.user_id
       WHERE CAST(row_profile.id AS CHAR) = authorized.witness_id
-        AND BINARY TRIM(row_profile_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_profile_user.email) = BINARY authorized.provenance_value)
     WHEN 'affiliate_reward' THEN (SELECT MIN(JSON_UNQUOTE(JSON_EXTRACT(row_reward_ledger.metadata, '$.fixtureMarker')))
       FROM affiliate_rewards AS row_reward
       INNER JOIN affiliate_reward_transactions AS row_reward_transaction
@@ -2233,9 +2269,9 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
       WHERE CAST(row_reward.id AS CHAR) = authorized.witness_id
         AND BINARY JSON_UNQUOTE(JSON_EXTRACT(row_reward_ledger.metadata, '$.fixtureMarker'))
           = BINARY authorized.provenance_value)
-    WHEN 'user' THEN (SELECT MIN(TRIM(row_user.needo_id)) FROM users AS row_user
+    WHEN 'user' THEN (SELECT MIN(TRIM(row_user.email)) FROM users AS row_user
       WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
-        AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_user.email) = BINARY authorized.provenance_value)
     ELSE NULL END`;
   const resolvedCount = `CASE authorized.witness_namespace
     WHEN 'booking_order' THEN (SELECT COUNT(*) FROM booking_orders AS row_booking
@@ -2257,13 +2293,13 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
     WHEN 'user_identity' THEN (SELECT COUNT(*) FROM user_identities AS row_identity
       INNER JOIN users AS row_identity_user ON row_identity_user.id = row_identity.user_id
       WHERE CAST(row_identity.id AS CHAR) = authorized.witness_id
-        AND BINARY TRIM(row_identity_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_identity_user.email) = BINARY authorized.provenance_value)
     WHEN 'compensation_profile' THEN (SELECT COUNT(*) FROM technician_compensation_profiles AS row_profile
       INNER JOIN technician_profiles AS row_profile_technician
         ON row_profile_technician.id = row_profile.technician_profile_id
       INNER JOIN users AS row_profile_user ON row_profile_user.id = row_profile_technician.user_id
       WHERE CAST(row_profile.id AS CHAR) = authorized.witness_id
-        AND BINARY TRIM(row_profile_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_profile_user.email) = BINARY authorized.provenance_value)
     WHEN 'affiliate_reward' THEN (SELECT COUNT(*) FROM affiliate_rewards AS row_reward
       INNER JOIN affiliate_reward_transactions AS row_reward_transaction
         ON row_reward_transaction.reward_id = row_reward.id AND row_reward_transaction.kind = 'settlement'
@@ -2275,7 +2311,7 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           = BINARY authorized.provenance_value)
     WHEN 'user' THEN (SELECT COUNT(*) FROM users AS row_user
       WHERE BINARY TRIM(row_user.needo_id) = BINARY authorized.witness_id
-        AND BINARY TRIM(row_user.needo_id) = BINARY authorized.provenance_value)
+        AND BINARY TRIM(row_user.email) = BINARY authorized.provenance_value)
     ELSE 0 END`;
   const resolvedReversalState = `CASE WHEN authorized.kind = 'reversedFinancialIds' THEN (
     SELECT MIN(row_reversal.settlement_status)
@@ -2530,9 +2566,9 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
             AND (affiliation.ends_at IS NULL OR affiliation.ends_at >= identity_row.created_at)
         ), technician.shop_id) AND shop.deleted_at IS NULL
         WHERE authorized.identifier_kind = 'numeric_id'
-          AND authorized.provenance_field = 'user.needo_id'
+          AND authorized.provenance_field = 'user.email'
           AND CAST(identity_row.id AS CHAR) = authorized.witness_id
-          AND BINARY TRIM(technician_user.needo_id) = BINARY authorized.provenance_value
+          AND BINARY TRIM(technician_user.email) = BINARY authorized.provenance_value
           AND identity_row.type = 'technician' AND identity_row.is_active = TRUE
           AND identity_row.deleted_at IS NULL
           AND identity_row.created_at >= period.from_inclusive AND identity_row.created_at < period.to_exclusive
@@ -2548,9 +2584,9 @@ const witnessStatement = (fixture: DashboardFixtureManifest): string => {
           AND technician_user.deleted_at IS NULL
         INNER JOIN shops AS shop ON shop.id = profile.shop_id AND shop.deleted_at IS NULL
         WHERE authorized.identifier_kind = 'numeric_id'
-          AND authorized.provenance_field = 'technician.user.needo_id'
+          AND authorized.provenance_field = 'technician.user.email'
           AND CAST(profile.id AS CHAR) = authorized.witness_id
-          AND BINARY TRIM(technician_user.needo_id) = BINARY authorized.provenance_value
+          AND BINARY TRIM(technician_user.email) = BINARY authorized.provenance_value
           AND profile.status IN ('active', 'archived') AND profile.deleted_at IS NULL
           AND profile.wage_mode IN ('fixed_per_order', 'commission', 'base_plus_commission', 'hourly')
           AND profile.base_salary_jpy >= 0
