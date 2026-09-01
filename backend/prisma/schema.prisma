@@ -1229,8 +1229,8 @@ model ShopServiceCategory {
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
 
-  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   selectedBy User     @relation("ShopServiceCategorySelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
 
   @@index([shopId, deletedAt], map: "shop_service_categories_shop_deleted_idx")
@@ -1249,8 +1249,8 @@ model ShopBusinessKeyword {
   updatedAt         DateTime  @updatedAt @map("updated_at")
   deletedAt         DateTime? @map("deleted_at")
 
-  shop            Shop            @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  businessKeyword BusinessKeyword @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+  shop            Shop            @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessKeyword BusinessKeyword @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   selectedBy      User            @relation("ShopBusinessKeywordSelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
 
   @@index([shopId, deletedAt], map: "shop_business_keywords_shop_deleted_idx")
@@ -1310,8 +1310,8 @@ model ShopServiceQualification {
   deletedAt               DateTime?                          @map("deleted_at")
 
   shop              Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  category          Category?            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  businessKeyword   BusinessKeyword?     @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+  category          Category?            @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessKeyword   BusinessKeyword?     @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   sourceApplication IdentityApplication? @relation(fields: [sourceApplicationId], references: [id], onDelete: SetNull)
   approvedBy        User                 @relation("ShopServiceQualificationApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
 
@@ -1333,8 +1333,8 @@ model MerchantApplicationServiceCategory {
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
 
-  application IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
-  category    Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  application IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  category    Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   selectedBy  User                @relation("MerchantApplicationServiceCategorySelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
 
   @@index([applicationId, deletedAt], map: "merchant_application_service_categories_application_deleted_idx")
@@ -1353,8 +1353,8 @@ model MerchantApplicationBusinessKeyword {
   updatedAt         DateTime  @updatedAt @map("updated_at")
   deletedAt         DateTime? @map("deleted_at")
 
-  application     IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
-  businessKeyword BusinessKeyword     @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+  application     IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessKeyword BusinessKeyword     @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   selectedBy      User                @relation("MerchantApplicationBusinessKeywordSelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
 
   @@index([applicationId, deletedAt], map: "merchant_application_business_keywords_application_deleted_idx")

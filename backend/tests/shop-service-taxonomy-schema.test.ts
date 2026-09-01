@@ -84,4 +84,25 @@ describe("shop service taxonomy persistence", () => {
 
     expect((migration.match(/ADD CONSTRAINT .* FOREIGN KEY/g) ?? []).length).toBeGreaterThanOrEqual(22);
   });
+
+  it("uses restrictive updates for keys that feed stored active-key columns", () => {
+    for (const constraintName of [
+      "shop_service_categories_shop_id_fkey",
+      "shop_service_categories_category_id_fkey",
+      "shop_business_keywords_shop_id_fkey",
+      "shop_business_keywords_business_keyword_id_fkey",
+      "shop_service_qualifications_category_id_fkey",
+      "shop_service_qualifications_business_keyword_id_fkey",
+      "merchant_application_service_categories_application_id_fkey",
+      "merchant_application_service_categories_category_id_fkey",
+      "merchant_application_business_keywords_application_id_fkey",
+      "merchant_application_business_keywords_business_keyword_id_fkey"
+    ]) {
+      expect(migration).toMatch(
+        new RegExp(
+          "ADD CONSTRAINT `" + constraintName + "`[\\s\\S]*?ON UPDATE RESTRICT;"
+        )
+      );
+    }
+  });
 });

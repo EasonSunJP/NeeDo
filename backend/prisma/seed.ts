@@ -16,6 +16,7 @@ import {
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
+import { disconnectRedis } from "../src/config/redis";
 import {
   RedisAuthSessionStore,
   type AuthSessionStore
@@ -4304,7 +4305,7 @@ const runSeed = async (): Promise<void> => {
     await seedUserManagement(prisma);
     console.log("User Management seed completed.");
   } finally {
-    await prisma.$disconnect();
+    await Promise.all([prisma.$disconnect(), disconnectRedis()]);
   }
 };
 

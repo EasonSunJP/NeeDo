@@ -109,4 +109,11 @@ describe("approved shop service taxonomy catalog", () => {
     expect(seedSource).not.toContain("tx.shopServiceCategory.create");
     expect(seedSource).not.toContain("tx.shopBusinessKeyword.create");
   });
+
+  it("closes the Redis pool after the command-line seed completes", () => {
+    const seedSource = readFileSync(resolve(process.cwd(), "prisma/seed.ts"), "utf8");
+
+    expect(seedSource).toContain('import { disconnectRedis } from "../src/config/redis"');
+    expect(seedSource).toContain("await Promise.all([prisma.$disconnect(), disconnectRedis()])");
+  });
 });
