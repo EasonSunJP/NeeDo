@@ -6,6 +6,7 @@ import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.const
 import { PRISMA_INT_MAX } from "../constants/database";
 import { MAX_MEMBERSHIP_ANALYTICS_PAGE } from "../domain/membership-analytics";
 import { ERROR_CODES } from "../constants/error-codes";
+import { MAX_ANALYTICS_RANKING_PAGE } from "../domain/analytics-ranking";
 
 type OpenApiDocument = Record<string, unknown>;
 const safeIntegerMaximum = PRISMA_INT_MAX;
@@ -2539,6 +2540,56 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "string",
         enum: ["today", "last7days", "last30days", "week", "month", "year", "custom"],
         default: "last7days"
+      },
+      AnalyticsRankingItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "rank", "entityType", "entityPublicId", "entityNumericId", "displayName", "avatarUrl",
+          "categoryId", "gmvJpy", "completedCount", "registeredAt"
+        ],
+        properties: {
+          rank: { type: "integer", minimum: 1, description: "Global one-based rank before pagination." },
+          entityType: { type: "string", enum: ["service", "technician_service", "technician", "customer"] },
+          entityPublicId: { type: "string", minLength: 1 },
+          entityNumericId: { type: "integer", minimum: 1 },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { oneOf: [{ type: "string" }, { type: "null" }] },
+          categoryId: { oneOf: [{ type: "integer", minimum: 1 }, { type: "null" }] },
+          gmvJpy: { type: "integer", minimum: 0 },
+          completedCount: { type: "integer", minimum: 0 },
+          registeredAt: { type: "string", format: "date-time" }
+        }
+      },
+      AnalyticsRankingFilter: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "metric", "period", "from", "to", "timeZone", "city", "categoryId", "evaluatedAt"],
+        properties: {
+          kind: { type: "string", enum: ["service", "technician", "customer"] },
+          metric: { type: "string", enum: ["gmv", "completedCount"] },
+          period: { $ref: "#/components/schemas/DashboardPeriod" },
+          from: { type: "string", format: "date" },
+          to: { type: "string", format: "date" },
+          timeZone: { type: "string", const: "Asia/Tokyo" },
+          city: { oneOf: [{ type: "string", "x-min-utf16-code-units": 1,
+            "x-max-utf16-code-units": 100, "x-normalization": "trim" }, { type: "null" }] },
+          categoryId: { oneOf: [{ type: "integer", minimum: 1, maximum: 2147483647 }, { type: "null" }] },
+          evaluatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AnalyticsRankingResponse: {
+        type: "object",
+        additionalProperties: false,
+        required: ["dataStatus", "filter", "list", "total", "page", "page_size"],
+        properties: {
+          dataStatus: { type: "string", const: "ready" },
+          filter: { $ref: "#/components/schemas/AnalyticsRankingFilter" },
+          list: { type: "array", maxItems: 10, items: { $ref: "#/components/schemas/AnalyticsRankingItem" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1, maximum: MAX_ANALYTICS_RANKING_PAGE },
+          page_size: { type: "integer", minimum: 1, maximum: 10 }
+        }
       },
       MembershipAnalyticsFilter: {
         type: "object",
@@ -17477,6 +17528,76 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": membershipTrendSuccessResponse("东京"),
           ...membershipAnalyticsErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/analytics/rankings/{kind}`]: {
+      get: {
+        operationId: "listFormalAnalyticsRankings",
+        tags: ["Analytics Rankings"],
+        summary: "Read formal service, technician or customer rankings",
+        description:
+          "Returns a deterministic global one-based rank from completed formal checkout evidence. GMV ordering uses GMV then completed count; completedCount ordering reverses those primary keys, followed by registration time, numeric ID and binary entity type. Service ranking counts the base and every accepted add-on occurrence, including repeated occurrences in one order. Category-filtered technician/customer results sum matching-line GMV and count distinct completed orders; unfiltered results use full-order GMV and one count per order. City is the booking shop's current city and category is the service entity's current direct category only; descendants are not expanded. For period filters, custom requires both from and to, non-custom periods reject from and to, to must be on or after from, and a custom range has a maximum of 366 inclusive Tokyo calendar days.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:analytics-ranking:read",
+        parameters: [
+          { name: "kind", in: "path", required: true, schema: { type: "string", enum: ["service", "technician", "customer"] } },
+          { name: "metric", in: "query", required: false, schema: { type: "string", enum: ["gmv", "completedCount"], default: "gmv" } },
+          ...dashboardQueryParameters,
+          { name: "city", in: "query", required: false, schema: { type: "string",
+            "x-min-utf16-code-units": 1, "x-max-utf16-code-units": 100,
+            "x-normalization": "trim" } },
+          { name: "categoryId", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 2147483647 } },
+          { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: MAX_ANALYTICS_RANKING_PAGE, default: 1 } },
+          { name: "pageSize", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 10, default: 10 } }
+        ],
+        responses: {
+          "200": {
+            description: "Formal deterministic ranking page",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", const: 0 },
+                    message: { type: "string", const: "success" },
+                    data: { $ref: "#/components/schemas/AnalyticsRankingResponse" }
+                  }
+                },
+                examples: Object.fromEntries(
+                  [
+                    ["serviceGmv", "service", "gmv", "service"],
+                    ["serviceCount", "service", "completedCount", "technician_service"],
+                    ["technicianGmv", "technician", "gmv", "technician"],
+                    ["technicianCount", "technician", "completedCount", "technician"],
+                    ["customerGmv", "customer", "gmv", "customer"],
+                    ["customerCount", "customer", "completedCount", "customer"]
+                  ].map(([key, kind, metric, entityType], index) => [key, {
+                    summary: `${kind} by ${metric}`,
+                    value: { code: 0, message: "success", data: {
+                      dataStatus: "ready", filter: { kind, metric, period: "last7days",
+                        from: "2026-08-26", to: "2026-09-01", timeZone: "Asia/Tokyo",
+                        city: null, categoryId: null, evaluatedAt: "2026-09-01T05:30:00.000Z" },
+                      list: [{ rank: 1, entityType,
+                        entityPublicId: entityType === "customer" || entityType === "technician"
+                          ? "u0000000041" : "00000000-0000-4000-8000-000000000001",
+                        entityNumericId: index + 1, displayName: "Example", avatarUrl: null,
+                        categoryId: entityType === "service" || entityType === "technician_service" ? 8 : null,
+                        gmvJpy: 12300, completedCount: 2, registeredAt: "2026-01-01T00:00:00.000Z" }],
+                      total: 1, page: 1, page_size: 10
+                    } }
+                  }])
+                )
+              }
+            }
+          },
+          "400": { description: "Strict path/query validation failed", content: { "application/json": { example: { code: 40001, message: "error.validation", data: null } } } },
+          "401": { description: "Missing or invalid access token", content: { "application/json": { example: { code: 40105, message: "error.auth.token_invalid", data: null } } } },
+          "403": { description: "Missing backoffice:analytics-ranking:read permission", content: { "application/json": { example: { code: 40301, message: "error.forbidden", data: null } } } },
+          "404": { description: "Requested active category not found", content: { "application/json": { example: { code: ERROR_CODES.ANALYTICS_RANKING_CATEGORY_NOT_FOUND, message: "error.analytics_ranking.category_not_found", data: null } } } },
+          "409": { description: "Formal checkout or taxonomy evidence is incomplete or contradictory", content: { "application/json": { example: { code: ERROR_CODES.ANALYTICS_RANKING_INCOMPLETE_EVIDENCE, message: "error.analytics_ranking.incomplete_evidence", data: null } } } }
         }
       }
     },

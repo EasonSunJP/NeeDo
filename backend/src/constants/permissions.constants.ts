@@ -1205,6 +1205,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取平台范围的正式会员与会员卡分析"
   ),
   createPermission(
+    "backoffice:analytics-ranking:read",
+    "平台排行分析读取",
+    "api",
+    "analytics-ranking",
+    "读取平台范围的正式服务、技师与用户消费排行"
+  ),
+  createPermission(
     "shop.member.operation_log.view",
     "店铺会员活动读取",
     "api",
@@ -1941,6 +1948,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:dashboard:read",
   "backoffice:dashboard-detail:read",
   "backoffice.member.analytics.view",
+  "backoffice:analytics-ranking:read",
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
   "backoffice:ndp-exchange-rate:read",

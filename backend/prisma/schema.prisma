@@ -2730,6 +2730,7 @@ model Service {
 
 model TechnicianService {
   id                  Int                           @id @default(autoincrement())
+  publicId String @unique(map: "technician_services_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
   shopId              Int                           @map("shop_id")
   technicianId        Int                           @map("technician_id")
   sourceShopServiceId Int?                          @map("source_shop_service_id")
@@ -3227,6 +3228,7 @@ model BookingOrder {
   @@index([paymentStatus])
   @@index([paymentConfirmedById])
   @@index([paymentRefundedById])
+  @@index([status, paymentStatus, deletedAt, paymentConfirmedAt, shopId, id], map: "booking_orders_ranking_window_idx")
   @@index([deletedAt])
   @@map("booking_orders")
 }
