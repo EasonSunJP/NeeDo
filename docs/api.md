@@ -172,6 +172,7 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `serviceMode` | string | Existing service-mode filter. |
 | `minPrice` / `maxPrice` | number | Existing service-price filters; min cannot exceed max. |
 | `sort` | enum | `recommended`, `rating_desc`, `price_asc`, `price_desc`, `newest`. |
+| `latitude` / `longitude` | number pair | Optional search origin for technicians. Both values must be sent together. |
 | `page` / `pageSize` | integer | Defaults to page `1`, page size `20`; maximum page size is `100`. |
 
 Repeat array values as query keys instead of comma-joining them:
@@ -183,6 +184,27 @@ GET /api/v1/search?entityType=shop&keywords=LifeDance&keywords=家政&categoryId
 Keywords, category IDs, and their two groups use OR semantics: a published record matching any supplied keyword or any selected category may appear. Shop and technician names use trimmed substring containment, so `LifeDance` and `Wellness 渋谷` can each match `LifeDance Wellness 渋谷`; a multi-word value stays one phrase. Shop `shop##########` and technician `s##########` public IDs use exact matching.
 
 The response keeps the shared success envelope and returns exactly one typed paginated page selected by `entityType`: `ShopCard`, `TechnicianCard`, or `ServiceCard`. Published status, active formal public identifiers, and `deletedAt IS NULL` remain mandatory. A shop or technician may be searchable without a published service; search visibility does not imply that the entity is currently bookable, and the client must not fabricate price, service, or availability data.
+
+When `entityType=technician` and a complete origin pair is present, candidate distance uses the nearest valid location among the technician's private personal service base and active, published affiliated shops. The backend starts at 3 km and expands exactly 1 km at a time until at least three eligible technicians are available or every eligible located technician is included. It then sorts the complete final-radius set by comprehensive rating, completed-order count, review count, account registration time, and stable profile ID before applying pagination. `distanceKm`, `nearbyRank`, and `resolvedRadiusKm` are optional `TechnicianCard` fields and are absent when no origin was supplied.
+
+Personal service-base coordinates are self-only profile data. Public search and public technician-card/detail responses never return `baseLatitude`, `baseLongitude`, `serviceBase`, or affiliated-shop coordinates through the technician object.
+
+### Entity Favorites And Successful Shares
+
+These endpoints are authenticated and database-backed. Favorite ownership is always the NeeDo user account, so switching the active customer/technician/merchant identity neither duplicates nor hides a favorite. Review totals are separate from favorite and share totals.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `PUT` | `/api/v1/me/entity-favorites/:targetType/:publicId` | Idempotently favorite one published shop or technician | `entity-favorite:write` |
+| `DELETE` | `/api/v1/me/entity-favorites/:targetType/:publicId` | Idempotently remove the favorite | `entity-favorite:write` |
+| `GET` | `/api/v1/me/entity-favorites` | Paginated current-account favorites | `entity-favorite:read` |
+| `POST` | `/api/v1/me/entity-favorites/statuses` | Batch `1..100` target states and authoritative counts | `entity-favorite:read` |
+| `POST` | `/api/v1/entities/:targetType/:publicId/shares/needo` | Atomically commit a NeeDo message and successful share event | `entity-share:write` |
+| `POST` | `/api/v1/entities/:targetType/:publicId/shares/system` | Record a platform share only after client capability success | `entity-share:write` |
+
+`targetType` is `shop` with `shop##########`, or `technician` with `s##########`. Page/card clients must batch favorite status reads rather than issue one request per card.
+
+Both share commands require a UUID `idempotencyKey`. Replaying the same key and same command returns the original receipt without incrementing `shareCount`; reusing it for a different payload returns `409 error.idempotency_key_reused`. A NeeDo share increments only if both the eligible message and append-only share event commit. The system-share endpoint is a success-report endpoint: the server does not invoke a browser capability and the client must not call it after capability cancellation or failure.
 
 `GET /home/recommendations`
 

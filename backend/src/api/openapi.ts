@@ -5683,7 +5683,108 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           displayName: { type: "string" },
           city: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
-          reviewSummary: { $ref: "#/components/schemas/ReviewSummary" }
+          reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
+          distanceKm: {
+            type: "number",
+            format: "double",
+            minimum: 0,
+            description: "Distance to the nearest eligible service location; present only for origin-aware technician search."
+          },
+          nearbyRank: {
+            type: ["integer", "null"],
+            enum: [1, 2, 3, null],
+            description: "Gold, silver, or bronze nearby rank after business tie-breakers."
+          },
+          resolvedRadiusKm: {
+            type: "integer",
+            minimum: 3,
+            description: "Final integer search radius after exact 1 km expansion."
+          }
+        }
+      },
+      EntityTarget: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["targetType", "publicId"],
+            properties: {
+              targetType: { type: "string", enum: ["shop"] },
+              publicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["targetType", "publicId"],
+            properties: {
+              targetType: { type: "string", enum: ["technician"] },
+              publicId: { type: "string", pattern: "^s[0-9]{10}$" }
+            }
+          }
+        ]
+      },
+      EntityFavoriteState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["targetType", "publicId", "isFavorited", "favoriteCount"],
+        properties: {
+          targetType: { type: "string", enum: ["shop", "technician"] },
+          publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
+          isFavorited: { type: "boolean" },
+          favoriteCount: { type: "integer", minimum: 0 }
+        }
+      },
+      EntityFavoriteListItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "targetType",
+          "publicId",
+          "isFavorited",
+          "favoriteCount",
+          "favoritedAt"
+        ],
+        properties: {
+          targetType: { type: "string", enum: ["shop", "technician"] },
+          publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
+          isFavorited: { type: "boolean" },
+          favoriteCount: { type: "integer", minimum: 0 },
+          favoritedAt: { type: "string", format: "date-time" }
+        }
+      },
+      EntityFavoritePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/EntityFavoriteListItem" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      EntityShareReceipt: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "targetType",
+          "publicId",
+          "eventId",
+          "messageId",
+          "shareCount",
+          "replayed"
+        ],
+        properties: {
+          targetType: { type: "string", enum: ["shop", "technician"] },
+          publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
+          eventId: { type: "integer", minimum: 1 },
+          messageId: { type: ["integer", "null"], minimum: 1 },
+          shareCount: { type: "integer", minimum: 0 },
+          replayed: { type: "boolean" }
         }
       },
       ServiceCard: {
@@ -13577,7 +13678,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Core Read"],
         summary: "Typed public shop, technician, or service search",
         description:
-          "Repeated keywords and categoryIds use OR semantics. Shop and technician names use substring matching. Omitting entityType preserves the legacy service result page.",
+          "Repeated keywords and categoryIds use OR semantics. Shop and technician names use substring matching. Omitting entityType preserves the legacy service result page. When a technician origin pair is supplied, ranking starts at 3 km and expands exactly 1 km until three eligible technicians are found or all eligible candidates are exhausted; precise technician coordinates are never returned.",
         parameters: [
           {
             name: "entityType",
@@ -13635,6 +13736,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               enum: ["recommended", "rating_desc", "price_asc", "price_desc", "newest"]
             }
           },
+          {
+            name: "latitude",
+            in: "query",
+            description: "Search-origin latitude. Latitude and longitude must be supplied together.",
+            schema: { type: "number", format: "double", minimum: -90, maximum: 90 }
+          },
+          {
+            name: "longitude",
+            in: "query",
+            description: "Search-origin longitude. Latitude and longitude must be supplied together.",
+            schema: { type: "number", format: "double", minimum: -180, maximum: 180 }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           {
             name: "pageSize",
@@ -13667,6 +13780,246 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           "400": { description: "error.validation" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/entity-favorites/{targetType}/{publicId}`]: {
+      put: {
+        tags: ["Entity Engagement"],
+        summary: "Add a shop or technician to the authenticated user's favorites",
+        description: "Favorite ownership is the authenticated NeeDo user account and is independent of the active identity.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: [
+          {
+            name: "targetType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["shop", "technician"] }
+          },
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            description: "shop########## for a shop or s########## for a technician.",
+            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Authoritative favorite state", {
+            $ref: "#/components/schemas/EntityFavoriteState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.entity_engagement.target_not_found")
+        }
+      },
+      delete: {
+        tags: ["Entity Engagement"],
+        summary: "Remove a shop or technician from the authenticated user's favorites",
+        description: "The operation is idempotent and returns the authoritative aggregate count.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:write",
+        parameters: [
+          {
+            name: "targetType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["shop", "technician"] }
+          },
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Authoritative favorite state", {
+            $ref: "#/components/schemas/EntityFavoriteState"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.entity_engagement.target_not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/entity-favorites`]: {
+      get: {
+        tags: ["Entity Engagement"],
+        summary: "List the authenticated user's active entity favorites",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "targetType",
+            in: "query",
+            schema: { type: "string", enum: ["shop", "technician"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated entity favorites", {
+            $ref: "#/components/schemas/EntityFavoritePage"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/entity-favorites/statuses`]: {
+      post: {
+        tags: ["Entity Engagement"],
+        summary: "Batch read favorite states and aggregate counts",
+        description: "Use one batch per result page; clients must not issue one status request per card.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-favorite:read",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["targets"],
+                properties: {
+                  targets: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 100,
+                    items: { $ref: "#/components/schemas/EntityTarget" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Favorite states in request order", {
+            type: "object",
+            additionalProperties: false,
+            required: ["list"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/EntityFavoriteState" }
+              }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.entity_engagement.target_not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/entities/{targetType}/{publicId}/shares/needo`]: {
+      post: {
+        tags: ["Entity Engagement"],
+        summary: "Share an entity through a committed NeeDo message",
+        description: "The share event and message commit atomically. Failed, blocked, or ineligible messages do not increment shareCount.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-share:write",
+        parameters: [
+          {
+            name: "targetType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["shop", "technician"] }
+          },
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["conversationId", "recipientIdentityId", "idempotencyKey"],
+                properties: {
+                  conversationId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+                  recipientIdentityId: {
+                    type: "integer",
+                    minimum: 1,
+                    maximum: safeIntegerMaximum
+                  },
+                  idempotencyKey: { type: "string", format: "uuid" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Committed or replayed NeeDo share receipt", {
+            $ref: "#/components/schemas/EntityShareReceipt"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.entity_engagement.target_not_found"),
+          "409": jsonErrorResponse("error.idempotency_key_reused")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/entities/{targetType}/{publicId}/shares/system`]: {
+      post: {
+        tags: ["Entity Engagement"],
+        summary: "Record a successfully invoked system share",
+        description: "Call only after the client platform share capability reports success. Retries must reuse the same idempotencyKey.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "entity-share:write",
+        parameters: [
+          {
+            name: "targetType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["shop", "technician"] }
+          },
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["idempotencyKey"],
+                properties: {
+                  idempotencyKey: { type: "string", format: "uuid" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Created or replayed system-share receipt", {
+            $ref: "#/components/schemas/EntityShareReceipt"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.entity_engagement.target_not_found"),
+          "409": jsonErrorResponse("error.idempotency_key_reused")
         }
       }
     },

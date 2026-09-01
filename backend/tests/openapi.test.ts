@@ -2451,4 +2451,62 @@ describe("GET /api/v1/openapi.json", () => {
       search.responses["200"].content?.["application/json"].schema.properties.data
     ).not.toHaveProperty("oneOf");
   });
+
+  it("documents account-owned entity engagement and private nearby ranking contracts", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const paths = response.body.paths;
+    const schemas = response.body.components.schemas;
+    const favoriteTarget = paths["/api/v1/me/entity-favorites/{targetType}/{publicId}"];
+    const favoriteStatuses = paths["/api/v1/me/entity-favorites/statuses"].post;
+    const needoShare = paths["/api/v1/entities/{targetType}/{publicId}/shares/needo"].post;
+    const systemShare = paths["/api/v1/entities/{targetType}/{publicId}/shares/system"].post;
+    const search = paths["/api/v1/search"].get;
+
+    expect(favoriteTarget.put.security).toEqual([{ bearerAuth: [] }]);
+    expect(favoriteTarget.delete.security).toEqual([{ bearerAuth: [] }]);
+    expect(paths["/api/v1/me/entity-favorites"].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(favoriteStatuses.security).toEqual([{ bearerAuth: [] }]);
+    expect(
+      favoriteStatuses.requestBody.content["application/json"].schema.properties.targets.maxItems
+    ).toBe(100);
+
+    for (const operation of [needoShare, systemShare]) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.requestBody.content["application/json"].schema.required).toContain(
+        "idempotencyKey"
+      );
+      expect(operation.responses["409"].description).toContain("idempotency");
+    }
+    expect(needoShare.requestBody.content["application/json"].schema.required).toEqual(
+      expect.arrayContaining(["conversationId", "recipientIdentityId", "idempotencyKey"])
+    );
+
+    expect(search.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "latitude",
+          description: expect.stringContaining("together")
+        }),
+        expect.objectContaining({
+          name: "longitude",
+          description: expect.stringContaining("together")
+        })
+      ])
+    );
+    expect(search.description).toContain("3 km");
+    expect(search.description).toContain("precise technician coordinates are never returned");
+    expect(schemas.TechnicianCard.required).not.toEqual(
+      expect.arrayContaining(["distanceKm", "nearbyRank", "resolvedRadiusKm"])
+    );
+    expect(schemas.TechnicianCard.properties).toEqual(
+      expect.objectContaining({
+        distanceKm: expect.objectContaining({ type: "number", minimum: 0 }),
+        nearbyRank: expect.objectContaining({ type: ["integer", "null"] }),
+        resolvedRadiusKm: expect.objectContaining({ type: "integer", minimum: 3 })
+      })
+    );
+    expect(schemas.TechnicianCard.properties).not.toHaveProperty("baseLatitude");
+    expect(schemas.TechnicianCard.properties).not.toHaveProperty("baseLongitude");
+    expect(schemas.TechnicianCard.properties).not.toHaveProperty("serviceBase");
+  });
 });
