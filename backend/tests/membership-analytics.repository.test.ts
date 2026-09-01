@@ -185,6 +185,31 @@ describe("MembershipAnalyticsRepository", () => {
     ]));
   });
 
+  it("requires the exact Task2A frozen backfill and rejects every unrecognized transition shape", async () => {
+    const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
+    await fixture.repository.getTrend(baseInput);
+    const validation = fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery;
+    const sql = queryText(validation);
+
+    for (const fragment of [
+      "card.frozen_at",
+      "event.frozen_at",
+      "previous_source",
+      "event.sequence_no = 2",
+      "event.from_status = event.previous_to_status",
+      "event.occurred_at = event.frozen_at",
+      "event.actor_user_id IS NULL",
+      "event.metadata IS NULL"
+    ]) expect(sql).toContain(fragment);
+    expect(validation.values).toEqual(expect.arrayContaining([
+      "status_transition",
+      "active",
+      "frozen",
+      "historical_card_frozen",
+      ":backfill-frozen"
+    ]));
+  });
+
   it("groups same-time replacement and overlapping-card deltas before emitting member transitions", async () => {
     const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
     await fixture.repository.getTrend(baseInput);

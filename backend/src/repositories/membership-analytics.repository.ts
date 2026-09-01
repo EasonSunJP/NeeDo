@@ -258,6 +258,7 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           card.issuance_source,
           card.issued_at,
           card.expires_at,
+          card.frozen_at,
           membership.public_id AS membership_public_id,
           membership.status AS membership_status,
           membership.started_at AS membership_started_at,
@@ -305,6 +306,7 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           card.issuance_source,
           card.issued_at,
           card.expires_at,
+          card.frozen_at,
           card.membership_ended_at,
           ROW_NUMBER() OVER (
             PARTITION BY event.card_id ORDER BY event.occurred_at ASC, event.id ASC
@@ -312,6 +314,9 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           LAG(event.to_status) OVER (
             PARTITION BY event.card_id ORDER BY event.occurred_at ASC, event.id ASC
           ) AS previous_to_status,
+          LAG(event.source) OVER (
+            PARTITION BY event.card_id ORDER BY event.occurred_at ASC, event.id ASC
+          ) AS previous_source,
           COUNT(*) OVER (PARTITION BY event.event_key) AS duplicate_event_key_count,
           COUNT(*) OVER (PARTITION BY event.card_id, event.occurred_at)
             AS simultaneous_event_count
@@ -354,11 +359,19 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
             ) THEN 1
             WHEN event.sequence_no > 1 AND NOT (
               event.source = ${"status_transition"}
+              AND event.sequence_no = 2
               AND event.from_status = event.previous_to_status
-              AND (
-                (event.from_status = ${"active"} AND event.to_status IN (${"frozen"}, ${"void"}))
-                OR (event.from_status = ${"frozen"} AND event.to_status IN (${"active"}, ${"void"}))
+              AND event.previous_source = ${"migration_backfill"}
+              AND event.from_status = ${"active"}
+              AND event.to_status = ${"frozen"}
+              AND event.frozen_at IS NOT NULL
+              AND event.occurred_at = event.frozen_at
+              AND event.event_key = CONCAT(
+                ${"membership-card:"}, event.card_public_id, ${":backfill-frozen"}
               )
+              AND event.reason_code = ${"historical_card_frozen"}
+              AND event.actor_user_id IS NULL
+              AND event.metadata IS NULL
             ) THEN 1
             ELSE 0
           END AS invalid_event
@@ -431,7 +444,8 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
           ) AS latest_authoritative_status
         FROM scoped_cards AS card
         LEFT JOIN event_evaluated AS event ON event.card_id = card.card_id
-        GROUP BY card.card_id, card.issued_at, card.expires_at, card.issuance_source,
+        GROUP BY card.card_id, card.issued_at, card.expires_at, card.frozen_at,
+                 card.issuance_source,
                  card.persisted_status, card.membership_status, card.membership_started_at,
                  card.membership_ended_at
       ),

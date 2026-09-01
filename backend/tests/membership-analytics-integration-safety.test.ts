@@ -2,7 +2,8 @@ import {
   assertMembershipAnalyticsIntegrationSchema,
   membershipAnalyticsIntegrationRequiredColumns,
   membershipAnalyticsIntegrationRequiredIndexes,
-  requireMembershipAnalyticsIntegrationAuthority
+  requireMembershipAnalyticsIntegrationAuthority,
+  type SchemaIndexColumn
 } from "./membership-analytics-integration-safety";
 
 describe("membership analytics MySQL integration safety", () => {
@@ -32,28 +33,80 @@ describe("membership analytics MySQL integration safety", () => {
   });
 
   it("preflights every lifecycle query/fixture column and required Task2A index", () => {
+    const requiredIndexes = membershipAnalyticsIntegrationRequiredIndexes;
     const columns = membershipAnalyticsIntegrationRequiredColumns.map((column) => {
       const [tableName, columnName] = column.split(".");
       return { tableName: tableName!, columnName: columnName! };
     });
+    const toAvailableIndexes = (
+      required: typeof membershipAnalyticsIntegrationRequiredIndexes
+    ): SchemaIndexColumn[] => required.flatMap((index) =>
+      index.columns.map((columnName, offset) => ({
+        tableName: index.tableName,
+        indexName: index.indexName,
+        columnName,
+        seqInIndex: offset + 1,
+        nonUnique: index.unique ? 0 : 1
+      }))
+    );
     expect(() => assertMembershipAnalyticsIntegrationSchema(
       columns,
-      [...membershipAnalyticsIntegrationRequiredIndexes],
+      toAvailableIndexes(requiredIndexes),
       ["20260901103000_membership_acquisition_sources"]
     )).not.toThrow();
 
     expect(() => assertMembershipAnalyticsIntegrationSchema(
       columns.filter((column) => column.columnName !== "reason_code"),
-      [...membershipAnalyticsIntegrationRequiredIndexes],
+      toAvailableIndexes(requiredIndexes),
       ["20260901103000_membership_acquisition_sources"]
     )).toThrow("shop_membership_card_status_events.reason_code");
     expect(() => assertMembershipAnalyticsIntegrationSchema(
       columns,
-      membershipAnalyticsIntegrationRequiredIndexes.filter((index) => !index.includes("event_key")),
+      requiredIndexes
+        .filter((index) => !index.indexName.includes("event_key"))
+        .flatMap((index) => index.columns.map((columnName, offset) => ({
+          tableName: index.tableName,
+          indexName: index.indexName,
+          columnName,
+          seqInIndex: offset + 1,
+          nonUnique: index.unique ? 0 : 1
+        }))),
       ["20260901103000_membership_acquisition_sources"]
     )).toThrow("shop_membership_card_status_events_event_key");
-    expect(() => assertMembershipAnalyticsIntegrationSchema(columns, [
-      ...membershipAnalyticsIntegrationRequiredIndexes
-    ], [])).toThrow("20260901103000_membership_acquisition_sources");
+    const indexes = toAvailableIndexes(requiredIndexes);
+    expect(() => assertMembershipAnalyticsIntegrationSchema(columns, indexes, []))
+      .toThrow("20260901103000_membership_acquisition_sources");
+
+    expect(membershipAnalyticsIntegrationRequiredColumns).toEqual(expect.arrayContaining([
+      "customer_profiles.city",
+      "shop_membership_cards.frozen_at"
+    ]));
+    expect(requiredIndexes).toEqual(expect.arrayContaining([
+      {
+        tableName: "shop_membership_cards",
+        indexName: "shop_membership_cards_status_expiry_idx",
+        columns: ["status", "expires_at", "deleted_at"],
+        unique: false
+      },
+      {
+        tableName: "shop_membership_card_status_events",
+        indexName: "shop_membership_card_status_events_status_time_idx",
+        columns: ["to_status", "occurred_at", "id", "deleted_at"],
+        unique: false
+      }
+    ]));
+
+    for (const [label, corrupt] of [
+      ["table", (rows: typeof indexes) => rows.map((row) => row.indexName === "shop_membership_card_status_events_event_key" ? { ...row, tableName: "shop_membership_cards" } : row)],
+      ["order", (rows: typeof indexes) => rows.map((row) => row.indexName === "shop_membership_card_status_events_card_time_idx" && row.seqInIndex === 1 ? { ...row, seqInIndex: 2 } : row)],
+      ["column", (rows: typeof indexes) => rows.map((row) => row.indexName === "shop_membership_cards_status_expiry_idx" && row.seqInIndex === 2 ? { ...row, columnName: "issued_at" } : row)],
+      ["uniqueness", (rows: typeof indexes) => rows.map((row) => row.indexName === "shop_membership_card_status_events_event_key" ? { ...row, nonUnique: 1 } : row)]
+    ] as const) {
+      expect(() => assertMembershipAnalyticsIntegrationSchema(
+        columns,
+        corrupt(indexes),
+        ["20260901103000_membership_acquisition_sources"]
+      )).toThrow(label);
+    }
   });
 });

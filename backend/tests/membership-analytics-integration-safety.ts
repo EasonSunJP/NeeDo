@@ -1,6 +1,13 @@
 type AuthorityEnvironment = Record<string, string | undefined>;
 
 type SchemaColumn = { tableName: string; columnName: string };
+export type SchemaIndexColumn = {
+  tableName: string;
+  indexName: string;
+  columnName: string;
+  seqInIndex: number | bigint;
+  nonUnique: number | bigint;
+};
 
 const authorityError =
   "Membership analytics MySQL integration requires the explicit loopback needo_test database";
@@ -11,7 +18,7 @@ export const membershipAnalyticsIntegrationRequiredColumns = [
   "users.is_test_account", "users.deleted_at",
   "shops.id", "shops.shop_no", "shops.name", "shops.city", "shops.address", "shops.deleted_at",
   "customer_profiles.id", "customer_profiles.user_id", "customer_profiles.display_name",
-  "customer_profiles.deleted_at",
+  "customer_profiles.city", "customer_profiles.deleted_at",
   "shop_customer_memberships.id", "shop_customer_memberships.public_id",
   "shop_customer_memberships.shop_id", "shop_customer_memberships.customer_profile_id",
   "shop_customer_memberships.status", "shop_customer_memberships.started_at",
@@ -21,7 +28,8 @@ export const membershipAnalyticsIntegrationRequiredColumns = [
   "shop_membership_cards.issued_by_id", "shop_membership_cards.card_no",
   "shop_membership_cards.name", "shop_membership_cards.type", "shop_membership_cards.status",
   "shop_membership_cards.issuance_source", "shop_membership_cards.issued_at",
-  "shop_membership_cards.expires_at", "shop_membership_cards.deleted_at",
+  "shop_membership_cards.expires_at", "shop_membership_cards.frozen_at",
+  "shop_membership_cards.deleted_at",
   "shop_membership_card_status_events.id", "shop_membership_card_status_events.card_id",
   "shop_membership_card_status_events.from_status", "shop_membership_card_status_events.to_status",
   "shop_membership_card_status_events.source", "shop_membership_card_status_events.occurred_at",
@@ -33,10 +41,48 @@ export const membershipAnalyticsIntegrationRequiredColumns = [
 ] as const;
 
 export const membershipAnalyticsIntegrationRequiredIndexes = [
-  "shop_membership_cards_source_issued_id_idx",
-  "shop_membership_cards_membership_source_issued_id_idx",
-  "shop_membership_card_status_events_event_key",
-  "shop_membership_card_status_events_card_time_idx"
+  {
+    tableName: "shop_membership_cards",
+    indexName: "shop_membership_cards_status_expiry_idx",
+    columns: ["status", "expires_at", "deleted_at"],
+    unique: false
+  },
+  {
+    tableName: "shop_membership_cards",
+    indexName: "shop_membership_cards_source_issued_id_idx",
+    columns: ["issuance_source", "issued_at", "id"],
+    unique: false
+  },
+  {
+    tableName: "shop_membership_cards",
+    indexName: "shop_membership_cards_membership_source_issued_id_idx",
+    columns: ["membership_id", "issuance_source", "issued_at", "id"],
+    unique: false
+  },
+  {
+    tableName: "shop_membership_cards",
+    indexName: "shop_membership_cards_status_issued_expiry_idx",
+    columns: ["status", "issued_at", "expires_at", "deleted_at", "membership_id"],
+    unique: false
+  },
+  {
+    tableName: "shop_membership_card_status_events",
+    indexName: "shop_membership_card_status_events_event_key",
+    columns: ["event_key"],
+    unique: true
+  },
+  {
+    tableName: "shop_membership_card_status_events",
+    indexName: "shop_membership_card_status_events_card_time_idx",
+    columns: ["card_id", "occurred_at", "id", "deleted_at"],
+    unique: false
+  },
+  {
+    tableName: "shop_membership_card_status_events",
+    indexName: "shop_membership_card_status_events_status_time_idx",
+    columns: ["to_status", "occurred_at", "id", "deleted_at"],
+    unique: false
+  }
 ] as const;
 
 export function requireMembershipAnalyticsIntegrationAuthority(input: {
@@ -80,7 +126,7 @@ export function requireMembershipAnalyticsIntegrationAuthority(input: {
 
 export function assertMembershipAnalyticsIntegrationSchema(
   availableColumns: SchemaColumn[],
-  availableIndexes: string[],
+  availableIndexes: SchemaIndexColumn[],
   appliedMigrations: string[]
 ): void {
   if (!appliedMigrations.includes("20260901103000_membership_acquisition_sources")) {
@@ -94,15 +140,33 @@ export function assertMembershipAnalyticsIntegrationSchema(
   const missingColumns = membershipAnalyticsIntegrationRequiredColumns.filter(
     (column) => !columns.has(column)
   );
-  const indexes = new Set(availableIndexes);
-  const missingIndexes = membershipAnalyticsIntegrationRequiredIndexes.filter(
-    (index) => !indexes.has(index)
-  );
-  if (missingColumns.length > 0 || missingIndexes.length > 0) {
+  const indexErrors = membershipAnalyticsIntegrationRequiredIndexes.flatMap((required) => {
+    const matchingName = availableIndexes.filter((row) => row.indexName === required.indexName);
+    if (matchingName.length === 0) return [`missing index ${required.indexName}`];
+    if (matchingName.some((row) => row.tableName !== required.tableName)) {
+      return [`index table mismatch ${required.indexName}`];
+    }
+    const ordered = [...matchingName].sort(
+      (left, right) => Number(left.seqInIndex) - Number(right.seqInIndex)
+    );
+    const exactSequence = ordered.every((row, index) => Number(row.seqInIndex) === index + 1);
+    const exactColumns = ordered.length === required.columns.length && ordered.every(
+      (row, index) => row.columnName === required.columns[index]
+    );
+    if (!exactSequence || !exactColumns) {
+      return [`index column/order mismatch ${required.indexName}`];
+    }
+    const expectedNonUnique = required.unique ? 0 : 1;
+    if (ordered.some((row) => Number(row.nonUnique) !== expectedNonUnique)) {
+      return [`index uniqueness mismatch ${required.indexName}`];
+    }
+    return [];
+  });
+  if (missingColumns.length > 0 || indexErrors.length > 0) {
     throw new Error(
       `Membership analytics MySQL integration schema is incomplete; missing ${[
         ...missingColumns,
-        ...missingIndexes
+        ...indexErrors
       ].join(", ")}`
     );
   }

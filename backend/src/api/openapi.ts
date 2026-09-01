@@ -1828,16 +1828,6 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           value: { type: "integer" }
         }
       },
-      MembershipTrendSeriesItem: {
-        type: "object",
-        additionalProperties: false,
-        required: ["seriesKey", "label", "unit", "points"],
-        properties: {
-          seriesKey: { type: "string", enum: ["added", "removed", "net"] },
-          label: { type: "string", enum: ["Added members", "Removed members", "Net members"] },
-          unit: { type: "string", const: "people" }
-        }
-      },
       MembershipTrendSeries: {
         type: "array",
         minItems: 3,
@@ -1846,10 +1836,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "Fixed ordered series: added, removed, then net. Added/removed are grouped shop-user state transitions, not card event counts.",
         prefixItems: [
           {
-            allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
+            type: "object",
+            additionalProperties: false,
+            required: ["seriesKey", "label", "unit", "points"],
             properties: {
               seriesKey: { type: "string", const: "added" },
               label: { type: "string", const: "Added members" },
+              unit: { type: "string", const: "people" },
               points: {
                 type: "array",
                 items: { $ref: "#/components/schemas/MembershipTrendPoint" }
@@ -1857,10 +1850,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           {
-            allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
+            type: "object",
+            additionalProperties: false,
+            required: ["seriesKey", "label", "unit", "points"],
             properties: {
               seriesKey: { type: "string", const: "removed" },
               label: { type: "string", const: "Removed members" },
+              unit: { type: "string", const: "people" },
               points: {
                 type: "array",
                 items: { $ref: "#/components/schemas/MembershipTrendPoint" }
@@ -1868,10 +1864,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           {
-            allOf: [{ $ref: "#/components/schemas/MembershipTrendSeriesItem" }],
+            type: "object",
+            additionalProperties: false,
+            required: ["seriesKey", "label", "unit", "points"],
             properties: {
               seriesKey: { type: "string", const: "net" },
               label: { type: "string", const: "Net members" },
+              unit: { type: "string", const: "people" },
               points: {
                 type: "array",
                 items: { $ref: "#/components/schemas/MembershipTrendNetPoint" }

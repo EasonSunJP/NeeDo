@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { Prisma } from "@prisma/client";
 import { parse as parseDotenv } from "dotenv";
 import { describe, expect, it } from "@jest/globals";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
@@ -74,8 +75,16 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
               'shop_membership_card_plan_versions'
             )
         `,
-        client.$queryRaw<Array<{ indexName: string }>>`
-          SELECT DISTINCT INDEX_NAME AS indexName
+        client.$queryRaw<Array<{
+          tableName: string;
+          indexName: string;
+          columnName: string;
+          seqInIndex: number | bigint;
+          nonUnique: number | bigint;
+        }>>`
+          SELECT TABLE_NAME AS tableName, INDEX_NAME AS indexName,
+                 COLUMN_NAME AS columnName, SEQ_IN_INDEX AS seqInIndex,
+                 NON_UNIQUE AS nonUnique
           FROM information_schema.STATISTICS
           WHERE TABLE_SCHEMA = DATABASE()
             AND TABLE_NAME IN ('shop_membership_cards', 'shop_membership_card_status_events')
@@ -88,7 +97,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
       ]);
       assertMembershipAnalyticsIntegrationSchema(
         columns,
-        indexes.map((row) => row.indexName),
+        indexes,
         migrations.map((row) => row.migrationName)
       );
 
@@ -138,7 +147,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           issuedAt: Date;
           endedAt?: Date;
           expiresAt?: Date;
-          voidAt?: Date;
+          frozenAt?: Date;
           authority?: "issuance" | "migration_backfill";
         }) => {
           const user = await tx.user.create({
@@ -167,12 +176,13 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
               cardNo: `${marker}-card-${input.index}`,
               name: `card-${input.index}`,
               type: "BENEFIT",
-              status: input.voidAt ? "VOID" : input.expiresAt && input.expiresAt <= evaluatedAt
+              status: input.frozenAt ? "FROZEN" : input.expiresAt && input.expiresAt <= evaluatedAt
                 ? "EXPIRED"
                 : "ACTIVE",
               issuanceSource: "OFFLINE_PAID",
               issuedAt: input.issuedAt,
-              expiresAt: input.expiresAt
+              expiresAt: input.expiresAt,
+              frozenAt: input.frozenAt
             }
           });
           const initial = await tx.shopMembershipCardStatusEvent.create({
@@ -192,30 +202,34 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
                 : `membership-card:${card.publicId}:issued`
             }
           });
-          if (input.voidAt) {
-            await tx.shopMembershipCardStatusEvent.create({
+          const frozen = input.frozenAt
+            ? await tx.shopMembershipCardStatusEvent.create({
               data: {
                 cardId: card.id,
                 fromStatus: "ACTIVE",
-                toStatus: "VOID",
+                toStatus: "FROZEN",
                 source: "STATUS_TRANSITION",
-                occurredAt: input.voidAt,
-                reasonCode: "membership_ended",
-                actorUserId: actor.id,
-                metadata: { authority: "integration" },
-                eventKey: `membership-card:${card.publicId}:void`
+                occurredAt: input.frozenAt,
+                reasonCode: "historical_card_frozen",
+                actorUserId: null,
+                metadata: undefined,
+                eventKey: `membership-card:${card.publicId}:backfill-frozen`
               }
-            });
-          }
-          return { card, initial };
+            })
+            : null;
+          return { card, initial, frozen };
         };
 
-        const postWindowVoid = await createCard({
-          index: 1, issuedAt: inside, endedAt: after, voidAt: after
+        const postWindowFrozen = await createCard({
+          index: 1, issuedAt: inside, endedAt: after, frozenAt: after,
+          authority: "migration_backfill"
         });
         await createCard({ index: 2, issuedAt: inside, endedAt: after, expiresAt: after });
-        await createCard({ index: 3, issuedAt: inside });
-        await createCard({ index: 4, issuedAt: before, endedAt: inside, voidAt: inside });
+        const issuedCard = await createCard({ index: 3, issuedAt: inside });
+        await createCard({
+          index: 4, issuedAt: before, endedAt: inside, frozenAt: inside,
+          authority: "migration_backfill"
+        });
         const migrationBackfill = await createCard({
           index: 5,
           issuedAt: new Date("2026-08-17T03:00:00.000Z"),
@@ -241,14 +255,14 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
         ]);
 
         await tx.shopMembershipCardStatusEvent.update({
-          where: { id: postWindowVoid.initial.id },
+          where: { id: postWindowFrozen.initial.id },
           data: { metadata: { issuanceSource: "gift" } }
         });
         await expect(repository.getTrend({
           scope: { kind: "platform" }, city: marker, window, evaluatedAt
         })).rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
         await tx.shopMembershipCardStatusEvent.update({
-          where: { id: postWindowVoid.initial.id },
+          where: { id: postWindowFrozen.initial.id },
           data: { metadata: { issuanceSource: "offline_paid" } }
         });
 
@@ -262,7 +276,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           })).rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
           await restore();
         };
-        const issuanceId = postWindowVoid.initial.id;
+        const issuanceId = issuedCard.initial.id;
         await assertCorruptionRejected(
           () => tx.shopMembershipCardStatusEvent.update({
             where: { id: issuanceId }, data: { reasonCode: "wrong_reason" }
@@ -285,7 +299,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           }),
           () => tx.shopMembershipCardStatusEvent.update({
             where: { id: issuanceId },
-            data: { eventKey: `membership-card:${postWindowVoid.card.publicId}:issued` }
+            data: { eventKey: `membership-card:${issuedCard.card.publicId}:issued` }
           })
         );
         await assertCorruptionRejected(
@@ -298,10 +312,10 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
         );
         await assertCorruptionRejected(
           () => tx.shopMembershipCard.update({
-            where: { id: postWindowVoid.card.id }, data: { issuanceSource: "GIFT" }
+            where: { id: issuedCard.card.id }, data: { issuanceSource: "GIFT" }
           }),
           () => tx.shopMembershipCard.update({
-            where: { id: postWindowVoid.card.id }, data: { issuanceSource: "OFFLINE_PAID" }
+            where: { id: issuedCard.card.id }, data: { issuanceSource: "OFFLINE_PAID" }
           })
         );
         await assertCorruptionRejected(
@@ -343,6 +357,47 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           () => tx.shopMembershipCardStatusEvent.update({
             where: { id: migrationBackfill.initial.id },
             data: { eventKey: `membership-card:${migrationBackfill.card.publicId}:backfill-issued` }
+          })
+        );
+
+        const frozenEvent = postWindowFrozen.frozen!;
+        const exactFrozenEvent = {
+          fromStatus: "ACTIVE" as const,
+          toStatus: "FROZEN" as const,
+          source: "STATUS_TRANSITION" as const,
+          occurredAt: after,
+          reasonCode: "historical_card_frozen",
+          actorUserId: null,
+          metadata: Prisma.DbNull,
+          eventKey: `membership-card:${postWindowFrozen.card.publicId}:backfill-frozen`
+        };
+        const frozenEventCorruptions = [
+          { corrupt: { fromStatus: "FROZEN" as const }, restore: { fromStatus: exactFrozenEvent.fromStatus } },
+          { corrupt: { toStatus: "VOID" as const }, restore: { toStatus: exactFrozenEvent.toStatus } },
+          { corrupt: { source: "ISSUANCE" as const }, restore: { source: exactFrozenEvent.source } },
+          { corrupt: { occurredAt: new Date(after.getTime() + 1) }, restore: { occurredAt: exactFrozenEvent.occurredAt } },
+          { corrupt: { reasonCode: "wrong_frozen_reason" }, restore: { reasonCode: exactFrozenEvent.reasonCode } },
+          { corrupt: { actorUserId: actor.id }, restore: { actorUserId: exactFrozenEvent.actorUserId } },
+          { corrupt: { metadata: { unsupported: true } }, restore: { metadata: exactFrozenEvent.metadata } },
+          { corrupt: { eventKey: `${marker}-wrong-frozen` }, restore: { eventKey: exactFrozenEvent.eventKey } }
+        ];
+        for (const mutation of frozenEventCorruptions) {
+          await assertCorruptionRejected(
+            () => tx.shopMembershipCardStatusEvent.update({
+              where: { id: frozenEvent.id }, data: mutation.corrupt
+            }),
+            () => tx.shopMembershipCardStatusEvent.update({
+              where: { id: frozenEvent.id }, data: mutation.restore
+            })
+          );
+        }
+        await assertCorruptionRejected(
+          () => tx.shopMembershipCard.update({
+            where: { id: postWindowFrozen.card.id },
+            data: { frozenAt: new Date(after.getTime() - 1) }
+          }),
+          () => tx.shopMembershipCard.update({
+            where: { id: postWindowFrozen.card.id }, data: { frozenAt: after }
           })
         );
 

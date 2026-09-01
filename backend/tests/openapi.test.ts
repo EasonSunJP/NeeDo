@@ -1,3 +1,4 @@
+import Ajv from "ajv";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { createOpenApiDocument } from "../src/api/openapi";
@@ -2480,6 +2481,35 @@ describe("GET /api/v1/openapi.json", () => {
         ]
       }
     });
+
+    const dereferenceForAjv = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(dereferenceForAjv);
+      if (!value || typeof value !== "object") return value;
+      const object = value as Record<string, unknown>;
+      if (typeof object.$ref === "string" && object.$ref.startsWith("#/components/schemas/")) {
+        const schemaName = object.$ref.slice("#/components/schemas/".length);
+        return dereferenceForAjv(document.components.schemas[schemaName]);
+      }
+      const normalized = Object.fromEntries(
+        Object.entries(object).map(([key, nested]) => [key, dereferenceForAjv(nested)])
+      ) as Record<string, unknown>;
+      if (Array.isArray(normalized.prefixItems)) {
+        normalized.additionalItems = normalized.items === false ? false : normalized.additionalItems;
+        normalized.items = normalized.prefixItems;
+        delete normalized.prefixItems;
+      }
+      return normalized;
+    };
+    const validateTrendPayload = new Ajv({ allErrors: true }).compile(
+      dereferenceForAjv(document.components.schemas.MembershipTrendPayload) as object
+    );
+    for (const [path] of [contracts[0]!, contracts[2]!]) {
+      const published = document.paths[path].get.responses["200"].content?.[
+        "application/json"
+      ] as { example?: { data?: unknown } };
+      expect(validateTrendPayload(published.example?.data)).toBe(true);
+      expect(validateTrendPayload.errors).toBeNull();
+    }
     const merchantTrendExample = document.paths[contracts[2][0]].get.responses["200"].content?.[
       "application/json"
     ] as { example?: { data?: { filter?: { city?: unknown } } } };
