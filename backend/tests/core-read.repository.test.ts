@@ -80,7 +80,8 @@ function createRepositoryFixture() {
     repository,
     serviceFindMany,
     shopFindMany,
-    technicianFindMany
+    technicianFindMany,
+    technicianCount
   };
 }
 
@@ -266,6 +267,110 @@ describe("CoreReadRepository multi-entity search", () => {
           { categoryId: { in: [3, 9] } }
         ])
       })
+    }));
+  });
+
+  it("counts only searchable technicians that have an eligible public location", async () => {
+    const fixture = createRepositoryFixture();
+
+    await expect(fixture.repository.countEligibleLocatedTechnicians({
+      entityType: "technician",
+      keywords: ["massage"],
+      categoryIds: [3]
+    })).resolves.toBe(1);
+
+    expect(fixture.technicianCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        deletedAt: null,
+        status: "published",
+        OR: expect.arrayContaining([
+          { displayName: { contains: "massage" } },
+          { technicianServices: { some: expect.any(Object) } }
+        ]),
+        AND: [{
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              baseLatitude: { not: null },
+              baseLongitude: { not: null }
+            }),
+            expect.objectContaining({ technicianShopAffiliations: { some: expect.any(Object) } })
+          ])
+        }]
+      })
+    });
+  });
+
+  it("loads bounded candidates with personal and active published shop locations", async () => {
+    const candidateRecord = {
+      ...publishedTechnicianWithoutServices,
+      baseLatitude: { toString: () => "35.6762000" },
+      baseLongitude: { toString: () => "139.6503000" },
+      reviewSummary: {
+        ratingAverage: { toString: () => "4.80" },
+        reviewCount: 132,
+        deletedAt: null
+      },
+      performanceSummary: { completedOrderCount: 120, deletedAt: null },
+      technicianShopAffiliations: [
+        {
+          shop: {
+            latitude: { toString: () => "35.6800000" },
+            longitude: { toString: () => "139.6600000" }
+          }
+        }
+      ],
+      user: {
+        ...publishedTechnicianWithoutServices.user,
+        createdAt: new Date("2025-01-01T00:00:00.000Z")
+      }
+    };
+    const technicianFindMany = jest.fn(async () => [candidateRecord]);
+    const repository = new CoreReadRepository({
+      technicianProfile: { findMany: technicianFindMany }
+    } as never);
+
+    await expect(repository.findEligibleTechniciansWithinBounds(
+      { entityType: "technician", keywords: ["massage"], categoryIds: [3] },
+      { latitude: 35.6762, longitude: 139.6503 },
+      3
+    )).resolves.toEqual([
+      {
+        technicianProfileId: 41,
+        locations: [
+          { latitude: 35.6762, longitude: 139.6503 },
+          { latitude: 35.68, longitude: 139.66 }
+        ],
+        ratingAverage: "4.80",
+        completedOrderCount: 120,
+        reviewCount: 132,
+        registeredAt: new Date("2025-01-01T00:00:00.000Z")
+      }
+    ]);
+
+    expect(technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([{ displayName: { contains: "massage" } }]),
+        AND: [{ OR: expect.any(Array) }]
+      }),
+      select: expect.objectContaining({
+        baseLatitude: true,
+        baseLongitude: true,
+        performanceSummary: expect.any(Object),
+        technicianShopAffiliations: expect.any(Object),
+        user: expect.any(Object)
+      })
+    }));
+  });
+
+  it("loads final card payloads by ranked IDs without exposing private coordinates", async () => {
+    const fixture = createRepositoryFixture();
+
+    const result = await fixture.repository.loadTechnicianCardsByRankedIds([41]);
+
+    expect(result.get(41)).toMatchObject({ id: 41, publicId: "s5831047296" });
+    expect(result.get(41)).not.toHaveProperty("baseLatitude");
+    expect(fixture.technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: [41] } })
     }));
   });
 });

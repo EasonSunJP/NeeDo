@@ -11,11 +11,23 @@ import type {
   ServiceDetailPayload,
   ServiceListInput,
   ShopDetailPayload,
-  TechnicianDetailPayload,
-  CustomerProfilePayload
+  CustomerProfilePayload,
+  TechnicianCardPayload,
+  TechnicianDetailPayload
 } from "../repositories/core-read.repository";
+import {
+  minimumCandidateDistanceKm,
+  rankNearbyTechnicians,
+  type Coordinates,
+  type NearbyTechnicianCandidate
+} from "./nearby-technician-ranking.service";
 import { AppError } from "../utils/app-error";
+import { buildPaginatedResponse, normalizePagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
+
+const INITIAL_NEARBY_RADIUS_KM = 3;
+const REQUIRED_NEARBY_TECHNICIANS = 3;
+const MAX_NEARBY_RADIUS_KM = 20_038;
 
 export class CoreReadService {
   public constructor(private readonly repository: CoreReadRepositoryPort) {}
@@ -49,10 +61,74 @@ export class CoreReadService {
       return this.repository.searchShops(input);
     }
     if (input.entityType === "technician") {
+      if (input.latitude !== undefined && input.longitude !== undefined) {
+        return this.searchNearbyTechnicians(input, {
+          latitude: input.latitude,
+          longitude: input.longitude
+        });
+      }
       return this.repository.searchTechnicians(input);
     }
 
     return this.repository.search(input);
+  }
+
+  private async searchNearbyTechnicians(
+    input: CoreSearchInput,
+    origin: Coordinates
+  ): Promise<PaginatedResponse<TechnicianCardPayload>> {
+    const eligibleCount = await this.repository.countEligibleLocatedTechnicians(input);
+    if (eligibleCount === 0) {
+      return buildPaginatedResponse([], 0, input);
+    }
+
+    let radiusKm = INITIAL_NEARBY_RADIUS_KM;
+    let candidates: NearbyTechnicianCandidate[] = [];
+    while (radiusKm <= MAX_NEARBY_RADIUS_KM) {
+      const boundedCandidates = await this.repository.findEligibleTechniciansWithinBounds(
+        input,
+        origin,
+        radiusKm
+      );
+      candidates = boundedCandidates.filter((candidate) => {
+        const distanceKm = minimumCandidateDistanceKm(origin, candidate.locations);
+        return distanceKm !== null && distanceKm <= radiusKm;
+      });
+      if (
+        candidates.length >= REQUIRED_NEARBY_TECHNICIANS ||
+        candidates.length >= eligibleCount ||
+        radiusKm === MAX_NEARBY_RADIUS_KM
+      ) {
+        break;
+      }
+      radiusKm += 1;
+    }
+
+    const ranked = rankNearbyTechnicians(origin, candidates).map((candidate) => ({
+      ...candidate,
+      resolvedRadiusKm: radiusKm
+    }));
+    const pagination = normalizePagination(input);
+    const start = (pagination.page - 1) * pagination.pageSize;
+    const pageCandidates = ranked.slice(start, start + pagination.pageSize);
+    const cardsById = await this.repository.loadTechnicianCardsByRankedIds(
+      pageCandidates.map(({ technicianProfileId }) => technicianProfileId)
+    );
+    const cards = pageCandidates.flatMap((candidate) => {
+      const card = cardsById.get(candidate.technicianProfileId);
+      return card
+        ? [
+            {
+              ...card,
+              distanceKm: candidate.distanceKm,
+              nearbyRank: candidate.nearbyRank,
+              resolvedRadiusKm: candidate.resolvedRadiusKm
+            }
+          ]
+        : [];
+    });
+
+    return buildPaginatedResponse(cards, ranked.length, pagination);
   }
 
   public async getShopDetail(id: number | string): Promise<ShopDetailPayload> {

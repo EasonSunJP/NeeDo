@@ -12,6 +12,10 @@ import type {
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
+import type {
+  Coordinates,
+  NearbyTechnicianCandidate
+} from "../services/nearby-technician-ranking.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -47,6 +51,8 @@ export interface CoreSearchInput extends ServiceListInput {
   entityType: CoreSearchEntityType;
   keywords: string[];
   categoryIds: number[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface HomeRecommendationsInput {
@@ -103,6 +109,9 @@ export interface TechnicianCardPayload {
   city: string;
   avatarUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  distanceKm?: number;
+  nearbyRank?: 1 | 2 | 3 | null;
+  resolvedRadiusKm?: number;
 }
 
 export interface ServiceCardPayload {
@@ -186,6 +195,15 @@ export interface CoreReadRepositoryPort {
   searchTechnicians: (
     input: CoreSearchInput
   ) => Promise<PaginatedResponse<TechnicianCardPayload>>;
+  countEligibleLocatedTechnicians: (input: CoreSearchInput) => Promise<number>;
+  findEligibleTechniciansWithinBounds: (
+    input: CoreSearchInput,
+    origin: Coordinates,
+    radiusKm: number
+  ) => Promise<NearbyTechnicianCandidate[]>;
+  loadTechnicianCardsByRankedIds: (
+    ids: number[]
+  ) => Promise<Map<number, TechnicianCardPayload>>;
   findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
@@ -401,6 +419,96 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       list.map((technician) => this.mapTechnicianCard(technician)),
       total,
       pagination
+    );
+  }
+
+  public countEligibleLocatedTechnicians(input: CoreSearchInput): Promise<number> {
+    return this.client.technicianProfile.count({
+      where: {
+        ...this.buildTechnicianSearchWhere(input),
+        AND: [{ OR: this.eligibleTechnicianLocationBranches() }]
+      }
+    });
+  }
+
+  public async findEligibleTechniciansWithinBounds(
+    input: CoreSearchInput,
+    origin: Coordinates,
+    radiusKm: number
+  ): Promise<NearbyTechnicianCandidate[]> {
+    const technicians = await this.client.technicianProfile.findMany({
+      where: {
+        ...this.buildTechnicianSearchWhere(input),
+        AND: [{ OR: this.boundedTechnicianLocationBranches(origin, radiusKm) }]
+      },
+      select: {
+        id: true,
+        baseLatitude: true,
+        baseLongitude: true,
+        reviewSummary: {
+          select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+        },
+        performanceSummary: {
+          select: { completedOrderCount: true, deletedAt: true }
+        },
+        user: { select: { createdAt: true } },
+        technicianShopAffiliations: {
+          where: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              latitude: { not: null },
+              longitude: { not: null }
+            }
+          },
+          select: {
+            shop: { select: { latitude: true, longitude: true } }
+          }
+        }
+      }
+    });
+
+    return technicians.map((technician) => ({
+      technicianProfileId: technician.id,
+      locations: [
+        this.toCoordinates(technician.baseLatitude, technician.baseLongitude),
+        ...technician.technicianShopAffiliations.map(({ shop }) =>
+          this.toCoordinates(shop.latitude, shop.longitude)
+        )
+      ].filter((location): location is Coordinates => location !== null),
+      ratingAverage:
+        technician.reviewSummary?.deletedAt === null
+          ? technician.reviewSummary.ratingAverage.toString()
+          : null,
+      completedOrderCount:
+        technician.performanceSummary?.deletedAt === null
+          ? technician.performanceSummary.completedOrderCount
+          : 0,
+      reviewCount:
+        technician.reviewSummary?.deletedAt === null
+          ? technician.reviewSummary.reviewCount
+          : 0,
+      registeredAt: technician.user.createdAt
+    }));
+  }
+
+  public async loadTechnicianCardsByRankedIds(
+    ids: number[]
+  ): Promise<Map<number, TechnicianCardPayload>> {
+    if (ids.length === 0) {
+      return new Map();
+    }
+    const technicians = await this.client.technicianProfile.findMany({
+      where: {
+        ...this.publishedTechnicianProfileWhere(),
+        id: { in: ids }
+      },
+      include: this.technicianCardInclude()
+    });
+    return new Map(
+      technicians.map((technician) => [technician.id, this.mapTechnicianCard(technician)])
     );
   }
 
@@ -627,6 +735,127 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         identities: { some: this.activeTechnicianIdentityWhere() }
       }
     };
+  }
+
+  private eligibleTechnicianLocationBranches(): Prisma.TechnicianProfileWhereInput[] {
+    return [
+      {
+        baseLatitude: { not: null },
+        baseLongitude: { not: null }
+      },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              latitude: { not: null },
+              longitude: { not: null }
+            }
+          }
+        }
+      }
+    ];
+  }
+
+  private boundedTechnicianLocationBranches(
+    origin: Coordinates,
+    radiusKm: number
+  ): Prisma.TechnicianProfileWhereInput[] {
+    const latitudeDelta = radiusKm / 111.32;
+    const longitudeScale = Math.abs(Math.cos((origin.latitude * Math.PI) / 180));
+    const longitudeDelta =
+      longitudeScale < 1e-12 ? 180 : Math.min(180, radiusKm / (111.32 * longitudeScale));
+    const latitudeRange = {
+      gte: Math.max(-90, origin.latitude - latitudeDelta),
+      lte: Math.min(90, origin.latitude + latitudeDelta)
+    };
+    const personalLongitude = this.decimalLongitudeWhere(
+      "baseLongitude",
+      origin.longitude,
+      longitudeDelta
+    );
+    const shopLongitude = this.decimalLongitudeWhere(
+      "longitude",
+      origin.longitude,
+      longitudeDelta
+    );
+
+    return [
+      {
+        AND: [
+          { baseLatitude: latitudeRange },
+          ...(personalLongitude as Prisma.TechnicianProfileWhereInput[])
+        ]
+      },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              AND: [
+                { latitude: latitudeRange },
+                ...(shopLongitude as Prisma.ShopWhereInput[])
+              ]
+            }
+          }
+        }
+      }
+    ];
+  }
+
+  private decimalLongitudeWhere(
+    field: "baseLongitude" | "longitude",
+    center: number,
+    delta: number
+  ): Array<Record<string, unknown>> {
+    if (delta >= 180) {
+      return [{ [field]: { gte: -180, lte: 180 } }];
+    }
+    const minimum = center - delta;
+    const maximum = center + delta;
+    if (minimum < -180) {
+      return [
+        {
+          OR: [
+            { [field]: { gte: minimum + 360 } },
+            { [field]: { lte: maximum } }
+          ]
+        }
+      ];
+    }
+    if (maximum > 180) {
+      return [
+        {
+          OR: [
+            { [field]: { gte: minimum } },
+            { [field]: { lte: maximum - 360 } }
+          ]
+        }
+      ];
+    }
+    return [{ [field]: { gte: minimum, lte: maximum } }];
+  }
+
+  private toCoordinates(
+    latitude: Prisma.Decimal | null,
+    longitude: Prisma.Decimal | null
+  ): Coordinates | null {
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+    const coordinates = {
+      latitude: Number(latitude),
+      longitude: Number(longitude)
+    };
+    return Number.isFinite(coordinates.latitude) && Number.isFinite(coordinates.longitude)
+      ? coordinates
+      : null;
   }
 
   private buildShopSearchWhere(input: CoreSearchInput): Prisma.ShopWhereInput {
