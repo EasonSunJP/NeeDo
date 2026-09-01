@@ -301,6 +301,14 @@ export interface SocialPostInteractionMutationInput {
   actorIdentityId?: number;
   active: boolean;
   context: AuthRequestContext;
+  onActiveLike?: (context: SocialPostLikeExperienceContext) => Promise<void>;
+}
+
+export interface SocialPostLikeExperienceContext {
+  transactionClient: unknown;
+  postId: number;
+  authorUserId: number;
+  actorUserId: number;
 }
 
 export interface RecordSocialPostViewInput {
@@ -3740,6 +3748,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         await transaction.socialPostLike.update({
           where: { id: existing.id },
           data: { deletedAt: new Date() }
+        });
+      }
+
+      if (
+        input.active &&
+        changed &&
+        input.actorUserId !== socialPost.authorUserId &&
+        input.onActiveLike
+      ) {
+        await input.onActiveLike({
+          transactionClient: transaction,
+          postId: socialPost.id,
+          authorUserId: socialPost.authorUserId,
+          actorUserId: input.actorUserId
         });
       }
 

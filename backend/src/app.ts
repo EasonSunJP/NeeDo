@@ -169,6 +169,7 @@ import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.ro
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
+import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
@@ -380,9 +381,15 @@ export const createApp = (
   const authRepository = dependencies.authRepository ?? new AuthRepository();
   const personalIdentityScopeService =
     dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
+  const userExperienceService = createUserExperienceServiceForRoutes(dependencies);
   const realtimeService =
     dependencies.realtimeService ??
-    new RealtimeService(realtimeRepository, realtimeEventGateway, personalIdentityScopeService);
+    new RealtimeService(
+      realtimeRepository,
+      realtimeEventGateway,
+      personalIdentityScopeService,
+      userExperienceService
+    );
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
     databaseHealthCheck: dependencies.databaseHealthCheck ?? checkDatabaseHealth,
@@ -391,6 +398,7 @@ export const createApp = (
     realtimeRepository,
     realtimeEventGateway,
     realtimeService,
+    userExperienceService,
     personalIdentityScopeService
   };
 

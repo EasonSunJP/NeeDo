@@ -32,6 +32,7 @@ import type {
 } from "./personal-identity-scope.service";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
+import type { UserExperienceService } from "./user-experience.service";
 
 const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -66,7 +67,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
     private readonly eventGateway: RealtimeEventGatewayPort,
     private readonly personalIdentityScope?: {
       resolve: (actor: PersonalIdentityActor) => Promise<PersonalIdentityScope>;
-    }
+    },
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public async createConversation(
@@ -942,12 +945,28 @@ export class RealtimeService implements OrderStatusNotificationPort {
     context: AuthRequestContext
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
+    const occurredAt = this.now();
     const result = await this.repository.setSocialPostLike({
       postId,
       actorUserId: auth.userId,
       actorIdentityId: scope.identityId,
       active,
-      context
+      context,
+      onActiveLike: this.userExperienceService
+        ? ({ transactionClient, postId: persistedPostId, authorUserId, actorUserId }) =>
+            this.userExperienceService!.recordEvent(
+              {
+                userId: authorUserId,
+                eventType: "social_post_liked",
+                sourceType: "social_post_like",
+                sourcePublicId: String(persistedPostId),
+                idempotencyKey: `social-post-like:${persistedPostId}:${actorUserId}`,
+                baseUnits: 10_000n,
+                occurredAt
+              },
+              { transactionClient }
+            ).then(() => undefined)
+        : undefined
     });
     if (!result) {
       throw this.notFoundError("error.realtime.social_post_not_found");
