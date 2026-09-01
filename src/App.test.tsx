@@ -114,6 +114,15 @@ describe("portal identity switching boundaries", () => {
 });
 
 describe("production route chunk boundaries", () => {
+  it("protects the formal NDP exchange-rate operations route with read permission", () => {
+    expect(appSource).toContain(
+      'import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";'
+    );
+    expect(appSource).toContain(
+      'path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)}'
+    );
+  });
+
   it("mounts one operations data dashboard route and removes the legacy analytics route", () => {
     expect(appSource.match(/path="\/admin" element=/g)).toHaveLength(1);
     expect(appSource).toContain(

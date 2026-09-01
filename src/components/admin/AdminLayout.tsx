@@ -139,6 +139,7 @@ const navSections: AdminNavSection[] = [
     title: "设置",
     items: [
       { label: "系统设置", to: "/admin/roles?module=system", icon: "系", permission: "menu:admin-settings", children: ["储存设置", "支付设置"] },
+      { label: "NDP 汇率", to: "/admin/settings/ndp-exchange-rate", icon: "率", permission: "backoffice:ndp-exchange-rate:read", children: ["当前汇率", "计划汇率", "版本历史"] },
       { label: "城市设置", to: "/admin/cities", icon: "城", children: ["城市管理", "城市投票"] },
       { label: "角色管理", to: "/admin/roles", icon: "角", permission: "menu:role-management", children: ["角色列表", "分配权限"] },
       { label: "权限管理", to: "/admin/permissions", icon: "权", permission: "menu:permission-management", children: ["权限列表", "权限树"] },

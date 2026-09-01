@@ -30,6 +30,7 @@ import { FloorplanPage } from "./pages/admin/FloorplanPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
 import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
+import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
 import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
@@ -1418,6 +1419,7 @@ export default function App() {
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
+              <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>

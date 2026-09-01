@@ -3,6 +3,22 @@ import source from "./AdminLayout.tsx?raw";
 import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
+  it("exposes one read-permission-filtered NDP exchange-rate settings item", () => {
+    expect(source.match(/to: "\/admin\/settings\/ndp-exchange-rate"/g)).toHaveLength(1);
+    expect(source).toContain('label: "NDP 汇率"');
+    expect(source).toContain('permission: "backoffice:ndp-exchange-rate:read"');
+    expect(routeMatches(
+      { label: "NDP 汇率", to: "/admin/settings/ndp-exchange-rate", icon: "率" },
+      "/admin/settings/ndp-exchange-rate",
+      ""
+    )).toBe(true);
+    expect(routeMatches(
+      { label: "系统设置", to: "/admin/roles?module=system", icon: "系" },
+      "/admin/settings/ndp-exchange-rate",
+      ""
+    )).toBe(false);
+  });
+
   it("exposes exactly one operations data dashboard entry", () => {
     expect(source.match(/label: "数据大盘"/g)).toHaveLength(1);
     expect(source).toContain('{ label: "数据大盘", to: "/admin"');
