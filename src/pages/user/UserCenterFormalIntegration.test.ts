@@ -9,6 +9,12 @@ describe("formal customer center integration", () => {
     expect(centerSource).toContain("customerProfileApi.getMine()");
     expect(centerSource).toContain("profile.id !== customerProfileId");
     expect(centerSource).toContain("walletApi.getMyWallet()");
+    expect(centerSource).toContain("platformMembershipSelfApi.getMyExperience()");
+    expect(centerSource).toContain("platformMembershipSelfApi.getMine()");
+    expect(centerSource).toContain("formalData.experience.level");
+    expect(centerSource).toContain("formalData.membership.theme");
+    expect(centerSource).toContain("<PlatformMembershipDetailCard");
+    expect(centerSource).not.toContain("getCustomerLevelLabel");
     expect(centerSource).toContain('formalData.wallet.currency === "TEST_NDP" ? "Test NDP" : "NDP"');
     expect(centerSource).toContain("{ label: pointsLabel, value: points.toLocaleString(\"en-US\") }");
     expect(centerSource).toContain('data-testid="user-profile-privacy-control"');

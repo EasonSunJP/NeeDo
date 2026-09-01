@@ -50,6 +50,12 @@ export const createPlatformMembershipRoutes = (
   const controller = new PlatformMembershipController(service as PlatformMembershipService);
 
   router.get(
+    "/me/platform-membership",
+    authenticate(),
+    controller.getMine
+  );
+
+  router.get(
     "/backoffice/membership-tiers",
     authenticate(),
     createAuthorizeMiddleware(PLATFORM_MEMBERSHIP_ROUTE_PERMISSIONS.tierRead),

@@ -4,6 +4,9 @@ import {
 } from "@prisma/client";
 import { PlatformMembershipRepository } from "../src/repositories/platform-membership.repository";
 
+const nameTranslations = { zh: "优先下单", "zh-Hant": "優先下單", ja: "優先", en: "Priority", ko: "우선" };
+const descriptionTranslations = { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" };
+
 describe("PlatformMembershipRepository administration", () => {
   it("lists the four fixed tiers by persisted sort order", async () => {
     const findMany = jest.fn(async () => [
@@ -55,6 +58,8 @@ describe("PlatformMembershipRepository administration", () => {
           code: PlatformMembershipBenefitCode.PRIORITY_REQUEST,
           sortOrder: 2,
           isGloballyEnabled: false,
+          nameTranslations,
+          descriptionTranslations,
           lockVersion: 3
         }))
       }
@@ -65,6 +70,9 @@ describe("PlatformMembershipRepository administration", () => {
       actorId: 9,
       benefitCode: "priority_request",
       isGloballyEnabled: false,
+      sortOrder: 2,
+      nameTranslations,
+      descriptionTranslations,
       expectedLockVersion: 2,
       audit: { actorId: 9, action: "benefit.update", targetType: "benefit" }
     })).resolves.toEqual({
@@ -73,6 +81,8 @@ describe("PlatformMembershipRepository administration", () => {
         code: "priority_request",
         sortOrder: 2,
         isGloballyEnabled: false,
+        nameTranslations,
+        descriptionTranslations,
         lockVersion: 3
       }
     });
@@ -80,6 +90,9 @@ describe("PlatformMembershipRepository administration", () => {
       where: expect.objectContaining({ lockVersion: 2 }),
       data: {
         isGloballyEnabled: false,
+        sortOrder: 2,
+        nameTranslations,
+        descriptionTranslations,
         lockVersion: { increment: 1 }
       }
     }));
@@ -109,6 +122,9 @@ describe("PlatformMembershipRepository administration", () => {
       actorId: 9,
       benefitCode: "priority_request",
       isGloballyEnabled: false,
+      sortOrder: 2,
+      nameTranslations,
+      descriptionTranslations,
       expectedLockVersion: 2,
       audit: { actorId: 9, action: "benefit.update", targetType: "benefit" }
     })).resolves.toEqual({ kind: "version_conflict" });

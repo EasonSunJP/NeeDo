@@ -25,12 +25,22 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain('label: "装修中心"');
   });
 
-  it("uses the unified user terminology for operations profile management", () => {
-    expect(source).toContain('label: "用户资料"');
-    expect(source).toContain('label: "用户 CRM"');
-    expect(source).toContain('children: ["用户档案", "会员等级", "公开状态"]');
-    expect(source).toContain('children: ["正式用户", "预约次数", "创建时间"]');
+  it("exposes exactly the five formal user-management workspaces", () => {
+    for (const [label, to] of [
+      ["用户列表", "/admin/users"],
+      ["用户分组", "/admin/user-groups"],
+      ["用户全局设置", "/admin/user-global-settings"],
+      ["会员等级设置", "/admin/membership-tiers"],
+      ["会员权益说明", "/admin/membership-benefits"]
+    ]) {
+      expect(source).toContain(`label: "${label}", to: "${to}"`);
+    }
+    expect(source.match(/permission: "backoffice:[^"]+:read"/g)?.length).toBeGreaterThanOrEqual(5);
     expect(source).toContain('placeholder="搜索订单、用户、门店、技师"');
+    expect(source).not.toContain('label: "账号管理"');
+    expect(source).not.toContain('label: "用户资料"');
+    expect(source).not.toContain('label: "用户 CRM"');
+    expect(source).not.toContain('label: "用户数据"');
     expect(source).not.toContain('label: "客户资料"');
     expect(source).not.toContain("客户 CRM");
     expect(source).not.toContain("客户档案");

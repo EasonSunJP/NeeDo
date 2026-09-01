@@ -1,5 +1,6 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { resolveReadableTextColor } from "./platformMembershipTheme";
 
 const defaultSimpleTopColor = "#0d2f27";
 const defaultSimpleBottomColor = "#132630";
@@ -42,12 +43,16 @@ export function PlatformMembershipSimpleCard({
     onOpenDetails();
   };
   const showLevel = entityKind === "customer" && level !== null;
+  const resolvedTopColor = simpleTopColor ?? defaultSimpleTopColor;
+  const resolvedBottomColor = simpleBottomColor ?? defaultSimpleBottomColor;
+  const topTextColor = resolveReadableTextColor(resolvedTopColor);
+  const bottomTextColor = resolveReadableTextColor(resolvedBottomColor);
 
   return (
     <article
       aria-label={onOpenDetails ? `${displayName} contact card` : undefined}
       className={cn(
-        "relative w-[338px] max-w-[84vw] overflow-hidden rounded-[28px] border border-white/10 text-white shadow-[0_12px_30px_rgba(0,0,0,0.22)]",
+        "relative w-[338px] max-w-[84vw] overflow-hidden rounded-[28px] border border-white/10 shadow-[0_12px_30px_rgba(0,0,0,0.22)]",
         onOpenDetails && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]",
         className,
       )}
@@ -59,7 +64,7 @@ export function PlatformMembershipSimpleCard({
     >
       <div
         className="min-h-[84px] px-4 pb-4 pl-[116px] pt-4"
-        style={{ backgroundColor: simpleTopColor ?? defaultSimpleTopColor }}
+        style={{ backgroundColor: resolvedTopColor, color: topTextColor }}
       >
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0">
@@ -75,7 +80,7 @@ export function PlatformMembershipSimpleCard({
                 </span>
               ) : null}
               {showLevel ? (
-                <span className="shrink-0 text-[12px] font-black text-white/88">Lv.{level}</span>
+                <span className="shrink-0 text-[12px] font-black opacity-80">Lv.{level}</span>
               ) : null}
             </div>
           </div>
@@ -85,10 +90,10 @@ export function PlatformMembershipSimpleCard({
 
       <div
         className="min-h-[112px] px-4 pb-4 pl-[116px] pt-3"
-        style={{ backgroundColor: simpleBottomColor ?? defaultSimpleBottomColor }}
+        style={{ backgroundColor: resolvedBottomColor, color: bottomTextColor }}
       >
-        <p className="truncate text-[12px] font-bold text-white/72">ID {needoId}</p>
-        <p className="mt-2 line-clamp-2 min-h-10 text-[13px] leading-5 text-white/82">{bio}</p>
+        <p className="truncate text-[12px] font-bold opacity-70">ID {needoId}</p>
+        <p className="mt-2 line-clamp-2 min-h-10 text-[13px] leading-5 opacity-85">{bio || "未设置"}</p>
       </div>
 
       <div className="absolute left-4 top-[48px] h-[88px] w-[88px] overflow-hidden rounded-[24px] border-2 border-white/42 bg-black/20 shadow-[0_10px_24px_rgba(0,0,0,0.28)]">

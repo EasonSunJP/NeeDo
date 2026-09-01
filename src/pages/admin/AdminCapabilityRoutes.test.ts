@@ -27,6 +27,29 @@ const adminLayoutSource = readFileSync(
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
 
+describe("formal platform user-management routes", () => {
+  it("registers five independently permissioned lazy workspaces", () => {
+    for (const [path, permission, component] of [
+      ["/admin/user-groups", "backoffice:user-group:read", "UserGroupsPage"],
+      ["/admin/user-global-settings", "backoffice:user-policy:read", "UserGlobalSettingsPage"],
+      ["/admin/membership-tiers", "backoffice:membership-tier:read", "MembershipTiersPage"],
+      ["/admin/membership-benefits", "backoffice:membership-benefit:read", "MembershipBenefitsPage"]
+    ]) {
+      expect(appSource).toContain(
+        `path="${path}" element={protectPermission("admin", "${permission}", <Suspense fallback={null}><${component} /></Suspense>)}`
+      );
+    }
+    expect(appSource).toContain('path="/admin/users" element={protectPermission("admin", "backoffice:users:read"');
+    expect(appSource).toContain('<Suspense fallback={null}><PlatformUserListPage /></Suspense>');
+  });
+
+  it("keeps the three old user-management entries as replace redirects", () => {
+    expect(appSource).toContain('path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)}');
+    expect(appSource).toContain('path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><DataCenterPage /></LegacyUserManagementRedirect>)}');
+    expect(appSource).toContain('<LegacyUserManagementRedirect source="users"><Suspense fallback={null}><PlatformUserListPage /></Suspense></LegacyUserManagementRedirect>');
+  });
+});
+
 describe("removed admin design modules", () => {
   it("does not register or import either deleted design page", () => {
     expect(appSource).not.toContain('./pages/admin/DecorationPage');

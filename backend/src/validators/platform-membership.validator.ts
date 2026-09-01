@@ -17,6 +17,20 @@ export const platformMembershipBenefitCodeSchema = z.enum([
 ]);
 
 const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
+const localizedTextSchema = z.object({
+  zh: z.string().trim().min(1).max(120),
+  "zh-Hant": z.string().trim().min(1).max(120),
+  ja: z.string().trim().min(1).max(120),
+  en: z.string().trim().min(1).max(120),
+  ko: z.string().trim().min(1).max(120)
+}).strict();
+const localizedDescriptionSchema = z.object({
+  zh: z.string().trim().min(1).max(1000),
+  "zh-Hant": z.string().trim().min(1).max(1000),
+  ja: z.string().trim().min(1).max(1000),
+  en: z.string().trim().min(1).max(1000),
+  ko: z.string().trim().min(1).max(1000)
+}).strict();
 export const platformMembershipThemeSchema = z
   .object({
     detailAccentColor: hexColorSchema,
@@ -100,6 +114,9 @@ export const platformMembershipTierPublishBodySchema = z
 export const platformMembershipBenefitUpdateBodySchema = z
   .object({
     isGloballyEnabled: z.boolean(),
+    sortOrder: z.number().int().min(0).max(10_000),
+    nameTranslations: localizedTextSchema,
+    descriptionTranslations: localizedDescriptionSchema,
     expectedLockVersion: z.number().int().positive()
   })
   .strict();

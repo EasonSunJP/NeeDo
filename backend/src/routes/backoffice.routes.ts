@@ -19,6 +19,8 @@ import {
   backofficeDashboardQuerySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeManagedUserListQuerySchema,
+  backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
@@ -48,6 +50,7 @@ export const BACKOFFICE_ROUTE_PERMISSIONS = {
   shopsWrite: "backoffice:shops:write",
   customers: "backoffice:customers:list",
   customersWrite: "backoffice:customers:write",
+  usersRead: "backoffice:users:read",
   services: "backoffice:services:list",
   servicesWrite: "backoffice:services:write",
   merchantDashboard: "merchant-admin:dashboard:read",
@@ -101,6 +104,20 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
     validateRequest({ query: backofficeDashboardQuerySchema }),
     controller.platformDashboard
+  );
+  router.get(
+    "/backoffice/users",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
+    validateRequest({ query: backofficeManagedUserListQuerySchema }),
+    controller.managedUsers
+  );
+  router.get(
+    "/backoffice/users/:userId",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
+    validateRequest({ params: backofficeManagedUserParamSchema }),
+    controller.managedUser
   );
   router.get(
     "/backoffice/orders",

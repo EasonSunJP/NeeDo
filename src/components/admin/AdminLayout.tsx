@@ -113,10 +113,11 @@ const navSections: AdminNavSection[] = [
     key: "users",
     title: "用户管理",
     items: [
-      { label: "账号管理", to: "/admin/users", icon: "账", permission: "menu:user-management", children: ["真实账号", "状态", "角色分配"] },
-      { label: "用户资料", to: "/admin/users?view=customers", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
-      { label: "用户 CRM", to: "/admin/crm", icon: "用", permission: "menu:user-management", children: ["用户档案", "会员等级", "公开状态"] },
-      { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["正式用户", "预约次数", "创建时间"] }
+      { label: "用户列表", to: "/admin/users", icon: "列", permission: "backoffice:users:read", children: ["全部账号", "身份", "会员与经验"] },
+      { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
+      { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
+      { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
+      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["七项权益", "启停", "交付能力"] }
     ]
   },
   {

@@ -70,6 +70,8 @@ const createService = () => ({
       code: "ndp_experience" as const,
       sortOrder: 0,
       isGloballyEnabled: true,
+      nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
+      descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
       lockVersion: 1
     }
   ]),
@@ -77,6 +79,8 @@ const createService = () => ({
     code: "ndp_experience" as const,
     sortOrder: 0,
     isGloballyEnabled: false,
+    nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
+    descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
     lockVersion: 2
   })),
   changeEntitlement: jest.fn(async () => ({
@@ -170,7 +174,13 @@ describe("platform membership administration API", () => {
     await request(fixture.app)
       .patch("/api/v1/backoffice/membership-benefits/ndp_experience")
       .set("Authorization", `Bearer ${token}`)
-      .send({ isGloballyEnabled: false, expectedLockVersion: 1 })
+      .send({
+        isGloballyEnabled: false,
+        sortOrder: 0,
+        nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
+        descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+        expectedLockVersion: 1
+      })
       .expect(200);
     await request(fixture.app)
       .post("/api/v1/backoffice/users/42/platform-membership")
@@ -195,7 +205,13 @@ describe("platform membership administration API", () => {
       expect.anything(),
       expect.anything(),
       "ndp_experience",
-      { isGloballyEnabled: false, expectedLockVersion: 1 }
+      {
+        isGloballyEnabled: false,
+        sortOrder: 0,
+        nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
+        descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+        expectedLockVersion: 1
+      }
     );
     expect(service.changeEntitlement).toHaveBeenCalledWith(
       expect.anything(),

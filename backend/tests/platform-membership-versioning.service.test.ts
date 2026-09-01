@@ -82,6 +82,7 @@ const repository = (
   listTiersForAdministration: jest.fn(),
   listBenefitsForAdministration: jest.fn(),
   hasActiveCustomerProfile: jest.fn(),
+  hasVerifiedEkycAt: jest.fn(),
   findActiveEntitlementAt: jest.fn(),
   findPublishedTierAt: jest.fn(),
   findTierDraft: jest.fn(async (tierCode) => {

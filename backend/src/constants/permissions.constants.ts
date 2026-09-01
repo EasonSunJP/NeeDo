@@ -549,6 +549,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取固定平台会员等级及其版本"
   ),
   createPermission(
+    "backoffice:users:read",
+    "运营后台全用户读取",
+    "api",
+    "backoffice",
+    "分页读取全量用户、身份、会员、经验与分组摘要"
+  ),
+  createPermission(
     "backoffice:membership-tier:publish",
     "平台会员等级发布",
     "api",
@@ -1609,6 +1616,7 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "page:permission-management",
   "permission:list",
   "backoffice:membership-tier:read",
+  "backoffice:users:read",
   "backoffice:membership-benefit:read",
   "backoffice:user-experience:read",
   "backoffice:user-group:read",
@@ -1723,6 +1731,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
   "backoffice:membership-tier:publish",
+  "backoffice:users:read",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
   "backoffice:user-group:write",

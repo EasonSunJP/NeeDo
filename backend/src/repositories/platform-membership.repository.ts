@@ -89,7 +89,17 @@ export interface PlatformMembershipBenefitAdministrationPayload {
   code: PlatformMembershipBenefitCodeValue;
   sortOrder: number;
   isGloballyEnabled: boolean;
+  nameTranslations: PlatformMembershipLocalizedText;
+  descriptionTranslations: PlatformMembershipLocalizedText;
   lockVersion: number;
+}
+
+export interface PlatformMembershipLocalizedText {
+  zh: string;
+  "zh-Hant": string;
+  ja: string;
+  en: string;
+  ko: string;
 }
 
 export type PlatformMembershipTierMutationResult =
@@ -114,6 +124,7 @@ export interface PlatformMembershipRepositoryPort {
   listTiersForAdministration: () => Promise<PlatformMembershipTierAdministrationPayload[]>;
   listBenefitsForAdministration: () => Promise<PlatformMembershipBenefitAdministrationPayload[]>;
   hasActiveCustomerProfile: (userId: number) => Promise<boolean>;
+  hasVerifiedEkycAt: (userId: number, occurredAt: Date) => Promise<boolean>;
   findActiveEntitlementAt: (
     userId: number,
     occurredAt: Date
@@ -152,6 +163,9 @@ export interface PlatformMembershipRepositoryPort {
     actorId: number;
     benefitCode: PlatformMembershipBenefitCodeValue;
     isGloballyEnabled: boolean;
+    sortOrder: number;
+    nameTranslations: PlatformMembershipLocalizedText;
+    descriptionTranslations: PlatformMembershipLocalizedText;
     expectedLockVersion: number;
     audit: AuditLogCreateInput;
   }) => Promise<PlatformMembershipBenefitMutationResult>;
@@ -381,6 +395,8 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         code: true,
         sortOrder: true,
         isGloballyEnabled: true,
+        nameTranslations: true,
+        descriptionTranslations: true,
         lockVersion: true
       }
     });
@@ -391,6 +407,18 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     return (
       (await this.client.customerProfile.count({ where: { userId, deletedAt: null } })) > 0
     );
+  }
+
+  public async hasVerifiedEkycAt(userId: number, occurredAt: Date): Promise<boolean> {
+    return (await this.client.ekycVerification.count({
+      where: {
+        userId,
+        status: "verified",
+        verifiedAt: { not: null, lte: occurredAt },
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
+      }
+    })) > 0;
   }
 
   public async findActiveEntitlementAt(
@@ -936,6 +964,9 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     actorId: number;
     benefitCode: PlatformMembershipBenefitCodeValue;
     isGloballyEnabled: boolean;
+    sortOrder: number;
+    nameTranslations: PlatformMembershipLocalizedText;
+    descriptionTranslations: PlatformMembershipLocalizedText;
     expectedLockVersion: number;
     audit: AuditLogCreateInput;
   }): Promise<PlatformMembershipBenefitMutationResult> {
@@ -956,6 +987,9 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         },
         data: {
           isGloballyEnabled: input.isGloballyEnabled,
+          sortOrder: input.sortOrder,
+          nameTranslations: { ...input.nameTranslations },
+          descriptionTranslations: { ...input.descriptionTranslations },
           lockVersion: { increment: 1 }
         }
       });
@@ -969,6 +1003,7 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
             benefitPublicId: benefit.publicId,
             benefitCode: input.benefitCode,
             isGloballyEnabled: input.isGloballyEnabled,
+            sortOrder: input.sortOrder,
             previousLockVersion: input.expectedLockVersion
           }
         })
@@ -1004,6 +1039,8 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         code: true,
         sortOrder: true,
         isGloballyEnabled: true,
+        nameTranslations: true,
+        descriptionTranslations: true,
         lockVersion: true
       }
     });
@@ -1094,12 +1131,16 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     code: PlatformMembershipBenefitCode;
     sortOrder: number;
     isGloballyEnabled: boolean;
+    nameTranslations: Prisma.JsonValue;
+    descriptionTranslations: Prisma.JsonValue;
     lockVersion: number;
   }): PlatformMembershipBenefitAdministrationPayload {
     return {
       code: benefitCodeFromDb[benefit.code],
       sortOrder: benefit.sortOrder,
       isGloballyEnabled: benefit.isGloballyEnabled,
+      nameTranslations: this.localizationObject(benefit.nameTranslations),
+      descriptionTranslations: this.localizationObject(benefit.descriptionTranslations),
       lockVersion: benefit.lockVersion
     };
   }
@@ -1109,6 +1150,18 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       return value as Record<string, unknown>;
     }
     throw new Error("platform membership benefit configuration must be an object");
+  }
+
+  private localizationObject(value: Prisma.JsonValue): PlatformMembershipLocalizedText {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("platform membership benefit localization must be an object");
+    }
+    const record = value as Record<string, unknown>;
+    const locales = ["zh", "zh-Hant", "ja", "en", "ko"] as const;
+    if (locales.some((locale) => typeof record[locale] !== "string" || !(record[locale] as string).trim())) {
+      throw new Error("platform membership benefit localization is incomplete");
+    }
+    return Object.fromEntries(locales.map((locale) => [locale, record[locale]])) as unknown as PlatformMembershipLocalizedText;
   }
 
   private metadataObject(metadata: unknown): Record<string, unknown> {

@@ -24,6 +24,8 @@ const benefitCodes = [
   "member_day",
   "birthday_gift"
 ] as const;
+const nameTranslations = { zh: "权益", "zh-Hant": "權益", ja: "特典", en: "Benefit", ko: "혜택" };
+const descriptionTranslations = { zh: "权益说明", "zh-Hant": "權益說明", ja: "特典説明", en: "Benefit description", ko: "혜택 설명" };
 const tiers = tierCodes.map((tierCode, sortOrder) => ({
   tierCode,
   sortOrder,
@@ -34,6 +36,8 @@ const benefits = benefitCodes.map((code, sortOrder) => ({
   code,
   sortOrder,
   isGloballyEnabled: true,
+  nameTranslations,
+  descriptionTranslations,
   lockVersion: 1
 }));
 type UpdateBenefitArgument = Parameters<
@@ -46,6 +50,7 @@ const repository = (
   listTiersForAdministration: jest.fn(async () => tiers),
   listBenefitsForAdministration: jest.fn(async () => benefits),
   hasActiveCustomerProfile: jest.fn(),
+  hasVerifiedEkycAt: jest.fn(),
   findActiveEntitlementAt: jest.fn(),
   findPublishedTierAt: jest.fn(),
   findTierDraft: jest.fn(),
@@ -86,7 +91,7 @@ describe("PlatformMembershipService administration", () => {
       actor,
       { ip: "127.0.0.1" },
       "ndp_experience",
-      { isGloballyEnabled: false, expectedLockVersion: 1 }
+      { isGloballyEnabled: false, sortOrder: 0, nameTranslations, descriptionTranslations, expectedLockVersion: 1 }
     )).resolves.toMatchObject({
       code: "ndp_experience",
       isGloballyEnabled: false,
@@ -96,6 +101,9 @@ describe("PlatformMembershipService administration", () => {
       actorId: 9,
       benefitCode: "ndp_experience",
       expectedLockVersion: 1,
+      sortOrder: 0,
+      nameTranslations,
+      descriptionTranslations,
       audit: expect.objectContaining({ action: "platform.membership_benefit.update" })
     }));
   });
@@ -112,7 +120,7 @@ describe("PlatformMembershipService administration", () => {
       actor,
       { ip: "127.0.0.1" },
       "ndp_experience",
-      { isGloballyEnabled: false, expectedLockVersion: 1 }
+      { isGloballyEnabled: false, sortOrder: 0, nameTranslations, descriptionTranslations, expectedLockVersion: 1 }
     )).rejects.toMatchObject({ statusCode: 409 });
   });
 });
