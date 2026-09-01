@@ -800,6 +800,32 @@ enum ContentLocale {
   @@map("content_locale")
 }
 
+enum TaxonomyLocale {
+  ZH_CN @map("zh-CN")
+  ZH_TW @map("zh-TW")
+  JA    @map("ja")
+  EN    @map("en")
+  KO    @map("ko")
+
+  @@map("taxonomy_locale")
+}
+
+enum BusinessQualificationPolicy {
+  OPEN                 @map("open")
+  PLATFORM_REVIEW      @map("platform_review")
+  CONDITIONAL          @map("conditional")
+  QUALIFICATION_REVIEW @map("qualification_review")
+
+  @@map("business_qualification_policy")
+}
+
+enum ShopServiceQualificationStatus {
+  APPROVED @map("approved")
+  REVOKED  @map("revoked")
+
+  @@map("shop_service_qualification_status")
+}
+
 enum ExchangePostType {
   DEMAND       @map("demand")
   INTELLIGENCE @map("intelligence")
@@ -1039,6 +1065,12 @@ model User {
   reviewedAffiliateRisks                  AffiliateRiskEvent[]                  @relation("AffiliateRiskReviewer")
   identityApplications                    IdentityApplication[]                 @relation("IdentityApplicationApplicant")
   reviewedIdentityApplications            IdentityApplication[]                 @relation("IdentityApplicationReviewer")
+  selectedShopServiceCategories           ShopServiceCategory[]                 @relation("ShopServiceCategorySelector")
+  selectedShopBusinessKeywords            ShopBusinessKeyword[]                 @relation("ShopBusinessKeywordSelector")
+  shopServiceTaxonomyCommands             ShopServiceTaxonomyCommand[]          @relation("ShopServiceTaxonomyCommandActor")
+  approvedShopServiceQualifications       ShopServiceQualification[]            @relation("ShopServiceQualificationApprover")
+  selectedApplicationServiceCategories    MerchantApplicationServiceCategory[]  @relation("MerchantApplicationServiceCategorySelector")
+  selectedApplicationBusinessKeywords     MerchantApplicationBusinessKeyword[]  @relation("MerchantApplicationBusinessKeywordSelector")
   orderPerformanceRevisionActions        OrderPerformanceAssessmentRevision[]  @relation("OrderPerformanceRevisionActor")
   entityFavorites                         EntityFavorite[]                      @relation("EntityFavoriteOwner")
   createdEntityShareEvents                EntityShareEvent[]                    @relation("EntityShareActor")
@@ -1099,30 +1131,236 @@ model ExternalAuthAccount {
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
-  code      String    @unique @db.VarChar(100)
-  name      String    @db.VarChar(120)
-  nameJa    String?   @map("name_ja") @db.VarChar(120)
-  nameEn    String?   @map("name_en") @db.VarChar(120)
-  parentId  Int?      @map("parent_id")
-  iconUrl   String?   @map("icon_url") @db.VarChar(500)
-  sortOrder Int       @default(0) @map("sort_order")
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id                  Int                            @id @default(autoincrement())
+  code                String                         @unique @db.VarChar(100)
+  name                String                         @db.VarChar(120)
+  nameJa              String?                        @map("name_ja") @db.VarChar(120)
+  nameEn              String?                        @map("name_en") @db.VarChar(120)
+  parentId            Int?                           @map("parent_id")
+  iconUrl             String?                        @map("icon_url") @db.VarChar(500)
+  qualificationPolicy BusinessQualificationPolicy    @default(OPEN) @map("qualification_policy")
+  sortOrder           Int                            @default(0) @map("sort_order")
+  isActive            Boolean                        @default(true) @map("is_active")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  deletedAt           DateTime?                      @map("deleted_at")
 
   parent             Category?           @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
   children           Category[]          @relation("CategoryTree")
   services           Service[]
   technicianServices TechnicianService[]
   mediaAssets        MediaAsset[]
+  translations       CategoryTranslation[]
+  businessKeywords   BusinessKeyword[]
+  shopSelections     ShopServiceCategory[]
+  qualifications     ShopServiceQualification[]
+  applicationSelections MerchantApplicationServiceCategory[]
 
   @@index([parentId])
   @@index([sortOrder])
   @@index([isActive])
   @@index([deletedAt])
   @@map("categories")
+}
+
+model CategoryTranslation {
+  id         Int            @id @default(autoincrement())
+  categoryId Int            @map("category_id")
+  locale     TaxonomyLocale
+  name       String         @db.VarChar(120)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  deletedAt  DateTime?      @map("deleted_at")
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([categoryId, locale], map: "category_translations_category_id_locale_key")
+  @@index([locale, name, deletedAt], map: "category_translations_locale_name_deleted_idx")
+  @@index([deletedAt])
+  @@map("category_translations")
+}
+
+model BusinessKeyword {
+  id                  Int                         @id @default(autoincrement())
+  code                String                      @unique(map: "business_keywords_code_key") @db.VarChar(120)
+  categoryId          Int                         @map("category_id")
+  qualificationPolicy BusinessQualificationPolicy @default(OPEN) @map("qualification_policy")
+  sortOrder           Int                         @default(0) @map("sort_order")
+  isActive            Boolean                     @default(true) @map("is_active")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  deletedAt           DateTime?                   @map("deleted_at")
+
+  category              Category                             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  translations          BusinessKeywordTranslation[]
+  shopSelections        ShopBusinessKeyword[]
+  qualifications        ShopServiceQualification[]
+  applicationSelections MerchantApplicationBusinessKeyword[]
+
+  @@index([categoryId, isActive, sortOrder], map: "business_keywords_category_active_sort_idx")
+  @@index([deletedAt])
+  @@map("business_keywords")
+}
+
+model BusinessKeywordTranslation {
+  id                Int            @id @default(autoincrement())
+  businessKeywordId Int            @map("business_keyword_id")
+  locale            TaxonomyLocale
+  label             String         @db.VarChar(120)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  deletedAt         DateTime?      @map("deleted_at")
+
+  businessKeyword BusinessKeyword @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+
+  @@unique([businessKeywordId, locale], map: "business_keyword_translations_keyword_id_locale_key")
+  @@index([locale, label, deletedAt], map: "business_keyword_translations_locale_label_deleted_idx")
+  @@index([deletedAt])
+  @@map("business_keyword_translations")
+}
+
+model ShopServiceCategory {
+  id               Int       @id @default(autoincrement())
+  shopId           Int       @map("shop_id")
+  categoryId       Int       @map("category_id")
+  selectedByUserId Int       @map("selected_by_user_id")
+  activeKey        String?   @unique(map: "shop_service_categories_active_key_key") @default(dbgenerated()) @map("active_key") @db.VarChar(191)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  selectedBy User     @relation("ShopServiceCategorySelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([shopId, deletedAt], map: "shop_service_categories_shop_deleted_idx")
+  @@index([categoryId, deletedAt], map: "shop_service_categories_category_deleted_idx")
+  @@index([selectedByUserId])
+  @@map("shop_service_categories")
+}
+
+model ShopBusinessKeyword {
+  id                Int       @id @default(autoincrement())
+  shopId            Int       @map("shop_id")
+  businessKeywordId Int       @map("business_keyword_id")
+  selectedByUserId  Int       @map("selected_by_user_id")
+  activeKey         String?   @unique(map: "shop_business_keywords_active_key_key") @default(dbgenerated()) @map("active_key") @db.VarChar(191)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  shop            Shop            @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  businessKeyword BusinessKeyword @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+  selectedBy      User            @relation("ShopBusinessKeywordSelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([shopId, deletedAt], map: "shop_business_keywords_shop_deleted_idx")
+  @@index([businessKeywordId, deletedAt], map: "shop_business_keywords_keyword_deleted_idx")
+  @@index([selectedByUserId])
+  @@map("shop_business_keywords")
+}
+
+model ShopServiceTaxonomyState {
+  id        Int       @id @default(autoincrement())
+  shopId    Int       @unique(map: "shop_service_taxonomy_states_shop_id_key") @map("shop_id")
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt])
+  @@map("shop_service_taxonomy_states")
+}
+
+model ShopServiceTaxonomyCommand {
+  id                 Int       @id @default(autoincrement())
+  shopId             Int       @map("shop_id")
+  actorUserId        Int       @map("actor_user_id")
+  idempotencyKey     String    @map("idempotency_key") @db.VarChar(160)
+  requestFingerprint String    @map("request_fingerprint") @db.Char(64)
+  resultingVersion   Int       @map("resulting_version")
+  resultJson         Json      @map("result_json")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  shop  Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  actor User @relation("ShopServiceTaxonomyCommandActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([shopId, idempotencyKey], map: "shop_service_taxonomy_commands_shop_id_idempotency_key_key")
+  @@index([shopId, createdAt], map: "shop_service_taxonomy_commands_shop_created_idx")
+  @@index([actorUserId])
+  @@index([deletedAt])
+  @@map("shop_service_taxonomy_commands")
+}
+
+model ShopServiceQualification {
+  id                      Int                                @id @default(autoincrement())
+  shopId                  Int                                @map("shop_id")
+  categoryId              Int?                               @map("category_id")
+  businessKeywordId       Int?                               @map("business_keyword_id")
+  sourceApplicationId     Int?                               @map("source_application_id")
+  status                  ShopServiceQualificationStatus
+  expiresAt               DateTime?                          @map("expires_at")
+  approvedByUserId        Int                                @map("approved_by_user_id")
+  reason                  String                             @db.VarChar(1000)
+  createdAt               DateTime                           @default(now()) @map("created_at")
+  updatedAt               DateTime                           @updatedAt @map("updated_at")
+  deletedAt               DateTime?                          @map("deleted_at")
+
+  shop              Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  category          Category?            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  businessKeyword   BusinessKeyword?     @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+  sourceApplication IdentityApplication? @relation(fields: [sourceApplicationId], references: [id], onDelete: SetNull)
+  approvedBy        User                 @relation("ShopServiceQualificationApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([shopId, status, expiresAt, deletedAt], map: "shop_service_qualifications_shop_status_expiry_idx")
+  @@index([categoryId, status, deletedAt], map: "shop_service_qualifications_category_status_idx")
+  @@index([businessKeywordId, status, deletedAt], map: "shop_service_qualifications_keyword_status_idx")
+  @@index([sourceApplicationId])
+  @@index([approvedByUserId])
+  @@map("shop_service_qualifications")
+}
+
+model MerchantApplicationServiceCategory {
+  id               Int       @id @default(autoincrement())
+  applicationId    Int       @map("application_id")
+  categoryId       Int       @map("category_id")
+  selectedByUserId Int       @map("selected_by_user_id")
+  activeKey        String?   @unique(map: "merchant_application_service_categories_active_key_key") @default(dbgenerated()) @map("active_key") @db.VarChar(191)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  application IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  category    Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  selectedBy  User                @relation("MerchantApplicationServiceCategorySelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId, deletedAt], map: "merchant_application_service_categories_application_deleted_idx")
+  @@index([categoryId, deletedAt], map: "merchant_application_service_categories_category_deleted_idx")
+  @@index([selectedByUserId])
+  @@map("merchant_application_service_categories")
+}
+
+model MerchantApplicationBusinessKeyword {
+  id                Int       @id @default(autoincrement())
+  applicationId     Int       @map("application_id")
+  businessKeywordId Int       @map("business_keyword_id")
+  selectedByUserId  Int       @map("selected_by_user_id")
+  activeKey         String?   @unique(map: "merchant_application_business_keywords_active_key_key") @default(dbgenerated()) @map("active_key") @db.VarChar(191)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  application     IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  businessKeyword BusinessKeyword     @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+  selectedBy      User                @relation("MerchantApplicationBusinessKeywordSelector", fields: [selectedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId, deletedAt], map: "merchant_application_business_keywords_application_deleted_idx")
+  @@index([businessKeywordId, deletedAt], map: "merchant_application_business_keywords_keyword_deleted_idx")
+  @@index([selectedByUserId])
+  @@map("merchant_application_business_keywords")
 }
 
 model Shop {
@@ -1190,6 +1428,11 @@ model Shop {
   exchangeClaims             ExchangeClaim[]
   entityFavorites            EntityFavorite[]
   entityShareEvents          EntityShareEvent[]
+  serviceCategorySelections  ShopServiceCategory[]
+  businessKeywordSelections  ShopBusinessKeyword[]
+  serviceTaxonomyState       ShopServiceTaxonomyState?
+  serviceTaxonomyCommands    ShopServiceTaxonomyCommand[]
+  serviceQualifications      ShopServiceQualification[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -4057,6 +4300,9 @@ model IdentityApplication {
   merchantDetail      MerchantApplicationDetail?
   contractAcceptances ContractAcceptance[]
   media               IdentityApplicationMedia[]
+  serviceCategories   MerchantApplicationServiceCategory[]
+  businessKeywords    MerchantApplicationBusinessKeyword[]
+  serviceQualifications ShopServiceQualification[]
 
   @@index([userId, type, status])
   @@index([reviewerUserId])
