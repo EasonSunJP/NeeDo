@@ -4031,6 +4031,99 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      BackofficeManagedUserExperience: {
+        type: "object",
+        required: ["currentLevel", "totalExpUnits"],
+        properties: {
+          currentLevel: { type: "integer", minimum: 1, maximum: 100 },
+          totalExpUnits: { type: "string", pattern: "^[0-9]+$" }
+        }
+      },
+      BackofficeManagedUser: {
+        type: "object",
+        required: [
+          "id", "needoId", "username", "email", "phone", "emailBound", "phoneBound",
+          "avatarUrl", "isActive", "isTestAccount", "source", "identities", "roles",
+          "groups", "ekycVerified", "membership", "experience", "ndpBalance",
+          "bookingCount", "lastLoginAt", "createdAt", "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          needoId: { type: "string" },
+          username: { type: "string" },
+          email: { type: "string", format: "email", description: "Bound account email only; no credentials are returned." },
+          phone: { type: ["string", "null"], description: "Bound account phone; UI should mask it for list display." },
+          emailBound: { type: "boolean" },
+          phoneBound: { type: "boolean" },
+          avatarUrl: { type: ["string", "null"] },
+          isActive: { type: "boolean" },
+          isTestAccount: { type: "boolean" },
+          source: { type: "array", items: { type: "string" } },
+          identities: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["type", "displayName", "scopeType", "scopeId"],
+              properties: {
+                type: { type: "string" },
+                displayName: { type: ["string", "null"] },
+                scopeType: { type: ["string", "null"] },
+                scopeId: { type: ["integer", "null"] }
+              }
+            }
+          },
+          roles: { type: "array", items: { type: "object" } },
+          groups: { type: "array", items: { type: "string" } },
+          ekycVerified: { type: "boolean" },
+          membership: {
+            type: "object",
+            required: ["tierCode", "tierVersionPublicId", "entitlementPublicId", "expiresAt", "experienceMultiplier", "lockVersion"],
+            properties: {
+              tierCode: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] },
+              tierVersionPublicId: { type: ["string", "null"] },
+              entitlementPublicId: { type: ["string", "null"] },
+              expiresAt: { type: ["string", "null"], format: "date-time" },
+              experienceMultiplier: { type: "number", minimum: 0 },
+              lockVersion: { type: ["integer", "null"] }
+            }
+          },
+          experience: {
+            nullable: true,
+            anyOf: [
+              { $ref: "#/components/schemas/BackofficeManagedUserExperience" },
+              { type: "null" }
+            ],
+            description: "Null for technician-only and shop-only users. Multi-identity users may expose their customer-scope level."
+          },
+          ndpBalance: {
+            type: "object",
+            required: ["available", "frozen"],
+            properties: {
+              available: { type: "integer" },
+              frozen: { type: "integer" }
+            }
+          },
+          bookingCount: { type: "integer", minimum: 0 },
+          lastLoginAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeManagedUserDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/BackofficeManagedUser" },
+          {
+            type: "object",
+            required: ["profile", "account", "bookingSpend", "audit"],
+            properties: {
+              profile: { type: ["object", "null"] },
+              account: { type: "object" },
+              bookingSpend: { type: "object" },
+              audit: { type: "object" }
+            }
+          }
+        ]
+      },
       BackofficeService: {
         type: "object",
         required: [
@@ -14109,6 +14202,63 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated customer profiles",
         security: [{ bearerAuth: [] }],
         responses: { "200": { description: "Paginated customers" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users`]: {
+      get: {
+        tags: ["User Management"],
+        summary: "Paginated all-user management projection",
+        description: "Returns all active and deactivated formal User rows with batched identity, membership, customer experience, group, eKYC and NDP summaries. Sensitive authentication and raw eKYC fields are never exposed.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "tier", in: "query", schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] } },
+          { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
+          { name: "identityType", in: "query", schema: { type: "string", maxLength: 50 } },
+          { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
+          { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
+          { name: "ekyc", in: "query", schema: { type: "string", enum: ["verified", "unverified"] } },
+          { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "maxExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "minNdpBalance", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "maxNdpBalance", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated all-user projection", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: { type: "array", items: { $ref: "#/components/schemas/BackofficeManagedUser" } },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              page_size: { type: "integer" }
+            }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}`]: {
+      get: {
+        tags: ["User Management"],
+        summary: "Read one all-user management detail",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [idPathParameter("userId")],
+        responses: {
+          "200": jsonDataResponse("All-user detail", { $ref: "#/components/schemas/BackofficeManagedUserDetail" }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User not found" }
+        }
       }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}`]: {

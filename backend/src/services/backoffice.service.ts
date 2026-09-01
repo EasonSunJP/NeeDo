@@ -6,6 +6,7 @@ import type {
   BackofficeCustomerUpdateBody,
   BackofficeDashboardQuery,
   BackofficeListQuery,
+  BackofficeManagedUserListQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
@@ -209,6 +210,82 @@ export interface BackofficeFinanceSettlementPayload {
   moneyTimeline: unknown[];
   moneyTimelineStatus: string;
   createdAt: string;
+}
+
+export interface BackofficeManagedUserIdentityPayload {
+  type: string;
+  displayName: string | null;
+  scopeType: string | null;
+  scopeId: number | null;
+}
+
+export interface BackofficeManagedUserMembershipPayload {
+  tierCode: "free" | "silver" | "gold" | "black_diamond";
+  tierVersionPublicId: string | null;
+  entitlementPublicId: string | null;
+  expiresAt: string | null;
+  experienceMultiplier: number;
+  lockVersion: number | null;
+}
+
+export interface BackofficeManagedUserExperiencePayload {
+  currentLevel: number;
+  totalExpUnits: string;
+}
+
+export interface BackofficeManagedUserPayload {
+  id: number;
+  needoId: string;
+  username: string;
+  email: string;
+  phone: string | null;
+  emailBound: boolean;
+  phoneBound: boolean;
+  avatarUrl: string | null;
+  isActive: boolean;
+  isTestAccount: boolean;
+  source: string[];
+  identities: BackofficeManagedUserIdentityPayload[];
+  roles: Array<{ code: string; name: string }>;
+  groups: string[];
+  ekycVerified: boolean;
+  membership: BackofficeManagedUserMembershipPayload;
+  experience: BackofficeManagedUserExperiencePayload | null;
+  ndpBalance: { available: number; frozen: number };
+  bookingCount: number;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUserPayload {
+  profile: {
+    displayName: string;
+    bio: string | null;
+    city: string | null;
+    gender: string | null;
+    age: number | null;
+    heightCm: string | null;
+    languages: unknown[];
+  } | null;
+  account: {
+    roles: Array<{
+      code: string;
+      name: string;
+      scopeType: string | null;
+      scopeId: number | null;
+      permissions: string[];
+    }>;
+  };
+  bookingSpend: {
+    totalBookings: number;
+    completedBookings: number;
+    completedSpendJpy: number;
+  };
+  audit: {
+    total: number;
+    list: BackofficeAuditEventPayload[];
+  };
 }
 
 export interface BackofficeTechnicianPayload {
@@ -504,6 +581,14 @@ export interface BackofficeNdpSummaryPayload {
 
 export interface BackofficeRepositoryPort {
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
+  listManagedUsers: (
+    input: BackofficeManagedUserListQuery,
+    occurredAt: Date
+  ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
+  getManagedUser: (
+    userId: number,
+    occurredAt: Date
+  ) => Promise<BackofficeManagedUserDetailPayload | null>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
@@ -611,6 +696,29 @@ export class BackofficeService {
       window
     });
     return this.composeDashboard(aggregate, window, city, null);
+  }
+
+  public async listManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    await this.record(actor, context, "backoffice.users.list", "User", {
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers(input, this.now());
+  }
+
+  public async getManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    await this.record(actor, context, "backoffice.user.read", "User", { userId });
+    return this.requireResult(
+      await this.repository.getManagedUser(userId, this.now()),
+      "error.user.not_found"
+    );
   }
 
   public async getMerchantDashboard(

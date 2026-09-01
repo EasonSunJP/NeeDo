@@ -8,6 +8,8 @@ import {
   backofficeDashboardQuerySchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeManagedUserListQuerySchema,
+  backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
@@ -48,6 +50,22 @@ export class BackofficeController {
       next(error);
     }
   };
+
+  public managedUsers = this.createListHandler((service, request, response) =>
+    service.listManagedUsers(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeManagedUserListQuerySchema.parse(request.query)
+    )
+  );
+
+  public managedUser = this.createListHandler((service, request, response) =>
+    service.getManagedUser(
+      backofficeManagedUserParamSchema.parse(request.params).userId,
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
+  );
 
   public merchantDashboard = async (
     request: Request,
