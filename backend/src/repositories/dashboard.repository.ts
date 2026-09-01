@@ -20,6 +20,16 @@ import {
   type DashboardOperationsFinanceReader,
   type OperationsFinanceFacts
 } from "./dashboard-operations-finance.repository";
+import {
+  DashboardCommissionRepository,
+  type CommissionFacts,
+  type DashboardCommissionReader
+} from "./dashboard-commission.repository";
+import {
+  DashboardGrowthRepository,
+  type DashboardGrowthReader,
+  type GrowthFacts
+} from "./dashboard-growth.repository";
 
 type NumericValue = bigint | number | string | { toString: () => string } | null | undefined;
 
@@ -93,7 +103,10 @@ export class DashboardRepository {
     private readonly financeReader: DashboardFinanceReader = new DashboardFinanceRepository(client),
     private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(client),
     private readonly operationsFinanceReader: DashboardOperationsFinanceReader =
-      new DashboardOperationsFinanceRepository(client)
+      new DashboardOperationsFinanceRepository(client),
+    private readonly commissionReader: DashboardCommissionReader =
+      new DashboardCommissionRepository(client),
+    private readonly growthReader: DashboardGrowthReader = new DashboardGrowthRepository(client)
   ) {}
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -126,6 +139,14 @@ export class DashboardRepository {
     input: DashboardAggregateInput
   ): Promise<OperationsFinanceFacts> {
     return this.operationsFinanceReader.getOperationsFinance(input);
+  }
+
+  public async getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts> {
+    return this.commissionReader.getCommissionFacts(input);
+  }
+
+  public async getGrowthFacts(input: DashboardAggregateInput): Promise<GrowthFacts> {
+    return this.growthReader.getGrowthFacts(input);
   }
 
   public async getActivityFacts(input: DashboardAggregateInput): Promise<DashboardActivityFacts> {
