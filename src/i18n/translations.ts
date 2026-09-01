@@ -2,6 +2,7 @@ import { identityApplicationTranslations } from "../features/identity-applicatio
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { dashboardTranslations } from "../features/dashboard/dashboardTranslations";
+import { orderPerformanceTranslations } from "../features/order-performance/i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -8246,7 +8247,7 @@ export const translations: TranslationMap = {
   "难波": { "zh-Hant": "難波", ja: "難波", en: "Namba", ko: "남바" },
   "難波": { "zh-Hant": "難波", ja: "難波", en: "Namba", ko: "남바" },
   "内部安排": { "zh-Hant": "內部安排", ja: "内部体制", en: "Internal arrangements", ko: "내부 배치" },
-  "内部备注：": { "zh-Hant": "內部備註：", ja: "内部述べる：", en: "Remark: Note", ko: "주목: 메모" },
+  "内部备注：": { "zh-Hant": "內部備註：", ja: "内部メモ：", en: "Internal note: ", ko: "내부 메모: " },
   "内容": { "zh-Hant": "內容", ja: "コンテンツ", en: "Content", ko: "콘텐츠" },
   "内容不存在或已失效": { "zh-Hant": "內容不存在或已失效", ja: "コンテンツが存在しないか、有効期限が切れています", en: "Content does not exist or has expired.", ko: "콘텐츠가 존재하지 않거나 만료되었습니다." },
   "内容焦点": { "zh-Hant": "內容焦點", ja: "コンテンツの焦点", en: "Content Focus", ko: "콘텐츠 초점" },
@@ -11367,7 +11368,7 @@ export const translations: TranslationMap = {
   "洗衣、熨烫、取送护理": { "zh-Hant": "洗衣、熨燙、取送護理", ja: "洗濯、アイロンがけ、集荷・配達サービス", en: "Laundry, ironing, pick-up and delivery care", ko: "세탁, 다림질, 수거 및 배달 서비스" },
   "喜欢": { "zh-Hant": "喜歡", ja: "のように", en: "Like", ko: "좋다" },
   "喜欢简短直接的确认方式，临时变更会尽量提前说明。": { "zh-Hant": "喜歡簡短直接的確認方式，臨時變更會盡量提前說明。", ja: "私は簡潔で直接的な確認方法を好みます。また、一時的な変更については事前に説明するように努めます。", en: "I prefer a concise and direct confirmation method, and I will try to explain any temporary changes in advance.", ko: "저는 간결하고 직접적인 확인 방식을 선호하며, 일시적인 변경 사항이 있을 경우 사전에 설명해 드리도록 하겠습니다." },
-  "系统": { "zh-Hant": "系統", ja: "システム", en: "System", ko: "체계" },
+  "系统": { "zh-Hant": "系統", ja: "システム", en: "System", ko: "시스템" },
   "系统安装提示暂时不可用，请使用浏览器菜单添加到主屏幕。": { "zh-Hant": "系統安裝提示暫時不可用，請使用瀏覽器選單加入主畫面。", ja: "システムのインストール確認は一時的に使えません。ブラウザーメニューからホーム画面に追加してください。", en: "The system install prompt is not available right now. Use the browser menu to add it to the Home Screen.", ko: "시스템 설치 안내를 사용할 수 없습니다. 브라우저 메뉴에서 홈 화면에 추가하세요." },
   "系统版本": { "zh-Hant": "系統版本", ja: "OSバージョン", en: "OS version", ko: "OS 버전" },
   "系统动作": { "zh-Hant": "系統動作", ja: "システムアクション", en: "SystemAction", ko: "체계행동" },
@@ -14938,6 +14939,7 @@ export const translations: TranslationMap = {
   ...affiliateProfileTranslations,
   ...affiliateMarketplaceTranslations,
   ...dashboardTranslations,
+  ...orderPerformanceTranslations,
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {

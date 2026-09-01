@@ -1,6 +1,100 @@
 import { readFileSync } from "node:fs";
 import { BookingRepository } from "../src/repositories/booking.repository";
 
+const makeTransitionOrderRecord = (
+  status: "PENDING" | "IN_SERVICE" | "COMPLETED" | "CANCELLED"
+) => ({
+  id: 701,
+  orderNo: "ND202609010701",
+  orderType: "BOOKING",
+  status,
+  paymentMethod: "ONSITE",
+  paymentStatus: "PENDING",
+  paymentAmountJpy: 8800,
+  paymentConfirmedById: null,
+  paymentConfirmedAt: null,
+  paymentReference: null,
+  paymentNote: null,
+  paymentRefundedById: null,
+  paymentRefundedAt: null,
+  paymentRefundReference: null,
+  paymentRefundReason: null,
+  customerUserId: 101,
+  serviceId: 11,
+  technicianServiceId: null,
+  shopId: 16,
+  technicianProfileId: 31,
+  scheduleSlotId: 501,
+  fulfillmentMode: "store",
+  priceAmount: 8800,
+  currency: "JPY",
+  pricingModeSnapshot: "MERCHANT",
+  serviceOwnerType: "SHOP",
+  serviceOwnerId: 11,
+  serviceNameSnapshot: "肩颈调理",
+  servicePriceSnapshot: 8800,
+  serviceDurationSnapshot: 60,
+  serviceSnapshotJson: null,
+  startsAt: new Date("2026-09-01T06:00:00.000Z"),
+  endsAt: new Date("2026-09-01T07:00:00.000Z"),
+  note: null,
+  cancelReason: status === "CANCELLED" ? "技师临时无法到达" : null,
+  createdAt: new Date("2026-09-01T03:00:00.000Z"),
+  updatedAt: new Date("2026-09-01T04:00:00.000Z"),
+  service: null,
+  technicianService: null,
+  shop: { name: "LifeDance" },
+  technicianProfile: { id: 31, userId: 707, displayName: "Misaki" },
+  statusHistory: [],
+  performanceAssessment: null,
+  performanceRevisions: [],
+  affiliateAttributions: []
+});
+
+const createCancellationTransaction = () => {
+  const current = makeTransitionOrderRecord("PENDING");
+  const next = makeTransitionOrderRecord("CANCELLED");
+  return {
+    bookingOrder: {
+      findFirst: jest.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(next),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      count: jest.fn().mockResolvedValue(0)
+    },
+    scheduleSlot: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    orderStatusHistory: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+    orderPerformanceAssessment: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({
+        id: 81,
+        bookingOrderId: 701,
+        technicianProfileId: 31,
+        outcome: "TECHNICIAN_CANCELLED",
+        treatment: "COUNTED",
+        version: 1,
+        currentRevisionId: null,
+        createdAt: current.updatedAt,
+        updatedAt: current.updatedAt,
+        deletedAt: null
+      }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      groupBy: jest.fn().mockResolvedValue([
+        {
+          outcome: "TECHNICIAN_CANCELLED",
+          treatment: "COUNTED",
+          _count: { _all: 1 }
+        }
+      ])
+    },
+    orderPerformanceAssessmentRevision: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 91 })
+    },
+    technicianPerformanceSummary: {
+      upsert: jest.fn().mockResolvedValue({ id: 1 })
+    }
+  };
+};
+
 describe("BookingRepository order list scope", () => {
   it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
@@ -247,6 +341,94 @@ describe("BookingRepository order list scope", () => {
     expect(transaction).toHaveBeenCalledTimes(1);
   });
 
+  it("classifies a cancellation only when the transition actor is the assigned technician user", async () => {
+    const tx = createCancellationTransaction();
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrder({
+        id: 701,
+        actorUserId: 707,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        reason: "技师临时无法到达"
+      })
+    ).resolves.toMatchObject({ status: "cancelled" });
+
+    expect(tx.orderPerformanceAssessment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingOrderId: 701,
+        technicianProfileId: 31,
+        outcome: "TECHNICIAN_CANCELLED",
+        treatment: "COUNTED"
+      })
+    });
+    expect(tx.orderPerformanceAssessmentRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "CLASSIFY_TECHNICIAN_CANCELLED",
+        publicReason: "技师临时无法到达"
+      }),
+      select: { id: true }
+    });
+    expect(tx.technicianPerformanceSummary.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["customer", 101],
+    ["shop", 202],
+    ["platform", 303]
+  ])("does not classify a %s-initiated cancellation", async (_actorType, actorUserId) => {
+    const tx = createCancellationTransaction();
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await repository.transitionOrder({
+      id: 701,
+      actorUserId,
+      fromStatus: "pending",
+      toStatus: "cancelled",
+      reason: "取消"
+    });
+
+    expect(tx.orderPerformanceAssessment.create).not.toHaveBeenCalled();
+    expect(tx.orderPerformanceAssessmentRevision.create).not.toHaveBeenCalled();
+    expect(tx.technicianPerformanceSummary.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds the assigned technician summary when an order completes", async () => {
+    const tx = createCancellationTransaction();
+    tx.bookingOrder.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(makeTransitionOrderRecord("IN_SERVICE"))
+      .mockResolvedValueOnce(makeTransitionOrderRecord("COMPLETED"));
+    tx.bookingOrder.count.mockResolvedValue(1);
+    tx.orderPerformanceAssessment.groupBy.mockResolvedValue([]);
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await repository.transitionOrder({
+      id: 701,
+      actorUserId: 707,
+      fromStatus: "inService",
+      toStatus: "completed"
+    });
+
+    expect(tx.technicianPerformanceSummary.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          technicianProfileId: 31,
+          completedOrderCount: 1,
+          acceptanceRateBps: 10_000
+        })
+      })
+    );
+    expect(tx.orderPerformanceAssessment.create).not.toHaveBeenCalled();
+  });
+
   it("returns an active acceptance pause before mutating or settling a confirmation", async () => {
     const settle = jest.fn();
     const updateMany = jest.fn();
@@ -362,5 +544,96 @@ describe("BookingRepository order list scope", () => {
     );
     expect(updateMany).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("merges public performance revisions into a stable timeline without exposing internal notes", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("CANCELLED"),
+      statusHistory: [
+        {
+          id: 11,
+          bookingOrderId: 701,
+          fromStatus: null,
+          toStatus: "PENDING",
+          actorUserId: 101,
+          reason: null,
+          createdAt: new Date("2026-09-01T03:00:00.000Z")
+        },
+        {
+          id: 12,
+          bookingOrderId: 701,
+          fromStatus: "PENDING",
+          toStatus: "CANCELLED",
+          actorUserId: 707,
+          reason: "技师临时无法到达",
+          createdAt: new Date("2026-09-01T04:00:00.000Z")
+        }
+      ],
+      performanceAssessment: {
+        id: 81,
+        bookingOrderId: 701,
+        technicianProfileId: 31,
+        outcome: "TECHNICIAN_CANCELLED",
+        treatment: "COUNTED",
+        version: 3,
+        currentRevisionId: 93,
+        createdAt: new Date("2026-09-01T04:00:00.000Z"),
+        updatedAt: new Date("2026-09-01T06:00:00.000Z")
+      },
+      performanceRevisions: [
+        {
+          id: 91,
+          action: "CLASSIFY_TECHNICIAN_CANCELLED",
+          actorUserId: 707,
+          publicReason: "技师临时无法到达",
+          createdAt: new Date("2026-09-01T04:00:00.000Z")
+        },
+        {
+          id: 92,
+          action: "APPLY_SPECIAL_EXCLUSION",
+          actorUserId: 9,
+          publicReason: "已核实不可抗力",
+          createdAt: new Date("2026-09-01T05:00:00.000Z")
+        },
+        {
+          id: 93,
+          action: "REVOKE_SPECIAL_EXCLUSION",
+          actorUserId: 10,
+          publicReason: "用户投诉后复核恢复计入",
+          createdAt: new Date("2026-09-01T06:00:00.000Z")
+        }
+      ]
+    };
+    const findFirst = jest.fn().mockResolvedValue(order);
+    const repository = new BookingRepository({ bookingOrder: { findFirst } } as never);
+
+    const result = await repository.findOrderById(701);
+
+    expect(result?.statusHistory).toEqual([
+      expect.objectContaining({ id: 11, toStatus: "pending" }),
+      expect.objectContaining({ id: 12, toStatus: "cancelled" })
+    ]);
+    expect(result?.performanceAssessment).toMatchObject({
+      outcome: "technician_cancelled",
+      treatment: "counted",
+      version: 3
+    });
+    expect(result?.timelineEvents).toEqual([
+      expect.objectContaining({ id: "status:11", type: "ORDER_STATUS_CHANGED" }),
+      expect.objectContaining({ id: "performance:91", type: "TECHNICIAN_CANCEL_CLASSIFIED" }),
+      expect.objectContaining({ id: "status:12", type: "ORDER_STATUS_CHANGED" }),
+      expect.objectContaining({ id: "performance:92", type: "SPECIAL_CANCELLATION_APPLIED" }),
+      expect.objectContaining({ id: "performance:93", type: "SPECIAL_CANCELLATION_REVOKED" })
+    ]);
+    expect(JSON.stringify(result?.timelineEvents)).not.toContain("internalNote");
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          performanceRevisions: expect.objectContaining({
+            select: expect.not.objectContaining({ internalNote: expect.anything() })
+          })
+        })
+      })
+    );
   });
 });

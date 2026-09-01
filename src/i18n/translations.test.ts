@@ -369,6 +369,58 @@ describe("translations", () => {
     expect(translateText("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。", "ko")).toContain("기사 실적");
   });
 
+  it("localizes every order-performance timeline and operations control in five languages", () => {
+    const keys = [
+      "订单绩效判定",
+      "当前结果",
+      "当前处理",
+      "特殊取消（不计入）",
+      "正常计入",
+      "当前订单尚无技师绩效判定。",
+      "订单时间线与判定修订",
+      "公开原因",
+      "内部备注（仅运营可见）",
+      "会显示在订单时间线中",
+      "证据、投诉工单或复核说明（可选）",
+      "标记为技师未完单",
+      "撤销特殊取消并恢复计入",
+      "设为特殊取消并排除计算",
+      "正在提交绩效判定",
+      "技师原因取消",
+      "技师未完单",
+      "特殊取消已生效",
+      "特殊取消已撤销",
+      "本单已从接单率计算中排除",
+      "本单已恢复计入接单率计算",
+      "已计入技师原因取消记录",
+      "已计入技师未完单记录",
+      "无公开原因",
+      "请填写公开原因后再提交",
+      "请先查看最新版本并确认后再重新提交",
+      "订单绩效版本已经变化。已保留填写内容，请查看最新记录后确认再提交。",
+      "已查看最新版本，可以重新提交",
+      "正在加载最新订单详情",
+      "重新加载订单详情"
+    ] as const;
+
+    for (const key of keys) {
+      expect(translations[key]).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+    }
+    expect(translateText("订单绩效判定", "ja")).toBe("注文パフォーマンス判定");
+    expect(translateText("内部备注（仅运营可见）", "en")).toBe(
+      "Internal note (operations only)"
+    );
+    expect(translateText("设为特殊取消并排除计算", "ko")).toBe(
+      "특별 취소로 지정하고 집계 제외"
+    );
+    expect(translateText("特殊取消（不计入）", "zh-Hant")).toBe("特殊取消（不計入）");
+  });
+
   it("localizes the IM start-chat CTA", () => {
     expect(translateText("开始聊天", "zh-Hant")).toBe("開始聊天");
     expect(translateText("开始聊天", "ja")).toBe("チャットを開始");

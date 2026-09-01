@@ -6,6 +6,7 @@ import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreen
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
@@ -14,6 +15,7 @@ import {
   type BookingScheduleSlot
 } from "../booking/api";
 import { schedulingApi } from "../scheduling/api";
+import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 import {
@@ -635,22 +637,10 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           ) : null}
         </section>
 
-        <section className={panelClass}>
-          <h2 className="text-base font-black">状态记录</h2>
-          <ol className="mt-3 space-y-2">
-            {order.statusHistory.map((history) => (
-              <li className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={history.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong className="text-sm">{orderStatusLabel(history.toStatus)}</strong>
-                  <span className="text-xs font-bold text-[color:var(--client-muted)]">
-                    {localDateLabel(history.createdAt)} {localTimeLabel(history.createdAt)}
-                  </span>
-                </div>
-                {history.reason ? <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{history.reason}</p> : null}
-              </li>
-            ))}
-          </ol>
-        </section>
+        <ContactEventTimelinePanel
+          title="状态记录"
+          events={buildFormalOrderTimelineEvents(order)}
+        />
 
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
         {primary || canCancel ? (

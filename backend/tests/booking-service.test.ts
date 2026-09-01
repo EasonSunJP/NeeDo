@@ -100,6 +100,18 @@ const makeOrder = (
       reason: null,
       createdAt: now
     }
+  ],
+  performanceAssessment: null,
+  timelineEvents: [
+    {
+      type: "ORDER_STATUS_CHANGED",
+      id: "status:1",
+      createdAt: now,
+      actorUserId: 1,
+      fromStatus: null,
+      toStatus: status,
+      publicReason: null
+    }
   ]
 });
 
@@ -128,6 +140,18 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
             actorUserId: input.actorUserId,
             reason: input.reason ?? null,
             createdAt: now
+          }
+        ],
+        timelineEvents: [
+          ...order.timelineEvents,
+          {
+            type: "ORDER_STATUS_CHANGED" as const,
+            id: "status:2",
+            createdAt: now,
+            actorUserId: input.actorUserId,
+            fromStatus: input.fromStatus,
+            toStatus: input.toStatus,
+            publicReason: input.reason ?? null
           }
         ]
       };
@@ -575,6 +599,33 @@ describe("BookingService state machine", () => {
       code: ERROR_CODES.ORDER_INVALID_TRANSITION,
       message: "error.order.invalid_transition"
     });
+  });
+
+  it("passes authenticated identity metadata into the atomic order transition", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+    const scopedTechnician = {
+      userId: 3,
+      roles: ["technician"],
+      currentIdentityId: 303,
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 1
+    };
+
+    await service.transitionOrder(scopedTechnician, 1, "cancel", "临时无法到达");
+
+    expect(repository.transitionOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 3,
+        actor: {
+          userId: 3,
+          identityId: 303,
+          identityType: "technician"
+        }
+      }),
+      expect.any(Object)
+    );
   });
 
   it("runs affiliate cancellation inside the transition transaction without a ledger service", async () => {

@@ -244,6 +244,10 @@ export default defineConfig(({ command, mode }) => {
               return "dashboard-i18n";
             }
 
+            if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
+              return "order-performance-i18n";
+            }
+
             if (normalizedId.includes("/src/i18n/")) {
               return "i18n";
             }

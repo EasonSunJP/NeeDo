@@ -21,6 +21,7 @@ import {
   mapBookingOrderToDomainOrder,
   type BookingOrder
 } from "../../features/booking/api";
+import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
 import { getMessagePath, getUserConversationId } from "../../lib/messageCenter";
 import { canShowServiceStartCode, getServiceStartCode } from "../../lib/serviceStartCode";
 import { cn, statusLabel, yen } from "../../lib/utils";
@@ -500,15 +501,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
           <ContactEventTimelinePanel
             title="状态记录"
-            events={order.statusHistory.map((history) => ({
-              actorName: history.actorUserId ? `用户 #${history.actorUserId}` : "系统",
-              actorRole: "预约状态",
-              atLabel: formatApiOrderDateTime(history.createdAt),
-              id: String(history.id),
-              message: history.reason ?? `${history.fromStatus ?? "created"} → ${history.toStatus}`,
-              title: statusLabel(history.toStatus),
-              tone: history.toStatus === "cancelled" ? "red" : "green"
-            }))}
+            events={buildFormalOrderTimelineEvents(order)}
           />
 
           {actionError ? (

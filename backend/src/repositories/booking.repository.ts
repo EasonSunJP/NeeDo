@@ -1,4 +1,11 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { createHash } from "node:crypto";
+import {
+  OrderPerformanceOutcome,
+  OrderPerformanceRevisionAction,
+  OrderPerformanceTreatment,
+  Prisma,
+  type PrismaClient
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import type {
@@ -8,6 +15,10 @@ import type {
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
+import {
+  classifyAdverseOutcomeInTransaction,
+  recalculateTechnicianSummaryInTransaction
+} from "./order-performance.repository";
 
 export type BookingOrderStatusPayload =
   | "pending"
@@ -154,6 +165,12 @@ export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
 
 export type ScheduleSlotReadInput = ScheduleScope & { id: number };
 
+export type OrderTransitionActorContext = {
+  userId: number;
+  identityId: number | null;
+  identityType: string;
+};
+
 export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload }
   | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" };
@@ -161,6 +178,7 @@ export type ScheduleMutationResult =
 export interface OrderTransitionRepositoryInput {
   id: number;
   actorUserId: number;
+  actor?: OrderTransitionActorContext;
   fromStatus: BookingOrderStatusPayload;
   toStatus: BookingOrderStatusPayload;
   reason?: string | null;
@@ -221,6 +239,41 @@ export interface OrderStatusHistoryPayload {
   createdAt: Date;
 }
 
+export type OrderTimelineEventPayload =
+  | {
+      type: "ORDER_STATUS_CHANGED";
+      id: string;
+      createdAt: Date;
+      actorUserId: number | null;
+      fromStatus: BookingOrderStatusPayload | null;
+      toStatus: BookingOrderStatusPayload;
+      publicReason: string | null;
+    }
+  | {
+      type:
+        | "TECHNICIAN_CANCEL_CLASSIFIED"
+        | "TECHNICIAN_UNCOMPLETED_CLASSIFIED"
+        | "SPECIAL_CANCELLATION_APPLIED"
+        | "SPECIAL_CANCELLATION_REVOKED";
+      id: string;
+      createdAt: Date;
+      actorUserId: number | null;
+      publicReason: string | null;
+      internalNote?: string;
+    };
+
+export interface OrderPerformanceAssessmentPublicPayload {
+  id: number;
+  bookingOrderId: number;
+  technicianProfileId: number;
+  outcome: "technician_cancelled" | "technician_uncompleted";
+  treatment: "counted" | "special_excluded";
+  version: number;
+  currentRevisionId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface BookingOrderPayload {
   id: number;
   orderNo: string;
@@ -264,6 +317,8 @@ export interface BookingOrderPayload {
   createdAt: Date;
   updatedAt: Date;
   statusHistory: OrderStatusHistoryPayload[];
+  performanceAssessment: OrderPerformanceAssessmentPublicPayload | null;
+  timelineEvents: OrderTimelineEventPayload[];
 }
 
 export type ManualPaymentMutationResult =
@@ -333,6 +388,29 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       orderBy: {
         createdAt: "asc";
       };
+    };
+    performanceAssessment: {
+      select: {
+        id: true;
+        bookingOrderId: true;
+        technicianProfileId: true;
+        outcome: true;
+        treatment: true;
+        version: true;
+        currentRevisionId: true;
+        createdAt: true;
+        updatedAt: true;
+      };
+    };
+    performanceRevisions: {
+      select: {
+        id: true;
+        action: true;
+        actorUserId: true;
+        publicReason: true;
+        createdAt: true;
+      };
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }];
     };
     affiliateAttributions: {
       include: {
@@ -1100,6 +1178,14 @@ export class BookingRepository implements BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
   ): Promise<OrderTransitionGuardedResult> {
+    const actor: OrderTransitionActorContext = input.actor ?? {
+      userId: input.actorUserId,
+      identityId: null,
+      identityType: "unknown"
+    };
+    if (actor.userId !== input.actorUserId) {
+      throw new Error("error.order.transition_actor_mismatch");
+    }
     return runWithTransactionConflictRetry(() =>
       this.client.$transaction(async (tx) => {
         const current = await tx.bookingOrder.findFirst({
@@ -1177,10 +1263,53 @@ export class BookingRepository implements BookingRepositoryPort {
             bookingOrderId: input.id,
             fromStatus: this.statusToDb(input.fromStatus),
             toStatus: this.statusToDb(input.toStatus),
-            actorUserId: input.actorUserId,
+            actorUserId: actor.userId,
             reason: input.reason?.trim() || null
           }
         });
+
+        if (
+          input.toStatus === "cancelled" &&
+          current.technicianProfileId !== null &&
+          current.technicianProfile?.userId === actor.userId
+        ) {
+          const publicReason = input.reason?.trim() || null;
+          const idempotencyKey = `booking-transition:${current.id}:technician-cancelled`;
+          const requestFingerprint = createHash("sha256")
+            .update(
+              JSON.stringify({
+                action: "classify_technician_cancelled",
+                bookingOrderId: current.id,
+                technicianProfileId: current.technicianProfileId,
+                actorUserId: actor.userId,
+                actorIdentityId: actor.identityId,
+                actorIdentityType: actor.identityType,
+                publicReason
+              })
+            )
+            .digest("hex");
+          const classification = await classifyAdverseOutcomeInTransaction(tx, {
+            bookingOrderId: current.id,
+            technicianProfileId: current.technicianProfileId,
+            outcome: OrderPerformanceOutcome.TECHNICIAN_CANCELLED,
+            actorUserId: actor.userId,
+            publicReason,
+            internalNote: null,
+            idempotencyKey,
+            requestFingerprint,
+            expectedRevision: 0,
+            calculatedAt: new Date()
+          });
+          if (classification.outcome !== "ok") {
+            throw new Error("error.order_performance.classification_conflict");
+          }
+        } else if (input.toStatus === "completed" && current.technicianProfileId !== null) {
+          await recalculateTechnicianSummaryInTransaction(
+            tx,
+            current.technicianProfileId,
+            new Date()
+          );
+        }
 
         if (options.settle) {
           await options.settle({
@@ -1716,6 +1845,30 @@ export class BookingRepository implements BookingRepositoryPort {
         where: { deletedAt: null },
         orderBy: { createdAt: "asc" as const }
       },
+      performanceAssessment: {
+        select: {
+          id: true,
+          bookingOrderId: true,
+          technicianProfileId: true,
+          outcome: true,
+          treatment: true,
+          version: true,
+          currentRevisionId: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      },
+      performanceRevisions: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          action: true,
+          actorUserId: true,
+          publicReason: true,
+          createdAt: true
+        }
+      },
       affiliateAttributions: {
         where: { deletedAt: null },
         orderBy: { id: "desc" as const },
@@ -1762,6 +1915,37 @@ export class BookingRepository implements BookingRepositoryPort {
       order.service?.name ??
       order.technicianService?.name ??
       "Unknown service";
+
+    const statusHistory = order.statusHistory.map((history) => ({
+      id: history.id,
+      orderId: history.bookingOrderId,
+      fromStatus: history.fromStatus ? this.statusFromDb(history.fromStatus) : null,
+      toStatus: this.statusFromDb(history.toStatus),
+      actorUserId: history.actorUserId,
+      reason: history.reason,
+      createdAt: history.createdAt
+    }));
+    const timelineEvents: OrderTimelineEventPayload[] = [
+      ...statusHistory.map((history) => ({
+        type: "ORDER_STATUS_CHANGED" as const,
+        id: `status:${history.id}`,
+        createdAt: history.createdAt,
+        actorUserId: history.actorUserId,
+        fromStatus: history.fromStatus,
+        toStatus: history.toStatus,
+        publicReason: history.reason
+      })),
+      ...order.performanceRevisions.map((revision) => ({
+        type: this.performanceTimelineType(revision.action),
+        id: `performance:${revision.id}`,
+        createdAt: revision.createdAt,
+        actorUserId: revision.actorUserId,
+        publicReason: revision.publicReason
+      }))
+    ].sort(
+      (left, right) =>
+        left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id)
+    );
 
     return {
       id: order.id,
@@ -1819,16 +2003,43 @@ export class BookingRepository implements BookingRepositoryPort {
         : null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
-      statusHistory: order.statusHistory.map((history) => ({
-        id: history.id,
-        orderId: history.bookingOrderId,
-        fromStatus: history.fromStatus ? this.statusFromDb(history.fromStatus) : null,
-        toStatus: this.statusFromDb(history.toStatus),
-        actorUserId: history.actorUserId,
-        reason: history.reason,
-        createdAt: history.createdAt
-      }))
+      statusHistory,
+      performanceAssessment: order.performanceAssessment
+        ? {
+            id: order.performanceAssessment.id,
+            bookingOrderId: order.performanceAssessment.bookingOrderId,
+            technicianProfileId: order.performanceAssessment.technicianProfileId,
+            outcome:
+              order.performanceAssessment.outcome === OrderPerformanceOutcome.TECHNICIAN_CANCELLED
+                ? "technician_cancelled"
+                : "technician_uncompleted",
+            treatment:
+              order.performanceAssessment.treatment === OrderPerformanceTreatment.SPECIAL_EXCLUDED
+                ? "special_excluded"
+                : "counted",
+            version: order.performanceAssessment.version,
+            currentRevisionId: order.performanceAssessment.currentRevisionId,
+            createdAt: order.performanceAssessment.createdAt,
+            updatedAt: order.performanceAssessment.updatedAt
+          }
+        : null,
+      timelineEvents
     };
+  }
+
+  private performanceTimelineType(
+    action: OrderPerformanceRevisionAction
+  ): Exclude<OrderTimelineEventPayload, { type: "ORDER_STATUS_CHANGED" }>["type"] {
+    switch (action) {
+      case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED:
+        return "TECHNICIAN_CANCEL_CLASSIFIED";
+      case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_UNCOMPLETED:
+        return "TECHNICIAN_UNCOMPLETED_CLASSIFIED";
+      case OrderPerformanceRevisionAction.APPLY_SPECIAL_EXCLUSION:
+        return "SPECIAL_CANCELLATION_APPLIED";
+      case OrderPerformanceRevisionAction.REVOKE_SPECIAL_EXCLUSION:
+        return "SPECIAL_CANCELLATION_REVOKED";
+    }
   }
 
   private createShopServiceSource(slot: SlotRecord, requestedServiceId?: number) {

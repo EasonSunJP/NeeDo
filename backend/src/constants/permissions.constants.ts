@@ -652,6 +652,13 @@ export const SYSTEM_PERMISSIONS = [
     "创建或解除集团和店铺接单暂停"
   ),
   createPermission(
+    "backoffice:order-performance:write",
+    "运营订单绩效归类",
+    "api",
+    "backoffice",
+    "标记技师未完单，并应用或撤销有原因记录的特殊取消排除"
+  ),
+  createPermission(
     "backoffice:orders:list",
     "运营后台订单列表",
     "api",
@@ -1790,6 +1797,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:ndp-experience-campaign:publish",
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
+  "backoffice:order-performance:write",
   "backoffice:orders:list",
   "backoffice:schedule:list",
   "backoffice:finance:list",

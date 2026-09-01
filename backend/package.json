@@ -43,6 +43,7 @@
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
     "check:google-auth-flow": "tsx scripts/check-google-auth-flow.ts",
     "check:technician-ranking-flow": "tsx scripts/check-technician-ranking-flow.ts",
+    "performance:rebuild": "tsx scripts/rebuild-technician-performance.ts",
     "check:test-login": "tsx scripts/check-test-login.ts",
     "check:simulation-data": "tsx scripts/check-three-month-simulation.ts",
     "check:lifedance-operations": "ALLOW_SIMULATION_SEED=true ENV_FILE=.env.dev tsx scripts/check-three-month-simulation.ts",

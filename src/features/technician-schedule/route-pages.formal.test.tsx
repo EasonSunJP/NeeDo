@@ -496,6 +496,48 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("正式状态记录");
   });
 
+  it("renders public performance revisions in the shared timeline without operations-only notes", async () => {
+    const order = {
+      ...makeOrder("cancelled"),
+      timelineEvents: [
+        {
+          id: "status:2",
+          type: "ORDER_STATUS_CHANGED" as const,
+          createdAt: "2026-08-28T02:00:00.000Z",
+          actorUserId: 31,
+          fromStatus: "pending" as const,
+          toStatus: "cancelled" as const,
+          publicReason: "技师端取消正式预约"
+        },
+        {
+          id: "performance:3",
+          type: "SPECIAL_CANCELLATION_APPLIED" as const,
+          createdAt: "2026-08-28T03:00:00.000Z",
+          actorUserId: 1,
+          publicReason: "已核实不可抗力",
+          internalNote: "技师端绝不能显示"
+        },
+        {
+          id: "performance:4",
+          type: "SPECIAL_CANCELLATION_REVOKED" as const,
+          createdAt: "2026-08-28T04:00:00.000Z",
+          actorUserId: 1,
+          publicReason: "用户投诉后复核恢复计入",
+          internalNote: "投诉工单仅运营可见"
+        }
+      ]
+    } as BookingOrder;
+
+    await renderOrder(order);
+
+    expect(container.textContent).toContain("特殊取消已生效");
+    expect(container.textContent).toContain("已核实不可抗力");
+    expect(container.textContent).toContain("特殊取消已撤销");
+    expect(container.textContent).toContain("用户投诉后复核恢复计入");
+    expect(container.textContent).not.toContain("技师端绝不能显示");
+    expect(container.textContent).not.toContain("投诉工单仅运营可见");
+  });
+
   it.each([
     ["pending", "确认接单", "confirmOrder"],
     ["confirmed", "开始服务", "startOrder"],

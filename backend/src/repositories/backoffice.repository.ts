@@ -1,4 +1,8 @@
 import {
+  type BookingOrderStatus,
+  OrderPerformanceOutcome,
+  OrderPerformanceRevisionAction,
+  OrderPerformanceTreatment,
   Prisma,
   PlatformMembershipTierCode,
   TechnicianEmploymentType,
@@ -33,7 +37,9 @@ import {
   type BackofficeManagedUserDetailPayload,
   type BackofficeManagedUserPayload,
   type BackofficeNdpAggregate,
+  type BackofficeOrderDetailPayload,
   type BackofficeOrderPayload,
+  type BackofficeOrderTimelineEventPayload,
   type BackofficeRepositoryPort,
   type BackofficeScheduleSlotPayload,
   type BackofficeServicePayload,
@@ -259,6 +265,37 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
   };
 }>;
 
+type OrderDetailRecord = OrderRecord & {
+  statusHistory: Array<{
+    id: number;
+    bookingOrderId: number;
+    fromStatus: BookingOrderStatus | null;
+    toStatus: BookingOrderStatus;
+    actorUserId: number | null;
+    reason: string | null;
+    createdAt: Date;
+  }>;
+  performanceAssessment: {
+    id: number;
+    bookingOrderId: number;
+    technicianProfileId: number;
+    outcome: OrderPerformanceOutcome;
+    treatment: OrderPerformanceTreatment;
+    version: number;
+    currentRevisionId: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null;
+  performanceRevisions: Array<{
+    id: number;
+    action: OrderPerformanceRevisionAction;
+    actorUserId: number | null;
+    publicReason: string | null;
+    internalNote: string | null;
+    createdAt: Date;
+  }>;
+};
+
 type ScheduleSlotRecord = Prisma.ScheduleSlotGetPayload<{
   include: {
     service: true;
@@ -480,6 +517,21 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       total,
       input
     );
+  }
+
+  public async findOrderById(
+    input: BackofficeScope & { id: number }
+  ): Promise<BackofficeOrderDetailPayload | null> {
+    const order = await this.client.bookingOrder.findFirst({
+      where: {
+        id: input.id,
+        deletedAt: null,
+        ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+      },
+      include: this.orderDetailInclude()
+    });
+
+    return order ? this.mapOrderDetail(order) : null;
   }
 
   public async listSchedule(
@@ -2207,6 +2259,50 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     } satisfies Prisma.BookingOrderInclude;
   }
 
+  private orderDetailInclude() {
+    return {
+      ...this.orderInclude(),
+      statusHistory: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          bookingOrderId: true,
+          fromStatus: true,
+          toStatus: true,
+          actorUserId: true,
+          reason: true,
+          createdAt: true
+        }
+      },
+      performanceAssessment: {
+        select: {
+          id: true,
+          bookingOrderId: true,
+          technicianProfileId: true,
+          outcome: true,
+          treatment: true,
+          version: true,
+          currentRevisionId: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      },
+      performanceRevisions: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          action: true,
+          actorUserId: true,
+          publicReason: true,
+          internalNote: true,
+          createdAt: true
+        }
+      }
+    } satisfies Prisma.BookingOrderInclude;
+  }
+
   private scheduleInclude() {
     return {
       service: true,
@@ -2304,6 +2400,70 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString()
     };
+  }
+
+  private mapOrderDetail(order: OrderDetailRecord): BackofficeOrderDetailPayload {
+    const timelineEvents: BackofficeOrderTimelineEventPayload[] = [
+      ...order.statusHistory.map((history) => ({
+        type: "ORDER_STATUS_CHANGED" as const,
+        id: `status:${history.id}`,
+        createdAt: history.createdAt.toISOString(),
+        actorUserId: history.actorUserId,
+        fromStatus: history.fromStatus ? this.statusFromDb(history.fromStatus) : null,
+        toStatus: this.statusFromDb(history.toStatus),
+        publicReason: history.reason
+      })),
+      ...order.performanceRevisions.map((revision) => ({
+        type: this.performanceTimelineType(revision.action),
+        id: `performance:${revision.id}`,
+        createdAt: revision.createdAt.toISOString(),
+        actorUserId: revision.actorUserId,
+        publicReason: revision.publicReason,
+        internalNote: revision.internalNote
+      }))
+    ].sort(
+      (left, right) =>
+        Date.parse(left.createdAt) - Date.parse(right.createdAt) || left.id.localeCompare(right.id)
+    );
+
+    return {
+      ...this.mapOrder(order),
+      performanceAssessment: order.performanceAssessment
+        ? {
+            id: order.performanceAssessment.id,
+            bookingOrderId: order.performanceAssessment.bookingOrderId,
+            technicianProfileId: order.performanceAssessment.technicianProfileId,
+            outcome:
+              order.performanceAssessment.outcome === OrderPerformanceOutcome.TECHNICIAN_CANCELLED
+                ? "technician_cancelled"
+                : "technician_uncompleted",
+            treatment:
+              order.performanceAssessment.treatment === OrderPerformanceTreatment.SPECIAL_EXCLUDED
+                ? "special_excluded"
+                : "counted",
+            version: order.performanceAssessment.version,
+            currentRevisionId: order.performanceAssessment.currentRevisionId,
+            createdAt: order.performanceAssessment.createdAt.toISOString(),
+            updatedAt: order.performanceAssessment.updatedAt.toISOString()
+          }
+        : null,
+      timelineEvents
+    };
+  }
+
+  private performanceTimelineType(
+    action: OrderPerformanceRevisionAction
+  ): Exclude<BackofficeOrderTimelineEventPayload, { type: "ORDER_STATUS_CHANGED" }>["type"] {
+    switch (action) {
+      case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED:
+        return "TECHNICIAN_CANCEL_CLASSIFIED";
+      case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_UNCOMPLETED:
+        return "TECHNICIAN_UNCOMPLETED_CLASSIFIED";
+      case OrderPerformanceRevisionAction.APPLY_SPECIAL_EXCLUSION:
+        return "SPECIAL_CANCELLATION_APPLIED";
+      case OrderPerformanceRevisionAction.REVOKE_SPECIAL_EXCLUSION:
+        return "SPECIAL_CANCELLATION_REVOKED";
+    }
   }
 
   private mapScheduleSlot(slot: ScheduleSlotRecord): BackofficeScheduleSlotPayload {

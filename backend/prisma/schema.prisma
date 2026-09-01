@@ -30,6 +30,29 @@ enum OrderReviewTargetType {
   @@map("order_review_target_type")
 }
 
+enum OrderPerformanceOutcome {
+  TECHNICIAN_CANCELLED   @map("technician_cancelled")
+  TECHNICIAN_UNCOMPLETED @map("technician_uncompleted")
+
+  @@map("order_performance_outcome")
+}
+
+enum OrderPerformanceTreatment {
+  COUNTED          @map("counted")
+  SPECIAL_EXCLUDED @map("special_excluded")
+
+  @@map("order_performance_treatment")
+}
+
+enum OrderPerformanceRevisionAction {
+  CLASSIFY_TECHNICIAN_CANCELLED   @map("classify_technician_cancelled")
+  CLASSIFY_TECHNICIAN_UNCOMPLETED @map("classify_technician_uncompleted")
+  APPLY_SPECIAL_EXCLUSION         @map("apply_special_exclusion")
+  REVOKE_SPECIAL_EXCLUSION        @map("revoke_special_exclusion")
+
+  @@map("order_performance_revision_action")
+}
+
 enum BackofficeTagSentiment {
   POSITIVE @map("positive")
   NEGATIVE @map("negative")
@@ -1008,6 +1031,7 @@ model User {
   reviewedAffiliateRisks                  AffiliateRiskEvent[]                  @relation("AffiliateRiskReviewer")
   identityApplications                    IdentityApplication[]                 @relation("IdentityApplicationApplicant")
   reviewedIdentityApplications            IdentityApplication[]                 @relation("IdentityApplicationReviewer")
+  orderPerformanceRevisionActions        OrderPerformanceAssessmentRevision[]  @relation("OrderPerformanceRevisionActor")
   protectedBankAccounts                   ProtectedBankAccount[]
   contractAcceptances                     ContractAcceptance[]
   applicationMediaAssets                  MediaAsset[]                          @relation("ApplicationMediaOwner")
@@ -1272,8 +1296,8 @@ model TechnicianProfile {
   updatedAt           DateTime                 @updatedAt @map("updated_at")
   deletedAt           DateTime?                @map("deleted_at")
 
-  user                       User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
-  shop                       Shop?                           @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  user                       User                                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shop                       Shop?                                @relation(fields: [shopId], references: [id], onDelete: SetNull)
   services                   Service[]
   technicianServices         TechnicianService[]
   mediaAssets                MediaAsset[]
@@ -1285,11 +1309,14 @@ model TechnicianProfile {
   payslips                   Payslip[]
   payoutRecords              PayoutRecord[]
   payrollAdjustments         PayrollAdjustmentRequest[]
-  receivedOrderReviews       OrderReview[]                   @relation("OrderReviewTechnician")
-  backofficeProfileTags      BackofficeProfileTag[]          @relation("BackofficeProfileTagTechnician")
+  receivedOrderReviews       OrderReview[]                        @relation("OrderReviewTechnician")
+  backofficeProfileTags      BackofficeProfileTag[]               @relation("BackofficeProfileTagTechnician")
   technicianShopAffiliations TechnicianShopAffiliation[]
   exchangeClaims             ExchangeClaim[]
   carouselSlides             CarouselSlide[]
+  performanceAssessments     OrderPerformanceAssessment[]         @relation("OrderPerformanceAssessmentTechnician")
+  performanceRevisions       OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionTechnician")
+  performanceSummary         TechnicianPerformanceSummary?
 
   @@index([shopId])
   @@index([shopId, employmentType])
@@ -2705,6 +2732,8 @@ model BookingOrder {
   affiliateRewards               AffiliateReward[]
   membershipCardRedemption       ShopMembershipCardRedemption?
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
+  performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
+  performanceRevisions           OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionBookingOrder")
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -2724,6 +2753,79 @@ model BookingOrder {
   @@index([paymentRefundedById])
   @@index([deletedAt])
   @@map("booking_orders")
+}
+
+model OrderPerformanceAssessment {
+  id                  Int                       @id @default(autoincrement())
+  bookingOrderId      Int                       @unique @map("booking_order_id")
+  technicianProfileId Int                       @map("technician_profile_id")
+  outcome             OrderPerformanceOutcome
+  treatment           OrderPerformanceTreatment @default(COUNTED)
+  version             Int                       @default(1)
+  currentRevisionId   Int?                      @unique @map("current_revision_id")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
+  deletedAt           DateTime?                 @map("deleted_at")
+
+  bookingOrder      BookingOrder                         @relation("OrderPerformanceAssessmentBookingOrder", fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile                    @relation("OrderPerformanceAssessmentTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  revisions         OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceAssessmentRevisions")
+  currentRevision   OrderPerformanceAssessmentRevision?  @relation("OrderPerformanceAssessmentCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+
+  @@index([technicianProfileId, treatment, deletedAt], map: "order_performance_assessments_technician_treatment_deleted_idx")
+  @@index([deletedAt])
+  @@map("order_performance_assessments")
+}
+
+model OrderPerformanceAssessmentRevision {
+  id                  Int                            @id @default(autoincrement())
+  assessmentId        Int                            @map("assessment_id")
+  bookingOrderId      Int                            @map("booking_order_id")
+  technicianProfileId Int                            @map("technician_profile_id")
+  action              OrderPerformanceRevisionAction
+  previousTreatment   OrderPerformanceTreatment?     @map("previous_treatment")
+  nextTreatment       OrderPerformanceTreatment      @map("next_treatment")
+  publicReason        String?                        @map("public_reason") @db.VarChar(500)
+  internalNote        String?                        @map("internal_note") @db.VarChar(1000)
+  actorUserId         Int?                           @map("actor_user_id")
+  idempotencyKey      String                         @unique @map("idempotency_key") @db.VarChar(160)
+  requestFingerprint  String                         @map("request_fingerprint") @db.Char(64)
+  assessmentVersion   Int                            @map("assessment_version")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  deletedAt           DateTime?                      @map("deleted_at")
+
+  assessment           OrderPerformanceAssessment  @relation("OrderPerformanceAssessmentRevisions", fields: [assessmentId], references: [id], onDelete: Restrict)
+  bookingOrder         BookingOrder                @relation("OrderPerformanceRevisionBookingOrder", fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  technicianProfile    TechnicianProfile           @relation("OrderPerformanceRevisionTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  actor                User?                       @relation("OrderPerformanceRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  currentForAssessment OrderPerformanceAssessment? @relation("OrderPerformanceAssessmentCurrentRevision")
+
+  @@index([assessmentId])
+  @@index([bookingOrderId, createdAt], map: "order_performance_revisions_order_created_idx")
+  @@index([technicianProfileId])
+  @@index([actorUserId])
+  @@index([deletedAt])
+  @@map("order_performance_assessment_revisions")
+}
+
+model TechnicianPerformanceSummary {
+  id                           Int       @id @default(autoincrement())
+  technicianProfileId          Int       @unique @map("technician_profile_id")
+  completedOrderCount          Int       @default(0) @map("completed_order_count")
+  accountableCancellationCount Int       @default(0) @map("accountable_cancellation_count")
+  accountableUncompletedCount  Int       @default(0) @map("accountable_uncompleted_count")
+  specialExcludedCount         Int       @default(0) @map("special_excluded_count")
+  acceptanceRateBps            Int       @default(10000) @map("acceptance_rate_bps")
+  sourceCalculatedAt           DateTime  @map("source_calculated_at")
+  createdAt                    DateTime  @default(now()) @map("created_at")
+  updatedAt                    DateTime  @updatedAt @map("updated_at")
+  deletedAt                    DateTime? @map("deleted_at")
+
+  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt])
+  @@map("technician_performance_summaries")
 }
 
 model OrderReview {

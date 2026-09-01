@@ -113,6 +113,58 @@ export interface BackofficeOrderPayload {
   updatedAt: string;
 }
 
+export type BackofficeOrderPerformanceAssessment = {
+  id: number;
+  bookingOrderId: number;
+  technicianProfileId: number;
+  outcome: "technician_cancelled" | "technician_uncompleted";
+  treatment: "counted" | "special_excluded";
+  version: number;
+  currentRevisionId: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BackofficeOrderTimelineEvent =
+  | {
+      type: "ORDER_STATUS_CHANGED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      fromStatus: string | null;
+      toStatus: string;
+      publicReason: string | null;
+    }
+  | {
+      type:
+        | "TECHNICIAN_CANCEL_CLASSIFIED"
+        | "TECHNICIAN_UNCOMPLETED_CLASSIFIED"
+        | "SPECIAL_CANCELLATION_APPLIED"
+        | "SPECIAL_CANCELLATION_REVOKED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+      internalNote: string | null;
+    };
+
+export interface BackofficeOrderDetailPayload extends BackofficeOrderPayload {
+  performanceAssessment: BackofficeOrderPerformanceAssessment | null;
+  timelineEvents: BackofficeOrderTimelineEvent[];
+}
+
+export interface OrderPerformanceCommandInput {
+  publicReason: string;
+  internalNote?: string | null;
+  idempotencyKey: string;
+  expectedRevision: number;
+}
+
+export interface OrderPerformanceCommandResult {
+  assessment: BackofficeOrderPerformanceAssessment;
+  replayed: boolean;
+}
+
 export interface BackofficeScheduleSlotPayload {
   id: number;
   serviceId: number | null;
@@ -773,6 +825,27 @@ export const backofficeRealDataApi = {
       {
         query
       }
+    );
+  },
+  orderDetail(id: number) {
+    return httpClient.request<BackofficeOrderDetailPayload>(`/backoffice/orders/${id}`);
+  },
+  classifyTechnicianUncompleted(id: number, input: OrderPerformanceCommandInput) {
+    return httpClient.request<OrderPerformanceCommandResult>(
+      `/backoffice/orders/${id}/technician-uncompleted`,
+      { body: input, method: "POST" }
+    );
+  },
+  applySpecialCancellation(id: number, input: OrderPerformanceCommandInput) {
+    return httpClient.request<OrderPerformanceCommandResult>(
+      `/backoffice/orders/${id}/special-cancellation`,
+      { body: input, method: "POST" }
+    );
+  },
+  revokeSpecialCancellation(id: number, input: OrderPerformanceCommandInput) {
+    return httpClient.request<OrderPerformanceCommandResult>(
+      `/backoffice/orders/${id}/special-cancellation/revoke`,
+      { body: input, method: "POST" }
     );
   },
   schedule(scope: BackofficeScope, query?: ListQuery) {

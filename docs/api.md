@@ -214,6 +214,28 @@ The response keeps the shared success envelope and returns exactly one typed pag
 - `id`, `displayName`, `city`, `bio`, `avatarUrl`, `membershipLevel`, `reviewSummary`, `createdAt`, `updatedAt`
 - Account credentials and private fields such as `email`, `phone`, `passwordHash`, tokens, and OTP values are never returned.
 
+## Order Performance And Special Cancellation
+
+Technician acceptance rate is derived from formal order outcomes and cannot be edited as a percentage:
+
+```text
+acceptanceRate = completedOrderCount
+  / (completedOrderCount + accountableCancellationCount + accountableUncompletedCount)
+```
+
+The stored rate uses basis points (`10000` = 100%). When the denominator is zero the result is 100%. Outcomes whose current treatment is `special_excluded` are recorded but omitted from the denominator. Applying or revoking an exclusion rebuilds the technician summary from source orders and assessment records.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/backoffice/orders/:id` | Read fresh order detail, current assessment, and the complete operations timeline | `backoffice:orders:list` |
+| `POST` | `/api/v1/backoffice/orders/:id/technician-uncompleted` | Classify an eligible cancelled, assigned order as technician-caused uncompleted | `backoffice:order-performance:write` |
+| `POST` | `/api/v1/backoffice/orders/:id/special-cancellation` | Exclude a counted technician cancellation or uncompleted outcome | `backoffice:order-performance:write` |
+| `POST` | `/api/v1/backoffice/orders/:id/special-cancellation/revoke` | Revoke the exclusion after a later review or complaint | `backoffice:order-performance:write` |
+
+All three commands use a strict body with required `publicReason`, `idempotencyKey`, and `expectedRevision`; nullable `internalNote` is optional. Clients never submit an acceptance-rate value. Stale revisions and conflicting idempotency re-use return `409`, missing assessments return `404`, and ineligible state changes return `422`. Every successful mutation appends an immutable assessment revision and an audit record in the same transaction.
+
+Booking order responses retain the existing `statusHistory` field unchanged. They also return `performanceAssessment` and a `timelineEvents` discriminated union sorted by `createdAt` and then stable prefixed ID. Event IDs use `status:<id>` or `performance:<id>`, and event types are `ORDER_STATUS_CHANGED`, `TECHNICIAN_CANCEL_CLASSIFIED`, `TECHNICIAN_UNCOMPLETED_CLASSIFIED`, `SPECIAL_CANCELLATION_APPLIED`, and `SPECIAL_CANCELLATION_REVOKED`. Customer and technician order responses expose only `publicReason`; `internalNote` is operations-only and is returned only by the authorized `GET /api/v1/backoffice/orders/:id` projection. The operations UI refreshes this detail before any action and after optimistic-concurrency conflicts.
+
 ## Current Customer Self-Profile API
 
 | Method | Path | Purpose | Auth |
