@@ -49,6 +49,17 @@ export interface PaidMembershipGrowthEvent {
   shopCity: string;
 }
 
+export interface NewUserGrowthEvent {
+  userId: number;
+  createdAt: string;
+  userActive: boolean;
+  userDeleted: boolean;
+  isTestUser: boolean;
+  customerProfileActive: boolean;
+  customerCity: string | null;
+  memberships: readonly { shopId: number; active: boolean; deleted: boolean }[];
+}
+
 export interface TechnicianOnboardingGrowthEvent {
   userId: number;
   activatedAt: string;
@@ -58,7 +69,14 @@ export interface TechnicianOnboardingGrowthEvent {
   userDeleted: boolean;
   isTestUser: boolean;
   profileValid: boolean;
-  shops: readonly { shopId: number; city: string }[];
+  shops: readonly {
+    shopId: number;
+    city: string;
+    source?: "direct" | "affiliation";
+    active?: boolean;
+    deleted?: boolean;
+    effective?: boolean;
+  }[];
 }
 
 interface GrowthFixtureInput<T> {
@@ -89,6 +107,40 @@ const matchesScope = (
   scope: DashboardAggregateInput["scope"],
   city: string | null
 ): boolean => scope.kind === "shop" ? shop.shopId === scope.shopId : city === null || shop.city.trim() === city;
+
+export const countNewUserEvents = (
+  input: GrowthFixtureInput<NewUserGrowthEvent>
+): number => {
+  const counted = new Set<number>();
+  for (const event of input.events) {
+    if (
+      !isInRange(event.createdAt, input.range) ||
+      !event.userActive ||
+      event.userDeleted ||
+      event.isTestUser
+    ) {
+      continue;
+    }
+    if (input.scope.kind === "shop") {
+      const scopedShopId = input.scope.shopId;
+      if (
+        !event.customerProfileActive ||
+        !event.memberships.some((membership) =>
+          membership.shopId === scopedShopId && membership.active && !membership.deleted
+        )
+      ) {
+        continue;
+      }
+    } else if (
+      input.city !== null &&
+      (!event.customerProfileActive || event.customerCity?.trim() !== input.city)
+    ) {
+      continue;
+    }
+    counted.add(event.userId);
+  }
+  return counted.size;
+};
 
 export const countFirstPaidMemberEvents = (
   input: GrowthFixtureInput<PaidMembershipGrowthEvent>
@@ -142,7 +194,12 @@ export const countFirstTechnicianOnboardingEvents = (
       event.userDeleted ||
       event.isTestUser ||
       !event.profileValid ||
-      !event.shops.some((shop) => matchesScope(shop, input.scope, input.city))
+      !event.shops.some((shop) =>
+        shop.active !== false &&
+        shop.deleted !== true &&
+        shop.effective !== false &&
+        matchesScope(shop, input.scope, input.city)
+      )
     ) {
       continue;
     }

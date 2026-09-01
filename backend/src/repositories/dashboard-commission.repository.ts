@@ -83,6 +83,12 @@ const allocationError = "Technician commission allocation is invalid";
 const aggregateError = "Dashboard commission aggregate must be a non-negative safe integer";
 const compensationAnomalyError = "Dashboard commission compensation anomaly detected";
 const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
+const formalWageModes = new Set([
+  "fixed_per_order",
+  "commission",
+  "base_plus_commission",
+  "hourly"
+]);
 
 const parseCalendarDate = (value: string): { year: number; month: number; day: number } => {
   const match = datePattern.exec(value);
@@ -148,20 +154,11 @@ export const resolveTechnicianCompensationAllocations = (input: {
         profile.technicianProfileId !== workDate.technicianProfileId ||
         profile.shopId !== workDate.shopId ||
         profile.deleted ||
-        (profile.status !== "active" && profile.status !== "archived") ||
-        profile.wageMode !== "base_plus_commission"
+        (profile.status !== "active" && profile.status !== "archived")
       ) {
         continue;
       }
       try {
-        if (
-          !Number.isSafeInteger(profile.id) ||
-          profile.id <= 0 ||
-          !Number.isSafeInteger(profile.monthlyBaseJpy) ||
-          profile.monthlyBaseJpy < 0
-        ) {
-          throw new RangeError(allocationError);
-        }
         if (profile.effectiveFrom !== undefined && profile.effectiveFrom !== null) {
           parseCalendarDate(profile.effectiveFrom);
         }
@@ -181,22 +178,34 @@ export const resolveTechnicianCompensationAllocations = (input: {
         invalidCandidate = true;
         continue;
       }
+      const isEffective = (
+        profile.effectiveFrom === undefined ||
+        profile.effectiveFrom === null ||
+        profile.effectiveFrom <= workDate.workDate
+      ) && (
+        profile.effectiveTo === undefined ||
+        profile.effectiveTo === null ||
+        profile.effectiveTo >= workDate.workDate
+      );
+      if (!isEffective) continue;
       if (
-        (profile.effectiveFrom === undefined ||
-          profile.effectiveFrom === null ||
-          profile.effectiveFrom <= workDate.workDate) &&
-        (profile.effectiveTo === undefined ||
-          profile.effectiveTo === null ||
-          profile.effectiveTo >= workDate.workDate)
+        !Number.isSafeInteger(profile.id) ||
+        profile.id <= 0 ||
+        !formalWageModes.has(profile.wageMode) ||
+        !Number.isSafeInteger(profile.monthlyBaseJpy) ||
+        profile.monthlyBaseJpy < 0
       ) {
-        candidates.push(profile);
+        invalidCandidate = true;
+        continue;
       }
+      candidates.push(profile);
     }
     if (invalidCandidate || candidates.length !== 1) {
       anomalyCount += 1;
       continue;
     }
     const profile = candidates[0]!;
+    if (profile.wageMode !== "base_plus_commission") continue;
     resolved.push({
       technicianProfileId: workDate.technicianProfileId,
       shopId: workDate.shopId,
@@ -538,19 +547,22 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
           COUNT(compensation.id) AS matching_profile_count,
           SUM(CASE WHEN compensation.id IS NOT NULL AND (
               compensation.base_salary_jpy < 0
+              OR compensation.wage_mode NOT IN (
+                ${"fixed_per_order"}, ${"commission"}, ${"base_plus_commission"}, ${"hourly"}
+              )
               OR (compensation.effective_from IS NOT NULL
                 AND compensation.effective_to IS NOT NULL
                 AND compensation.effective_from > compensation.effective_to)
             ) THEN 1 ELSE 0 END) AS invalid_profile_count,
           MAX(compensation.id) AS compensation_profile_id,
-          MAX(compensation.base_salary_jpy) AS base_salary_jpy
+          MAX(compensation.base_salary_jpy) AS base_salary_jpy,
+          MAX(compensation.wage_mode) AS wage_mode
         FROM (SELECT DISTINCT period_key, classification, technician_profile_id, shop_id, work_date
               FROM classified_orders) AS classified
         LEFT JOIN technician_compensation_profiles AS compensation
           ON compensation.technician_profile_id = classified.technician_profile_id
           AND compensation.shop_id = classified.shop_id
           AND compensation.status IN (${"active"}, ${"archived"})
-          AND compensation.wage_mode = ${"base_plus_commission"}
           AND compensation.deleted_at IS NULL
           AND (compensation.effective_from IS NULL OR DATE(CONVERT_TZ(compensation.effective_from, ${"+00:00"}, ${"+09:00"})) <= classified.work_date)
           AND (compensation.effective_to IS NULL OR DATE(CONVERT_TZ(compensation.effective_to, ${"+00:00"}, ${"+09:00"})) >= classified.work_date)
@@ -559,7 +571,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
       ),
       valid_salary_dates AS (
         SELECT period_key, classification, technician_profile_id, shop_id, work_date,
-          compensation_profile_id, base_salary_jpy
+          compensation_profile_id, base_salary_jpy, wage_mode
         FROM salary_date_resolution
         WHERE matching_profile_count = 1 AND invalid_profile_count = 0
       ),
@@ -579,6 +591,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
           ROUND(MAX(base_salary_jpy) * COUNT(DISTINCT eligible.work_date)
             / MAX(DAY(LAST_DAY(eligible.work_date)))) AS amount_jpy
         FROM valid_salary_dates AS eligible
+        WHERE eligible.wage_mode = ${"base_plus_commission"}
         GROUP BY period_key, classification, technician_profile_id, shop_id,
           compensation_profile_id, YEAR(work_date), MONTH(work_date)
       ),

@@ -1,11 +1,13 @@
 import type { PrismaClient } from "@prisma/client";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
 import {
+  countNewUserEvents,
   countFirstPaidMemberEvents,
   countFirstTechnicianOnboardingEvents,
   DashboardGrowthRepository,
   type DashboardGrowthReader,
-  type GrowthFacts
+  type GrowthFacts,
+  type TechnicianOnboardingGrowthEvent
 } from "../src/repositories/dashboard-growth.repository";
 import { DashboardRepository } from "../src/repositories/dashboard.repository";
 
@@ -29,36 +31,177 @@ const createReader = (rows: unknown[]) => {
 };
 
 describe("DashboardGrowthRepository", () => {
-  it("classifies first-paid events from all history before current eligibility and scope", () => {
-    const events = [
-      { userId: 7, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "gift", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
-      { userId: 1, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "manual_grant", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
-      { userId: 2, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "historical_replacement", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
-      { userId: 3, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
-      { userId: 4, issuedAt: "2026-08-24T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "void", cardDeleted: true, membershipStatus: "ended", membershipDeleted: true, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
-      { userId: 4, issuedAt: "2026-08-26T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 91, shopCity: "Tokyo" },
-      { userId: 5, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: true, shopId: 91, shopCity: "Tokyo" },
-      { userId: 6, issuedAt: "2026-08-25T00:00:00.000Z", issuanceSource: "offline_paid", cardStatus: "active", cardDeleted: false, membershipStatus: "active", membershipDeleted: false, userActive: true, userDeleted: false, isTestUser: false, shopId: 92, shopCity: "Osaka" }
-    ];
-    const range = { fromInclusive: new Date("2026-08-24T00:00:00.000Z"), toExclusive: new Date("2026-08-31T00:00:00.000Z") };
+  const range = {
+    fromInclusive: new Date("2026-08-24T00:00:00.000Z"),
+    toExclusive: new Date("2026-08-31T00:00:00.000Z")
+  };
 
-    expect(countFirstPaidMemberEvents({ events, range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
-    expect(countFirstPaidMemberEvents({ events, range, scope: { kind: "shop", shopId: 91 }, city: null })).toBe(1);
+  const newUser = {
+    userId: 1,
+    createdAt: "2026-08-25T00:00:00.000Z",
+    userActive: true,
+    userDeleted: false,
+    isTestUser: false,
+    customerProfileActive: true,
+    customerCity: "Tokyo",
+    memberships: [{ shopId: 91, active: true, deleted: false }]
+  };
+
+  it.each([
+    ["inactive user", { userActive: false }],
+    ["deleted user", { userDeleted: true }],
+    ["test user", { isTestUser: true }],
+    ["missing customer profile for city scope", { customerProfileActive: false }],
+    ["different customer city", { customerCity: "Osaka" }]
+  ])("excludes a new user for each independent %s condition", (_label, change) => {
+    expect(countNewUserEvents({
+      events: [{ ...newUser, ...change }],
+      range,
+      scope: { kind: "platform" },
+      city: "Tokyo"
+    })).toBe(0);
   });
 
-  it("never revives onboarding after an earlier deleted identity and excludes test/scope/profile mismatches", () => {
-    const events = [
-      { userId: 1, activatedAt: "2026-08-24T00:00:00.000Z", identityActive: false, identityDeleted: true, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
-      { userId: 1, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
-      { userId: 2, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
-      { userId: 3, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: true, profileValid: true, shops: [{ shopId: 91, city: "Tokyo" }] },
-      { userId: 4, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: false, shops: [{ shopId: 91, city: "Tokyo" }] },
-      { userId: 5, activatedAt: "2026-08-25T00:00:00.000Z", identityActive: true, identityDeleted: false, userActive: true, userDeleted: false, isTestUser: false, profileValid: true, shops: [{ shopId: 92, city: "Osaka" }] }
-    ];
-    const range = { fromInclusive: new Date("2026-08-24T00:00:00.000Z"), toExclusive: new Date("2026-08-31T00:00:00.000Z") };
+  it.each([
+    ["inactive membership", { active: false }],
+    ["deleted membership", { deleted: true }],
+    ["different merchant shop", { shopId: 92 }]
+  ])("excludes a shop-scoped new user for each independent %s condition", (_label, membershipChange) => {
+    expect(countNewUserEvents({
+      events: [{ ...newUser, memberships: [{ ...newUser.memberships[0]!, ...membershipChange }] }],
+      range,
+      scope: { kind: "shop", shopId: 91 },
+      city: null
+    })).toBe(0);
+  });
 
-    expect(countFirstTechnicianOnboardingEvents({ events, range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
-    expect(countFirstTechnicianOnboardingEvents({ events, range, scope: { kind: "shop", shopId: 91 }, city: null })).toBe(1);
+  it("counts a formally eligible new user for platform city and merchant shop scope", () => {
+    expect(countNewUserEvents({ events: [newUser], range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
+    expect(countNewUserEvents({ events: [newUser], range, scope: { kind: "shop", shopId: 91 }, city: null })).toBe(1);
+  });
+
+  const paidMember = {
+    userId: 3,
+    issuedAt: "2026-08-25T00:00:00.000Z",
+    issuanceSource: "offline_paid",
+    cardStatus: "active",
+    cardDeleted: false,
+    membershipStatus: "active",
+    membershipDeleted: false,
+    userActive: true,
+    userDeleted: false,
+    isTestUser: false,
+    shopId: 91,
+    shopCity: "Tokyo"
+  };
+
+  it.each([
+    ["inactive user", { userActive: false }],
+    ["deleted user", { userDeleted: true }],
+    ["test user", { isTestUser: true }],
+    ["inactive membership", { membershipStatus: "ended" }],
+    ["deleted membership", { membershipDeleted: true }],
+    ["inactive card", { cardStatus: "void" }],
+    ["deleted card", { cardDeleted: true }],
+    ["gift source", { issuanceSource: "gift" }],
+    ["manual grant source", { issuanceSource: "manual_grant" }],
+    ["historical replacement source", { issuanceSource: "historical_replacement" }],
+    ["different city", { shopCity: "Osaka" }]
+  ])("excludes a paid-member event for each independent %s condition", (_label, change) => {
+    expect(countFirstPaidMemberEvents({
+      events: [{ ...paidMember, ...change }],
+      range,
+      scope: { kind: "platform" },
+      city: "Tokyo"
+    })).toBe(0);
+  });
+
+  it.each([
+    ["a prior deleted paid card", [
+      { ...paidMember, issuedAt: "2026-08-01T00:00:00.000Z", cardStatus: "void", cardDeleted: true },
+      paidMember
+    ], { kind: "platform" } as const, "Tokyo"],
+    ["a different merchant shop", [paidMember], { kind: "shop", shopId: 92 } as const, null]
+  ])("excludes paid-member growth for independent %s history/scope evidence", (_label, events, scope, city) => {
+    expect(countFirstPaidMemberEvents({ events, range, scope, city })).toBe(0);
+  });
+
+  it.each([
+    [{ kind: "platform" } as const, "Tokyo"],
+    [{ kind: "shop", shopId: 91 } as const, null]
+  ])("counts one eligible first paid member for %o scope", (scope, city) => {
+    expect(countFirstPaidMemberEvents({ events: [paidMember], range, scope, city })).toBe(1);
+  });
+
+  const technician: TechnicianOnboardingGrowthEvent = {
+    userId: 2,
+    activatedAt: "2026-08-25T00:00:00.000Z",
+    identityActive: true,
+    identityDeleted: false,
+    userActive: true,
+    userDeleted: false,
+    isTestUser: false,
+    profileValid: true,
+    shops: [{ shopId: 91, city: "Tokyo", source: "direct", active: true, deleted: false, effective: true }]
+  };
+
+  it.each([
+    ["inactive user", { userActive: false }],
+    ["deleted user", { userDeleted: true }],
+    ["test user", { isTestUser: true }],
+    ["inactive identity", { identityActive: false }],
+    ["deleted identity", { identityDeleted: true }],
+    ["invalid technician profile", { profileValid: false }]
+  ])("excludes technician onboarding for each independent %s condition", (_label, change) => {
+    expect(countFirstTechnicianOnboardingEvents({
+      events: [{ ...technician, ...change }],
+      range,
+      scope: { kind: "platform" },
+      city: "Tokyo"
+    })).toBe(0);
+  });
+
+  it.each([
+    ["inactive affiliation", { active: false }],
+    ["deleted affiliation", { deleted: true }],
+    ["affiliation outside the activation date", { effective: false }],
+    ["different affiliation shop", { shopId: 92 }]
+  ])("excludes technician onboarding for each independent %s condition", (_label, shopChange) => {
+    const affiliation: TechnicianOnboardingGrowthEvent["shops"][number] = {
+      shopId: 91,
+      city: "Tokyo",
+      source: "affiliation",
+      active: true,
+      deleted: false,
+      effective: true,
+      ...shopChange
+    };
+    expect(countFirstTechnicianOnboardingEvents({
+      events: [{ ...technician, shops: [affiliation] }],
+      range,
+      scope: { kind: "shop", shopId: 91 },
+      city: null
+    })).toBe(0);
+  });
+
+  it.each([
+    ["a prior deleted identity", [
+      { ...technician, activatedAt: "2026-08-01T00:00:00.000Z", identityActive: false, identityDeleted: true },
+      technician
+    ], { kind: "platform" } as const, "Tokyo"],
+    ["a different city", [technician], { kind: "platform" } as const, "Osaka"],
+    ["a missing direct shop", [{ ...technician, shops: [] }], { kind: "shop", shopId: 91 } as const, null],
+    ["a different direct shop", [{ ...technician, shops: [{ ...technician.shops[0]!, shopId: 92 }] }], { kind: "shop", shopId: 91 } as const, null]
+  ])("excludes technician onboarding for independent %s evidence", (_label, events, scope, city) => {
+    expect(countFirstTechnicianOnboardingEvents({ events, range, scope, city })).toBe(0);
+  });
+
+  it.each([
+    [[technician], { kind: "platform" } as const, "Tokyo"],
+    [[technician], { kind: "shop", shopId: 91 } as const, null],
+    [[{ ...technician, shops: [{ ...technician.shops[0]!, source: "affiliation" as const }] }], { kind: "shop", shopId: 91 } as const, null]
+  ])("counts one eligible technician for direct or affiliation scope", (events, scope, city) => {
+    expect(countFirstTechnicianOnboardingEvents({ events, range, scope, city })).toBe(1);
   });
   it("maps current and previous first-event growth facts from one bounded query", async () => {
     const fixture = createReader([

@@ -76,6 +76,64 @@ describe("calculateTechnicianCommission", () => {
     })).toMatchObject({ anomalyCount: 1, workDates: [] });
   });
 
+  it("resolves one effective profile across all wage modes before allocating base salary", () => {
+    const openSalary = {
+      id: 1,
+      technicianProfileId: 1,
+      shopId: 9,
+      status: "archived",
+      wageMode: "base_plus_commission",
+      monthlyBaseJpy: 310_000,
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+      deleted: false
+    };
+
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [{ technicianProfileId: 1, shopId: 9, workDate: "2026-02-01" }],
+      profiles: [
+        openSalary,
+        { ...openSalary, id: 2, status: "active", wageMode: "commission", monthlyBaseJpy: 0, effectiveFrom: "2026-02-01" }
+      ]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+
+    const closedTransition = resolveTechnicianCompensationAllocations({
+      workDates: [
+        { technicianProfileId: 1, shopId: 9, workDate: "2026-01-31" },
+        { technicianProfileId: 1, shopId: 9, workDate: "2026-02-01" }
+      ],
+      profiles: [
+        { ...openSalary, effectiveTo: "2026-01-31" },
+        { ...openSalary, id: 2, status: "active", wageMode: "commission", monthlyBaseJpy: 0, effectiveFrom: "2026-02-01" }
+      ]
+    });
+    expect(closedTransition.anomalyCount).toBe(0);
+    expect(closedTransition.workDates).toEqual([
+      expect.objectContaining({ workDate: "2026-01-31", compensationProfileId: 1 })
+    ]);
+    expect(calculateTechnicianCommission({
+      workDates: closedTransition.workDates,
+      settledShareJpy: 0
+    })).toBe(10_000);
+  });
+
+  it("fails closed on malformed effective non-base compensation rows", () => {
+    expect(resolveTechnicianCompensationAllocations({
+      workDates: [{ technicianProfileId: 1, shopId: 9, workDate: "2026-02-01" }],
+      profiles: [{
+        id: 2,
+        technicianProfileId: 1,
+        shopId: 9,
+        status: "active",
+        wageMode: "commission",
+        monthlyBaseJpy: -1,
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+        deleted: false
+      }]
+    })).toMatchObject({ anomalyCount: 1, workDates: [] });
+  });
+
   it("allocates each calendar month separately, rounds each profile-month once, then adds settled share", () => {
     expect(calculateTechnicianCommission({
       workDates: [
@@ -177,6 +235,9 @@ describe("DashboardCommissionRepository", () => {
     expect(sql).toContain("COUNT(DISTINCT eligible.work_date)");
     expect(sql).toContain("DAY(LAST_DAY(eligible.work_date))");
     expect(sql).toContain("compensation.status IN");
+    expect(sql).toContain("MAX(compensation.wage_mode) AS wage_mode");
+    expect(sql).toContain("eligible.wage_mode =");
+    expect(sql).not.toContain("AND compensation.wage_mode =");
     expect(sql).toContain("salary_anomaly_count");
     expect(sql).toContain("affiliation.relationship_type");
     expect(sql).toContain("profile.employment_type");
