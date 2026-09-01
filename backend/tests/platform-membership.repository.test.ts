@@ -20,8 +20,28 @@ const version = {
   tier: { code: PlatformMembershipTierCode.GOLD },
   benefits: [
     {
+      id: 901,
+      publicId: "00000000-0000-4000-8000-000000000911",
+      isEnabled: true,
       configurationJson: { extraThresholdNdp: null, extraAwardExpUnits: null },
-      benefit: { code: PlatformMembershipBenefitCode.NDP_EXPERIENCE }
+      benefit: {
+        code: PlatformMembershipBenefitCode.NDP_EXPERIENCE,
+        isGloballyEnabled: true,
+        nameTranslations: {
+          zh: "NDP消费经验",
+          "zh-Hant": "NDP消費經驗",
+          ja: "NDP消費経験値",
+          en: "NDP experience",
+          ko: "NDP 경험치"
+        },
+        descriptionTranslations: {
+          zh: "NDP消费产生经验",
+          "zh-Hant": "NDP消費產生經驗",
+          ja: "NDP消費で経験値を獲得",
+          en: "Earn experience from NDP spending",
+          ko: "NDP 소비로 경험치 획득"
+        }
+      }
     }
   ]
 };

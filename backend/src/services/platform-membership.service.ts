@@ -26,6 +26,10 @@ import type {
 import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import {
+  MembershipBenefitCapabilityService,
+  type MembershipBenefitDeliveryCapability
+} from "./membership-benefit-capability.service";
 import type { PlatformMembershipBenefitUpdateBody } from "../validators/platform-membership.validator";
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
@@ -39,6 +43,18 @@ export interface PlatformMembershipExperienceRecorderPort {
 
 export type PlatformMembershipTierDraftInput =
   PlatformMembershipTierDraftPersistenceInput;
+
+export type MembershipBenefitLocale = "zh" | "zh-Hant" | "ja" | "en" | "ko";
+
+export interface CurrentMembershipBenefitItem {
+  code: (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number];
+  configuredEnabled: boolean;
+  globallyEnabled: boolean;
+  effective: boolean;
+  deliveryCapability: MembershipBenefitDeliveryCapability;
+  name: string;
+  description: string;
+}
 
 const tierCodeSet = new Set<string>(PLATFORM_MEMBERSHIP_TIER_CODES);
 const benefitCodeSet = new Set<string>(PLATFORM_MEMBERSHIP_BENEFIT_CODES);
@@ -60,7 +76,8 @@ export class PlatformMembershipService {
     private readonly repository: PlatformMembershipRepositoryPort,
     private readonly auditInputFactory?: AuditInputFactory,
     private readonly now: () => Date = () => new Date(),
-    private readonly experienceRecorder?: PlatformMembershipExperienceRecorderPort
+    private readonly experienceRecorder?: PlatformMembershipExperienceRecorderPort,
+    private readonly benefitCapabilities = new MembershipBenefitCapabilityService()
   ) {}
 
   public async resolveMembershipAt(userId: number, occurredAt: Date) {
@@ -110,6 +127,45 @@ export class PlatformMembershipService {
         configuration: benefit.configuration
       })),
       theme: membership.theme
+    };
+  }
+
+  public async getMyMembershipBenefits(
+    actor: AuthenticatedAccessContext,
+    locale: MembershipBenefitLocale
+  ): Promise<{
+    tierCode: PlatformMembershipTierCodeValue;
+    tierVersionPublicId: string;
+    expiresAt: string | null;
+    list: CurrentMembershipBenefitItem[];
+  }> {
+    const membership = await this.resolveMembershipAt(actor.userId, this.now());
+    if (!membership.benefitCatalog) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.platform_membership.benefit_catalog_unavailable",
+        statusCode: 500
+      });
+    }
+    return {
+      tierCode: membership.tierCode,
+      tierVersionPublicId: membership.tierVersionPublicId,
+      expiresAt: membership.expiresAt?.toISOString() ?? null,
+      list: membership.benefitCatalog.map((benefit) => {
+        const deliveryCapability = this.benefitCapabilities.resolve(benefit.code);
+        return {
+          code: benefit.code,
+          configuredEnabled: benefit.configuredEnabled,
+          globallyEnabled: benefit.globallyEnabled,
+          effective:
+            benefit.configuredEnabled &&
+            benefit.globallyEnabled &&
+            deliveryCapability === "available",
+          deliveryCapability,
+          name: benefit.nameTranslations[locale],
+          description: benefit.descriptionTranslations[locale]
+        };
+      })
     };
   }
 

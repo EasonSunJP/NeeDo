@@ -11,6 +11,7 @@ import { AuditLogService } from "../services/audit-log.service";
 import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
   platformMembershipBenefitParamSchema,
+  platformMembershipBenefitLocaleQuerySchema,
   platformMembershipBenefitUpdateBodySchema,
   platformMembershipEntitlementCommandSchema,
   platformMembershipTierDraftBodySchema,
@@ -53,6 +54,12 @@ export const createPlatformMembershipRoutes = (
     "/me/platform-membership",
     authenticate(),
     controller.getMine
+  );
+  router.get(
+    "/me/membership-benefits",
+    authenticate(),
+    validateRequest({ query: platformMembershipBenefitLocaleQuerySchema }),
+    controller.getMyBenefits
   );
 
   router.get(

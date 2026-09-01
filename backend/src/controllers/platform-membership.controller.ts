@@ -4,6 +4,7 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   platformMembershipBenefitParamSchema,
+  platformMembershipBenefitLocaleQuerySchema,
   platformMembershipBenefitUpdateBodySchema,
   platformMembershipEntitlementCommandSchema,
   platformMembershipTierDraftBodySchema,
@@ -18,6 +19,15 @@ export class PlatformMembershipController {
   public getMine = this.handle(async (_request, response) => {
     response.status(200).json(
       successResponse(await this.service.getMyMembership(getAuthenticatedAccess(response)))
+    );
+  });
+
+  public getMyBenefits = this.handle(async (request, response) => {
+    const { locale } = platformMembershipBenefitLocaleQuerySchema.parse(request.query);
+    response.status(200).json(
+      successResponse(
+        await this.service.getMyMembershipBenefits(getAuthenticatedAccess(response), locale)
+      )
     );
   });
 

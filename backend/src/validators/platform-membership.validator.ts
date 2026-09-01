@@ -15,6 +15,11 @@ export const platformMembershipBenefitCodeSchema = z.enum([
   "member_day",
   "birthday_gift"
 ]);
+export const platformMembershipBenefitLocaleQuerySchema = z
+  .object({
+    locale: z.enum(["zh", "zh-Hant", "ja", "en", "ko"]).default("zh")
+  })
+  .strict();
 
 const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 const localizedTextSchema = z.object({

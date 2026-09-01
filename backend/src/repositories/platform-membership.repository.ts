@@ -33,12 +33,22 @@ export interface ResolvedPlatformMembershipBenefit {
   tierBenefitPublicId?: string;
 }
 
+export interface ResolvedPlatformMembershipBenefitCatalogItem {
+  code: PlatformMembershipBenefitCodeValue;
+  configuredEnabled: boolean;
+  globallyEnabled: boolean;
+  configuration: Record<string, unknown>;
+  nameTranslations: PlatformMembershipLocalizedText;
+  descriptionTranslations: PlatformMembershipLocalizedText;
+}
+
 export interface ResolvedPlatformMembership {
   tierCode: PlatformMembershipTierCodeValue;
   tierVersionPublicId: string;
   multiplier: number;
   expiresAt: Date | null;
   benefits: ResolvedPlatformMembershipBenefit[];
+  benefitCatalog?: ResolvedPlatformMembershipBenefitCatalogItem[];
   theme: PlatformMembershipTheme;
 }
 
@@ -185,16 +195,23 @@ const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionS
   tier: { select: { code: true } },
   benefits: {
     where: {
-      isEnabled: true,
       deletedAt: null,
-      benefit: { isGloballyEnabled: true, deletedAt: null }
+      benefit: { deletedAt: null }
     },
     orderBy: [{ benefit: { sortOrder: "asc" } }, { id: "asc" }],
     select: {
       id: true,
       publicId: true,
+      isEnabled: true,
       configurationJson: true,
-      benefit: { select: { code: true } }
+      benefit: {
+        select: {
+          code: true,
+          isGloballyEnabled: true,
+          nameTranslations: true,
+          descriptionTranslations: true
+        }
+      }
     }
   }
 });
@@ -1188,11 +1205,21 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       tierVersionPublicId: version.publicId,
       multiplier: Number(version.experienceMultiplier),
       expiresAt,
-      benefits: version.benefits.map((item) => ({
+      benefits: version.benefits
+        .filter((item) => item.isEnabled && item.benefit.isGloballyEnabled)
+        .map((item) => ({
+          code: benefitCodeFromDb[item.benefit.code],
+          configuration: item.configurationJson,
+          tierBenefitId: item.id,
+          tierBenefitPublicId: item.publicId
+        })),
+      benefitCatalog: version.benefits.map((item) => ({
         code: benefitCodeFromDb[item.benefit.code],
-        configuration: item.configurationJson,
-        tierBenefitId: item.id,
-        tierBenefitPublicId: item.publicId
+        configuredEnabled: item.isEnabled,
+        globallyEnabled: item.benefit.isGloballyEnabled,
+        configuration: this.configurationObject(item.configurationJson),
+        nameTranslations: this.localizationObject(item.benefit.nameTranslations),
+        descriptionTranslations: this.localizationObject(item.benefit.descriptionTranslations)
       })),
       theme: {
         detailAccentColor: version.detailAccentColor,

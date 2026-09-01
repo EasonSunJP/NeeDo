@@ -4492,6 +4492,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           theme: { $ref: "#/components/schemas/PlatformMembershipTheme" }
         }
       },
+      CurrentMembershipBenefit: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "code",
+          "configuredEnabled",
+          "globallyEnabled",
+          "effective",
+          "deliveryCapability",
+          "name",
+          "description"
+        ],
+        properties: {
+          code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
+          configuredEnabled: { type: "boolean" },
+          globallyEnabled: { type: "boolean" },
+          effective: { type: "boolean" },
+          deliveryCapability: { type: "string", enum: ["available", "unavailable"] },
+          name: { type: "string" },
+          description: { type: "string" }
+        }
+      },
+      CurrentMembershipBenefitsProjection: {
+        type: "object",
+        additionalProperties: false,
+        required: ["tierCode", "tierVersionPublicId", "expiresAt", "list"],
+        properties: {
+          tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+          tierVersionPublicId: { type: "string", format: "uuid" },
+          expiresAt: { type: ["string", "null"], format: "date-time" },
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/CurrentMembershipBenefit" }
+          }
+        }
+      },
       PlatformMembershipTierBenefit: {
         type: "object",
         additionalProperties: false,
@@ -14760,6 +14796,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": jsonDataResponse("Customer platform membership projection", {
             $ref: "#/components/schemas/PlatformMembershipSelfProjection"
           }),
+          "401": { description: "Authentication required" },
+          "422": { description: "Platform membership does not apply to this identity" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/me/membership-benefits`]: {
+      get: {
+        tags: ["Platform Membership"],
+        summary: "Read configured membership benefits and real delivery capability",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "locale",
+            in: "query",
+            schema: { type: "string", enum: ["zh", "zh-Hant", "ja", "en", "ko"], default: "zh" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Current membership benefit status", {
+            $ref: "#/components/schemas/CurrentMembershipBenefitsProjection"
+          }),
+          "400": { description: "Invalid locale" },
           "401": { description: "Authentication required" },
           "422": { description: "Platform membership does not apply to this identity" }
         }

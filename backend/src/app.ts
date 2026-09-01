@@ -314,6 +314,7 @@ export interface AppDependencies {
     | "updateBenefit"
     | "changeEntitlement"
     | "getMyMembership"
+    | "getMyMembershipBenefits"
   >;
   platformMembershipRepository?: PlatformMembershipRepositoryPort;
   backofficeUserGroupService?: Pick<
