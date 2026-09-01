@@ -90,7 +90,11 @@ const shop = {
   city: "Tokyo",
   address: "Shibuya",
   coverUrl: null,
-  reviewSummary
+  reviewSummary,
+  favoriteCount: 2049,
+  shareCount: 29,
+  serviceCategories: [{ id: 3, code: "wellness", label: "放松" }],
+  businessKeywords: [{ id: 31, code: "private", categoryId: 3, label: "包间" }]
 };
 
 const technician = {
@@ -99,7 +103,19 @@ const technician = {
   displayName: "橘 ひかり",
   city: "Tokyo",
   avatarUrl: null,
-  reviewSummary
+  reviewSummary,
+  age: 25,
+  favoriteCount: 154,
+  shareCount: 8,
+  completedOrderCount: 1280,
+  acceptanceRatePercent: 98,
+  primaryService: {
+    id: 71,
+    name: "肩颈调理",
+    priceAmount: "8800",
+    currency: "JPY",
+    durationMinutes: 60
+  }
 };
 
 function page<T>(list: T[]) {
@@ -214,10 +230,11 @@ describe("CategoryPage formal category state", () => {
 
     expect(html).toContain("LifeDance Wellness 渋谷");
     expect(html).toContain("橘 ひかり");
-    expect(html).not.toContain("预约确认");
-    expect(html).not.toContain("可预约");
-    expect(html).not.toContain("预约服务");
-    expect(html).not.toContain("接单率");
+    expect(html).toContain("肩颈调理");
+    expect(html).toMatch(/接单率[\s\S]*98[\s\S]*%/);
+    expect(html).toContain("收藏 154");
+    expect(html).toContain("包间");
+    expect(html).not.toContain(">放松<");
   });
 
   it("keeps the bare category route scoped to the displayed cleaning category", () => {
