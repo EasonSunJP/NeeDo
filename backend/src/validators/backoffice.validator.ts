@@ -80,6 +80,32 @@ const technicianRankingSortSchema = z.enum(["revenue", "completedOrders", "worki
 
 const dashboardPeriodSchema = z.enum(DASHBOARD_PERIODS);
 
+export const DASHBOARD_METRIC_KEYS = [
+  "gross_revenue",
+  "travel_fare",
+  "discount_amount",
+  "consumables_sales",
+  "dedicated_technician_commission",
+  "part_time_technician_commission",
+  "marketing_commission",
+  "agent_commission",
+  "ndp_income",
+  "affiliate_platform_income",
+  "consumables_profit",
+  "new_users",
+  "new_paid_members",
+  "technician_onboarding",
+  "agent_onboarding",
+  "franchisee_onboarding",
+  "supplier_onboarding"
+] as const;
+
+export const backofficeDashboardMetricParamSchema = z
+  .object({ metricKey: z.enum(DASHBOARD_METRIC_KEYS) })
+  .strict();
+
+export type DashboardMetricKey = (typeof DASHBOARD_METRIC_KEYS)[number];
+
 const dashboardQueryBaseSchema = z
   .object({
     period: dashboardPeriodSchema.default("last7days"),

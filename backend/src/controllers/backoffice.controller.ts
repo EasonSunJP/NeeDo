@@ -6,6 +6,7 @@ import {
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
   backofficeDashboardQuerySchema,
+  backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeNdpSummaryQuerySchema,
@@ -44,6 +45,48 @@ export class BackofficeController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public dashboardOverview = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.service.getDashboardOverview(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            backofficeDashboardQuerySchema.parse(request.query)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public dashboardMetricDetail = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { metricKey } = backofficeDashboardMetricParamSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.service.getDashboardMetricDetail(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            metricKey,
+            backofficeDashboardQuerySchema.parse(request.query)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

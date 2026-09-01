@@ -542,6 +542,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取运营后台真实指标"
   ),
   createPermission(
+    "backoffice:dashboard-detail:read",
+    "运营后台 Dashboard 指标详情",
+    "api",
+    "backoffice",
+    "读取运营后台综合指标详情"
+  ),
+  createPermission(
     "backoffice:platform-fee-policy:read",
     "运营后台平台费策略读取",
     "api",
@@ -1615,6 +1622,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:admin-console",
   "backoffice:dashboard:read",
+  "backoffice:dashboard-detail:read",
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
   "backoffice:ndp-exchange-rate:read",

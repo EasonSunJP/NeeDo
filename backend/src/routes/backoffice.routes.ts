@@ -7,6 +7,7 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeRepository } from "../repositories/backoffice.repository";
+import { DashboardRepository } from "../repositories/dashboard.repository";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeService } from "../services/backoffice.service";
@@ -15,6 +16,7 @@ import {
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
   backofficeDashboardQuerySchema,
+  backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeNdpSummaryQuerySchema,
@@ -36,6 +38,7 @@ import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 export const BACKOFFICE_ROUTE_PERMISSIONS = {
   dashboard: "backoffice:dashboard:read",
+  dashboardDetail: "backoffice:dashboard-detail:read",
   orders: "backoffice:orders:list",
   schedule: "backoffice:schedule:list",
   finance: "backoffice:finance:list",
@@ -82,7 +85,8 @@ export const createBackofficeRoutes = (
       new CustomerAvatarFileStorage(
         config.CUSTOMER_AVATAR_STORAGE_DIR,
         config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
-      )
+      ),
+    new DashboardRepository()
   );
   const controller = new BackofficeController(service);
 
@@ -92,6 +96,23 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
     validateRequest({ query: backofficeDashboardQuerySchema }),
     controller.platformDashboard
+  );
+  router.get(
+    "/backoffice/dashboard/overview",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: backofficeDashboardQuerySchema }),
+    controller.dashboardOverview
+  );
+  router.get(
+    "/backoffice/dashboard/metrics/:metricKey",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboardDetail),
+    validateRequest({
+      params: backofficeDashboardMetricParamSchema,
+      query: backofficeDashboardQuerySchema
+    }),
+    controller.dashboardMetricDetail
   );
   router.get(
     "/backoffice/orders",

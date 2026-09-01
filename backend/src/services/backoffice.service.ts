@@ -20,6 +20,10 @@ import type {
   BackofficeTechnicianRankingQuery,
   TechnicianRankingPeriod as RankingPeriod
 } from "../validators/backoffice.validator";
+import {
+  DASHBOARD_METRIC_KEYS,
+  type DashboardMetricKey
+} from "../validators/backoffice.validator";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
@@ -41,6 +45,15 @@ import type {
   DashboardNdpPair,
   DashboardPlatformGlobalNdpPair
 } from "../domain/dashboard";
+import {
+  compareAnalyticsMetric,
+  type AnalyticsDataStatus,
+  type AnalyticsMetricPayload,
+  type AnalyticsMetricSeries
+} from "../domain/analytics-metric";
+import type { OperationsFinanceFacts } from "../repositories/dashboard-operations-finance.repository";
+import type { CommissionFacts } from "../repositories/dashboard-commission.repository";
+import type { GrowthFacts } from "../repositories/dashboard-growth.repository";
 import { DashboardMerchantSnapshotService } from "./dashboard-merchant-snapshot.service";
 import {
   merchantShopIdentityForbidden,
@@ -53,6 +66,170 @@ import type {
 } from "../repositories/merchant-shop-context.repository";
 
 export type { BackofficeDashboardPayload } from "../domain/dashboard";
+export { DASHBOARD_METRIC_KEYS } from "../validators/backoffice.validator";
+
+export interface BackofficeAnalyticsReader {
+  getOperationsFinance(input: DashboardAggregateInput): Promise<OperationsFinanceFacts>;
+  getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts>;
+  getGrowthFacts(input: DashboardAggregateInput): Promise<GrowthFacts>;
+}
+
+interface DashboardAnalyticsFact {
+  current: number | null;
+  previous: number | null;
+  dataStatus: AnalyticsDataStatus;
+}
+
+interface DashboardOverviewFilter {
+  period: BackofficeDashboardQuery["period"];
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  timeZone: "Asia/Tokyo";
+  granularity: ReturnType<typeof resolveDashboardWindow>["granularity"];
+  city: string | null;
+}
+
+export interface DashboardOverviewPayload {
+  filter: DashboardOverviewFilter;
+  operationsFinance: AnalyticsMetricPayload[];
+  commissionMetrics: AnalyticsMetricPayload[];
+  growthMetrics: AnalyticsMetricPayload[];
+}
+
+export interface DashboardMetricDetailPayload {
+  filter: DashboardOverviewFilter;
+  metric: AnalyticsMetricPayload;
+  series: AnalyticsMetricSeries[];
+}
+
+interface DashboardMetricMetadata {
+  description: string;
+  formula: string;
+  unit: AnalyticsMetricPayload["unit"];
+  detailRoute: string | null;
+}
+
+const metricMetadata = (
+  description: string,
+  formula: string,
+  unit: AnalyticsMetricPayload["unit"],
+  metricKey: DashboardMetricKey,
+  detailEnabled = true
+): DashboardMetricMetadata => ({
+  description,
+  formula,
+  unit,
+  detailRoute: detailEnabled ? `/admin/analytics/metrics/${metricKey}` : null
+});
+
+const DASHBOARD_METRIC_METADATA: Record<DashboardMetricKey, DashboardMetricMetadata> = {
+  gross_revenue: metricMetadata(
+    "Completed checkout amount sum",
+    "SUM(completed checkoutAmountJpy)",
+    "jpy",
+    "gross_revenue"
+  ),
+  travel_fare: metricMetadata(
+    "Reserved formal travel fare source",
+    "SUM(travel fare)",
+    "jpy",
+    "travel_fare"
+  ),
+  discount_amount: metricMetadata(
+    "Immutable base and add-on amount minus checkout amount",
+    "SUM(discountAmountJpy)",
+    "jpy",
+    "discount_amount"
+  ),
+  consumables_sales: metricMetadata(
+    "Formal Store consumables sales excluding invalid orders",
+    "SUM(consumables sales excluding invalid orders)",
+    "jpy",
+    "consumables_sales"
+  ),
+  dedicated_technician_commission: metricMetadata(
+    "Natural-month daily base allocation plus settled share for dedicated technicians",
+    "SUM(natural-month daily base allocation + settled share)",
+    "jpy",
+    "dedicated_technician_commission"
+  ),
+  part_time_technician_commission: metricMetadata(
+    "Natural-month daily base allocation plus settled share across associated shops",
+    "SUM(natural-month daily base allocation + settled share across associated shops)",
+    "jpy",
+    "part_time_technician_commission"
+  ),
+  marketing_commission: metricMetadata(
+    "Settled affiliate claimant reward",
+    "SUM(settled affiliate claimant reward)",
+    "ndp",
+    "marketing_commission"
+  ),
+  agent_commission: metricMetadata(
+    "Settled agent success reward plus profit share",
+    "SUM(settled success reward + settled profit share)",
+    "jpy",
+    "agent_commission"
+  ),
+  ndp_income: metricMetadata(
+    "Settled production platform NDP income",
+    "SUM(settled production platform NDP income)",
+    "ndp",
+    "ndp_income"
+  ),
+  affiliate_platform_income: metricMetadata(
+    "Settled affiliate platform fee",
+    "SUM(settled affiliate platform fee)",
+    "ndp",
+    "affiliate_platform_income"
+  ),
+  consumables_profit: metricMetadata(
+    "Tax-exclusive consumables base times the effective platform share",
+    "SUM(tax-exclusive base * effective platform share)",
+    "jpy",
+    "consumables_profit"
+  ),
+  new_users: metricMetadata(
+    "Distinct first formal user registrations",
+    "COUNT(DISTINCT first formal registration)",
+    "people",
+    "new_users"
+  ),
+  new_paid_members: metricMetadata(
+    "Distinct first offline-paid active cards excluding grant, trial, replacement and renewal",
+    "COUNT(DISTINCT first offline-paid active membership card)",
+    "people",
+    "new_paid_members"
+  ),
+  technician_onboarding: metricMetadata(
+    "Distinct first technician identity activations",
+    "COUNT(DISTINCT first technician identity activation)",
+    "people",
+    "technician_onboarding"
+  ),
+  agent_onboarding: metricMetadata(
+    "Distinct first formal agent markings",
+    "COUNT(DISTINCT first formal agent marking)",
+    "people",
+    "agent_onboarding"
+  ),
+  franchisee_onboarding: metricMetadata(
+    "Distinct first formal franchisee markings",
+    "COUNT(DISTINCT first formal franchisee marking)",
+    "people",
+    "franchisee_onboarding",
+    false
+  ),
+  supplier_onboarding: metricMetadata(
+    "Distinct first formal supplier markings",
+    "COUNT(DISTINCT first formal supplier marking)",
+    "people",
+    "supplier_onboarding",
+    false
+  )
+};
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -627,8 +804,99 @@ export class BackofficeService {
     private readonly auditLogService: AuditLogService,
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort,
     private readonly now: () => Date = () => new Date(),
-    private readonly avatarStorage?: CustomerAvatarStoragePort
+    private readonly avatarStorage?: CustomerAvatarStoragePort,
+    private readonly analyticsReader?: BackofficeAnalyticsReader
   ) {}
+
+  public async getDashboardOverview(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: BackofficeDashboardQuery
+  ): Promise<DashboardOverviewPayload> {
+    const reader = this.requireAnalyticsReader();
+    const window = resolveDashboardWindow(query, this.now());
+    const city = query.city ?? null;
+    const input: DashboardAggregateInput = { scope: { kind: "platform" }, city, window };
+    await this.record(
+      actor,
+      context,
+      "backoffice.dashboard.overview.read",
+      "backoffice_dashboard_overview",
+      { period: window.period, from: window.fromDate, to: window.toDate, city }
+    );
+    const [operations, commission, growth] = await Promise.all([
+      reader.getOperationsFinance(input),
+      reader.getCommissionFacts(input),
+      reader.getGrowthFacts(input)
+    ]);
+
+    return {
+      filter: this.analyticsFilter(window, city),
+      operationsFinance: DASHBOARD_METRIC_KEYS.slice(0, 4).map((metricKey) =>
+        this.composeAnalyticsMetric(metricKey, this.operationsFact(operations, metricKey))
+      ),
+      commissionMetrics: DASHBOARD_METRIC_KEYS.slice(4, 11).map((metricKey) =>
+        this.composeAnalyticsMetric(metricKey, this.commissionFact(commission, metricKey))
+      ),
+      growthMetrics: DASHBOARD_METRIC_KEYS.slice(11).map((metricKey) =>
+        this.composeAnalyticsMetric(metricKey, this.growthFact(growth, metricKey))
+      )
+    };
+  }
+
+  public async getDashboardMetricDetail(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    metricKey: DashboardMetricKey,
+    query: BackofficeDashboardQuery
+  ): Promise<DashboardMetricDetailPayload> {
+    const reader = this.requireAnalyticsReader();
+    const window = resolveDashboardWindow(query, this.now());
+    const city = query.city ?? null;
+    const input: DashboardAggregateInput = { scope: { kind: "platform" }, city, window };
+    await this.record(
+      actor,
+      context,
+      "backoffice.dashboard.metric.read",
+      "backoffice_dashboard_metric",
+      { metricKey, period: window.period, from: window.fromDate, to: window.toDate, city }
+    );
+
+    let fact: DashboardAnalyticsFact;
+    const metricIndex = DASHBOARD_METRIC_KEYS.indexOf(metricKey);
+    if (metricIndex < 4) {
+      fact = this.operationsFact(await reader.getOperationsFinance(input), metricKey);
+    } else if (metricIndex < 11) {
+      fact = this.commissionFact(await reader.getCommissionFacts(input), metricKey);
+    } else {
+      fact = this.growthFact(await reader.getGrowthFacts(input), metricKey);
+    }
+    const metric = this.composeAnalyticsMetric(metricKey, fact);
+
+    return {
+      filter: this.analyticsFilter(window, city),
+      metric,
+      series: [
+        {
+          seriesKey: metricKey,
+          label: metric.description,
+          unit: metric.unit,
+          points: [
+            {
+              key: "previous",
+              label: `${window.previousFromDate} - ${window.previousToDate}`,
+              value: metric.previousValue
+            },
+            {
+              key: "current",
+              label: `${window.fromDate} - ${window.toDate}`,
+              value: metric.currentValue
+            }
+          ]
+        }
+      ]
+    };
+  }
 
   public async getPlatformDashboard(
     actor: AuthenticatedAccessContext,
@@ -721,6 +989,99 @@ export class BackofficeService {
       { page: query.page, pageSize: query.page_size, total: page.total }
     );
     return page;
+  }
+
+  private requireAnalyticsReader(): BackofficeAnalyticsReader {
+    if (!this.analyticsReader) throw new Error("Backoffice analytics reader is unavailable");
+    return this.analyticsReader;
+  }
+
+  private analyticsFilter(
+    window: ReturnType<typeof resolveDashboardWindow>,
+    city: string | null
+  ): DashboardOverviewFilter {
+    return {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      previousFrom: window.previousFromDate,
+      previousTo: window.previousToDate,
+      timeZone: window.timeZone,
+      granularity: window.granularity,
+      city
+    };
+  }
+
+  private composeAnalyticsMetric(
+    metricKey: DashboardMetricKey,
+    fact: DashboardAnalyticsFact
+  ): AnalyticsMetricPayload {
+    const ready = fact.dataStatus === "ready";
+    const coherentReadyValues =
+      ready &&
+      Number.isSafeInteger(fact.current) &&
+      Number.isSafeInteger(fact.previous);
+    const coherentUnavailableValues =
+      !ready && fact.current === null && fact.previous === null;
+    if (!coherentReadyValues && !coherentUnavailableValues) {
+      throw new RangeError("Dashboard analytics fact is incoherent");
+    }
+    const metadata = DASHBOARD_METRIC_METADATA[metricKey];
+    return {
+      metricKey,
+      currentValue: fact.current,
+      previousValue: fact.previous,
+      ...compareAnalyticsMetric(fact.current, fact.previous),
+      unit: metadata.unit,
+      dataStatus: fact.dataStatus,
+      description: metadata.description,
+      formula: metadata.formula,
+      detailRoute: metadata.detailRoute
+    };
+  }
+
+  private operationsFact(
+    facts: OperationsFinanceFacts,
+    metricKey: DashboardMetricKey
+  ): DashboardAnalyticsFact {
+    switch (metricKey) {
+      case "gross_revenue": return facts.grossRevenue;
+      case "travel_fare": return facts.travelFare;
+      case "discount_amount": return facts.discountAmount;
+      case "consumables_sales": return facts.consumablesSales;
+      default: throw new RangeError("Dashboard analytics metric group is invalid");
+    }
+  }
+
+  private commissionFact(
+    facts: CommissionFacts,
+    metricKey: DashboardMetricKey
+  ): DashboardAnalyticsFact {
+    switch (metricKey) {
+      case "dedicated_technician_commission": return facts.dedicatedTechnicianCommission;
+      case "part_time_technician_commission": return facts.partTimeTechnicianCommission;
+      case "marketing_commission": return facts.marketingCommission;
+      case "agent_commission": return facts.agentCommission;
+      case "ndp_income": return facts.ndpIncome;
+      case "affiliate_platform_income": return facts.affiliatePlatformIncome;
+      case "consumables_profit": return facts.consumablesProfit;
+      default: throw new RangeError("Dashboard analytics metric group is invalid");
+    }
+  }
+
+  private growthFact(
+    facts: GrowthFacts,
+    metricKey: DashboardMetricKey
+  ): DashboardAnalyticsFact {
+    switch (metricKey) {
+      case "new_users": return facts.newUsers;
+      case "new_paid_members": return facts.newPaidMembers;
+      case "technician_onboarding": return facts.technicianOnboarding;
+      case "agent_onboarding": return facts.agentOnboarding;
+      case "franchisee_onboarding": return facts.franchiseeOnboarding;
+      case "supplier_onboarding": return facts.supplierOnboarding;
+      default: throw new RangeError("Dashboard analytics metric group is invalid");
+    }
   }
 
   private composeDashboard(
