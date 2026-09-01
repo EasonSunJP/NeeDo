@@ -3,9 +3,11 @@ import { resolve } from "node:path";
 import {
   RollbackCompleted,
   assertDeepSnapshotEqual,
+  assertFormalFulfillmentChain,
   assertNoCashDebit,
   assertFormalDatabaseSchema,
   captureCashNoDebitEvidence,
+  captureOrderMutationState,
   createTransactionBoundPrismaFacade,
   loadAndValidateFormalEnvironment,
   resolveFixtureLedgerCurrency,
@@ -289,6 +291,158 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     }, "failure")).toThrow("failure left partial writes");
   });
 
+  it("captures every mutable order, session, add-on and checkout field in failure snapshots", async () => {
+    const state = {
+      order: {
+        id: 41, customerUserId: 501, technicianProfileId: 601,
+        paymentConfirmedById: null as number | null,
+        paymentConfirmedAt: null as Date | null,
+        paymentReference: null as string | null,
+        paymentNote: null as string | null
+      },
+      session: {
+        id: 51, bookingOrderId: 41, verificationHash: "hash-a",
+        startedAt: null, endedAt: null
+      },
+      addOn: {
+        id: 61, bookingOrderId: 41, status: "PROPOSED",
+        acceptedAt: null as Date | null,
+        resolutionReason: null as string | null
+      },
+      checkout: {
+        id: 71, bookingOrderId: 41,
+        paymentSelectedAt: null as Date | null,
+        receiptConfirmationReason: null as string | null
+      },
+      financial: { id: 81, bookingOrderId: 41, ndpCurrency: "TEST_NDP", settlementStatus: "pending" },
+      wallet: { id: 91, ownerType: "USER", ownerId: 501, currency: "TEST_NDP", availableBalance: 10 }
+    };
+    const transaction = {
+      bookingOrder: { findUnique: jest.fn(async () => structuredClone(state.order)) },
+      orderServiceSession: { findUnique: jest.fn(async () => structuredClone(state.session)) },
+      orderAddOn: { findMany: jest.fn(async () => [structuredClone(state.addOn)]) },
+      orderServiceEvent: { findMany: jest.fn(async () => []) },
+      orderStatusHistory: { findMany: jest.fn(async () => []) },
+      orderCheckout: { findUnique: jest.fn(async () => structuredClone(state.checkout)) },
+      ledgerTransaction: { findMany: jest.fn(async () => []) },
+      financeReconciliation: { findMany: jest.fn(async () => []) },
+      affiliateReward: { findMany: jest.fn(async () => []) },
+      affiliateRewardTransaction: { findMany: jest.fn(async () => []) },
+      walletHold: { findMany: jest.fn(async () => []) },
+      orderReview: { findMany: jest.fn(async () => []) },
+      reviewSummary: { findMany: jest.fn(async () => []) },
+      auditLog: { findMany: jest.fn(async () => []) },
+      orderFinancial: { findUnique: jest.fn(async () => structuredClone(state.financial)) },
+      wallet: { findMany: jest.fn(async () => [structuredClone(state.wallet)]) }
+    };
+    const mutations: Array<() => void> = [
+      () => { state.order.paymentConfirmedById = 501; },
+      () => { state.order.paymentConfirmedAt = new Date("2026-09-01T01:00:00.000Z"); },
+      () => { state.order.paymentReference = "receipt:71"; },
+      () => { state.order.paymentNote = "cash received"; },
+      () => { state.checkout.paymentSelectedAt = new Date("2026-09-01T01:01:00.000Z"); },
+      () => { state.checkout.receiptConfirmationReason = "cash received"; },
+      () => { state.session.verificationHash = "hash-b"; },
+      () => { state.addOn.acceptedAt = new Date("2026-09-01T01:02:00.000Z"); },
+      () => { state.addOn.resolutionReason = "changed"; }
+    ];
+
+    for (const mutate of mutations) {
+      const before = await captureOrderMutationState(transaction as never, 41);
+      mutate();
+      const after = await captureOrderMutationState(transaction as never, 41);
+      expect(() => assertDeepSnapshotEqual(before, after, "omitted mutable field")).toThrow(
+        "omitted mutable field left partial writes"
+      );
+    }
+  });
+
+  it("requires an exact ordered fulfillment history, event chain, add-on lifecycle and receipt", () => {
+    const occurredAt = new Date("2026-09-01T01:00:00.000Z");
+    const evidence = {
+      order: {
+        status: "COMPLETED", paymentMethod: "CASH", paymentStatus: "CONFIRMED",
+        paymentConfirmedById: 502, paymentConfirmedAt: occurredAt,
+        paymentReference: "checkout:71:technician-receipt", paymentNote: "cash received"
+      },
+      session: {
+        id: 51, startedByUserId: 502, startedAt: occurredAt,
+        endedByUserId: 502, endedAt: occurredAt
+      },
+      checkout: {
+        id: 71, paymentMethod: "CASH", paymentSelectedAt: occurredAt,
+        receiptConfirmedById: 502, receiptConfirmedAt: occurredAt,
+        receiptConfirmationReason: "cash received"
+      },
+      addOn: {
+        id: 61, serviceId: 31, status: "ACCEPTED", proposedByUserId: 502,
+        proposedAt: occurredAt, acceptedByUserId: 501, acceptedAt: occurredAt,
+        rejectedByUserId: null, rejectedAt: null, resolutionReason: null
+      },
+      histories: [
+        { fromStatus: "PENDING", toStatus: "CONFIRMED", actorUserId: 502, reason: "fixture" },
+        { fromStatus: "CONFIRMED", toStatus: "IN_SERVICE", actorUserId: 502, reason: "service_started" }
+      ],
+      events: [
+        {
+          eventType: "SERVICE_STARTED", actorUserId: 502, idempotencyKey: "start-key",
+          reason: null, orderAddOnId: null, orderCheckoutId: null,
+          metadata: { actor: "technician", requestIp: "127.0.0.1" }, occurredAt
+        },
+        {
+          eventType: "RECEIPT_CONFIRMED", actorUserId: 502, idempotencyKey: "receipt-key",
+          reason: "cash received", orderAddOnId: null, orderCheckoutId: 71,
+          metadata: {
+            paymentEvidence: "technician_receipt_confirmation", reason: "cash received"
+          }, occurredAt
+        }
+      ]
+    };
+    const expected = {
+      order: evidence.order,
+      session: evidence.session,
+      checkout: evidence.checkout,
+      addOn: evidence.addOn,
+      histories: evidence.histories,
+      events: evidence.events
+    };
+
+    expect(() => assertFormalFulfillmentChain(evidence, expected, "cash")).not.toThrow();
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, histories: [...evidence.histories].reverse() }, expected, "cash"
+    )).toThrow("cash history chain mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, histories: [...evidence.histories, evidence.histories[1]!] }, expected, "cash"
+    )).toThrow("cash history chain mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, events: evidence.events.map((event, index) => index === 0
+        ? { ...event, actorUserId: 501 }
+        : event) }, expected, "cash"
+    )).toThrow("cash event chain mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, events: evidence.events.map((event, index) => index === 1
+        ? { ...event, idempotencyKey: "wrong-key" }
+        : event) }, expected, "cash"
+    )).toThrow("cash event chain mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, events: [...evidence.events, evidence.events[1]!] }, expected, "cash"
+    )).toThrow("cash event chain mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, events: evidence.events.map((event, index) => index === 1
+        ? { ...event, metadata: { ...event.metadata, reason: "wrong" } }
+        : event) }, expected, "cash"
+    )).toThrow("cash event chain mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      { ...evidence, addOn: { ...evidence.addOn, acceptedByUserId: 502 } }, expected, "cash"
+    )).toThrow("cash add-on lifecycle mismatch");
+    expect(() => assertFormalFulfillmentChain(
+      {
+        ...evidence,
+        checkout: { ...evidence.checkout, receiptConfirmationReason: "wrong" }
+      }, expected, "cash"
+    )).toThrow("cash checkout evidence mismatch");
+  });
+
   it("recognizes only its rollback sentinel and verifies the external baseline after rollback", async () => {
     const state = { rows: 7 };
     const client = {
@@ -331,6 +485,7 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(guard).toBeGreaterThanOrEqual(0);
     expect(prismaImport).toBeGreaterThan(guard);
     expect(source).not.toMatch(/deleteMany|\$executeRawUnsafe\([^)]*(DELETE|COMMIT)/i);
+    expect(source.match(/assertFormalFulfillmentChain\(/g)).toHaveLength(3);
 
     for (const marker of [
       "startService",

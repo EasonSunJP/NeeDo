@@ -264,9 +264,68 @@ export function assertDeepSnapshotEqual(
   after: unknown,
   label: string
 ): void {
-  if (JSON.stringify(before) !== JSON.stringify(after)) {
+  if (serializeEvidence(before) !== serializeEvidence(after)) {
     throw new Error(`Formal order checker assertion failed: ${label} left partial writes`);
   }
+}
+
+type FormalFulfillmentChain = {
+  order: Record<string, unknown> | null;
+  session: Record<string, unknown> | null;
+  checkout: Record<string, unknown> | null;
+  addOn: Record<string, unknown> | null;
+  histories: Array<Record<string, unknown>>;
+  events: Array<Record<string, unknown>>;
+};
+
+const serializeEvidence = (value: unknown): string =>
+  JSON.stringify(value, (_key, current: unknown) =>
+    typeof current === "bigint" ? { $bigint: current.toString() } : current
+  );
+
+const projectExpectedShape = (actual: unknown, expected: unknown): unknown => {
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual)) return actual;
+    if (actual.length !== expected.length) return actual;
+    return expected.map((item, index) => projectExpectedShape(actual[index], item));
+  }
+  if (expected instanceof Date) return actual;
+  if (expected && typeof expected === "object") {
+    if (!actual || typeof actual !== "object" || Array.isArray(actual)) return actual;
+    return Object.fromEntries(
+      Object.entries(expected).map(([key, value]) => [
+        key,
+        key === "metadata"
+          ? (actual as Record<string, unknown>)[key]
+          : projectExpectedShape((actual as Record<string, unknown>)[key], value)
+      ])
+    );
+  }
+  return actual;
+};
+
+const assertChainSection = (
+  actual: unknown,
+  expected: unknown,
+  label: string,
+  section: string
+): void => {
+  if (serializeEvidence(projectExpectedShape(actual, expected)) !== serializeEvidence(expected)) {
+    throw new Error(`Formal order checker assertion failed: ${label} ${section} mismatch`);
+  }
+};
+
+export function assertFormalFulfillmentChain(
+  evidence: FormalFulfillmentChain,
+  expected: FormalFulfillmentChain,
+  label: string
+): void {
+  assertChainSection(evidence.order, expected.order, label, "order payment evidence");
+  assertChainSection(evidence.session, expected.session, label, "session lifecycle");
+  assertChainSection(evidence.checkout, expected.checkout, label, "checkout evidence");
+  assertChainSection(evidence.addOn, expected.addOn, label, "add-on lifecycle");
+  assertChainSection(evidence.histories, expected.histories, label, "history chain");
+  assertChainSection(evidence.events, expected.events, label, "event chain");
 }
 
 export class RollbackCompleted extends Error {
@@ -523,58 +582,47 @@ async function assertRejectedWithMessage(
   throw new Error(`Formal order checker assertion failed: ${expectedMessage} was not rejected`);
 }
 
-async function captureOrderMutationState(tx: Prisma.TransactionClient, orderId: number) {
-  const [order, session, events, histories, checkout, ledgerTransactions,
-    reconciliations, reviews, audits, financial] = await Promise.all([
-    tx.bookingOrder.findUnique({
-      where: { id: orderId },
-      select: {
-        status: true, paymentStatus: true, paymentMethod: true,
-        paymentAmountJpy: true, customerUserId: true
-      }
+export async function captureOrderMutationState(
+  tx: Prisma.TransactionClient,
+  orderId: number
+) {
+  const [order, session, addOns, events, histories, checkout, ledgerTransactions,
+    reconciliations, affiliateRewards, affiliateRewardTransactions, walletHolds,
+    reviews, reviewSummaries, audits, financial, wallets] = await Promise.all([
+    tx.bookingOrder.findUnique({ where: { id: orderId } }),
+    tx.orderServiceSession.findUnique({ where: { bookingOrderId: orderId } }),
+    tx.orderAddOn.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
+    tx.orderServiceEvent.findMany({
+      where: { bookingOrderId: orderId }, orderBy: { id: "asc" }
     }),
-    tx.orderServiceSession.findUnique({
-      where: { bookingOrderId: orderId },
-      select: {
-        startedByUserId: true, startedAt: true, expectedEndsAt: true,
-        endedByUserId: true, endedAt: true,
-        addOns: {
-          where: { deletedAt: null },
-          orderBy: { id: "asc" },
-          select: { id: true, status: true, acceptedByUserId: true, rejectedByUserId: true }
-        }
-      }
+    tx.orderStatusHistory.findMany({
+      where: { bookingOrderId: orderId }, orderBy: { id: "asc" }
     }),
-    tx.orderServiceEvent.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
-    tx.orderStatusHistory.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
-    tx.orderCheckout.findUnique({
-      where: { bookingOrderId: orderId },
-      select: {
-        id: true, paymentMethod: true, ledgerTransactionId: true,
-        receiptConfirmedById: true, receiptConfirmedAt: true
-      }
-    }),
+    tx.orderCheckout.findUnique({ where: { bookingOrderId: orderId } }),
     tx.ledgerTransaction.findMany({
-      include: { entries: true, reconciliation: true }, orderBy: { id: "asc" }
+      include: { entries: { orderBy: { id: "asc" } }, reconciliation: true },
+      orderBy: { id: "asc" }
     }),
     tx.financeReconciliation.findMany({ orderBy: { id: "asc" } }),
-    tx.orderReview.findMany({ include: { tags: true }, orderBy: { id: "asc" } }),
+    tx.affiliateReward.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
+    tx.affiliateRewardTransaction.findMany({
+      where: { reward: { bookingOrderId: orderId } }, orderBy: { id: "asc" }
+    }),
+    tx.walletHold.findMany({ where: { bookingOrderId: orderId }, orderBy: { id: "asc" } }),
+    tx.orderReview.findMany({
+      where: { bookingOrderId: orderId },
+      include: { tags: { orderBy: { id: "asc" } } },
+      orderBy: { id: "asc" }
+    }),
+    tx.reviewSummary.findMany({ orderBy: { id: "asc" } }),
     tx.auditLog.findMany({ orderBy: { id: "asc" } }),
-    tx.orderFinancial.findUnique({ where: { bookingOrderId: orderId } })
+    tx.orderFinancial.findUnique({ where: { bookingOrderId: orderId } }),
+    tx.wallet.findMany({ orderBy: { id: "asc" } })
   ]);
-  const wallet = order && (financial?.ndpCurrency === "NDP" || financial?.ndpCurrency === "TEST_NDP")
-    ? await tx.wallet.findUnique({
-        where: {
-          ownerType_ownerId_currency: {
-            ownerType: "USER", ownerId: order.customerUserId, currency: financial.ndpCurrency
-          }
-        },
-        select: { availableBalance: true, frozenBalance: true }
-      })
-    : null;
   return {
-    order, session, events, histories, checkout, ledgerTransactions,
-    reconciliations, reviews, audits, financial, wallet
+    order, session, addOns, events, histories, checkout, ledgerTransactions,
+    reconciliations, affiliateRewards, affiliateRewardTransactions, walletHolds,
+    reviews, reviewSummaries, audits, financial, wallets
   };
 }
 
@@ -718,8 +766,13 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     tx.bookingOrder.findUnique({
       where: { id: ndpOrder.id },
       include: {
-        statusHistory: { where: { deletedAt: null } },
-        serviceSession: { include: { events: true, addOns: true } },
+        statusHistory: { where: { deletedAt: null }, orderBy: { id: "asc" } },
+        serviceSession: {
+          include: {
+            events: { where: { deletedAt: null }, orderBy: { id: "asc" } },
+            addOns: { where: { deletedAt: null }, orderBy: { id: "asc" } }
+          }
+        },
         checkout: {
           include: { ledgerTransaction: { include: { entries: true, reconciliation: true } } }
         },
@@ -742,6 +795,16 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     ndpEvidence.serviceSession.addOns[0]?.status === "ACCEPTED" &&
     ndpEvidence.serviceSession.addOns[0]?.serviceId === fixture.addOnServiceId,
   "NDP service/add-on event chain is not coherent");
+  const ndpSession = ndpEvidence.serviceSession;
+  const ndpAddOn = ndpSession.addOns[0]!;
+  const ndpEvents = ndpSession.events;
+  const ndpStartedEvent = ndpEvents[0]!;
+  const ndpProposedEvent = ndpEvents[1]!;
+  const ndpAcceptedEvent = ndpEvents[2]!;
+  const ndpEndedEvent = ndpEvents[3]!;
+  const ndpCheckoutEvent = ndpEvents[4]!;
+  const ndpSelectionEvent = ndpEvents[5]!;
+  const ndpPaymentEvent = ndpEvents[6]!;
   const persistedCheckout = ndpEvidence.checkout;
   assert(persistedCheckout?.baseAmountJpy === 8_800 &&
     persistedCheckout.addOnAmountJpy === 2_200 &&
@@ -780,6 +843,128 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     reconciliation.differenceAmount === 0 && reconciliation.status === "PENDING" &&
     ndpEvidence.financial?.settlementStatus === "settled",
   "NDP reconciliation/settlement evidence is not exact");
+  assertFormalFulfillmentChain(
+    {
+      order: ndpEvidence as unknown as Record<string, unknown>,
+      session: ndpSession as unknown as Record<string, unknown>,
+      checkout: persistedCheckout as unknown as Record<string, unknown>,
+      addOn: ndpAddOn as unknown as Record<string, unknown>,
+      histories: ndpEvidence.statusHistory as unknown as Array<Record<string, unknown>>,
+      events: ndpEvents as unknown as Array<Record<string, unknown>>
+    },
+    {
+      order: {
+        status: "COMPLETED", paymentMethod: "NDP", paymentStatus: "CONFIRMED",
+        paymentAmountJpy: 11_000, paymentConfirmedById: fixture.customer.id,
+        paymentConfirmedAt: ndpPaymentEvent.occurredAt,
+        paymentReference: `checkout:${persistedCheckout.id}:ledger:${paymentTransaction.id}`,
+        paymentNote: null
+      },
+      session: {
+        id: ndpSession.id, bookingOrderId: ndpOrder.id,
+        startedByUserId: fixture.customer.id, startedAt: ndpStartedEvent.occurredAt,
+        expectedEndsAt: new Date(ndpStartedEvent.occurredAt.getTime() + 90 * 60_000),
+        endedByUserId: fixture.customer.id, endedAt: ndpEndedEvent.occurredAt,
+        deletedAt: null
+      },
+      checkout: {
+        id: persistedCheckout.id, bookingOrderId: ndpOrder.id, paymentMethod: "NDP",
+        createdAt: ndpCheckoutEvent.occurredAt,
+        paymentSelectedAt: ndpSelectionEvent.occurredAt,
+        ledgerTransactionId: paymentTransaction.id, receiptConfirmedById: null,
+        receiptConfirmedAt: null, receiptConfirmationReason: null, deletedAt: null
+      },
+      addOn: {
+        id: ndpAddOn.id, bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+        serviceId: fixture.addOnServiceId, status: "ACCEPTED",
+        serviceNameSnapshot: "Formal add-on", priceAmountJpy: 2_200,
+        currency: "JPY", durationMinutes: 30,
+        serviceSnapshotJson: {
+          serviceId: fixture.addOnServiceId, name: "Formal add-on", description: null,
+          priceAmountJpy: 2_200, currency: "JPY", durationMinutes: 30
+        },
+        proposedByUserId: fixture.customer.id, proposedAt: ndpProposedEvent.occurredAt,
+        acceptedByUserId: fixture.technician.id, acceptedAt: ndpAcceptedEvent.occurredAt,
+        rejectedByUserId: null, rejectedAt: null, resolutionReason: null, deletedAt: null
+      },
+      histories: [
+        {
+          fromStatus: "PENDING", toStatus: "CONFIRMED", actorUserId: fixture.technician.id,
+          reason: "Formal checker fixture"
+        },
+        {
+          fromStatus: "CONFIRMED", toStatus: "IN_SERVICE", actorUserId: fixture.customer.id,
+          reason: "service_started", createdAt: ndpStartedEvent.occurredAt
+        },
+        {
+          fromStatus: "IN_SERVICE", toStatus: "AWAITING_CHECKOUT",
+          actorUserId: fixture.customer.id, reason: "completed", createdAt: ndpEndedEvent.occurredAt
+        },
+        {
+          fromStatus: "AWAITING_CHECKOUT", toStatus: "COMPLETED",
+          actorUserId: fixture.customer.id, reason: "checkout_ndp_payment_applied",
+          createdAt: ndpPaymentEvent.occurredAt
+        }
+      ],
+      events: [
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: null, orderCheckoutId: null, eventType: "SERVICE_STARTED",
+          actorUserId: fixture.customer.id, idempotencyKey: ndpStart.idempotencyKey,
+          reason: null, metadata: {
+            actor: "customer", requestIp: context.ip, requestUserAgent: context.userAgent
+          }
+        },
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: ndpAddOn.id, orderCheckoutId: null, eventType: "ADD_ON_PROPOSED",
+          actorUserId: fixture.customer.id, idempotencyKey: proposalInput.idempotencyKey,
+          reason: null, metadata: {
+            actor: "customer", requestIp: context.ip, requestUserAgent: context.userAgent,
+            serviceId: fixture.addOnServiceId
+          }
+        },
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: ndpAddOn.id, orderCheckoutId: null, eventType: "ADD_ON_ACCEPTED",
+          actorUserId: fixture.technician.id, idempotencyKey: acceptInput.idempotencyKey,
+          reason: null, metadata: {
+            actor: "technician", requestIp: context.ip, requestUserAgent: context.userAgent,
+            decision: "accept"
+          }
+        },
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: null, orderCheckoutId: null, eventType: "SERVICE_ENDED",
+          actorUserId: fixture.customer.id, idempotencyKey: endInput.idempotencyKey,
+          reason: "completed", metadata: {
+            actor: "customer", requestIp: context.ip, requestUserAgent: context.userAgent
+          }
+        },
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: null, orderCheckoutId: persistedCheckout.id,
+          eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
+          idempotencyKey: `checkout:${ndpOrder.id}:created`, reason: null,
+          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+        },
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: null, orderCheckoutId: persistedCheckout.id,
+          eventType: "PAYMENT_METHOD_SELECTED", actorUserId: fixture.customer.id,
+          idempotencyKey: selection.idempotencyKey, reason: null, metadata: { method: "ndp" }
+        },
+        {
+          bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
+          orderAddOnId: null, orderCheckoutId: persistedCheckout.id,
+          eventType: "NDP_PAYMENT_APPLIED", actorUserId: fixture.customer.id,
+          idempotencyKey: paymentInput.idempotencyKey, reason: "checkout_ndp_payment_applied",
+          metadata: { paymentEvidence: "ndp_ledger", ledgerTransactionId: paymentTransaction.id }
+        }
+      ]
+    },
+    "NDP"
+  );
   const paymentAudit = await tx.auditLog.findFirst({
     where: {
       action: "ledger.checkout.ndp_payment", targetType: "ledger_transaction",
@@ -815,27 +1000,36 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
 
   const cashOrder = await createConfirmedOrder(tx, fixture, 2, now, currency);
   const verificationCode = bookingRepositoryModule.deriveOrderServiceVerificationCode(cashOrder.id);
-  await service.startService(technician, cashOrder.id, {
+  const cashStartInput = {
     actor: "technician", verificationCode, idempotencyKey: `${fixture.marker}-cash-start`
-  }, context);
-  const cashProposal = await service.createOrderAddOn(technician, cashOrder.id, {
+  } as const;
+  await service.startService(technician, cashOrder.id, cashStartInput, context);
+  const cashProposalInput = {
     serviceId: fixture.addOnServiceId, idempotencyKey: `${fixture.marker}-cash-addon`
-  }, context);
+  };
+  const cashProposal = await service.createOrderAddOn(
+    technician, cashOrder.id, cashProposalInput, context
+  );
   const cashAddOnId = cashProposal.serviceSession?.addOns[0]?.id;
   assert(cashAddOnId, "cash add-on was not projected");
-  await service.acceptOrderAddOn(customer, cashOrder.id, cashAddOnId, {
+  const cashAcceptInput = {
     idempotencyKey: `${fixture.marker}-cash-accept`
-  }, context);
-  await service.endService(technician, cashOrder.id, {
+  };
+  await service.acceptOrderAddOn(customer, cashOrder.id, cashAddOnId, cashAcceptInput, context);
+  const cashEndInput = {
     reason: "completed", idempotencyKey: `${fixture.marker}-cash-end`
-  }, context);
+  };
+  await service.endService(technician, cashOrder.id, cashEndInput, context);
   await service.getCheckout(customer, cashOrder.id);
   const cashNoDebitBefore = await captureCashNoDebitEvidence(
     tx, cashOrder.id, fixture.customer.id, currency
   );
-  const awaitingPaymentConfirmation = await service.selectCheckoutPaymentMethod(customer, cashOrder.id, {
+  const cashSelectionInput = {
     method: "cash", idempotencyKey: `${fixture.marker}-cash-select`
-  }, context);
+  } as const;
+  const awaitingPaymentConfirmation = await service.selectCheckoutPaymentMethod(
+    customer, cashOrder.id, cashSelectionInput, context
+  );
   assert(awaitingPaymentConfirmation.status === "awaitingPaymentConfirmation",
     "cash selection did not enter payment confirmation");
   const receiptInput = { reason: "cash received", idempotencyKey: `${fixture.marker}-cash-receipt` };
@@ -872,8 +1066,13 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     tx.bookingOrder.findUnique({
       where: { id: cashOrder.id },
       include: {
-        statusHistory: { where: { deletedAt: null } },
-        serviceSession: { include: { events: true, addOns: true } },
+        statusHistory: { where: { deletedAt: null }, orderBy: { id: "asc" } },
+        serviceSession: {
+          include: {
+            events: { where: { deletedAt: null }, orderBy: { id: "asc" } },
+            addOns: { where: { deletedAt: null }, orderBy: { id: "asc" } }
+          }
+        },
         checkout: true, financial: true, reviews: { include: { tags: true } }
       }
     }),
@@ -899,6 +1098,149 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     cashEvidence.checkout.receiptConfirmedById === fixture.technician.id &&
     cashEvidence.financial?.settlementStatus === "settled" && cashEvidence.reviews.length === 2,
   "cash receipt/settlement/review chain is not coherent");
+  const cashSession = cashEvidence.serviceSession!;
+  const cashAddOn = cashSession.addOns[0]!;
+  const cashEvents = cashSession.events;
+  const cashStartedEvent = cashEvents[0]!;
+  const cashProposedEvent = cashEvents[1]!;
+  const cashAcceptedEvent = cashEvents[2]!;
+  const cashEndedEvent = cashEvents[3]!;
+  const cashCheckoutEvent = cashEvents[4]!;
+  const cashSelectionEvent = cashEvents[5]!;
+  const cashReceiptEvent = cashEvents[6]!;
+  const cashCheckout = cashEvidence.checkout!;
+  assertFormalFulfillmentChain(
+    {
+      order: cashEvidence as unknown as Record<string, unknown>,
+      session: cashSession as unknown as Record<string, unknown>,
+      checkout: cashCheckout as unknown as Record<string, unknown>,
+      addOn: cashAddOn as unknown as Record<string, unknown>,
+      histories: cashEvidence.statusHistory as unknown as Array<Record<string, unknown>>,
+      events: cashEvents as unknown as Array<Record<string, unknown>>
+    },
+    {
+      order: {
+        status: "COMPLETED", paymentMethod: "CASH", paymentStatus: "CONFIRMED",
+        paymentAmountJpy: 11_000, paymentConfirmedById: fixture.technician.id,
+        paymentConfirmedAt: cashReceiptEvent.occurredAt,
+        paymentReference: `checkout:${cashCheckout.id}:technician-receipt`,
+        paymentNote: receiptInput.reason
+      },
+      session: {
+        id: cashSession.id, bookingOrderId: cashOrder.id,
+        startedByUserId: fixture.technician.id, startedAt: cashStartedEvent.occurredAt,
+        expectedEndsAt: new Date(cashStartedEvent.occurredAt.getTime() + 90 * 60_000),
+        endedByUserId: fixture.technician.id, endedAt: cashEndedEvent.occurredAt,
+        deletedAt: null
+      },
+      checkout: {
+        id: cashCheckout.id, bookingOrderId: cashOrder.id, paymentMethod: "CASH",
+        createdAt: cashCheckoutEvent.occurredAt,
+        paymentSelectedAt: cashSelectionEvent.occurredAt, ledgerTransactionId: null,
+        receiptConfirmedById: fixture.technician.id,
+        receiptConfirmedAt: cashReceiptEvent.occurredAt,
+        receiptConfirmationReason: receiptInput.reason, deletedAt: null
+      },
+      addOn: {
+        id: cashAddOn.id, bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+        serviceId: fixture.addOnServiceId, status: "ACCEPTED",
+        serviceNameSnapshot: "Formal add-on", priceAmountJpy: 2_200,
+        currency: "JPY", durationMinutes: 30,
+        serviceSnapshotJson: {
+          serviceId: fixture.addOnServiceId, name: "Formal add-on", description: null,
+          priceAmountJpy: 2_200, currency: "JPY", durationMinutes: 30
+        },
+        proposedByUserId: fixture.technician.id, proposedAt: cashProposedEvent.occurredAt,
+        acceptedByUserId: fixture.customer.id, acceptedAt: cashAcceptedEvent.occurredAt,
+        rejectedByUserId: null, rejectedAt: null, resolutionReason: null, deletedAt: null
+      },
+      histories: [
+        {
+          fromStatus: "PENDING", toStatus: "CONFIRMED", actorUserId: fixture.technician.id,
+          reason: "Formal checker fixture"
+        },
+        {
+          fromStatus: "CONFIRMED", toStatus: "IN_SERVICE", actorUserId: fixture.technician.id,
+          reason: "service_started", createdAt: cashStartedEvent.occurredAt
+        },
+        {
+          fromStatus: "IN_SERVICE", toStatus: "AWAITING_CHECKOUT",
+          actorUserId: fixture.technician.id, reason: "completed",
+          createdAt: cashEndedEvent.occurredAt
+        },
+        {
+          fromStatus: "AWAITING_CHECKOUT", toStatus: "AWAITING_PAYMENT_CONFIRMATION",
+          actorUserId: fixture.customer.id, reason: "checkout_payment_method_selected",
+          createdAt: cashSelectionEvent.occurredAt
+        },
+        {
+          fromStatus: "AWAITING_PAYMENT_CONFIRMATION", toStatus: "COMPLETED",
+          actorUserId: fixture.technician.id, reason: receiptInput.reason,
+          createdAt: cashReceiptEvent.occurredAt
+        }
+      ],
+      events: [
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: null, orderCheckoutId: null, eventType: "SERVICE_STARTED",
+          actorUserId: fixture.technician.id, idempotencyKey: cashStartInput.idempotencyKey,
+          reason: null, metadata: {
+            actor: "technician", requestIp: context.ip, requestUserAgent: context.userAgent
+          }
+        },
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: cashAddOn.id, orderCheckoutId: null, eventType: "ADD_ON_PROPOSED",
+          actorUserId: fixture.technician.id, idempotencyKey: cashProposalInput.idempotencyKey,
+          reason: null, metadata: {
+            actor: "technician", requestIp: context.ip, requestUserAgent: context.userAgent,
+            serviceId: fixture.addOnServiceId
+          }
+        },
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: cashAddOn.id, orderCheckoutId: null, eventType: "ADD_ON_ACCEPTED",
+          actorUserId: fixture.customer.id, idempotencyKey: cashAcceptInput.idempotencyKey,
+          reason: null, metadata: {
+            actor: "customer", requestIp: context.ip, requestUserAgent: context.userAgent,
+            decision: "accept"
+          }
+        },
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: null, orderCheckoutId: null, eventType: "SERVICE_ENDED",
+          actorUserId: fixture.technician.id, idempotencyKey: cashEndInput.idempotencyKey,
+          reason: "completed", metadata: {
+            actor: "technician", requestIp: context.ip, requestUserAgent: context.userAgent
+          }
+        },
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: null, orderCheckoutId: cashCheckout.id,
+          eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
+          idempotencyKey: `checkout:${cashOrder.id}:created`, reason: null,
+          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+        },
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: null, orderCheckoutId: cashCheckout.id,
+          eventType: "PAYMENT_METHOD_SELECTED", actorUserId: fixture.customer.id,
+          idempotencyKey: cashSelectionInput.idempotencyKey,
+          reason: null, metadata: { method: "cash" }
+        },
+        {
+          bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
+          orderAddOnId: null, orderCheckoutId: cashCheckout.id,
+          eventType: "RECEIPT_CONFIRMED", actorUserId: fixture.technician.id,
+          idempotencyKey: receiptInput.idempotencyKey, reason: receiptInput.reason,
+          metadata: {
+            paymentEvidence: "technician_receipt_confirmation", reason: receiptInput.reason
+          }
+        }
+      ]
+    },
+    "cash"
+  );
   const technicianSummary = summaryRows.find(
     (summary) => summary.technicianProfileId === fixture.technicianProfileId
   );
