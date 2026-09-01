@@ -48,7 +48,8 @@ export type LedgerTransactionType =
   | "test_balance_calibration"
   | "exchange_request_publication_freeze"
   | "exchange_request_publication_capture"
-  | "exchange_request_publication_release";
+  | "exchange_request_publication_release"
+  | "shop_membership_reward_settlement";
 export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported" | "test_only";
 export type LedgerTransactionClient = unknown;
@@ -622,11 +623,38 @@ export interface AffiliateRewardLedgerResult {
   platformWalletId: number | null;
 }
 
+export interface SettleShopMembershipRewardInput {
+  redemptionId: number;
+  shopId: number;
+  customerUserId: number;
+  customerRewardNdp: number;
+  platformFeeNdp: number;
+  platformFeeRateBps: number;
+  idempotencyKey: string;
+  actorUserId: number;
+}
+
+export interface ShopMembershipRewardLedgerResult {
+  transaction: LedgerTransactionPayload;
+  shopWalletId: number;
+  customerWalletId: number;
+  platformWalletId: number | null;
+}
+
 export interface AffiliateRewardSettlementPort {
   settleAffiliateReward: (
     input: SettleAffiliateRewardInput,
     context?: LedgerMutationContext
   ) => Promise<AffiliateRewardLedgerResult>;
+}
+
+export interface MembershipRewardDebtAllocatorPort {
+  allocatePendingForShopWallet: (input: {
+    walletId: number;
+    shopId: number;
+    actorUserId: number;
+    transactionClient?: LedgerTransactionClient;
+  }) => Promise<void>;
 }
 
 export interface BookingLedgerSettlementPort {
@@ -660,7 +688,8 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
     private readonly platformFeePolicyService?: Pick<
       PlatformFeePolicyService,
       "resolveForBookingSettlement"
-    >
+    >,
+    private readonly membershipRewardDebtAllocator?: MembershipRewardDebtAllocatorPort
   ) {}
 
   public freezeExchangeRequestPublication(
@@ -1211,6 +1240,197 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
         publisherWalletId: publisherWallet.id,
         claimantWalletId: claimantWallet.id,
+        platformWalletId: platformWallet?.id ?? null
+      };
+    }, context.transactionClient);
+  }
+
+  public async settleShopMembershipReward(
+    input: SettleShopMembershipRewardInput,
+    context: LedgerMutationContext = {}
+  ): Promise<ShopMembershipRewardLedgerResult | null> {
+    if (
+      !Number.isSafeInteger(input.redemptionId) ||
+      input.redemptionId <= 0 ||
+      !Number.isSafeInteger(input.shopId) ||
+      input.shopId <= 0 ||
+      !Number.isSafeInteger(input.customerUserId) ||
+      input.customerUserId <= 0 ||
+      !Number.isSafeInteger(input.actorUserId) ||
+      input.actorUserId <= 0 ||
+      !Number.isSafeInteger(input.customerRewardNdp) ||
+      input.customerRewardNdp <= 0 ||
+      !Number.isSafeInteger(input.platformFeeNdp) ||
+      input.platformFeeNdp < 0 ||
+      !Number.isSafeInteger(input.platformFeeRateBps) ||
+      input.platformFeeRateBps < 0 ||
+      input.platformFeeRateBps > 10_000 ||
+      !input.idempotencyKey.trim()
+    ) {
+      throw this.walletMutationError();
+    }
+    const feeProduct = input.customerRewardNdp * input.platformFeeRateBps;
+    if (
+      !Number.isSafeInteger(feeProduct) ||
+      input.platformFeeNdp !== Math.ceil(feeProduct / 10_000)
+    ) {
+      throw this.walletMutationError();
+    }
+    const totalShopDebitNdp = input.customerRewardNdp + input.platformFeeNdp;
+    if (!Number.isSafeInteger(totalShopDebitNdp)) throw this.walletMutationError();
+
+    return this.repository.runInTransaction(async (repository) => {
+      const existing = await repository.findTransactionByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        const metadata = this.metadataRecord(existing.metadata);
+        if (
+          existing.type !== "shop_membership_reward_settlement" ||
+          existing.referenceType !== "shop_membership_card_redemption" ||
+          existing.referenceId !== input.redemptionId ||
+          existing.amount !== totalShopDebitNdp ||
+          metadata.shopId !== input.shopId ||
+          metadata.customerUserId !== input.customerUserId ||
+          metadata.customerRewardNdp !== input.customerRewardNdp ||
+          metadata.platformFeeNdp !== input.platformFeeNdp ||
+          metadata.platformFeeRateBps !== input.platformFeeRateBps ||
+          typeof metadata.shopWalletId !== "number" ||
+          typeof metadata.customerWalletId !== "number"
+        ) {
+          throw this.walletMutationError();
+        }
+        return {
+          transaction: existing,
+          shopWalletId: metadata.shopWalletId,
+          customerWalletId: metadata.customerWalletId,
+          platformWalletId:
+            typeof metadata.platformWalletId === "number" ? metadata.platformWalletId : null
+        };
+      }
+
+      const shopWallet = await repository.getOrCreateWallet({
+        ownerType: "shop",
+        ownerId: input.shopId,
+        currency: "NDP"
+      });
+      const lockedShopWallet = await this.lockWalletById(repository, shopWallet.id);
+      if (
+        lockedShopWallet.ownerType !== "shop" ||
+        lockedShopWallet.ownerId !== input.shopId ||
+        lockedShopWallet.currency !== "NDP"
+      ) {
+        throw this.walletMutationError();
+      }
+      if (lockedShopWallet.availableBalance < totalShopDebitNdp) return null;
+
+      const customerWallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: input.customerUserId,
+        currency: "NDP"
+      });
+      const platformWallet = input.platformFeeNdp > 0
+        ? await repository.getOrCreateWallet({
+            ownerType: "platform",
+            ownerId: PLATFORM_WALLET_OWNER_ID,
+            currency: "NDP"
+          })
+        : null;
+      const updatedShopWallet = await repository.applyWalletDelta({
+        walletId: lockedShopWallet.id,
+        availableDelta: -totalShopDebitNdp,
+        frozenDelta: 0,
+        requireAvailableAtLeast: totalShopDebitNdp
+      });
+      if (!updatedShopWallet) return null;
+      const updatedCustomerWallet = await repository.applyWalletDelta({
+        walletId: customerWallet.id,
+        availableDelta: input.customerRewardNdp,
+        frozenDelta: 0
+      });
+      if (!updatedCustomerWallet) throw this.walletMutationError();
+      const updatedPlatformWallet = platformWallet
+        ? await repository.applyWalletDelta({
+            walletId: platformWallet.id,
+            availableDelta: input.platformFeeNdp,
+            frozenDelta: 0
+          })
+        : null;
+      if (platformWallet && !updatedPlatformWallet) throw this.walletMutationError();
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: input.idempotencyKey,
+        type: "shop_membership_reward_settlement",
+        referenceType: "shop_membership_card_redemption",
+        referenceId: input.redemptionId,
+        actorUserId: input.actorUserId,
+        amount: totalShopDebitNdp,
+        currency: "NDP",
+        metadata: {
+          shopId: input.shopId,
+          shopWalletId: lockedShopWallet.id,
+          customerUserId: input.customerUserId,
+          customerWalletId: customerWallet.id,
+          customerRewardNdp: input.customerRewardNdp,
+          platformFeeRateBps: input.platformFeeRateBps,
+          platformFeeNdp: input.platformFeeNdp,
+          platformWalletId: platformWallet?.id ?? null
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: lockedShopWallet.id,
+        direction: "available_debit",
+        amount: totalShopDebitNdp,
+        availableDelta: -totalShopDebitNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedShopWallet.availableBalance,
+        frozenBalanceAfter: updatedShopWallet.frozenBalance,
+        reason: "shop_membership_reward_shop_debit"
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: customerWallet.id,
+        direction: "available_credit",
+        amount: input.customerRewardNdp,
+        availableDelta: input.customerRewardNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedCustomerWallet.availableBalance,
+        frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+        reason: "shop_membership_reward_customer_credit"
+      });
+      if (platformWallet && updatedPlatformWallet) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: platformWallet.id,
+          direction: "available_credit",
+          amount: input.platformFeeNdp,
+          availableDelta: input.platformFeeNdp,
+          frozenDelta: 0,
+          availableBalanceAfter: updatedPlatformWallet.availableBalance,
+          frozenBalanceAfter: updatedPlatformWallet.frozenBalance,
+          reason: "shop_membership_reward_platform_credit"
+        });
+      }
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.shop_membership_reward.settlement",
+        expectedAmount: totalShopDebitNdp,
+        actualAmount: totalShopDebitNdp,
+        metadata: {
+          shopId: input.shopId,
+          shopWalletId: lockedShopWallet.id,
+          customerUserId: input.customerUserId,
+          customerWalletId: customerWallet.id,
+          customerRewardNdp: input.customerRewardNdp,
+          platformFeeRateBps: input.platformFeeRateBps,
+          platformFeeNdp: input.platformFeeNdp,
+          platformWalletId: platformWallet?.id ?? null
+        }
+      });
+
+      return {
+        transaction:
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
+        shopWalletId: lockedShopWallet.id,
+        customerWalletId: customerWallet.id,
         platformWalletId: platformWallet?.id ?? null
       };
     }, context.transactionClient);
@@ -2778,7 +2998,7 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
   ): Promise<WalletAdjustmentRequestPayload> {
     this.assertPlatformReviewer(actor);
 
-    return this.repository.runInTransaction(async (repository) => {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
       this.assertWalletAdjustmentRepository(repository);
       const request = await repository.lockWalletAdjustmentRequest!(id);
 
@@ -2881,6 +3101,14 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
           request.amountNdp,
           actor.userId
         );
+        if (request.ownerType === "shop" && this.membershipRewardDebtAllocator) {
+          await this.membershipRewardDebtAllocator.allocatePendingForShopWallet({
+            walletId: wallet.id,
+            shopId: request.ownerId,
+            actorUserId: actor.userId,
+            transactionClient
+          });
+        }
       }
 
       return repository.approveWalletAdjustmentRequest!({
@@ -3301,6 +3529,12 @@ export class LedgerService implements BookingLedgerSettlementPort, AffiliateRewa
         ...input.metadata
       }
     });
+  }
+
+  private metadataRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
   }
 
   private async resolveAffiliateWalletId(

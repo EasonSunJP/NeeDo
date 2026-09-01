@@ -270,6 +270,14 @@ const shopMembershipCardTopUpErrorResponses = {
   "409": { description: "invalid card state, live adjustment, concurrency, or idempotency conflict" }
 };
 
+const shopMembershipCardRedemptionErrorResponses = {
+  "400": { description: "error.validation or error.shop_membership_card_redemption.invalid_value" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
+  "404": { description: "error.shop_membership_card_redemption.not_found — card is outside the active scope" },
+  "409": { description: "invalid card, order, pending adjustment, card balance, concurrency, or idempotency conflict" }
+};
+
 const membershipRewardScopeOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -5082,7 +5090,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "seed_credit",
               "affiliate_task_budget_freeze",
               "affiliate_task_budget_release",
-              "affiliate_reward_settlement"
+              "affiliate_reward_settlement",
+              "shop_membership_reward_settlement"
             ]
           },
           status: { type: "string", enum: ["applied"] },
@@ -8287,6 +8296,131 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      ShopMembershipCardRedemptionCreateRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["orderNo", "idempotencyKey"],
+        properties: {
+          orderNo: { type: "string", minLength: 1, maxLength: 40 },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+        }
+      },
+      ShopMembershipCardRedemptionCandidate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "orderNo", "serviceName", "servicePublicId", "serviceCategoryCode",
+          "serviceStartedAt", "serviceCompletedAt", "eligibleAmountJpy", "consumption", "reward"
+        ],
+        properties: {
+          orderNo: { type: "string" },
+          serviceName: { type: "string" },
+          servicePublicId: { type: ["string", "null"], format: "uuid" },
+          serviceCategoryCode: { type: ["string", "null"] },
+          serviceStartedAt: { type: "string", format: "date-time" },
+          serviceCompletedAt: { type: "string", format: "date-time" },
+          eligibleAmountJpy: { type: "integer", minimum: 1 },
+          consumption: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "principalJpy", "uses", "principalBalanceBeforeJpy", "principalBalanceAfterJpy",
+              "remainingUsesBefore", "remainingUsesAfter"
+            ],
+            properties: {
+              principalJpy: { type: "integer", minimum: 0 },
+              uses: { type: "integer", minimum: 0, maximum: 1 },
+              principalBalanceBeforeJpy: { type: ["integer", "null"], minimum: 0 },
+              principalBalanceAfterJpy: { type: ["integer", "null"], minimum: 0 },
+              remainingUsesBefore: { type: ["integer", "null"], minimum: 0 },
+              remainingUsesAfter: { type: ["integer", "null"], minimum: 0 }
+            }
+          },
+          reward: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "hits", "rawCustomerRewardNdp", "customerRewardNdp", "platformFeeRateBps",
+              "platformFeeNdp", "totalShopDebitNdp", "capped"
+            ],
+            properties: {
+              hits: { type: "array", items: { type: "object" } },
+              rawCustomerRewardNdp: { type: "integer", minimum: 0 },
+              customerRewardNdp: { type: "integer", minimum: 0 },
+              platformFeeRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+              platformFeeNdp: { type: "integer", minimum: 0 },
+              totalShopDebitNdp: { type: "integer", minimum: 0 },
+              capped: { type: "boolean" }
+            }
+          }
+        }
+      },
+      ShopMembershipCardRedemptionCandidatePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidate" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ShopMembershipCardRedemption: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "status", "rewardStatus", "rewardFacts", "rewardHits", "rawRewardNdp",
+          "customerRewardNdp", "platformFeeRateBps", "platformFeeNdp", "totalShopDebitNdp",
+          "rewardCapped", "outstandingRewardNdp", "consumedPrincipalJpy", "consumedUses",
+          "principalBalanceBeforeJpy", "principalBalanceAfterJpy", "remainingUsesBefore",
+          "remainingUsesAfter", "redeemedAt", "rewardSettledAt", "refundedAt", "createdAt",
+          "updatedAt", "card", "order", "shop", "customer", "redeemedBy", "ledgerTransactionNo", "replayed"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["applied", "refunded"] },
+          rewardStatus: { type: "string", enum: ["none", "pending_funds", "paid", "reversed"] },
+          rewardFacts: { type: "object" },
+          rewardHits: { type: "array", items: { type: "object" } },
+          rawRewardNdp: { type: "integer", minimum: 0 },
+          customerRewardNdp: { type: "integer", minimum: 0 },
+          platformFeeRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          platformFeeNdp: { type: "integer", minimum: 0 },
+          totalShopDebitNdp: { type: "integer", minimum: 0 },
+          rewardCapped: { type: "boolean" },
+          outstandingRewardNdp: { type: "integer", minimum: 0 },
+          consumedPrincipalJpy: { type: "integer", minimum: 0 },
+          consumedUses: { type: "integer", minimum: 0, maximum: 1 },
+          principalBalanceBeforeJpy: { type: ["integer", "null"], minimum: 0 },
+          principalBalanceAfterJpy: { type: ["integer", "null"], minimum: 0 },
+          remainingUsesBefore: { type: ["integer", "null"], minimum: 0 },
+          remainingUsesAfter: { type: ["integer", "null"], minimum: 0 },
+          redeemedAt: { type: "string", format: "date-time" },
+          rewardSettledAt: { type: ["string", "null"], format: "date-time" },
+          refundedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          card: { type: "object" },
+          order: { type: "object" },
+          shop: { type: "object" },
+          customer: { type: "object" },
+          redeemedBy: { type: "object" },
+          ledgerTransactionNo: { type: ["string", "null"] },
+          replayed: { type: "boolean" }
+        }
+      },
+      ShopMembershipCardRedemptionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCardRedemption" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       ShopMembershipCard: {
         type: "object",
         additionalProperties: false,
@@ -8928,6 +9062,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemption-candidates`]: {
+      get: {
+        tags: ["Shop Membership Card Redemption"],
+        summary: "List completed same-shop same-customer orders eligible for this card",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter, ...shopMembershipPageParameters],
+        responses: {
+          "200": jsonDataResponse("Paginated redemption candidates with exact card and NDP previews", { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidatePage" }),
+          ...shopMembershipCardRedemptionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemptions`]: {
+      post: {
+        tags: ["Shop Membership Card Redemption"],
+        summary: "Redeem one completed order with the selected membership card",
+        description: "Consumes only paid principal for stored-value cards or exactly one use for count cards. NDP reward and platform fee settle atomically from the shop wallet; insufficient shop funds create a full pending reward without partial wallet movement.",
+        security: [{ bearerAuth: [] }],
+        parameters: [shopMembershipPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardRedemptionCreateRequest" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Idempotent replay of an existing redemption", { $ref: "#/components/schemas/ShopMembershipCardRedemption" }),
+          "201": jsonDataResponse("Created card redemption", { $ref: "#/components/schemas/ShopMembershipCardRedemption" }),
+          ...shopMembershipCardRedemptionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-redemptions`]: {
+      get: {
+        tags: ["Shop Membership Card Redemption"],
+        summary: "List immutable redemptions in the current shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated shop redemption history", { $ref: "#/components/schemas/ShopMembershipCardRedemptionPage" }),
+          ...shopMembershipCardRedemptionErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-activities`]: {
       get: {
         tags: ["Shop Membership"],
@@ -9004,6 +9183,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": jsonDataResponse("Paginated customer top-up history", { $ref: "#/components/schemas/ShopMembershipCardTopUpPage" }),
           ...shopMembershipCardTopUpErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-redemptions`]: {
+      get: {
+        tags: ["Shop Membership Card Redemption"],
+        summary: "List the authenticated customer's own membership-card redemptions",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...shopMembershipPageParameters,
+          { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated customer redemption history", { $ref: "#/components/schemas/ShopMembershipCardRedemptionPage" }),
+          ...shopMembershipCardRedemptionErrorResponses
         }
       }
     },

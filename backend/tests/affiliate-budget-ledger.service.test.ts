@@ -1039,3 +1039,109 @@ describe("affiliate ledger finance filters", () => {
     expect(ledgerTransactionListQuerySchema.parse({ type })).toMatchObject({ type });
   });
 });
+
+describe("LedgerService shop membership reward settlement", () => {
+  it("exposes the formal transaction type to finance filters", () => {
+    expect(
+      ledgerTransactionListQuerySchema.parse({ type: "shop_membership_reward_settlement" })
+    ).toMatchObject({ type: "shop_membership_reward_settlement" });
+  });
+
+  it("atomically debits the shop available wallet and credits customer plus platform", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const shopWallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 61,
+      availableBalance: 1_100
+    });
+    const service = new LedgerService(repository);
+
+    const result = await service.settleShopMembershipReward({
+      redemptionId: 71,
+      shopId: 61,
+      customerUserId: 81,
+      customerRewardNdp: 1_000,
+      platformFeeNdp: 100,
+      platformFeeRateBps: 1_000,
+      idempotencyKey: "membership-redemption:71:reward:settlement",
+      actorUserId: 91
+    });
+
+    expect(result).toMatchObject({
+      shopWalletId: shopWallet.id,
+      customerWalletId: repository.wallets.get("user:81:NDP")?.id,
+      platformWalletId: repository.wallets.get("platform:1:NDP")?.id,
+      transaction: {
+        type: "shop_membership_reward_settlement",
+        referenceType: "shop_membership_card_redemption",
+        referenceId: 71,
+        amount: 1_100
+      }
+    });
+    expect(repository.wallets.get("shop:61:NDP")?.availableBalance).toBe(0);
+    expect(repository.wallets.get("user:81:NDP")?.availableBalance).toBe(1_000);
+    expect(repository.wallets.get("platform:1:NDP")?.availableBalance).toBe(100);
+    expect(repository.entries).toEqual([
+      expect.objectContaining({ direction: "available_debit", amount: 1_100, reason: "shop_membership_reward_shop_debit" }),
+      expect.objectContaining({ direction: "available_credit", amount: 1_000, reason: "shop_membership_reward_customer_credit" }),
+      expect.objectContaining({ direction: "available_credit", amount: 100, reason: "shop_membership_reward_platform_credit" })
+    ]);
+    expect(repository.reconciliationRows).toEqual([
+      expect.objectContaining({ expectedAmount: 1_100, actualAmount: 1_100 })
+    ]);
+    expect(repository.auditRows).toEqual([
+      expect.objectContaining({
+        action: "ledger.shop_membership_reward.settlement",
+        actorUserId: 91,
+        metadata: expect.objectContaining({ customerRewardNdp: 1_000, platformFeeNdp: 100 })
+      })
+    ]);
+  });
+
+  it("returns pending without any partial wallet or ledger mutation when shop funds are short", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 62, availableBalance: 1_099 });
+    const service = new LedgerService(repository);
+
+    const result = await service.settleShopMembershipReward({
+      redemptionId: 72,
+      shopId: 62,
+      customerUserId: 82,
+      customerRewardNdp: 1_000,
+      platformFeeNdp: 100,
+      platformFeeRateBps: 1_000,
+      idempotencyKey: "membership-redemption:72:reward:settlement",
+      actorUserId: 92
+    });
+
+    expect(result).toBeNull();
+    expect(repository.wallets.get("shop:62:NDP")?.availableBalance).toBe(1_099);
+    expect(repository.wallets.has("user:82:NDP")).toBe(false);
+    expect(repository.wallets.has("platform:1:NDP")).toBe(false);
+    expect(repository.transactions.size).toBe(0);
+    expect(repository.entries).toHaveLength(0);
+    expect(repository.reconciliationRows).toHaveLength(0);
+    expect(repository.auditRows).toHaveLength(0);
+  });
+
+  it("keeps a zero-fee settlement balanced without creating a platform wallet", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 63, availableBalance: 1_000 });
+    const service = new LedgerService(repository);
+
+    const result = await service.settleShopMembershipReward({
+      redemptionId: 73,
+      shopId: 63,
+      customerUserId: 83,
+      customerRewardNdp: 1_000,
+      platformFeeNdp: 0,
+      platformFeeRateBps: 0,
+      idempotencyKey: "membership-redemption:73:reward:settlement",
+      actorUserId: 93
+    });
+
+    expect(result?.platformWalletId).toBeNull();
+    expect(repository.wallets.has("platform:1:NDP")).toBe(false);
+    expect(repository.entries).toHaveLength(2);
+  });
+});

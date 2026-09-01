@@ -146,6 +146,32 @@ describe("membership NDP reward rules", () => {
     });
   });
 
+  it("supports completed technician services without a formal service public id", () => {
+    const result = evaluateMembershipRewardRules({
+      rules: [
+        { kind: "fixed_per_completion", rewardNdp: 100, scope: allScope },
+        {
+          kind: "service_scope_bonus",
+          rewardNdp: 50,
+          rewardRateBps: null,
+          scope: { ...allScope, servicePublicIds: [serviceId] }
+        },
+        {
+          kind: "service_scope_bonus",
+          rewardNdp: 25,
+          rewardRateBps: null,
+          scope: { ...allScope, categoryCodes: [categoryCode] }
+        }
+      ],
+      caps: {},
+      facts: { ...baseFacts, servicePublicId: null },
+      platformFeeRateBps: 1000
+    });
+
+    expect(result.hits.map((hit) => hit.rewardNdp)).toEqual([100, 25]);
+    expect(result.customerRewardNdp).toBe(125);
+  });
+
   it("applies the smallest remaining cap and clips ordered hit amounts", () => {
     const result = evaluateMembershipRewardRules({
       rules: [

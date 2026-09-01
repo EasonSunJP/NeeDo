@@ -116,7 +116,9 @@ CREATE TABLE `shop_membership_card_redemptions` (
         AND `reward_settled_at` IS NULL)
       OR (`reward_status` = 'paid' AND `outstanding_reward_ndp` = 0 AND `ledger_transaction_id` IS NOT NULL
         AND `shop_wallet_id` IS NOT NULL AND `customer_wallet_id` IS NOT NULL
-        AND `platform_wallet_id` IS NOT NULL AND `reward_settled_at` IS NOT NULL)
+        AND ((`platform_fee_ndp` = 0 AND `platform_wallet_id` IS NULL)
+          OR (`platform_fee_ndp` > 0 AND `platform_wallet_id` IS NOT NULL))
+        AND `reward_settled_at` IS NOT NULL)
       OR (`reward_status` = 'reversed' AND `outstanding_reward_ndp` = 0
         AND `ledger_transaction_id` IS NOT NULL AND `reward_settled_at` IS NOT NULL)
     ),
@@ -172,13 +174,13 @@ ALTER TABLE `shop_membership_card_redemptions`
   ADD CONSTRAINT `shop_membership_card_redemptions_redeemed_by_id_fkey`
     FOREIGN KEY (`redeemed_by_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT `shop_membership_card_redemptions_shop_wallet_id_fkey`
-    FOREIGN KEY (`shop_wallet_id`) REFERENCES `wallets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (`shop_wallet_id`) REFERENCES `wallets`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `shop_membership_card_redemptions_customer_wallet_id_fkey`
-    FOREIGN KEY (`customer_wallet_id`) REFERENCES `wallets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (`customer_wallet_id`) REFERENCES `wallets`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `shop_membership_card_redemptions_platform_wallet_id_fkey`
-    FOREIGN KEY (`platform_wallet_id`) REFERENCES `wallets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (`platform_wallet_id`) REFERENCES `wallets`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `shop_membership_card_redemptions_ledger_transaction_id_fkey`
-    FOREIGN KEY (`ledger_transaction_id`) REFERENCES `ledger_transactions`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+    FOREIGN KEY (`ledger_transaction_id`) REFERENCES `ledger_transactions`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 INSERT INTO `permissions` (
   `name`, `code`, `type`, `module`, `description`, `is_system`, `created_at`, `updated_at`, `deleted_at`

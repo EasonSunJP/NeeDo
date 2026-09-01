@@ -108,6 +108,29 @@ describe("shop membership OpenAPI", () => {
     expect(document.components.schemas.ShopMembershipCardTopUpCreateRequest).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardTopUp).toMatchObject({ additionalProperties: false });
     expect(document.components.schemas.ShopMembershipCardTopUpPage).toMatchObject({ additionalProperties: false });
+
+    const redemptionOperations = [
+      document.paths["/api/v1/merchant-admin/shop-membership-cards/{publicId}/redemption-candidates"].get,
+      document.paths["/api/v1/merchant-admin/shop-membership-cards/{publicId}/redemptions"].post,
+      document.paths["/api/v1/merchant-admin/shop-membership-card-redemptions"].get,
+      document.paths["/api/v1/customer-profile/me/shop-membership-card-redemptions"].get
+    ];
+    for (const operation of redemptionOperations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(expect.objectContaining({
+        "200": expect.any(Object), "400": expect.any(Object), "401": expect.any(Object),
+        "403": expect.any(Object), "404": expect.any(Object), "409": expect.any(Object)
+      }));
+    }
+    expect(redemptionOperations[1].requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ShopMembershipCardRedemptionCreateRequest"
+    });
+    expect(document.components.schemas.ShopMembershipCardRedemptionCreateRequest).toMatchObject({ additionalProperties: false });
+    expect(document.components.schemas.ShopMembershipCardRedemptionCandidate).toMatchObject({ additionalProperties: false });
+    expect(document.components.schemas.ShopMembershipCardRedemption).toMatchObject({ additionalProperties: false });
+    expect(document.components.schemas.ShopMembershipCardRedemptionPage).toMatchObject({ additionalProperties: false });
+    expect((document.components.schemas.LedgerTransaction.properties as { type: { enum: string[] } }).type.enum)
+      .toContain("shop_membership_reward_settlement");
   });
 
   it("documents strict membership card plan and reward fee contracts", () => {

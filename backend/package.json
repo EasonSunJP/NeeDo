@@ -34,6 +34,7 @@
     "check:shop-membership-card-issuance-flow": "tsx scripts/check-shop-membership-card-issuance-flow.ts",
     "check:shop-membership-card-adjustment-flow": "tsx scripts/check-shop-membership-card-adjustment-flow.ts",
     "check:shop-membership-card-topup-flow": "tsx scripts/check-shop-membership-card-topup-flow.ts",
+    "check:shop-membership-card-redemption-flow": "tsx scripts/check-shop-membership-card-redemption-flow.ts",
     "check:order-acceptance-control-flow": "tsx scripts/check-order-acceptance-control-flow.ts && tsx scripts/check-affiliate-checkout-attribution-flow.ts",
     "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:message-reaction-slots": "ENV_FILE=.env.dev tsx scripts/check-message-reaction-slots.ts",
