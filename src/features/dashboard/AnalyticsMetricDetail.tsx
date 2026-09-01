@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AnalyticsMetricSeries } from "../../api/backofficeRealData";
 import { cn } from "../../lib/utils";
-import { FixedAnalyticsSeriesChart } from "./DashboardCharts";
+import {
+  FixedAnalyticsSeriesChart,
+  getAnalyticsSeriesColor
+} from "./DashboardCharts";
 
 export function AnalyticsMetricDetail({
   title,
@@ -31,6 +34,12 @@ export function AnalyticsMetricDetail({
     () => series.filter((item) => visibleSeries.has(item.seriesKey)),
     [series, visibleSeries]
   );
+  const seriesColors = useMemo(
+    () => Object.fromEntries(
+      series.map((item, index) => [item.seriesKey, getAnalyticsSeriesColor(index)])
+    ),
+    [seriesKeySignature]
+  );
 
   return (
     <figure className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white p-4 shadow-panel">
@@ -38,7 +47,7 @@ export function AnalyticsMetricDetail({
         <h2 className="text-base font-black text-ink">{title}</h2>
       </figcaption>
       <div aria-label={title} className="mt-4 flex flex-wrap gap-2">
-        {series.map((item, index) => {
+        {series.map((item) => {
           const visible = visibleSeries.has(item.seriesKey);
           return (
             <button
@@ -64,11 +73,8 @@ export function AnalyticsMetricDetail({
               <span
                 aria-hidden="true"
                 className="h-2.5 w-2.5 rounded-full"
-                style={{
-                  background: index % 2 === 0
-                    ? "var(--admin-accent, #3b82f6)"
-                    : "var(--admin-purple, #a855f7)"
-                }}
+                data-analytics-series-color={seriesColors[item.seriesKey]}
+                style={{ background: seriesColors[item.seriesKey] }}
               />
               <span data-no-i18n>{item.label}</span>
             </button>
@@ -79,6 +85,7 @@ export function AnalyticsMetricDetail({
         {displayedSeries.length > 0 ? (
           <FixedAnalyticsSeriesChart
             series={displayedSeries}
+            seriesColors={seriesColors}
             unavailableValueLabel={unavailableValueLabel}
           />
         ) : (

@@ -148,6 +148,23 @@ describe("DashboardMetricCard", () => {
     expect(zero).toContain(">0<");
     expect(zero).toContain("+0%");
   });
+
+  it("renders a null-route TEST accessory as a disabled noninteractive badge", () => {
+    const markup = renderCard(
+      <DashboardMetricCard
+        disabledAccessoryLabel="TEST"
+        metric={analyticsMetric({ detailRoute: null })}
+        previousLabel="上期"
+        statusMessage="数据暂不可用"
+        title="供货商入驻"
+      />
+    );
+
+    expect(markup).toContain('data-analytics-disabled-detail="true"');
+    expect(markup).toContain('aria-disabled="true"');
+    expect(markup).toMatch(/<span[^>]*data-analytics-disabled-detail="true"[^>]*>TEST<\/span>/);
+    expect(markup).not.toMatch(/<button[^>]*>TEST<\/button>/);
+  });
 });
 
 describe("DashboardMetricCard interactions", () => {

@@ -54,6 +54,7 @@ export function DashboardMetricCard({
   previousLabel = "上期",
   unavailableComparisonLabel = "暂无可比较数据",
   detailLabel,
+  disabledAccessoryLabel,
   infoLabel,
   onDetail
 }: {
@@ -71,6 +72,7 @@ export function DashboardMetricCard({
   previousLabel?: string;
   unavailableComparisonLabel?: string;
   detailLabel?: string;
+  disabledAccessoryLabel?: string;
   infoLabel?: string;
   onDetail?: (route: string) => void;
 }) {
@@ -195,6 +197,14 @@ export function DashboardMetricCard({
         >
           {detailLabel}
         </button>
+      ) : metric && metric.detailRoute === null && disabledAccessoryLabel ? (
+        <span
+          aria-disabled="true"
+          className="mt-4 inline-flex rounded-full border border-line bg-paper px-3 py-2 text-xs font-black text-ink/45"
+          data-analytics-disabled-detail="true"
+        >
+          {disabledAccessoryLabel}
+        </span>
       ) : null}
     </article>
   );

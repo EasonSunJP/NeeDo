@@ -26,6 +26,10 @@ const barColors = [
   "var(--admin-warning, #f59e0b)"
 ];
 
+export function getAnalyticsSeriesColor(index: number): string {
+  return lineColors[index % lineColors.length] ?? lineColors[0];
+}
+
 function getValue(bucket: DashboardBucketPayload, series: DashboardChartSeries) {
   return normalizeDashboardNumber(bucket[series.key]);
 }
@@ -363,10 +367,12 @@ function analyticsLineSegments(
 
 export function FixedAnalyticsSeriesChart({
   series,
-  unavailableValueLabel
+  unavailableValueLabel,
+  seriesColors
 }: {
   series: readonly AnalyticsMetricSeries[];
   unavailableValueLabel: string;
+  seriesColors?: Readonly<Record<string, string>>;
 }) {
   const { language } = useI18n();
   const values = series.flatMap((item) =>
@@ -384,9 +390,13 @@ export function FixedAnalyticsSeriesChart({
       >
         <Grid buckets={pointLabels} />
         {series.map((item, seriesIndex) => {
-          const color = lineColors[seriesIndex % lineColors.length];
+          const color = seriesColors?.[item.seriesKey] ?? getAnalyticsSeriesColor(seriesIndex);
           return (
-            <g data-analytics-series={item.seriesKey} key={item.seriesKey}>
+            <g
+              data-analytics-series={item.seriesKey}
+              data-analytics-series-color={color}
+              key={item.seriesKey}
+            >
               {analyticsLineSegments(item.points, values).map((path, pathIndex) => (
                 <path
                   d={path}

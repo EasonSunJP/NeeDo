@@ -138,6 +138,33 @@ describe("AnalyticsMetricDetail", () => {
     expect(container.querySelectorAll('button[aria-label="显示减少"]')).toHaveLength(1);
     expect(container.querySelectorAll('button[aria-label="隐藏减少"]')).toHaveLength(1);
   });
+
+  it("keeps each series color stable when an earlier series is hidden", async () => {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <AnalyticsMetricDetail
+            allSeriesHiddenLabel="全部图例已隐藏"
+            hideSeriesLabel={(label) => `隐藏${label}`}
+            series={series}
+            showSeriesLabel={(label) => `显示${label}`}
+            title="用户增减趋势"
+            unavailableValueLabel="暂无数据"
+          />
+        </I18nProvider>
+      );
+    });
+
+    const secondLegendColor = findButton(container, "隐藏减少")
+      .querySelector<HTMLElement>("[data-analytics-series-color]")
+      ?.getAttribute("data-analytics-series-color");
+    expect(secondLegendColor).toContain("--admin-purple");
+    await act(async () => findButton(container, "隐藏增加").click());
+    const secondChartColor = container
+      .querySelector<SVGGElement>('g[data-analytics-series="decrease"]')
+      ?.getAttribute("data-analytics-series-color");
+    expect(secondChartColor).toBe(secondLegendColor);
+  });
 });
 
 describe("AnalyticsMetricGrid", () => {
@@ -167,6 +194,8 @@ describe("AnalyticsMetricGrid", () => {
         <I18nProvider>
           <AnalyticsMetricGrid
             detailLabel="查看详情"
+            getDisabledDetailLabel={(item) => item.detailRoute === null ? "TEST" : undefined}
+            getInfoLabel={(title) => `查看${title}说明`}
             getMetricTitle={(item) => item.metricKey}
             groupTitle="运营财务"
             metrics={metrics}
@@ -188,6 +217,12 @@ describe("AnalyticsMetricGrid", () => {
       (button) => button.textContent === "查看详情"
     );
     expect(detailButtons).toHaveLength(1);
+    const testBadge = container.querySelector<HTMLElement>("[data-analytics-disabled-detail]");
+    expect(testBadge?.textContent).toBe("TEST");
+    expect(testBadge?.getAttribute("aria-disabled")).toBe("true");
+    expect(testBadge?.tagName).toBe("SPAN");
+    expect(container.querySelector('button[aria-label="查看gross_revenue说明"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="查看supplier_onboarding说明"]')).not.toBeNull();
     await act(async () => detailButtons[0]?.click());
     expect(onNavigate).toHaveBeenCalledWith(
       "/admin/analytics/metrics/gross_revenue",
