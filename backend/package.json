@@ -11,7 +11,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" \"prisma/**/*.ts\" \"scripts/**/*.ts\"",
-    "test": "jest --runInBand",
+    "test": "node scripts/run-jest-suite.cjs",
     "membership:preflight": "tsx scripts/preflight-platform-membership-values.ts",
     "check:friendship-conversation-pairs": "tsx scripts/check-friendship-conversation-pairs.ts",
     "check:social-reply-relations": "ENV_FILE=.env.dev tsx scripts/check-social-reply-relations.ts",

@@ -56,7 +56,9 @@ const order = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
   affiliate: null,
   createdAt: new Date("2026-08-20T00:00:00.000Z"),
   updatedAt: completedAt,
-  statusHistory: []
+  statusHistory: [],
+  performanceAssessment: null,
+  timelineEvents: []
 });
 
 const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
