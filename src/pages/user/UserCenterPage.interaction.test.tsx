@@ -11,6 +11,8 @@ import { UserCenterPage } from "./UserCenterPage";
 const testState = vi.hoisted(() => ({
   getMine: vi.fn(),
   getMyWallet: vi.fn(),
+  getMyExperience: vi.fn(),
+  getPlatformMembership: vi.fn(),
   listOrders: vi.fn(),
   updateMine: vi.fn(),
   refreshSession: vi.fn(),
@@ -47,6 +49,13 @@ vi.mock("../../features/core-read/customerProfileApi", () => ({
 
 vi.mock("../../features/wallet/api", () => ({
   walletApi: { getMyWallet: testState.getMyWallet }
+}));
+
+vi.mock("../../features/platform-membership/api", () => ({
+  platformMembershipSelfApi: {
+    getMyExperience: testState.getMyExperience,
+    getMine: testState.getPlatformMembership
+  }
 }));
 
 vi.mock("../../state/entityStore", () => ({
@@ -185,6 +194,31 @@ describe("UserCenterPage inline profile editing", () => {
       updatedAt: "2026-08-26T00:00:00.000Z"
     });
     testState.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
+    testState.getMyExperience.mockResolvedValue({
+      level: 1,
+      totalExp: "0",
+      currentLevelExp: "0",
+      nextLevelExp: "100",
+      progressBps: 0
+    });
+    testState.getPlatformMembership.mockResolvedValue({
+      tierCode: "free",
+      tierVersionPublicId: "tier-free-v1",
+      multiplier: 1,
+      expiresAt: null,
+      ekycVerified: false,
+      benefits: [],
+      theme: {
+        detailAccentColor: "#A8FF2F",
+        detailSurfaceColor: "#10212A",
+        detailItemSurfaceColor: "#0A151C",
+        detailOuterBorderColor: "#5B7D3A",
+        detailItemBorderColor: "#263E48",
+        detailAvatarBorderColor: "#6C9048",
+        simpleTopColor: "#0B2418",
+        simpleBottomColor: "#102631"
+      }
+    });
   });
 
   afterEach(async () => {
@@ -352,7 +386,13 @@ describe("UserCenterPage inline profile editing", () => {
   });
 
   it("shows the formal experience-account level instead of deriving Lv from the credit score", async () => {
-    testState.getMine.mockResolvedValueOnce({ ...savedProfile, level: 72 });
+    testState.getMyExperience.mockResolvedValueOnce({
+      level: 72,
+      totalExp: "15000",
+      currentLevelExp: "500",
+      nextLevelExp: "750",
+      progressBps: 6667
+    });
 
     await renderUserCenter();
 

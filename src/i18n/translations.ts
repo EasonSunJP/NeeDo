@@ -746,6 +746,7 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  ...platformUserManagementTranslations,
   "回复中": {
     "zh-Hant": "回覆中",
     ja: "返信中",
@@ -14939,7 +14940,6 @@ export const translations: TranslationMap = {
   ...affiliateProfileTranslations,
   ...affiliateMarketplaceTranslations,
   ...dashboardTranslations,
-  ...platformUserManagementTranslations,
 };
 
 export function getTranslationLookupCandidates(language: Language): TargetLanguage[] {

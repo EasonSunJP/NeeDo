@@ -206,7 +206,17 @@ export type PlatformBenefitAdministration = {
   code: PlatformBenefitCode;
   sortOrder: number;
   isGloballyEnabled: boolean;
+  nameTranslations: PlatformBenefitLocalizedText;
+  descriptionTranslations: PlatformBenefitLocalizedText;
   lockVersion: number;
+};
+
+export type PlatformBenefitLocalizedText = {
+  zh: string;
+  "zh-Hant": string;
+  ja: string;
+  en: string;
+  ko: string;
 };
 
 export type UserExperienceEntry = {

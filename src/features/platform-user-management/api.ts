@@ -6,6 +6,7 @@ import {
   type Paginated,
   type PlatformBenefitAdministration,
   type PlatformBenefitCode,
+  type PlatformBenefitLocalizedText,
   type PlatformManagedUser,
   type PlatformManagedUserDetail,
   type PlatformMembershipTheme,
@@ -283,10 +284,22 @@ const decodeTier = (value: unknown): PlatformTierAdministration => {
 
 const decodeBenefit = (value: unknown): PlatformBenefitAdministration => {
   const raw = record(value);
+  const decodeLocalizedText = (input: unknown): PlatformBenefitLocalizedText => {
+    const localized = record(input);
+    return {
+      zh: string(localized.zh),
+      "zh-Hant": string(localized["zh-Hant"]),
+      ja: string(localized.ja),
+      en: string(localized.en),
+      ko: string(localized.ko)
+    };
+  };
   return {
     code: enumValue(raw.code, platformBenefitCodes),
     sortOrder: integer(raw.sortOrder),
     isGloballyEnabled: boolean(raw.isGloballyEnabled),
+    nameTranslations: decodeLocalizedText(raw.nameTranslations),
+    descriptionTranslations: decodeLocalizedText(raw.descriptionTranslations),
     lockVersion: integer(raw.lockVersion)
   };
 };
@@ -426,7 +439,13 @@ export const platformUserManagementApi = {
   async listBenefits() {
     return array(await httpClient.request<unknown>("/backoffice/membership-benefits")).map(decodeBenefit);
   },
-  async updateBenefit(benefitCode: PlatformBenefitCode, body: { isGloballyEnabled: boolean; expectedLockVersion: number }) {
+  async updateBenefit(benefitCode: PlatformBenefitCode, body: {
+    isGloballyEnabled: boolean;
+    sortOrder: number;
+    nameTranslations: PlatformBenefitLocalizedText;
+    descriptionTranslations: PlatformBenefitLocalizedText;
+    expectedLockVersion: number;
+  }) {
     return decodeBenefit(await httpClient.request<unknown>(`/backoffice/membership-benefits/${benefitCode}`, { method: "PATCH", body }));
   },
   changeMembership(userId: number, body: Record<string, unknown>) {
