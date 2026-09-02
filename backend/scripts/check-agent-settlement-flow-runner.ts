@@ -33,6 +33,7 @@ const BASELINE_TABLES = [
   "booking_orders",
   "order_checkouts",
   "order_financials",
+  "ndp_exchange_rate_rules",
   "saas_invoices",
   "saas_invoice_lines",
   "saas_payments",
@@ -222,7 +223,7 @@ async function createFinancialEvidence(
   });
 }
 
-type AllocationEvidenceRow = {
+export type AllocationEvidenceRow = {
   shopId: number;
   amountJpy: bigint;
   calculationSnapshotJson: Prisma.JsonValue;
@@ -233,34 +234,13 @@ const snapshotRecord = (value: Prisma.JsonValue): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
-async function assertPublishedAllocation(
-  transaction: Prisma.TransactionClient,
-  item: OperatingCostItemPayload,
+export function assertAllocationEvidence(
+  rows: AllocationEvidenceRow[],
   mode: OperatingCostAllocationMode,
-  expectedTotalJpy: number
-): Promise<void> {
-  assert.equal(item.status, "published");
-  assert.equal(item.allocationMode, mode);
-  assert(item.allocations.length > 0);
-  assert.equal(
-    item.allocations.reduce((sum, row) => sum + row.amountJpy, 0),
-    expectedTotalJpy
-  );
-  const storedItem = await transaction.operatingCostItem.findUniqueOrThrow({
-    where: { publicId: item.publicId },
-    select: {
-      allocations: {
-        where: { deletedAt: null },
-        orderBy: [{ shopId: "asc" }, { id: "asc" }],
-        select: {
-          shopId: true,
-          amountJpy: true,
-          calculationSnapshotJson: true
-        }
-      }
-    }
-  });
-  const rows = storedItem.allocations as AllocationEvidenceRow[];
+  expectedTotalJpy: number,
+  expectedDirectShopId?: number
+): void {
+  assert(rows.length > 0);
   assert.equal(rows.reduce((sum, row) => sum + row.amountJpy, 0n), BigInt(expectedTotalJpy));
   for (const row of rows) {
     const snapshot = snapshotRecord(row.calculationSnapshotJson);
@@ -298,6 +278,47 @@ async function assertPublishedAllocation(
     });
     assert.equal(remainder, 0);
   }
+  if (mode === "direct_shops") {
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].shopId, expectedDirectShopId);
+    assert.equal(rows[0].amountJpy, BigInt(expectedTotalJpy));
+  }
+}
+
+async function assertPublishedAllocation(
+  transaction: Prisma.TransactionClient,
+  item: OperatingCostItemPayload,
+  mode: OperatingCostAllocationMode,
+  expectedTotalJpy: number,
+  expectedDirectShopId?: number
+): Promise<void> {
+  assert.equal(item.status, "published");
+  assert.equal(item.allocationMode, mode);
+  assert(item.allocations.length > 0);
+  assert.equal(
+    item.allocations.reduce((sum, row) => sum + row.amountJpy, 0),
+    expectedTotalJpy
+  );
+  const storedItem = await transaction.operatingCostItem.findUniqueOrThrow({
+    where: { publicId: item.publicId },
+    select: {
+      allocations: {
+        where: { deletedAt: null },
+        orderBy: [{ shopId: "asc" }, { id: "asc" }],
+        select: {
+          shopId: true,
+          amountJpy: true,
+          calculationSnapshotJson: true
+        }
+      }
+    }
+  });
+  assertAllocationEvidence(
+    storedItem.allocations as AllocationEvidenceRow[],
+    mode,
+    expectedTotalJpy,
+    expectedDirectShopId
+  );
 }
 
 async function captureImmutableSettlementEvidence(
@@ -338,7 +359,6 @@ async function captureImmutableSettlementEvidence(
           paymentMethod: true,
           paymentDetailsJson: true,
           effectiveFrom: true,
-          effectiveTo: true,
           publishedAt: true,
           publishedById: true
         }
@@ -525,7 +545,8 @@ export async function runFormalAgentSettlementFlow(
       transaction,
       published,
       definition.mode,
-      definition.amountJpy
+      definition.amountJpy,
+      definition.mode === "direct_shops" ? shop.id : undefined
     );
     publishedCosts.push(published);
   }
@@ -595,6 +616,11 @@ export async function runFormalAgentSettlementFlow(
     },
     context
   );
+  const closedInitialRule = await transaction.agentCommissionRuleVersion.findUniqueOrThrow({
+    where: { id: beforeConfigurationChanges.ruleVersionId },
+    select: { effectiveTo: true }
+  });
+  assert.equal(closedInitialRule.effectiveTo?.toISOString(), laterEffectiveFrom.toISOString());
   const laterCost = await costService.createCost(
     actor,
     {

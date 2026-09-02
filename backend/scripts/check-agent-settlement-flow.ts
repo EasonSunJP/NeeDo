@@ -95,17 +95,32 @@ export function assertSettlementSnapshotUnchanged(
   assertPersistedSettlementEvidenceUnchanged(before, after);
 }
 
+type FormalEnvironmentResult = { values: Record<string, string> };
+
+export async function loadValidatedSettlementCheckModules<TPrismaModule, TFlowModule>(
+  runtimeEnvironment: NodeJS.ProcessEnv,
+  dependencies: {
+    validateEnvironment: (environment: NodeJS.ProcessEnv) => FormalEnvironmentResult;
+    loadPrismaModule: () => Promise<TPrismaModule>;
+    loadFlowModule: () => Promise<TFlowModule>;
+  }
+): Promise<[TPrismaModule, TFlowModule]> {
+  const formalEnvironment = dependencies.validateEnvironment(runtimeEnvironment);
+  for (const [name, value] of Object.entries(formalEnvironment.values)) {
+    runtimeEnvironment[name] = value;
+  }
+  return Promise.all([dependencies.loadPrismaModule(), dependencies.loadFlowModule()]);
+}
+
 export async function runAgentSettlementCheck(): Promise<void> {
   const { loadAndValidateFormalEnvironment, runRollbackOnlyTransaction } = await import(
     "./check-order-fulfillment-checkout-flow"
   );
-  const formalEnvironment = loadAndValidateFormalEnvironment(process.env);
-  for (const [name, value] of Object.entries(formalEnvironment.values)) process.env[name] = value;
-
-  const [{ prisma }, flow] = await Promise.all([
-    import("../src/prisma/client"),
-    import("./check-agent-settlement-flow-runner")
-  ]);
+  const [{ prisma }, flow] = await loadValidatedSettlementCheckModules(process.env, {
+    validateEnvironment: loadAndValidateFormalEnvironment,
+    loadPrismaModule: () => import("../src/prisma/client"),
+    loadFlowModule: () => import("./check-agent-settlement-flow-runner")
+  });
   try {
     await runRollbackOnlyTransaction(
       prisma,

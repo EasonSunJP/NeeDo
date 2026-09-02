@@ -3,12 +3,16 @@ import { resolve } from "node:path";
 import {
   assertPersistedSettlementEvidenceUnchanged,
   assertSettlementSnapshotUnchanged,
-  expectedSettlementEvidence
+  expectedSettlementEvidence,
+  loadValidatedSettlementCheckModules
 } from "../scripts/check-agent-settlement-flow";
+import {
+  assertAllocationEvidence,
+  type AllocationEvidenceRow
+} from "../scripts/check-agent-settlement-flow-runner";
 
 const backendRoot = resolve(__dirname, "..");
 const scriptPath = resolve(backendRoot, "scripts/check-agent-settlement-flow.ts");
-const runnerPath = resolve(backendRoot, "scripts/check-agent-settlement-flow-runner.ts");
 
 describe("rollback-only agent settlement flow checker", () => {
   it("is wired as the explicit package command", () => {
@@ -22,48 +26,86 @@ describe("rollback-only agent settlement flow checker", () => {
     );
   });
 
-  it("validates the formal environment before loading Prisma or the flow runner", () => {
-    const source = readFileSync(scriptPath, "utf8");
+  it("validates the formal environment before loading Prisma or the flow runner", async () => {
+    const calls: string[] = [];
+    const runtimeEnvironment: NodeJS.ProcessEnv = {};
+    const modules = await loadValidatedSettlementCheckModules(runtimeEnvironment, {
+      validateEnvironment: () => {
+        calls.push("validate");
+        return { values: { DATABASE_URL: "mysql://validated" } };
+      },
+      loadPrismaModule: async () => {
+        calls.push(`prisma:${runtimeEnvironment.DATABASE_URL}`);
+        return { module: "prisma" };
+      },
+      loadFlowModule: async () => {
+        calls.push(`flow:${runtimeEnvironment.DATABASE_URL}`);
+        return { module: "flow" };
+      }
+    });
 
-    expect(source).toContain("loadAndValidateFormalEnvironment(process.env)");
-    expect(source).toContain('import("../src/prisma/client")');
-    expect(source).toContain('import("./check-agent-settlement-flow-runner")');
-    expect(source).not.toMatch(/^import .*from "\.\.\/src\//m);
-    expect(source.indexOf("loadAndValidateFormalEnvironment(process.env)")).toBeLessThan(
-      source.indexOf('import("../src/prisma/client")')
-    );
+    expect(calls).toEqual(["validate", "prisma:mysql://validated", "flow:mysql://validated"]);
+    expect(modules).toEqual([{ module: "prisma" }, { module: "flow" }]);
+
+    const blockedLoaders = jest.fn();
+    await expect(
+      loadValidatedSettlementCheckModules({}, {
+        validateEnvironment: () => {
+          throw new Error("formal environment rejected");
+        },
+        loadPrismaModule: blockedLoaders,
+        loadFlowModule: blockedLoaders
+      })
+    ).rejects.toThrow("formal environment rejected");
+    expect(blockedLoaders).not.toHaveBeenCalled();
   });
 
-  it("covers nonzero financial evidence and all published allocation modes", () => {
-    expect(existsSync(runnerPath)).toBe(true);
-    const source = readFileSync(runnerPath, "utf8");
+  it("checks equal, proportional, and direct allocation evidence structurally", () => {
+    const row = (
+      shopId: number,
+      amountJpy: number,
+      allocationMode: string,
+      extra: Record<string, unknown> = {}
+    ): AllocationEvidenceRow => ({
+      shopId,
+      amountJpy: BigInt(amountJpy),
+      calculationSnapshotJson: {
+        allocationMode,
+        costAmountJpy:
+          allocationMode === "equal_active_shops"
+            ? 1_001
+            : allocationMode === "platform_income_proportional"
+              ? 1_103
+              : 907,
+        allocatedAmountJpy: amountJpy,
+        remainderPolicy: "shop_numeric_id_ascending",
+        ...extra
+      }
+    });
 
-    for (const term of [
-      "orderPlatformFeesJpy",
-      "saasFeesJpy",
-      "userRebatesJpy",
-      "refundsAndReversalsJpy",
-      "channelFeesJpy",
-      "consumptionTaxJpy",
-      "allocatedOperatingCostsJpy",
+    assertAllocationEvidence(
+      [row(10, 501, "equal_active_shops"), row(20, 500, "equal_active_shops")],
       "equal_active_shops",
+      1_001
+    );
+    assertAllocationEvidence(
+      [
+        row(10, 883, "platform_income_proportional", {
+          settledPlatformIncomeJpy: 12_000,
+          totalBasisJpy: 15_000
+        }),
+        row(20, 220, "platform_income_proportional", {
+          settledPlatformIncomeJpy: 3_000,
+          totalBasisJpy: 15_000
+        })
+      ],
       "platform_income_proportional",
-      "direct_shops",
-      "createFinancialEvidence",
-      "saasPayment.create",
-      "publishCost",
-      "confirmSettlement",
-      "markPaid",
-      "captureImmutableSettlementEvidence",
-      "calculationSnapshotJson",
-      "ruleVersionId"
-    ]) {
-      expect(source).toContain(term);
-    }
-    expect(source.match(/costService\.publishCost\(/g)).toHaveLength(1);
-    expect(source).toContain("for (const definition of costDefinitions)");
-    expect(source).toContain("orderPlatformFeesJpy: 12_000");
-    expect(source).toContain("saasFeesJpy: 3_000");
+      1_103
+    );
+    assertAllocationEvidence([row(10, 907, "direct_shops")], "direct_shops", 907, 10);
+    expect(() =>
+      assertAllocationEvidence([row(20, 907, "direct_shops")], "direct_shops", 907, 10)
+    ).toThrow();
   });
 
   it("pins the confirmed accounting snapshot even after configuration changes", () => {
@@ -121,6 +163,12 @@ describe("rollback-only agent settlement flow checker", () => {
       assertPersistedSettlementEvidenceUnchanged(before, {
         ...before,
         lines: [{ ...before.lines[0], amountJpy: 1_101 }]
+      })
+    ).toThrow("Confirmed agent settlement snapshot changed");
+    expect(() =>
+      assertPersistedSettlementEvidenceUnchanged(before, {
+        ...before,
+        ruleVersion: { ...before.ruleVersion, paymentMethod: "MANUAL" }
       })
     ).toThrow("Confirmed agent settlement snapshot changed");
   });
