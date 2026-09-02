@@ -58,3 +58,33 @@ None for Task 1.
 ## Commit SHA
 
 `d0fcf034` — `feat(exchange): add matched booking schema`
+
+## Reviewer-fix evidence
+
+Review correctly identified that the new required Participant snapshot fields would
+otherwise make the existing selective-matching completion transaction fail after Prisma
+client generation. Commit `4276a1e2` extends the locked-claim selection data with the
+formal Service or TechnicianService name/duration and writes both fields through the
+atomic Participant `createMany` payload. It does not add any booking conversion or
+projection behavior.
+
+RED command:
+
+```bash
+cd backend && npm test -- --runInBand tests/exchange-matching.repository.test.ts
+```
+
+RED result: the new regression failed because `lockActiveClaims` returned no
+`serviceNameSnapshot` or `serviceDurationSnapshot`.
+
+GREEN commands:
+
+```bash
+cd backend && npm run prisma:generate
+cd backend && npm test -- --runInBand tests/exchange-matching.repository.test.ts tests/exchange-booking-conversion-schema.test.ts tests/exchange-matching-schema.test.ts
+cd backend && npm run build
+```
+
+GREEN result: Prisma client generation succeeded; all three focused suites passed (10
+tests total); and `tsc -p tsconfig.build.json` succeeded. `git diff --check` remained
+clean.
