@@ -102,6 +102,14 @@ const technicianDetail: CoreTechnicianDetail = {
   updatedAt: "2026-09-01T00:00:00.000Z"
 };
 
+const harukaDetail: CoreTechnicianDetail = {
+  ...technicianDetail,
+  id: 16,
+  publicId: "s0000000016",
+  displayName: "Haruka",
+  bio: "专业芳香护理。"
+};
+
 const makeSlot = (id: number, startsAt: string, technicianProfileId = 17, technicianName = "Misaki"): BookingScheduleSlot => ({
   id,
   serviceId: 31,
@@ -315,5 +323,73 @@ describe("formal checkout technician-card round trip", () => {
     })));
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="测试返回上一条历史"]')!);
     await waitFor(() => expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/origin"));
+  });
+
+  it("loads the selected Haruka slot technician card instead of the service-default Misaki card", async () => {
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail").mockImplementation(async (id) => (
+      id === 16 ? harukaDetail : technicianDetail
+    ));
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: slots,
+      total: slots.length,
+      page: 1,
+      page_size: 100
+    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({
+      ...createdOrder,
+      scheduleSlotId: 102,
+      technicianProfileId: 16,
+      technicianName: "Haruka",
+      startsAt: slots[1]!.startsAt,
+      endsAt: slots[1]!.endsAt
+    });
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter
+            initialEntries={["/origin", "/checkout/31?date=2026-09-03&time=08%3A00&mode=store"]}
+            initialIndex={1}
+          >
+            <LocationProbe />
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+              <Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" />
+              <Route element={<LocationProbe />} path="/orders/:orderId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("08:00"));
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!);
+    const harukaSlot = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+      .filter((option) => option.textContent?.trim() === "11:30")[0]!;
+    await click(harukaSlot);
+
+    await waitFor(() => {
+      expect(getTechnicianDetail).toHaveBeenCalledWith(16);
+      expect(container.textContent).toContain("Haruka");
+      expect(container.querySelector('a[href="/profiles/technician/16?view=card"]')).not.toBeNull();
+      expect(container.querySelector('a[href="/profiles/technician/17?view=card"]')).toBeNull();
+    });
+
+    await click(container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/16?view=card"]')!);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/profiles/technician/16?view=card");
+      expect(document.body.textContent).toContain("Haruka");
+    });
+    await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回结算页"]')!);
+    await waitFor(() => expect(container.textContent).toContain("Haruka"));
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    await click(confirm);
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      serviceId: 31,
+      scheduleSlotId: 102
+    })));
   });
 });

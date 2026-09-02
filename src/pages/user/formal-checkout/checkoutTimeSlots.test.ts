@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookingScheduleSlot } from "../../../features/booking/api";
 import {
   getTokyoDayWindow,
@@ -34,6 +34,15 @@ const slots = [
   slot(5, "2026-09-04T01:00:00.000Z", "blocked") // JST 09/04 10:00
 ];
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-02T22:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("checkout time slots", () => {
   it("builds the exact Tokyo calendar-day window", () => {
     expect(getTokyoDayWindow("2026-09-03")).toEqual({
@@ -59,6 +68,12 @@ describe("checkout time slots", () => {
     expect(isCheckoutSlotBookable(slots[4]!)).toBe(false);
     expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", "10:00")).toBe(1);
     expect(resolveInitialCheckoutSlotId(slots, "2026-09-04", "08:00")).toBe(4);
+  });
+
+  it("treats an otherwise available slot at or before now as unbookable", () => {
+    expect(isCheckoutSlotBookable(slot(6, "2026-09-02T21:59:59.999Z", "available"))).toBe(false);
+    expect(isCheckoutSlotBookable(slot(7, "2026-09-02T22:00:00.000Z", "available"))).toBe(false);
+    expect(isCheckoutSlotBookable(slot(8, "2026-09-02T22:00:00.001Z", "available"))).toBe(true);
   });
 
   it("returns null for a selected day with no bookable rows even when a later day is bookable", () => {

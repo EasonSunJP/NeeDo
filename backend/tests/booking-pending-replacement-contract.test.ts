@@ -26,6 +26,12 @@ describe("Booking single pending replacement transaction contract", () => {
     );
   });
 
+  it("keeps a fresh server-time guard on the final atomic slot-capacity mutation", () => {
+    expect(repositorySource).toMatch(
+      /const slotUpdate[\s\S]*?where:\s*\{[\s\S]*?startsAt:\s*\{\s*gt:\s*new Date\(\)\s*\}/
+    );
+  });
+
   it("keeps black members on the multiple-pending path", () => {
     expect(repositorySource).toContain("isBlackMember");
     expect(repositorySource).toMatch(/!isBlackMember\s*\?/);

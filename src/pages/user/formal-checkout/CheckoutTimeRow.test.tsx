@@ -27,6 +27,7 @@ const slot = (id: number, startsAt: string, status: BookingScheduleSlot["status"
 });
 
 const slots = [
+  slot(0, "2026-09-02T21:00:00.000Z", "available"),
   slot(1, "2026-09-02T23:00:00.000Z", "available"),
   slot(2, "2026-09-03T01:00:00.000Z", "booked", 1),
   slot(4, "2026-09-03T02:00:00.000Z", "blocked"),
@@ -37,6 +38,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-02T22:00:00.000Z"));
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -45,6 +48,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.useRealTimers();
 });
 
 async function click(element: Element) {
@@ -76,14 +80,15 @@ describe("CheckoutTimeRow", () => {
     const listbox = container.querySelector('[role="listbox"]')!;
     const options = Array.from(listbox.querySelectorAll<HTMLButtonElement>('[role="option"]'));
     expect(listbox.getAttribute("aria-label")).toBe("2026-09-03 可预约时间");
-    expect(options.map((option) => option.textContent?.trim())).toEqual(["08:00", "10:00", "11:00"]);
-    expect(options[0]?.disabled).toBe(false);
-    expect(options[1]?.disabled).toBe(true);
+    expect(options.map((option) => option.textContent?.trim())).toEqual(["06:00", "08:00", "10:00", "11:00"]);
+    expect(options[0]?.disabled).toBe(true);
+    expect(options[1]?.disabled).toBe(false);
     expect(options[2]?.disabled).toBe(true);
+    expect(options[3]?.disabled).toBe(true);
 
-    await click(options[1]!);
-    expect(onSelect).not.toHaveBeenCalled();
     await click(options[0]!);
+    expect(onSelect).not.toHaveBeenCalled();
+    await click(options[1]!);
     expect(onSelect).toHaveBeenCalledWith(1);
     expect(container.querySelector('[role="listbox"]')).toBeNull();
   });

@@ -1197,6 +1197,7 @@ export class BookingRepository implements BookingRepositoryPort {
                   ? { technicianServiceId: input.technicianServiceId }
                   : {}),
                 deletedAt: null,
+                startsAt: { gt: new Date() },
                 status: { in: ["AVAILABLE", "BOOKED"] },
                 ...(input.serviceId
                   ? {
@@ -1295,6 +1296,7 @@ export class BookingRepository implements BookingRepositoryPort {
                   ? { technicianServiceId: input.technicianServiceId }
                   : {}),
                 deletedAt: null,
+                startsAt: { gt: new Date() },
                 status: "AVAILABLE",
                 ...(input.serviceId ? { service: { deletedAt: null, status: "published" } } : {}),
                 ...(input.technicianServiceId
@@ -1416,6 +1418,7 @@ export class BookingRepository implements BookingRepositoryPort {
               where: {
                 id: slot.id,
                 deletedAt: null,
+                startsAt: { gt: new Date() },
                 status: "AVAILABLE",
                 bookedCount: { lt: slot.capacity }
               },

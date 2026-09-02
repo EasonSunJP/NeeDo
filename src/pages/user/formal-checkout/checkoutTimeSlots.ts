@@ -43,8 +43,14 @@ export function remainingCheckoutCapacity(slot: BookingScheduleSlot) {
   return Math.max(0, slot.capacity - slot.bookedCount);
 }
 
-export function isCheckoutSlotBookable(slot: BookingScheduleSlot) {
-  return slot.status === "available" && remainingCheckoutCapacity(slot) > 0;
+export function isCheckoutSlotBookable(slot: BookingScheduleSlot, nowMs: number = Date.now()) {
+  const startsAtMs = new Date(slot.startsAt).getTime();
+  return (
+    slot.status === "available"
+    && remainingCheckoutCapacity(slot) > 0
+    && Number.isFinite(startsAtMs)
+    && startsAtMs > nowMs
+  );
 }
 
 export function slotsForCheckoutDate(slots: BookingScheduleSlot[], date: string) {
@@ -57,14 +63,15 @@ export function resolveInitialCheckoutSlotId(
   slots: BookingScheduleSlot[],
   date: string,
   requestedTime: string | null,
-  persistedSlotId: number | null = null
+  persistedSlotId: number | null = null,
+  nowMs: number = Date.now()
 ) {
   const sameDay = slotsForCheckoutDate(slots, date);
   const persisted = Number.isInteger(persistedSlotId)
-    ? sameDay.find((slot) => slot.id === persistedSlotId && isCheckoutSlotBookable(slot))
+    ? sameDay.find((slot) => slot.id === persistedSlotId && isCheckoutSlotBookable(slot, nowMs))
     : null;
   const requested = requestedTime
-    ? sameDay.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === requestedTime && isCheckoutSlotBookable(slot))
+    ? sameDay.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === requestedTime && isCheckoutSlotBookable(slot, nowMs))
     : null;
-  return persisted?.id ?? requested?.id ?? sameDay.find(isCheckoutSlotBookable)?.id ?? null;
+  return persisted?.id ?? requested?.id ?? sameDay.find((slot) => isCheckoutSlotBookable(slot, nowMs))?.id ?? null;
 }

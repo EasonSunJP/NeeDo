@@ -13,7 +13,8 @@ import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "
 import {
   coreReadApi,
   mapCoreServiceToServiceItem,
-  type CoreServiceDetail
+  type CoreServiceDetail,
+  type CoreTechnicianCard
 } from "../../features/core-read/api";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
@@ -33,6 +34,7 @@ import {
 } from "./formal-checkout/checkoutTimeSlots";
 
 type LoadStatus = "loading" | "success" | "error";
+type TechnicianLoadStatus = "idle" | "loading" | "error";
 
 const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
 const checkoutScheduleSlotStateKey = "checkoutScheduleSlotId";
@@ -103,6 +105,8 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CoreServiceDetail | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
+  const [technicianLoadStatus, setTechnicianLoadStatus] = useState<TechnicianLoadStatus>("idle");
   const [selectedDate] = useState(() => {
     const requestedDate = searchParams.get("date");
     if (requestedDate && getTokyoDayWindow(requestedDate)) return requestedDate;
@@ -193,6 +197,38 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     () => slots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot)) ?? null,
     [selectedSlotId, slots]
   );
+  const selectedTechnicianProfileId = selectedSlot?.technicianProfileId ?? null;
+
+  useEffect(() => {
+    if (!selectedTechnicianProfileId || service?.technician?.id === selectedTechnicianProfileId) {
+      setSelectedTechnicianDetail(null);
+      setTechnicianLoadStatus("idle");
+      return undefined;
+    }
+
+    let active = true;
+    setSelectedTechnicianDetail(null);
+    setTechnicianLoadStatus("loading");
+    coreReadApi.getTechnicianDetail(selectedTechnicianProfileId)
+      .then((technician) => {
+        if (!active) return;
+        if (technician.id !== selectedTechnicianProfileId) {
+          setTechnicianLoadStatus("error");
+          return;
+        }
+        setSelectedTechnicianDetail(technician);
+        setTechnicianLoadStatus("idle");
+      })
+      .catch(() => {
+        if (!active) return;
+        setTechnicianLoadStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedTechnicianProfileId, service?.technician?.id]);
+
   const displayService = useMemo(
     () => (service ? mapCoreServiceToServiceItem(service) : null),
     [service]
@@ -203,8 +239,15 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
   const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
   const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
+  const selectedTechnician = useMemo(() => {
+    if (!selectedTechnicianProfileId) return null;
+    if (service?.technician?.id === selectedTechnicianProfileId) return service.technician;
+    return selectedTechnicianDetail?.id === selectedTechnicianProfileId
+      ? selectedTechnicianDetail
+      : null;
+  }, [selectedTechnicianDetail, selectedTechnicianProfileId, service?.technician]);
   const checkoutTechnicianCardData = useMemo(() => {
-    const technician = service?.technician;
+    const technician = selectedTechnician;
     if (!technician) return null;
 
     return {
@@ -223,7 +266,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       followerCount: 0,
       followingCount: 0
     };
-  }, [service?.technician]);
+  }, [selectedTechnician]);
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
@@ -545,6 +588,16 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 showLevel={false}
                 showSocialStats={false}
               />
+            ) : selectedTechnicianProfileId ? (
+              <div
+                aria-busy={technicianLoadStatus === "loading"}
+                className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]"
+                role={technicianLoadStatus === "error" ? "alert" : undefined}
+              >
+                <p className="text-sm font-black text-[color:var(--client-text)]">
+                  {technicianLoadStatus === "error" ? "当前技师资料不可用" : "正在读取技师详细信息"}
+                </p>
+              </div>
             ) : (
               <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
                 <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
