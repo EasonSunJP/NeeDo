@@ -421,7 +421,7 @@ Run: `cd backend && npm test -- agent-operating-cost-openapi.test.ts openapi.tes
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit API documentation**
+- [x] **Step 5: Commit API documentation**
 
 ```bash
 git add backend/src/api/openapi.ts backend/tests/agent-operating-cost-openapi.test.ts
@@ -438,20 +438,20 @@ git commit -m "docs: publish agent settlement API contract"
 **Interfaces:**
 - Produces command `npm run check:agent-settlement`
 
-- [ ] **Step 1: Write flow safety/coverage tests**
+- [x] **Step 1: Write flow safety/coverage tests**
 
 ```ts
 expect(script).toContain("ROLLBACK");
 for (const term of ["orderPlatformFeesJpy", "saasFeesJpy", "userRebatesJpy", "allocatedOperatingCostsJpy"]) expect(script).toContain(term);
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- agent-settlement-flow-script.test.ts`
 
 Expected: FAIL because the flow script is absent.
 
-- [ ] **Step 3: Implement rollback-only end-to-end verification**
+- [x] **Step 3: Implement rollback-only end-to-end verification**
 
 Create a user-backed agent, referral, rule and each cost-allocation mode; preview/confirm/pay a settlement, then prove later rule/cost edits do not change the confirmed snapshot.
 
@@ -463,7 +463,7 @@ Run: `npm test -- src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingC
 
 Verify user selection, shop linking, rule history, cost preview, settlement confirmation, permission denial, console and overflow.
 
-- [ ] **Step 5: Commit verification**
+- [x] **Step 5: Commit verification**
 
 ```bash
 git add backend/scripts/check-agent-settlement-flow.ts backend/tests/agent-settlement-flow-script.test.ts backend/package.json
