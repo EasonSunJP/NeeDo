@@ -14,7 +14,7 @@ export interface CommissionFacts {
   dedicatedTechnicianCommission: DashboardReadyFact;
   partTimeTechnicianCommission: DashboardReadyFact;
   marketingCommission: DashboardReadyFact;
-  agentCommission: { current: null; previous: null; dataStatus: "not_available" };
+  agentCommission: DashboardReadyFact;
   ndpIncome: DashboardReadyFact;
   affiliatePlatformIncome: DashboardReadyFact;
   consumablesProfit: { current: null; previous: null; dataStatus: "not_connected" };
@@ -71,6 +71,8 @@ interface CommissionRow {
   part_time_jpy?: NumericValue;
   marketingNdp?: NumericValue;
   marketing_ndp?: NumericValue;
+  agentJpy?: NumericValue;
+  agent_jpy?: NumericValue;
   ndpIncomeNdp?: NumericValue;
   ndp_income_ndp?: NumericValue;
   affiliatePlatformNdp?: NumericValue;
@@ -325,6 +327,7 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
       dedicated: number;
       partTime: number;
       marketing: number;
+      agent: number;
       ndpIncome: number;
       affiliatePlatform: number;
     }>();
@@ -341,20 +344,21 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         dedicated: this.toSafeAggregate(row.dedicatedJpy ?? row.dedicated_jpy),
         partTime: this.toSafeAggregate(row.partTimeJpy ?? row.part_time_jpy),
         marketing: this.toSafeAggregate(row.marketingNdp ?? row.marketing_ndp),
+        agent: this.toSafeAggregate(row.agentJpy ?? row.agent_jpy),
         ndpIncome: this.toSafeAggregate(row.ndpIncomeNdp ?? row.ndp_income_ndp),
         affiliatePlatform: this.toSafeAggregate(
           row.affiliatePlatformNdp ?? row.affiliate_platform_ndp
         )
       });
     }
-    const zero = { dedicated: 0, partTime: 0, marketing: 0, ndpIncome: 0, affiliatePlatform: 0 };
+    const zero = { dedicated: 0, partTime: 0, marketing: 0, agent: 0, ndpIncome: 0, affiliatePlatform: 0 };
     const current = periods.get("current") ?? zero;
     const previous = periods.get("previous") ?? zero;
     return {
       dedicatedTechnicianCommission: { current: current.dedicated, previous: previous.dedicated, dataStatus: "ready" },
       partTimeTechnicianCommission: { current: current.partTime, previous: previous.partTime, dataStatus: "ready" },
       marketingCommission: { current: current.marketing, previous: previous.marketing, dataStatus: "ready" },
-      agentCommission: { current: null, previous: null, dataStatus: "not_available" },
+      agentCommission: { current: current.agent, previous: previous.agent, dataStatus: "ready" },
       ndpIncome: { current: current.ndpIncome, previous: previous.ndpIncome, dataStatus: "ready" },
       affiliatePlatformIncome: { current: current.affiliatePlatform, previous: previous.affiliatePlatform, dataStatus: "ready" },
       consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" }
@@ -378,10 +382,21 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
     return Prisma.sql`TRUE`;
   }
 
+  private agentSettlementScope(input: DashboardAggregateInput): Prisma.Sql {
+    if (input.scope.kind === "shop") {
+      return Prisma.sql`agent_line.shop_id = ${input.scope.shopId}`;
+    }
+    if (input.city) {
+      return Prisma.sql`TRIM(agent_shop.city) = ${input.city}`;
+    }
+    return Prisma.sql`TRUE`;
+  }
+
   private queryCommissionFacts(input: DashboardAggregateInput): Promise<CommissionRow[]> {
     const periods = this.periodTable(input);
     const bookingScope = this.shopScope(input, "booking");
     const attributionScope = this.shopScope(input, "attribution");
+    const agentSettlementScope = this.agentSettlementScope(input);
     return this.client.$queryRaw<CommissionRow[]>(Prisma.sql`
       /* dashboard_commission_facts */
       WITH periods AS (${periods}),
@@ -727,6 +742,25 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         GROUP BY period.period_key, reward.id, reward.reward_ndp, reward.platform_fee_ndp
         HAVING COUNT(reward_transaction.id) = 1
       ),
+      confirmed_agent_commission AS (
+        SELECT period.period_key,
+          SUM(CAST(agent_line.amount_jpy AS DECIMAL(65, 0))) AS amount_jpy
+        FROM periods AS period
+        INNER JOIN agent_settlements AS settlement
+          ON settlement.confirmed_at >= period.from_inclusive
+          AND settlement.confirmed_at < period.to_exclusive
+          AND settlement.status IN (${"confirmed"}, ${"paid"})
+          AND settlement.currency = ${"JPY"}
+          AND settlement.deleted_at IS NULL
+        INNER JOIN agent_settlement_lines AS agent_line
+          ON agent_line.settlement_id = settlement.id
+          AND agent_line.amount_jpy >= 0
+          AND agent_line.deleted_at IS NULL
+        INNER JOIN shops AS agent_shop
+          ON agent_line.shop_id = agent_shop.id AND agent_shop.deleted_at IS NULL
+        WHERE ${agentSettlementScope}
+        GROUP BY period.period_key
+      ),
       settled_platform_income AS (
         SELECT eligible.period_key,
           SUM(CAST(financial.b_platform_fee_actual_ndp + financial.c_request_fee_actual_ndp
@@ -802,12 +836,14 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         COALESCE(MAX(technician.dedicated_jpy), 0) AS dedicatedJpy,
         COALESCE(MAX(technician.part_time_jpy), 0) AS partTimeJpy,
         COALESCE(SUM(CAST(affiliate.reward_ndp AS DECIMAL(65, 0))), 0) AS marketingNdp,
+        COALESCE(MAX(agent.amount_jpy), 0) AS agentJpy,
         COALESCE(MAX(ndp.amount_ndp), 0) AS ndpIncomeNdp,
         COALESCE(SUM(CAST(affiliate.platform_fee_ndp AS DECIMAL(65, 0))), 0) AS affiliatePlatformNdp
       FROM periods AS period
       LEFT JOIN technician_commission AS technician ON technician.period_key = period.period_key
       LEFT JOIN salary_anomalies AS anomaly ON anomaly.period_key = period.period_key
       LEFT JOIN settled_affiliate AS affiliate ON affiliate.period_key = period.period_key
+      LEFT JOIN confirmed_agent_commission AS agent ON agent.period_key = period.period_key
       LEFT JOIN settled_ndp_income AS ndp ON ndp.period_key = period.period_key
       GROUP BY period.period_key
     `);

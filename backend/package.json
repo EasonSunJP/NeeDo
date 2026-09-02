@@ -40,6 +40,7 @@
     "check:booking-expiry-rollback": "tsx scripts/check-booking-expiry-rollback.ts",
     "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:order-fulfillment-checkout": "tsx scripts/check-order-fulfillment-checkout-flow.ts",
+    "check:agent-settlement": "tsx scripts/check-agent-settlement-flow.ts",
     "check:dashboard-overview": "tsx scripts/check-dashboard-overview-flow.ts",
     "check:membership-ranking": "tsx scripts/check-membership-ranking-flow.ts",
     "check:message-reaction-slots": "ENV_FILE=.env.dev tsx scripts/check-message-reaction-slots.ts",

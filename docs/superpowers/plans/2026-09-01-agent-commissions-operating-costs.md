@@ -240,12 +240,13 @@ git commit -m "feat: allocate versioned operating costs"
 - Modify: `backend/src/app.ts`
 - Create: `backend/tests/agent-settlement.service.test.ts`
 - Create: `backend/tests/agent-settlement-api.test.ts`
+- Create: `backend/tests/agent-settlement.repository.test.ts`
 
 **Interfaces:**
 - Produces: `previewSettlement(agentPublicId: string, period: SettlementPeriod)` and `confirmSettlement(agentPublicId: string, period: SettlementPeriod, idempotencyKey: string)`
 - Produces: `/api/v1/backoffice/agents/:agentPublicId/settlements`
 
-- [ ] **Step 1: Write failing pure-profit tests**
+- [x] **Step 1: Write failing pure-profit tests**
 
 ```ts
 expect(calculatePureProfit({
@@ -260,23 +261,23 @@ expect(calculatePureProfit({
 expect(calculateAgentCommission(50000, 1500, 80000)).toBe(62000);
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- agent-settlement.service.test.ts`
 
 Expected: FAIL because settlement service is absent.
 
-- [ ] **Step 3: Implement preview, immutable confirmation and payment state**
+- [x] **Step 3: Implement preview, immutable confirmation and payment state**
 
 Success reward applies once per referral when its formal success condition first becomes true. Confirmed settlement saves every input component, rule version, cost allocations and result as JSON plus normalized lines. Payment confirmation records method, reference, actor and time; it never rewrites calculation lines.
 
-- [ ] **Step 4: Run service/API/idempotency tests**
+- [x] **Step 4: Run service/API/idempotency tests**
 
 Run: `cd backend && npm test -- agent-settlement.service.test.ts agent-settlement-api.test.ts`
 
 Expected: PASS including negative-profit floor rules, repeated confirmation and rule changes after confirmation.
 
-- [ ] **Step 5: Commit settlements**
+- [x] **Step 5: Commit settlements**
 
 ```bash
 git add backend/src/repositories/agent-settlement.repository.ts backend/src/services/agent-settlement.service.ts backend/src/controllers/agent-settlement.controller.ts backend/src/validators/agent-settlement.validator.ts backend/src/routes/agent-settlement.routes.ts backend/src/app.ts backend/tests/agent-settlement.service.test.ts backend/tests/agent-settlement-api.test.ts
@@ -291,13 +292,15 @@ git commit -m "feat: calculate auditable agent settlements"
 - Modify: `backend/tests/dashboard-commission.repository.test.ts`
 - Modify: `backend/tests/dashboard-growth.repository.test.ts`
 - Modify: `backend/tests/dashboard-overview-service.test.ts`
+- Modify: `backend/tests/dashboard-metric-detail-api.test.ts`
+- Modify: `src/pages/admin/DashboardPage.test.ts`
 
 **Interfaces:**
 - Consumes: confirmed `AgentSettlement` rows from Task 5
 - Produces: dashboard metric `agent_commission` with `dataStatus: "ready"`
 - Produces: `agent_onboarding`, `franchisee_onboarding`, `supplier_onboarding` from partner activation events
 
-- [ ] **Step 1: Write the failing dashboard integration test**
+- [x] **Step 1: Write the failing dashboard integration test**
 
 ```ts
 expect(await reader.getAgentCommission(input)).toEqual({ current: 62000, previous: 40000, dataStatus: "ready" });
@@ -306,23 +309,23 @@ expect(await growthReader.getPartnerOnboarding(input)).toEqual({ agent: 2, franc
 
 Fixtures include a draft settlement, a confirmed settlement outside the window and a confirmed settlement for another city.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- dashboard-commission.repository.test.ts dashboard-growth.repository.test.ts dashboard-overview-service.test.ts`
 
 Expected: FAIL because the metric still returns `not_available`.
 
-- [ ] **Step 3: Aggregate only confirmed settlement lines**
+- [x] **Step 3: Aggregate only confirmed settlement lines**
 
 Read immutable confirmed agent-settlement totals by referred shop, settlement period and dashboard city/shop scope. Do not recalculate commission rules inside the dashboard reader. Count partner onboarding by the first `activatedAt` for each user/type and use distinct user IDs.
 
-- [ ] **Step 4: Run commission/dashboard tests**
+- [x] **Step 4: Run commission/dashboard tests**
 
 Run: `cd backend && npm test -- dashboard-commission.repository.test.ts dashboard-growth.repository.test.ts dashboard-overview-service.test.ts agent-settlement.service.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit dashboard integration**
+- [x] **Step 5: Commit dashboard integration**
 
 ```bash
 git add backend/src/repositories/dashboard-commission.repository.ts backend/src/repositories/dashboard-growth.repository.ts backend/tests/dashboard-commission.repository.test.ts backend/tests/dashboard-growth.repository.test.ts backend/tests/dashboard-overview-service.test.ts
@@ -350,7 +353,7 @@ git commit -m "feat: report confirmed agent commission"
 - Consumes: Tasks 2-5 endpoints
 - Produces routes `/admin/agents`, `/admin/agents/:agentPublicId`, `/admin/finance/operating-costs`
 
-- [ ] **Step 1: Write failing route/form tests**
+- [x] **Step 1: Write failing route/form tests**
 
 ```tsx
 expect(screen.getByLabelText("固定成功奖励（日元）")).toBeVisible();
@@ -362,23 +365,23 @@ expect(screen.getByRole("button", { name: "标记为供货商 TEST" })).toBeVisi
 expect(adminSource).toContain('{ label: "代理商管理", to: "/admin/agents"');
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `npm test -- src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingCostsPage.test.tsx src/components/admin/AdminLayout.test.ts`
 
 Expected: FAIL because formal pages/routes are absent.
 
-- [ ] **Step 3: Implement API-driven pages**
+- [x] **Step 3: Implement API-driven pages**
 
 Agent list links existing users, shows referred shops, active rule and settlement/payment status. User detail exposes the three formal partner markers; franchisee/supplier markers show TEST status but do not link to a detail page. Rule and cost forms require reason/effective date; previews show every pure-profit line before confirmation. Permission gates hide writes but retain read-only detail.
 
-- [ ] **Step 4: Run frontend tests, lint and build**
+- [x] **Step 4: Run frontend tests, lint and build**
 
 Run: `npm test -- src/api/platformPartners.test.ts src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingCostsPage.test.tsx src/pages/admin/UsersPage.test.tsx src/components/admin/AdminLayout.test.ts && npm run lint && npm run build`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit admin UI**
+- [x] **Step 5: Commit admin UI**
 
 ```bash
 git add src/api/platformPartners.ts src/api/platformPartners.test.ts src/pages/admin/AgentsPage.tsx src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingCostsPage.tsx src/pages/admin/OperatingCostsPage.test.tsx src/pages/admin/UsersPage.tsx src/pages/admin/UsersPage.test.tsx src/App.tsx src/App.test.tsx src/components/admin/AdminLayout.tsx src/components/admin/AdminLayout.test.ts src/i18n/translations.ts
@@ -394,7 +397,7 @@ git commit -m "feat: manage agents and operating costs"
 **Interfaces:**
 - Documents partner profiles, referrals, rule versions, costs, allocations, settlement preview/confirm and payment
 
-- [ ] **Step 1: Write the failing OpenAPI test**
+- [x] **Step 1: Write the failing OpenAPI test**
 
 ```ts
 expect(document.paths["/api/v1/backoffice/agents"]).toBeDefined();
@@ -402,23 +405,23 @@ expect(document.paths["/api/v1/backoffice/operating-costs"]).toBeDefined();
 expect(document.components.schemas.AgentSettlement).toBeDefined();
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- agent-operating-cost-openapi.test.ts`
 
 Expected: FAIL on missing paths/schema.
 
-- [ ] **Step 3: Add exact schemas, permissions and errors**
+- [x] **Step 3: Add exact schemas, permissions and errors**
 
 Document BPS/amount bounds, effective dates, allocation discriminators, reason/idempotency requirements, paginated lists and immutable settlement snapshots.
 
-- [ ] **Step 4: Run OpenAPI/API tests**
+- [x] **Step 4: Run OpenAPI/API tests**
 
 Run: `cd backend && npm test -- agent-operating-cost-openapi.test.ts openapi.test.ts platform-partner-api.test.ts agent-commission-rule-api.test.ts operating-cost-api.test.ts agent-settlement-api.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit API documentation**
+- [x] **Step 5: Commit API documentation**
 
 ```bash
 git add backend/src/api/openapi.ts backend/tests/agent-operating-cost-openapi.test.ts
@@ -435,20 +438,20 @@ git commit -m "docs: publish agent settlement API contract"
 **Interfaces:**
 - Produces command `npm run check:agent-settlement`
 
-- [ ] **Step 1: Write flow safety/coverage tests**
+- [x] **Step 1: Write flow safety/coverage tests**
 
 ```ts
 expect(script).toContain("ROLLBACK");
 for (const term of ["orderPlatformFeesJpy", "saasFeesJpy", "userRebatesJpy", "allocatedOperatingCostsJpy"]) expect(script).toContain(term);
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- agent-settlement-flow-script.test.ts`
 
 Expected: FAIL because the flow script is absent.
 
-- [ ] **Step 3: Implement rollback-only end-to-end verification**
+- [x] **Step 3: Implement rollback-only end-to-end verification**
 
 Create a user-backed agent, referral, rule and each cost-allocation mode; preview/confirm/pay a settlement, then prove later rule/cost edits do not change the confirmed snapshot.
 
@@ -460,7 +463,7 @@ Run: `npm test -- src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingC
 
 Verify user selection, shop linking, rule history, cost preview, settlement confirmation, permission denial, console and overflow.
 
-- [ ] **Step 5: Commit verification**
+- [x] **Step 5: Commit verification**
 
 ```bash
 git add backend/scripts/check-agent-settlement-flow.ts backend/tests/agent-settlement-flow-script.test.ts backend/package.json

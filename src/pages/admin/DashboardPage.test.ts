@@ -88,10 +88,11 @@ const overviewPayload = {
   ],
   commissionMetrics: [
     metric("ndp_income"),
-    { ...metric("agent_commission"), dataStatus: "not_available" }
+    metric("agent_commission")
   ],
   growthMetrics: [
     metric("new_users"),
+    metric("agent_onboarding"),
     metric("franchisee_onboarding", null),
     metric("supplier_onboarding", null)
   ]
@@ -145,8 +146,8 @@ describe("operations unified data dashboard", () => {
     expect(container.querySelector('[data-analytics-disabled-detail]')?.getAttribute("aria-label"))
       .toBe("TEST 功能暂未开放");
     expect([...container.querySelectorAll("button")].some((item) => item.textContent?.includes("TEST"))).toBe(false);
-    expect(container.querySelectorAll("[data-analytics-disabled-detail]")).toHaveLength(4);
-    expect(container.querySelectorAll("[data-analytics-detail-accessory]")).toHaveLength(7);
+    expect(container.querySelectorAll("[data-analytics-disabled-detail]")).toHaveLength(3);
+    expect(container.querySelectorAll("[data-analytics-detail-accessory]")).toHaveLength(8);
     expect(container.querySelector('button[aria-label="查看营业总额说明和计算公式"]')).toBeTruthy();
   });
 

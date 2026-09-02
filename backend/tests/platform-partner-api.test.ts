@@ -45,10 +45,31 @@ const referral: AgentShopReferralRecord = {
   }
 };
 
+const agentListProfile = {
+  ...profile,
+  administration: {
+    referralCount: 1,
+    referredShops: [
+      { publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }
+    ],
+    currentRule: null,
+    latestSettlement: null
+  }
+};
+
 const createRepository = (): jest.Mocked<PlatformPartnerRepositoryPort> =>
   ({
     markPartnerProfile: jest.fn(async () => ({ kind: "created", profile })),
-    listAgents: jest.fn(async () => ({ list: [profile], total: 1, page: 1, page_size: 20 })),
+    listAgents: jest.fn(async () => ({
+      list: [agentListProfile],
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
+    listAgentShopReferrals: jest.fn(async () => ({
+      kind: "found",
+      page: { list: [referral], total: 1, page: 1, page_size: 20 }
+    })),
     linkAgentShop: jest.fn(async () => ({ kind: "created", referral }))
   }) as unknown as jest.Mocked<PlatformPartnerRepositoryPort>;
 
@@ -245,5 +266,37 @@ describe("platform partner HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .send({ shopPublicId: "wrong", source: "", confirmedAt: "bad", reason: "" })
       .expect(400);
+  });
+
+  it("lists an agent's formally linked shops with read permission", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .get(
+        "/api/v1/backoffice/agents/11111111-1111-4111-8111-111111111111/shop-referrals?page=1&pageSize=20&status=active"
+      )
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          list: [
+            {
+              publicId: referral.publicId,
+              agentPublicId: profile.publicId,
+              status: "active",
+              shop: { publicId: "shop0000000019", name: "LifeDance 涩谷" }
+            }
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20
+        });
+      });
+    expect(fixture.repository.listAgentShopReferrals).toHaveBeenCalledWith({
+      agentPublicId: profile.publicId,
+      page: 1,
+      pageSize: 20,
+      status: "active"
+    });
   });
 });

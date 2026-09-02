@@ -2,6 +2,9 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
   AgentListInput,
+  AgentProfileListRecord,
+  AgentShopReferralListInput,
+  AgentShopReferralListRepositoryResult,
   AgentShopReferralRecord,
   LinkAgentShopRepositoryResult,
   MarkPartnerProfileRepositoryResult,
@@ -52,8 +55,82 @@ const referralSelect = {
   }
 } as const satisfies Prisma.AgentShopReferralSelect;
 
+const createAgentListSelect = (now: Date) =>
+  ({
+    ...profileSelect,
+    referrals: {
+      where: {
+        deletedAt: null,
+        status: { in: ["ACTIVE", "QUALIFIED"] },
+        shop: {
+          deletedAt: null,
+          publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+        }
+      },
+      orderBy: [{ confirmedAt: "desc" as const }, { id: "desc" as const }],
+      take: 3,
+      select: {
+        shop: {
+          select: {
+            name: true,
+            city: true,
+            publicIdentifier: { select: { publicId: true } }
+          }
+        }
+      }
+    },
+    commissionRules: {
+      where: {
+        deletedAt: null,
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }]
+      },
+      orderBy: [{ effectiveFrom: "desc" as const }, { version: "desc" as const }],
+      take: 1,
+      select: {
+        version: true,
+        fixedSuccessRewardJpy: true,
+        profitShareRateBps: true,
+        paymentMethod: true,
+        effectiveFrom: true,
+        effectiveTo: true
+      }
+    },
+    settlements: {
+      where: { deletedAt: null },
+      orderBy: [{ confirmedAt: "desc" as const }, { id: "desc" as const }],
+      take: 1,
+      select: {
+        publicId: true,
+        status: true,
+        periodStart: true,
+        periodEnd: true,
+        totalAmountJpy: true,
+        confirmedAt: true,
+        paidAt: true
+      }
+    },
+    _count: {
+      select: {
+        referrals: {
+          where: {
+            deletedAt: null,
+            status: { in: ["ACTIVE", "QUALIFIED"] },
+            shop: {
+              deletedAt: null,
+              publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+            }
+          }
+        }
+      }
+    }
+  }) satisfies Prisma.PlatformPartnerProfileSelect;
+
 type SelectedProfile = Prisma.PlatformPartnerProfileGetPayload<{ select: typeof profileSelect }>;
 type SelectedReferral = Prisma.AgentShopReferralGetPayload<{ select: typeof referralSelect }>;
+type SelectedAgentListProfile = Prisma.PlatformPartnerProfileGetPayload<{
+  select: ReturnType<typeof createAgentListSelect>;
+}>;
 
 export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
@@ -97,8 +174,9 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
 
   public async listAgents(
     input: AgentListInput
-  ): Promise<ReturnType<typeof buildPaginatedResponse<PlatformPartnerProfileRecord>>> {
+  ): Promise<ReturnType<typeof buildPaginatedResponse<AgentProfileListRecord>>> {
     const pagination = toPrismaPagination(input);
+    const now = new Date();
     const where: Prisma.PlatformPartnerProfileWhereInput = {
       partnerType: "AGENT",
       deletedAt: null,
@@ -118,7 +196,7 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
     const [list, total] = await Promise.all([
       this.client.platformPartnerProfile.findMany({
         where,
-        select: profileSelect,
+        select: createAgentListSelect(now),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ activatedAt: "desc" }, { id: "desc" }]
@@ -126,7 +204,55 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
       this.client.platformPartnerProfile.count({ where })
     ]);
 
-    return buildPaginatedResponse(list.map((record) => this.mapProfile(record)), total, pagination);
+    return buildPaginatedResponse(
+      list.map((record) => this.mapAgentListProfile(record)),
+      total,
+      pagination
+    );
+  }
+
+  public async listAgentShopReferrals(
+    input: AgentShopReferralListInput
+  ): Promise<AgentShopReferralListRepositoryResult> {
+    const agent = await this.client.platformPartnerProfile.findFirst({
+      where: {
+        publicId: input.agentPublicId,
+        partnerType: "AGENT",
+        deletedAt: null,
+        user: { deletedAt: null }
+      },
+      select: { id: true }
+    });
+    if (!agent) return { kind: "agent_not_found" };
+
+    const pagination = toPrismaPagination(input);
+    const status = input.status?.toUpperCase() as AgentShopReferralRecord["status"] | undefined;
+    const where: Prisma.AgentShopReferralWhereInput = {
+      agentProfileId: agent.id,
+      deletedAt: null,
+      ...(status ? { status } : {}),
+      shop: {
+        deletedAt: null,
+        publicIdentifier: {
+          is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+        }
+      }
+    };
+    const [list, total] = await Promise.all([
+      this.client.agentShopReferral.findMany({
+        where,
+        select: referralSelect,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ confirmedAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.agentShopReferral.count({ where })
+    ]);
+
+    return {
+      kind: "found",
+      page: buildPaginatedResponse(list.map((record) => this.mapReferral(record)), total, pagination)
+    };
   }
 
   public async linkAgentShop(input: {
@@ -202,6 +328,45 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
     };
   }
 
+  private mapAgentListProfile(record: SelectedAgentListProfile): AgentProfileListRecord {
+    const currentRule = record.commissionRules[0];
+    const latestSettlement = record.settlements[0];
+    return {
+      ...this.mapProfile(record),
+      administration: {
+        referralCount: record._count.referrals,
+        referredShops: record.referrals.map(({ shop }) => {
+          const publicId = shop.publicIdentifier?.publicId;
+          if (!publicId) {
+            throw new Error("Agent referral shop is missing its active public identifier");
+          }
+          return { publicId, name: shop.name, city: shop.city };
+        }),
+        currentRule: currentRule
+          ? {
+              version: currentRule.version,
+              fixedSuccessRewardJpy: toSafeInteger(currentRule.fixedSuccessRewardJpy),
+              profitShareRateBps: currentRule.profitShareRateBps,
+              paymentMethod: paymentMethodFromRecord(currentRule.paymentMethod),
+              effectiveFrom: currentRule.effectiveFrom,
+              effectiveTo: currentRule.effectiveTo
+            }
+          : null,
+        latestSettlement: latestSettlement
+          ? {
+              publicId: latestSettlement.publicId,
+              status: latestSettlement.status === "PAID" ? "paid" : "confirmed",
+              periodStart: latestSettlement.periodStart,
+              periodEnd: latestSettlement.periodEnd,
+              totalAmountJpy: toSafeInteger(latestSettlement.totalAmountJpy),
+              confirmedAt: latestSettlement.confirmedAt,
+              paidAt: latestSettlement.paidAt
+            }
+          : null
+      }
+    };
+  }
+
   private mapReferral(record: SelectedReferral): AgentShopReferralRecord {
     const publicId = record.shop.publicIdentifier?.publicId;
     if (!publicId) {
@@ -223,3 +388,18 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
 
 const isUniqueConflict = (error: unknown): boolean =>
   Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
+
+const toSafeInteger = (value: bigint | number): number => {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result)) {
+    throw new RangeError("error.platform_partner.amount_out_of_range");
+  }
+  return result;
+};
+
+const paymentMethodFromRecord = (
+  value: "BANK_TRANSFER" | "NDP" | "OTHER"
+): "bank_transfer" | "ndp" | "other" => {
+  if (value === "BANK_TRANSFER") return "bank_transfer";
+  return value === "NDP" ? "ndp" : "other";
+};

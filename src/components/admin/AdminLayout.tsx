@@ -86,6 +86,7 @@ const navSections: AdminNavSection[] = [
     items: [
       { label: "财务结算", to: "/admin/finance", icon: "¥", children: ["今日营收", "待结算", "渠道手续费"] },
       { label: "会员返点平台费", to: "/admin/finance/membership-reward-fee", icon: "返", permission: "page:backoffice-membership-reward-fee", children: ["TEST", "费率快照", "版本历史"] },
+      { label: "运营成本设置", to: "/admin/finance/operating-costs", icon: "本", permission: "backoffice:operating-cost:read", children: ["人件费", "服务器", "第三方 API", "店铺分摊"] },
       { label: "退款审核", to: "/admin/finance?module=refund-review", icon: "审" },
       { label: "分账规则", to: "/admin/finance?module=commission", icon: "％" },
       { label: "发票记录", to: "/admin/finance?module=invoices", icon: "票" }
@@ -133,7 +134,7 @@ const navSections: AdminNavSection[] = [
     key: "agents",
     title: "代理",
     items: [
-      { label: "代理能力状态", to: "/admin/afirieito", icon: "代", children: ["申请审核", "范围权限", "结算合同"] }
+      { label: "代理商管理", to: "/admin/agents", icon: "代", permission: "backoffice:agent:read", children: ["介绍店铺", "佣金规则", "结算与支付"] }
     ]
   },
   {

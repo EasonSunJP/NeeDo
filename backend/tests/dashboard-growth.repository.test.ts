@@ -229,17 +229,17 @@ describe("DashboardGrowthRepository", () => {
   });
   it("maps current and previous first-event growth facts from one bounded query", async () => {
     const fixture = createReader([
-      { periodKey: "current", newUsers: 18n, newPaidMembers: "1", technicianOnboarding: 4 },
-      { period_key: "previous", new_users: 12, new_paid_members: 3, technician_onboarding: 2 }
+      { periodKey: "current", newUsers: 18n, newPaidMembers: "1", technicianOnboarding: 4, agentOnboarding: 2, franchiseeOnboarding: 1, supplierOnboarding: 1 },
+      { period_key: "previous", new_users: 12, new_paid_members: 3, technician_onboarding: 2, agent_onboarding: 1, franchisee_onboarding: 0, supplier_onboarding: 2 }
     ]);
 
     await expect(fixture.reader.getGrowthFacts(input)).resolves.toEqual({
       newUsers: { current: 18, previous: 12, dataStatus: "ready" },
       newPaidMembers: { current: 1, previous: 3, dataStatus: "ready" },
       technicianOnboarding: { current: 4, previous: 2, dataStatus: "ready" },
-      agentOnboarding: { current: null, previous: null, dataStatus: "not_available" },
-      franchiseeOnboarding: { current: null, previous: null, dataStatus: "not_available" },
-      supplierOnboarding: { current: null, previous: null, dataStatus: "not_available" }
+      agentOnboarding: { current: 2, previous: 1, dataStatus: "ready" },
+      franchiseeOnboarding: { current: 1, previous: 0, dataStatus: "ready" },
+      supplierOnboarding: { current: 1, previous: 2, dataStatus: "ready" }
     });
     expect(fixture.queryRaw).toHaveBeenCalledTimes(1);
 
@@ -263,6 +263,16 @@ describe("DashboardGrowthRepository", () => {
     expect(sql).toContain("technician.deleted_at IS NULL");
     expect(sql).toContain("affiliation.relationship_type");
     expect(sql).toContain("affiliation.starts_at <= first_identity.activated_at");
+    expect(sql).toContain("historical_partner_ranked AS");
+    expect(sql).toContain("platform_partner_profiles AS partner");
+    expect(sql).toContain("PARTITION BY partner.user_id, partner.partner_type");
+    expect(sql).toContain("ORDER BY partner.activated_at ASC, partner.id ASC");
+    expect(sql).toContain("first_partner_onboarding AS");
+    expect(sql).toContain("partner.activated_at >= period.from_inclusive");
+    expect(sql).toContain("partner.activated_at < period.to_exclusive");
+    expect(sql).toContain("partner_user.is_active =");
+    expect(sql).toContain("partner_user.is_test_account =");
+    expect(sql).toContain("partner_user.deleted_at IS NULL");
     expect(sql).toContain("TRIM(shop.city) =");
     expect(query.values).toEqual(expect.arrayContaining([
       "current", "previous", "offline_paid", "online_paid", "active", "technician", "Tokyo"
@@ -284,6 +294,8 @@ describe("DashboardGrowthRepository", () => {
     const sql = queryText(query);
     expect(sql).toContain("membership.shop_id =");
     expect(sql).toContain("resolved_shop.shop_id =");
+    expect(sql).toContain("scoped_referral.shop_id =");
+    expect(sql).toContain("scoped_referral.status IN");
     expect(sql).not.toContain("technician.city");
     expect(query.values).toContain(91);
   });
@@ -292,11 +304,14 @@ describe("DashboardGrowthRepository", () => {
     await expect(createReader([]).reader.getGrowthFacts(input)).resolves.toMatchObject({
       newUsers: { current: 0, previous: 0, dataStatus: "ready" },
       newPaidMembers: { current: 0, previous: 0, dataStatus: "ready" },
-      technicianOnboarding: { current: 0, previous: 0, dataStatus: "ready" }
+      technicianOnboarding: { current: 0, previous: 0, dataStatus: "ready" },
+      agentOnboarding: { current: 0, previous: 0, dataStatus: "ready" },
+      franchiseeOnboarding: { current: 0, previous: 0, dataStatus: "ready" },
+      supplierOnboarding: { current: 0, previous: 0, dataStatus: "ready" }
     });
 
     for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1.5"]) {
-      await expect(createReader([{ periodKey: "current", newUsers: value, newPaidMembers: 0, technicianOnboarding: 0 }]).reader.getGrowthFacts(input))
+      await expect(createReader([{ periodKey: "current", newUsers: value, newPaidMembers: 0, technicianOnboarding: 0, agentOnboarding: 0, franchiseeOnboarding: 0, supplierOnboarding: 0 }]).reader.getGrowthFacts(input))
         .rejects.toThrow("Dashboard growth aggregate must be a non-negative safe integer");
     }
   });
@@ -306,9 +321,9 @@ describe("DashboardGrowthRepository", () => {
       newUsers: { current: 1, previous: 0, dataStatus: "ready" },
       newPaidMembers: { current: 2, previous: 0, dataStatus: "ready" },
       technicianOnboarding: { current: 3, previous: 0, dataStatus: "ready" },
-      agentOnboarding: { current: null, previous: null, dataStatus: "not_available" },
-      franchiseeOnboarding: { current: null, previous: null, dataStatus: "not_available" },
-      supplierOnboarding: { current: null, previous: null, dataStatus: "not_available" }
+      agentOnboarding: { current: 4, previous: 0, dataStatus: "ready" },
+      franchiseeOnboarding: { current: 5, previous: 0, dataStatus: "ready" },
+      supplierOnboarding: { current: 6, previous: 0, dataStatus: "ready" }
     } satisfies GrowthFacts;
     const growthReader = { getGrowthFacts: jest.fn(async () => facts) } satisfies DashboardGrowthReader;
     const repository = new DashboardRepository(

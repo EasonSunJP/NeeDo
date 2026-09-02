@@ -14,9 +14,9 @@ export interface GrowthFacts {
   newUsers: DashboardGrowthReadyFact;
   newPaidMembers: DashboardGrowthReadyFact;
   technicianOnboarding: DashboardGrowthReadyFact;
-  agentOnboarding: { current: null; previous: null; dataStatus: "not_available" };
-  franchiseeOnboarding: { current: null; previous: null; dataStatus: "not_available" };
-  supplierOnboarding: { current: null; previous: null; dataStatus: "not_available" };
+  agentOnboarding: DashboardGrowthReadyFact;
+  franchiseeOnboarding: DashboardGrowthReadyFact;
+  supplierOnboarding: DashboardGrowthReadyFact;
 }
 
 export interface DashboardGrowthReader {
@@ -32,6 +32,12 @@ interface GrowthRow {
   new_paid_members?: NumericValue;
   technicianOnboarding?: NumericValue;
   technician_onboarding?: NumericValue;
+  agentOnboarding?: NumericValue;
+  agent_onboarding?: NumericValue;
+  franchiseeOnboarding?: NumericValue;
+  franchisee_onboarding?: NumericValue;
+  supplierOnboarding?: NumericValue;
+  supplier_onboarding?: NumericValue;
 }
 
 export interface PaidMembershipGrowthEvent {
@@ -217,6 +223,9 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
       newUsers: number;
       newPaidMembers: number;
       technicianOnboarding: number;
+      agentOnboarding: number;
+      franchiseeOnboarding: number;
+      supplierOnboarding: number;
     }>();
     for (const row of rows) {
       const key = row.periodKey ?? row.period_key;
@@ -228,19 +237,33 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
         newPaidMembers: this.toSafeAggregate(row.newPaidMembers ?? row.new_paid_members),
         technicianOnboarding: this.toSafeAggregate(
           row.technicianOnboarding ?? row.technician_onboarding
+        ),
+        agentOnboarding: this.toSafeAggregate(row.agentOnboarding ?? row.agent_onboarding),
+        franchiseeOnboarding: this.toSafeAggregate(
+          row.franchiseeOnboarding ?? row.franchisee_onboarding
+        ),
+        supplierOnboarding: this.toSafeAggregate(
+          row.supplierOnboarding ?? row.supplier_onboarding
         )
       });
     }
-    const zero = { newUsers: 0, newPaidMembers: 0, technicianOnboarding: 0 };
+    const zero = {
+      newUsers: 0,
+      newPaidMembers: 0,
+      technicianOnboarding: 0,
+      agentOnboarding: 0,
+      franchiseeOnboarding: 0,
+      supplierOnboarding: 0
+    };
     const current = periods.get("current") ?? zero;
     const previous = periods.get("previous") ?? zero;
     return {
       newUsers: { current: current.newUsers, previous: previous.newUsers, dataStatus: "ready" },
       newPaidMembers: { current: current.newPaidMembers, previous: previous.newPaidMembers, dataStatus: "ready" },
       technicianOnboarding: { current: current.technicianOnboarding, previous: previous.technicianOnboarding, dataStatus: "ready" },
-      agentOnboarding: { current: null, previous: null, dataStatus: "not_available" },
-      franchiseeOnboarding: { current: null, previous: null, dataStatus: "not_available" },
-      supplierOnboarding: { current: null, previous: null, dataStatus: "not_available" }
+      agentOnboarding: { current: current.agentOnboarding, previous: previous.agentOnboarding, dataStatus: "ready" },
+      franchiseeOnboarding: { current: current.franchiseeOnboarding, previous: previous.franchiseeOnboarding, dataStatus: "ready" },
+      supplierOnboarding: { current: current.supplierOnboarding, previous: previous.supplierOnboarding, dataStatus: "ready" }
     };
   }
 
@@ -281,11 +304,42 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
     return Prisma.sql`TRUE`;
   }
 
+  private partnerScope(input: DashboardAggregateInput): Prisma.Sql {
+    const agentReferralScope = (extra: Prisma.Sql): Prisma.Sql => Prisma.sql`
+      EXISTS (
+        SELECT 1
+        FROM platform_partner_profiles AS scoped_partner
+        INNER JOIN agent_shop_referrals AS scoped_referral
+          ON scoped_referral.agent_profile_id = scoped_partner.id
+          AND scoped_referral.status IN (${"active"}, ${"qualified"})
+          AND scoped_referral.deleted_at IS NULL
+        INNER JOIN shops AS scoped_shop
+          ON scoped_shop.id = scoped_referral.shop_id AND scoped_shop.deleted_at IS NULL
+        WHERE scoped_partner.user_id = partner.user_id
+          AND scoped_partner.partner_type = ${"agent"}
+          AND scoped_partner.deleted_at IS NULL
+          AND ${extra}
+      )`;
+    if (input.scope.kind === "shop") {
+      return Prisma.sql`partner.partner_type = ${"agent"}
+        AND ${agentReferralScope(Prisma.sql`scoped_referral.shop_id = ${input.scope.shopId}`)}`;
+    }
+    if (input.city) {
+      return Prisma.sql`(
+        TRIM(partner_customer.city) = ${input.city}
+        OR (partner.partner_type = ${"agent"}
+          AND ${agentReferralScope(Prisma.sql`TRIM(scoped_shop.city) = ${input.city}`)})
+      )`;
+    }
+    return Prisma.sql`TRUE`;
+  }
+
   private queryGrowthFacts(input: DashboardAggregateInput): Promise<GrowthRow[]> {
     const periods = this.periodTable(input);
     const newUserScope = this.newUserScope(input);
     const membershipScope = this.membershipScope(input);
     const technicianScope = this.technicianScope(input);
+    const partnerScope = this.partnerScope(input);
     return this.client.$queryRaw<GrowthRow[]>(Prisma.sql`
       /* dashboard_growth_facts */
       WITH periods AS (${periods}),
@@ -393,6 +447,31 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
           ON shop.id = resolved_shop.shop_id AND shop.deleted_at IS NULL
         WHERE ${technicianScope}
       ),
+      historical_partner_ranked AS (
+        SELECT partner.id, partner.user_id, partner.partner_type, partner.activated_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY partner.user_id, partner.partner_type
+            ORDER BY partner.activated_at ASC, partner.id ASC
+          ) AS onboarding_rank
+        FROM platform_partner_profiles AS partner
+      ),
+      first_partner_onboarding AS (
+        SELECT period.period_key, partner.user_id, partner.partner_type
+        FROM periods AS period
+        INNER JOIN historical_partner_ranked AS partner
+          ON partner.activated_at >= period.from_inclusive
+          AND partner.activated_at < period.to_exclusive
+          AND partner.onboarding_rank = 1
+        INNER JOIN users AS partner_user
+          ON partner_user.id = partner.user_id
+          AND partner_user.is_active = ${true}
+          AND partner_user.is_test_account = ${false}
+          AND partner_user.deleted_at IS NULL
+        LEFT JOIN customer_profiles AS partner_customer
+          ON partner_customer.user_id = partner.user_id
+          AND partner_customer.deleted_at IS NULL
+        WHERE ${partnerScope}
+      ),
       registered_counts AS (
         SELECT period_key, COUNT(DISTINCT user_id) AS aggregate_value
         FROM registered_users GROUP BY period_key
@@ -404,15 +483,27 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
       technician_counts AS (
         SELECT period_key, COUNT(DISTINCT user_id) AS aggregate_value
         FROM first_technicians GROUP BY period_key
+      ),
+      partner_counts AS (
+        SELECT period_key,
+          COUNT(DISTINCT CASE WHEN partner_type = ${"agent"} THEN user_id END) AS agent_count,
+          COUNT(DISTINCT CASE WHEN partner_type = ${"franchisee"} THEN user_id END) AS franchisee_count,
+          COUNT(DISTINCT CASE WHEN partner_type = ${"supplier"} THEN user_id END) AS supplier_count
+        FROM first_partner_onboarding
+        GROUP BY period_key
       )
       SELECT period.period_key AS periodKey,
         COALESCE(registered.aggregate_value, 0) AS newUsers,
         COALESCE(member.aggregate_value, 0) AS newPaidMembers,
-        COALESCE(technician.aggregate_value, 0) AS technicianOnboarding
+        COALESCE(technician.aggregate_value, 0) AS technicianOnboarding,
+        COALESCE(partner.agent_count, 0) AS agentOnboarding,
+        COALESCE(partner.franchisee_count, 0) AS franchiseeOnboarding,
+        COALESCE(partner.supplier_count, 0) AS supplierOnboarding
       FROM periods AS period
       LEFT JOIN registered_counts AS registered ON registered.period_key = period.period_key
       LEFT JOIN paid_member_counts AS member ON member.period_key = period.period_key
       LEFT JOIN technician_counts AS technician ON technician.period_key = period.period_key
+      LEFT JOIN partner_counts AS partner ON partner.period_key = period.period_key
     `);
   }
 

@@ -6,6 +6,7 @@ import {
   agentListQuerySchema,
   agentParamSchema,
   agentShopReferralBodySchema,
+  agentShopReferralListQuerySchema,
   platformPartnerProfileBodySchema,
   platformPartnerUserParamSchema
 } from "../validators/platform-partner.validator";
@@ -67,6 +68,28 @@ export class PlatformPartnerController {
           await this.service.linkAgentShop(
             agentPublicId,
             agentShopReferralBodySchema.parse(request.body),
+            getAuthenticatedAccess(response),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listShopReferrals = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { agentPublicId } = agentParamSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.service.listAgentShopReferrals(
+            agentPublicId,
+            agentShopReferralListQuerySchema.parse(request.query),
             getAuthenticatedAccess(response),
             getRequestContext(request)
           )

@@ -36,6 +36,14 @@ export const agentParamSchema = z
   .object({ agentPublicId: z.string().uuid() })
   .strict();
 
+export const agentShopReferralListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    status: z.enum(["active", "qualified", "revoked"]).optional()
+  })
+  .strict();
+
 export const agentShopReferralBodySchema = z
   .object({
     shopPublicId: shopPublicIdSchema,
@@ -47,4 +55,5 @@ export const agentShopReferralBodySchema = z
 
 export type PlatformPartnerProfileBody = z.output<typeof platformPartnerProfileBodySchema>;
 export type AgentListQuery = z.output<typeof agentListQuerySchema>;
+export type AgentShopReferralListQuery = z.output<typeof agentShopReferralListQuerySchema>;
 export type AgentShopReferralBody = z.output<typeof agentShopReferralBodySchema>;

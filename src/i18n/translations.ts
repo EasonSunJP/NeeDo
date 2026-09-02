@@ -47,6 +47,17 @@ type TranslationMap = Record<string, TranslationEntry>;
 
 const analyticsTask6Translations: TranslationMap = {
   "运营管理": fourLanguageTranslation("營運管理", "運営管理", "Operations management", "운영 관리"),
+  "代理商管理": fourLanguageTranslation("代理商管理", "代理店管理", "Agent management", "대리점 관리"),
+  "运营成本设置": fourLanguageTranslation("營運成本設定", "運営コスト設定", "Operating cost settings", "운영 비용 설정"),
+  "平台合作方标记": fourLanguageTranslation("平台合作方標記", "プラットフォーム提携区分", "Platform partner marker", "플랫폼 파트너 지정"),
+  "标记为代理商": fourLanguageTranslation("標記為代理商", "代理店として設定", "Mark as agent", "대리점으로 지정"),
+  "标记为加盟商": fourLanguageTranslation("標記為加盟商", "加盟店として設定", "Mark as franchisee", "가맹점으로 지정"),
+  "标记为供货商": fourLanguageTranslation("標記為供貨商", "仕入先として設定", "Mark as supplier", "공급업체로 지정"),
+  "生效时间": fourLanguageTranslation("生效時間", "適用開始日時", "Effective time", "적용 시작 시간"),
+  "标记理由": fourLanguageTranslation("標記理由", "設定理由", "Marker reason", "지정 사유"),
+  "固定成功奖励（日元）": fourLanguageTranslation("固定成功獎勵（日圓）", "固定成功報酬（円）", "Fixed success reward (JPY)", "고정 성공 보상(엔)"),
+  "纯利润分成比例": fourLanguageTranslation("純利潤分成比例", "純利益分配率", "Net profit share rate", "순이익 배분율"),
+  "按活跃店铺等额分摊": fourLanguageTranslation("按活躍店鋪等額分攤", "有効店舗へ均等配賦", "Allocate equally across active shops", "활성 매장 균등 배분"),
   "加盟商": fourLanguageTranslation("加盟商", "加盟店", "Franchisees", "가맹점"),
   "供货商": fourLanguageTranslation("供貨商", "仕入先", "Suppliers", "공급업체"),
   "运营财务": fourLanguageTranslation("營運財務", "運営財務", "Operations finance", "운영 재무"),

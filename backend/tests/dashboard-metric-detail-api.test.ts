@@ -20,7 +20,7 @@ const commission = {
   dedicatedTechnicianCommission: { current: 20, previous: 10, dataStatus: "ready" as const },
   partTimeTechnicianCommission: { current: 10, previous: 5, dataStatus: "ready" as const },
   marketingCommission: { current: 4, previous: 2, dataStatus: "ready" as const },
-  agentCommission: { current: null, previous: null, dataStatus: "not_available" as const },
+  agentCommission: { current: 7, previous: 3, dataStatus: "ready" as const },
   ndpIncome: { current: 40, previous: 30, dataStatus: "ready" as const },
   affiliatePlatformIncome: { current: 5, previous: 4, dataStatus: "ready" as const },
   consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" as const }
@@ -29,9 +29,9 @@ const growth = {
   newUsers: { current: 8, previous: 4, dataStatus: "ready" as const },
   newPaidMembers: { current: 2, previous: 1, dataStatus: "ready" as const },
   technicianOnboarding: { current: 3, previous: 2, dataStatus: "ready" as const },
-  agentOnboarding: { current: null, previous: null, dataStatus: "not_available" as const },
-  franchiseeOnboarding: { current: null, previous: null, dataStatus: "not_available" as const },
-  supplierOnboarding: { current: null, previous: null, dataStatus: "not_available" as const }
+  agentOnboarding: { current: 2, previous: 1, dataStatus: "ready" as const },
+  franchiseeOnboarding: { current: 1, previous: 0, dataStatus: "ready" as const },
+  supplierOnboarding: { current: 3, previous: 2, dataStatus: "ready" as const }
 };
 
 const createUser = (id: number, role: string, permissions: string[]) => ({

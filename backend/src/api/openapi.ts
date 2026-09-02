@@ -5873,6 +5873,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               avatarUrl: { type: ["string", "null"] },
               status: { type: "string", enum: ["active", "inactive"] }
             }
+          },
+          administration: {
+            type: "object",
+            additionalProperties: false,
+            required: ["referralCount", "referredShops", "currentRule", "latestSettlement"],
+            properties: {
+              referralCount: { type: "integer", minimum: 0 },
+              referredShops: {
+                type: "array",
+                maxItems: 3,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["publicId", "name", "city"],
+                  properties: {
+                    publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+                    name: { type: "string" },
+                    city: { type: "string" }
+                  }
+                }
+              },
+              currentRule: {
+                type: ["object", "null"],
+                properties: {
+                  version: { type: "integer", minimum: 1 },
+                  fixedSuccessRewardJpy: { type: "integer", minimum: 0 },
+                  profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+                  paymentMethod: { type: "string", enum: ["bank_transfer", "ndp", "other"] },
+                  effectiveFrom: { type: "string", format: "date-time" },
+                  effectiveTo: { type: ["string", "null"], format: "date-time" }
+                }
+              },
+              latestSettlement: {
+                type: ["object", "null"],
+                properties: {
+                  publicId: { type: "string", format: "uuid" },
+                  status: { type: "string", enum: ["confirmed", "paid"] },
+                  periodStart: { type: "string", format: "date-time" },
+                  periodEnd: { type: "string", format: "date-time" },
+                  totalAmountJpy: { type: "integer", minimum: 0 },
+                  confirmedAt: { type: "string", format: "date-time" },
+                  paidAt: { type: ["string", "null"], format: "date-time" }
+                }
+              }
+            }
           }
         }
       },
@@ -5980,6 +6025,375 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           effectiveFrom: { type: "string", format: "date-time" },
           reason: { type: "string", minLength: 1, maxLength: 500 }
         }
+      },
+      OperatingCostDirectAssignment: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shopPublicId"],
+        properties: {
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          amountJpy: {
+            type: "integer",
+            format: "int64",
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER
+          },
+          shareBps: { type: "integer", minimum: 0, maximum: 10000 }
+        },
+        oneOf: [
+          { required: ["amountJpy"], not: { required: ["shareBps"] } },
+          { required: ["shareBps"], not: { required: ["amountJpy"] } }
+        ]
+      },
+      OperatingCostConfiguration: {
+        type: "object",
+        additionalProperties: false,
+        discriminator: { propertyName: "allocationMode" },
+        oneOf: [
+          {
+            properties: { allocationMode: { const: "equal_active_shops" } },
+            not: { required: ["directAssignments"] }
+          },
+          {
+            properties: { allocationMode: { const: "platform_income_proportional" } },
+            not: { required: ["directAssignments"] }
+          },
+          {
+            required: ["directAssignments"],
+            properties: { allocationMode: { const: "direct_shops" } }
+          }
+        ],
+        required: [
+          "categoryCode", "name", "amountJpy", "periodStart", "periodEnd",
+          "allocationMode", "effectiveAt", "reason"
+        ],
+        properties: {
+          categoryCode: {
+            type: "string",
+            enum: ["personnel", "server", "third_party_api", "other"]
+          },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          amountJpy: {
+            type: "integer",
+            format: "int64",
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER
+          },
+          periodStart: { type: "string", format: "date" },
+          periodEnd: { type: "string", format: "date" },
+          allocationMode: {
+            type: "string",
+            enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"]
+          },
+          directAssignments: {
+            type: "array",
+            minItems: 1,
+            maxItems: 500,
+            items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
+          },
+          effectiveAt: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      OperatingCostItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "costCode", "version", "categoryCode", "name", "amountJpy",
+          "currency", "periodStart", "periodEnd", "allocationMode", "status",
+          "effectiveAt", "publishedAt", "configuredById", "reason", "directAssignments",
+          "allocations", "createdAt", "updatedAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          costCode: { type: "string", minLength: 1, maxLength: 100 },
+          version: { type: "integer", minimum: 1 },
+          categoryCode: {
+            type: "string",
+            enum: ["personnel", "server", "third_party_api", "other"]
+          },
+          name: { type: "string" },
+          amountJpy: { type: "integer", format: "int64", minimum: 0 },
+          currency: { type: "string", enum: ["JPY"] },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          allocationMode: {
+            type: "string",
+            enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"]
+          },
+          status: { type: "string", enum: ["draft", "published", "archived"] },
+          effectiveAt: { type: "string", format: "date-time" },
+          publishedAt: { type: ["string", "null"], format: "date-time" },
+          configuredById: { type: "integer", minimum: 1 },
+          reason: { type: "string" },
+          directAssignments: {
+            oneOf: [
+              {
+                type: "array",
+                items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
+              },
+              { type: "null" }
+            ]
+          },
+          allocations: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["shopPublicId", "shopName", "amountJpy", "allocationWeight"],
+              properties: {
+                shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+                shopName: { type: "string" },
+                amountJpy: { type: "integer", format: "int64", minimum: 0 },
+                allocationWeight: { type: ["string", "null"], pattern: "^[0-9]+\\.[0-9]{8}$" }
+              }
+            }
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AgentSettlementExternalDeduction: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "shopPublicId",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "evidenceReference",
+          "reason"
+        ],
+        properties: {
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          channelFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          consumptionTaxJpy: { type: "integer", format: "int64", minimum: 0 },
+          evidenceReference: { type: "string", minLength: 1, maxLength: 255 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      AgentSettlementPeriodRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["periodStart", "periodEnd", "externalDeductions"],
+        properties: {
+          periodStart: { type: "string", format: "date" },
+          periodEnd: { type: "string", format: "date" },
+          externalDeductions: {
+            type: "array",
+            minItems: 1,
+            maxItems: 500,
+            items: { $ref: "#/components/schemas/AgentSettlementExternalDeduction" }
+          }
+        }
+      },
+      AgentSettlementRuleSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "version",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "paymentMethod"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          fixedSuccessRewardJpy: { type: "integer", format: "int64", minimum: 0 },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          paymentMethod: { type: "string", enum: ["bank_transfer", "ndp", "other"] }
+        }
+      },
+      AgentSettlementTotals: {
+        type: "object",
+        required: [
+          "orderPlatformFeesJpy",
+          "saasFeesJpy",
+          "userRebatesJpy",
+          "refundsAndReversalsJpy",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "allocatedOperatingCostsJpy",
+          "pureProfitJpy",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "profitShareAmountJpy",
+          "totalAmountJpy"
+        ],
+        properties: {
+          orderPlatformFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          saasFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          userRebatesJpy: { type: "integer", format: "int64", minimum: 0 },
+          refundsAndReversalsJpy: { type: "integer", format: "int64", minimum: 0 },
+          channelFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          consumptionTaxJpy: { type: "integer", format: "int64", minimum: 0 },
+          allocatedOperatingCostsJpy: { type: "integer", format: "int64", minimum: 0 },
+          pureProfitJpy: { type: "integer", format: "int64" },
+          fixedSuccessRewardJpy: { type: "integer", format: "int64", minimum: 0 },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          profitShareAmountJpy: { type: "integer", format: "int64", minimum: 0 },
+          totalAmountJpy: { type: "integer", format: "int64", minimum: 0 }
+        }
+      },
+      AgentSettlementShopPreview: {
+        unevaluatedProperties: false,
+        allOf: [
+          { $ref: "#/components/schemas/AgentSettlementTotals" },
+          {
+            type: "object",
+            required: [
+              "referralPublicId",
+              "shopPublicId",
+              "shopName",
+              "successRewardEligible",
+              "externalEvidenceReference",
+              "externalEvidenceReason"
+            ],
+            properties: {
+              referralPublicId: { type: "string", format: "uuid" },
+              shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+              shopName: { type: "string" },
+              successRewardEligible: { type: "boolean" },
+              externalEvidenceReference: { type: "string" },
+              externalEvidenceReason: { type: "string" }
+            }
+          }
+        ]
+      },
+      AgentSettlementPreview: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "agentPublicId",
+          "periodStart",
+          "periodEnd",
+          "currency",
+          "rule",
+          "totals",
+          "shops",
+          "generatedAt"
+        ],
+        properties: {
+          agentPublicId: { type: "string", format: "uuid" },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          currency: { type: "string", enum: ["JPY"] },
+          rule: { $ref: "#/components/schemas/AgentSettlementRuleSummary" },
+          totals: { $ref: "#/components/schemas/AgentSettlementTotals" },
+          shops: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AgentSettlementShopPreview" }
+          },
+          generatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AgentSettlementLine: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "lineType",
+          "referralPublicId",
+          "shopPublicId",
+          "shopName",
+          "orderPlatformFeesJpy",
+          "saasFeesJpy",
+          "userRebatesJpy",
+          "refundsAndReversalsJpy",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "allocatedOperatingCostsJpy",
+          "pureProfitJpy",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "amountJpy"
+        ],
+        properties: {
+          lineType: { type: "string", enum: ["success_reward", "profit_share"] },
+          referralPublicId: { type: "string", format: "uuid" },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          shopName: { type: "string" },
+          orderPlatformFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          saasFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          userRebatesJpy: { type: "integer", format: "int64", minimum: 0 },
+          refundsAndReversalsJpy: { type: "integer", format: "int64", minimum: 0 },
+          channelFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          consumptionTaxJpy: { type: "integer", format: "int64", minimum: 0 },
+          allocatedOperatingCostsJpy: { type: "integer", format: "int64", minimum: 0 },
+          pureProfitJpy: { type: "integer", format: "int64" },
+          fixedSuccessRewardJpy: { type: "integer", format: "int64", minimum: 0 },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          amountJpy: { type: "integer", format: "int64", minimum: 0 }
+        }
+      },
+      AgentSettlement: {
+        unevaluatedProperties: false,
+        "x-immutable-after-confirmation": true,
+        "x-calculation-snapshot-fields": [
+          "rule",
+          "lines",
+          "orderPlatformFeesJpy",
+          "saasFeesJpy",
+          "userRebatesJpy",
+          "refundsAndReversalsJpy",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "allocatedOperatingCostsJpy",
+          "pureProfitJpy",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "profitShareAmountJpy",
+          "totalAmountJpy"
+        ],
+        allOf: [
+          { $ref: "#/components/schemas/AgentSettlementTotals" },
+          {
+            type: "object",
+            required: [
+              "publicId",
+              "agentPublicId",
+              "periodStart",
+              "periodEnd",
+              "status",
+              "currency",
+              "rule",
+              "idempotencyKey",
+              "confirmedAt",
+              "confirmedById",
+              "paidAt",
+              "paidById",
+              "paymentMethod",
+              "paymentReference",
+              "lines",
+              "createdAt",
+              "updatedAt"
+            ],
+            properties: {
+              publicId: { type: "string", format: "uuid" },
+              agentPublicId: { type: "string", format: "uuid" },
+              periodStart: { type: "string", format: "date-time" },
+              periodEnd: { type: "string", format: "date-time" },
+              status: { type: "string", enum: ["confirmed", "paid"] },
+              currency: { type: "string", enum: ["JPY"] },
+              rule: { $ref: "#/components/schemas/AgentSettlementRuleSummary" },
+              idempotencyKey: { type: "string" },
+              confirmedAt: { type: "string", format: "date-time" },
+              confirmedById: { type: "integer", minimum: 1 },
+              paidAt: { type: ["string", "null"], format: "date-time" },
+              paidById: { type: ["integer", "null"], minimum: 1 },
+              paymentMethod: {
+                type: ["string", "null"],
+                enum: ["bank_transfer", "ndp", "other", null]
+              },
+              paymentReference: { type: ["string", "null"] },
+              lines: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AgentSettlementLine" }
+              },
+              createdAt: { type: "string", format: "date-time" },
+              updatedAt: { type: "string", format: "date-time" }
+            }
+          }
+        ]
       },
       BackofficeService: {
         type: "object",
@@ -18459,6 +18873,52 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/shop-referrals`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List shops referred by a formal agent",
+        description:
+          "Returns the persisted, auditable shop-referral relationships for one agent, including current status and confirmation evidence.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent:read",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "qualified", "revoked"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated agent shop referrals", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AgentShopReferral" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.platform_partner.agent_not_found")
+        }
+      },
       post: {
         tags: ["Platform Partners"],
         summary: "Link an introduced shop to an active agent",
@@ -18595,6 +19055,349 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.platform_partner.agent_not_found"),
           "409": jsonErrorResponse("error.agent_commission_rule.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/preview`]: {
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Preview an evidence-backed agent settlement",
+        description:
+          "Calculates shop pure profit and agent commission without persistence. Formal order fees, SaaS receipts, refunds and published operating-cost allocations are loaded from the database; payment-channel fees and consumption tax require explicit evidence per referred shop.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:write",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AgentSettlementPeriodRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Agent settlement preview", {
+            $ref: "#/components/schemas/AgentSettlementPreview"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.agent_settlement.not_found"),
+          "422": jsonErrorResponse(
+            "error.agent_settlement.rule_unavailable or error.agent_settlement.financial_evidence_invalid"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List immutable agent settlements",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:read",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["confirmed", "paid"] }
+          },
+          { name: "periodStart", in: "query", schema: { type: "string", format: "date" } },
+          { name: "periodEnd", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated agent settlements", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AgentSettlement" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Confirm an immutable agent settlement",
+        description:
+          "Serializes confirmation per agent, applies each referral success reward only once, stores calculation and evidence snapshots, and writes the audit entry in the same transaction. Replays with the same idempotency key and request are safe.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:write",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "periodStart",
+                  "periodEnd",
+                  "externalDeductions",
+                  "idempotencyKey"
+                ],
+                properties: {
+                  periodStart: { type: "string", format: "date" },
+                  periodEnd: { type: "string", format: "date" },
+                  externalDeductions: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 500,
+                    items: {
+                      $ref: "#/components/schemas/AgentSettlementExternalDeduction"
+                    }
+                  },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Existing idempotent agent settlement", {
+            $ref: "#/components/schemas/AgentSettlement"
+          }),
+          "201": jsonDataResponse("Agent settlement confirmed", {
+            $ref: "#/components/schemas/AgentSettlement"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.agent_settlement.not_found"),
+          "409": jsonErrorResponse(
+            "error.agent_settlement.conflict or error.agent_settlement.idempotency_conflict"
+          ),
+          "422": jsonErrorResponse(
+            "error.agent_settlement.rule_unavailable or error.agent_settlement.financial_evidence_invalid"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment`]: {
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Confirm payment of an agent settlement",
+        description:
+          "Records an external payment reference using the method fixed by the confirmed rule snapshot. Settlement lines are never recalculated or rewritten.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:pay",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          {
+            name: "settlementPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["paymentMethod", "paymentReference", "reason"],
+                properties: {
+                  paymentMethod: {
+                    type: "string",
+                    enum: ["bank_transfer", "ndp", "other"]
+                  },
+                  paymentReference: { type: "string", minLength: 1, maxLength: 255 },
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Agent settlement payment confirmed", {
+            $ref: "#/components/schemas/AgentSettlement"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.agent_settlement.not_found"),
+          "409": jsonErrorResponse(
+            "error.agent_settlement.conflict or error.agent_settlement.payment_method_mismatch"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/operating-costs`]: {
+      get: {
+        tags: ["Operating Costs"],
+        summary: "List versioned operating cost items",
+        description:
+          "Returns paginated draft and published cost versions with immutable published shop allocations.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 160 } },
+          { name: "categoryCode", in: "query", schema: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["draft", "published", "archived"] } },
+          { name: "periodStart", in: "query", schema: { type: "string", format: "date" } },
+          { name: "periodEnd", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated operating cost versions", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: { type: "array", items: { $ref: "#/components/schemas/OperatingCostItem" } },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Operating Costs"],
+        summary: "Create the next draft version of an operating cost",
+        description: "Creates a JPY operating-cost draft. Only one live draft may exist for a cost code.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "costCode", "categoryCode", "name", "amountJpy", "periodStart",
+                  "periodEnd", "allocationMode", "effectiveAt", "reason"
+                ],
+                properties: {
+                  costCode: { type: "string", minLength: 1, maxLength: 100, pattern: "^[a-z0-9][a-z0-9._-]*$" },
+                  categoryCode: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] },
+                  name: { type: "string", minLength: 1, maxLength: 160 },
+                  amountJpy: { type: "integer", format: "int64", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+                  periodStart: { type: "string", format: "date" },
+                  periodEnd: { type: "string", format: "date" },
+                  allocationMode: { type: "string", enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"] },
+                  directAssignments: {
+                    type: "array", minItems: 1, maxItems: 500,
+                    items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
+                  },
+                  effectiveAt: { type: "string", format: "date-time" },
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Operating cost draft created", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("error.operating_cost.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/operating-costs/{publicId}`]: {
+      patch: {
+        tags: ["Operating Costs"],
+        summary: "Replace a draft operating-cost configuration",
+        description: "Updates all configurable fields of a draft. Published versions are immutable.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OperatingCostConfiguration" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Operating cost draft updated", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.operating_cost.not_found"),
+          "409": jsonErrorResponse("error.operating_cost.conflict")
+        }
+      },
+      delete: {
+        tags: ["Operating Costs"],
+        summary: "Soft-delete an operating-cost draft",
+        description: "Deletes only an unpublished draft and retains the atomic audit record.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, ["reason"]),
+        responses: {
+          "204": { description: "Operating cost draft deleted" },
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.operating_cost.not_found"),
+          "409": jsonErrorResponse("error.operating_cost.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/operating-costs/{publicId}/publish`]: {
+      post: {
+        tags: ["Operating Costs"],
+        summary: "Publish and allocate an operating-cost draft",
+        description:
+          "Atomically locks the draft, resolves formal shop evidence, creates exact integer JPY allocations, publishes the version and records calculation/audit snapshots. Proportional basis is settled order platform fees converted by the order rate plus confirmed SaaS receipts.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, ["reason"]),
+        responses: {
+          "200": jsonDataResponse("Operating cost published with shop allocations", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.operating_cost.not_found or error.operating_cost.shop_not_found"),
+          "409": jsonErrorResponse("error.operating_cost.conflict"),
+          "422": jsonErrorResponse("error.operating_cost.allocation_invalid")
         }
       }
     },

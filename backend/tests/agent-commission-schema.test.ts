@@ -1,11 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  SYSTEM_PERMISSIONS,
+  SYSTEM_PERMISSION_CODES,
+  buildRolePermissionAssignments
+} from "../src/constants/permissions.constants";
 
 describe("agent commission and operating cost schema contract", () => {
   const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
   const migrationPath = join(
     process.cwd(),
     "prisma/migrations/20260902110000_agent_commission_operating_cost/migration.sql"
+  );
+  const permissionMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260903090000_agent_operating_cost_permissions/migration.sql"
   );
 
   it("defines user-backed partner, referral and versioned rule records", () => {
@@ -74,5 +83,61 @@ describe("agent commission and operating cost schema contract", () => {
     expect(migration).toContain("operating_cost_items_period_chk");
     expect(migration).toContain("agent_settlements_period_chk");
     expect(migration).toContain("ON DELETE RESTRICT");
+  });
+
+  it("deploys agent and operating-cost RBAC without requiring a seed rerun", () => {
+    expect(existsSync(permissionMigrationPath)).toBe(true);
+    const migration = existsSync(permissionMigrationPath)
+      ? readFileSync(permissionMigrationPath, "utf8")
+      : "";
+    const permissions = [
+      "backoffice:partner-profile:write",
+      "backoffice:agent:read",
+      "backoffice:agent:write",
+      "backoffice:operating-cost:read",
+      "backoffice:operating-cost:write",
+      "backoffice:agent-settlement:read",
+      "backoffice:agent-settlement:write",
+      "backoffice:agent-settlement:pay"
+    ] as const;
+
+    for (const permissionCode of permissions) {
+      expect(SYSTEM_PERMISSION_CODES).toContain(permissionCode);
+      const permission = SYSTEM_PERMISSIONS.find(({ code }) => code === permissionCode);
+      expect(permission).toBeDefined();
+      expect(migration).toContain(
+        `('${permission?.name}', '${permissionCode}', '${permission?.type}', '${permission?.module}', '${permission?.description}', TRUE`
+      );
+    }
+    expect(migration).toContain("ON DUPLICATE KEY UPDATE");
+
+    const assignments = buildRolePermissionAssignments();
+    for (const role of ["admin", "operator", "finance", "viewer"] as const) {
+      const marker = `WHERE \`roles\`.\`code\` = '${role}'`;
+      const markerIndex = migration.indexOf(marker);
+      expect(markerIndex).toBeGreaterThanOrEqual(0);
+      const blockStart = migration.lastIndexOf("INSERT INTO `role_permissions`", markerIndex);
+      expect(blockStart).toBeGreaterThanOrEqual(0);
+      const block = migration.slice(blockStart, markerIndex);
+      const granted = permissions.filter((permission) => block.includes(`'${permission}'`));
+      const expected = permissions.filter((permission) => assignments[role].includes(permission));
+      expect(granted).toEqual(expected);
+    }
+    expect(assignments.operator).not.toContain("backoffice:agent-settlement:pay");
+    expect(assignments.finance).toEqual(
+      expect.arrayContaining([
+        "backoffice:operating-cost:read",
+        "backoffice:operating-cost:write",
+        "backoffice:agent-settlement:read",
+        "backoffice:agent-settlement:pay"
+      ])
+    );
+    expect(assignments.viewer).toEqual(
+      expect.arrayContaining([
+        "backoffice:agent:read",
+        "backoffice:operating-cost:read",
+        "backoffice:agent-settlement:read"
+      ])
+    );
   });
 });
