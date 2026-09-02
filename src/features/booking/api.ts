@@ -78,6 +78,13 @@ export type OrderCheckout = {
 };
 
 export type BookingIdempotencyInput = { idempotencyKey: string };
+export type OrderConfirmInput = {
+  insufficientBalanceConfirmation?: {
+    confirmed: true;
+    idempotencyKey: string;
+    previewVersion: string;
+  };
+};
 export type StartServiceInput = BookingIdempotencyInput & (
   | { actor: "customer"; verificationCode?: never }
   | { actor: "technician"; verificationCode: string }
@@ -369,8 +376,11 @@ export const bookingApi = {
   getOrder(id: number) {
     return httpClient.request<BookingOrder>(`/orders/${id}`);
   },
-  confirmOrder(id: number) {
-    return httpClient.request<BookingOrder>(`/orders/${id}/confirm`, { method: "POST" });
+  confirmOrder(id: number, input?: OrderConfirmInput) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/confirm`, {
+      body: input,
+      method: "POST"
+    });
   },
   cancelOrder(id: number, reason?: string) {
     return httpClient.request<BookingOrder>(`/orders/${id}/cancel`, {

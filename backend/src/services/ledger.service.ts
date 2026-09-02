@@ -3096,7 +3096,6 @@ export class LedgerService
       input.owner.payerId,
       input.owner.ownerType,
       input.owner.ownerId,
-      input.wallet.id,
       input.fee.holdAmountNdp,
       input.wallet.availableBalance,
       input.fee.appliedRuleIds

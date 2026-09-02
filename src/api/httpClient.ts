@@ -24,7 +24,7 @@ export type ApiSuccessResponse<TData> = {
 export type ApiErrorResponse = {
   code: number;
   message: string;
-  data: null;
+  data: unknown;
 };
 
 type ApiEnvelope<TData> = ApiSuccessResponse<TData> | ApiErrorResponse;
@@ -55,12 +55,14 @@ export type HttpClientBinaryPayload = { blob: Blob; cacheControl: string | null;
 
 export class ApiClientError extends Error {
   public readonly code: number;
+  public readonly data: unknown;
   public readonly status: number;
 
-  public constructor(message: string, code: number, status: number) {
+  public constructor(message: string, code: number, status: number, data: unknown = null) {
     super(message);
     this.name = "ApiClientError";
     this.code = code;
+    this.data = data;
     this.status = status;
   }
 }
@@ -223,10 +225,10 @@ function assertSuccess<TData>(envelope: ApiEnvelope<TData>, status: number): TDa
     const message =
       envelope.message || (typeof upstreamMessage === "string" ? upstreamMessage : "error.api");
 
-    throw new ApiClientError(message, envelope.code, status);
+    throw new ApiClientError(message, envelope.code, status, envelope.data);
   }
 
-  return envelope.data;
+  return (envelope as ApiSuccessResponse<TData>).data;
 }
 
 function createRequestBody(body: unknown) {
