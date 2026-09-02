@@ -3,7 +3,6 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import {
-  AppIcon,
   AppTopBar,
   PageScaffold,
   PrimaryButton,
@@ -14,12 +13,10 @@ import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "
 import {
   coreReadApi,
   mapCoreServiceToServiceItem,
-  mapCoreTechnicianToTechnician,
   type CoreServiceDetail
 } from "../../features/core-read/api";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
-import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
 import type { FulfillmentMode } from "../../types/domain";
 import {
   CheckoutProgressNav,
@@ -55,6 +52,42 @@ function formatSlotDateTime(value: string) {
     timeStyle: "short",
     timeZone: "Asia/Tokyo"
   }).format(date);
+}
+
+function formatTokyoDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    day: "numeric",
+    month: "long",
+    timeZone: "Asia/Tokyo",
+    weekday: "short",
+    year: "numeric"
+  }).format(date);
+}
+
+function formatTokyoTime(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--:--";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    timeZone: "Asia/Tokyo"
+  }).format(date);
+}
+
+function finiteRating(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function googleMapsSearchUrl(query: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function googleMapsEmbedUrl(query: string) {
+  return `https://www.google.com/maps?output=embed&q=${encodeURIComponent(query)}`;
 }
 
 function getTokyoSlotParts(value: string) {
@@ -101,6 +134,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [addressCopyLabel, setAddressCopyLabel] = useState("复制地址");
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -187,15 +221,35 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     () => (service ? mapCoreServiceToServiceItem(service) : null),
     [service]
   );
-  const displayTechnician = useMemo(
-    () => (service?.technician ? mapCoreTechnicianToTechnician(service.technician) : null),
-    [service]
-  );
   const supportsBothModes = service?.serviceMode === "both";
   const people = searchParams.get("people") ?? "1名";
+  const packageDetail = displayService?.packages[0] ?? null;
+  const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
+  const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
+  const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
+  const technicianSkills = service?.technician
+    ? [service.technician.primaryService?.name, ...service.technician.reviewSummary.highlights]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .slice(0, 3)
+    : [];
+  const technicianProfileId = service?.technician?.id ?? null;
+  const technicianIsAvailable = technicianProfileId !== null
+    && slots.some((slot) => slot.technicianProfileId === technicianProfileId);
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
+  };
+
+  const copyAddress = async () => {
+    if (!locationAddress) return;
+    try {
+      await navigator.clipboard.writeText(locationAddress);
+      setAddressCopyLabel("已复制");
+      window.setTimeout(() => setAddressCopyLabel("复制地址"), 1600);
+    } catch {
+      setAddressCopyLabel("复制失败");
+      window.setTimeout(() => setAddressCopyLabel("复制地址"), 1600);
+    }
   };
 
   const jumpToSection = (index: number, key: CheckoutProgressKey) => {
@@ -289,184 +343,325 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
         <>
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[0] = node)}>
             <SectionTitle>套餐</SectionTitle>
-            <SurfacePanel className="overflow-hidden p-0">
-            <img
-              alt={service.name}
-              className="h-48 w-full object-cover"
-              src={getGeneratedImageThumbnailUrl(displayService.cover)}
-            />
-            <div className="space-y-3 p-4">
-              <div className="flex flex-wrap gap-2">
-                {displayService.tags.slice(0, 3).map((tag) => (
-                  <span className="rounded-full bg-[color:var(--client-elevated)] px-3 py-1 text-[10px] font-black text-[color:var(--client-muted)]" key={tag}>{tag}</span>
+            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
+              <div className="relative h-[196px] w-full overflow-hidden rounded-[24px] bg-black">
+                <img
+                  alt={service.name}
+                  className="absolute inset-0 h-full w-full scale-[1.035] object-cover"
+                  src={getGeneratedImageThumbnailUrl(displayService.cover)}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {displayService.tags.slice(0, 2).map((tag) => (
+                  <span
+                    className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-muted)]"
+                    key={tag}
+                  >
+                    {tag}
+                  </span>
                 ))}
               </div>
-              <h1 className="text-xl font-black text-[color:var(--client-text)]">{service.name}</h1>
-              <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">{service.description}</p>
-              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <strong className="text-2xl font-black text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
-                <span className="text-sm font-black text-[color:var(--client-muted)]">{service.durationMinutes} 分钟</span>
-                <span className="text-sm font-black text-[color:var(--client-muted)]">{service.city}</span>
+              <h1 className="mt-3 text-[20px] font-black leading-tight tracking-[-0.03em] text-[color:var(--client-text)]">{service.name}</h1>
+              {service.description ? (
+                <p className="mt-1.5 text-sm leading-6 text-[color:var(--client-muted)]">{service.description}</p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <strong className="text-[25px] font-black tracking-[-0.04em] text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
+                <span className="text-sm font-semibold text-[color:var(--client-muted)]">{service.durationMinutes} 分钟</span>
+                <span className="text-sm font-semibold text-[color:var(--client-muted)]">{service.city}</span>
               </div>
-              {displayService.packages[0]?.includes.length ? (
-                <div className="flex flex-wrap gap-2 border-t border-[color:var(--client-line)] pt-3">
-                  {displayService.packages[0].includes.map((item) => (
-                    <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-[10px] font-black text-[color:var(--client-primary)]" key={item}>{item}</span>
+              {packageDetail?.includes.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {packageDetail.includes.slice(0, 4).map((item) => (
+                    <span
+                      className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
+                      key={item}
+                    >
+                      {item}
+                    </span>
                   ))}
                 </div>
               ) : null}
+              <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3">
+                <p className="text-xs font-semibold text-[color:var(--client-muted)]">{packageDetail?.name ?? service.category.name}</p>
+              </div>
             </div>
-            </SurfacePanel>
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[1] = node)}>
             <SectionTitle>服务方式</SectionTitle>
-            <SurfacePanel className="p-4">
-            <div className="grid grid-cols-2 gap-2">
-              {(["store", "home"] as const).map((mode) => {
-                const disabled = !supportsBothModes && fulfillmentMode !== mode;
-                return (
-                  <button
-                    className={cn(
-                      "h-12 rounded-full text-sm font-black transition",
-                      fulfillmentMode === mode
-                        ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
-                        : "bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]",
-                      disabled && "cursor-not-allowed opacity-45"
-                    )}
-                    disabled={disabled}
-                    key={mode}
-                    onClick={() => setFulfillmentMode(mode)}
-                    type="button"
-                  >
-                    {mode === "store" ? "到店服务" : "上门服务"}
-                  </button>
-                );
-              })}
-            </div>
-            {fulfillmentMode === "store" ? (
-              <div className="mt-4 rounded-[20px] bg-[color:var(--client-elevated)] p-4">
-                <p className="text-sm font-black text-[color:var(--client-text)]">{service.shop.name}</p>
-                <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{service.shop.city} · {service.shop.address}</p>
-              </div>
-            ) : (
-              <textarea
-                aria-label="上门地址"
-                className="focus-ring mt-4 min-h-24 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
-                onChange={(event) => setAddress(event.target.value)}
-                placeholder="请输入完整地址、房间号和联系电话"
-                value={address}
-              />
-            )}
-            </SurfacePanel>
-          </div>
-
-          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[2] = node)}>
-            <SectionTitle>时间</SectionTitle>
-            <SurfacePanel className="p-4">
-            {selectedSlot ? (
-              <div className="mb-3 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--client-primary-soft)] p-3 text-sm font-black">
-                <span>{formatSlotDateTime(selectedSlot.startsAt)}</span>
-                <span className="text-right">{people}</span>
-              </div>
-            ) : null}
-            {slots.length === 0 ? (
-              <div className="rounded-[18px] border border-dashed border-[color:var(--client-line)] px-4 py-6 text-center">
-                <p className="text-sm font-black text-[color:var(--client-text)]">暂时没有可预约时段</p>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺发布新的正式排班后会自动显示。</p>
-              </div>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {slots.map((slot) => {
-                  const active = slot.id === selectedSlotId;
+            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
+              <div className="grid grid-cols-2 gap-2">
+                {(["store", "home"] as const).map((mode) => {
+                  const disabled = !supportsBothModes && fulfillmentMode !== mode;
                   return (
                     <button
                       className={cn(
-                        "rounded-[18px] border px-4 py-3 text-left transition",
-                        active
-                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)]"
-                          : "border-[color:var(--client-line)] bg-[color:var(--client-surface)]"
+                        "rounded-full px-4 py-3 text-sm font-black transition",
+                        fulfillmentMode === mode
+                          ? "bg-[color:var(--client-primary)] text-[#090806]"
+                          : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-muted)]",
+                        disabled && "cursor-not-allowed opacity-45"
                       )}
-                      key={slot.id}
-                      onClick={() => setSelectedSlotId(slot.id)}
+                      disabled={disabled}
+                      key={mode}
+                      onClick={() => setFulfillmentMode(mode)}
                       type="button"
                     >
-                      <span className="block text-sm font-black text-[color:var(--client-text)]">{formatSlotDateTime(slot.startsAt)}</span>
-                      <span className="mt-1 block text-xs font-bold text-[color:var(--client-muted)]">
-                        {slot.technicianName ?? "店铺安排技师"} · 剩余 {remainingCapacity(slot)} 名
-                      </span>
+                      {mode === "store" ? "到店服务" : "上门服务"}
                     </button>
                   );
                 })}
               </div>
-            )}
-            </SurfacePanel>
+              {fulfillmentMode === "store" ? (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">到店服务</p>
+                    <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">{service.shop.name}</p>
+                  </div>
+                  <div className="rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-3">
+                    <p className="text-sm font-black text-[color:var(--client-text)]">{service.shop.name}</p>
+                    <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{service.shop.city} · {service.shop.address}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">上门服务</p>
+                  <textarea
+                    aria-label="上门地址"
+                    className="focus-ring mt-3 min-h-28 w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
+                    onChange={(event) => setAddress(event.target.value)}
+                    placeholder="请输入完整地址、房间号和联系电话"
+                    value={address}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[2] = node)}>
+            <SectionTitle>时间</SectionTitle>
+            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
+              <p className="text-xs font-black text-[color:var(--client-primary)]">预约时间</p>
+              {selectedSlot ? (
+                <>
+                  <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+                    <p className="text-xs font-bold text-[color:var(--client-muted)]">日期</p>
+                    <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]">{formatTokyoDate(selectedSlot.startsAt)}</p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+                      <p className="text-xs font-bold text-[color:var(--client-muted)]">时间</p>
+                      <p className="mt-2 text-[22px] font-black text-[color:var(--client-primary)]">{formatTokyoTime(selectedSlot.startsAt)}</p>
+                      <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">{selectedSlot.technicianName ?? "店铺安排技师"}</p>
+                    </div>
+                    <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+                      <p className="text-xs font-bold text-[color:var(--client-muted)]">人数</p>
+                      <p className="mt-2 text-[22px] font-black text-[color:var(--client-text)]">{people}</p>
+                      <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">剩余 {remainingCapacity(selectedSlot)} 名</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[color:var(--client-muted)]">*请提前10分钟到达，迟到无联系保留15分钟</p>
+                  <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3 text-xs font-semibold text-[color:var(--client-muted)]">
+                    {formatSlotDateTime(selectedSlot.startsAt)} · {people}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 rounded-[22px] border border-dashed border-[color:var(--client-line)] px-4 py-8 text-center">
+                  <p className="text-sm font-black text-[color:var(--client-text)]">暂时没有可预约时段</p>
+                  <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺发布新的正式排班后会自动显示。</p>
+                </div>
+              )}
+              {slots.length > 1 ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {slots.map((slot) => {
+                    const active = slot.id === selectedSlotId;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={cn(
+                          "rounded-[18px] border px-3 py-2.5 text-left text-xs font-black transition",
+                          active
+                            ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
+                            : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]"
+                        )}
+                        key={slot.id}
+                        onClick={() => setSelectedSlotId(slot.id)}
+                        type="button"
+                      >
+                        {formatSlotDateTime(slot.startsAt)}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[3] = node)}>
             <SectionTitle>地址</SectionTitle>
-            <SurfacePanel className="p-4">
-            <div className="flex items-start gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"><AppIcon name="map" /></span>
-              <div>
-                <h2 className="text-sm font-black text-[color:var(--client-text)]">{fulfillmentMode === "store" ? service.shop.name : "上门服务地址"}</h2>
-                <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{fulfillmentMode === "store" ? `${service.shop.city} · ${service.shop.address}` : address || "请填写上门地址"}</p>
+            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
+              {locationQuery ? (
+                <div className="relative overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[#101318]">
+                  <iframe
+                    aria-hidden="true"
+                    className="pointer-events-none h-[136px] w-full"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    src={googleMapsEmbedUrl(locationQuery)}
+                    title="Google 地图缩略图"
+                  />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/55 via-black/15 to-transparent px-3 pb-3 pt-8">
+                    <span className="rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/92">Google Maps</span>
+                    <span className="text-[10px] font-semibold text-white/82">{fulfillmentMode === "store" ? "门店位置预览" : "上门地址预览"}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-[22px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] px-4 py-8 text-center">
+                  <p className="text-sm font-black text-[color:var(--client-text)]">填写地址后会显示地图缩略图</p>
+                </div>
+              )}
+              <div className="mt-3">
+                <p className="text-sm font-black text-[color:var(--client-text)]">{locationAddress || "请填写上门地址"}</p>
+                <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{locationTitle}{service.shop.city ? ` · ${service.shop.city}` : ""}</p>
+              </div>
+              <div className="mt-3 flex gap-2">
+                {locationQuery ? (
+                  <a
+                    className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-2 text-xs font-black text-[color:var(--client-primary)]"
+                    href={googleMapsSearchUrl(locationQuery)}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Google 地图
+                  </a>
+                ) : null}
+                <button
+                  className="rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_70%,transparent)] px-3 py-2 text-xs font-black text-[color:var(--client-text)] disabled:opacity-45"
+                  disabled={!locationAddress}
+                  onClick={() => void copyAddress()}
+                  type="button"
+                >
+                  {addressCopyLabel}
+                </button>
               </div>
             </div>
-            </SurfacePanel>
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[4] = node)}>
             <SectionTitle>技师</SectionTitle>
-            {displayTechnician ? (
-              <SocialProfileMiniCard
-                className="w-full"
-                detailTo={`/technicians/${displayTechnician.id}`}
-                showAction={false}
-                technician={displayTechnician}
-                topTags={[{ label: "本次担当", tone: "green" }]}
-              />
+            {service.technician ? (
+              <button
+                className="w-full rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 text-left shadow-[0_14px_28px_rgba(0,0,0,0.06)]"
+                onClick={() => navigate(`/technicians/${service.technician?.id}`)}
+                type="button"
+              >
+                <div className="grid grid-cols-[92px_minmax(0,1fr)_16px] gap-4">
+                  {service.technician.avatarUrl ? (
+                    <img
+                      alt={service.technician.displayName}
+                      className="h-[92px] w-[92px] rounded-[24px] object-cover"
+                      src={service.technician.avatarUrl}
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="grid h-[92px] w-[92px] place-items-center rounded-[24px] bg-[color:var(--client-primary-soft)] text-3xl font-black text-[color:var(--client-primary)]"
+                    >
+                      {service.technician.displayName.trim().charAt(0)}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-[18px] font-black leading-none tracking-[-0.03em] text-[color:var(--client-text)]">{service.technician.displayName}</p>
+                    <p className="mt-2 text-[13px] text-[color:var(--client-muted)]">{service.technician.city}</p>
+                    <p className="mt-3 text-[13px] font-black text-[color:var(--client-text)]">
+                      ★ {finiteRating(service.technician.reviewSummary.ratingAverage).toFixed(1)} · {service.technician.reviewSummary.reviewCount} 评价
+                    </p>
+                    {technicianSkills.length ? (
+                      <p className="mt-2 line-clamp-1 text-sm leading-6 text-[color:var(--client-muted)]">{technicianSkills.join(" / ")}</p>
+                    ) : null}
+                    <div className="mt-4 flex items-end justify-between gap-3">
+                      <div className="flex min-w-0 flex-wrap gap-2">
+                        {technicianSkills.slice(0, 2).map((tag) => (
+                          <span
+                            className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
+                            key={tag}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={cn(
+                          "text-[14px] font-black",
+                          technicianIsAvailable ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]"
+                        )}>
+                          {technicianIsAvailable ? "当前可约" : "档期待确认"}
+                        </p>
+                        <p className="mt-1 text-xs text-[color:var(--client-muted)]">{service.technician.acceptanceRatePercent}% 接单率</p>
+                      </div>
+                    </div>
+                  </div>
+                  <svg aria-hidden="true" className="mt-1 h-4 w-4 text-[color:var(--client-muted)]" fill="none" viewBox="0 0 24 24">
+                    <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+                  </svg>
+                </div>
+              </button>
             ) : (
-              <SurfacePanel className="p-4">
+              <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
                 <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
                 <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">确认接单后将在预约详情中显示正式担当信息。</p>
-              </SurfacePanel>
+              </div>
             )}
           </div>
 
           <div className="scroll-mt-[170px] space-y-2 pt-1" ref={(node) => void (sectionRefs.current[5] = node)}>
             <SectionTitle>备注</SectionTitle>
-            <SurfacePanel className="p-4">
-            <div className="flex flex-wrap gap-2">
-              {quickNotes.map((quickNote) => (
-                <button className="rounded-full bg-[color:var(--client-elevated)] px-3 py-2 text-xs font-black" key={quickNote} onClick={() => appendQuickNote(quickNote)} type="button">{quickNote}</button>
-              ))}
+            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center justify-between gap-3 px-1 pb-2">
+                <p className="text-sm font-black text-[color:var(--client-text)]">特殊需求</p>
+                <p className="text-xs font-semibold text-[color:var(--client-muted)]">{note.trim() ? `已填写 ${note.trim().length} 字` : "可选填写"}</p>
+              </div>
+              <textarea
+                className="focus-ring min-h-[156px] w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3.5 text-sm font-bold leading-6 text-[color:var(--client-text)]"
+                id="formal-checkout-note"
+                maxLength={500}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="填写特殊需求：忌口、靠窗座位、门禁、停车、语言偏好等"
+                ref={remarkInputRef}
+                value={note}
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {quickNotes.map((quickNote) => (
+                  <button
+                    className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
+                    key={quickNote}
+                    onClick={() => appendQuickNote(quickNote)}
+                    type="button"
+                  >
+                    {quickNote}
+                  </button>
+                ))}
+              </div>
             </div>
-            <textarea
-              className="focus-ring mt-3 min-h-24 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
-              id="formal-checkout-note"
-              maxLength={500}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="过敏、门禁、语言等需要店铺提前了解的信息"
-              ref={remarkInputRef}
-              value={note}
-            />
-            </SurfacePanel>
           </div>
 
-          <div className="grid gap-3">
-            <SurfacePanel className="p-4">
-              <h2 className="text-sm font-black">注意事项</h2>
-              <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">预约前请确认服务时间、地址与付款方式；服务内容以本页正式数据及店铺最终确认结果为准。</p>
-            </SurfacePanel>
-            <SurfacePanel className="p-4">
-              <h2 className="text-sm font-black">取消政策</h2>
-              <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">提交后可在预约详情查看当前状态；取消条件以正式订单状态与店铺规则为准。</p>
-            </SurfacePanel>
-            <SurfacePanel className="p-4">
-              <h2 className="text-sm font-black">NDP（NeeDoPoint）</h2>
-              <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">本次订单的 NDP 使用与结算结果，以服务完成后的正式结算记录为准。</p>
-            </SurfacePanel>
+          <div className="space-y-2 pt-1">
+            <SectionTitle>注意事项</SectionTitle>
+            <div className="space-y-4 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
+              <div className="flex items-start gap-3">
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--client-primary)]" />
+                <p className="text-sm leading-6 text-[color:var(--client-muted)]">预约前请确认服务时间、地址与付款方式；服务内容以本页正式数据及店铺最终确认结果为准。</p>
+              </div>
+              <div className="border-t border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] pt-4">
+                <h3 className="text-sm font-black text-[color:var(--client-text)]">取消政策</h3>
+                <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">提交后可在预约详情查看当前状态；取消条件以正式订单状态与店铺规则为准。</p>
+              </div>
+              <div className="border-t border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] pt-4">
+                <h3 className="text-sm font-black text-[color:var(--client-text)]">NDP（NeeDoPoint）</h3>
+                <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">本次订单的 NDP 使用与结算结果，以服务完成后的正式结算记录为准。</p>
+              </div>
+            </div>
           </div>
 
           {submitError ? (

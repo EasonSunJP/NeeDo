@@ -44,9 +44,27 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("取消政策");
     expect(formalSource).toContain("NDP（NeeDoPoint）");
     expect(formalSource).toContain("确定预约");
-    expect(formalSource).toContain("SocialProfileMiniCard");
+    expect(formalSource).toContain("Google Maps");
+    expect(formalSource).toContain("门店位置预览");
+    expect(formalSource).toContain("复制地址");
+    expect(formalSource).toContain("预约时间");
+    expect(formalSource).toContain("接单率");
+    expect(formalSource).toContain("service.technician.acceptanceRatePercent");
+    expect(formalSource).toContain("service.technician.reviewSummary.reviewCount");
+    expect(formalSource).toContain("service.technician.reviewSummary.ratingAverage");
+    expect(formalSource).not.toContain("acceptRate: 98");
     expect(formalSource).not.toContain("选择可预约时段");
     expect(formalSource).not.toContain("提交正式预约");
+  });
+
+  it("renders the approved detailed body without reviving unsupported stores", () => {
+    for (const copy of ["套餐", "服务方式", "预约时间", "地址", "技师", "特殊需求", "注意事项", "取消政策", "NDP（NeeDoPoint）"]) {
+      expect(formalSource).toContain(copy);
+    }
+    expect(formalSource).not.toContain("entityStore");
+    expect(formalSource).not.toContain("shiftPlanningStore");
+    expect(formalSource).not.toContain("userOrderStore");
+    expect(formalSource).not.toContain("../../data/mock");
   });
 
   it("tracks six approved sections through the viewport center", () => {
