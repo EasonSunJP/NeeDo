@@ -41,6 +41,22 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain('section.title === "平台运营" ? "PF運営" : section.title');
   });
 
+  it("links the formal agent and operating-cost workspaces with read permissions", () => {
+    expect(source).toContain('label: "代理商管理", to: "/admin/agents"');
+    expect(source).toContain('permission: "backoffice:agent:read"');
+    expect(source).toContain(
+      'label: "运营成本设置", to: "/admin/finance/operating-costs"'
+    );
+    expect(source).toContain('permission: "backoffice:operating-cost:read"');
+    expect(
+      routeMatches(
+        { label: "代理商管理", to: "/admin/agents", icon: "代" },
+        "/admin/agents/11111111-1111-4111-8111-111111111111",
+        ""
+      )
+    ).toBe(true);
+  });
+
   it("does not render the obstructive bottom-left operations notice", () => {
     expect(source).not.toContain("东京城市组");
     expect(source).not.toContain("19 个待审核商家，36 个工单需要运营介入。");

@@ -353,7 +353,7 @@ git commit -m "feat: report confirmed agent commission"
 - Consumes: Tasks 2-5 endpoints
 - Produces routes `/admin/agents`, `/admin/agents/:agentPublicId`, `/admin/finance/operating-costs`
 
-- [ ] **Step 1: Write failing route/form tests**
+- [x] **Step 1: Write failing route/form tests**
 
 ```tsx
 expect(screen.getByLabelText("固定成功奖励（日元）")).toBeVisible();
@@ -365,17 +365,17 @@ expect(screen.getByRole("button", { name: "标记为供货商 TEST" })).toBeVisi
 expect(adminSource).toContain('{ label: "代理商管理", to: "/admin/agents"');
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `npm test -- src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingCostsPage.test.tsx src/components/admin/AdminLayout.test.ts`
 
 Expected: FAIL because formal pages/routes are absent.
 
-- [ ] **Step 3: Implement API-driven pages**
+- [x] **Step 3: Implement API-driven pages**
 
 Agent list links existing users, shows referred shops, active rule and settlement/payment status. User detail exposes the three formal partner markers; franchisee/supplier markers show TEST status but do not link to a detail page. Rule and cost forms require reason/effective date; previews show every pure-profit line before confirmation. Permission gates hide writes but retain read-only detail.
 
-- [ ] **Step 4: Run frontend tests, lint and build**
+- [x] **Step 4: Run frontend tests, lint and build**
 
 Run: `npm test -- src/api/platformPartners.test.ts src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingCostsPage.test.tsx src/pages/admin/UsersPage.test.tsx src/components/admin/AdminLayout.test.ts && npm run lint && npm run build`
 

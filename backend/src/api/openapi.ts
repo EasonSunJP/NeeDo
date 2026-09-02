@@ -5873,6 +5873,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               avatarUrl: { type: ["string", "null"] },
               status: { type: "string", enum: ["active", "inactive"] }
             }
+          },
+          administration: {
+            type: "object",
+            additionalProperties: false,
+            required: ["referralCount", "referredShops", "currentRule", "latestSettlement"],
+            properties: {
+              referralCount: { type: "integer", minimum: 0 },
+              referredShops: {
+                type: "array",
+                maxItems: 3,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["publicId", "name", "city"],
+                  properties: {
+                    publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+                    name: { type: "string" },
+                    city: { type: "string" }
+                  }
+                }
+              },
+              currentRule: {
+                type: ["object", "null"],
+                properties: {
+                  version: { type: "integer", minimum: 1 },
+                  fixedSuccessRewardJpy: { type: "integer", minimum: 0 },
+                  profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+                  paymentMethod: { type: "string", enum: ["bank_transfer", "ndp", "other"] },
+                  effectiveFrom: { type: "string", format: "date-time" },
+                  effectiveTo: { type: ["string", "null"], format: "date-time" }
+                }
+              },
+              latestSettlement: {
+                type: ["object", "null"],
+                properties: {
+                  publicId: { type: "string", format: "uuid" },
+                  status: { type: "string", enum: ["confirmed", "paid"] },
+                  periodStart: { type: "string", format: "date-time" },
+                  periodEnd: { type: "string", format: "date-time" },
+                  totalAmountJpy: { type: "integer", minimum: 0 },
+                  confirmedAt: { type: "string", format: "date-time" },
+                  paidAt: { type: ["string", "null"], format: "date-time" }
+                }
+              }
+            }
           }
         }
       },

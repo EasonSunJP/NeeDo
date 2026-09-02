@@ -23,6 +23,13 @@ describe("platform partner OpenAPI", () => {
       ]
     ).toBe("backoffice:agent:read");
     expect(response.body.components.schemas.PlatformPartnerProfile).toBeDefined();
+    expect(
+      response.body.components.schemas.PlatformPartnerProfile.properties.administration.properties
+    ).toMatchObject({
+      referralCount: { type: "integer", minimum: 0 },
+      currentRule: { type: ["object", "null"] },
+      latestSettlement: { type: ["object", "null"] }
+    });
     expect(response.body.components.schemas.AgentShopReferral).toBeDefined();
   });
 });

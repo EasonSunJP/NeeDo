@@ -45,10 +45,27 @@ const referral: AgentShopReferralRecord = {
   }
 };
 
+const agentListProfile = {
+  ...profile,
+  administration: {
+    referralCount: 1,
+    referredShops: [
+      { publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }
+    ],
+    currentRule: null,
+    latestSettlement: null
+  }
+};
+
 const createRepository = (): jest.Mocked<PlatformPartnerRepositoryPort> =>
   ({
     markPartnerProfile: jest.fn(async () => ({ kind: "created", profile })),
-    listAgents: jest.fn(async () => ({ list: [profile], total: 1, page: 1, page_size: 20 })),
+    listAgents: jest.fn(async () => ({
+      list: [agentListProfile],
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
     listAgentShopReferrals: jest.fn(async () => ({
       kind: "found",
       page: { list: [referral], total: 1, page: 1, page_size: 20 }

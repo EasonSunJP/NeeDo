@@ -28,6 +28,32 @@ export interface PlatformPartnerProfileRecord {
   user: PlatformPartnerUserRecord;
 }
 
+export interface AgentAdministrationSummaryRecord {
+  referralCount: number;
+  referredShops: Array<{ publicId: string; name: string; city: string }>;
+  currentRule: {
+    version: number;
+    fixedSuccessRewardJpy: number;
+    profitShareRateBps: number;
+    paymentMethod: "bank_transfer" | "ndp" | "other";
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+  } | null;
+  latestSettlement: {
+    publicId: string;
+    status: "confirmed" | "paid";
+    periodStart: Date;
+    periodEnd: Date;
+    totalAmountJpy: number;
+    confirmedAt: Date;
+    paidAt: Date | null;
+  } | null;
+}
+
+export interface AgentProfileListRecord extends PlatformPartnerProfileRecord {
+  administration: AgentAdministrationSummaryRecord;
+}
+
 export interface AgentShopReferralRecord {
   id: number;
   publicId: string;
@@ -60,6 +86,30 @@ export interface PlatformPartnerProfilePayload {
     nickname: string;
     avatarUrl: string | null;
     status: PlatformPartnerStatus;
+  };
+}
+
+export interface AgentProfileListPayload extends PlatformPartnerProfilePayload {
+  administration: {
+    referralCount: number;
+    referredShops: Array<{ publicId: string; name: string; city: string }>;
+    currentRule: {
+      version: number;
+      fixedSuccessRewardJpy: number;
+      profitShareRateBps: number;
+      paymentMethod: "bank_transfer" | "ndp" | "other";
+      effectiveFrom: string;
+      effectiveTo: string | null;
+    } | null;
+    latestSettlement: {
+      publicId: string;
+      status: "confirmed" | "paid";
+      periodStart: string;
+      periodEnd: string;
+      totalAmountJpy: number;
+      confirmedAt: string;
+      paidAt: string | null;
+    } | null;
   };
 }
 
@@ -127,7 +177,7 @@ export interface PlatformPartnerRepositoryPort {
   }) => Promise<MarkPartnerProfileRepositoryResult>;
   listAgents: (
     input: AgentListInput
-  ) => Promise<PaginatedResponse<PlatformPartnerProfileRecord>>;
+  ) => Promise<PaginatedResponse<AgentProfileListRecord>>;
   listAgentShopReferrals: (
     input: AgentShopReferralListInput
   ) => Promise<AgentShopReferralListRepositoryResult>;
@@ -220,7 +270,7 @@ export class PlatformPartnerService {
     input: AgentListInput,
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
-  ): Promise<PaginatedResponse<PlatformPartnerProfilePayload>> {
+  ): Promise<PaginatedResponse<AgentProfileListPayload>> {
     const page = await this.repository.listAgents(input);
     await this.auditLogService.record({
       actor,
@@ -237,7 +287,29 @@ export class PlatformPartnerService {
 
     return {
       ...page,
-      list: page.list.map((record) => this.serializeProfile(record))
+      list: page.list.map((record) => ({
+        ...this.serializeProfile(record),
+        administration: {
+          referralCount: record.administration.referralCount,
+          referredShops: record.administration.referredShops,
+          currentRule: record.administration.currentRule
+            ? {
+                ...record.administration.currentRule,
+                effectiveFrom: record.administration.currentRule.effectiveFrom.toISOString(),
+                effectiveTo: record.administration.currentRule.effectiveTo?.toISOString() ?? null
+              }
+            : null,
+          latestSettlement: record.administration.latestSettlement
+            ? {
+                ...record.administration.latestSettlement,
+                periodStart: record.administration.latestSettlement.periodStart.toISOString(),
+                periodEnd: record.administration.latestSettlement.periodEnd.toISOString(),
+                confirmedAt: record.administration.latestSettlement.confirmedAt.toISOString(),
+                paidAt: record.administration.latestSettlement.paidAt?.toISOString() ?? null
+              }
+            : null
+        }
+      }))
     };
   }
 

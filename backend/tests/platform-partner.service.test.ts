@@ -75,7 +75,34 @@ const setup = () => {
   const repository: jest.Mocked<PlatformPartnerRepositoryPort> = {
     markPartnerProfile: jest.fn().mockResolvedValue({ kind: "created", profile: profile() }),
     listAgents: jest.fn().mockResolvedValue({
-      list: [profile()],
+      list: [
+        {
+          ...profile(),
+          administration: {
+            referralCount: 1,
+            referredShops: [
+              { publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }
+            ],
+            currentRule: {
+              version: 2,
+              fixedSuccessRewardJpy: 50_000,
+              profitShareRateBps: 1_500,
+              paymentMethod: "bank_transfer",
+              effectiveFrom: new Date("2026-09-01T00:00:00.000Z"),
+              effectiveTo: null
+            },
+            latestSettlement: {
+              publicId: "33333333-3333-4333-8333-333333333333",
+              status: "paid",
+              periodStart: new Date("2026-09-01T00:00:00.000Z"),
+              periodEnd: new Date("2026-09-30T00:00:00.000Z"),
+              totalAmountJpy: 62_000,
+              confirmedAt: new Date("2026-10-01T00:00:00.000Z"),
+              paidAt: new Date("2026-10-02T00:00:00.000Z")
+            }
+          }
+        }
+      ],
       total: 1,
       page: 1,
       page_size: 20
@@ -172,7 +199,21 @@ describe("PlatformPartnerService", () => {
       )
     ).resolves.toMatchObject({
       total: 1,
-      list: [{ partnerType: "agent", user: { needoId: "u0000000088" } }]
+      list: [
+        {
+          partnerType: "agent",
+          user: { needoId: "u0000000088" },
+          administration: {
+            referralCount: 1,
+            currentRule: { version: 2, effectiveFrom: "2026-09-01T00:00:00.000Z" },
+            latestSettlement: {
+              status: "paid",
+              totalAmountJpy: 62_000,
+              paidAt: "2026-10-02T00:00:00.000Z"
+            }
+          }
+        }
+      ]
     });
 
     expect(repository.listAgents).toHaveBeenCalledWith({
