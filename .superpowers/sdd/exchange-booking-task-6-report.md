@@ -68,3 +68,46 @@ Exchange cancellation protocol exists.
 ## Commit
 
 Implementation commit: `a58d012797131a18f8abcbbb3a5a9c1ab942e490`
+
+## Review follow-up: behavior-level replacement and race proof
+
+This follow-up adds two stateful, rollback-aware `BookingRepository.createBooking`
+tests. They use a committed state plus a transaction-local working copy: successful
+callbacks commit the working copy, while a thrown callback discards it. The race
+fixture commits the new Exchange relation independently after the selection read and
+before conditional replacement, matching the relevant `ReadCommitted` visibility
+boundary.
+
+- Mixed state proof: an ordinary and an Exchange-linked `PENDING` share a customer.
+  The real repository transaction cancels only the ordinary order, writes its
+  `CANCELLED` history, releases only its slot, retains the linked order and its slot
+  capacity, and creates the new ordinary order.
+- Concurrent-link proof: the selected ordinary candidate gains an Exchange relation
+  before `updateMany`; the count mismatch aborts. The committed state retains that
+  external link but has no cancellation, slot release, cancellation history, new
+  order, affiliate invalidation, affiliate preparation, or affiliate persistence.
+
+The first execution was RED with both tests failing because the new harness omitted
+the required `deletedAt: null` fixture baseline and therefore selected no candidate.
+After correcting that fixture (without production edits), both behavior tests were
+GREEN. This exposed no production defect.
+
+The real-MySQL, rollback-contained end-to-end checker remains Task 8 scope: it must
+exercise the formal migration/runtime configuration and verify physical financial
+tables. This Task 6 harness proves repository transaction semantics without adding a
+second production checker or broadening schema/financial scope.
+
+Follow-up verification:
+
+```text
+Booking focused suites: 3 suites, 67 tests passed.
+Task 4/5 focused regressions: 13 suites, 97 tests passed.
+backend build: passed.
+Touched test targeted ESLint: passed.
+git diff --check: passed.
+```
+
+Full backend lint remains blocked by a pre-existing, unrelated
+`tests/exchange-booking-conversion.validators.test.ts:31` unused `_next` error.
+Full formatting check also reports pre-existing style drift across 520 files; neither
+was modified for this focused follow-up.
