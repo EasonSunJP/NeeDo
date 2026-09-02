@@ -7,7 +7,7 @@ Plan: `docs/superpowers/plans/2026-09-03-exchange-matched-booking-conversion.md`
 - Planned integration target observed at kickoff: `main` at `5c001100`
 - Baseline frontend: PASS (`357` files, `2490` tests)
 - Baseline backend: Prisma Client regenerated; all observed suites passed except two transient failures that passed `21/21` when rerun alone; the monolithic in-band runner exhausted an `8 GB` heap before completing
-- Task 1: pending
+- Task 1: complete — schema/migration plus matching-writer compatibility; spec and quality APPROVED at `110a4139`
 - Task 2: pending
 - Task 3: pending
 - Task 4: pending
