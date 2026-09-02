@@ -93,6 +93,21 @@ function sourceLabel(source: MemberAnalyticsListPayload["list"][number]["acquisi
   } as const)[source];
 }
 
+export function formatMembershipTokyoDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const part = (type: "year" | "month" | "day") =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 export function MembershipAnalyticsPage({ scope = "backoffice" }: {
   scope?: MembershipAnalyticsPageScope;
 }) {
@@ -278,9 +293,9 @@ export function MembershipAnalyticsPage({ scope = "backoffice" }: {
                           <td className="px-4 py-3 text-ink/60" data-no-i18n>{member.shopName}</td>
                           <td className="px-4 py-3 text-ink/60"><span data-no-i18n>{member.planName ?? "—"}</span><span className="mt-1 block text-xs" data-no-i18n>{member.cardNoMasked}</span></td>
                           <td className="px-4 py-3 text-ink/60">{t(sourceLabel(member.acquisitionSource))}</td>
-                          <td className="px-4 py-3 text-ink/60" data-no-i18n>{member.firstPaidAt ? new Date(member.firstPaidAt).toLocaleDateString() : "—"}</td>
+                          <td className="px-4 py-3 text-ink/60" data-no-i18n>{formatMembershipTokyoDate(member.firstPaidAt)}</td>
                           <td className="px-4 py-3"><span className="rounded-full bg-moss/10 px-2.5 py-1 text-xs font-black text-moss">{t(member.cardStatus)}</span></td>
-                          <td className="px-4 py-3 text-ink/60" data-no-i18n>{member.expiresAt ? new Date(member.expiresAt).toLocaleDateString() : "—"}</td>
+                          <td className="px-4 py-3 text-ink/60" data-no-i18n>{formatMembershipTokyoDate(member.expiresAt)}</td>
                         </tr>
                       ))}
                     </tbody>

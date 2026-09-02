@@ -11,6 +11,8 @@ import type { MembershipAnalyticsRepositoryPort } from "../repositories/membersh
 import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+
+const platformIdentityTypes = new Set(["platform", "platform_admin"]);
 import { requireMerchantShopId } from "./merchant-shop-scope";
 import type {
   BackofficeMembershipListQuery,
@@ -189,7 +191,11 @@ export class MembershipAnalyticsService {
   }
 
   private assertPlatformIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") {
+    if (
+      actor.currentIdentityType &&
+      platformIdentityTypes.has(actor.currentIdentityType) &&
+      (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform")
+    ) {
       return;
     }
     throw new AppError({

@@ -926,6 +926,11 @@ const analyticsRankingMetrics = new Set<AnalyticsRankingMetric>(["gmv", "complet
 const analyticsRankingEntityTypes = new Set<AnalyticsRankingEntityType>([
   "service", "technician_service", "technician", "customer"
 ]);
+const analyticsRankingEntityTypesByKind: Record<AnalyticsRankingKind, ReadonlySet<AnalyticsRankingEntityType>> = {
+  service: new Set(["service", "technician_service"]),
+  technician: new Set(["technician"]),
+  customer: new Set(["customer"])
+};
 const analyticsStatuses = new Set<AnalyticsDataStatus>([
   "ready",
   "not_connected",
@@ -1038,6 +1043,7 @@ function requireAnalyticsRankingPayload(
       ]) ||
       item.rank !== firstRank + index ||
       !analyticsRankingEntityTypes.has(item.entityType as AnalyticsRankingEntityType) ||
+      !analyticsRankingEntityTypesByKind[kind].has(item.entityType as AnalyticsRankingEntityType) ||
       typeof item.entityPublicId !== "string" || item.entityPublicId.trim().length === 0 ||
       !isPositiveSafeInteger(item.entityNumericId) ||
       typeof item.displayName !== "string" || item.displayName.trim().length === 0 ||

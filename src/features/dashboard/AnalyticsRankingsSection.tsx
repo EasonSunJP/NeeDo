@@ -5,6 +5,32 @@ import { translateTextForContext } from "../../i18n/translations";
 import { coreReadApi, type CoreCategory } from "../core-read/api";
 import { AnalyticsRankingPanel } from "./AnalyticsRankingPanel";
 
+async function listAllActiveCategories(language: string) {
+  const pageSize = 100;
+  const categories: Array<{ id: number; name: string }> = [];
+  let page = 1;
+  let expectedTotal: number | null = null;
+  for (;;) {
+    const result = await coreReadApi.listCategories({ page, pageSize });
+    if (
+      result.page !== page ||
+      result.page_size !== pageSize ||
+      !Number.isSafeInteger(result.total) ||
+      result.total < 0 ||
+      (expectedTotal !== null && result.total !== expectedTotal) ||
+      (result.list.length === 0 && categories.length < result.total)
+    ) throw new Error("error.categories.pagination_mismatch");
+    expectedTotal = result.total;
+    categories.push(...result.list.filter((category) => category.isActive).map((category) => ({
+      id: category.id,
+      name: localizedCategoryName(category, language)
+    })));
+    if (page * pageSize >= result.total) break;
+    page += 1;
+  }
+  return categories;
+}
+
 export function AnalyticsRankingsSection({ query }: { query: DashboardQuery }) {
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
@@ -14,12 +40,9 @@ export function AnalyticsRankingsSection({ query }: { query: DashboardQuery }) {
   useEffect(() => {
     let active = true;
     setCategoryStatus("loading");
-    void coreReadApi.listCategories({ page: 1, pageSize: 100 }).then((page) => {
+    void listAllActiveCategories(language).then((nextCategories) => {
       if (!active) return;
-      setCategories(page.list.filter((category) => category.isActive).map((category) => ({
-        id: category.id,
-        name: localizedCategoryName(category, language)
-      })));
+      setCategories(nextCategories);
       setCategoryStatus("success");
     }).catch(() => {
       if (!active) return;

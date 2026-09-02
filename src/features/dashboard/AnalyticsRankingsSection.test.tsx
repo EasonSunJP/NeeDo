@@ -50,4 +50,26 @@ describe("AnalyticsRankingsSection", () => {
     expect(container.textContent).toContain("用户消费排行 TOP10");
     expect(container.querySelector('[data-kind="technician"]')?.getAttribute("data-categories")).toBe("1");
   });
+
+  it("loads every formal category page before exposing the ranking filters", async () => {
+    coreMocks.listCategories
+      .mockResolvedValueOnce({
+        list: [{ id: 7, name: "放松休闲", isActive: true }],
+        total: 101,
+        page: 1,
+        page_size: 100
+      })
+      .mockResolvedValueOnce({
+        list: [{ id: 107, name: "宠物相关", isActive: true }],
+        total: 101,
+        page: 2,
+        page_size: 100
+      });
+
+    await act(async () => root.render(<AnalyticsRankingsSection query={{ period: "last7days" }} />));
+
+    expect(coreMocks.listCategories).toHaveBeenNthCalledWith(1, { page: 1, pageSize: 100 });
+    expect(coreMocks.listCategories).toHaveBeenNthCalledWith(2, { page: 2, pageSize: 100 });
+    expect(container.querySelector('[data-kind="technician"]')?.getAttribute("data-categories")).toBe("2");
+  });
 });

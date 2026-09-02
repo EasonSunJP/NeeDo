@@ -11,6 +11,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 type AnalyticsRankingAudit = Pick<AuditLogService, "record">;
+const platformIdentityTypes = new Set(["platform", "platform_admin"]);
 
 export class AnalyticsRankingService {
   public constructor(
@@ -95,7 +96,11 @@ export class AnalyticsRankingService {
   }
 
   private assertPlatformIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") return;
+    if (
+      actor.currentIdentityType &&
+      platformIdentityTypes.has(actor.currentIdentityType) &&
+      (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform")
+    ) return;
     throw new AppError({
       code: ERROR_CODES.IDENTITY_FORBIDDEN,
       message: "error.identity.forbidden",

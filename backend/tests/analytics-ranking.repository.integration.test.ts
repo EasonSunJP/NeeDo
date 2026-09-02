@@ -130,6 +130,15 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
             technicianServiceId: method === "CASH" ? technicianService.id : null,
             shopId: shop.id, technicianProfileId: technician.id, scheduleSlotId: slot.id,
             status: "COMPLETED", priceAmount: 10_000, currency: "JPY",
+            serviceNameSnapshot: method === "CASH" ? technicianService.name : service.name,
+            serviceSnapshotJson: method === "CASH" ? {
+              entityType: "technician_service", entityNumericId: technicianService.id,
+              technicianServiceId: technicianService.id,
+              publicId: technicianService.publicId, categoryId: category.id
+            } : {
+              entityType: "service", entityNumericId: service.id, serviceId: service.id,
+              publicId: service.publicId, categoryId: category.id
+            },
             startsAt: new Date("2026-08-31T01:00:00Z"), endsAt: new Date("2030-01-01T00:00:00Z"),
             paymentMethod: method, paymentStatus: "CONFIRMED", paymentAmountJpy: checkoutAmountJpy,
             paymentConfirmedById: method === "NDP" ? customer.id : method === "CASH" ? technicianUser.id : operator.id,
@@ -142,7 +151,11 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
             addOns.push(await tx.orderAddOn.create({ data: { bookingOrderId: order.id,
               serviceSessionId: session.id, serviceId: selectedAddOnService.id, status: "ACCEPTED",
               serviceNameSnapshot: selectedAddOnService.name, priceAmountJpy: 2_000, currency: "JPY",
-              durationMinutes: 15, serviceSnapshotJson: { serviceId: selectedAddOnService.id },
+              durationMinutes: 15, serviceSnapshotJson: {
+                entityType: "service", entityNumericId: selectedAddOnService.id,
+                serviceId: selectedAddOnService.id,
+                publicId: selectedAddOnService.publicId, categoryId: category.id
+              },
               proposedByUserId: technicianUser.id, proposedAt: new Date(selectedAt.getTime() - 1000),
               acceptedByUserId: customer.id, acceptedAt: selectedAt } }));
           }
@@ -317,23 +330,22 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
           data: { categoryId: otherCategory.id } });
         await expect(repository.listRankings({ kind: "service", metric: "gmv", window,
           evaluatedAt, city: "东京", categoryId: category.id, page: 1, pageSize: 10 }))
-          .resolves.toMatchObject({ total: 2, list: [
+          .resolves.toMatchObject({ total: 4, list: [
             { entityPublicId: service.publicId, gmvJpy: 19_000, completedCount: 2 },
-            { entityPublicId: technicianService.publicId, gmvJpy: 10_000, completedCount: 1 }
-          ] });
-        await expect(repository.listRankings({ kind: "service", metric: "completedCount", window,
-          evaluatedAt, city: "东京", categoryId: otherCategory.id, page: 1, pageSize: 10 }))
-          .resolves.toMatchObject({ total: 2, list: [
+            { entityPublicId: technicianService.publicId, gmvJpy: 10_000, completedCount: 1 },
             { entityPublicId: addOnService.publicId, gmvJpy: 4_000, completedCount: 2 },
             { entityPublicId: tieAddOnService.publicId, gmvJpy: 4_000, completedCount: 2 }
           ] });
+        await expect(repository.listRankings({ kind: "service", metric: "completedCount", window,
+          evaluatedAt, city: "东京", categoryId: otherCategory.id, page: 1, pageSize: 10 }))
+          .resolves.toMatchObject({ total: 0, list: [] });
         await tx.service.updateMany({ where: { id: { in: [addOnService.id, tieAddOnService.id] } },
           data: { categoryId: category.id } });
 
         await tx.category.update({ where: { id: category.id }, data: { deletedAt: evaluatedAt } });
         await expect(repository.listRankings({ kind: "service", metric: "gmv", window,
           evaluatedAt, city: "东京", categoryId: null, page: 1, pageSize: 10 }))
-          .resolves.toMatchObject({ total: 0, list: [] });
+          .resolves.toMatchObject({ total: 4 });
         await tx.category.update({ where: { id: category.id }, data: { deletedAt: null } });
 
         await tx.technicianProfile.update({ where: { id: technician.id }, data: { deletedAt: evaluatedAt } });
@@ -347,7 +359,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
         await tx.service.update({ where: { id: service.id }, data: { deletedAt: evaluatedAt } });
         await expect(repository.listRankings({ kind: "service", metric: "gmv", window,
           evaluatedAt, city: "东京", categoryId: category.id, page: 1, pageSize: 10 }))
-          .resolves.toMatchObject({ total: 3 });
+          .resolves.toMatchObject({ total: 4 });
         await tx.service.update({ where: { id: service.id }, data: { deletedAt: null } });
 
         await tx.orderCheckout.update({ where: { id: ndp.checkout.id }, data: {

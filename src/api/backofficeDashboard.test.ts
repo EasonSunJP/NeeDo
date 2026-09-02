@@ -248,6 +248,49 @@ describe("formal dashboard frontend API contract", () => {
     );
   });
 
+  it.each([
+    ["technician", "customer"],
+    ["customer", "technician"],
+    ["service", "customer"]
+  ] as const)("rejects a %s ranking row with mismatched %s identity", async (kind, entityType) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      dataStatus: "ready",
+      filter: {
+        kind,
+        metric: "gmv",
+        period: "last7days",
+        from: "2026-08-27",
+        to: "2026-09-02",
+        timeZone: "Asia/Tokyo",
+        city: null,
+        categoryId: null,
+        evaluatedAt: "2026-09-02T05:00:00.000Z"
+      },
+      list: [{
+        rank: 1,
+        entityType,
+        entityPublicId: "u0000000041",
+        entityNumericId: 41,
+        displayName: "Mismatch",
+        avatarUrl: null,
+        categoryId: null,
+        gmvJpy: 1000,
+        completedCount: 1,
+        registeredAt: "2026-01-01T00:00:00.000Z"
+      }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+
+    await expect(backofficeRealDataApi.analyticsRankings(kind, {
+      metric: "gmv",
+      period: "last7days",
+      page: 1,
+      pageSize: 10
+    })).rejects.toThrow("error.api");
+  });
+
   it("rejects invalid ranking identifiers and pagination before issuing a request", async () => {
     await expect(backofficeRealDataApi.analyticsRankings("shop" as "service", {
       metric: "gmv", period: "last7days", page: 1, pageSize: 10

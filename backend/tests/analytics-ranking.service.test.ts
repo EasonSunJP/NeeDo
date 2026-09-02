@@ -10,7 +10,7 @@ import {
 const now = new Date("2026-09-01T05:30:00.000Z");
 const actor = {
   userId: 9, roles: ["operator"], permissions: ["backoffice:analytics-ranking:read"],
-  currentIdentityType: "operator", currentIdentityScopeType: "global", currentIdentityScopeId: null
+  currentIdentityType: "platform", currentIdentityScopeType: "global", currentIdentityScopeId: null
 } as never;
 const context = { ip: "127.0.0.1", userAgent: "jest" };
 const page = { list: [], total: 0, page: 1, page_size: 10 };

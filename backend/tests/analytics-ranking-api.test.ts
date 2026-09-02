@@ -8,21 +8,26 @@ import { AuthTokenService } from "../src/services/auth-token.service";
 
 const now = new Date("2026-09-01T05:30:00.000Z");
 const permission = "backoffice:analytics-ranking:read";
-const makeUser = (id: number, role: string, permissions: string[]) => ({
+const makeUser = (id: number, role: string, permissions: string[], identityType = role) => ({
   id, needoId: `u${String(id).padStart(10, "0")}`, email: `ranking-${id}@example.com`,
   emailVerifiedAt: now, phone: null, passwordHash: null, username: `User ${id}`,
   avatarUrl: null, isActive: true, isTestAccount: false,
   accessState: { disabled: false, restricted: false }, sessionGeneration: 0,
   lastLoginAt: null, deletedAt: null, identities: [{ id: id * 10, userId: id,
-    type: role, scopeType: "global", scopeId: null, displayName: role,
+    type: identityType, scopeType: "global", scopeId: null, displayName: identityType,
     isDefault: true, isActive: true, deletedAt: null }], identityApplications: [],
   userRoles: [{ deletedAt: null, role: { code: role, deletedAt: null,
     rolePermissions: permissions.map((code) => ({ deletedAt: null,
       permission: { code, type: "api", deletedAt: null } })) } }]
 });
 
-const fixture = (role = "operator", permissions = [permission]) => {
-  const user = makeUser(role === "admin" ? 71 : role === "operator" ? 72 : 73, role, permissions);
+const fixture = (role = "operator", permissions = [permission], identityType = "platform") => {
+  const user = makeUser(
+    role === "admin" ? 71 : role === "operator" ? 72 : 73,
+    role,
+    permissions,
+    identityType
+  );
   const repository: jest.Mocked<AnalyticsRankingRepositoryPort> = {
     findActiveCategoryById: jest.fn(async (categoryId: number) => ({ id: categoryId })),
     listRankings: jest.fn(async (input) => ({ list: [], total: 0, page: input.page, page_size: input.pageSize }))
@@ -63,6 +68,15 @@ describe("formal analytics rankings API", () => {
       "/api/v1/backoffice/analytics/rankings/service?pageSize=11",
       "/api/v1/backoffice/analytics/rankings/service?page=1e2"
     ]) await request(allowed.app).get(url).set(bearer(allowed.token)).expect(400);
+  });
+
+  it("rejects platform permissions when the active identity is scout", async () => {
+    const switched = fixture("operator", [permission], "scout");
+    await request(switched.app)
+      .get("/api/v1/backoffice/analytics/rankings/customer")
+      .set(bearer(switched.token))
+      .expect(403);
+    expect(switched.repository.listRankings).not.toHaveBeenCalled();
   });
 
   it("maps category 404 and incomplete evidence 409 without leaking evidence", async () => {

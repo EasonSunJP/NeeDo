@@ -47,6 +47,12 @@ export function AnalyticsRankingPanel({
   const queryKey = `${query.period}|${query.from ?? ""}|${query.to ?? ""}|${query.city ?? ""}`;
 
   useEffect(() => {
+    if (categoryId !== null && !categories.some((category) => category.id === categoryId)) {
+      setCategoryId(null);
+    }
+  }, [categories, categoryId]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;

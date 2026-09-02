@@ -160,6 +160,24 @@ describe("AnalyticsRankingRepository", () => {
     expect(sql).toContain("candidate.other_method_label = TRIM(candidate.other_method_label)");
   });
 
+  it("ranks immutable service snapshots without excluding soft-deleted catalog rows", async () => {
+    const test = fixture([[{ anomalyCount: 0 }], [{ total: 0 }]]);
+    await test.repository.listRankings({ ...input, categoryId: null });
+    const sql = test.queryRaw.mock.calls.map(([query]) => queryText(query)).join("\n");
+    const values = test.queryRaw.mock.calls.flatMap(([query]) => query.values ?? []);
+    expect(sql).toContain("candidate.service_snapshot_json");
+    expect(sql).toContain("add_on.service_snapshot_json");
+    expect(values).toEqual(expect.arrayContaining(["$.publicId", "$.categoryId"]));
+    expect(sql).toContain("evidence.service_name_snapshot");
+    expect(sql).toContain("add_on.service_name_snapshot");
+    expect(sql).toContain("MIN(line.display_name)");
+    expect(sql).toContain("COUNT(DISTINCT line.category_id)");
+    expect(sql).not.toContain("line.category_is_active = TRUE");
+    expect(sql).not.toContain("line.category_deleted_at IS NULL");
+    expect(sql).not.toContain("line.service_deleted_at IS NULL");
+    expect(sql).not.toContain("line.technician_service_deleted_at IS NULL");
+  });
+
   it("fails closed on SQL NULL evidence and uses binary persisted currency authority", async () => {
     const test = fixture([[{ anomalyCount: 1 }]]);
     await expect(test.repository.listRankings(input))

@@ -106,4 +106,35 @@ describe("AnalyticsRankingPanel", () => {
       metric: "gmv", period: "last7days", city: "东京", categoryId: 7, page: 1, pageSize: 10
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
+
+  it("clears a selected category when the formal catalog no longer contains it", async () => {
+    await act(async () => root.render(
+      <AnalyticsRankingPanel
+        categories={[{ id: 7, name: "放松休闲" }]}
+        kind="technician"
+        query={{ period: "last7days" }}
+        title="技师排行 TOP10"
+      />
+    ));
+    const select = container.querySelector<HTMLSelectElement>('select[aria-label="技师排行 TOP10服务类型"]')!;
+    await act(async () => {
+      select.value = "7";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(apiMocks.analyticsRankings).toHaveBeenLastCalledWith("technician", {
+      metric: "gmv", period: "last7days", categoryId: 7, page: 1, pageSize: 10
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+
+    await act(async () => root.render(
+      <AnalyticsRankingPanel
+        categories={[{ id: 8, name: "宠物相关" }]}
+        kind="technician"
+        query={{ period: "last7days" }}
+        title="技师排行 TOP10"
+      />
+    ));
+    expect(apiMocks.analyticsRankings).toHaveBeenLastCalledWith("technician", {
+      metric: "gmv", period: "last7days", page: 1, pageSize: 10
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
 });

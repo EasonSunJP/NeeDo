@@ -31,10 +31,11 @@ function requireSafeDatabaseUrl(): URL {
 describeIntegration("MembershipAnalyticsRepository against guarded local MySQL", () => {
   it("executes issuance, post-window void/expiry, in-window removal, provenance rejection, and rollback", async () => {
     const url = requireSafeDatabaseUrl();
-    const [{ PrismaClient }, { PrismaMariaDb }, repositoryModule] = await Promise.all([
+    const [{ PrismaClient }, { PrismaMariaDb }, repositoryModule, growthModule] = await Promise.all([
       import("@prisma/client"),
       import("@prisma/adapter-mariadb"),
-      import("../src/repositories/membership-analytics.repository")
+      import("../src/repositories/membership-analytics.repository"),
+      import("../src/repositories/dashboard-growth.repository")
     ]);
     const adapter = new PrismaMariaDb({
       host: url.hostname,
@@ -147,9 +148,12 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           issuedAt: Date;
           endedAt?: Date;
           expiresAt?: Date;
-          frozenAt?: Date;
-          authority?: "issuance" | "migration_backfill";
-        }) => {
+            frozenAt?: Date;
+            authority?: "issuance" | "migration_backfill";
+            issuanceSource?: "OFFLINE_PAID" | "GIFT" | "TRIAL" | "RENEWAL";
+          }) => {
+            const issuanceSource = input.issuanceSource ?? "OFFLINE_PAID";
+            const issuanceSourceMetadata = issuanceSource.toLowerCase();
           const user = await tx.user.create({
             data: {
               needoId: needoId(input.index),
@@ -179,7 +183,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
               status: input.frozenAt ? "FROZEN" : input.expiresAt && input.expiresAt <= evaluatedAt
                 ? "EXPIRED"
                 : "ACTIVE",
-              issuanceSource: "OFFLINE_PAID",
+                  issuanceSource,
               issuedAt: input.issuedAt,
               expiresAt: input.expiresAt,
               frozenAt: input.frozenAt
@@ -196,7 +200,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
                 ? "historical_card_issued"
                 : "card_issued",
               actorUserId: input.authority === "migration_backfill" ? null : actor.id,
-              metadata: { issuanceSource: "offline_paid" },
+                  metadata: { issuanceSource: issuanceSourceMetadata },
               eventKey: input.authority === "migration_backfill"
                 ? `membership-card:${card.publicId}:backfill-issued`
                 : `membership-card:${card.publicId}:issued`
@@ -225,7 +229,10 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           authority: "migration_backfill"
         });
         await createCard({ index: 2, issuedAt: inside, endedAt: after, expiresAt: after });
-        const issuedCard = await createCard({ index: 3, issuedAt: inside });
+          const issuedCard = await createCard({ index: 3, issuedAt: inside });
+          await createCard({ index: 6, issuedAt: inside, issuanceSource: "GIFT" });
+          await createCard({ index: 7, issuedAt: inside, issuanceSource: "TRIAL" });
+          await createCard({ index: 8, issuedAt: inside, issuanceSource: "RENEWAL" });
         await createCard({
           index: 4, issuedAt: before, endedAt: inside, frozenAt: inside,
           authority: "migration_backfill"
@@ -238,21 +245,32 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
           authority: "migration_backfill"
         });
 
-        await expect(repository.getTrend({
-          scope: { kind: "platform" }, city: marker, window, evaluatedAt
-        })).resolves.toMatchObject([
-          { seriesKey: "added", points: [{ value: 3 }] },
-          { seriesKey: "removed", points: [{ value: 1 }] },
-          { seriesKey: "net", points: [{ value: 2 }] }
-        ]);
+          await expect(repository.getTrend({
+            scope: { kind: "platform" }, city: marker, window, evaluatedAt
+          })).resolves.toMatchObject([
+            { seriesKey: "added", points: [{ value: 6 }] },
+            { seriesKey: "removed", points: [{ value: 1 }] },
+            { seriesKey: "net", points: [{ value: 5 }] }
+          ]);
         const list = await repository.listAddedMembers({
           scope: { kind: "platform" }, city: marker, window, evaluatedAt,
           page: 1, pageSize: 20
         });
-        expect(list.total).toBe(3);
-        expect(list.list.map((item) => item.memberStatus).sort()).toEqual([
-          "active", "inactive", "inactive"
-        ]);
+          expect(list.total).toBe(6);
+          expect(list.list.map((item) => item.memberStatus).sort()).toEqual([
+            "active", "active", "active", "active", "inactive", "inactive"
+          ]);
+          for (const source of ["gift", "trial", "renewal"] as const) {
+            expect(list.list.find((item) => item.acquisitionSource === source)?.firstPaidAt).toBeNull();
+          }
+          const growth = await new growthModule.DashboardGrowthRepository(tx).getGrowthFacts({
+            scope: { kind: "platform" }, city: marker, window
+          });
+          expect(growth.newPaidMembers).toEqual({
+            current: 3,
+            previous: 0,
+            dataStatus: "ready"
+          });
 
         await tx.shopMembershipCardStatusEvent.update({
           where: { id: postWindowFrozen.initial.id },

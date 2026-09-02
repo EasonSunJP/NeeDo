@@ -44,23 +44,19 @@ if (
   throw new Error("Membership-ranking check requires an explicit loopback needo_test database");
 }
 
-const requiredAcceptanceCoverage = {
-  gift: "non-paid membership acquisition",
-  trial: "non-paid trial acquisition",
-  renewal: "renewal exclusion from first-paid growth",
-  fullyReversed: "fully reversed completed order exclusion",
-  registeredAt: "deterministic registration-time tie-break"
-};
+const acceptanceSuites = [
+  "tests/membership-analytics.repository.integration.test.ts",
+  "tests/analytics-ranking.repository.integration.test.ts",
+  "tests/membership-analytics.repository.test.ts",
+  "tests/shop-membership-card-issuance.service.test.ts",
+  "tests/analytics-ranking.repository.test.ts"
+] as const;
 
 const result = spawnSync(
   process.execPath,
   [
     resolve(backendRoot, "scripts/run-jest-suite.cjs"),
-    "tests/membership-analytics.repository.integration.test.ts",
-    "tests/analytics-ranking.repository.integration.test.ts",
-    "tests/membership-analytics.repository.test.ts",
-    "tests/shop-membership-card-issuance.service.test.ts",
-    "tests/analytics-ranking.repository.test.ts",
+    ...acceptanceSuites,
     "--runInBand"
   ],
   {
@@ -84,5 +80,5 @@ console.info(JSON.stringify({
   ok: true,
   database,
   rollbackFixtures: 2,
-  coverage: Object.keys(requiredAcceptanceCoverage)
+  suites: acceptanceSuites
 }));

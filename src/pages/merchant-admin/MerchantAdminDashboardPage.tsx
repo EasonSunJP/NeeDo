@@ -373,36 +373,42 @@ function NdpCostCard({
 }
 
 export function MerchantMembershipMetricCard({
+  canViewDetails,
   membership
 }: {
+  canViewDetails: boolean;
   membership: BackofficeDashboardPayload["membership"];
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "merchant" });
 
+  const card = (
+    <DashboardMetricCard
+      accent="orange"
+      icon="♡"
+      secondary={
+        membership
+          ? {
+              label: t("利用者数"),
+              unit: "people",
+              value: membership.completedCustomerCount
+            }
+          : undefined
+      }
+      statusMessage={membership ? undefined : t("会员功能尚未开放")}
+      title={t("会员数")}
+      unit="people"
+      value={membership?.memberCount}
+    />
+  );
+  if (!canViewDetails) return card;
   return (
     <Link
       aria-label={t("查看会员详细分析")}
       className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-main/60"
       to="/merchant-admin/analytics/members"
     >
-      <DashboardMetricCard
-        accent="orange"
-        icon="♡"
-        secondary={
-          membership
-            ? {
-                label: t("利用者数"),
-                unit: "people",
-                value: membership.completedCustomerCount
-              }
-            : undefined
-        }
-        statusMessage={membership ? undefined : t("会员功能尚未开放")}
-        title={t("会员数")}
-        unit="people"
-        value={membership?.memberCount}
-      />
+      {card}
     </Link>
   );
 }
@@ -417,7 +423,7 @@ export function shouldBlockMerchantDashboardForOwnerTransition(
 
 function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDashboardResource }) {
   const { language } = useI18n();
-  const { session, switchMerchantShop } = useAuth();
+  const { hasPermission, session, switchMerchantShop } = useAuth();
   const t = (source: string) => translateTextForContext(source, language, { portal: "merchant" });
   const [committedDashboard, setCommittedDashboard] = useState<BackofficeDashboardPayload | null>(
     resource.dashboard
@@ -540,7 +546,10 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
               title={t("注册技师")}
               unit="people"
             />
-            <MerchantMembershipMetricCard membership={dashboard.membership} />
+            <MerchantMembershipMetricCard
+              canViewDetails={hasPermission("shop.member.analytics.view")}
+              membership={dashboard.membership}
+            />
           </section>
 
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs font-bold text-ink/45">

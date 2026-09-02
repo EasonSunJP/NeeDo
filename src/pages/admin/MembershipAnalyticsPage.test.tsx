@@ -3,7 +3,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MembershipAnalyticsPage } from "./MembershipAnalyticsPage";
+import { formatMembershipTokyoDate, MembershipAnalyticsPage } from "./MembershipAnalyticsPage";
 import { translateTextForContext } from "../../i18n/translations";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -128,6 +128,12 @@ describe("MembershipAnalyticsPage", () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="隐藏减少"]')?.click();
     });
     expect(container.querySelector('button[aria-label="显示减少"]')).not.toBeNull();
+  });
+
+  it("formats membership dates against the fixed Tokyo reporting timezone", () => {
+    expect(formatMembershipTokyoDate("2026-09-01T14:59:59.000Z")).toBe("2026-09-01");
+    expect(formatMembershipTokyoDate("2026-09-01T15:00:00.000Z")).toBe("2026-09-02");
+    expect(formatMembershipTokyoDate(null)).toBe("—");
   });
 
   it("searches by trimmed NeeDo ID and nickname and resets member pagination", async () => {

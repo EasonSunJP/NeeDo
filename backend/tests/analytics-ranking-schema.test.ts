@@ -42,6 +42,22 @@ describe("formal analytics ranking schema", () => {
     );
   });
 
+  it("backfills immutable service identity snapshots for historical ranking", () => {
+    const migration = compact(read(migrationPath));
+    expect(migration).toContain("UPDATE `booking_orders` AS `booking`");
+    expect(migration).toContain("UPDATE `order_add_ons` AS `add_on`");
+    for (const path of ["$.entityType", "$.publicId", "$.categoryId"]) {
+      expect(migration).toContain(`'${path}'`);
+    }
+    const bookingRepository = read("src/repositories/booking.repository.ts");
+    expect(bookingRepository).toContain("publicId: slot.service.publicId");
+    expect(bookingRepository).toContain("categoryId: slot.service.categoryId");
+    expect(bookingRepository).toContain("publicId: slot.technicianService.publicId");
+    expect(bookingRepository).toContain("categoryId: slot.technicianService.categoryId");
+    expect(bookingRepository).toContain("publicId: service.publicId");
+    expect(bookingRepository).toContain("categoryId: service.categoryId");
+  });
+
   it("deploys ranking read permission only to admin and operator", () => {
     const permission = "backoffice:analytics-ranking:read";
     const migration = read(migrationPath);

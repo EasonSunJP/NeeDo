@@ -178,14 +178,22 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                SUM(add_on.price_amount_jpy < 0) AS negative_amount_count,
                SUM(BINARY add_on.currency <> BINARY ${"JPY"}) AS non_jpy_count,
                SUM(service.id IS NULL) AS missing_service_count,
-               SUM(service.id IS NOT NULL AND (service.deleted_at IS NOT NULL
-                   OR category.deleted_at IS NOT NULL OR category.is_active <> TRUE)) AS excluded_catalog_count,
-               SUM(service.id IS NOT NULL AND category.id IS NULL) AS invalid_category_count
+               SUM(COALESCE(NOT (
+                 JSON_TYPE(add_on.service_snapshot_json) = ${"OBJECT"}
+                 AND add_on.service_name_snapshot = TRIM(add_on.service_name_snapshot)
+                 AND CHAR_LENGTH(add_on.service_name_snapshot) > 0
+                 AND JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.entityType"})) = ${"service"}
+                 AND JSON_TYPE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.entityNumericId"})) = ${"INTEGER"}
+                 AND CAST(JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.entityNumericId"})) AS UNSIGNED) = add_on.service_id
+                 AND JSON_TYPE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.publicId"})) = ${"STRING"}
+                 AND JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.publicId"})) = service.public_id
+                 AND JSON_TYPE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.categoryId"})) = ${"INTEGER"}
+                 AND CAST(JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.categoryId"})) AS UNSIGNED) > 0
+               ), TRUE)) AS invalid_snapshot_count
         FROM order_add_ons AS add_on
         JOIN ranking_candidate_orders AS candidate_add_on
           ON candidate_add_on.id = add_on.booking_order_id
         LEFT JOIN services AS service ON service.id = add_on.service_id
-        LEFT JOIN categories AS category ON category.id = service.category_id
         WHERE add_on.status = ${"accepted"} AND add_on.deleted_at IS NULL
         GROUP BY add_on.booking_order_id
       ),
@@ -213,6 +221,28 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                  <> candidate.checkout_amount_jpy
             OR candidate.checkout_amount_jpy <> candidate.payment_amount_jpy
             OR (candidate.service_id IS NULL) = (candidate.technician_service_id IS NULL)
+            OR candidate.service_name_snapshot IS NULL
+            OR candidate.service_name_snapshot <> TRIM(candidate.service_name_snapshot)
+            OR CHAR_LENGTH(candidate.service_name_snapshot) = 0
+            OR JSON_TYPE(candidate.service_snapshot_json) <> ${"OBJECT"}
+            OR JSON_TYPE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.entityNumericId"})) <> ${"INTEGER"}
+            OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.entityNumericId"})) AS UNSIGNED)
+                 <> COALESCE(candidate.service_id, candidate.technician_service_id)
+            OR JSON_TYPE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.publicId"})) <> ${"STRING"}
+            OR JSON_TYPE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.categoryId"})) <> ${"INTEGER"}
+            OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.categoryId"})) AS UNSIGNED) <= 0
+            OR (candidate.service_id IS NOT NULL AND (
+                 JSON_UNQUOTE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.entityType"})) <> ${"service"}
+                 OR JSON_UNQUOTE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.publicId"})) <>
+                    (SELECT base_service.public_id FROM services AS base_service
+                     WHERE base_service.id = candidate.service_id)
+               ))
+            OR (candidate.technician_service_id IS NOT NULL AND (
+                 JSON_UNQUOTE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.entityType"})) <> ${"technician_service"}
+                 OR JSON_UNQUOTE(JSON_EXTRACT(candidate.service_snapshot_json, ${"$.publicId"})) <>
+                    (SELECT base_service.public_id FROM technician_services AS base_service
+                     WHERE base_service.id = candidate.technician_service_id)
+               ))
             OR BINARY candidate.currency <> BINARY ${"JPY"}
             OR candidate.payment_method <> candidate.checkout_payment_method
             OR candidate.checkout_payment_method IS NULL OR candidate.payment_selected_at IS NULL
@@ -244,7 +274,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.acceptedAddOnIds"})
                  <> CAST(COALESCE(add_ons.accepted_ids_json, '[]') AS JSON)
             OR (${catalogRequired} AND COALESCE(add_ons.missing_service_count, 0) <> 0)
-            OR (${catalogRequired} AND COALESCE(add_ons.invalid_category_count, 0) <> 0)
+            OR COALESCE(add_ons.invalid_snapshot_count, 0) <> 0
             OR (${catalogRequired} AND candidate.service_id IS NOT NULL
                 AND (SELECT COUNT(*) FROM services AS base_service
                      WHERE base_service.id = candidate.service_id) <> 1)
@@ -435,11 +465,14 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     const entityRows = input.kind === "service"
       ? Prisma.sql`
           SELECT line.entity_type, line.entity_public_id, line.entity_numeric_id,
-                 line.display_name, line.avatar_url, line.category_id, line.registered_at,
+                 MIN(line.display_name) AS display_name, MIN(line.avatar_url) AS avatar_url,
+                 ${input.categoryId === null
+                   ? Prisma.sql`CASE WHEN COUNT(DISTINCT line.category_id) = 1 THEN MIN(line.category_id) ELSE NULL END`
+                   : Prisma.sql`${input.categoryId}`} AS category_id,
+                 MIN(line.registered_at) AS registered_at,
                  SUM(line.line_gmv_jpy) AS gmv_jpy, COUNT(*) AS completed_count
           FROM eligible_lines AS line WHERE ${categoryFilter}
-          GROUP BY line.entity_type, line.entity_public_id, line.entity_numeric_id,
-                   line.display_name, line.avatar_url, line.category_id, line.registered_at
+          GROUP BY line.entity_type, line.entity_public_id, line.entity_numeric_id
         `
       : input.kind === "technician"
         ? Prisma.sql`
@@ -482,50 +515,56 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
         SELECT evidence.id AS booking_order_id,
                CASE WHEN evidence.service_id IS NOT NULL THEN ${"service"}
                     ELSE ${"technician_service"} END AS entity_type,
-               COALESCE(service.public_id, technician_service.public_id) AS entity_public_id,
-               COALESCE(service.id, technician_service.id) AS entity_numeric_id,
-               COALESCE(service.name, technician_service.name) AS display_name,
+               COALESCE(
+                 NULLIF(JSON_UNQUOTE(JSON_EXTRACT(evidence.service_snapshot_json, ${"$.publicId"})), ${"null"}),
+                 service.public_id, technician_service.public_id
+               ) AS entity_public_id,
+               COALESCE(evidence.service_id, evidence.technician_service_id) AS entity_numeric_id,
+               COALESCE(NULLIF(evidence.service_name_snapshot, ${""}), service.name, technician_service.name) AS display_name,
                CASE WHEN service.id IS NOT NULL THEN
                  (SELECT media.url FROM media_assets AS media
                   WHERE media.entity_type = ${"service"} AND media.entity_id = service.id
                     AND media.usage_type = ${"cover"} AND media.is_active = TRUE
                     AND media.deleted_at IS NULL ORDER BY media.sort_order ASC, media.id ASC LIMIT 1)
                  ELSE technician_service.cover_image_url END AS avatar_url,
-               COALESCE(service.category_id, technician_service.category_id) AS category_id,
+               COALESCE(
+                 CAST(JSON_UNQUOTE(JSON_EXTRACT(evidence.service_snapshot_json, ${"$.categoryId"})) AS UNSIGNED),
+                 service.category_id, technician_service.category_id
+               ) AS category_id,
                COALESCE(service.created_at, technician_service.created_at) AS registered_at,
-               evidence.base_amount_jpy - evidence.discount_amount_jpy AS line_gmv_jpy,
-               service.deleted_at AS service_deleted_at,
-               technician_service.deleted_at AS technician_service_deleted_at,
-               category.id AS category_projection_id, category.is_active AS category_is_active,
-               category.deleted_at AS category_deleted_at
+               evidence.base_amount_jpy - evidence.discount_amount_jpy AS line_gmv_jpy
         FROM formal_order_evidence AS evidence
         LEFT JOIN services AS service ON service.id = evidence.service_id
         LEFT JOIN technician_services AS technician_service
           ON technician_service.id = evidence.technician_service_id
-        LEFT JOIN categories AS category
-          ON category.id = COALESCE(service.category_id, technician_service.category_id)
         WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
         UNION ALL
-        SELECT evidence.id, ${"service"}, service.public_id, service.id, service.name,
+        SELECT evidence.id, ${"service"},
+               COALESCE(
+                 NULLIF(JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.publicId"})), ${"null"}),
+                 service.public_id
+               ),
+               add_on.service_id, COALESCE(NULLIF(add_on.service_name_snapshot, ${""}), service.name),
                (SELECT media.url FROM media_assets AS media
                 WHERE media.entity_type = ${"service"} AND media.entity_id = service.id
                   AND media.usage_type = ${"cover"} AND media.is_active = TRUE
                   AND media.deleted_at IS NULL ORDER BY media.sort_order ASC, media.id ASC LIMIT 1),
-               service.category_id, service.created_at, add_on.price_amount_jpy,
-               service.deleted_at, NULL, category.id, category.is_active, category.deleted_at
+               COALESCE(
+                 CAST(JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.categoryId"})) AS UNSIGNED),
+                 service.category_id
+               ),
+               service.created_at, add_on.price_amount_jpy
         FROM formal_order_evidence AS evidence
         JOIN order_add_ons AS add_on ON add_on.booking_order_id = evidence.id
           AND add_on.status = ${"accepted"} AND add_on.deleted_at IS NULL
         LEFT JOIN services AS service ON service.id = add_on.service_id
-        LEFT JOIN categories AS category ON category.id = service.category_id
         WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
       ),
       eligible_lines AS (
         SELECT line.* FROM ranking_lines AS line
         WHERE line.entity_public_id IS NOT NULL AND line.entity_numeric_id IS NOT NULL
-          AND line.category_projection_id IS NOT NULL AND line.category_is_active = TRUE
-          AND line.category_deleted_at IS NULL
-          AND line.service_deleted_at IS NULL AND line.technician_service_deleted_at IS NULL
+          AND line.display_name IS NOT NULL AND line.category_id IS NOT NULL
+          AND line.registered_at IS NOT NULL
       ),
       entity_aggregates AS (${entityRows}),
       ranked_entities AS (
