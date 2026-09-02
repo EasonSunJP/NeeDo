@@ -1,4 +1,9 @@
 import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
+import {
+  getAuthEnvelopeLockName,
+  getAuthEnvelopeStorageKey,
+  resolveAuthPersistenceScope
+} from "./authPersistenceScope";
 import { isPortalScope, type PortalScope } from "./portal";
 import {
   authSessionVersion,
@@ -8,8 +13,11 @@ import {
   type UserPolicyComplianceRequirement
 } from "./rbac";
 
-export const persistedAuthEnvelopeStorageKey = "needo.auth.envelope.v8";
-const persistedAuthEnvelopeLockName = "needo-auth-envelope-v8";
+const authPersistenceScope = resolveAuthPersistenceScope();
+export const persistedAuthEnvelopeStorageKey = getAuthEnvelopeStorageKey(
+  authPersistenceScope
+);
+const persistedAuthEnvelopeLockName = getAuthEnvelopeLockName(authPersistenceScope);
 
 export type AuthEnvelopeLockAdapter = {
   request<TResult>(
