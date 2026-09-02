@@ -23,6 +23,13 @@ import {
   resolveActiveCheckoutStep,
   type CheckoutProgressKey
 } from "./formal-checkout/CheckoutProgressNav";
+import { CheckoutTimeRow } from "./formal-checkout/CheckoutTimeRow";
+import {
+  getTokyoDayWindow,
+  getTokyoSlotParts,
+  isCheckoutSlotBookable,
+  resolveInitialCheckoutSlotId
+} from "./formal-checkout/checkoutTimeSlots";
 
 type LoadStatus = "loading" | "success" | "error";
 
@@ -44,16 +51,6 @@ function resolveFulfillmentMode(service: CoreServiceDetail, requestedMode: strin
   return service.serviceMode === "home" || service.serviceMode === "onsite" ? "home" : "store";
 }
 
-function formatSlotDateTime(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo"
-  }).format(date);
-}
-
 function formatTokyoDate(value: string) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
@@ -63,17 +60,6 @@ function formatTokyoDate(value: string) {
     timeZone: "Asia/Tokyo",
     weekday: "short",
     year: "numeric"
-  }).format(date);
-}
-
-function formatTokyoTime(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "--:--";
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    timeZone: "Asia/Tokyo"
   }).format(date);
 }
 
@@ -90,29 +76,6 @@ function googleMapsEmbedUrl(query: string) {
   return `https://www.google.com/maps?output=embed&q=${encodeURIComponent(query)}`;
 }
 
-function getTokyoSlotParts(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "2-digit",
-    timeZone: "Asia/Tokyo",
-    year: "numeric"
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return {
-    date: `${get("year")}-${get("month")}-${get("day")}`,
-    time: `${get("hour")}:${get("minute")}`
-  };
-}
-
-function remainingCapacity(slot: BookingScheduleSlot) {
-  return Math.max(0, slot.capacity - slot.bookedCount);
-}
-
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="px-1 text-sm font-black tracking-wide text-[color:var(--client-primary)]">{children}</h2>;
 }
@@ -127,6 +90,11 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CoreServiceDetail | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [selectedDate] = useState(() => {
+    const requestedDate = searchParams.get("date");
+    if (requestedDate && getTokyoDayWindow(requestedDate)) return requestedDate;
+    return getTokyoSlotParts(new Date().toISOString())!.date;
+  });
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>("store");
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
@@ -139,14 +107,11 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [activeProgressStep, setActiveProgressStep] = useState(0);
+  const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
 
   useEffect(() => {
+    if (!selectedDayWindow) return undefined;
     let active = true;
-    const requestedDate = searchParams.get("date");
-    const requestedStart = requestedDate ? new Date(`${requestedDate}T00:00:00+09:00`) : null;
-    const from = requestedStart && Number.isFinite(requestedStart.getTime()) ? requestedStart : new Date();
-    const to = new Date(from);
-    to.setDate(to.getDate() + 21);
     setLoadStatus("loading");
     setLoadError("");
 
@@ -154,26 +119,23 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       coreReadApi.getServiceDetail(serviceId),
       bookingApi.listAvailability({
         serviceId,
-        from: from.toISOString(),
-        to: to.toISOString(),
+        from: selectedDayWindow.from,
+        to: selectedDayWindow.to,
+        includeUnavailable: true,
         page: 1,
         pageSize: 100
       })
     ])
       .then(([serviceDetail, availability]) => {
         if (!active) return;
-        const availableSlots = availability.list
-          .filter((slot) => slot.status === "available" && remainingCapacity(slot) > 0)
-          .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+        const formalSlots = availability.list
+          .slice()
+          .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
         const requestedTime = searchParams.get("time");
-        const requestedSlot = availableSlots.find((slot) => {
-          const parts = getTokyoSlotParts(slot.startsAt);
-          return parts?.date === requestedDate && (!requestedTime || parts.time === requestedTime);
-        });
 
         setService(serviceDetail);
-        setSlots(availableSlots);
-        setSelectedSlotId(requestedSlot?.id ?? availableSlots[0]?.id ?? null);
+        setSlots(formalSlots);
+        setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime));
         setFulfillmentMode(resolveFulfillmentMode(serviceDetail, searchParams.get("mode")));
         setLoadStatus("success");
       })
@@ -188,7 +150,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     return () => {
       active = false;
     };
-  }, [revision, searchParams, serviceId]);
+  }, [revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
 
   useEffect(() => {
     const updateProgressByScroll = () => {
@@ -214,7 +176,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   }, [loadStatus]);
 
   const selectedSlot = useMemo(
-    () => slots.find((slot) => slot.id === selectedSlotId) ?? null,
+    () => slots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot)) ?? null,
     [selectedSlotId, slots]
   );
   const displayService = useMemo(
@@ -234,7 +196,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     : [];
   const technicianProfileId = service?.technician?.id ?? null;
   const technicianIsAvailable = technicianProfileId !== null
-    && slots.some((slot) => slot.technicianProfileId === technicianProfileId);
+    && slots.some((slot) => slot.technicianProfileId === technicianProfileId && isCheckoutSlotBookable(slot));
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
@@ -443,28 +405,20 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
             <SectionTitle>时间</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
               <p className="text-xs font-black text-[color:var(--client-primary)]">预约时间</p>
-              {selectedSlot ? (
+              <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+                <p className="text-xs font-bold text-[color:var(--client-muted)]">日期</p>
+                <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]">{formatTokyoDate(`${selectedDate}T00:00:00+09:00`)}</p>
+              </div>
+              {slots.length ? (
                 <>
-                  <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                    <p className="text-xs font-bold text-[color:var(--client-muted)]">日期</p>
-                    <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]">{formatTokyoDate(selectedSlot.startsAt)}</p>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                      <p className="text-xs font-bold text-[color:var(--client-muted)]">时间</p>
-                      <p className="mt-2 text-[22px] font-black text-[color:var(--client-primary)]">{formatTokyoTime(selectedSlot.startsAt)}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">{selectedSlot.technicianName ?? "店铺安排技师"}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                      <p className="text-xs font-bold text-[color:var(--client-muted)]">人数</p>
-                      <p className="mt-2 text-[22px] font-black text-[color:var(--client-text)]">{people}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">剩余 {remainingCapacity(selectedSlot)} 名</p>
-                    </div>
-                  </div>
+                  <CheckoutTimeRow
+                    date={selectedDate}
+                    onSelect={setSelectedSlotId}
+                    people={people}
+                    selectedSlotId={selectedSlotId}
+                    slots={slots}
+                  />
                   <p className="mt-3 text-xs leading-5 text-[color:var(--client-muted)]">*请提前10分钟到达，迟到无联系保留15分钟</p>
-                  <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3 text-xs font-semibold text-[color:var(--client-muted)]">
-                    {formatSlotDateTime(selectedSlot.startsAt)} · {people}
-                  </div>
                 </>
               ) : (
                 <div className="mt-3 rounded-[22px] border border-dashed border-[color:var(--client-line)] px-4 py-8 text-center">
@@ -472,29 +426,6 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                   <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺发布新的正式排班后会自动显示。</p>
                 </div>
               )}
-              {slots.length > 1 ? (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {slots.map((slot) => {
-                    const active = slot.id === selectedSlotId;
-                    return (
-                      <button
-                        aria-pressed={active}
-                        className={cn(
-                          "rounded-[18px] border px-3 py-2.5 text-left text-xs font-black transition",
-                          active
-                            ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
-                            : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]"
-                        )}
-                        key={slot.id}
-                        onClick={() => setSelectedSlotId(slot.id)}
-                        type="button"
-                      >
-                        {formatSlotDateTime(slot.startsAt)}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
           </div>
 

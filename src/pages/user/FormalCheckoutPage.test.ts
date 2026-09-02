@@ -14,6 +14,14 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");
   });
 
+  it("loads all formal rows for the exact Tokyo date into the checkout-time dropdown", () => {
+    expect(formalSource).toContain("includeUnavailable: true");
+    expect(formalSource).toContain("getTokyoDayWindow");
+    expect(formalSource).toContain("resolveInitialCheckoutSlotId");
+    expect(formalSource).toContain("<CheckoutTimeRow");
+    expect(formalSource).not.toContain("formatSlotDateTime(slot.startsAt)");
+  });
+
   it("keeps mock checkout data exclusive to explicit static-demo mode", () => {
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
