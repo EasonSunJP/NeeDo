@@ -76,6 +76,115 @@ export interface DashboardMetricDetailPayload {
   series: AnalyticsMetricSeries[];
 }
 
+export interface MembershipAnalyticsFilter extends AnalyticsDashboardFilter {
+  evaluatedAt: string;
+}
+
+export interface MembershipTrendPayload {
+  dataStatus: "ready";
+  filter: MembershipAnalyticsFilter;
+  series: AnalyticsMetricSeries[];
+}
+
+export type MemberAcquisitionSource =
+  | "offline_paid"
+  | "online_paid"
+  | "gift"
+  | "trial"
+  | "renewal"
+  | "historical_replacement"
+  | "manual_grant";
+
+export interface MemberAnalyticsListItem {
+  userNeedoId: string;
+  nickname: string;
+  city: string;
+  shopPublicId: string;
+  shopName: string;
+  membershipPublicId: string;
+  planName: string | null;
+  cardPublicId: string;
+  cardNoMasked: string;
+  acquisitionSource: MemberAcquisitionSource;
+  addedAt: string;
+  firstPaidAt: string | null;
+  memberStatus: "active" | "inactive";
+  cardStatus: "active" | "expired" | "frozen" | "void";
+  expiresAt: string | null;
+}
+
+export interface MemberAnalyticsListPayload {
+  list: MemberAnalyticsListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface MembershipAnalyticsListQuery extends Record<
+  string,
+  string | number | undefined
+> {
+  period: DashboardPeriod;
+  from?: string;
+  to?: string;
+  city?: string;
+  needoId?: string;
+  nickname?: string;
+  page: number;
+  pageSize: number;
+}
+
+export type AnalyticsRankingKind = "service" | "technician" | "customer";
+export type AnalyticsRankingMetric = "gmv" | "completedCount";
+export type AnalyticsRankingEntityType =
+  | "service"
+  | "technician_service"
+  | "technician"
+  | "customer";
+
+export interface AnalyticsRankingQuery {
+  metric: AnalyticsRankingMetric;
+  period: DashboardPeriod;
+  from?: string;
+  to?: string;
+  city?: string;
+  categoryId?: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AnalyticsRankingItem {
+  rank: number;
+  entityType: AnalyticsRankingEntityType;
+  entityPublicId: string;
+  entityNumericId: number;
+  displayName: string;
+  avatarUrl: string | null;
+  categoryId: number | null;
+  gmvJpy: number;
+  completedCount: number;
+  registeredAt: string;
+}
+
+export interface AnalyticsRankingPayload {
+  dataStatus: "ready";
+  filter: {
+    kind: AnalyticsRankingKind;
+    metric: AnalyticsRankingMetric;
+    period: DashboardPeriod;
+    from: string;
+    to: string;
+    timeZone: "Asia/Tokyo";
+    city: string | null;
+    categoryId: number | null;
+    evaluatedAt: string;
+  };
+  list: AnalyticsRankingItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface DashboardNdpPair {
   ndp: number;
   testNdp: number;
@@ -798,6 +907,10 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 const dashboardPeriods = new Set<DashboardPeriod>([
   "today",
   "last7days",
@@ -808,6 +921,11 @@ const dashboardPeriods = new Set<DashboardPeriod>([
   "custom"
 ]);
 const dashboardGranularities = new Set<DashboardGranularity>(["hour", "day", "month"]);
+const analyticsRankingKinds = new Set<AnalyticsRankingKind>(["service", "technician", "customer"]);
+const analyticsRankingMetrics = new Set<AnalyticsRankingMetric>(["gmv", "completedCount"]);
+const analyticsRankingEntityTypes = new Set<AnalyticsRankingEntityType>([
+  "service", "technician_service", "technician", "customer"
+]);
 const analyticsStatuses = new Set<AnalyticsDataStatus>([
   "ready",
   "not_connected",
@@ -867,6 +985,80 @@ function isCalendarDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function isIsoDateTime(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function requireAnalyticsRankingPayload(
+  value: unknown,
+  kind: AnalyticsRankingKind,
+  query: AnalyticsRankingQuery
+): AnalyticsRankingPayload {
+  if (!isExactObject(value, ["dataStatus", "filter", "list", "total", "page", "page_size"])) {
+    throw new Error("error.api");
+  }
+  const filter = value.filter;
+  const expectedCategoryId = query.categoryId ?? null;
+  const expectedCity = query.city ?? null;
+  if (
+    value.dataStatus !== "ready" ||
+    !isExactObject(filter, [
+      "kind", "metric", "period", "from", "to", "timeZone", "city", "categoryId", "evaluatedAt"
+    ]) ||
+    filter.kind !== kind ||
+    filter.metric !== query.metric ||
+    filter.period !== query.period ||
+    filter.timeZone !== "Asia/Tokyo" ||
+    filter.city !== expectedCity ||
+    filter.categoryId !== expectedCategoryId ||
+    !isCalendarDate(filter.from) ||
+    !isCalendarDate(filter.to) ||
+    !isIsoDateTime(filter.evaluatedAt) ||
+    (query.period === "custom" && (filter.from !== query.from || filter.to !== query.to)) ||
+    !Array.isArray(value.list) ||
+    !isNonNegativeSafeInteger(value.total) ||
+    value.page !== query.page ||
+    value.page_size !== query.pageSize ||
+    value.list.length > query.pageSize ||
+    value.total < value.list.length
+  ) {
+    throw new Error("error.api");
+  }
+  const firstRank = (query.page - 1) * query.pageSize + 1;
+  if (!Number.isSafeInteger(firstRank)) throw new Error("error.api");
+  const list = value.list.map((item, index) => {
+    if (
+      !isExactObject(item, [
+        "rank", "entityType", "entityPublicId", "entityNumericId", "displayName", "avatarUrl",
+        "categoryId", "gmvJpy", "completedCount", "registeredAt"
+      ]) ||
+      item.rank !== firstRank + index ||
+      !analyticsRankingEntityTypes.has(item.entityType as AnalyticsRankingEntityType) ||
+      typeof item.entityPublicId !== "string" || item.entityPublicId.trim().length === 0 ||
+      !isPositiveSafeInteger(item.entityNumericId) ||
+      typeof item.displayName !== "string" || item.displayName.trim().length === 0 ||
+      !(item.avatarUrl === null || typeof item.avatarUrl === "string") ||
+      !(item.categoryId === null || isPositiveSafeInteger(item.categoryId)) ||
+      !isNonNegativeSafeInteger(item.gmvJpy) ||
+      !isNonNegativeSafeInteger(item.completedCount) ||
+      !isIsoDateTime(item.registeredAt)
+    ) {
+      throw new Error("error.api");
+    }
+    return item as unknown as AnalyticsRankingItem;
+  });
+  return {
+    dataStatus: "ready",
+    filter: filter as unknown as AnalyticsRankingPayload["filter"],
+    list,
+    total: value.total,
+    page: value.page as number,
+    page_size: value.page_size as number
+  };
 }
 
 function calendarDayNumber(value: string) {
@@ -953,6 +1145,137 @@ function requireAnalyticsFilter(
   return value as unknown as AnalyticsDashboardFilter;
 }
 
+function requireMembershipAnalyticsFilter(
+  value: unknown,
+  expectedQuery: DashboardQuery
+): MembershipAnalyticsFilter {
+  if (!isExactObject(value, [
+    "period", "from", "to", "previousFrom", "previousTo", "timeZone", "granularity", "city",
+    "evaluatedAt"
+  ]) || !isIsoDateTime(value.evaluatedAt)) {
+    throw new Error("error.api");
+  }
+  const { evaluatedAt, ...analyticsFilter } = value;
+  return {
+    ...requireAnalyticsFilter(analyticsFilter, expectedQuery),
+    evaluatedAt: evaluatedAt as string
+  };
+}
+
+function requireMembershipTrend(
+  value: unknown,
+  expectedQuery: DashboardQuery
+): MembershipTrendPayload {
+  if (
+    !isExactObject(value, ["dataStatus", "filter", "series"]) ||
+    value.dataStatus !== "ready" ||
+    !Array.isArray(value.series) ||
+    value.series.length !== 3
+  ) {
+    throw new Error("error.api");
+  }
+  const expectedSeries = [
+    ["added", "Added members"],
+    ["removed", "Removed members"],
+    ["net", "Net members"]
+  ] as const;
+  const series = value.series.map((candidate, seriesIndex) => {
+    const [seriesKey, label] = expectedSeries[seriesIndex];
+    if (
+      !isExactObject(candidate, ["seriesKey", "label", "unit", "points"]) ||
+      candidate.seriesKey !== seriesKey || candidate.label !== label || candidate.unit !== "people" ||
+      !Array.isArray(candidate.points)
+    ) {
+      throw new Error("error.api");
+    }
+    const points = candidate.points.map((point) => {
+      if (
+        !isExactObject(point, ["key", "label", "value"]) ||
+        typeof point.key !== "string" || point.key.length === 0 ||
+        typeof point.label !== "string" || point.label.length === 0 ||
+        !Number.isSafeInteger(point.value) ||
+        (seriesKey !== "net" && (point.value as number) < 0)
+      ) {
+        throw new Error("error.api");
+      }
+      return point as unknown as AnalyticsMetricSeries["points"][number];
+    });
+    return { seriesKey, label, unit: "people" as const, points };
+  });
+  const [added, removed, net] = series;
+  if (
+    added.points.length !== removed.points.length || added.points.length !== net.points.length ||
+    added.points.some((point, index) =>
+      point.key !== removed.points[index]?.key || point.key !== net.points[index]?.key ||
+      point.label !== removed.points[index]?.label || point.label !== net.points[index]?.label ||
+      net.points[index]?.value !== (point.value as number) - (removed.points[index]?.value as number)
+    )
+  ) {
+    throw new Error("error.api");
+  }
+  return {
+    dataStatus: "ready",
+    filter: requireMembershipAnalyticsFilter(value.filter, expectedQuery),
+    series: series as MembershipTrendPayload["series"]
+  };
+}
+
+const memberAcquisitionSources = new Set<MemberAcquisitionSource>([
+  "offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"
+]);
+const memberStatuses = new Set<MemberAnalyticsListItem["memberStatus"]>(["active", "inactive"]);
+const memberCardStatuses = new Set<MemberAnalyticsListItem["cardStatus"]>([
+  "active", "expired", "frozen", "void"
+]);
+
+function requireMemberAnalyticsList(
+  value: unknown,
+  expectedPage: number,
+  expectedPageSize: number
+): MemberAnalyticsListPayload {
+  if (
+    !isExactObject(value, ["list", "total", "page", "page_size"]) ||
+    !Array.isArray(value.list) ||
+    !isNonNegativeSafeInteger(value.total) ||
+    value.page !== expectedPage || value.page_size !== expectedPageSize ||
+    value.list.length > expectedPageSize || value.total < value.list.length
+  ) {
+    throw new Error("error.api");
+  }
+  const list = value.list.map((item) => {
+    if (
+      !isExactObject(item, [
+        "userNeedoId", "nickname", "city", "shopPublicId", "shopName", "membershipPublicId",
+        "planName", "cardPublicId", "cardNoMasked", "acquisitionSource", "addedAt", "firstPaidAt",
+        "memberStatus", "cardStatus", "expiresAt"
+      ]) ||
+      typeof item.userNeedoId !== "string" || !/^u\d{10}$/u.test(item.userNeedoId) ||
+      typeof item.nickname !== "string" || typeof item.city !== "string" ||
+      typeof item.shopPublicId !== "string" || item.shopPublicId.length === 0 ||
+      typeof item.shopName !== "string" || item.shopName.length === 0 ||
+      typeof item.membershipPublicId !== "string" || item.membershipPublicId.length === 0 ||
+      !(item.planName === null || typeof item.planName === "string") ||
+      typeof item.cardPublicId !== "string" || item.cardPublicId.length === 0 ||
+      typeof item.cardNoMasked !== "string" || item.cardNoMasked.length === 0 ||
+      !memberAcquisitionSources.has(item.acquisitionSource as MemberAcquisitionSource) ||
+      !isIsoDateTime(item.addedAt) ||
+      !(item.firstPaidAt === null || isIsoDateTime(item.firstPaidAt)) ||
+      !memberStatuses.has(item.memberStatus as MemberAnalyticsListItem["memberStatus"]) ||
+      !memberCardStatuses.has(item.cardStatus as MemberAnalyticsListItem["cardStatus"]) ||
+      !(item.expiresAt === null || isIsoDateTime(item.expiresAt))
+    ) {
+      throw new Error("error.api");
+    }
+    return item as unknown as MemberAnalyticsListItem;
+  });
+  return {
+    list,
+    total: value.total,
+    page: value.page as number,
+    page_size: value.page_size as number
+  };
+}
+
 function compareMetric(current: number, previous: number) {
   if (current === previous) return { comparisonPercent: 0, comparisonDirection: "flat" as const };
   const raw = previous === 0
@@ -984,7 +1307,9 @@ function requireAnalyticsMetric(value: unknown): AnalyticsMetricPayload {
     value.detailRoute !== (
       value.metricKey === "franchisee_onboarding" || value.metricKey === "supplier_onboarding"
         ? null
-        : `/admin/analytics/metrics/${value.metricKey}`
+        : value.metricKey === "new_paid_members"
+          ? "/admin/analytics/members"
+          : `/admin/analytics/metrics/${value.metricKey}`
     )
   ) {
     throw new Error("error.api");
@@ -1174,6 +1499,100 @@ export const backofficeRealDataApi = {
     const detail = requireDashboardMetricDetail(payload, serializedQuery);
     if (detail.metric.metricKey !== metricKey) throw new Error("error.api");
     return detail;
+  },
+  async membershipTrend(
+    scope: BackofficeScope,
+    query: DashboardQuery,
+    options?: { signal?: AbortSignal }
+  ) {
+    const serializedQuery = serializeDashboardQuery(scope, query);
+    const payload = await httpClient.request<unknown>(
+      `${scopePrefix(scope)}/analytics/members/trend`,
+      {
+        query: serializedQuery,
+        ...(options?.signal ? { signal: options.signal } : {})
+      }
+    );
+    return requireMembershipTrend(payload, serializedQuery);
+  },
+  async membershipMembers(
+    scope: BackofficeScope,
+    query: MembershipAnalyticsListQuery,
+    options?: { signal?: AbortSignal }
+  ) {
+    if (
+      !Number.isSafeInteger(query.page) ||
+      query.page < 1 ||
+      query.page > Math.floor(Number.MAX_SAFE_INTEGER / 100) ||
+      !Number.isSafeInteger(query.pageSize) ||
+      query.pageSize < 1 ||
+      query.pageSize > 100
+    ) {
+      throw new Error("error.pagination.invalid");
+    }
+    const base = serializeDashboardQuery(scope, {
+      period: query.period,
+      from: query.from,
+      to: query.to,
+      city: query.city
+    });
+    const needoId = query.needoId?.trim();
+    const nickname = query.nickname?.trim();
+    const payload = await httpClient.request<unknown>(
+      `${scopePrefix(scope)}/analytics/members`,
+      {
+        query: {
+          ...base,
+          ...(needoId ? { needoId } : {}),
+          ...(nickname ? { nickname } : {}),
+          page: query.page,
+          pageSize: query.pageSize
+        },
+        ...(options?.signal ? { signal: options.signal } : {})
+      }
+    );
+    return requireMemberAnalyticsList(payload, query.page, query.pageSize);
+  },
+  async analyticsRankings(
+    kind: AnalyticsRankingKind,
+    query: AnalyticsRankingQuery,
+    options?: { signal?: AbortSignal }
+  ) {
+    if (
+      !analyticsRankingKinds.has(kind) ||
+      !analyticsRankingMetrics.has(query.metric) ||
+      (query.categoryId !== undefined && !isPositiveSafeInteger(query.categoryId))
+    ) {
+      throw new Error("error.analytics_ranking.invalid");
+    }
+    if (
+      !isPositiveSafeInteger(query.page) ||
+      query.page > Math.floor(Number.MAX_SAFE_INTEGER / 10) ||
+      !isPositiveSafeInteger(query.pageSize) ||
+      query.pageSize > 10
+    ) {
+      throw new Error("error.pagination.invalid");
+    }
+    const dashboardQuery = serializeDashboardQuery("backoffice", {
+      period: query.period,
+      from: query.from,
+      to: query.to,
+      city: query.city
+    });
+    const payload = await httpClient.request<unknown>(
+      `/backoffice/analytics/rankings/${kind}`,
+      {
+        query: {
+          metric: query.metric,
+          ...dashboardQuery,
+          ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+          page: query.page,
+          pageSize: query.pageSize
+        },
+        ...(options?.signal ? { signal: options.signal } : {})
+      }
+    );
+    return requireAnalyticsRankingPayload(payload, kind, query);
   },
   async manageableMerchantShops(page = 1, pageSize = 20, options?: { signal?: AbortSignal }) {
     if (

@@ -28,6 +28,9 @@ vi.mock("../../features/dashboard/DashboardCharts", () => ({
   FixedAnalyticsSeriesChart: () => createElement("div", null, "series"),
   getAnalyticsSeriesColor: (index: number) => `color-${index}`
 }));
+vi.mock("../../features/dashboard/AnalyticsRankingsSection", () => ({
+  AnalyticsRankingsSection: () => createElement("div", { "data-testid": "rankings-section" }, "排行榜 TOP10")
+}));
 
 const filter = {
   period: "last7days",
@@ -265,7 +268,12 @@ describe("operations unified data dashboard", () => {
       "重试加载详细分析", "当前身份没有查看详细分析的权限", "该分析指标或筛选条件无效",
       "详细分析服务暂时不可用，请稍后重试", "详细分析加载失败，请检查网络后重试",
       "指标概要", "计算公式", "至少选择一个图例以显示图表", "隐藏图例", "显示图例",
-      "周期对比趋势", "暂无数据"
+      "周期对比趋势", "暂无数据", "排行榜", "完成订单排行", "排行榜 TOP10",
+      "服务项目排行 TOP10", "技师排行 TOP10",
+      "用户消费排行 TOP10", "服务类型", "全部服务类型", "服务类型暂不可筛选", "排行口径",
+      "按 GMV 排序", "按完成次数排序", "完成次数", "正在加载排行榜", "重试加载排行榜",
+      "当前范围暂无排行数据", "当前身份没有查看排行榜的权限", "订单完成凭证不完整，暂时无法生成排行榜",
+      "排行榜服务暂时不可用，请稍后重试", "排行榜加载失败，请检查网络后重试"
     ];
     for (const sourceText of sources) {
       for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
@@ -353,6 +361,11 @@ describe("operations unified data dashboard", () => {
     expect(source).not.toContain("../../data/mock");
     expect(source).not.toContain("mapBackofficeOrder");
     expect(source).not.toContain("dashboard.orders");
+  });
+
+  it("renders the three formal Top10 rankings after the comprehensive overview", () => {
+    expect(source).toContain('import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";');
+    expect(source).toContain("<AnalyticsRankingsSection query={committedQuery} />");
   });
 
   it("renders exactly the five requested headline comparisons", () => {

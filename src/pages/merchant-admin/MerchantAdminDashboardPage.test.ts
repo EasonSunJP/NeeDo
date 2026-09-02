@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import {
@@ -51,13 +52,17 @@ describe("merchant unified data dashboard", () => {
         createElement(
           I18nProvider,
           null,
-          createElement(MerchantMembershipMetricCard, {
-            membership: {
-              memberCount: 12,
-              memberDataStatus: "ready",
-              completedCustomerCount: 7
-            }
-          })
+          createElement(
+            MemoryRouter,
+            null,
+            createElement(MerchantMembershipMetricCard, {
+              membership: {
+                memberCount: 12,
+                memberDataStatus: "ready",
+                completedCustomerCount: 7
+              }
+            })
+          )
         )
       );
     });
@@ -68,6 +73,8 @@ describe("merchant unified data dashboard", () => {
     expect(container.textContent).toContain("利用者数");
     expect(container.textContent).toContain("7");
     expect(container.textContent).not.toContain("会员功能尚未开放");
+    expect(container.querySelector("a")?.getAttribute("href"))
+      .toBe("/merchant-admin/analytics/members");
   });
 
   it("renders the final named contract without legacy previews or browser derivation", () => {

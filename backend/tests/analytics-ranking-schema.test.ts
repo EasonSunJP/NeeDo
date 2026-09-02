@@ -11,7 +11,7 @@ const compact = (value: string): string => value.replace(/\s+/gu, " ").trim();
 describe("formal analytics ranking schema", () => {
   const schema = read("prisma/schema.prisma");
   const migrationPath =
-    "prisma/migrations/20260901120000_analytics_ranking_identity_permission/migration.sql";
+    "prisma/migrations/20260902100000_analytics_ranking_identity_permission/migration.sql";
 
   it("adds a real immutable UUID to every technician service", () => {
     expect(schema).toContain(

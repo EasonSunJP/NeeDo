@@ -122,6 +122,8 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
       comparisonPercent: -75,
       comparisonDirection: "down"
     });
+    expect(result.growthMetrics.find((metric) => metric.metricKey === "new_paid_members")?.detailRoute)
+      .toBe("/admin/analytics/members");
     expect(result.growthMetrics.at(-2)?.detailRoute).toBeNull();
     expect(result.growthMetrics.at(-1)?.detailRoute).toBeNull();
     for (const metric of [

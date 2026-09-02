@@ -101,8 +101,8 @@ export function assertAnalyticsRankingIntegrationSchema(
   availableIndexes: RankingSchemaIndexColumn[],
   appliedMigrations: string[]
 ): void {
-  if (!appliedMigrations.includes("20260901120000_analytics_ranking_identity_permission"))
-    throw new Error("Analytics ranking MySQL integration requires migration 20260901120000_analytics_ranking_identity_permission");
+  if (!appliedMigrations.includes("20260902100000_analytics_ranking_identity_permission"))
+    throw new Error("Analytics ranking MySQL integration requires migration 20260902100000_analytics_ranking_identity_permission");
   const columns = new Set(availableColumns.map((row) => `${row.tableName}.${row.columnName}`));
   const missing = analyticsRankingRequiredColumns.filter((column) => !columns.has(column));
   const indexErrors = analyticsRankingRequiredIndexes.flatMap((required) => {

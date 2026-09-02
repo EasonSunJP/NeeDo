@@ -2846,7 +2846,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           formula: { type: "string", minLength: 1 },
           detailRoute: {
             oneOf: [
-              { type: "string", pattern: "^/admin/analytics/metrics/[a-z0-9_]+$" },
+              { type: "string", pattern: "^/admin/analytics/(?:metrics/[a-z0-9_]+|members)$" },
               { type: "null" }
             ]
           }
@@ -2893,7 +2893,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   metricKey: { type: "string", const: metricKey },
                   detailRoute: {
                     type: "string",
-                    const: `/admin/analytics/metrics/${metricKey}`
+                    const: metricKey === "new_paid_members"
+                      ? "/admin/analytics/members"
+                      : `/admin/analytics/metrics/${metricKey}`
                   }
                 }
               })),

@@ -381,23 +381,29 @@ export function MerchantMembershipMetricCard({
   const t = (source: string) => translateTextForContext(source, language, { portal: "merchant" });
 
   return (
-    <DashboardMetricCard
-      accent="orange"
-      icon="♡"
-      secondary={
-        membership
-          ? {
-              label: t("利用者数"),
-              unit: "people",
-              value: membership.completedCustomerCount
-            }
-          : undefined
-      }
-      statusMessage={membership ? undefined : t("会员功能尚未开放")}
-      title={t("会员数")}
-      unit="people"
-      value={membership?.memberCount}
-    />
+    <Link
+      aria-label={t("查看会员详细分析")}
+      className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-main/60"
+      to="/merchant-admin/analytics/members"
+    >
+      <DashboardMetricCard
+        accent="orange"
+        icon="♡"
+        secondary={
+          membership
+            ? {
+                label: t("利用者数"),
+                unit: "people",
+                value: membership.completedCustomerCount
+              }
+            : undefined
+        }
+        statusMessage={membership ? undefined : t("会员功能尚未开放")}
+        title={t("会员数")}
+        unit="people"
+        value={membership?.memberCount}
+      />
+    </Link>
   );
 }
 

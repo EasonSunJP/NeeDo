@@ -9,6 +9,7 @@ import {
 } from "../domain/analytics-ranking";
 
 type AnalyticsRankingQueryClient = Pick<PrismaClient, "$queryRaw" | "category">;
+type AnalyticsRankingClient = AnalyticsRankingQueryClient & Partial<Pick<PrismaClient, "$transaction">>;
 type NumericValue = bigint | number | string | { toString(): string } | null | undefined;
 interface AnomalyRow { anomalyCount?: NumericValue; anomaly_count?: NumericValue }
 interface CountRow { total?: NumericValue }
@@ -44,7 +45,7 @@ const entityTypes = new Set<RankingEntityType>([
 ]);
 
 export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPort {
-  public constructor(private readonly client: AnalyticsRankingQueryClient) {}
+  public constructor(private readonly client: AnalyticsRankingClient) {}
 
   public findActiveCategoryById(categoryId: number): Promise<{ id: number } | null> {
     return this.client.category.findFirst({
@@ -55,7 +56,21 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
 
   public async listRankings(input: AnalyticsRankingInput): Promise<AnalyticsRankingPage> {
     const offset = this.assertPagination(input.page, input.pageSize);
-    const anomalyRows = await this.client.$queryRaw<AnomalyRow[]>(Prisma.sql`
+    if (typeof this.client.$transaction === "function") {
+      return this.client.$transaction(
+        (transaction) => this.listRankingsInSnapshot(transaction, input, offset),
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      );
+    }
+    return this.listRankingsInSnapshot(this.client, input, offset);
+  }
+
+  private async listRankingsInSnapshot(
+    client: AnalyticsRankingQueryClient,
+    input: AnalyticsRankingInput,
+    offset: number
+  ): Promise<AnalyticsRankingPage> {
+    const anomalyRows = await client.$queryRaw<AnomalyRow[]>(Prisma.sql`
       /* analytics_ranking_evidence_validation */
       WITH ${this.formalRankingCtes(input)}
       SELECT COALESCE(SUM(incomplete_evidence), 0) AS anomalyCount
@@ -66,7 +81,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       this.safeInteger(anomalyRows[0]?.anomalyCount ?? anomalyRows[0]?.anomaly_count) !== 0
     ) this.incomplete();
 
-    const countRows = await this.client.$queryRaw<CountRow[]>(Prisma.sql`
+    const countRows = await client.$queryRaw<CountRow[]>(Prisma.sql`
       /* analytics_ranking_count */
       WITH ${this.formalRankingCtes(input)}, ${this.rankingCtes(input)}
       SELECT COUNT(*) AS total FROM ranked_entities
@@ -75,7 +90,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     const total = this.safeInteger(countRows[0]?.total);
     if (total === 0) return { list: [], total, page: input.page, page_size: input.pageSize };
 
-    const rows = await this.client.$queryRaw<RankingRow[]>(Prisma.sql`
+    const rows = await client.$queryRaw<RankingRow[]>(Prisma.sql`
       /* analytics_ranking_page */
       WITH ${this.formalRankingCtes(input)}, ${this.rankingCtes(input)}
       SELECT rank, entity_type AS entityType, entity_public_id AS entityPublicId,

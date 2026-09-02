@@ -199,12 +199,15 @@ const DASHBOARD_METRIC_METADATA: Record<DashboardMetricKey, DashboardMetricMetad
     "people",
     "new_users"
   ),
-  new_paid_members: metricMetadata(
-    "Distinct first offline-paid active cards excluding grant, trial, replacement and renewal",
-    "COUNT(DISTINCT first offline-paid active membership card)",
-    "people",
-    "new_paid_members"
-  ),
+  new_paid_members: {
+    ...metricMetadata(
+      "Distinct first offline-paid active cards excluding grant, trial, replacement and renewal",
+      "COUNT(DISTINCT first offline-paid active membership card)",
+      "people",
+      "new_paid_members"
+    ),
+    detailRoute: "/admin/analytics/members"
+  },
   technician_onboarding: metricMetadata(
     "Distinct first technician identity activations",
     "COUNT(DISTINCT first technician identity activation)",

@@ -198,7 +198,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
 
         const ndp = await createFormalOrder("NDP", 1);
         const cash = await createFormalOrder("CASH", 2);
-        const other = await createFormalOrder("OTHER", 3);
+        await createFormalOrder("OTHER", 3);
         const repository = new repositoryModule.AnalyticsRankingRepository(rawTx);
         for (const kind of ["service", "technician", "customer"] as const) {
           for (const metric of ["gmv", "completedCount"] as const) {
@@ -221,7 +221,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                 ];
               expect(result.list.map((item) => [item.entityPublicId, item.gmvJpy, item.completedCount]))
                 .toEqual(expected);
-              expect(result.list.map((item) => item.rank)).toEqual([1, 2, 3]);
+              expect(result.list.map((item) => item.rank)).toEqual([1, 2, 3, 4]);
             } else {
               expect(result).toMatchObject({ total: 1, page: 1, page_size: 10 });
               expect(result.list[0]).toMatchObject({
@@ -287,6 +287,23 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
           list: [{ gmvJpy: 24_000, completedCount: 2 }]
         });
         await setNdpEvidenceTime(confirmedAt);
+
+        const fullyReversed = {
+          paymentRefundedById: operator.id,
+          paymentRefundedAt: new Date(confirmedAt.getTime() + 60_000),
+          paymentRefundReference: `${marker}-full-reversal`,
+          paymentRefundReason: "full_reversal"
+        };
+        await tx.bookingOrder.update({ where: { id: ndp.order.id }, data: fullyReversed });
+        await expect(customerRanking()).resolves.toMatchObject({
+          list: [{ gmvJpy: 24_000, completedCount: 2 }]
+        });
+        await tx.bookingOrder.update({ where: { id: ndp.order.id }, data: {
+          paymentRefundedById: null,
+          paymentRefundedAt: null,
+          paymentRefundReference: null,
+          paymentRefundReason: null
+        } });
 
         await tx.shop.update({ where: { id: shop.id }, data: { city: "大阪" } });
         await expect(customerRanking("东京")).resolves.toMatchObject({ total: 0, list: [] });

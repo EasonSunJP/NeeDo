@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
 import {
   AnalyticsRankingIncompleteEvidenceError,
@@ -43,6 +43,28 @@ const fixture = (responses: unknown[][]) => {
 };
 
 describe("AnalyticsRankingRepository", () => {
+  it("runs evidence, total and page reads in one repeatable-read snapshot", async () => {
+    const responses: unknown[][] = [[{ anomalyCount: 0n }], [{ total: 1n }], [row]];
+    const transactionRaw = jest.fn<Promise<unknown[]>, [SqlQuery]>(async () => responses.shift() ?? []);
+    const rootRaw = jest.fn<Promise<unknown[]>, [SqlQuery]>();
+    const transaction = jest.fn(async (operation: (client: { $queryRaw: typeof transactionRaw }) => Promise<unknown>) =>
+      operation({ $queryRaw: transactionRaw })
+    );
+    const repository = new AnalyticsRankingRepository({
+      $queryRaw: rootRaw,
+      category: { findFirst: jest.fn() },
+      $transaction: transaction
+    } as unknown as PrismaClient);
+
+    await expect(repository.listRankings(input)).resolves.toMatchObject({ total: 1 });
+
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead
+    });
+    expect(transactionRaw).toHaveBeenCalledTimes(3);
+    expect(rootRaw).not.toHaveBeenCalled();
+  });
+
   it("maps canonical ranked rows and binds the formal window, city, category and metric", async () => {
     const test = fixture([[{ anomalyCount: 0n }], [{ total: 1n }], [row]]);
     await expect(test.repository.listRankings(input)).resolves.toEqual({

@@ -33,10 +33,10 @@ describe("analytics ranking MySQL integration safety", () => {
       index.columns.map((columnName, offset) => ({ tableName: index.tableName,
         indexName: index.indexName, columnName, seqInIndex: offset + 1, nonUnique: index.unique ? 0 : 1 }))
     );
-    const migration = ["20260901120000_analytics_ranking_identity_permission"];
+    const migration = ["20260902100000_analytics_ranking_identity_permission"];
     expect(() => assertAnalyticsRankingIntegrationSchema(columns, indexes, migration)).not.toThrow();
     expect(() => assertAnalyticsRankingIntegrationSchema(columns.slice(1), indexes, migration)).toThrow("booking_orders.id");
-    expect(() => assertAnalyticsRankingIntegrationSchema(columns, indexes, [])).toThrow("20260901120000");
+    expect(() => assertAnalyticsRankingIntegrationSchema(columns, indexes, [])).toThrow("20260902100000");
     const wrongOrder = indexes.map((row) => row.indexName === "booking_orders_ranking_window_idx" && row.seqInIndex === 1
       ? { ...row, seqInIndex: 2 } : row);
     expect(() => assertAnalyticsRankingIntegrationSchema(columns, wrongOrder, migration)).toThrow("order");
