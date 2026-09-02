@@ -13,20 +13,42 @@ import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "
 import {
   coreReadApi,
   mapCoreServiceToServiceItem,
-  type CoreServiceDetail
+  type CoreServiceDetail,
+  type CoreTechnicianCard
 } from "../../features/core-read/api";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
+import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
 import type { FulfillmentMode } from "../../types/domain";
 import {
   CheckoutProgressNav,
   resolveActiveCheckoutStep,
   type CheckoutProgressKey
 } from "./formal-checkout/CheckoutProgressNav";
+import { CheckoutTimeRow } from "./formal-checkout/CheckoutTimeRow";
+import {
+  getTokyoDayWindow,
+  getTokyoSlotParts,
+  isCheckoutSlotBookable,
+  resolveInitialCheckoutSlotId
+} from "./formal-checkout/checkoutTimeSlots";
 
 type LoadStatus = "loading" | "success" | "error";
+type TechnicianLoadStatus = "idle" | "loading" | "error";
 
 const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
+const checkoutScheduleSlotStateKey = "checkoutScheduleSlotId";
+
+function checkoutHistoryState(value: unknown) {
+  return value !== null && typeof value === "object"
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function persistedCheckoutScheduleSlotId(value: unknown) {
+  const slotId = checkoutHistoryState(value)[checkoutScheduleSlotStateKey];
+  return typeof slotId === "number" && Number.isInteger(slotId) && slotId > 0 ? slotId : null;
+}
 
 function describeCheckoutError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -44,16 +66,6 @@ function resolveFulfillmentMode(service: CoreServiceDetail, requestedMode: strin
   return service.serviceMode === "home" || service.serviceMode === "onsite" ? "home" : "store";
 }
 
-function formatSlotDateTime(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo"
-  }).format(date);
-}
-
 function formatTokyoDate(value: string) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
@@ -63,17 +75,6 @@ function formatTokyoDate(value: string) {
     timeZone: "Asia/Tokyo",
     weekday: "short",
     year: "numeric"
-  }).format(date);
-}
-
-function formatTokyoTime(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "--:--";
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    timeZone: "Asia/Tokyo"
   }).format(date);
 }
 
@@ -90,29 +91,6 @@ function googleMapsEmbedUrl(query: string) {
   return `https://www.google.com/maps?output=embed&q=${encodeURIComponent(query)}`;
 }
 
-function getTokyoSlotParts(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "2-digit",
-    timeZone: "Asia/Tokyo",
-    year: "numeric"
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return {
-    date: `${get("year")}-${get("month")}-${get("day")}`,
-    time: `${get("hour")}:${get("minute")}`
-  };
-}
-
-function remainingCapacity(slot: BookingScheduleSlot) {
-  return Math.max(0, slot.capacity - slot.bookedCount);
-}
-
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="px-1 text-sm font-black tracking-wide text-[color:var(--client-primary)]">{children}</h2>;
 }
@@ -127,6 +105,14 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CoreServiceDetail | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [checkoutNowMs, setCheckoutNowMs] = useState(() => Date.now());
+  const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
+  const [technicianLoadStatus, setTechnicianLoadStatus] = useState<TechnicianLoadStatus>("idle");
+  const [selectedDate] = useState(() => {
+    const requestedDate = searchParams.get("date");
+    if (requestedDate && getTokyoDayWindow(requestedDate)) return requestedDate;
+    return getTokyoSlotParts(new Date().toISOString())!.date;
+  });
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>("store");
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
@@ -139,14 +125,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [activeProgressStep, setActiveProgressStep] = useState(0);
+  const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
+  const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
 
   useEffect(() => {
+    if (!selectedDayWindow) return undefined;
     let active = true;
-    const requestedDate = searchParams.get("date");
-    const requestedStart = requestedDate ? new Date(`${requestedDate}T00:00:00+09:00`) : null;
-    const from = requestedStart && Number.isFinite(requestedStart.getTime()) ? requestedStart : new Date();
-    const to = new Date(from);
-    to.setDate(to.getDate() + 21);
     setLoadStatus("loading");
     setLoadError("");
 
@@ -154,26 +138,23 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       coreReadApi.getServiceDetail(serviceId),
       bookingApi.listAvailability({
         serviceId,
-        from: from.toISOString(),
-        to: to.toISOString(),
+        from: selectedDayWindow.from,
+        to: selectedDayWindow.to,
+        includeUnavailable: true,
         page: 1,
         pageSize: 100
       })
     ])
       .then(([serviceDetail, availability]) => {
         if (!active) return;
-        const availableSlots = availability.list
-          .filter((slot) => slot.status === "available" && remainingCapacity(slot) > 0)
-          .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+        const formalSlots = availability.list
+          .slice()
+          .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
         const requestedTime = searchParams.get("time");
-        const requestedSlot = availableSlots.find((slot) => {
-          const parts = getTokyoSlotParts(slot.startsAt);
-          return parts?.date === requestedDate && (!requestedTime || parts.time === requestedTime);
-        });
 
         setService(serviceDetail);
-        setSlots(availableSlots);
-        setSelectedSlotId(requestedSlot?.id ?? availableSlots[0]?.id ?? null);
+        setSlots(formalSlots);
+        setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
         setFulfillmentMode(resolveFulfillmentMode(serviceDetail, searchParams.get("mode")));
         setLoadStatus("success");
       })
@@ -188,7 +169,30 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     return () => {
       active = false;
     };
-  }, [revision, searchParams, serviceId]);
+  }, [persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
+
+  useEffect(() => {
+    const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
+      const startsAtMs = new Date(slot.startsAt).getTime();
+      if (!Number.isFinite(startsAtMs) || startsAtMs <= checkoutNowMs) return earliest;
+      return earliest === null || startsAtMs < earliest ? startsAtMs : earliest;
+    }, null);
+    if (nextBoundaryMs === null) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setCheckoutNowMs(Date.now());
+    }, Math.max(0, nextBoundaryMs - Date.now()));
+    return () => window.clearTimeout(timeoutId);
+  }, [checkoutNowMs, slots]);
+
+  useEffect(() => {
+    if (
+      selectedSlotId !== null
+      && !slots.some((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs))
+    ) {
+      setSelectedSlotId(null);
+    }
+  }, [checkoutNowMs, selectedSlotId, slots]);
 
   useEffect(() => {
     const updateProgressByScroll = () => {
@@ -214,9 +218,41 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   }, [loadStatus]);
 
   const selectedSlot = useMemo(
-    () => slots.find((slot) => slot.id === selectedSlotId) ?? null,
-    [selectedSlotId, slots]
+    () => slots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs)) ?? null,
+    [checkoutNowMs, selectedSlotId, slots]
   );
+  const selectedTechnicianProfileId = selectedSlot?.technicianProfileId ?? null;
+
+  useEffect(() => {
+    if (!selectedTechnicianProfileId || service?.technician?.id === selectedTechnicianProfileId) {
+      setSelectedTechnicianDetail(null);
+      setTechnicianLoadStatus("idle");
+      return undefined;
+    }
+
+    let active = true;
+    setSelectedTechnicianDetail(null);
+    setTechnicianLoadStatus("loading");
+    coreReadApi.getTechnicianDetail(selectedTechnicianProfileId)
+      .then((technician) => {
+        if (!active) return;
+        if (technician.id !== selectedTechnicianProfileId) {
+          setTechnicianLoadStatus("error");
+          return;
+        }
+        setSelectedTechnicianDetail(technician);
+        setTechnicianLoadStatus("idle");
+      })
+      .catch(() => {
+        if (!active) return;
+        setTechnicianLoadStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedTechnicianProfileId, service?.technician?.id]);
+
   const displayService = useMemo(
     () => (service ? mapCoreServiceToServiceItem(service) : null),
     [service]
@@ -227,17 +263,66 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
   const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
   const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
-  const technicianSkills = service?.technician
-    ? [service.technician.primaryService?.name, ...service.technician.reviewSummary.highlights]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .slice(0, 3)
-    : [];
-  const technicianProfileId = service?.technician?.id ?? null;
-  const technicianIsAvailable = technicianProfileId !== null
-    && slots.some((slot) => slot.technicianProfileId === technicianProfileId);
+  const selectedTechnician = useMemo(() => {
+    if (!selectedTechnicianProfileId) return null;
+    if (service?.technician?.id === selectedTechnicianProfileId) return service.technician;
+    return selectedTechnicianDetail?.id === selectedTechnicianProfileId
+      ? selectedTechnicianDetail
+      : null;
+  }, [selectedTechnicianDetail, selectedTechnicianProfileId, service?.technician]);
+  const checkoutTechnicianCardData = useMemo(() => {
+    const technician = selectedTechnician;
+    if (!technician) return null;
+
+    return {
+      id: String(technician.id),
+      entityType: "technician" as const,
+      displayName: technician.displayName,
+      avatar: technician.avatarUrl ?? "",
+      coverImage: technician.avatarUrl ?? "",
+      regionLabel: technician.city,
+      addressValue: technician.city,
+      primaryLabel: "技师",
+      kycVerified: false,
+      levelLabel: "",
+      scoreLabel: "服务评价",
+      scoreValue: `${finiteRating(technician.reviewSummary.ratingAverage).toFixed(1)}/5`,
+      followerCount: 0,
+      followingCount: 0
+    };
+  }, [selectedTechnician]);
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
+  };
+
+  const selectCheckoutSlot = (slotId: number) => {
+    const slot = slots.find(
+      (candidate) => candidate.id === slotId && isCheckoutSlotBookable(candidate, Date.now())
+    );
+    if (!slot) return;
+    const selectedTime = getTokyoSlotParts(slot.startsAt)?.time;
+    if (!selectedTime) return;
+
+    setSelectedSlotId(slot.id);
+    const nextSearchParams = new URLSearchParams(location.search);
+    const previousState = checkoutHistoryState(location.state);
+    if (
+      nextSearchParams.get("time") === selectedTime
+      && persistedCheckoutScheduleSlotId(previousState) === slot.id
+    ) return;
+    nextSearchParams.set("time", selectedTime);
+    navigate({
+      pathname: location.pathname,
+      search: `?${nextSearchParams.toString()}`,
+      hash: location.hash
+    }, {
+      replace: true,
+      state: {
+        ...previousState,
+        [checkoutScheduleSlotStateKey]: slot.id
+      }
+    });
   };
 
   const copyAddress = async () => {
@@ -265,7 +350,14 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   };
 
   const submitBooking = async () => {
-    if (!selectedSlot || submitting) return;
+    if (submitting) return;
+    const freshSelectedSlot = slots.find(
+      (slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, Date.now())
+    );
+    if (!freshSelectedSlot) {
+      setSelectedSlotId(null);
+      return;
+    }
     if (!isAuthenticated) {
       navigate(`/login/user?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
@@ -280,7 +372,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     try {
       const order = await bookingApi.createBooking({
         serviceId,
-        scheduleSlotId: selectedSlot.id,
+        scheduleSlotId: freshSelectedSlot.id,
         fulfillmentMode,
         paymentMethod,
         note: [fulfillmentMode === "home" ? `上门地址：${address.trim()}` : "", note.trim()]
@@ -443,28 +535,21 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
             <SectionTitle>时间</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
               <p className="text-xs font-black text-[color:var(--client-primary)]">预约时间</p>
-              {selectedSlot ? (
+              <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+                <p className="text-xs font-bold text-[color:var(--client-muted)]">日期</p>
+                <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]">{formatTokyoDate(`${selectedDate}T00:00:00+09:00`)}</p>
+              </div>
+              {slots.length ? (
                 <>
-                  <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                    <p className="text-xs font-bold text-[color:var(--client-muted)]">日期</p>
-                    <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]">{formatTokyoDate(selectedSlot.startsAt)}</p>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                      <p className="text-xs font-bold text-[color:var(--client-muted)]">时间</p>
-                      <p className="mt-2 text-[22px] font-black text-[color:var(--client-primary)]">{formatTokyoTime(selectedSlot.startsAt)}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">{selectedSlot.technicianName ?? "店铺安排技师"}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                      <p className="text-xs font-bold text-[color:var(--client-muted)]">人数</p>
-                      <p className="mt-2 text-[22px] font-black text-[color:var(--client-text)]">{people}</p>
-                      <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">剩余 {remainingCapacity(selectedSlot)} 名</p>
-                    </div>
-                  </div>
+                  <CheckoutTimeRow
+                    date={selectedDate}
+                    nowMs={checkoutNowMs}
+                    onSelect={selectCheckoutSlot}
+                    people={people}
+                    selectedSlotId={selectedSlotId}
+                    slots={slots}
+                  />
                   <p className="mt-3 text-xs leading-5 text-[color:var(--client-muted)]">*请提前10分钟到达，迟到无联系保留15分钟</p>
-                  <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3 text-xs font-semibold text-[color:var(--client-muted)]">
-                    {formatSlotDateTime(selectedSlot.startsAt)} · {people}
-                  </div>
                 </>
               ) : (
                 <div className="mt-3 rounded-[22px] border border-dashed border-[color:var(--client-line)] px-4 py-8 text-center">
@@ -472,29 +557,6 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                   <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺发布新的正式排班后会自动显示。</p>
                 </div>
               )}
-              {slots.length > 1 ? (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {slots.map((slot) => {
-                    const active = slot.id === selectedSlotId;
-                    return (
-                      <button
-                        aria-pressed={active}
-                        className={cn(
-                          "rounded-[18px] border px-3 py-2.5 text-left text-xs font-black transition",
-                          active
-                            ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
-                            : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]"
-                        )}
-                        key={slot.id}
-                        onClick={() => setSelectedSlotId(slot.id)}
-                        type="button"
-                      >
-                        {formatSlotDateTime(slot.startsAt)}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
           </div>
 
@@ -550,63 +612,26 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[4] = node)}>
             <SectionTitle>技师</SectionTitle>
-            {service.technician ? (
-              <button
-                className="w-full rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 text-left shadow-[0_14px_28px_rgba(0,0,0,0.06)]"
-                onClick={() => navigate(`/technicians/${service.technician?.id}`)}
-                type="button"
+            {checkoutTechnicianCardData ? (
+              <SocialProfileMiniCard
+                className="cursor-pointer"
+                data={checkoutTechnicianCardData}
+                detailTo={`/profiles/technician/${checkoutTechnicianCardData.id}?view=card`}
+                onOpenDetails={() => navigate(`/profiles/technician/${checkoutTechnicianCardData.id}?view=card`)}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+              />
+            ) : selectedTechnicianProfileId ? (
+              <div
+                aria-busy={technicianLoadStatus === "loading"}
+                className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]"
+                role={technicianLoadStatus === "error" ? "alert" : undefined}
               >
-                <div className="grid grid-cols-[92px_minmax(0,1fr)_16px] gap-4">
-                  {service.technician.avatarUrl ? (
-                    <img
-                      alt={service.technician.displayName}
-                      className="h-[92px] w-[92px] rounded-[24px] object-cover"
-                      src={service.technician.avatarUrl}
-                    />
-                  ) : (
-                    <span
-                      aria-hidden="true"
-                      className="grid h-[92px] w-[92px] place-items-center rounded-[24px] bg-[color:var(--client-primary-soft)] text-3xl font-black text-[color:var(--client-primary)]"
-                    >
-                      {service.technician.displayName.trim().charAt(0)}
-                    </span>
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-[18px] font-black leading-none tracking-[-0.03em] text-[color:var(--client-text)]">{service.technician.displayName}</p>
-                    <p className="mt-2 text-[13px] text-[color:var(--client-muted)]">{service.technician.city}</p>
-                    <p className="mt-3 text-[13px] font-black text-[color:var(--client-text)]">
-                      ★ {finiteRating(service.technician.reviewSummary.ratingAverage).toFixed(1)} · {service.technician.reviewSummary.reviewCount} 评价
-                    </p>
-                    {technicianSkills.length ? (
-                      <p className="mt-2 line-clamp-1 text-sm leading-6 text-[color:var(--client-muted)]">{technicianSkills.join(" / ")}</p>
-                    ) : null}
-                    <div className="mt-4 flex items-end justify-between gap-3">
-                      <div className="flex min-w-0 flex-wrap gap-2">
-                        {technicianSkills.slice(0, 2).map((tag) => (
-                          <span
-                            className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
-                            key={tag}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className={cn(
-                          "text-[14px] font-black",
-                          technicianIsAvailable ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]"
-                        )}>
-                          {technicianIsAvailable ? "当前可约" : "档期待确认"}
-                        </p>
-                        <p className="mt-1 text-xs text-[color:var(--client-muted)]">{service.technician.acceptanceRatePercent}% 接单率</p>
-                      </div>
-                    </div>
-                  </div>
-                  <svg aria-hidden="true" className="mt-1 h-4 w-4 text-[color:var(--client-muted)]" fill="none" viewBox="0 0 24 24">
-                    <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
-                  </svg>
-                </div>
-              </button>
+                <p className="text-sm font-black text-[color:var(--client-text)]">
+                  {technicianLoadStatus === "error" ? "当前技师资料不可用" : "正在读取技师详细信息"}
+                </p>
+              </div>
             ) : (
               <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
                 <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>

@@ -84,6 +84,8 @@ type CommonSocialProfileMiniCardProps = {
   onShare?: () => void;
   actionSlot?: ReactNode;
   showAction?: boolean;
+  showLevel?: boolean;
+  showSocialStats?: boolean;
   showShareAction?: boolean;
   shareCount?: number;
   topTags?: SocialProfileMiniTopTag[];
@@ -663,7 +665,7 @@ function InlineLevelLabel({ children, coverDark, onCover }: { children: ReactNod
   );
 }
 
-function InlineIdentityMeta({ coverDark, data, onCover }: { coverDark?: boolean; data: SocialProfileMiniData; onCover?: boolean }) {
+function InlineIdentityMeta({ coverDark, data, onCover, showLevel = true }: { coverDark?: boolean; data: SocialProfileMiniData; onCover?: boolean; showLevel?: boolean }) {
   if (data.entityType === "user") {
     return (
       <>
@@ -677,7 +679,7 @@ function InlineIdentityMeta({ coverDark, data, onCover }: { coverDark?: boolean;
     return (
       <>
         <EntityTypeTag coverDark={coverDark} data={data} onCover={onCover} />
-        <InlineLevelLabel coverDark={coverDark} onCover={onCover}>{data.levelLabel}</InlineLevelLabel>
+        {showLevel ? <InlineLevelLabel coverDark={coverDark} onCover={onCover}>{data.levelLabel}</InlineLevelLabel> : null}
       </>
     );
   }
@@ -778,7 +780,7 @@ function ScoreMetricBadge({
 }
 
 export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
-  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showShareAction = false, shareCount, topTags } = props;
+  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showLevel = true, showSocialStats = true, showShareAction = false, shareCount, topTags } = props;
   const { isNight, theme } = useClientTheme();
   const location = useLocation();
   const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
@@ -891,7 +893,7 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
           <h3 className={cn("flex min-w-0 items-center gap-1.5 text-[18px] font-black leading-6", coverDark ? "text-white [text-shadow:0_1px_5px_rgba(0,0,0,0.74)]" : "text-[#25282d] [text-shadow:0_1px_0_rgba(255,255,255,0.72)]")}>
             <span className={cn("min-w-0 truncate", data.entityType === "shop" ? "max-w-[calc(100%-48px)]" : data.entityType === "service" ? "max-w-full" : "max-w-[calc(100%-92px)]")}>{data.displayName}</span>
             {data.entityType !== "shop" && data.entityType !== "service" ? <KycVerifiedMark verified={data.kycVerified ?? true} /> : null}
-            <InlineIdentityMeta coverDark={coverDark} data={data} onCover />
+            <InlineIdentityMeta coverDark={coverDark} data={data} onCover showLevel={showLevel} />
           </h3>
         </InteractiveArea>
       </div>
@@ -899,9 +901,11 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
       <div className="px-3.5 pb-3 pt-2">
         <div className="ml-[156px] min-h-[90px]">
           <InteractiveArea className="block min-w-0 text-left" detailTo={resolvedDetailTo} onOpenDetails={onOpenDetails}>
-            <div className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-black leading-4", mutedClassName)}>
-              <SocialStatsLine data={data} valueClassName={cn(dark ? "text-white" : "text-[color:var(--client-text)]")} />
-            </div>
+            {showSocialStats ? (
+              <div className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-black leading-4", mutedClassName)}>
+                <SocialStatsLine data={data} valueClassName={cn(dark ? "text-white" : "text-[color:var(--client-text)]")} />
+              </div>
+            ) : null}
             {data.addressTags?.length ? (
               <div className="mt-0.5 flex max-h-9 flex-wrap items-center gap-1 overflow-hidden text-[11px] font-black leading-4">
                 {data.addressTags.slice(0, 6).map((tag) => (

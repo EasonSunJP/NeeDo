@@ -5,6 +5,9 @@ const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().max(100).optional()
 };
+const strictBooleanQuerySchema = z
+  .union([z.enum(["true", "false"]), z.boolean()])
+  .transform((value) => value === "true" || value === true);
 
 const isoDateSchema = z.union([
   z.date(),
@@ -61,6 +64,7 @@ export const availabilityListQuerySchema = z
     technicianServiceId: z.coerce.number().int().positive().optional(),
     shopId: z.coerce.number().int().positive().optional(),
     technicianId: z.coerce.number().int().positive().optional(),
+    includeUnavailable: strictBooleanQuerySchema.optional(),
     from: isoDateSchema,
     to: isoDateSchema
   })

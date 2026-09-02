@@ -156,6 +156,7 @@ export function TechnicianPublicInfoCard({
   className,
   dynamicTo,
   formalData,
+  hideUnavailableFields = false,
   onClose,
   technician,
   themeScope = "user"
@@ -163,6 +164,7 @@ export function TechnicianPublicInfoCard({
   className?: string;
   dynamicTo?: string;
   formalData?: TechnicianFormalContactCardData;
+  hideUnavailableFields?: boolean;
   onClose?: () => void;
   technician: Technician;
   themeScope?: TechnicianPublicInfoCardThemeScope;
@@ -178,6 +180,13 @@ export function TechnicianPublicInfoCard({
   const completedOrderCount = formalData?.metrics.completedOrderCount ?? technician.orderCount;
   const rating = formatTechnicianRating(formalData?.metrics.ratingAverage ?? technician.rating);
   const reviewCount = Math.max(0, formalData?.metrics.reviewCount ?? technician.reviewCount);
+  const basicInfoItems = [
+    ["身份", getTechnicianIdentityDisplayLabel(technician.identityLabel)],
+    ...(hideUnavailableFields && !technician.age ? [] : [["年龄", technician.age || "未设置"]]),
+    ...(hideUnavailableFields && !formatTechnicianHeightValue(technician.height)
+      ? []
+      : [["身高（cm）", formatTechnicianHeightValue(technician.height) || "未设置"]])
+  ];
   const actionButtonClassName = cn("focus-ring grid h-11 w-11 place-items-center rounded-full border text-[color:var(--profile-card-primary-strong)] shadow-[0_14px_30px_color-mix(in_srgb,var(--profile-card-primary)_18%,rgba(0,0,0,0.26))]", surface.metric);
 
   return (
@@ -209,7 +218,7 @@ export function TechnicianPublicInfoCard({
         <div className="flex h-36 min-w-0 flex-1 flex-col">
           <h2 className="max-w-[calc(100%-44px)] overflow-hidden break-all text-[21px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
             {displayName}
-            <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" />
+            {!hideUnavailableFields ? <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" /> : null}
           </h2>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
             <span className={cn("inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-[11px] font-black", surface.chip)}>
@@ -255,11 +264,7 @@ export function TechnicianPublicInfoCard({
       <div>
         <h2 className="text-lg font-black">基础信息</h2>
         <div className="mt-3 grid grid-cols-3 gap-2">
-          {[
-            ["身份", getTechnicianIdentityDisplayLabel(technician.identityLabel)],
-            ["年龄", technician.age || "未设置"],
-            ["身高（cm）", formatTechnicianHeightValue(technician.height) || "未设置"]
-          ].map(([label, value]) => (
+          {basicInfoItems.map(([label, value]) => (
             <div className={cn("rounded-[18px] border p-3", surface.panel)} key={label}>
               <p className={cn("text-xs font-bold", surface.label)}>{label}</p>
               <strong className="mt-1 block truncate text-sm">{value}</strong>
@@ -267,7 +272,7 @@ export function TechnicianPublicInfoCard({
           ))}
         </div>
 
-        <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
+        {!hideUnavailableFields || technician.languages.length > 0 ? <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
           <p className={cn("text-xs font-bold", surface.label)}>语言能力</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {technician.languages.length > 0 ? (
@@ -280,56 +285,56 @@ export function TechnicianPublicInfoCard({
               <span className={cn("text-sm font-bold", surface.muted)}>未设置</span>
             )}
           </div>
-        </div>
+        </div> : null}
 
         {details ? (
           <>
-            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
+            {!hideUnavailableFields || details.bidBudgetMinJpy !== null || details.bidBudgetMaxJpy !== null ? <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
               <p className={cn("text-xs font-bold", surface.label)}>接单预算</p>
               <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
                 {details.bidBudgetMinJpy === null && details.bidBudgetMaxJpy === null
                   ? tf("未设置接单预算")
                   : `${details.bidBudgetMinJpy === null ? "—" : formatJpy(details.bidBudgetMinJpy)} - ${details.bidBudgetMaxJpy === null ? "—" : formatJpy(details.bidBudgetMaxJpy)}`}
               </p>
-            </div>
+            </div> : null}
 
-            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
+            {!hideUnavailableFields || details.paymentMethods.length > 0 ? <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)}>
               <p className={cn("text-xs font-bold", surface.label)}>支持支付方式</p>
               <p className={cn("mt-2 text-sm font-bold leading-6", surface.muted)}>
                 {details.paymentMethods.length > 0
                   ? formatPaymentMethodLabels(details.paymentMethods)
                   : tf("未设置支付方式")}
               </p>
-            </div>
+            </div> : null}
           </>
         ) : null}
 
-        <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", surface.panel)}>
+        {!hideUnavailableFields || Boolean(technician.bio?.trim()) ? <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", surface.panel)}>
           <p className={cn("text-xs font-bold", surface.label)}>自我介绍</p>
           <p className={cn("mt-2 text-sm leading-6", surface.muted)}>{introductionText}</p>
-        </div>
+        </div> : null}
 
         {details ? (
           <>
-            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-special-tags">
+            {!hideUnavailableFields || details.specialTags.length > 0 ? <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-special-tags">
               <p className={cn("text-xs font-bold", surface.label)}>特殊标签</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {details.specialTags.length > 0 ? details.specialTags.map((tag) => (
                   <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>{tag}</span>
                 )) : <span className={cn("text-sm font-bold", surface.muted)}>{tf("暂无特殊标签")}</span>}
               </div>
-            </div>
+            </div> : null}
 
-            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-tags">
+            {!hideUnavailableFields || details.profileTags.length > 0 ? <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-tags">
               <p className={cn("text-xs font-bold", surface.label)}>标签</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {details.profileTags.length > 0 ? details.profileTags.map((tag) => (
                   <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", surface.chip)} key={tag}>{tag}</span>
                 )) : <span className={cn("text-sm font-bold", surface.muted)}>{tf("暂无标签")}</span>}
               </div>
-            </div>
+            </div> : null}
 
-            <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-services">
+            {!hideUnavailableFields || details.services.length > 0 ? <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-services">
               <p className={cn("text-xs font-bold", surface.label)}>服务信息</p>
               {details.services.length > 0 ? (
                 <div className="mt-2 space-y-2">
@@ -343,7 +348,7 @@ export function TechnicianPublicInfoCard({
                   ))}
                 </div>
               ) : <p className={cn("mt-2 text-sm font-bold", surface.muted)}>{tf("暂无服务信息")}</p>}
-            </div>
+            </div> : null}
           </>
         ) : null}
       </div>

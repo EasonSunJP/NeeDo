@@ -173,6 +173,7 @@ export interface AvailabilityListInput extends PaginationInput {
   technicianServiceId?: number;
   shopId?: number;
   technicianId?: number;
+  includeUnavailable?: boolean;
   from: Date;
   to: Date;
 }
@@ -852,8 +853,12 @@ export class BookingRepository implements BookingRepositoryPort {
     const pagination = toPrismaPagination(input);
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
-      status: "AVAILABLE",
-      bookedCount: { lt: this.client.scheduleSlot.fields.capacity },
+      ...(input.includeUnavailable
+        ? {}
+        : {
+            status: "AVAILABLE",
+            bookedCount: { lt: this.client.scheduleSlot.fields.capacity }
+          }),
       ...(input.serviceId ? { serviceId: input.serviceId } : {}),
       ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
       startsAt: { gte: input.from },
@@ -1192,6 +1197,7 @@ export class BookingRepository implements BookingRepositoryPort {
                   ? { technicianServiceId: input.technicianServiceId }
                   : {}),
                 deletedAt: null,
+                startsAt: { gt: new Date() },
                 status: { in: ["AVAILABLE", "BOOKED"] },
                 ...(input.serviceId
                   ? {
@@ -1290,6 +1296,7 @@ export class BookingRepository implements BookingRepositoryPort {
                   ? { technicianServiceId: input.technicianServiceId }
                   : {}),
                 deletedAt: null,
+                startsAt: { gt: new Date() },
                 status: "AVAILABLE",
                 ...(input.serviceId ? { service: { deletedAt: null, status: "published" } } : {}),
                 ...(input.technicianServiceId
@@ -1411,6 +1418,7 @@ export class BookingRepository implements BookingRepositoryPort {
               where: {
                 id: slot.id,
                 deletedAt: null,
+                startsAt: { gt: new Date() },
                 status: "AVAILABLE",
                 bookedCount: { lt: slot.capacity }
               },

@@ -230,6 +230,7 @@ export type PaginatedBookingData<TItem> = {
 
 export type AvailabilityQuery = {
   from: string;
+  includeUnavailable?: boolean;
   page?: number;
   pageSize?: number;
   serviceId?: number;

@@ -242,6 +242,37 @@ describe("BookingRepository order list scope", () => {
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
+  it("includes formal unavailable rows only when the public caller opts in", async () => {
+    const scheduleSlot = {
+      fields: { capacity: Symbol("capacity") },
+      findMany: jest.fn(async (_args: { where: unknown }) => []),
+      count: jest.fn(async () => 0)
+    };
+    const repository = new BookingRepository({ scheduleSlot } as never);
+
+    await repository.listAvailableSlots({
+      serviceId: 12,
+      includeUnavailable: true,
+      from: new Date("2026-09-02T15:00:00.000Z"),
+      to: new Date("2026-09-03T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
+    expect(where).not.toHaveProperty("status");
+    expect(where).not.toHaveProperty("bookedCount");
+    expect(where).toEqual(expect.objectContaining({
+      deletedAt: null,
+      serviceId: 12,
+      startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
+      endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
+      service: { deletedAt: null, status: "published" },
+      shop: expect.objectContaining({ deletedAt: null, status: "published" })
+    }));
+    expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
+  });
+
   it("rejects a partial affiliate hook pair before opening the booking transaction", async () => {
     const client = { $transaction: jest.fn().mockResolvedValue(null) };
     const repository = new BookingRepository(client as never);
@@ -260,6 +291,65 @@ describe("BookingRepository order list scope", () => {
       )
     ).rejects.toThrow("error.affiliate.checkout_hook_invalid");
     expect(client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a slot at the current server time during transactional revalidation and aborts pending replacement", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-03T01:00:00.000Z"));
+    try {
+      const pastSlot = {
+        id: 701,
+        shopId: 16,
+        technicianProfileId: null,
+        startsAt: new Date("2026-09-03T01:00:00.000Z"),
+        endsAt: new Date("2026-09-03T02:00:00.000Z"),
+        capacity: 1,
+        bookedCount: 0,
+        status: "AVAILABLE"
+      };
+      const scheduleFindFirst = jest.fn()
+        .mockResolvedValueOnce(pastSlot)
+        .mockResolvedValueOnce(null);
+      const cancelPending = jest.fn().mockResolvedValue({ count: 1 });
+      const releasePendingSlot = jest.fn().mockResolvedValue({ count: 1 });
+      const createOrder = jest.fn();
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+        customerProfile: { findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" }) },
+        shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
+        scheduleSlot: {
+          findFirst: scheduleFindFirst,
+          updateMany: releasePendingSlot
+        },
+        bookingOrder: {
+          findMany: jest.fn().mockResolvedValue([{ id: 501, scheduleSlotId: 601 }]),
+          updateMany: cancelPending,
+          create: createOrder
+        }
+      };
+      const repository = new BookingRepository({
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never);
+
+      await expect(repository.createBooking({
+        customerUserId: 101,
+        serviceId: 31,
+        scheduleSlotId: 701,
+        fulfillmentMode: "store"
+      })).resolves.toBeNull();
+
+      const expectedFutureGuard = { gt: new Date("2026-09-03T01:00:00.000Z") };
+      expect(scheduleFindFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        where: expect.objectContaining({ startsAt: expectedFutureGuard })
+      }));
+      expect(scheduleFindFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        where: expect.objectContaining({ startsAt: expectedFutureGuard })
+      }));
+      expect(cancelPending).toHaveBeenCalledTimes(1);
+      expect(releasePendingSlot).toHaveBeenCalledTimes(1);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("applies customer, shop, and technician identity filters to Prisma", async () => {

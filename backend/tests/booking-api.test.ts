@@ -550,6 +550,25 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
     });
   });
 
+  it("forwards the opt-in unavailable-slot flag to the public availability repository query", async () => {
+    const fixture = await createFixture();
+
+    await request(fixture.app)
+      .get(
+        "/api/v1/schedule/availability?serviceId=1&includeUnavailable=true&from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z&page=1&pageSize=100"
+      )
+      .expect(200);
+
+    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith({
+      serviceId: 1,
+      includeUnavailable: true,
+      from: new Date("2026-05-26T00:00:00.000Z"),
+      to: new Date("2026-05-27T00:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+  });
+
   it("rejects unscoped and longer-than-93-day public availability windows", async () => {
     const fixture = await createFixture();
 
