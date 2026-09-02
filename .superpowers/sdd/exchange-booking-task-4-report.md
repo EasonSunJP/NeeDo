@@ -8,6 +8,7 @@ Implementation commits:
 
 - `b01b40d1` — initial atomic matched-result conversion repository
 - `b13a897a` — reviewer-fix hardening and behavior coverage
+- `397413a1` — replacement-aware capacity validation and canonical suspension filter
 
 ## Files
 
@@ -38,6 +39,16 @@ Tests: 16 failed, 10 passed, 26 total
 
 The failures demonstrated owner/identity replay disclosure, corrupted persisted actor replay, swallowed externally-owned `TransactionClient` aborts, stale/split replacement-slot locking, five revoked live-eligibility states being accepted, two Booking plus two Participant overlap queries, ignored deterministic suffix injection, no targeted order-number collision retry, and unstable collision exhaustion.
 
+For the second re-review, the capacity-one replacement and projection tests were added first. The focused RED was:
+
+```text
+FAIL tests/exchange-booking-conversion.repository.test.ts
+Test Suites: 1 failed, 1 total
+Tests: 2 failed, 29 passed, 31 total
+```
+
+The capacity-one same-target conversion returned `slot_unavailable`, and the captured Prisma relation filter used non-canonical `status: "ACTIVE"`. The unrelated full capacity-one characterization already passed and remained the non-replacement guard.
+
 ## GREEN evidence
 
 Final exact focused suite:
@@ -46,7 +57,7 @@ Final exact focused suite:
 cd backend && npm test -- --runInBand tests/exchange-booking-conversion.repository.test.ts
 PASS tests/exchange-booking-conversion.repository.test.ts
 Test Suites: 1 passed, 1 total
-Tests: 28 passed, 28 total
+Tests: 31 passed, 31 total
 ```
 
 Task 1–3 focused regression evidence:
@@ -92,6 +103,13 @@ exit 0
 4. Live eligibility: locked slot projections and validation now recheck active shop suspension, compatible shop pricing mode, published/active technician, active shop affiliation at `occurredAt`, and APPROVED plus active/bookable technician service. Each revoked state has a zero-write negative test.
 5. Order numbers: one batch-level used-number set prevents duplicate inserts, and each order has five bounded attempts. Only `P2002` targets for `booking_orders.order_no` are retried; unrelated unique conflicts escape immediately. Tests cover intra-batch duplicate suffixes, one database collision then success, bounded exhaustion with rollback/stable error, and unrelated P2002 passthrough.
 6. Lock-scoped N+1 removal: multi-participant external overlap checks now use one Booking `OR` query and one active Participant `OR` query. Tests assert the exact query counts and preserve both rejection semantics.
+
+## Second re-review evidence
+
+- Structural/live-reference validation and availability validation are separate phases. Before replacement, only capacity released by the selected superseded orders is credited; the slot must still be AVAILABLE or BOOKED, future-dated, and have sufficient recorded count for the release. An unrelated full slot receives no credit and is rejected with zero writes.
+- After conditional cancellation/capacity release and authoritative reload, every participant slot must pass ordinary future, `AVAILABLE`, and `bookedCount < capacity` validation before order creation.
+- A capacity-one same-target old PENDING order now converts successfully and finishes at `BOOKED`, `bookedCount: 1`; an unrelated capacity-one full slot remains `slot_unavailable`.
+- The EntitySuspension relation projection now uses canonical lowercase `status: "active"`; both pre-release and post-release slot queries are asserted by the harness.
 
 ## Transaction, rollback, and idempotency evidence
 
