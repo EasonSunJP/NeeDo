@@ -118,6 +118,12 @@ export interface CompleteExchangeSelectionInput {
   unselectedClaims: ExchangeMatchingSelectionClaim[];
   unselectedClaimIds: number[];
   selectedQuoteTotalJpy: number;
+  effectiveTargetProviderCountAfter: number;
+  effectiveBudgetMaxJpyAfter: number;
+  adjustments: Array<
+    | { type: "budget_increased"; before: number; after: number }
+    | { type: "target_reduced"; before: number; after: number }
+  >;
   versionBefore: number;
   versionAfter: number;
   actorUserId: number;
