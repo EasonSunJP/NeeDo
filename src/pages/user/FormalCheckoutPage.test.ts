@@ -78,4 +78,15 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("<CheckoutProgressNav");
     expect(formalSource).toContain("activeIndex={activeProgressStep}");
   });
+
+  it("keeps the approved action footer attached to the formal booking submission", () => {
+    expect(formalSource).toContain("应付金额");
+    expect(formalSource).toContain("联系");
+    expect(formalSource).toContain("确定预约");
+    expect(formalSource).toContain("safe-nav-bottom");
+    expect(formalSource).toContain("pointer-events-none fixed inset-x-0 bottom-0");
+    expect(formalSource).toContain("paymentMethod");
+    expect(formalSource).toContain("void submitBooking()");
+    expect(formalSource).toContain("disabled={!selectedSlot || submitting}");
+  });
 });

@@ -677,15 +677,23 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
             </div>
           ) : null}
 
-          <div className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-[880px] border-t border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] p-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] backdrop-blur-xl">
-            <div className="mx-auto flex max-w-[680px] items-center gap-3">
-              <div className="min-w-[104px]">
-                <p className="text-[10px] font-black text-[color:var(--client-muted)]">应付金额</p>
-                <strong className="block text-xl font-black text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
-                <div className="mt-1 flex gap-1">
+          <footer className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] bg-gradient-to-t from-[color:var(--client-bg)] via-[color:var(--client-bg)] to-transparent px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-14">
+            <div className="pointer-events-auto space-y-3">
+              <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]">应付金额</p>
+                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
+                </div>
+                <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
                   {(["onsite", "bank_transfer"] as const).map((method) => (
                     <button
-                      className={cn("rounded-full px-2 py-1 text-[9px] font-black", paymentMethod === method ? "bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]" : "bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]")}
+                      aria-pressed={paymentMethod === method}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-[10px] font-black backdrop-blur",
+                        paymentMethod === method
+                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
+                          : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]"
+                      )}
                       key={method}
                       onClick={() => setPaymentMethod(method)}
                       type="button"
@@ -695,17 +703,19 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                   ))}
                 </div>
               </div>
-              <button className="h-12 shrink-0 rounded-full border border-[color:var(--client-line)] px-4 text-sm font-black" onClick={() => navigate(`/stores/${service.shop.id}`)} type="button">联系</button>
-              <button
-                className="focus-ring inline-flex h-12 min-w-0 flex-1 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!selectedSlot || submitting}
-                onClick={() => void submitBooking()}
-                type="button"
-              >
-                {submitting ? "创建预约中" : isAuthenticated ? "确定预约" : "登录后确定预约"}
-              </button>
+              <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2.5">
+                <SecondaryButton className="w-full" onClick={() => navigate(`/stores/${service.shop.id}`)}>联系</SecondaryButton>
+                <button
+                  className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!selectedSlot || submitting}
+                  onClick={() => void submitBooking()}
+                  type="button"
+                >
+                  {submitting ? "创建预约中" : isAuthenticated ? "确定预约" : "登录后确定预约"}
+                </button>
+              </div>
             </div>
-          </div>
+          </footer>
         </>
       ) : null}
     </PageScaffold>
