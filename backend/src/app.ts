@@ -57,6 +57,7 @@ import type { ShopMembershipCardTopUpRepositoryPort } from "./services/shop-memb
 import type { ShopMembershipCardRedemptionRepositoryPort } from "./services/shop-membership-card-redemption.service";
 import type { ShopMembershipCardRefundRepositoryPort } from "./services/shop-membership-card-refund.service";
 import type { AnalyticsRankingRepositoryPort } from "./repositories/analytics-ranking.repository";
+import type { AgentCommissionRuleRepositoryPort } from "./repositories/agent-commission-rule.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
@@ -193,6 +194,7 @@ import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes"
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
+import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
@@ -266,6 +268,7 @@ export interface AppDependencies {
   shopMembershipCardRedemptionRepository?: ShopMembershipCardRedemptionRepositoryPort;
   shopMembershipCardRefundRepository?: ShopMembershipCardRefundRepositoryPort;
   analyticsRankingRepository?: AnalyticsRankingRepositoryPort;
+  agentCommissionRuleRepository?: AgentCommissionRuleRepositoryPort;
   analyticsRankingClock?: () => Date;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;
@@ -526,6 +529,7 @@ export const createApp = (
   apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformPartnerRoutes(config, resolvedDependencies));
+  apiRouter.use(createAgentCommissionRuleRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));
   }

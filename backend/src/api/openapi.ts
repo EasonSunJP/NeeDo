@@ -5904,6 +5904,83 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      AgentCommissionRule: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "version", "fixedSuccessRewardJpy", "profitShareRateBps",
+          "paymentMethod", "paymentDetails", "effectiveFrom", "effectiveTo",
+          "publishedAt", "publishedById", "reason", "createdAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          fixedSuccessRewardJpy: {
+            type: "integer",
+            format: "int64",
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER
+          },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          paymentMethod: {
+            type: "string",
+            enum: ["bank_transfer", "ndp", "other"]
+          },
+          paymentDetails: {
+            type: ["object", "null"],
+            maxProperties: 20,
+            additionalProperties: {
+              oneOf: [
+                { type: "string", maxLength: 255 },
+                { type: "number" },
+                { type: "boolean" },
+                { type: "null" }
+              ]
+            }
+          },
+          effectiveFrom: { type: "string", format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          publishedAt: { type: "string", format: "date-time" },
+          publishedById: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      AgentCommissionRulePublish: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "fixedSuccessRewardJpy", "profitShareRateBps", "paymentMethod",
+          "effectiveFrom", "reason"
+        ],
+        properties: {
+          fixedSuccessRewardJpy: {
+            type: "integer",
+            format: "int64",
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER
+          },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          paymentMethod: {
+            type: "string",
+            enum: ["bank_transfer", "ndp", "other"]
+          },
+          paymentDetails: {
+            type: ["object", "null"],
+            maxProperties: 20,
+            additionalProperties: {
+              oneOf: [
+                { type: "string", maxLength: 255 },
+                { type: "number" },
+                { type: "boolean" },
+                { type: "null" }
+              ]
+            }
+          },
+          effectiveFrom: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
       BackofficeService: {
         type: "object",
         required: [
@@ -18420,6 +18497,98 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "error.platform_partner.agent_not_found or error.platform_partner.shop_not_found"
           ),
           "409": jsonErrorResponse("error.platform_partner.shop_referral_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/commission-rules`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List current and historical agent commission rules",
+        description:
+          "Returns the effective rule at the requested instant plus immutable version history. Historical versions cannot be edited.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent:read",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          { name: "at", in: "query", schema: { type: "string", format: "date-time" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Agent commission rule overview", {
+            type: "object",
+            required: ["current", "latestVersion", "evaluatedAt", "history"],
+            properties: {
+              current: {
+                oneOf: [
+                  { $ref: "#/components/schemas/AgentCommissionRule" },
+                  { type: "null" }
+                ]
+              },
+              latestVersion: { type: "integer", minimum: 0 },
+              evaluatedAt: { type: "string", format: "date-time" },
+              history: {
+                type: "object",
+                required: ["list", "total", "page", "page_size"],
+                properties: {
+                  list: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/AgentCommissionRule" }
+                  },
+                  total: { type: "integer", minimum: 0 },
+                  page: { type: "integer", minimum: 1 },
+                  page_size: { type: "integer", minimum: 1, maximum: 100 }
+                }
+              }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.platform_partner.agent_not_found")
+        }
+      },
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Publish the next immutable agent commission rule version",
+        description:
+          "Serializes publication per agent, closes the previous half-open effective window, creates the next monotonically increasing version, and stores before/after audit evidence atomically.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent:write",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AgentCommissionRulePublish" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Agent commission rule version published", {
+            $ref: "#/components/schemas/AgentCommissionRule"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.platform_partner.agent_not_found"),
+          "409": jsonErrorResponse("error.agent_commission_rule.conflict")
         }
       }
     },
