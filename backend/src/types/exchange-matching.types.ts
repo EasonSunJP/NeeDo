@@ -2,6 +2,19 @@ import type { ExchangeClaimServiceRef } from "./exchange-claim.types";
 
 export type ExchangeMatchingStatus = "open" | "matched" | "closed";
 
+export interface ExchangeMatchAdjustmentPreview {
+  currentVersion: number;
+  selectedCount: number;
+  selectedQuoteTotalJpy: number;
+  effectiveTargetProviderCount: number;
+  effectiveBudgetMaxJpy: number;
+  requiredTargetProviderCount: number | null;
+  requiredBudgetMaxJpy: number | null;
+  requiredBudgetIncreaseJpy: number;
+  requiresTargetConfirmation: boolean;
+  requiresBudgetConfirmation: boolean;
+}
+
 export interface ExchangeMatchParticipantPayload {
   exchangeClaimId: number;
   provider: {

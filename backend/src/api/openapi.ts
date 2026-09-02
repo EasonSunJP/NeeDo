@@ -1615,7 +1615,30 @@ const exchangeMatchingErrorResponses = {
   "404": { description: "error.exchange.match_not_found — matching is not visible" },
   "409": {
     description:
-      "error.exchange.match_invalid_state, error.exchange.match_version_conflict, error.exchange.match_claim_set_invalid, error.exchange.match_count_mismatch, error.exchange.match_budget_exceeded, error.exchange.match_time_conflict, or error.exchange.match_idempotency_conflict"
+      "error.exchange.match_invalid_state, error.exchange.match_version_conflict, error.exchange.match_claim_set_invalid, error.exchange.match_count_mismatch, error.exchange.match_budget_exceeded, error.exchange.match_target_confirmation_required, error.exchange.match_budget_confirmation_required, error.exchange.match_time_conflict, or error.exchange.match_idempotency_conflict"
+  }
+};
+
+const exchangeMatchingAdjustmentConflictResponse = {
+  description: exchangeMatchingErrorResponses["409"].description,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "message", "data"],
+        properties: {
+          code: { type: "integer" },
+          message: { type: "string" },
+          data: {
+            anyOf: [
+              { $ref: "#/components/schemas/ExchangeMatchAdjustmentPreview" },
+              { type: "null" }
+            ]
+          }
+        }
+      }
+    }
   }
 };
 
@@ -1928,7 +1951,8 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             "200": jsonDataResponse("Matched Exchange Request", {
               $ref: "#/components/schemas/ExchangeMatching"
             }),
-            ...exchangeMatchingErrorResponses
+            ...exchangeMatchingErrorResponses,
+            "409": exchangeMatchingAdjustmentConflictResponse
           }
         }
       )
@@ -3734,6 +3758,70 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      ExchangeMatchBudgetConfirmation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["action", "confirmedBudgetMaxJpy"],
+        properties: {
+          action: { type: "string", enum: ["increase_to_selected_total"] },
+          confirmedBudgetMaxJpy: {
+            type: "integer",
+            minimum: 1,
+            maximum: 1000000000
+          }
+        }
+      },
+      ExchangeMatchTargetConfirmation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["action", "confirmedTargetProviderCount"],
+        properties: {
+          action: { type: "string", enum: ["reduce_to_selected_count"] },
+          confirmedTargetProviderCount: { type: "integer", minimum: 1, maximum: 20 }
+        }
+      },
+      ExchangeMatchAdjustmentPreview: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "currentVersion",
+          "selectedCount",
+          "selectedQuoteTotalJpy",
+          "effectiveTargetProviderCount",
+          "effectiveBudgetMaxJpy",
+          "requiredTargetProviderCount",
+          "requiredBudgetMaxJpy",
+          "requiredBudgetIncreaseJpy",
+          "requiresTargetConfirmation",
+          "requiresBudgetConfirmation"
+        ],
+        properties: {
+          currentVersion: { type: "integer", minimum: 1 },
+          selectedCount: { type: "integer", minimum: 1, maximum: 20 },
+          selectedQuoteTotalJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
+          effectiveTargetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
+          effectiveBudgetMaxJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
+          requiredTargetProviderCount: {
+            anyOf: [
+              { type: "integer", minimum: 1, maximum: 20 },
+              { type: "null" }
+            ]
+          },
+          requiredBudgetMaxJpy: {
+            anyOf: [
+              { type: "integer", minimum: 1, maximum: 1000000000 },
+              { type: "null" }
+            ]
+          },
+          requiredBudgetIncreaseJpy: {
+            type: "integer",
+            minimum: 0,
+            maximum: 1000000000
+          },
+          requiresTargetConfirmation: { type: "boolean" },
+          requiresBudgetConfirmation: { type: "boolean" }
+        }
+      },
       ExchangeMatchSelectRequest: {
         type: "object",
         additionalProperties: false,
@@ -3746,7 +3834,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             uniqueItems: true,
             items: { type: "integer", minimum: 1 }
           },
-          expectedVersion: { type: "integer", minimum: 1 }
+          expectedVersion: { type: "integer", minimum: 1 },
+          budgetConfirmation: {
+            anyOf: [
+              { $ref: "#/components/schemas/ExchangeMatchBudgetConfirmation" },
+              { type: "null" }
+            ],
+            default: null
+          },
+          targetConfirmation: {
+            anyOf: [
+              { $ref: "#/components/schemas/ExchangeMatchTargetConfirmation" },
+              { type: "null" }
+            ],
+            default: null
+          }
         }
       },
       ExchangeDemandPublishRequest: {
