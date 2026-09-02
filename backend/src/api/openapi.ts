@@ -1643,6 +1643,46 @@ const exchangeMatchingAdjustmentConflictResponse = {
   }
 };
 
+const exchangeBookingConversionErrorResponses = {
+  "400": { description: "error.validation — strict booking conversion request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description:
+      "error.forbidden, error.exchange.match_booking_not_allowed, or error.user_policy.ekyc_required"
+  },
+  "404": {
+    description: "error.exchange.match_booking_not_found — matching is not visible"
+  },
+  "409": {
+    description:
+      "error.exchange.match_booking_invalid_state, error.exchange.match_booking_version_conflict, error.exchange.match_booking_already_created, error.exchange.match_booking_slot_unavailable, or error.exchange.match_booking_idempotency_conflict",
+    content: {
+      "application/json": {
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["code", "message", "data"],
+          properties: {
+            code: { type: "integer" },
+            message: { type: "string" },
+            data: {
+              anyOf: [
+                {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["currentVersion"],
+                  properties: { currentVersion: { type: "integer", minimum: 1 } }
+                },
+                { type: "null" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 const exchangeRequestFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
@@ -1954,6 +1994,24 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             }),
             ...exchangeMatchingErrorResponses,
             "409": exchangeMatchingAdjustmentConflictResponse
+          }
+        }
+      )
+    },
+    [`${base}/{id}/matching/bookings`]: {
+      post: exchangeOperation(
+        "Create the matched Request's formal pending bookings",
+        "exchange:matching:book-own",
+        {
+          description:
+            "Atomically converts every selected participant into one formal pending Request booking. Exact replay returns the committed result. This command does not collect service payment or move wallet or ledger value.",
+          parameters: [postId, exchangeIdempotencyKeyParameter],
+          requestBody: body("ExchangeBookingConversionRequest"),
+          responses: {
+            "200": jsonDataResponse("Matched bookings created or replayed", {
+              $ref: "#/components/schemas/ExchangeBookingConversion"
+            }),
+            ...exchangeBookingConversionErrorResponses
           }
         }
       )
@@ -3761,7 +3819,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "currency",
           "estimatedStartsAt",
           "estimatedEndsAt",
-          "matchedAt"
+          "matchedAt",
+          "booking"
         ],
         properties: {
           exchangeClaimId: { type: "integer", minimum: 1 },
@@ -3774,7 +3833,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           currency: { type: "string", enum: ["JPY"] },
           estimatedStartsAt: { type: "string", format: "date-time" },
           estimatedEndsAt: { type: "string", format: "date-time" },
-          matchedAt: { type: "string", format: "date-time" }
+          matchedAt: { type: "string", format: "date-time" },
+          booking: {
+            nullable: true,
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["orderId", "orderNo", "status"],
+                properties: {
+                  orderId: { type: "integer", minimum: 1 },
+                  orderNo: { type: "string" },
+                  status: {
+                    type: "string",
+                    enum: [
+                      "pending",
+                      "confirmed",
+                      "inService",
+                      "awaitingCheckout",
+                      "awaitingPaymentConfirmation",
+                      "completed",
+                      "cancelled"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
         }
       },
       ExchangeMatching: {
@@ -3806,8 +3891,55 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           viewer: {
             type: "object",
             additionalProperties: false,
-            required: ["canSelect"],
-            properties: { canSelect: { type: "boolean" } }
+            required: ["canSelect", "canCreateBookings"],
+            properties: {
+              canSelect: { type: "boolean" },
+              canCreateBookings: { type: "boolean" }
+            }
+          }
+        }
+      },
+      ExchangeBookingConversionRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion"],
+        properties: { expectedVersion: { type: "integer", minimum: 1 } }
+      },
+      ExchangeBookingConversionOrder: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "exchangeClaimId",
+          "orderId",
+          "orderNo",
+          "status",
+          "providerPublicId",
+          "quoteAmountJpy",
+          "startsAt",
+          "endsAt"
+        ],
+        properties: {
+          exchangeClaimId: { type: "integer", minimum: 1 },
+          orderId: { type: "integer", minimum: 1 },
+          orderNo: { type: "string" },
+          status: { type: "string", enum: ["pending"] },
+          providerPublicId: { type: "string" },
+          quoteAmountJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" }
+        }
+      },
+      ExchangeBookingConversion: {
+        type: "object",
+        additionalProperties: false,
+        required: ["exchangePostId", "matchingVersion", "bookedAt", "orders"],
+        properties: {
+          exchangePostId: { type: "integer", minimum: 1 },
+          matchingVersion: { type: "integer", minimum: 1 },
+          bookedAt: { type: "string", format: "date-time" },
+          orders: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ExchangeBookingConversionOrder" }
           }
         }
       },

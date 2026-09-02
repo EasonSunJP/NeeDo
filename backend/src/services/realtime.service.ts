@@ -34,6 +34,7 @@ import type {
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 import type { UserExperienceService } from "./user-experience.service";
+import type { ExchangeCommittedNotification } from "../types/exchange-booking-conversion.types";
 
 const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -1275,6 +1276,21 @@ export class RealtimeService implements OrderStatusNotificationPort {
         recipientIdentityId: notification.recipientIdentityId,
         payload: notification,
         createdAt: new Date().toISOString()
+      });
+    }
+  }
+
+  public async publishCommittedNotifications(
+    notifications: ExchangeCommittedNotification[]
+  ): Promise<void> {
+    for (const notification of notifications) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "notification.created",
+        recipientUserId: notification.recipientUserId,
+        recipientIdentityId: notification.recipientIdentityId,
+        payload: notification,
+        createdAt: notification.createdAt.toISOString()
       });
     }
   }

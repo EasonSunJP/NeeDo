@@ -193,6 +193,7 @@ import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
 import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes";
+import { createExchangeBookingConversionRoutes } from "./routes/exchange-booking-conversion.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
@@ -217,6 +218,7 @@ import type { NdpExperienceCampaignService } from "./services/ndp-experience-cam
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeMatchingService } from "./services/exchange-matching.service";
+import type { ExchangeBookingConversionService } from "./services/exchange-booking-conversion.service";
 import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
@@ -408,6 +410,7 @@ export interface AppDependencies {
   exchangeService?: ExchangeService;
   exchangeClaimService?: ExchangeClaimService;
   exchangeMatchingService?: ExchangeMatchingService;
+  exchangeBookingConversionService?: ExchangeBookingConversionService;
   exchangeRequestFeeService?: ExchangeRequestFeeService;
   ledgerService?: LedgerService;
 }
@@ -532,6 +535,7 @@ export const createApp = (
   apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeClaimRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeMatchingRoutes(config, resolvedDependencies));
+  apiRouter.use(createExchangeBookingConversionRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformPartnerRoutes(config, resolvedDependencies));
