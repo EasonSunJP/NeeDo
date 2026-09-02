@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
+  getServiceDetail: vi.fn(),
+  getShopDetail: vi.fn(),
+  getTechnicianDetail: vi.fn(),
   listServices: vi.fn(),
   payWithNdp: vi.fn(),
   rejectAddOn: vi.fn(),
@@ -42,7 +45,18 @@ vi.mock("../../features/booking/api", async () => {
     }
   };
 });
-vi.mock("../../features/core-read/api", () => ({ coreReadApi: { listServices: mocks.listServices } }));
+vi.mock("../../features/core-read/api", async () => {
+  const actual = await vi.importActual<typeof import("../../features/core-read/api")>("../../features/core-read/api");
+  return {
+    ...actual,
+    coreReadApi: {
+      getServiceDetail: mocks.getServiceDetail,
+      getShopDetail: mocks.getShopDetail,
+      getTechnicianDetail: mocks.getTechnicianDetail,
+      listServices: mocks.listServices
+    }
+  };
+});
 vi.mock("../../state/userOrderStore", () => ({ useUserOrders: () => [{ id: "legacy-1", itemName: "历史服务", storeName: "历史店铺", bookedAt: "2026-08-01 10:00", status: "completed", amount: 5000, serviceId: "12" }] }));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
   AppTopBar: ({ title }: { title: string }) => <header>{title}</header>,
@@ -226,6 +240,9 @@ describe("formal user order detail", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     mocks.listServices.mockResolvedValue({ list: [coreService], total: 1, page: 1, page_size: 100 });
+    mocks.getServiceDetail.mockResolvedValue(null);
+    mocks.getShopDetail.mockResolvedValue(null);
+    mocks.getTechnicianDetail.mockResolvedValue(null);
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.getOwnReview.mockResolvedValue({ review: null });
   });
