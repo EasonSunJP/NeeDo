@@ -29,7 +29,8 @@ describe("rollback-only formal order fulfillment flow checker", () => {
 
     expect(existsSync(scriptPath)).toBe(true);
     expect(packageJson.scripts["check:order-fulfillment-checkout"]).toBe(
-      "tsx scripts/check-order-fulfillment-checkout-flow.ts"
+      "tsx scripts/check-order-fulfillment-checkout-flow.ts && " +
+        "tsx scripts/check-order-checkout-concurrency.ts"
     );
   });
 
