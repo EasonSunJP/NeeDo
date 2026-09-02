@@ -2,6 +2,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
   AgentListInput,
+  AgentShopReferralListInput,
+  AgentShopReferralListRepositoryResult,
   AgentShopReferralRecord,
   LinkAgentShopRepositoryResult,
   MarkPartnerProfileRepositoryResult,
@@ -127,6 +129,50 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
     ]);
 
     return buildPaginatedResponse(list.map((record) => this.mapProfile(record)), total, pagination);
+  }
+
+  public async listAgentShopReferrals(
+    input: AgentShopReferralListInput
+  ): Promise<AgentShopReferralListRepositoryResult> {
+    const agent = await this.client.platformPartnerProfile.findFirst({
+      where: {
+        publicId: input.agentPublicId,
+        partnerType: "AGENT",
+        deletedAt: null,
+        user: { deletedAt: null }
+      },
+      select: { id: true }
+    });
+    if (!agent) return { kind: "agent_not_found" };
+
+    const pagination = toPrismaPagination(input);
+    const status = input.status?.toUpperCase() as AgentShopReferralRecord["status"] | undefined;
+    const where: Prisma.AgentShopReferralWhereInput = {
+      agentProfileId: agent.id,
+      deletedAt: null,
+      ...(status ? { status } : {}),
+      shop: {
+        deletedAt: null,
+        publicIdentifier: {
+          is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+        }
+      }
+    };
+    const [list, total] = await Promise.all([
+      this.client.agentShopReferral.findMany({
+        where,
+        select: referralSelect,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ confirmedAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.agentShopReferral.count({ where })
+    ]);
+
+    return {
+      kind: "found",
+      page: buildPaginatedResponse(list.map((record) => this.mapReferral(record)), total, pagination)
+    };
   }
 
   public async linkAgentShop(input: {

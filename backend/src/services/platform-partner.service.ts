@@ -97,6 +97,11 @@ export interface LinkAgentShopInput {
   reason: string;
 }
 
+export interface AgentShopReferralListInput extends PaginationInput {
+  agentPublicId: string;
+  status?: AgentShopReferralPayload["status"];
+}
+
 export type MarkPartnerProfileRepositoryResult =
   | { kind: "created"; profile: PlatformPartnerProfileRecord }
   | { kind: "user_not_found" }
@@ -107,6 +112,10 @@ export type LinkAgentShopRepositoryResult =
   | { kind: "agent_not_found" }
   | { kind: "shop_not_found" }
   | { kind: "shop_conflict" };
+
+export type AgentShopReferralListRepositoryResult =
+  | { kind: "found"; page: PaginatedResponse<AgentShopReferralRecord> }
+  | { kind: "agent_not_found" };
 
 export interface PlatformPartnerRepositoryPort {
   markPartnerProfile: (input: {
@@ -119,6 +128,9 @@ export interface PlatformPartnerRepositoryPort {
   listAgents: (
     input: AgentListInput
   ) => Promise<PaginatedResponse<PlatformPartnerProfileRecord>>;
+  listAgentShopReferrals: (
+    input: AgentShopReferralListInput
+  ) => Promise<AgentShopReferralListRepositoryResult>;
   linkAgentShop: (input: {
     agentPublicId: string;
     shopPublicId: string;
@@ -288,6 +300,41 @@ export class PlatformPartnerService {
     });
 
     return payload;
+  }
+
+  public async listAgentShopReferrals(
+    agentPublicId: string,
+    input: Omit<AgentShopReferralListInput, "agentPublicId">,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<PaginatedResponse<AgentShopReferralPayload>> {
+    const result = await this.repository.listAgentShopReferrals({ agentPublicId, ...input });
+    if (result.kind === "agent_not_found") {
+      throw new AppError({
+        code: ERROR_CODES.PLATFORM_PARTNER_PROFILE_NOT_FOUND,
+        message: "error.platform_partner.agent_not_found",
+        statusCode: 404
+      });
+    }
+
+    await this.auditLogService.record({
+      actor,
+      action: "backoffice.agent_shop_referral.list",
+      targetType: "agent_shop_referral",
+      context,
+      metadata: {
+        agentPublicId,
+        page: result.page.page,
+        pageSize: result.page.page_size,
+        status: input.status ?? null,
+        resultCount: result.page.list.length
+      }
+    });
+
+    return {
+      ...result.page,
+      list: result.page.list.map((record) => this.serializeReferral(record))
+    };
   }
 
   private serializeProfile(record: PlatformPartnerProfileRecord): PlatformPartnerProfilePayload {

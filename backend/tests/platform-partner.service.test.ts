@@ -80,6 +80,10 @@ const setup = () => {
       page: 1,
       page_size: 20
     }),
+    listAgentShopReferrals: jest.fn().mockResolvedValue({
+      kind: "found",
+      page: { list: [referral()], total: 1, page: 1, page_size: 20 }
+    }),
     linkAgentShop: jest.fn().mockResolvedValue({ kind: "created", referral: referral() })
   };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -234,6 +238,41 @@ describe("PlatformPartnerService", () => {
             confirmedAt: "2026-09-01T02:00:00.000Z"
           },
           reason: "店铺签约资料已核对"
+        }
+      })
+    );
+  });
+
+  it("lists the agent's referred shops with pagination and read audit evidence", async () => {
+    const { service, repository, audit } = setup();
+    const agentPublicId = profile().publicId;
+
+    await expect(
+      service.listAgentShopReferrals(
+        agentPublicId,
+        { page: 1, pageSize: 20, status: "active" },
+        actor,
+        context
+      )
+    ).resolves.toMatchObject({
+      list: [{ agentPublicId, status: "active", shop: { publicId: "shop0000000019" } }],
+      total: 1
+    });
+    expect(repository.listAgentShopReferrals).toHaveBeenCalledWith({
+      agentPublicId,
+      page: 1,
+      pageSize: 20,
+      status: "active"
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "backoffice.agent_shop_referral.list",
+        metadata: {
+          agentPublicId,
+          page: 1,
+          pageSize: 20,
+          status: "active",
+          resultCount: 1
         }
       })
     );

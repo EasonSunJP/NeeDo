@@ -2,7 +2,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 
 describe("platform partner OpenAPI", () => {
-  it("documents partner marking, paginated agent search, and shop referral creation", async () => {
+  it("documents partner marking, paginated agent search, and shop referral reads/writes", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const paths = response.body.paths;
 
@@ -17,6 +17,11 @@ describe("platform partner OpenAPI", () => {
         "x-permission"
       ]
     ).toBe("backoffice:agent:write");
+    expect(
+      paths["/api/v1/backoffice/agents/{agentPublicId}/shop-referrals"].get[
+        "x-permission"
+      ]
+    ).toBe("backoffice:agent:read");
     expect(response.body.components.schemas.PlatformPartnerProfile).toBeDefined();
     expect(response.body.components.schemas.AgentShopReferral).toBeDefined();
   });

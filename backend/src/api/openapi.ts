@@ -18790,6 +18790,52 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/shop-referrals`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List shops referred by a formal agent",
+        description:
+          "Returns the persisted, auditable shop-referral relationships for one agent, including current status and confirmation evidence.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent:read",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "qualified", "revoked"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated agent shop referrals", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AgentShopReferral" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.platform_partner.agent_not_found")
+        }
+      },
       post: {
         tags: ["Platform Partners"],
         summary: "Link an introduced shop to an active agent",

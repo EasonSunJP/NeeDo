@@ -13,6 +13,7 @@ import {
   agentListQuerySchema,
   agentParamSchema,
   agentShopReferralBodySchema,
+  agentShopReferralListQuerySchema,
   platformPartnerProfileBodySchema,
   platformPartnerUserParamSchema
 } from "../validators/platform-partner.validator";
@@ -64,6 +65,16 @@ export const createPlatformPartnerRoutes = (
       body: agentShopReferralBodySchema
     }),
     controller.linkShop
+  );
+  router.get(
+    "/backoffice/agents/:agentPublicId/shop-referrals",
+    authenticate(),
+    createAuthorizeMiddleware(PLATFORM_PARTNER_ROUTE_PERMISSIONS.readAgents),
+    validateRequest({
+      params: agentParamSchema,
+      query: agentShopReferralListQuerySchema
+    }),
+    controller.listShopReferrals
   );
 
   return router;
