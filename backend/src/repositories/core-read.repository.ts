@@ -1144,7 +1144,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       },
       shop: {
         deletedAt: null,
-        status: PUBLISHED_STATUS
+        status: PUBLISHED_STATUS,
+        publicIdentifier: { is: this.publicIdentifierWhere("SHOP") }
       },
       ...(input.categoryId ? { categoryId: input.categoryId } : {}),
       ...(input.shopId ? { shopId: input.shopId } : {}),

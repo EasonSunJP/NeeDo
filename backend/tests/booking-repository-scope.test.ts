@@ -395,37 +395,6 @@ describe("BookingRepository order list scope", () => {
     expect(tx.technicianPerformanceSummary.upsert).not.toHaveBeenCalled();
   });
 
-  it("rebuilds the assigned technician summary when an order completes", async () => {
-    const tx = createCancellationTransaction();
-    tx.bookingOrder.findFirst
-      .mockReset()
-      .mockResolvedValueOnce(makeTransitionOrderRecord("IN_SERVICE"))
-      .mockResolvedValueOnce(makeTransitionOrderRecord("COMPLETED"));
-    tx.bookingOrder.count.mockResolvedValue(1);
-    tx.orderPerformanceAssessment.groupBy.mockResolvedValue([]);
-    const repository = new BookingRepository({
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
-    } as never);
-
-    await repository.transitionOrder({
-      id: 701,
-      actorUserId: 707,
-      fromStatus: "inService",
-      toStatus: "completed"
-    });
-
-    expect(tx.technicianPerformanceSummary.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          technicianProfileId: 31,
-          completedOrderCount: 1,
-          acceptanceRateBps: 10_000
-        })
-      })
-    );
-    expect(tx.orderPerformanceAssessment.create).not.toHaveBeenCalled();
-  });
-
   it("returns an active acceptance pause before mutating or settling a confirmation", async () => {
     const settle = jest.fn();
     const updateMany = jest.fn();

@@ -75,6 +75,10 @@ const dashboardFacts = {
     billing: null,
     wallet: null
   },
+  membership: {
+    memberCount: 0,
+    completedCustomerCount: 0
+  },
   availableCities: []
 };
 

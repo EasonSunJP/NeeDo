@@ -201,6 +201,22 @@ describe("core read API adapter", () => {
     });
   });
 
+  it("maps an older shop response without additive taxonomy fields instead of crashing", () => {
+    const {
+      businessKeywords: _businessKeywords,
+      favoriteCount: _favoriteCount,
+      serviceCategories: _serviceCategories,
+      shareCount: _shareCount,
+      ...olderShop
+    } = coreService.shop;
+
+    expect(mapCoreShopToStore(olderShop as CoreShopCard)).toMatchObject({
+      id: "3",
+      name: "Aoyama Care Studio",
+      tags: []
+    });
+  });
+
   it("preserves supported formal category codes for selected-tag search", () => {
     expect(mapCoreCategoryToServiceCategory({
       ...coreService.category,

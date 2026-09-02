@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { AppTopBar, PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
@@ -14,11 +14,21 @@ import {
   type OrderCheckout,
   type OrderReview
 } from "../../features/booking/api";
-import { coreReadApi, type CoreServiceCard } from "../../features/core-read/api";
+import {
+  coreReadApi,
+  mapCoreServiceToServiceItem,
+  mapCoreShopToStore,
+  mapCoreTechnicianToTechnician,
+  type CoreServiceCard,
+  type CoreServiceDetail,
+  type CoreShopDetail,
+  type CoreTechnicianDetail
+} from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
+import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card/SocialProfileMiniCard";
 import { useUserOrders } from "../../state/userOrderStore";
 
 function describeFormalOrderError(error: unknown) {
@@ -57,6 +67,13 @@ function paymentEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
   return "尚无收款凭证";
 }
 
+function bookingPaymentMethodLabel(method: BookingOrder["paymentMethod"]) {
+  if (method === "onsite" || method === "cash") return "到店后确认付款";
+  if (method === "bank_transfer") return "银行转账";
+  if (method === "ndp") return "NDP 支付";
+  return "其他支付方式";
+}
+
 function getRemainingSeconds(expectedEndsAt: string | null | undefined, now: number) {
   if (!expectedEndsAt) return 0;
   const target = new Date(expectedEndsAt).getTime();
@@ -76,6 +93,24 @@ function DetailRows({ rows, title }: { rows: Array<[string, ReactNode]>; title: 
         ))}
       </dl>
     </section>
+  );
+}
+
+function ProfileSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-base font-black text-[color:var(--client-muted)]">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-4 shadow-panel">
+      <p className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</p>
+      <p className="mt-1 truncate text-sm font-black text-[color:var(--client-text)]">{value}</p>
+    </div>
   );
 }
 
@@ -107,6 +142,10 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [projectionError, setProjectionError] = useState("");
   const [projectionPending, setProjectionPending] = useState(false);
   const [services, setServices] = useState<CoreServiceCard[]>([]);
+  const [orderService, setOrderService] = useState<CoreServiceDetail | null>(null);
+  const [orderShop, setOrderShop] = useState<CoreShopDetail | null>(null);
+  const [orderTechnician, setOrderTechnician] = useState<CoreTechnicianDetail | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState("");
   const [queryStatus, setQueryStatus] = useState<"loading" | "success" | "error">("loading");
   const [queryError, setQueryError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -159,6 +198,34 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       });
     return () => { active = false; };
   }, [orderId, queryRevision]);
+
+  useEffect(() => {
+    if (!order) {
+      setOrderService(null);
+      setOrderShop(null);
+      setOrderTechnician(null);
+      setProfileLoadError("");
+      return;
+    }
+    let active = true;
+    setProfileLoadError("");
+    const loadProfiles = async () => {
+      const [serviceResult, shopResult, technicianResult] = await Promise.allSettled([
+        order.serviceId ? coreReadApi.getServiceDetail(order.serviceId) : Promise.resolve(null),
+        coreReadApi.getShopDetail(order.shopId),
+        order.technicianProfileId ? coreReadApi.getTechnicianDetail(order.technicianProfileId) : Promise.resolve(null)
+      ]);
+      if (!active) return;
+      setOrderService(serviceResult.status === "fulfilled" ? serviceResult.value : null);
+      setOrderShop(shopResult.status === "fulfilled" ? shopResult.value : null);
+      setOrderTechnician(technicianResult.status === "fulfilled" ? technicianResult.value : null);
+      if ([serviceResult, shopResult, technicianResult].some((result) => result.status === "rejected")) {
+        setProfileLoadError("部分公开资料暂时无法读取，预约与结算数据不受影响。");
+      }
+    };
+    void loadProfiles();
+    return () => { active = false; };
+  }, [order]);
 
   useEffect(() => {
     if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
@@ -326,6 +393,18 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   };
 
   const remaining = getRemainingSeconds(order?.serviceSession?.expectedEndsAt, now);
+  const displayService = useMemo(
+    () => (orderService ? mapCoreServiceToServiceItem(orderService) : null),
+    [orderService]
+  );
+  const displayShop = useMemo(
+    () => (orderShop ? mapCoreShopToStore(orderShop) : null),
+    [orderShop]
+  );
+  const displayTechnician = useMemo(
+    () => (orderTechnician ? mapCoreTechnicianToTechnician(orderTechnician) : null),
+    [orderTechnician]
+  );
   const canChoosePayment =
     order?.status === "awaitingCheckout" &&
     checkoutStatus === "success" &&
@@ -354,28 +433,59 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
         <>
           <OrderDynamicStatusCard order={mapBookingOrderToDomainOrder(order)} providerName={order.shopName} />
 
-          <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-xs font-black text-[color:var(--client-muted)]">正式预约</p>
+          {profileLoadError ? <p className="rounded-[18px] bg-amber-500/10 px-4 py-3 text-xs font-black text-amber-500">{profileLoadError}</p> : null}
+
+          <ProfileSection title="服务">
+            {displayService ? (
+              <SocialProfileMiniCard
+                data={buildServiceMiniCardData(displayService, displayShop ?? undefined)}
+                detailTo={`/services/${displayService.id}`}
+                showAction={false}
+                topTags={[{ label: formalStatusLabel(order.status), tone: "green" }]}
+              />
+            ) : (
+              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+                <p className="text-xs font-black text-[color:var(--client-muted)]">正式预约服务</p>
                 <h2 className="mt-1 text-xl font-black text-[color:var(--client-text)]">{order.serviceName}</h2>
                 <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.shopName}</p>
-              </div>
-              <strong className="shrink-0 text-lg font-black text-[color:var(--client-primary)]">
-                {yen(order.paymentAmountJpy)}
-              </strong>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {order.serviceId ? (
-                <Link className="focus-ring rounded-[16px] border border-[color:var(--client-line)] px-3 py-3 text-center text-xs font-black text-[color:var(--client-text)]" to={`/services/${order.serviceId}`}>
-                  查看服务
-                </Link>
-              ) : <span />}
-              <Link className="focus-ring rounded-[16px] border border-[color:var(--client-line)] px-3 py-3 text-center text-xs font-black text-[color:var(--client-text)]" to={`/stores/${order.shopId}`}>
-                查看店铺
-              </Link>
-            </div>
-          </section>
+              </section>
+            )}
+          </ProfileSection>
+
+          <div className="grid grid-cols-3 gap-2">
+            <SummaryStat label="金额" value={yen(order.paymentAmountJpy)} />
+            <SummaryStat label="支付手段" value={bookingPaymentMethodLabel(order.paymentMethod)} />
+            <SummaryStat label="来源" value="App" />
+          </div>
+
+          <ProfileSection title="店铺 / 服务方">
+            {displayShop ? (
+              <SocialProfileMiniCard
+                detailTo={`/stores/${displayShop.id}`}
+                showAction={false}
+                store={displayShop}
+                topTags={[{ label: "服务方", tone: "purple" }]}
+              />
+            ) : (
+              <Link className="block rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 text-base font-black shadow-panel" to={`/stores/${order.shopId}`}>{order.shopName}</Link>
+            )}
+          </ProfileSection>
+
+          <ProfileSection title="技师 / 担当">
+            {displayTechnician ? (
+              <SocialProfileMiniCard
+                detailTo={`/technicians/${displayTechnician.id}`}
+                showAction={false}
+                technician={displayTechnician}
+                topTags={[{ label: "本次担当", tone: "green" }]}
+              />
+            ) : (
+              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+                <p className="text-sm font-black">{order.technicianName ?? "尚未指定担当技师"}</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺确认担当后将在此显示正式技师资料。</p>
+              </section>
+            )}
+          </ProfileSection>
 
           <DetailRows title="预约情报" rows={[
             ["预约状态", formalStatusLabel(order.status)],
@@ -390,7 +500,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           ]} />
 
           <ContactEventTimelinePanel
-            title="状态记录"
+            title="联系信息"
             events={buildFormalOrderTimelineEvents(order)}
           />
 

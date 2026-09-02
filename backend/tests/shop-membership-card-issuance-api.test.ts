@@ -43,6 +43,7 @@ const issuanceContext = {
 function record(fingerprint: string) {
   return {
     internalId: 81,
+    shopId: 71,
     publicId: "00000000-0000-4000-8000-000000000481",
     cardNo: "NMC-00112233445566778899AABB",
     name: "青山储值会员卡",
@@ -140,7 +141,7 @@ describe("shop membership card issuance API", () => {
 
     expect(response.body.data).toMatchObject({
       publicId: "00000000-0000-4000-8000-000000000481",
-      cardNoMasked: "NMC-********************AABB",
+      cardNoMasked: "•••• •••• •••• AABB",
       initialPrincipalJpy: 10_000,
       platformFeeRateBpsSnapshot: 1_000,
       planPublicId,

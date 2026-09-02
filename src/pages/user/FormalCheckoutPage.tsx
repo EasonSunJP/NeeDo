@@ -3,23 +3,38 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import {
+  AppIcon,
   AppTopBar,
   PageScaffold,
   PrimaryButton,
   SecondaryButton,
-  SurfacePanel
+  SurfacePanel,
+  type IconName
 } from "../../components/client-ui/AppScaffold";
 import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "../../features/booking/api";
 import {
   coreReadApi,
   mapCoreServiceToServiceItem,
+  mapCoreTechnicianToTechnician,
   type CoreServiceDetail
 } from "../../features/core-read/api";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
+import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
 import type { FulfillmentMode } from "../../types/domain";
 
 type LoadStatus = "loading" | "success" | "error";
+
+const checkoutSections: Array<{ icon: IconName; label: string }> = [
+  { icon: "sparkles", label: "套餐" },
+  { icon: "chat", label: "到店服务" },
+  { icon: "clock", label: "时间" },
+  { icon: "map", label: "地址" },
+  { icon: "manager", label: "技师" },
+  { icon: "chat", label: "备注" }
+];
+
+const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
 
 function describeCheckoutError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -29,7 +44,6 @@ function describeCheckoutError(error: unknown) {
     if (error.status === 409) return "预约状态已变化，请重新选择时段";
     if (error.status >= 500) return "预约服务暂时不可用，请稍后重试";
   }
-
   return "预约页加载失败，请检查网络后重试";
 }
 
@@ -43,12 +57,36 @@ function formatSlotDateTime(value: string) {
   if (!Number.isFinite(date.getTime())) return value;
   return new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Asia/Tokyo"
   }).format(date);
+}
+
+function getTokyoSlotParts(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Tokyo",
+    year: "numeric"
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    time: `${get("hour")}:${get("minute")}`
+  };
 }
 
 function remainingCapacity(slot: BookingScheduleSlot) {
   return Math.max(0, slot.capacity - slot.bookedCount);
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return <h2 className="px-1 text-sm font-black tracking-wide text-[color:var(--client-primary)]">{children}</h2>;
 }
 
 export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
@@ -71,7 +109,9 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
   useEffect(() => {
     let active = true;
-    const from = new Date();
+    const requestedDate = searchParams.get("date");
+    const requestedStart = requestedDate ? new Date(`${requestedDate}T00:00:00+09:00`) : null;
+    const from = requestedStart && Number.isFinite(requestedStart.getTime()) ? requestedStart : new Date();
     const to = new Date(from);
     to.setDate(to.getDate() + 21);
     setLoadStatus("loading");
@@ -92,10 +132,15 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
         const availableSlots = availability.list
           .filter((slot) => slot.status === "available" && remainingCapacity(slot) > 0)
           .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+        const requestedTime = searchParams.get("time");
+        const requestedSlot = availableSlots.find((slot) => {
+          const parts = getTokyoSlotParts(slot.startsAt);
+          return parts?.date === requestedDate && (!requestedTime || parts.time === requestedTime);
+        });
 
         setService(serviceDetail);
         setSlots(availableSlots);
-        setSelectedSlotId(availableSlots[0]?.id ?? null);
+        setSelectedSlotId(requestedSlot?.id ?? availableSlots[0]?.id ?? null);
         setFulfillmentMode(resolveFulfillmentMode(serviceDetail, searchParams.get("mode")));
         setLoadStatus("success");
       })
@@ -107,7 +152,6 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
         setLoadError(describeCheckoutError(error));
         setLoadStatus("error");
       });
-
     return () => {
       active = false;
     };
@@ -121,7 +165,16 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     () => (service ? mapCoreServiceToServiceItem(service) : null),
     [service]
   );
+  const displayTechnician = useMemo(
+    () => (service?.technician ? mapCoreTechnicianToTechnician(service.technician) : null),
+    [service]
+  );
   const supportsBothModes = service?.serviceMode === "both";
+  const people = searchParams.get("people") ?? "1名";
+
+  const appendQuickNote = (value: string) => {
+    setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
+  };
 
   const submitBooking = async () => {
     if (!selectedSlot || submitting) return;
@@ -148,7 +201,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       });
       navigate(`/orders/${order.id}`, {
         replace: true,
-        state: { notice: "预约成功，订单已保存到服务器。" }
+        state: { notice: "预约成功，已进入订单详情。" }
       });
     } catch (error) {
       setSubmitError(describeCheckoutError(error));
@@ -158,12 +211,31 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   };
 
   return (
-    <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
+    <PageScaffold contentClassName="space-y-5 pb-40" navItems={[]}>
       <AppTopBar
         closeLabel="关闭确认预约"
+        info="请逐项确认正式服务、时间、地址及担当信息后再提交。"
         onBack={() => navigate(-1)}
         onClose={() => navigate("/", { replace: true })}
         title="确认预约"
+        footer={(
+          <nav aria-label="预约确认项目" className="grid grid-cols-6 gap-1.5">
+            {checkoutSections.map((section, index) => (
+              <div
+                className={cn(
+                  "flex min-w-0 flex-col items-center justify-center gap-1 rounded-[16px] px-1 py-2 text-[10px] font-black",
+                  index === 0
+                    ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                    : "bg-[color:var(--client-elevated)] text-[color:var(--client-text)]"
+                )}
+                key={section.label}
+              >
+                <AppIcon className="h-4 w-4" name={section.icon} />
+                <span className="truncate">{section.label}</span>
+              </div>
+            ))}
+          </nav>
+        )}
       />
 
       {loadStatus === "loading" ? (
@@ -186,52 +258,91 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
       {loadStatus === "success" && service && displayService ? (
         <>
+          <SectionTitle>套餐</SectionTitle>
           <SurfacePanel className="overflow-hidden p-0">
             <img
               alt={service.name}
-              className="h-44 w-full object-cover"
+              className="h-48 w-full object-cover"
               src={getGeneratedImageThumbnailUrl(displayService.cover)}
             />
-            <div className="p-4">
-              <p className="text-xs font-black text-[color:var(--client-primary)]">{service.shop.name}</p>
-              <div className="mt-1 flex items-start justify-between gap-4">
-                <div>
-                  <h1 className="text-xl font-black text-[color:var(--client-text)]">{service.name}</h1>
-                  <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{service.description}</p>
-                </div>
-                <strong className="shrink-0 text-lg font-black text-[color:var(--client-primary)]">
-                  {yen(Number(service.priceAmount))}
-                </strong>
+            <div className="space-y-3 p-4">
+              <div className="flex flex-wrap gap-2">
+                {displayService.tags.slice(0, 3).map((tag) => (
+                  <span className="rounded-full bg-[color:var(--client-elevated)] px-3 py-1 text-[10px] font-black text-[color:var(--client-muted)]" key={tag}>{tag}</span>
+                ))}
               </div>
+              <h1 className="text-xl font-black text-[color:var(--client-text)]">{service.name}</h1>
+              <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">{service.description}</p>
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <strong className="text-2xl font-black text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
+                <span className="text-sm font-black text-[color:var(--client-muted)]">{service.durationMinutes} 分钟</span>
+                <span className="text-sm font-black text-[color:var(--client-muted)]">{service.city}</span>
+              </div>
+              {displayService.packages[0]?.includes.length ? (
+                <div className="flex flex-wrap gap-2 border-t border-[color:var(--client-line)] pt-3">
+                  {displayService.packages[0].includes.map((item) => (
+                    <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-[10px] font-black text-[color:var(--client-primary)]" key={item}>{item}</span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </SurfacePanel>
 
-          {supportsBothModes ? (
-            <SurfacePanel className="p-4">
-              <h2 className="text-sm font-black text-[color:var(--client-text)]">服务方式</h2>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {(["store", "home"] as const).map((mode) => (
-                  <SecondaryButton
-                    className={cn("w-full", fulfillmentMode === mode && "border-[color:var(--client-primary)] text-[color:var(--client-primary)]")}
+          <SectionTitle>服务方式</SectionTitle>
+          <SurfacePanel className="p-4">
+            <div className="grid grid-cols-2 gap-2">
+              {(["store", "home"] as const).map((mode) => {
+                const disabled = !supportsBothModes && fulfillmentMode !== mode;
+                return (
+                  <button
+                    className={cn(
+                      "h-12 rounded-full text-sm font-black transition",
+                      fulfillmentMode === mode
+                        ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                        : "bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]",
+                      disabled && "cursor-not-allowed opacity-45"
+                    )}
+                    disabled={disabled}
                     key={mode}
                     onClick={() => setFulfillmentMode(mode)}
+                    type="button"
                   >
                     {mode === "store" ? "到店服务" : "上门服务"}
-                  </SecondaryButton>
-                ))}
+                  </button>
+                );
+              })}
+            </div>
+            {fulfillmentMode === "store" ? (
+              <div className="mt-4 rounded-[20px] bg-[color:var(--client-elevated)] p-4">
+                <p className="text-sm font-black text-[color:var(--client-text)]">{service.shop.name}</p>
+                <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{service.shop.city} · {service.shop.address}</p>
               </div>
-            </SurfacePanel>
-          ) : null}
+            ) : (
+              <textarea
+                aria-label="上门地址"
+                className="focus-ring mt-4 min-h-24 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="请输入完整地址、房间号和联系电话"
+                value={address}
+              />
+            )}
+          </SurfacePanel>
 
+          <SectionTitle>时间</SectionTitle>
           <SurfacePanel className="p-4">
-            <h2 className="text-sm font-black text-[color:var(--client-text)]">选择可预约时段</h2>
+            {selectedSlot ? (
+              <div className="mb-3 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--client-primary-soft)] p-3 text-sm font-black">
+                <span>{formatSlotDateTime(selectedSlot.startsAt)}</span>
+                <span className="text-right">{people}</span>
+              </div>
+            ) : null}
             {slots.length === 0 ? (
-              <div className="mt-3 rounded-[18px] border border-dashed border-[color:var(--client-line)] px-4 py-6 text-center">
+              <div className="rounded-[18px] border border-dashed border-[color:var(--client-line)] px-4 py-6 text-center">
                 <p className="text-sm font-black text-[color:var(--client-text)]">暂时没有可预约时段</p>
                 <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺发布新的正式排班后会自动显示。</p>
               </div>
             ) : (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {slots.map((slot) => {
                   const active = slot.id === selectedSlotId;
                   return (
@@ -257,33 +368,40 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
             )}
           </SurfacePanel>
 
-          {fulfillmentMode === "home" ? (
-            <SurfacePanel className="p-4">
-              <label className="text-sm font-black text-[color:var(--client-text)]" htmlFor="formal-checkout-address">上门地址</label>
-              <textarea
-                className="focus-ring mt-3 min-h-24 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
-                id="formal-checkout-address"
-                onChange={(event) => setAddress(event.target.value)}
-                placeholder="请输入完整地址、房间号和联系电话"
-                value={address}
-              />
-            </SurfacePanel>
-          ) : null}
-
+          <SectionTitle>地址</SectionTitle>
           <SurfacePanel className="p-4">
-            <h2 className="text-sm font-black text-[color:var(--client-text)]">付款方式</h2>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {(["onsite", "bank_transfer"] as const).map((method) => (
-                <SecondaryButton
-                  className={cn("w-full", paymentMethod === method && "border-[color:var(--client-primary)] text-[color:var(--client-primary)]")}
-                  key={method}
-                  onClick={() => setPaymentMethod(method)}
-                >
-                  {method === "onsite" ? "现场支付" : "银行转账"}
-                </SecondaryButton>
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"><AppIcon name="map" /></span>
+              <div>
+                <h2 className="text-sm font-black text-[color:var(--client-text)]">{fulfillmentMode === "store" ? service.shop.name : "上门服务地址"}</h2>
+                <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{fulfillmentMode === "store" ? `${service.shop.city} · ${service.shop.address}` : address || "请填写上门地址"}</p>
+              </div>
+            </div>
+          </SurfacePanel>
+
+          <SectionTitle>技师</SectionTitle>
+          {displayTechnician ? (
+            <SocialProfileMiniCard
+              className="w-full"
+              detailTo={`/technicians/${displayTechnician.id}`}
+              showAction={false}
+              technician={displayTechnician}
+              topTags={[{ label: "本次担当", tone: "green" }]}
+            />
+          ) : (
+            <SurfacePanel className="p-4">
+              <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
+              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">确认接单后将在预约详情中显示正式担当信息。</p>
+            </SurfacePanel>
+          )}
+
+          <SectionTitle>备注</SectionTitle>
+          <SurfacePanel className="p-4">
+            <div className="flex flex-wrap gap-2">
+              {quickNotes.map((quickNote) => (
+                <button className="rounded-full bg-[color:var(--client-elevated)] px-3 py-2 text-xs font-black" key={quickNote} onClick={() => appendQuickNote(quickNote)} type="button">{quickNote}</button>
               ))}
             </div>
-            <label className="mt-4 block text-sm font-black text-[color:var(--client-text)]" htmlFor="formal-checkout-note">预约备注</label>
             <textarea
               className="focus-ring mt-3 min-h-24 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
               id="formal-checkout-note"
@@ -293,6 +411,21 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
               value={note}
             />
           </SurfacePanel>
+
+          <div className="grid gap-3">
+            <SurfacePanel className="p-4">
+              <h2 className="text-sm font-black">注意事项</h2>
+              <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">预约前请确认服务时间、地址与付款方式；服务内容以本页正式数据及店铺最终确认结果为准。</p>
+            </SurfacePanel>
+            <SurfacePanel className="p-4">
+              <h2 className="text-sm font-black">取消政策</h2>
+              <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">提交后可在预约详情查看当前状态；取消条件以正式订单状态与店铺规则为准。</p>
+            </SurfacePanel>
+            <SurfacePanel className="p-4">
+              <h2 className="text-sm font-black">NDP（NeeDoPoint）</h2>
+              <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">本次订单的 NDP 使用与结算结果，以服务完成后的正式结算记录为准。</p>
+            </SurfacePanel>
+          </div>
 
           {submitError ? (
             <div role="alert">
@@ -308,14 +441,33 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
           ) : null}
 
           <div className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-[880px] border-t border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] p-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] backdrop-blur-xl">
-            <button
-              className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!selectedSlot || submitting}
-              onClick={() => void submitBooking()}
-              type="button"
-            >
-              {submitting ? "创建预约中" : isAuthenticated ? "提交正式预约" : "登录后提交预约"}
-            </button>
+            <div className="mx-auto flex max-w-[680px] items-center gap-3">
+              <div className="min-w-[104px]">
+                <p className="text-[10px] font-black text-[color:var(--client-muted)]">应付金额</p>
+                <strong className="block text-xl font-black text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
+                <div className="mt-1 flex gap-1">
+                  {(["onsite", "bank_transfer"] as const).map((method) => (
+                    <button
+                      className={cn("rounded-full px-2 py-1 text-[9px] font-black", paymentMethod === method ? "bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]" : "bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]")}
+                      key={method}
+                      onClick={() => setPaymentMethod(method)}
+                      type="button"
+                    >
+                      {method === "onsite" ? "到店后支付" : "银行转账"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button className="h-12 shrink-0 rounded-full border border-[color:var(--client-line)] px-4 text-sm font-black" onClick={() => navigate(`/stores/${service.shop.id}`)} type="button">联系</button>
+              <button
+                className="focus-ring inline-flex h-12 min-w-0 flex-1 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!selectedSlot || submitting}
+                onClick={() => void submitBooking()}
+                type="button"
+              >
+                {submitting ? "创建预约中" : isAuthenticated ? "确定预约" : "登录后确定预约"}
+              </button>
+            </div>
           </div>
         </>
       ) : null}

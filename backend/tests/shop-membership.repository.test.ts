@@ -209,13 +209,13 @@ describe("ShopMembershipRepository", () => {
       remainingUses: null, totalUses: null, initialPrincipalJpy: null, initialUses: null,
       issuanceSource: persisted, platformFeeRateBpsSnapshot: 1000, issuedAt: new Date(), expiresAt: null,
       frozenAt: null, plan: null, planVersion: null,
+      adjustments: [],
       membership: { publicId: membership.publicId, customerProfile: { displayName: "王小美", user: { needoId: "u0000000041" } } }
     } as never]);
     client.shopMembershipCard.count.mockResolvedValue(1);
     const repository = new ShopMembershipRepository(client as unknown as PrismaClient);
-    await expect(repository.listCards(71, { page: 1, pageSize: 20 })).resolves.toMatchObject({ list: [{ issuanceSource: expected }] });
     await expect(repository.listCards(71, { page: 1, pageSize: 20 })).resolves.toMatchObject({
-      list: [{ cardNoMasked: "•••• •••• •••• MC-1" }]
+      list: [{ issuanceSource: expected, cardNoMasked: "•••• •••• •••• MC-1" }]
     });
   });
 });

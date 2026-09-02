@@ -4,6 +4,7 @@ import {
   createLegacyAuthProxyConfig,
   createNeedoApiProxyConfig,
   rewritePortalEntryRequest,
+  resolveNeedoManualChunk,
   resolveLegacyAuthProxyTarget,
   resolveNeedoApiProxyTarget
 } from "./vite.config";
@@ -62,6 +63,14 @@ describe("Needo API proxy config", () => {
       target: "https://t.dackou.com"
     });
     expect(proxy["/legacy-auth"].rewrite?.("/legacy-auth/captcha?token=abc")).toBe("/captcha?token=abc");
+  });
+});
+
+describe("Needo production chunks", () => {
+  it("keeps identity-application translations outside the base i18n budget", () => {
+    expect(resolveNeedoManualChunk("/workspace/src/features/identity-applications/i18n.ts"))
+      .toBe("identity-applications-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
   });
 });
 

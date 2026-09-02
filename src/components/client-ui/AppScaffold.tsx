@@ -17,19 +17,23 @@ function shouldRenderTitleEyebrow(eyebrow?: ReactNode) {
 }
 
 function InteractiveWrapper({
+  ariaLabel,
   children,
   to,
   onClick,
-  className
+  className,
+  disabled = false
 }: {
+  ariaLabel?: string;
   children: ReactNode;
   to?: string;
   onClick?: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   if (to) {
     return (
-      <Link className={className} to={to}>
+      <Link aria-label={ariaLabel} className={className} to={to}>
         {children}
       </Link>
     );
@@ -37,7 +41,7 @@ function InteractiveWrapper({
 
   if (onClick) {
     return (
-      <button className={className} onClick={onClick} type="button">
+      <button aria-label={ariaLabel} className={className} disabled={disabled} onClick={onClick} type="button">
         {children}
       </button>
     );
@@ -287,6 +291,7 @@ export function IconButton({
 }) {
   return (
     <InteractiveWrapper
+      ariaLabel={label}
       className={cn(
         "focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur",
         className
@@ -353,6 +358,7 @@ export function IconMetricAction({
   count,
   countClassName,
   countStyle,
+  disabled = false,
   icon,
   iconClassName,
   label,
@@ -366,6 +372,7 @@ export function IconMetricAction({
   count: number | string;
   countClassName?: string;
   countStyle?: CSSProperties;
+  disabled?: boolean;
   icon: IconName;
   iconClassName?: string;
   label: string;
@@ -384,12 +391,15 @@ export function IconMetricAction({
 
   return (
     <InteractiveWrapper
+      ariaLabel={label}
       className={cn(
         "focus-ring relative flex items-start justify-center text-center",
         sizeClassName.root,
         interactive ? "" : "pointer-events-none",
+        disabled ? "cursor-not-allowed opacity-60" : "",
         className
       )}
+      disabled={disabled}
       onClick={onClick}
       to={to}
     >

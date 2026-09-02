@@ -838,11 +838,21 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
         </InteractiveArea>
         <InteractiveArea className="focus-ring absolute top-11 left-3.5 z-10 block h-36 w-36 text-left" detailTo={avatarDetailTo} onOpenDetails={avatarOnOpenDetails}>
           <div className="relative h-full w-full">
-            <AvatarImage
-              alt={data.displayName}
-              className="h-full w-full rounded-[28px] border-[4px] border-[color:var(--client-surface)] shadow-soft"
-              src={data.avatar}
-            />
+            {data.avatar ? (
+              <AvatarImage
+                alt={data.displayName}
+                className="h-full w-full rounded-[28px] border-[4px] border-[color:var(--client-surface)] shadow-soft"
+                src={data.avatar}
+              />
+            ) : (
+              <div
+                aria-label={`${data.displayName} 暂无公开照片`}
+                className="flex h-full w-full items-center justify-center rounded-[28px] border-[4px] border-[color:var(--client-surface)] bg-[linear-gradient(145deg,#1b2b31,#0a1217)] text-[40px] font-black text-white/72 shadow-soft"
+                role="img"
+              >
+                {Array.from(data.displayName)[0] ?? "·"}
+              </div>
+            )}
             {shouldOverlayScoreOnAvatar ? (
               <ScoreMetricBadge
                 className="pointer-events-none absolute bottom-0 right-0"
