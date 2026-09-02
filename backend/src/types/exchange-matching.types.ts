@@ -2,6 +2,15 @@ import type { ExchangeClaimServiceRef } from "./exchange-claim.types";
 
 export type ExchangeMatchingStatus = "open" | "matched" | "closed";
 
+export type ExchangeMatchingBookingStatus =
+  | "pending"
+  | "confirmed"
+  | "inService"
+  | "awaitingCheckout"
+  | "awaitingPaymentConfirmation"
+  | "completed"
+  | "cancelled";
+
 export interface ExchangeMatchAdjustmentPreview {
   currentVersion: number;
   selectedCount: number;
@@ -42,6 +51,11 @@ export interface ExchangeMatchParticipantPayload {
   estimatedStartsAt: string;
   estimatedEndsAt: string;
   matchedAt: string;
+  booking: {
+    orderId: number;
+    orderNo: string;
+    status: ExchangeMatchingBookingStatus;
+  } | null;
 }
 
 export interface ExchangeMatchingPayload {
@@ -55,5 +69,6 @@ export interface ExchangeMatchingPayload {
   participants: ExchangeMatchParticipantPayload[];
   viewer: {
     canSelect: boolean;
+    canCreateBookings: boolean;
   };
 }

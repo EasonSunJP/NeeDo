@@ -120,6 +120,7 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("NOT EXISTS");
     expect(sql).toContain("FROM `exchange_claims` AS active_claim");
     expect(sql).toContain("FROM `exchange_match_participants` AS matched_participant");
+    expect(sql).toContain("matched_participant.`active_reservation_key` IS NOT NULL");
     expect(sql).toContain("FROM `booking_orders` AS busy_order");
     expect(sql).toContain("slot.`shop_id` =");
     expect(sql).toContain("suspension.`active_key` IS NOT NULL");
@@ -222,6 +223,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         technicianProfileId: 81,
         estimatedStartsAt: { lt: endsAt },
         estimatedEndsAt: { gt: startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }

@@ -10,6 +10,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
+  ExchangeMatchingBookingStatus,
   ExchangeMatchParticipantPayload,
   ExchangeMatchingPayload
 } from "../types/exchange-matching.types";
@@ -67,8 +68,7 @@ const matchingInclude = {
           }
         }
       },
-      service: { select: { id: true, name: true, durationMinutes: true } },
-      technicianService: { select: { id: true, name: true, durationMinutes: true } }
+      bookingOrder: { select: { id: true, orderNo: true, status: true } }
     }
   }
 } satisfies Prisma.ExchangeRequestMatchingInclude;
@@ -289,6 +289,7 @@ export class ExchangeMatchingRepository {
         technicianProfileId,
         estimatedStartsAt: { lt: endsAt },
         estimatedEndsAt: { gt: startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }
@@ -335,7 +336,7 @@ export class ExchangeMatchingRepository {
         currency: "JPY",
         estimatedStartsAt: claim.estimatedStartsAt,
         estimatedEndsAt: claim.estimatedEndsAt,
-        activeReservationKey: `request:${input.exchangePostId}:technician:${claim.technicianProfileId}`,
+        activeReservationKey: `${claim.technicianProfileId}:${claim.estimatedStartsAt.toISOString()}:${claim.estimatedEndsAt.toISOString()}`,
         matchedAt: input.at
       }))
     });
@@ -457,11 +458,18 @@ export class ExchangeMatchingRepository {
     return result?.payload ?? null;
   }
 
-  private mapMatching(row: MatchingRow, viewerIdentityId: number): ExchangeMatchingRecord {
+  private mapMatching(
+    row: MatchingRow,
+    viewerIdentityId: number
+  ): ExchangeMatchingRecord | null {
     const isOwner = row.exchangePost.ownerIdentityId === viewerIdentityId;
-    const participants = row.participants
-      .filter((participant) => isOwner || participant.participantIdentityId === viewerIdentityId)
-      .map((participant) => this.mapParticipant(participant));
+    const visibleParticipants = isOwner
+      ? row.participants
+      : row.participants.filter(
+          (participant) => participant.participantIdentityId === viewerIdentityId
+        );
+    if (!isOwner && visibleParticipants.length === 0) return null;
+    const participants = visibleParticipants.map((participant) => this.mapParticipant(participant));
     const status = row.status.toLowerCase() as ExchangeMatchingRecord["status"];
     const payload: ExchangeMatchingPayload = {
       exchangePostId: row.exchangePostId,
@@ -472,7 +480,14 @@ export class ExchangeMatchingRepository {
       selectedQuoteTotalJpy: row.selectedQuoteTotalJpy,
       matchedAt: row.matchedAt?.toISOString() ?? null,
       participants,
-      viewer: { canSelect: isOwner && status === "open" }
+      viewer: {
+        canSelect: isOwner && status === "open",
+        canCreateBookings:
+          isOwner &&
+          status === "matched" &&
+          visibleParticipants.length > 0 &&
+          visibleParticipants.every((participant) => participant.bookingOrderId === null)
+      }
     };
     return {
       id: row.id,
@@ -498,8 +513,6 @@ export class ExchangeMatchingRepository {
   ): ExchangeMatchParticipantPayload {
     const claimant = participant.exchangeClaim.claimantIdentity;
     const technicianIdentity = participant.technicianProfile.user.identities[0];
-    const service = participant.service ?? participant.technicianService;
-    if (!service) throw new Error("Exchange match participant is missing its service relation");
     return {
       exchangeClaimId: participant.exchangeClaimId,
       provider: {
@@ -517,15 +530,34 @@ export class ExchangeMatchingRepository {
         ref: participant.serviceId
           ? `shop:${participant.serviceId}`
           : `technician:${participant.technicianServiceId!}`,
-        name: service.name,
-        durationMinutes: service.durationMinutes
+        name: participant.serviceNameSnapshot,
+        durationMinutes: participant.serviceDurationSnapshot
       },
       scheduleSlotId: participant.scheduleSlotId,
       quoteAmountJpy: participant.quoteAmountJpy,
       currency: "JPY",
       estimatedStartsAt: participant.estimatedStartsAt.toISOString(),
       estimatedEndsAt: participant.estimatedEndsAt.toISOString(),
-      matchedAt: participant.matchedAt.toISOString()
+      matchedAt: participant.matchedAt.toISOString(),
+      booking: participant.bookingOrder
+        ? {
+            orderId: participant.bookingOrder.id,
+            orderNo: participant.bookingOrder.orderNo,
+            status: this.bookingStatus(participant.bookingOrder.status)
+          }
+        : null
     };
+  }
+
+  private bookingStatus(value: BookingOrderStatus): ExchangeMatchingBookingStatus {
+    if (value === BookingOrderStatus.CONFIRMED) return "confirmed";
+    if (value === BookingOrderStatus.IN_SERVICE) return "inService";
+    if (value === BookingOrderStatus.AWAITING_CHECKOUT) return "awaitingCheckout";
+    if (value === BookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION) {
+      return "awaitingPaymentConfirmation";
+    }
+    if (value === BookingOrderStatus.COMPLETED) return "completed";
+    if (value === BookingOrderStatus.CANCELLED) return "cancelled";
+    return "pending";
   }
 }

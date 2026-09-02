@@ -10,6 +10,126 @@ import { ExchangeMatchingRepository } from "../src/repositories/exchange-matchin
 const at = new Date("2026-09-01T01:00:00.000Z");
 
 describe("ExchangeMatchingRepository", () => {
+  it("projects immutable snapshots and booking state only to the owner or selected provider", async () => {
+    const matching = {
+      id: 51,
+      exchangePostId: 41,
+      status: ExchangeMatchingStatus.MATCHED,
+      effectiveTargetProviderCount: 2,
+      effectiveBudgetMaxJpy: 30_000,
+      selectedQuoteTotalJpy: 29_000,
+      version: 4,
+      matchedAt: at,
+      exchangePost: {
+        id: 41,
+        authorUserId: 7,
+        ownerIdentityId: 17,
+        type: ExchangePostType.DEMAND,
+        status: ExchangePostStatus.MATCHED,
+        expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+        demand: { matchMode: ExchangeMatchMode.SELECTIVE }
+      },
+      participants: [
+        {
+          id: 71,
+          exchangeClaimId: 301,
+          participantIdentityId: 18,
+          shop: { id: 11, name: "Aoyama Care" },
+          technicianProfile: {
+            id: 81,
+            displayName: "山田 花子",
+            user: { identities: [{ displayName: "山田 花子", publicIdentifier: { publicId: "S000000081" } }] }
+          },
+          exchangeClaim: {
+            claimantIdentity: {
+              displayName: "青山店",
+              publicIdentifier: { publicId: "M000000018" },
+              user: { username: "aoyama", avatarUrl: null }
+            }
+          },
+          serviceId: 501,
+          technicianServiceId: null,
+          serviceNameSnapshot: "Matched service snapshot",
+          serviceDurationSnapshot: 90,
+          quoteAmountJpy: 15_000,
+          scheduleSlotId: 91,
+          estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+          estimatedEndsAt: new Date("2026-09-02T02:30:00.000Z"),
+          matchedAt: at,
+          bookingOrderId: 501,
+          bookingOrder: { id: 501, orderNo: "ND501", status: "PENDING" }
+        },
+        {
+          id: 72,
+          exchangeClaimId: 302,
+          participantIdentityId: 19,
+          shop: { id: 12, name: "Harajuku Care" },
+          technicianProfile: {
+            id: 82,
+            displayName: "佐々木 花子",
+            user: { identities: [{ displayName: "佐々木 花子", publicIdentifier: { publicId: "S000000082" } }] }
+          },
+          exchangeClaim: {
+            claimantIdentity: {
+              displayName: "原宿店",
+              publicIdentifier: { publicId: "M000000019" },
+              user: { username: "harajuku", avatarUrl: null }
+            }
+          },
+          serviceId: null,
+          technicianServiceId: 601,
+          serviceNameSnapshot: "Other immutable snapshot",
+          serviceDurationSnapshot: 60,
+          quoteAmountJpy: 14_000,
+          scheduleSlotId: 92,
+          estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+          estimatedEndsAt: new Date("2026-09-02T02:00:00.000Z"),
+          matchedAt: at,
+          bookingOrderId: null,
+          bookingOrder: null
+        }
+      ]
+    };
+    const repository = new ExchangeMatchingRepository({
+      exchangeRequestMatching: { findFirst: jest.fn(async () => matching) }
+    } as unknown as PrismaClient);
+
+    const ownerPayload = await repository.findForViewer(41, 17);
+    const providerPayload = await repository.findForViewer(41, 18);
+    const nonSelectedPayload = await repository.findForViewer(41, 99);
+
+    expect(ownerPayload?.payload.participants[0]).toMatchObject({
+      service: { name: "Matched service snapshot", durationMinutes: 90 },
+      booking: { orderId: 501, orderNo: "ND501", status: "pending" }
+    });
+    expect(
+      (ownerPayload?.payload.viewer as { canCreateBookings?: boolean } | undefined)
+        ?.canCreateBookings
+    ).toBe(false);
+    expect(providerPayload?.payload.participants).toHaveLength(1);
+    expect(providerPayload?.payload.participants[0]?.exchangeClaimId).toBe(301);
+    expect(nonSelectedPayload).toBeNull();
+  });
+
+  it("checks only active participant reservations for matching conflicts", async () => {
+    const findFirst = jest.fn(async () => null);
+    const repository = new ExchangeMatchingRepository({
+      exchangeMatchParticipant: { findFirst }
+    } as unknown as PrismaClient);
+
+    await repository.hasParticipantConflict(
+      81,
+      new Date("2026-09-02T01:00:00.000Z"),
+      new Date("2026-09-02T02:00:00.000Z")
+    );
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ activeReservationKey: { not: null } })
+      })
+    );
+  });
+
   it("locks Request then matching before reading the aggregate", async () => {
     const events: string[] = [];
     const queryRaw = jest.fn(async (query: { sql?: string }) => {
