@@ -105,6 +105,28 @@ describe("bookingApi", () => {
     expect(first).not.toBe(second);
   });
 
+  it("sends an explicit insufficient-balance confirmation when accepting an order", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+    const previewVersion = `sha256:${"b".repeat(64)}`;
+
+    await bookingApi.confirmOrder(88, {
+      insufficientBalanceConfirmation: {
+        confirmed: true,
+        idempotencyKey: "accept-overdraft-0001",
+        previewVersion
+      }
+    });
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/orders/88/confirm", expect.objectContaining({ method: "POST" }));
+    expect(lastRequestBody()).toEqual({
+      insufficientBalanceConfirmation: {
+        confirmed: true,
+        idempotencyKey: "accept-overdraft-0001",
+        previewVersion
+      }
+    });
+  });
+
   it("passes request order creation through to the formal bookings API", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("request")));
 

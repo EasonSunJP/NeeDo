@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import type { Agent, GetResult } from "@fingerprintjs/fingerprintjs";
 import {
+  ApiClientError,
   apiRequestTimeoutMs,
   buildApiUrl,
   clearAuthTokens,
@@ -49,6 +50,37 @@ describe("httpClient query serialization", () => {
     })).toBe(
       "/api/v1/search?keyword=Wellness+%E6%B8%8B%E8%B0%B7&page=2&enabled=false"
     );
+  });
+});
+
+describe("httpClient structured errors", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves safe structured error data for an explicit confirmation flow", async () => {
+    const data = {
+      availableBalanceNdp: 0,
+      feeAmountNdp: 100,
+      previewVersion: `sha256:${"a".repeat(64)}`,
+      shortfallNdp: 100
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      jsonResponse({
+        code: 40936,
+        message: "error.platform_fee.insufficient_balance_confirmation_required",
+        data
+      }, 409)
+    ));
+
+    const error = await httpClient.request("/orders/29/confirm", {
+      auth: false,
+      body: {},
+      method: "POST"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect(error).toMatchObject({ code: 40936, status: 409, data });
   });
 });
 
