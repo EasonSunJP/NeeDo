@@ -222,6 +222,26 @@ function readRotatedResponseErrorCredentials(error: unknown) {
   return { credentials, isRotatedResponse: true } as const;
 }
 
+function isEquivalentSiblingTabCommit(input: {
+  credentials: ReturnType<typeof getAuthCredentialSnapshot>;
+  durableEnvelope: PersistedAuthEnvelopeV8 | null;
+  localEnvelope: PersistedAuthEnvelopeV8 | null;
+  session: AuthSession | null;
+}) {
+  const { credentials, durableEnvelope, localEnvelope, session } = input;
+  return Boolean(
+    durableEnvelope?.state === "committed" &&
+      localEnvelope?.state === "committed" &&
+      session &&
+      durableEnvelope.authInstanceId === localEnvelope.authInstanceId &&
+      durableEnvelope.refreshToken === credentials.refreshToken &&
+      durableEnvelope.session.id === session.id &&
+      durableEnvelope.session.portal === session.portal &&
+      durableEnvelope.session.currentIdentity.id === session.currentIdentity.id &&
+      durableEnvelope.session.merchantShopPublicId === session.merchantShopPublicId
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [initialEnvelopeSnapshot] = useState(readInitialAuthEnvelope);
   const initialEnvelope = initialEnvelopeSnapshot?.envelope ?? null;
@@ -579,8 +599,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
           .catch(() => undefined);
       }
+      const preserveCurrentSession = isEquivalentSiblingTabCommit({
+        credentials,
+        durableEnvelope,
+        localEnvelope,
+        session: sessionRef.current
+      });
       envelopeRef.current = durableEnvelope;
       envelopeRawRef.current = durableEnvelope ? event.newValue : null;
+      if (preserveCurrentSession) return;
       terminateLocalSession();
     };
     window.addEventListener("storage", handleAuthEnvelopeStorage);
