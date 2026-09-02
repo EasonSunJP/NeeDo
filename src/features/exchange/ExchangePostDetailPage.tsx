@@ -23,6 +23,7 @@ import {
 import { ExchangeClaimPanel } from "./ExchangeClaimPanel";
 import { ExchangeInteractions } from "./ExchangeInteractions";
 import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
+import { ExchangeMatchedBookingCard } from "./ExchangeMatchedBookingCard";
 import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost } from "./types";
 
@@ -366,6 +367,8 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
   const demandActionTarget = post.viewer.canViewClaims
     ? '[data-testid="exchange-received-claims"]'
+    : post.viewer.canViewMatching
+      ? '[data-testid="exchange-matched-booking-card"]'
     : post.viewer.canClaim
       ? '[data-testid="exchange-claim-panel"]'
       : null;
@@ -441,6 +444,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         {post.viewer.canClaim ? <ExchangeClaimPanel language={language} post={post} /> : null}
         {post.viewer.canViewClaims ? (
           <ExchangeReceivedClaims
+            context={context}
             language={language}
             onMatched={() =>
               setPost((current) =>
@@ -459,6 +463,8 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
             }
             postId={String(post.id)}
           />
+        ) : post.viewer.canViewMatching ? (
+          <ExchangeMatchedBookingCard context={context} language={language} postId={String(post.id)} />
         ) : null}
 
         <section className={detailCardClassName} data-no-i18n="true">

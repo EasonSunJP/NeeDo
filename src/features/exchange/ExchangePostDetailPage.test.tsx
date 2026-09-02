@@ -43,6 +43,9 @@ vi.mock("./ExchangeClaimPanel", () => ({
 vi.mock("./ExchangeReceivedClaims", () => ({
   ExchangeReceivedClaims: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-received-claims" />
 }));
+vi.mock("./ExchangeMatchedBookingCard", () => ({
+  ExchangeMatchedBookingCard: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-matched-booking" />
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -366,5 +369,31 @@ describe("ExchangePostDetailPage", () => {
     expect(detailSource).toContain("ExchangeClaimPanel");
     expect(detailSource).toContain("ExchangeReceivedClaims");
     expect(detailSource).not.toMatch(/localStorage|fakeBooking|fakePayment/u);
+  });
+
+  it("renders only the provider-scoped booking panel for a matched participant", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false, canViewMatching: true }
+    });
+    await renderDetail("/technician/needo/posts/41", "technician");
+    await waitFor(() => expect(document.body.querySelector('[data-testid="formal-matched-booking"]')).not.toBeNull());
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).toBeNull();
+  });
+
+  it("does not expose a matching or booking panel to an unselected viewer", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false, canViewMatching: false }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="formal-matched-booking"]')).toBeNull();
   });
 });

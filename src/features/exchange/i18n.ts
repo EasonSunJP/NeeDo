@@ -242,7 +242,22 @@ const translations = {
   matchingCompleted: { zh: "匹配已完成", "zh-Hant": "配對已完成", ja: "マッチングが成立しました", en: "Matching complete", ko: "매칭 완료" },
   matchingParticipants: { zh: "已匹配服务者", "zh-Hant": "已配對服務者", ja: "マッチした提供者", en: "Matched providers", ko: "매칭된 제공자" },
   matchingFailed: { zh: "匹配状态已变化或提交失败，已刷新正式数据，请重新确认", "zh-Hant": "配對狀態已變更或提交失敗，已重新整理正式資料，請再次確認", ja: "マッチング状態が変更されたか、確定に失敗しました。正式データを更新したので再確認してください", en: "Matching changed or could not be completed. Persisted data was refreshed; review it again.", ko: "매칭 상태가 변경되었거나 완료하지 못했습니다. 정식 데이터를 새로고침했으니 다시 확인하세요." },
-  matchingNoBooking: { zh: "本步骤仅锁定匹配结果，不创建预约、不扣款。", "zh-Hant": "此步驟僅鎖定配對結果，不建立預約、不扣款。", ja: "この工程ではマッチ結果のみ確定し、予約作成や決済は行いません。", en: "This step records only the match; it does not create a booking or charge payment.", ko: "이 단계는 매칭 결과만 확정하며 예약 생성이나 결제를 하지 않습니다." }
+  matchingNoBooking: { zh: "本步骤仅锁定匹配结果，不创建预约、不扣款。", "zh-Hant": "此步驟僅鎖定配對結果，不建立預約、不扣款。", ja: "この工程ではマッチ結果のみ確定し、予約作成や決済は行いません。", en: "This step records only the match; it does not create a booking or charge payment.", ko: "이 단계는 매칭 결과만 확정하며 예약 생성이나 결제를 하지 않습니다." },
+  bookingTitle: { zh: "确认匹配预约", "zh-Hant": "確認配對預約", ja: "マッチした予約を確定", en: "Confirm matched bookings", ko: "매칭 예약 확정" },
+  bookingBatchExplanation: { zh: "此操作会为每位入选服务者创建一张独立待接单预约。", "zh-Hant": "此操作會為每位入選服務者建立一張獨立待接單預約。", ja: "選ばれた提供者ごとに、個別の受付待ち予約を1件作成します。", en: "This creates one independent pending booking for each selected provider.", ko: "선정된 서비스 제공자마다 독립적인 접수 대기 예약을 하나씩 생성합니다." },
+  bookingConfirm: { zh: "确认预约", "zh-Hant": "確認預約", ja: "予約を確定", en: "Confirm bookings", ko: "예약 확정" },
+  bookingNoCharge: { zh: "本步骤不会收取服务款。", "zh-Hant": "此步驟不會收取服務款。", ja: "この手順ではサービス料金は請求されません。", en: "No service payment is charged at this step.", ko: "이 단계에서는 서비스 요금이 청구되지 않습니다." },
+  bookingCreating: { zh: "正在创建预约…", "zh-Hant": "正在建立預約…", ja: "予約を作成しています…", en: "Creating bookings…", ko: "예약 생성 중…" },
+  bookingPending: { zh: "待接单", "zh-Hant": "待接單", ja: "受付待ち", en: "Pending acceptance", ko: "접수 대기" },
+  bookingCreated: { zh: "预约已创建", "zh-Hant": "預約已建立", ja: "予約を作成しました", en: "Bookings created", ko: "예약이 생성되었습니다" },
+  bookingCreateFailed: { zh: "预约创建失败，请重试。", "zh-Hant": "預約建立失敗，請重試。", ja: "予約を作成できませんでした。再試行してください。", en: "Bookings could not be created. Try again.", ko: "예약을 생성하지 못했습니다. 다시 시도해 주세요." },
+  bookingStaleRefreshed: { zh: "匹配状态已变化，已刷新正式数据。", "zh-Hant": "配對狀態已變更，已重新整理正式資料。", ja: "マッチング状態が変わったため、正式データを更新しました。", en: "Matching changed, so persisted data was refreshed.", ko: "매칭 상태가 변경되어 정식 데이터를 새로고침했습니다." },
+  bookingRetry: { zh: "重试创建预约", "zh-Hant": "重試建立預約", ja: "予約作成を再試行", en: "Retry booking creation", ko: "예약 생성 다시 시도" },
+  bookingOrderNumber: { zh: "订单编号", "zh-Hant": "訂單編號", ja: "注文番号", en: "Order number", ko: "주문 번호" },
+  bookingViewOrder: { zh: "查看订单", "zh-Hant": "查看訂單", ja: "注文を見る", en: "View order", ko: "주문 보기" },
+  bookingProviderSelected: { zh: "您已入选此需求", "zh-Hant": "您已入選此需求", ja: "この依頼の提供者に選ばれました", en: "You were selected for this request", ko: "이 요청의 서비스 제공자로 선정되었습니다" },
+  bookingAwaitingOwner: { zh: "等待发布者确认预约", "zh-Hant": "等待發布者確認預約", ja: "投稿者の予約確定を待っています", en: "Waiting for the publisher to confirm bookings", ko: "게시자의 예약 확정을 기다리는 중입니다" },
+  bookingLoadFailed: { zh: "无法读取已匹配的预约，请重试。", "zh-Hant": "無法讀取已配對的預約，請重試。", ja: "マッチした予約を読み込めませんでした。再試行してください。", en: "Couldn't load the matched booking. Try again.", ko: "매칭된 예약을 불러오지 못했습니다. 다시 시도해 주세요." }
 } as const satisfies Record<string, Record<Language, string>>;
 
 export type ExchangeTextKey = keyof typeof translations;
