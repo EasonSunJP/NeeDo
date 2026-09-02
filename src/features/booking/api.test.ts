@@ -167,6 +167,36 @@ describe("bookingApi", () => {
     );
   });
 
+  it("serializes the opt-in unavailable-slot query", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { list: [], total: 0, page: 1, page_size: 100 }
+    }));
+
+    await bookingApi.listAvailability({
+      serviceId: 12,
+      includeUnavailable: true,
+      from: "2026-09-02T15:00:00.000Z",
+      to: "2026-09-03T15:00:00.000Z",
+      page: 1,
+      pageSize: 100
+    });
+
+    const [requestUrl, requestInit] = vi.mocked(fetch).mock.calls[0]!;
+    const parsedUrl = new URL(String(requestUrl), "http://needo.test");
+    expect(parsedUrl.pathname).toBe("/api/v1/schedule/availability");
+    expect(Object.fromEntries(parsedUrl.searchParams.entries())).toEqual({
+      serviceId: "12",
+      includeUnavailable: "true",
+      from: "2026-09-02T15:00:00.000Z",
+      to: "2026-09-03T15:00:00.000Z",
+      page: "1",
+      pageSize: "100"
+    });
+    expect(requestInit).toEqual(expect.objectContaining({ method: "GET" }));
+  });
+
   it("calls the scoped manual-payment confirmation and refund endpoints", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")))
