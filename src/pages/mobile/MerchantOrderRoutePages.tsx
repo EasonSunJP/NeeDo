@@ -1,5 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
+import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
@@ -8,6 +10,26 @@ import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPa
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Button } from "../../components/ui/Button";
 import { emptyOrders as orders, emptyServices as services } from "../../data/formalRuntimeFallbacks";
+import {
+  bookingApi,
+  formatApiOrderDateTime,
+  isBookingApiId,
+  mapBookingOrderToDomainOrder,
+  type BookingOrder,
+  type OrderCheckout
+} from "../../features/booking/api";
+import {
+  coreReadApi,
+  mapCoreCustomerToCustomer,
+  mapCoreServiceToServiceItem,
+  mapCoreShopToStore,
+  mapCoreTechnicianToTechnician,
+  type CoreCustomerProfile,
+  type CoreServiceDetail,
+  type CoreShopDetail,
+  type CoreTechnicianDetail
+} from "../../features/core-read/api";
+import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId } from "../../lib/messageCenter";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";
@@ -997,6 +1019,228 @@ function LockedInfoRows({ rows }: { rows: Array<[string, string]> }) {
   );
 }
 
+function describeFormalMerchantOrderError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有查看本店订单的权限";
+    if (error.status === 404) return "订单不存在或不属于当前店铺";
+    if (error.status === 409) return "订单状态已经变化，请重新加载";
+    if (error.status >= 500) return "本店订单服务暂时不可用，请稍后重试";
+  }
+  return "本店正式订单读取失败，请检查网络后重试";
+}
+
+function formalMerchantOrderStatusLabel(status: BookingOrder["status"]) {
+  if (status === "awaitingCheckout") return "等待客户结账";
+  if (status === "awaitingPaymentConfirmation") return "等待确认收款";
+  return statusLabel(status);
+}
+
+function formalCheckoutEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
+  if (evidence === "ndp_ledger") return "NDP 账本已结算";
+  if (evidence === "technician_receipt_confirmation") return "技师已确认收款";
+  if (evidence === "operations_receipt_override") return "运营已确认收款";
+  return "尚无收款凭证";
+}
+
+function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<BookingOrder | null>(null);
+  const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
+  const [merchantOrder, setMerchantOrder] = useState<BackofficeOrderPayload | null>(null);
+  const [customerProfile, setCustomerProfile] = useState<CoreCustomerProfile | null>(null);
+  const [serviceProfile, setServiceProfile] = useState<CoreServiceDetail | null>(null);
+  const [shopProfile, setShopProfile] = useState<CoreShopDetail | null>(null);
+  const [technicianProfile, setTechnicianProfile] = useState<CoreTechnicianDetail | null>(null);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoadStatus("loading");
+    setLoadError("");
+
+    const load = async () => {
+      const formalOrder = await bookingApi.getOrder(orderId);
+      const merchantPage = await backofficeRealDataApi.orders("merchant-admin", {
+        keyword: formalOrder.orderNo,
+        page: 1,
+        pageSize: 20
+      });
+      const scopedOrder = merchantPage.list.find((item) => item.id === formalOrder.id) ?? null;
+      if (!scopedOrder) throw new ApiClientError("error.booking_order.not_found", 404, 404);
+
+      const checkoutResult = ["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(formalOrder.status)
+        ? await bookingApi.getCheckout(formalOrder.id)
+        : null;
+      const [serviceResult, shopResult, technicianResult, customerResult] = await Promise.allSettled([
+        formalOrder.serviceId ? coreReadApi.getServiceDetail(formalOrder.serviceId) : Promise.resolve(null),
+        coreReadApi.getShopDetail(formalOrder.shopId),
+        formalOrder.technicianProfileId ? coreReadApi.getTechnicianDetail(formalOrder.technicianProfileId) : Promise.resolve(null),
+        scopedOrder.customerProfileId ? coreReadApi.getCustomerProfile(scopedOrder.customerProfileId) : Promise.resolve(null)
+      ]);
+
+      if (!active) return;
+      setOrder(formalOrder);
+      setCheckout(checkoutResult);
+      setMerchantOrder(scopedOrder);
+      setServiceProfile(serviceResult.status === "fulfilled" ? serviceResult.value : null);
+      setShopProfile(shopResult.status === "fulfilled" ? shopResult.value : null);
+      setTechnicianProfile(technicianResult.status === "fulfilled" ? technicianResult.value : null);
+      setCustomerProfile(customerResult.status === "fulfilled" ? customerResult.value : null);
+      setLoadStatus("success");
+    };
+
+    void load().catch((error: unknown) => {
+      if (!active) return;
+      setOrder(null);
+      setCheckout(null);
+      setMerchantOrder(null);
+      setLoadError(describeFormalMerchantOrderError(error));
+      setLoadStatus("error");
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [orderId, revision]);
+
+  const service = serviceProfile ? mapCoreServiceToServiceItem(serviceProfile) : null;
+  const store = shopProfile ? mapCoreShopToStore(shopProfile) : null;
+  const technician = technicianProfile ? mapCoreTechnicianToTechnician(technicianProfile) : null;
+  const customer = customerProfile ? mapCoreCustomerToCustomer(customerProfile) : null;
+  const totalAmount = checkout?.checkoutAmountJpy ?? order?.paymentAmountJpy ?? 0;
+
+  return (
+    <MobileFullscreenPage>
+      <MobileFullscreenHeader className={fullscreenHeaderClassName} onBack={() => navigate(-1)} title="预约订单详情" />
+      <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+        {loadStatus === "loading" ? (
+          <section className="rounded-[24px] bg-[color:var(--client-surface)] px-4 py-10 text-center text-sm font-black">正在加载本店正式订单</section>
+        ) : null}
+        {loadStatus === "error" ? (
+          <section className="rounded-[24px] border border-red-400/35 bg-red-500/10 px-4 py-8 text-center" role="alert">
+            <h2 className="text-base font-black text-red-500">本店订单加载失败</h2>
+            <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{loadError}</p>
+            <button className="mt-4 h-11 w-full rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setRevision((value) => value + 1)} type="button">重新加载本店订单</button>
+          </section>
+        ) : null}
+        {loadStatus === "success" && order && merchantOrder ? (
+          <>
+            <OrderDynamicStatusCard order={mapBookingOrderToDomainOrder(order)} providerName={order.shopName} />
+
+            <section>
+              <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">服务</h2>
+              {service ? (
+                <SocialProfileMiniCard
+                  data={buildServiceMiniCardData(service, store ?? undefined)}
+                  showAction={false}
+                  topTags={[{ label: formalMerchantOrderStatusLabel(order.status), tone: "yellow" }]}
+                />
+              ) : (
+                <section className="rounded-[24px] bg-[color:var(--client-surface)] p-4">
+                  <h3 className="text-lg font-black">{order.serviceName}</h3>
+                  <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">{order.shopName}</p>
+                </section>
+              )}
+            </section>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                ["金额", yen(totalAmount)],
+                ["支付", checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : "其他方式"],
+                ["状态", formalMerchantOrderStatusLabel(order.status)]
+              ].map(([label, value]) => (
+                <div className="rounded-[18px] bg-[color:var(--client-surface)] px-3 py-3" key={label}>
+                  <p className="text-[10px] font-black text-[color:var(--client-muted)]">{label}</p>
+                  <strong className="mt-1 block truncate text-xs font-black">{value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <section>
+              <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">用户</h2>
+              {customer ? (
+                <SocialProfileMiniCard
+                  customer={customer}
+                  detailTo={getScopedProfileDetailPath("merchant", "user", customer.id)}
+                  showAction={false}
+                  topTags={[{ label: "预约者", tone: "purple" }]}
+                />
+              ) : (
+                <section className="rounded-[24px] bg-[color:var(--client-surface)] p-4 text-base font-black">{merchantOrder.customerName}</section>
+              )}
+            </section>
+
+            <section>
+              <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">技师 / 担当</h2>
+              {technician ? (
+                <SocialProfileMiniCard
+                  detailTo={getScopedProfileDetailPath("merchant", "technician", technician.id)}
+                  showAction={false}
+                  technician={technician}
+                  topTags={[{ label: "担当技师", tone: "green" }]}
+                />
+              ) : (
+                <section className="rounded-[24px] bg-[color:var(--client-surface)] p-4 text-base font-black">{order.technicianName ?? "尚未指定担当技师"}</section>
+              )}
+            </section>
+
+            <section className="overflow-hidden rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] shadow-panel">
+              <h2 className="border-b border-[color:var(--client-line)] px-4 py-3 text-base font-black">预约情报</h2>
+              <div className="divide-y divide-[color:var(--client-line)]">
+                {[
+                  ["预约编号", order.orderNo],
+                  ["预约状态", formalMerchantOrderStatusLabel(order.status)],
+                  ["预约时间", formatApiOrderDateTime(order.startsAt)],
+                  ["预约结束", formatApiOrderDateTime(order.endsAt)],
+                  ["服务方式", order.fulfillmentMode === "store" ? "到店服务" : "上门服务"],
+                  ["店铺", order.shopName],
+                  ["担当", order.technicianName ?? "尚未指定"],
+                  ["备注", order.note ?? "无特别备注"]
+                ].map(([label, value]) => (
+                  <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 px-4 py-3 text-sm" key={label}>
+                    <span className="font-black text-[color:var(--client-muted)]">{label}</span>
+                    <strong className="min-w-0 break-words font-black">{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {checkout ? (
+              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+                <h2 className="text-base font-black">正式结算</h2>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  {[
+                    ["基础金额", yen(checkout.baseAmountJpy)],
+                    ["追加服务", yen(checkout.addOnAmountJpy)],
+                    ["应付总额", yen(checkout.checkoutAmountJpy)],
+                    ["支付凭证", formalCheckoutEvidenceLabel(checkout.paymentEvidence)]
+                  ].map(([label, value]) => (
+                    <div className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={label}>
+                      <dt className="text-[10px] font-black text-[color:var(--client-muted)]">{label}</dt>
+                      <dd className="mt-1 font-black">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ) : null}
+
+            <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="联系信息" />
+          </>
+        ) : null}
+      </main>
+      {loadStatus === "success" && order ? (
+        <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2">
+          <Button to={`/merchant/messages?chat=${getMerchantCustomerConversationId(String(order.customerUserId))}`} variant="secondary">联系用户</Button>
+          <Button to="/merchant-admin/orders">订单中心</Button>
+        </MobileBottomActionBar>
+      ) : null}
+    </MobileFullscreenPage>
+  );
+}
+
 function MerchantOrderDetailContent() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1543,9 +1787,15 @@ function MerchantOrderDispatchContent() {
 }
 
 export function MerchantOrderDetailRoutePage() {
+  const { orderId } = useParams();
+
   return (
     <MobileShell navItems={[]}>
-      <MerchantOrderDetailContent />
+      {isBookingApiId(orderId) ? (
+        <FormalMerchantOrderDetailContent orderId={Number(orderId)} />
+      ) : (
+        <MerchantOrderDetailContent />
+      )}
     </MobileShell>
   );
 }
