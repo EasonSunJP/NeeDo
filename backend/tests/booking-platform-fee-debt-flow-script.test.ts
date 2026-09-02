@@ -27,6 +27,8 @@ describe("booking platform fee debt real-database checker", () => {
     expect(source).toContain("BARRIER_TIMEOUT_MS");
     expect(source).toContain("waitForBarrier");
     expect(source).toContain("Promise.allSettled");
+    expect(source.match(/beforeWalletLock:/g)).toHaveLength(2);
+    expect(source).not.toContain("beforeWalletAccess");
     expect(source).toContain("captureBaselineOrDisconnect");
     expect(source).not.toContain("prisma.wallet.update");
     expect(source).not.toContain("prisma.wallet.updateMany");

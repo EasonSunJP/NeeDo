@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { ApiClientError } from "../../api/httpClient";
 import type { Language } from "../../i18n/translations";
 import {
   getExchangeMatching,
@@ -7,7 +8,12 @@ import {
   selectExchangeMatching
 } from "./api";
 import { exchangeText, type ExchangeTextKey } from "./i18n";
-import type { ExchangeClaim, ExchangeMatching } from "./types";
+import type {
+  ExchangeClaim,
+  ExchangeMatchAdjustmentPreview,
+  ExchangeMatching,
+  SelectExchangeMatchingInput
+} from "./types";
 
 const fallbackProviderImage = "/icons/needo-nav-button-dark.png";
 const panelClassName =
@@ -38,6 +44,64 @@ function statusTextKey(status: ExchangeClaim["status"]): ExchangeTextKey {
   if (status === "not_selected") return "claimStatusNotSelected";
   if (status === "matching_closed") return "claimStatusMatchingClosed";
   return "claimStatusActive";
+}
+
+function isIntegerInRange(value: unknown, minimum: number, maximum: number): value is number {
+  return Number.isInteger(value) && Number(value) >= minimum && Number(value) <= maximum;
+}
+
+function readAdjustmentPreview(
+  error: unknown,
+  matching: ExchangeMatching,
+  selectedCount: number,
+  selectedQuoteTotalJpy: number
+): ExchangeMatchAdjustmentPreview | null {
+  if (!(error instanceof ApiClientError) || error.status !== 409) return null;
+  if (!error.data || typeof error.data !== "object" || Array.isArray(error.data)) return null;
+  const value = error.data as Record<string, unknown>;
+  if (
+    !isIntegerInRange(value.currentVersion, 1, Number.MAX_SAFE_INTEGER) ||
+    !isIntegerInRange(value.selectedCount, 1, 20) ||
+    !isIntegerInRange(value.selectedQuoteTotalJpy, 1, 1_000_000_000) ||
+    !isIntegerInRange(value.effectiveTargetProviderCount, 1, 20) ||
+    !isIntegerInRange(value.effectiveBudgetMaxJpy, 1, 1_000_000_000) ||
+    !isIntegerInRange(value.requiredBudgetIncreaseJpy, 0, 1_000_000_000) ||
+    typeof value.requiresTargetConfirmation !== "boolean" ||
+    typeof value.requiresBudgetConfirmation !== "boolean"
+  ) {
+    return null;
+  }
+  const requiredTargetProviderCount = value.requiredTargetProviderCount;
+  const requiredBudgetMaxJpy = value.requiredBudgetMaxJpy;
+  if (
+    (requiredTargetProviderCount !== null &&
+      !isIntegerInRange(requiredTargetProviderCount, 1, 20)) ||
+    (requiredBudgetMaxJpy !== null &&
+      !isIntegerInRange(requiredBudgetMaxJpy, 1, 1_000_000_000))
+  ) {
+    return null;
+  }
+  if (
+    value.currentVersion !== matching.version ||
+    value.selectedCount !== selectedCount ||
+    value.selectedQuoteTotalJpy !== selectedQuoteTotalJpy ||
+    value.effectiveTargetProviderCount !== matching.effectiveTargetProviderCount ||
+    value.effectiveBudgetMaxJpy !== matching.effectiveBudgetMaxJpy ||
+    (!value.requiresTargetConfirmation && !value.requiresBudgetConfirmation) ||
+    (value.requiresTargetConfirmation
+      ? requiredTargetProviderCount !== selectedCount ||
+        selectedCount >= matching.effectiveTargetProviderCount
+      : requiredTargetProviderCount !== null) ||
+    (value.requiresBudgetConfirmation
+      ? requiredBudgetMaxJpy !== selectedQuoteTotalJpy ||
+        selectedQuoteTotalJpy <= matching.effectiveBudgetMaxJpy ||
+        value.requiredBudgetIncreaseJpy !==
+          selectedQuoteTotalJpy - matching.effectiveBudgetMaxJpy
+      : requiredBudgetMaxJpy !== null || value.requiredBudgetIncreaseJpy !== 0)
+  ) {
+    return null;
+  }
+  return value as unknown as ExchangeMatchAdjustmentPreview;
 }
 
 function ClaimCard({
@@ -144,6 +208,9 @@ export function ExchangeReceivedClaims({
   const [error, setError] = useState(false);
   const [matchingError, setMatchingError] = useState(false);
   const [matchingPending, setMatchingPending] = useState(false);
+  const [adjustmentPreview, setAdjustmentPreview] =
+    useState<ExchangeMatchAdjustmentPreview | null>(null);
+  const [adjustmentChanged, setAdjustmentChanged] = useState(false);
   const selectionAttemptRef = useRef<{ signature: string; key: string } | null>(null);
 
   useEffect(() => {
@@ -152,6 +219,8 @@ export function ExchangeReceivedClaims({
     setError(false);
     setMatchingError(false);
     setSelectedClaimIds([]);
+    setAdjustmentPreview(null);
+    setAdjustmentChanged(false);
     selectionAttemptRef.current = null;
     void Promise.all([
       listReceivedExchangeClaims(postId, {
@@ -186,6 +255,8 @@ export function ExchangeReceivedClaims({
     setPage(claimPage.page);
     setTotal(claimPage.total);
     setMatching(currentMatching);
+    setAdjustmentPreview(null);
+    setAdjustmentChanged(false);
     const activeIds = new Set(
       claimPage.list.filter((claim) => claim.status === "active").map((claim) => claim.id)
     );
@@ -211,6 +282,9 @@ export function ExchangeReceivedClaims({
   function toggleClaim(claimId: number) {
     if (!matching || matching.status !== "open" || !matching.viewer.canSelect) return;
     setMatchingError(false);
+    setAdjustmentPreview(null);
+    setAdjustmentChanged(false);
+    selectionAttemptRef.current = null;
     setSelectedClaimIds((current) => {
       if (current.includes(claimId)) return current.filter((id) => id !== claimId);
       if (matching.effectiveTargetProviderCount === 1) return [claimId];
@@ -229,20 +303,35 @@ export function ExchangeReceivedClaims({
   const withinBudget = Boolean(
     matching && selectedQuoteTotalJpy <= matching.effectiveBudgetMaxJpy
   );
-  const canComplete = Boolean(
+  const canSubmitSelection = Boolean(
     matching?.status === "open" &&
       matching.viewer.canSelect &&
-      exactCount &&
-      withinBudget &&
+      selectedClaimIds.length > 0 &&
+      selectedClaimIds.length <= matching.effectiveTargetProviderCount &&
       !matchingPending
   );
 
-  async function completeMatching() {
-    if (!matching || !canComplete) return;
+  async function completeMatching(preview: ExchangeMatchAdjustmentPreview | null = null) {
+    if (!matching || !canSubmitSelection) return;
+    if (preview && preview !== adjustmentPreview) return;
     const selectedClaimIdsSorted = [...selectedClaimIds].sort((left, right) => left - right);
-    const input = {
+    const input: SelectExchangeMatchingInput = {
       selectedClaimIds: selectedClaimIdsSorted,
-      expectedVersion: matching.version
+      expectedVersion: preview?.currentVersion ?? matching.version,
+      budgetConfirmation:
+        preview?.requiresBudgetConfirmation && preview.requiredBudgetMaxJpy !== null
+          ? {
+              action: "increase_to_selected_total",
+              confirmedBudgetMaxJpy: preview.requiredBudgetMaxJpy
+            }
+          : null,
+      targetConfirmation:
+        preview?.requiresTargetConfirmation && preview.requiredTargetProviderCount !== null
+          ? {
+              action: "reduce_to_selected_count",
+              confirmedTargetProviderCount: preview.requiredTargetProviderCount
+            }
+          : null
     };
     const signature = JSON.stringify(input);
     const attempt =
@@ -256,6 +345,8 @@ export function ExchangeReceivedClaims({
       const completed = await selectExchangeMatching(postId, input, attempt.key);
       setMatching(completed);
       setSelectedClaimIds([]);
+      setAdjustmentPreview(null);
+      setAdjustmentChanged(false);
       selectionAttemptRef.current = null;
       onMatched?.();
       void listReceivedExchangeClaims(postId, { page: 1, pageSize: 10 }).then((claimPage) => {
@@ -263,8 +354,22 @@ export function ExchangeReceivedClaims({
         setPage(claimPage.page);
         setTotal(claimPage.total);
       });
-    } catch {
+    } catch (caught) {
+      const nextPreview = readAdjustmentPreview(
+        caught,
+        matching,
+        selectedClaimIdsSorted.length,
+        selectedQuoteTotalJpy
+      );
+      if (nextPreview) {
+        setAdjustmentChanged(preview !== null);
+        setAdjustmentPreview(nextPreview);
+        selectionAttemptRef.current = null;
+        return;
+      }
       setMatchingError(true);
+      setAdjustmentPreview(null);
+      setAdjustmentChanged(false);
       try {
         await refreshPersistedState();
       } catch {
@@ -309,13 +414,21 @@ export function ExchangeReceivedClaims({
                 <span className="text-[color:var(--client-muted)]">{t("matchingSelectedCount")} {selectedClaimIds.length}/{matching.effectiveTargetProviderCount}</span>
                 <span className={withinBudget ? "text-[color:var(--client-text)]" : "text-[color:var(--client-accent)]"}>{t("matchingSelectedQuote")} ¥{selectedQuoteTotalJpy.toLocaleString("ja-JP")}</span>
               </div>
-              <p className={`mt-2 text-[11px] font-bold ${exactCount && withinBudget ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]"}`}>
-                {!exactCount
-                  ? t("matchingCountRequired")
-                  : withinBudget
-                    ? t("matchingComplete")
-                    : t("matchingBudgetExceeded")}
-              </p>
+              {!exactCount ? (
+                <p className="mt-2 text-[11px] font-bold text-[color:var(--client-muted)]">
+                  {t("matchingCountRequired")}
+                </p>
+              ) : null}
+              {!withinBudget ? (
+                <p className="mt-2 text-[11px] font-bold text-[color:var(--client-accent)]">
+                  {t("matchingBudgetExceeded")}
+                </p>
+              ) : null}
+              {exactCount && withinBudget ? (
+                <p className="mt-2 text-[11px] font-bold text-[color:var(--client-primary)]">
+                  {t("matchingComplete")}
+                </p>
+              ) : null}
             </>
           ) : (
             <div className="mt-3 rounded-2xl bg-[color:var(--client-primary-soft)] px-3 py-3">
@@ -323,6 +436,58 @@ export function ExchangeReceivedClaims({
               <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("matchingNoBooking")}</p>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {adjustmentPreview ? (
+        <div
+          className="mt-4 min-w-0 rounded-[22px] border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-4"
+          data-testid="exchange-matching-adjustment-preview"
+        >
+          <h3 className="text-sm font-black text-[color:var(--client-primary)]">
+            {t("matchingAdjustmentTitle")}
+          </h3>
+          <div className="mt-3 grid min-w-0 gap-2 text-xs sm:grid-cols-2">
+            {adjustmentPreview.requiresTargetConfirmation ? (
+              <div className="min-w-0 rounded-2xl bg-[color:var(--client-bg)] p-3">
+                <p className="font-black text-[color:var(--client-muted)]">
+                  {t("matchingTargetReductionProposal")}
+                </p>
+                <p className="mt-1 break-words text-base font-black text-[color:var(--client-text)]">
+                  {adjustmentPreview.effectiveTargetProviderCount} → {adjustmentPreview.requiredTargetProviderCount}
+                </p>
+              </div>
+            ) : null}
+            {adjustmentPreview.requiresBudgetConfirmation ? (
+              <div className="min-w-0 rounded-2xl bg-[color:var(--client-bg)] p-3">
+                <p className="font-black text-[color:var(--client-muted)]">
+                  {t("matchingBudgetIncreaseProposal")}
+                </p>
+                <p className="mt-1 break-words text-base font-black text-[color:var(--client-text)]">
+                  ¥{adjustmentPreview.effectiveBudgetMaxJpy.toLocaleString("ja-JP")} → ¥
+                  {adjustmentPreview.requiredBudgetMaxJpy?.toLocaleString("ja-JP")}
+                </p>
+                <p className="mt-1 font-black text-[color:var(--client-primary)]">
+                  {t("matchingBudgetIncreaseAmount")} ¥
+                  {adjustmentPreview.requiredBudgetIncreaseJpy.toLocaleString("ja-JP")}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <p className="mt-3 text-xs font-bold leading-5 text-[color:var(--client-text)]">
+            {adjustmentChanged
+              ? t("matchingAdjustmentChanged")
+              : t("matchingAdjustmentWarning")}
+          </p>
+          <button
+            className="focus-ring mt-3 min-h-12 w-full rounded-2xl bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-40"
+            data-action="confirm-exchange-match-adjustment"
+            disabled={matchingPending}
+            onClick={() => void completeMatching(adjustmentPreview)}
+            type="button"
+          >
+            {t(matchingPending ? "matchingCompleting" : "matchingConfirmAdjustment")}
+          </button>
         </div>
       ) : null}
 
@@ -343,12 +508,12 @@ export function ExchangeReceivedClaims({
         ))}
       </div>
 
-      {matching?.status === "open" && matching.viewer.canSelect ? (
+      {matching?.status === "open" && matching.viewer.canSelect && !adjustmentPreview ? (
         <button
           className="focus-ring mt-4 min-h-12 w-full rounded-2xl bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-40"
           data-action="complete-exchange-match"
-          disabled={!canComplete}
-          onClick={() => void completeMatching()}
+          disabled={!canSubmitSelection}
+          onClick={() => void completeMatching(null)}
           type="button"
         >
           {t(matchingPending ? "matchingCompleting" : "matchingComplete")}

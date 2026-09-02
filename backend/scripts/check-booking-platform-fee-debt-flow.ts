@@ -410,7 +410,6 @@ const main = async (): Promise<void> => {
   type BarrierHooks = {
     beforeWalletLock?: () => Promise<void>;
     afterWalletLock?: () => Promise<void>;
-    beforeWalletAccess?: () => Promise<void>;
     beforeDebtLock?: () => Promise<void>;
   };
   const createBarrier = () => {
@@ -475,10 +474,6 @@ const main = async (): Promise<void> => {
         const wallet = await inner.lockWalletById(walletId);
         await hooks.afterWalletLock?.();
         return wallet;
-      },
-      getOrCreateWallet: async (input) => {
-        await hooks.beforeWalletAccess?.();
-        return inner.getOrCreateWallet(input);
       },
       lockPlatformFeeDebt: async (id: number) => {
         await hooks.beforeDebtLock?.();
@@ -1047,7 +1042,7 @@ const main = async (): Promise<void> => {
       createBarrierLedgerRepository(
         prisma,
         {
-          beforeWalletAccess: async () => {
+          beforeWalletLock: async () => {
             if (completionTopupHookUsed) return;
             completionTopupHookUsed = true;
             topupReachedWalletMutation.release();
