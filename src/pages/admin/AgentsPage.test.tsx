@@ -80,5 +80,7 @@ describe("formal agent administration", () => {
     expect(translateText("佣金规则版本历史", "ja")).toBe(
       "コミッションルールのバージョン履歴",
     );
+    expect(translateText("银行转账", "en")).toBe("Bank Transfer");
+    expect(translateText("其他", "ja")).toBe("その他");
   });
 });

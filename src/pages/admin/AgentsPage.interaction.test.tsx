@@ -218,7 +218,7 @@ describe("AgentsPage formal interactions", () => {
   let root: Root;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     testState.permissions.clear();
     testState.listShopReferrals.mockResolvedValue({
       list: [],
@@ -268,6 +268,50 @@ describe("AgentsPage formal interactions", () => {
     expect(container.textContent).toContain("当前合同");
     expect(container.textContent).toContain("v1");
     expect(container.textContent).toContain("初始合同");
+    expect(container.textContent).toContain("银行转账");
+    expect(container.textContent).not.toContain("bank_transfer");
+  });
+
+  it("loads every immutable commission-rule history page on demand", async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) =>
+      rule(21 - index, { reason: `page-one-${21 - index}` }),
+    );
+    testState.getCommissionRules.mockReset();
+    testState.getCommissionRules
+      .mockResolvedValueOnce({
+        current: firstPage[0],
+        latestVersion: 21,
+        evaluatedAt: "2026-09-03T00:00:00.000Z",
+        history: {
+          list: firstPage,
+          total: 21,
+          page: 1,
+          page_size: 20,
+        },
+      })
+      .mockResolvedValueOnce({
+        current: firstPage[0],
+        latestVersion: 21,
+        evaluatedAt: "2026-09-03T00:00:00.000Z",
+        history: {
+          list: [rule(1, { reason: "page-two-1" })],
+          total: 21,
+          page: 2,
+          page_size: 20,
+        },
+      });
+
+    renderDetail(root);
+    await waitFor(() => expect(container.textContent).toContain("v21"));
+    expect(container.textContent).not.toContain("page-two-1");
+
+    await click("加载更多规则版本");
+
+    await waitFor(() => expect(container.textContent).toContain("page-two-1"));
+    expect(testState.getCommissionRules).toHaveBeenLastCalledWith("agent-1", {
+      page: 2,
+      pageSize: 20,
+    });
   });
 
   it("keeps formal detail readable while hiding every mutation without permission", async () => {
@@ -337,14 +381,53 @@ describe("AgentsPage formal interactions", () => {
     await waitFor(() => expect(container.textContent).toContain("¥80,000"));
     expect(container.textContent).toContain("¥62,000");
 
+    fill("外部凭证编号", " EXT-CHANGED-AFTER-PREVIEW ");
+    fill("凭证说明", " changed after preview ");
+
     await click("确认并生成结算凭证");
     await waitFor(() =>
       expect(testState.confirmSettlement).toHaveBeenCalledWith(
         "agent-1",
         expect.objectContaining({
+          externalDeductions: [
+            expect.objectContaining({
+              evidenceReference: " EXT-1 ",
+              reason: " monthly invoice ",
+            }),
+          ],
           idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/i),
         }),
       ),
+    );
+  });
+
+  it("keeps a reviewed settlement preview retryable after confirmation fails", async () => {
+    testState.permissions.add("backoffice:agent-settlement:write");
+    testState.listShopReferrals.mockResolvedValue({
+      list: [referral()],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    });
+    testState.confirmSettlement
+      .mockRejectedValueOnce(new Error("结算版本冲突"))
+      .mockResolvedValueOnce({ publicId: "settlement-1" });
+    renderDetail(root);
+    await waitFor(() => expect(container.textContent).toContain("银座护理店"));
+
+    fill("外部凭证编号", "EXT-RETRY");
+    fill("凭证说明", "retry evidence");
+    await click("计算预览");
+    await waitFor(() => expect(container.textContent).toContain("¥62,000"));
+
+    await click("确认并生成结算凭证");
+    await waitFor(() => expect(container.textContent).toContain("结算版本冲突"));
+    expect(container.textContent).toContain("¥62,000");
+    expect(hasButton("确认并生成结算凭证")).toBe(true);
+
+    await click("确认并生成结算凭证");
+    await waitFor(() =>
+      expect(testState.confirmSettlement).toHaveBeenCalledTimes(2),
     );
   });
 });

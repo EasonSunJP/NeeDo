@@ -22,6 +22,12 @@ const inputClass =
 const cardClass = "rounded-2xl border border-line bg-white p-5 shadow-sm";
 const toIso = (localValue: string) => new Date(localValue).toISOString();
 const formatJpy = (value: number) => `¥${value.toLocaleString()}`;
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  bank_transfer: "银行转账",
+  ndp: "NDP",
+  other: "其他",
+};
+const paymentMethodLabel = (value: PaymentMethod) => paymentMethodLabels[value];
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 7)}-01`;
 const currentLocalDateTime = () => {
@@ -228,6 +234,7 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
   const [settlements, setSettlements] =
     useState<Paginated<AgentSettlement> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMoreRules, setLoadingMoreRules] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -269,8 +276,46 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
       await action();
       setNotice(success);
       await load();
+      return true;
     } catch (mutationError) {
       setError(errorMessage(mutationError));
+      return false;
+    }
+  };
+  const loadMoreRules = async () => {
+    if (
+      !rules ||
+      loadingMoreRules ||
+      rules.history.list.length >= rules.history.total
+    )
+      return;
+    setLoadingMoreRules(true);
+    setError("");
+    try {
+      const next = await platformPartnersApi.getCommissionRules(agentPublicId, {
+        page: rules.history.page + 1,
+        pageSize: rules.history.page_size,
+      });
+      setRules((current) => {
+        if (!current) return next;
+        const known = new Set(
+          current.history.list.map((item) => item.publicId),
+        );
+        return {
+          ...next,
+          history: {
+            ...next.history,
+            list: [
+              ...current.history.list,
+              ...next.history.list.filter((item) => !known.has(item.publicId)),
+            ],
+          },
+        };
+      });
+    } catch (historyError) {
+      setError(errorMessage(historyError));
+    } finally {
+      setLoadingMoreRules(false);
     }
   };
 
@@ -314,6 +359,8 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
                 <RulePanel
                   agentPublicId={agentPublicId}
                   canWrite={canWriteAgent}
+                  loadingMore={loadingMoreRules}
+                  loadMore={loadMoreRules}
                   mutate={mutation}
                   rules={rules}
                 />
@@ -344,7 +391,7 @@ function ReferralPanel({
 }: {
   agentPublicId: string;
   canWrite: boolean;
-  mutate: (action: () => Promise<unknown>, success: string) => Promise<void>;
+  mutate: (action: () => Promise<unknown>, success: string) => Promise<boolean>;
   referrals: AgentShopReferral[];
 }) {
   const [draft, setDraft] = useState({
@@ -466,12 +513,16 @@ function ReferralPanel({
 function RulePanel({
   agentPublicId,
   canWrite,
+  loadingMore,
+  loadMore,
   mutate,
   rules,
 }: {
   agentPublicId: string;
   canWrite: boolean;
-  mutate: (action: () => Promise<unknown>, success: string) => Promise<void>;
+  loadingMore: boolean;
+  loadMore: () => Promise<void>;
+  mutate: (action: () => Promise<unknown>, success: string) => Promise<boolean>;
   rules: AgentCommissionRuleOverview | null;
 }) {
   const [draft, setDraft] = useState({
@@ -509,7 +560,10 @@ function RulePanel({
             label="纯利润分成"
             value={`${(rules.current.profitShareRateBps / 100).toFixed(2)}%`}
           />
-          <SummaryFact label="支付方式" value={rules.current.paymentMethod} />
+          <SummaryFact
+            label="支付方式"
+            value={paymentMethodLabel(rules.current.paymentMethod)}
+          />
         </div>
       ) : (
         <Empty text="尚无当前生效规则，结算前必须先发布规则。" />
@@ -555,11 +609,25 @@ function RulePanel({
                     label="纯利润分成比例"
                     value={`${(rule.profitShareRateBps / 100).toFixed(2)}%`}
                   />
-                  <SummaryFact label="支付方式" value={rule.paymentMethod} />
+                  <SummaryFact
+                    label="支付方式"
+                    value={paymentMethodLabel(rule.paymentMethod)}
+                  />
                 </div>
               </article>
             ))}
           </div>
+          {rules.history.list.length < rules.history.total ? (
+            <Button
+              className="mt-3"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              size="sm"
+              variant="secondary"
+            >
+              {loadingMore ? "正在加载…" : "加载更多规则版本"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {canWrite ? (
@@ -663,7 +731,7 @@ function SettlementPanel({
   agentPublicId: string;
   canPay: boolean;
   canWrite: boolean;
-  mutate: (action: () => Promise<unknown>, success: string) => Promise<void>;
+  mutate: (action: () => Promise<unknown>, success: string) => Promise<boolean>;
   referrals: AgentShopReferral[];
   settlements: AgentSettlement[];
 }) {
@@ -673,7 +741,12 @@ function SettlementPanel({
   >({});
   const [preview, setPreview] = useState<AgentSettlementPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
-  const [confirmKey, setConfirmKey] = useState("");
+  const [confirmationInput, setConfirmationInput] = useState<{
+    periodStart: string;
+    periodEnd: string;
+    externalDeductions: AgentSettlementExternalDeduction[];
+    idempotencyKey: string;
+  } | null>(null);
   const [payment, setPayment] = useState({
     settlementPublicId: "",
     paymentMethod: "bank_transfer" as PaymentMethod,
@@ -706,33 +779,44 @@ function SettlementPanel({
     .filter((row): row is AgentSettlementExternalDeduction => Boolean(row));
   const doPreview = async () => {
     setPreviewError("");
+    const reviewedInput = {
+      periodStart: period.start,
+      periodEnd: period.end,
+      externalDeductions: deductions.map((item) => ({ ...item })),
+    };
     try {
-      const next = await platformPartnersApi.previewSettlement(agentPublicId, {
-        periodStart: period.start,
-        periodEnd: period.end,
-        externalDeductions: deductions,
-      });
+      const next = await platformPartnersApi.previewSettlement(
+        agentPublicId,
+        reviewedInput,
+      );
       setPreview(next);
-      setConfirmKey(globalThis.crypto.randomUUID());
+      setConfirmationInput({
+        ...reviewedInput,
+        idempotencyKey: globalThis.crypto.randomUUID(),
+      });
     } catch (previewFailure) {
       setPreview(null);
+      setConfirmationInput(null);
       setPreviewError(errorMessage(previewFailure));
     }
   };
-  const confirm = () =>
-    preview &&
-    mutate(
+  const confirm = async () => {
+    if (!preview || !confirmationInput) return;
+    const succeeded = await mutate(
       () =>
-        platformPartnersApi.confirmSettlement(agentPublicId, {
-          periodStart: period.start,
-          periodEnd: period.end,
-          externalDeductions: deductions,
-          idempotencyKey: confirmKey,
-        }),
+        platformPartnersApi.confirmSettlement(
+          agentPublicId,
+          confirmationInput,
+        ),
       "代理商结算已确认并生成不可变凭证",
-    ).then(() => setPreview(null));
-  const pay = () =>
-    mutate(
+    );
+    if (succeeded) {
+      setPreview(null);
+      setConfirmationInput(null);
+    }
+  };
+  const pay = async () => {
+    const succeeded = await mutate(
       () =>
         platformPartnersApi.markSettlementPaid(
           agentPublicId,
@@ -744,14 +828,16 @@ function SettlementPanel({
           },
         ),
       "支付凭证已确认",
-    ).then(() =>
+    );
+    if (succeeded) {
       setPayment((value) => ({
         ...value,
         settlementPublicId: "",
         reference: "",
         reason: "",
-      })),
-    );
+      }));
+    }
+  };
   const updateEvidence = (
     shopPublicId: string,
     patch: Partial<AgentSettlementExternalDeduction>,

@@ -146,7 +146,7 @@ describe("OperatingCostsPage formal interactions", () => {
   let root: Root;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     testState.canWrite = false;
     testState.listOperatingCosts.mockResolvedValue({
       list: [cost()],
@@ -193,8 +193,21 @@ describe("OperatingCostsPage formal interactions", () => {
     await click("发布并分摊");
     expect(testState.publishOperatingCost).not.toHaveBeenCalled();
     expect(container.textContent).toContain("发布或撤回前必须填写操作理由");
+    expect(container.textContent).toContain("服务器成本");
 
     fillByPlaceholder("发布或撤回理由（必填）", "财务账单已复核");
+    testState.publishOperatingCost.mockRejectedValueOnce(
+      new Error("成本版本冲突"),
+    );
+    await click("发布并分摊");
+    await waitFor(() => expect(container.textContent).toContain("成本版本冲突"));
+    expect(container.textContent).toContain("服务器成本");
+    expect(
+      document.querySelector<HTMLInputElement>(
+        'input[placeholder="发布或撤回理由（必填）"]',
+      )?.value,
+    ).toBe("财务账单已复核");
+
     await click("发布并分摊");
     await waitFor(() =>
       expect(testState.publishOperatingCost).toHaveBeenCalledWith(
@@ -202,6 +215,7 @@ describe("OperatingCostsPage formal interactions", () => {
         "财务账单已复核",
       ),
     );
+    expect(testState.publishOperatingCost).toHaveBeenCalledTimes(2);
     expect(testState.listOperatingCosts).toHaveBeenCalledTimes(2);
   });
 });
