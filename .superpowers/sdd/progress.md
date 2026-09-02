@@ -9,7 +9,7 @@ Plan: `docs/superpowers/plans/2026-09-03-exchange-matched-booking-conversion.md`
 - Baseline backend: Prisma Client regenerated; all observed suites passed except two transient failures that passed `21/21` when rerun alone; the monolithic in-band runner exhausted an `8 GB` heap before completing
 - Task 1: complete — schema/migration plus matching-writer compatibility; spec and quality APPROVED at `110a4139`
 - Task 2: complete — immutable projection, provider privacy, active-lock filtering, and RBAC reconciliation; spec and quality APPROVED at `aa25865e`
-- Task 3: pending
+- Task 3: complete — conversion contracts, validation, shared idempotency middleware, stable errors, and owner-only booking permission; spec and quality APPROVED at `0b13cba3`
 - Task 4: pending
 - Task 5: pending
 - Task 6: pending
