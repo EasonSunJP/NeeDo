@@ -62,6 +62,11 @@ describe("formal service taxonomy and search analytics console", () => {
     expect(source).toContain("aria-pressed={shown}");
   });
 
+  it("keeps taxonomy forms on the active admin theme surface", () => {
+    expect(source).toContain('className="mt-4 grid gap-3 rounded-2xl bg-paper p-4"');
+    expect(source).not.toMatch(/bg-paper\/\d+/u);
+  });
+
   it("is available through the protected settings route and translated navigation", () => {
     expect(appSource).toContain('path="/admin/settings/service-search"');
     expect(appSource).toContain('"backoffice:service-taxonomy:read"');

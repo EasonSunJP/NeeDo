@@ -169,7 +169,7 @@ function TaxonomyForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="mt-4 grid gap-3 rounded-2xl bg-paper/70 p-4" onSubmit={onSubmit}>
+    <form className="mt-4 grid gap-3 rounded-2xl bg-paper p-4" onSubmit={onSubmit}>
       <div className="flex items-center justify-between gap-3">
         <strong className="text-sm">{editingLabel ?? "新建"}</strong>
         {editingLabel ? <Button onClick={onCancel} size="sm" variant="ghost">取消编辑</Button> : null}
@@ -557,7 +557,7 @@ export function ServiceSearchAnalyticsPage() {
                 {selectedKeywordId && !aliases.length ? <p className="rounded-2xl border border-dashed border-line p-5 text-center text-sm text-ink/45">当前搜索标签暂无同义词</p> : null}
               </div>
               {canWrite && selectedCategoryId && selectedKeywordId ? (
-                <form className="mt-4 grid gap-3 rounded-2xl bg-paper/70 p-4" onSubmit={(event) => { void submitAlias(event); }}>
+                <form className="mt-4 grid gap-3 rounded-2xl bg-paper p-4" onSubmit={(event) => { void submitAlias(event); }}>
                   <div className="flex items-center justify-between"><strong className="text-sm">{editingAlias ? `编辑同义词 · #${editingAlias.id}` : "新建同义词"}</strong>{editingAlias ? <Button onClick={() => { setEditingAlias(undefined); setAliasDraft(emptyAliasDraft()); }} size="sm" variant="ghost">取消编辑</Button> : null}</div>
                   <Field label="同义词"><input className={inputClass} onChange={(event) => setAliasDraft((value) => ({ ...value, alias: event.target.value }))} value={aliasDraft.alias} /></Field>
                   <Field label="设置理由"><textarea className="min-h-20 rounded-xl border border-line bg-white p-3 text-sm" onChange={(event) => setAliasDraft((value) => ({ ...value, reason: event.target.value }))} value={aliasDraft.reason} /></Field>
@@ -573,7 +573,7 @@ export function ServiceSearchAnalyticsPage() {
               <div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#4f87ff]">Search intelligence</p><h2 className="mt-1 text-2xl font-black">搜索关键词趋势</h2><p className="mt-1 text-sm text-ink/55">基于成功提交并完成检索的真实搜索事件；按东京自然日统计。</p></div>
               <Badge tone="blue">Asia/Tokyo</Badge>
             </div>
-            <form className="relative mt-5 grid gap-3 rounded-2xl border border-line bg-paper/60 p-4 md:grid-cols-2 xl:grid-cols-[180px_1fr_230px_auto]" onSubmit={(event) => { event.preventDefault(); void loadAnalytics(); }}>
+            <form className="relative mt-5 grid gap-3 rounded-2xl border border-line bg-paper p-4 md:grid-cols-2 xl:grid-cols-[180px_1fr_230px_auto]" onSubmit={(event) => { event.preventDefault(); void loadAnalytics(); }}>
               <Field label="时间范围"><select className={inputClass} onChange={(event) => setPeriod(event.target.value as PeriodPreset)} value={period}><option value="today">今日</option><option value="last7days">近7天</option><option value="last30days">近30天</option><option value="month">本月</option><option value="year">今年</option><option value="custom">自定义</option></select></Field>
               <div className="grid gap-3 sm:grid-cols-2">
                 {period === "custom" ? <><Field label="开始日期"><input className={inputClass} onChange={(event) => setCustomStart(event.target.value)} type="date" value={customStart} /></Field><Field label="结束日期"><input className={inputClass} onChange={(event) => setCustomEnd(event.target.value)} type="date" value={customEnd} /></Field></> : <><Field label="城市（留空为全部）"><input className={inputClass} onChange={(event) => setCity(event.target.value)} placeholder="例如：東京都" value={city} /></Field><Field label="服务类型"><select className={inputClass} onChange={(event) => setAnalyticsCategoryId(event.target.value ? Number(event.target.value) : undefined)} value={analyticsCategoryId ?? ""}><option value="">全部服务类型</option>{categories.map((item) => <option key={item.id} value={item.id}>{localizedName(item)}</option>)}</select></Field></>}
@@ -584,7 +584,7 @@ export function ServiceSearchAnalyticsPage() {
             {analyticsError ? <div className="mt-4 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm font-black text-red-700">{analyticsError}</div> : null}
 
             <div className="relative mt-5 grid gap-5 xl:grid-cols-[380px_1fr]">
-              <div className="rounded-2xl border border-line bg-paper/55 p-4">
+              <div className="rounded-2xl border border-line bg-paper p-4">
                 <div className="flex items-center justify-between"><h3 className="font-black">搜索关键词 TOP10</h3><span className="text-xs font-black text-ink/45">点击加入对比</span></div>
                 <div className="mt-4 grid gap-2">
                   {topKeywords?.list.map((item, index) => (
