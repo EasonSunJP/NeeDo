@@ -160,8 +160,10 @@ export function OperatingCostsPage() {
       await action();
       setNotice(success);
       await load();
+      return true;
     } catch (mutationError) {
       setError(errorMessage(mutationError));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -169,7 +171,7 @@ export function OperatingCostsPage() {
   const submit = async () => {
     try {
       const configuration = toConfiguration(draft);
-      await mutate(
+      const succeeded = await mutate(
         () =>
           editing
             ? platformPartnersApi.updateOperatingCost(
@@ -182,8 +184,10 @@ export function OperatingCostsPage() {
               }),
         editing ? "运营成本草稿已更新" : "运营成本草稿已创建",
       );
-      setEditing(null);
-      setDraft(emptyDraft());
+      if (succeeded) {
+        setEditing(null);
+        setDraft(emptyDraft());
+      }
     } catch (validationError) {
       setError(errorMessage(validationError));
     }
@@ -479,7 +483,7 @@ export function OperatingCostsPage() {
               正在读取正式运营成本…
             </div>
           ) : null}
-          {!loading && !error ? (
+          {!loading && data ? (
             <div className="space-y-4">
               {data?.list.map((item) => (
                 <article
