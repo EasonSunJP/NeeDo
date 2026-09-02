@@ -168,6 +168,8 @@ interface HarnessOptions {
   failSlotUpdateId?: number;
   ordinaryPending?: boolean;
   replacementSlotId?: number;
+  slot30Capacity?: number;
+  slot30BookedCount?: number;
   customerConflict?: boolean;
   externalBookingConflict?: boolean;
   externalParticipantConflict?: boolean;
@@ -189,6 +191,10 @@ const createHarness = (options: HarnessOptions = {}) => {
   const participants = makeParticipants();
   options.participantMutator?.(participants);
   const slots = makeSlots();
+  const slot30 = slots.find((slot) => slot.id === 30)!;
+  slot30.capacity = options.slot30Capacity ?? slot30.capacity;
+  slot30.bookedCount = options.slot30BookedCount ?? slot30.bookedCount;
+  slot30.status = slot30.bookedCount >= slot30.capacity ? "BOOKED" : "AVAILABLE";
   const events: any[] = [];
   const notifications: any[] = [];
   const audits: any[] = [];
@@ -197,6 +203,7 @@ const createHarness = (options: HarnessOptions = {}) => {
     externalParticipantConflicts: 0,
     orderCreateAttempts: 0
   };
+  const slotQueryIncludes: any[] = [];
   let remainingOrderNoCollisions = options.orderNoCollisionCount ?? 0;
   const replacementSlotId = options.replacementSlotId ?? 40;
   const orders: any[] = options.ordinaryPending
@@ -431,9 +438,10 @@ const createHarness = (options: HarnessOptions = {}) => {
         })
       },
       scheduleSlot: {
-        findMany: jest.fn(async ({ where }: any) =>
-          structuredClone(stagedSlots.filter((slot) => where.id.in.includes(slot.id)))
-        ),
+        findMany: jest.fn(async ({ where, include }: any) => {
+          slotQueryIncludes.push(include);
+          return structuredClone(stagedSlots.filter((slot) => where.id.in.includes(slot.id)));
+        }),
         updateMany: jest.fn(async ({ where, data }: any) => {
           const slot = stagedSlots.find((candidate) => candidate.id === where.id);
           if (!slot) return { count: 0 };
@@ -578,7 +586,8 @@ const createHarness = (options: HarnessOptions = {}) => {
     notifications,
     audits,
     orders,
-    queryCounts
+    queryCounts,
+    slotQueryIncludes
   };
 };
 
@@ -813,6 +822,31 @@ describe("ExchangeBookingConversionRepository", () => {
     });
   });
 
+  it("releases a capacity-one same-target ordinary PENDING order before full capacity validation", async () => {
+    const h = createHarness({
+      ordinaryPending: true,
+      replacementSlotId: 30,
+      slot30Capacity: 1
+    });
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    expect(h.orders.find((order) => order.id === 800)?.status).toBe("CANCELLED");
+    expect(h.slots.find((slot) => slot.id === 30)).toMatchObject({
+      capacity: 1,
+      bookedCount: 1,
+      status: "BOOKED"
+    });
+  });
+
+  it("does not weaken capacity validation for an unrelated full capacity-one slot", async () => {
+    const h = createHarness({ slot30Capacity: 1, slot30BookedCount: 1 });
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toEqual({ outcome: "slot_unavailable" });
+    expect(h.committedWrites).toEqual([]);
+  });
+
   it("locks replacement slots in ascending union order even when the old slot sorts first", async () => {
     const h = createHarness({ ordinaryPending: true, replacementSlotId: 10 });
     const repository = new ExchangeBookingConversionRepository(h.client);
@@ -833,6 +867,21 @@ describe("ExchangeBookingConversionRepository", () => {
 
     await expect(repository.convert(input())).resolves.toEqual({ outcome: "slot_unavailable" });
     expect(h.committedWrites).toEqual([]);
+  });
+
+  it("projects only canonical lowercase active shop suspensions", async () => {
+    const h = createHarness();
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    expect(h.slotQueryIncludes).toHaveLength(2);
+    for (const include of h.slotQueryIncludes) {
+      expect(include.shop.select.entitySuspensions.where).toEqual({
+        status: "active",
+        activeKey: { not: null },
+        deletedAt: null
+      });
+    }
   });
 
   it("uses one batched Booking query and one batched active-Participant query for external overlaps", async () => {

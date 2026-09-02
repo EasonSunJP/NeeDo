@@ -66,7 +66,7 @@ const slotInclude = {
       pricingMode: true,
       deletedAt: true,
       entitySuspensions: {
-        where: { status: "ACTIVE", activeKey: { not: null }, deletedAt: null },
+        where: { status: "active", activeKey: { not: null }, deletedAt: null },
         select: { id: true }
       }
     }
@@ -378,7 +378,14 @@ export class ExchangeBookingConversionRepository {
     if (slots.length !== slotIds.length) this.abort("slot_unavailable");
     let slotsById = new Map(slots.map((slot) => [slot.id, slot]));
 
-    this.validateParticipants(participants, slotsById, input.occurredAt);
+    const selectedReleaseCounts = this.countReplacementSlots(superseded);
+    this.validateParticipantStructureAndLiveEligibility(participants, slotsById, input.occurredAt);
+    this.validateParticipantAvailability(
+      participants,
+      slotsById,
+      input.occurredAt,
+      selectedReleaseCounts
+    );
     await this.validateExternalOverlaps(participants, participantIds);
 
     await this.validateCustomerOverlap(
@@ -401,7 +408,8 @@ export class ExchangeBookingConversionRepository {
     });
     if (reloadedSlots.length !== slotIds.length) this.abort("slot_unavailable");
     slotsById = new Map(reloadedSlots.map((slot) => [slot.id, slot]));
-    this.validateParticipants(participants, slotsById, input.occurredAt);
+    this.validateParticipantStructureAndLiveEligibility(participants, slotsById, input.occurredAt);
+    this.validateParticipantAvailability(participants, slotsById, input.occurredAt);
 
     const serviceMode = demand.serviceMode === "HOME" ? "home" : "store";
     const created: CreatedOrder[] = [];
@@ -719,7 +727,7 @@ export class ExchangeBookingConversionRepository {
     return rows.length === 1;
   }
 
-  private validateParticipants(
+  private validateParticipantStructureAndLiveEligibility(
     participants: ParticipantRow[],
     slotsById: Map<number, SlotRow>,
     occurredAt: Date
@@ -744,9 +752,6 @@ export class ExchangeBookingConversionRepository {
         participant.estimatedStartsAt >= participant.estimatedEndsAt ||
         !participant.participantIdentity.publicIdentifier ||
         !slot ||
-        slot.status !== ScheduleSlotStatus.AVAILABLE ||
-        slot.startsAt <= occurredAt ||
-        slot.bookedCount >= slot.capacity ||
         slot.shopId !== participant.shopId ||
         slot.technicianProfileId !== participant.technicianProfileId ||
         slot.serviceId !== participant.serviceId ||
@@ -805,6 +810,41 @@ export class ExchangeBookingConversionRepository {
         this.abort("slot_unavailable");
       }
     }
+  }
+
+  private validateParticipantAvailability(
+    participants: ParticipantRow[],
+    slotsById: Map<number, SlotRow>,
+    occurredAt: Date,
+    selectedReleaseCounts: ReadonlyMap<number, number> = new Map()
+  ): void {
+    for (const participant of participants) {
+      const slot = slotsById.get(participant.scheduleSlotId);
+      if (!slot || slot.startsAt <= occurredAt) this.abort("slot_unavailable");
+
+      const selectedReleaseCount = selectedReleaseCounts.get(slot.id) ?? 0;
+      const currentlyAvailable =
+        slot.status === ScheduleSlotStatus.AVAILABLE && slot.bookedCount < slot.capacity;
+      const availableAfterSelectedRelease =
+        selectedReleaseCount > 0 &&
+        (slot.status === ScheduleSlotStatus.AVAILABLE ||
+          slot.status === ScheduleSlotStatus.BOOKED) &&
+        slot.bookedCount >= selectedReleaseCount &&
+        slot.bookedCount - selectedReleaseCount < slot.capacity;
+      if (!currentlyAvailable && !availableAfterSelectedRelease) {
+        this.abort("slot_unavailable");
+      }
+    }
+  }
+
+  private countReplacementSlots(
+    superseded: Array<{ scheduleSlotId: number }>
+  ): Map<number, number> {
+    const counts = new Map<number, number>();
+    for (const order of superseded) {
+      counts.set(order.scheduleSlotId, (counts.get(order.scheduleSlotId) ?? 0) + 1);
+    }
+    return counts;
   }
 
   private async validateExternalOverlaps(
@@ -892,10 +932,7 @@ export class ExchangeBookingConversionRepository {
     });
     if (cancelled.count !== superseded.length) this.abort("slot_unavailable");
 
-    const releaseCounts = new Map<number, number>();
-    for (const order of superseded) {
-      releaseCounts.set(order.scheduleSlotId, (releaseCounts.get(order.scheduleSlotId) ?? 0) + 1);
-    }
+    const releaseCounts = this.countReplacementSlots(superseded);
     for (const [scheduleSlotId, releaseCount] of [...releaseCounts].sort(
       ([left], [right]) => left - right
     )) {
