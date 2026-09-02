@@ -1293,6 +1293,7 @@ export default function App() {
               <Route path="/merchant/settings/delete-account" element={protect("merchant", <UnifiedSettingsDeleteAccountPage portal="merchant" />)} />
               <Route path="/merchant/:view" element={protect("merchant", <MerchantPortalPage />)} />
               <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
+              <Route path="/merchant-admin/analytics" element={protect("merchant", <Navigate replace to="/merchant-admin" />)} />
               <Route path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <MembershipAnalyticsPage scope="merchant-admin" />)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
@@ -1397,6 +1398,7 @@ export default function App() {
               <Route path="/technician/:view" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
 
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
+              <Route path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)} />
               <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <DashboardMetricDetailPage />)} />
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <MembershipAnalyticsPage scope="backoffice" />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />

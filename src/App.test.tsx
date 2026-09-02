@@ -123,7 +123,7 @@ describe("production route chunk boundaries", () => {
     );
   });
 
-  it("mounts one operations data dashboard route and removes the legacy analytics route", () => {
+  it("mounts one operations data dashboard and redirects the legacy analytics route", () => {
     expect(appSource.match(/path="\/admin" element=/g)).toHaveLength(1);
     expect(appSource).toContain(
       'path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)}'
@@ -144,19 +144,23 @@ describe("production route chunk boundaries", () => {
       'path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <MembershipAnalyticsPage scope="merchant-admin" />)}'
     );
     expect(appSource).not.toContain('import { AnalyticsPage } from "./pages/admin/AnalyticsPage";');
-    expect(appSource).not.toContain('path="/admin/analytics" element=');
+    expect(appSource).toContain(
+      'path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)}'
+    );
     expect(appSource).not.toContain("<AnalyticsPage />");
   });
 
-  it("mounts one merchant data dashboard route and deletes the legacy analytics page", () => {
+  it("mounts one merchant data dashboard and redirects the legacy analytics route", () => {
     const oldAnalyticsPath = ["/merchant-admin", "analytics"].join("/");
-    const oldAnalyticsPage = ["MerchantAdmin", "AnalyticsPage"].join("");
     expect(appSource.match(/path="\/merchant-admin" element=/g)).toHaveLength(1);
     expect(appSource).toContain(
       'path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)}'
     );
-    expect(appSource).not.toContain(oldAnalyticsPage);
-    expect(appSource).not.toContain(`path="${oldAnalyticsPath}"`);
+    expect(appSource).not.toContain('import { MerchantAdminAnalyticsPage }');
+    expect(appSource).not.toContain("<MerchantAdminAnalyticsPage />");
+    expect(appSource).toContain(
+      `path="${oldAnalyticsPath}" element={protect("merchant", <Navigate replace to="/merchant-admin" />)}`
+    );
   });
 
   it("loads the large technician portal only after entering a technician route", () => {
