@@ -33,6 +33,7 @@ type AdminNavSection = {
   key: string;
   title: string;
   badge?: string;
+  disabled?: boolean;
   items: AdminNavItem[];
 };
 
@@ -45,7 +46,7 @@ type AdminUtilityLink = {
 const navSections: AdminNavSection[] = [
   {
     key: "platform",
-    title: "平台运营",
+    title: "运营管理",
     items: [
       { label: "数据大盘", to: "/admin", icon: "◆", permission: "menu:dashboard" },
       { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", children: ["搜索筛选", "城市跟进", "异常观察"] },
@@ -134,6 +135,20 @@ const navSections: AdminNavSection[] = [
     items: [
       { label: "代理能力状态", to: "/admin/afirieito", icon: "代", children: ["申请审核", "范围权限", "结算合同"] }
     ]
+  },
+  {
+    key: "franchisees",
+    title: "加盟商",
+    badge: "TEST",
+    disabled: true,
+    items: []
+  },
+  {
+    key: "suppliers",
+    title: "供货商",
+    badge: "TEST",
+    disabled: true,
+    items: []
   },
   {
     key: "settings",
@@ -278,7 +293,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     : item.label
             }))
         }))
-        .filter((section) => section.items.length > 0),
+        .filter((section) => section.disabled || section.items.length > 0),
     [canAccessMenu, language]
   );
   const routeSectionKey = getSectionForRoute(location.pathname, location.search);
@@ -295,6 +310,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   const openSection = (sectionKey: string) => {
     const section = visibleNavSections.find((item) => item.key === sectionKey) ?? visibleNavSections[0] ?? navSections[0];
+    if (section.disabled) return;
     setActiveSectionKey(section.key);
     navigate(section.items[0]?.to ?? "/admin");
     setMobileNavOpen(false);
@@ -406,8 +422,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               {visibleNavSections.map((section) => (
                 <section className="rounded-lg border border-line bg-paper p-3" key={section.key}>
                   <button
+                    aria-disabled={section.disabled}
                     aria-label={section.badge ? `${section.title} ${section.badge}` : section.title}
-                    className={cn("relative w-full rounded-lg px-3 py-3 text-left text-sm font-black", activeSectionKey === section.key ? "bg-ink text-white" : "bg-white text-ink")}
+                    className={cn("relative w-full rounded-lg px-3 py-3 text-left text-sm font-black", activeSectionKey === section.key ? "bg-ink text-white" : "bg-white text-ink", section.disabled && "cursor-not-allowed opacity-55")}
+                    disabled={section.disabled}
                     onClick={() => openSection(section.key)}
                     type="button"
                   >
@@ -457,16 +475,19 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 <div className="admin-section-tabs scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-paper px-1 py-2">
                   {visibleNavSections.map((section) => (
                     <button
+                      aria-disabled={section.disabled}
                       aria-label={section.badge ? `${section.title} ${section.badge}` : section.title}
                       className={cn(
                         "admin-section-tab focus-ring relative h-8 shrink-0 rounded-md px-3 text-xs font-black transition",
-                        activeSectionKey === section.key ? "is-active" : "text-ink/55 hover:bg-white hover:text-ink"
+                        activeSectionKey === section.key ? "is-active" : "text-ink/55 hover:bg-white hover:text-ink",
+                        section.disabled && "cursor-not-allowed opacity-55 hover:bg-transparent"
                       )}
+                      disabled={section.disabled}
                       key={section.key}
                       onClick={() => openSection(section.key)}
                       type="button"
                     >
-                      {section.title === "平台运营" ? "PF運営" : section.title}
+                      {section.title}
                       {section.badge ? (
                         <span aria-hidden="true" className="absolute -right-1 -top-2 rounded-full bg-coral px-1.5 py-0.5 text-[8px] font-black leading-none tracking-[0.08em] text-white shadow-sm" data-no-i18n>
                           {section.badge}

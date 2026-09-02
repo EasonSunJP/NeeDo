@@ -46,6 +46,9 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 type TranslationMap = Record<string, TranslationEntry>;
 
 const analyticsTask6Translations: TranslationMap = {
+  "运营管理": fourLanguageTranslation("營運管理", "運営管理", "Operations management", "운영 관리"),
+  "加盟商": fourLanguageTranslation("加盟商", "加盟店", "Franchisees", "가맹점"),
+  "供货商": fourLanguageTranslation("供貨商", "仕入先", "Suppliers", "공급업체"),
   "运营财务": fourLanguageTranslation("營運財務", "運営財務", "Operations finance", "운영 재무"),
   "佣金统计": fourLanguageTranslation("佣金統計", "報酬集計", "Commission metrics", "수수료 통계"),
   "用户与增长": fourLanguageTranslation("使用者與成長", "ユーザーと成長", "Users and growth", "사용자 및 성장"),
