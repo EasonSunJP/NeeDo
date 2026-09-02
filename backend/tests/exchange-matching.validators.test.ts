@@ -118,20 +118,34 @@ describe("Exchange selective exact matching validators", () => {
       EXCHANGE_MATCH_TIME_CONFLICT: 40997,
       EXCHANGE_MATCH_IDEMPOTENCY_CONFLICT: 40998,
       EXCHANGE_MATCH_TARGET_CONFIRMATION_REQUIRED: 40999,
-      EXCHANGE_MATCH_BUDGET_CONFIRMATION_REQUIRED: 41001
+      EXCHANGE_MATCH_BUDGET_CONFIRMATION_REQUIRED: 41001,
+      EXCHANGE_MATCH_BOOKING_INVALID_STATE: 41009,
+      EXCHANGE_MATCH_BOOKING_IDEMPOTENCY_CONFLICT: 41013
     });
   });
 
   it("grants matched providers read-only matching access while keeping selection and booking owner-only", () => {
     expect(EXCHANGE_PERMISSIONS).toMatchObject({
       matchingReadOwn: "exchange:matching:read-own",
-      matchingSelectOwn: "exchange:matching:select-own"
+      matchingSelectOwn: "exchange:matching:select-own",
+      matchingBookOwn: "exchange:matching:book-own"
     });
     const assignments = buildRolePermissionAssignments();
-    for (const permission of ["exchange:matching:read-own", "exchange:matching:select-own"]) {
+    for (const permission of [
+      "exchange:matching:read-own",
+      "exchange:matching:select-own",
+      "exchange:matching:book-own"
+    ]) {
       expect(SYSTEM_PERMISSION_CODES.filter((code) => code === permission)).toHaveLength(1);
-      expect(assignments.customer).toContain(permission);
-      expect(assignments.merchant_owner).toContain(permission);
+    }
+    for (const role of ["customer", "merchant_owner"] as const) {
+      expect(assignments[role]).toEqual(
+        expect.arrayContaining([
+          "exchange:matching:read-own",
+          "exchange:matching:select-own",
+          "exchange:matching:book-own"
+        ])
+      );
     }
     for (const role of ["merchant_staff", "technician"] as const) {
       expect(assignments[role]).toContain("exchange:matching:read-own");

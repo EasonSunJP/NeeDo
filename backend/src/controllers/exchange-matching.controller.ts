@@ -25,7 +25,7 @@ export class ExchangeMatchingController {
           getAuthenticatedAccess(response),
           id,
           selectExchangeMatchSchema.parse(request.body),
-          response.locals.exchangeMatchingIdempotencyKey as string,
+          response.locals.exchangeIdempotencyKey as string,
           getRequestContext(request)
         )
       )

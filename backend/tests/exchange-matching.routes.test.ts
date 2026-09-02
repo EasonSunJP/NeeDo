@@ -12,7 +12,7 @@ const matching: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 0,
   matchedAt: null,
   participants: [],
-  viewer: { canSelect: true }
+  viewer: { canSelect: true, canCreateBookings: false }
 };
 
 describe("formal Exchange matching routes", () => {
