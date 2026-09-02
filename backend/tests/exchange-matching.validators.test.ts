@@ -122,21 +122,21 @@ describe("Exchange selective exact matching validators", () => {
     });
   });
 
-  it("registers and grants only the owner matching permissions", () => {
+  it("grants matched providers read-only matching access while keeping selection and booking owner-only", () => {
     expect(EXCHANGE_PERMISSIONS).toMatchObject({
       matchingReadOwn: "exchange:matching:read-own",
       matchingSelectOwn: "exchange:matching:select-own"
     });
     const assignments = buildRolePermissionAssignments();
-    for (const permission of [
-      "exchange:matching:read-own",
-      "exchange:matching:select-own"
-    ]) {
+    for (const permission of ["exchange:matching:read-own", "exchange:matching:select-own"]) {
       expect(SYSTEM_PERMISSION_CODES.filter((code) => code === permission)).toHaveLength(1);
       expect(assignments.customer).toContain(permission);
       expect(assignments.merchant_owner).toContain(permission);
-      expect(assignments.merchant_staff).not.toContain(permission);
-      expect(assignments.technician).not.toContain(permission);
+    }
+    for (const role of ["merchant_staff", "technician"] as const) {
+      expect(assignments[role]).toContain("exchange:matching:read-own");
+      expect(assignments[role]).not.toContain("exchange:matching:select-own");
+      expect(assignments[role]).not.toContain("exchange:matching:book-own");
     }
   });
 });

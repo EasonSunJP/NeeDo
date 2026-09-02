@@ -130,6 +130,146 @@ describe("ExchangeMatchingRepository", () => {
     );
   });
 
+  it("enables booking creation for a matched owner only when every participant remains unbooked", async () => {
+    const repository = new ExchangeMatchingRepository({
+      exchangeRequestMatching: {
+        findFirst: jest.fn(async () => ({
+          id: 51,
+          exchangePostId: 41,
+          status: ExchangeMatchingStatus.MATCHED,
+          effectiveTargetProviderCount: 1,
+          effectiveBudgetMaxJpy: 15_000,
+          selectedQuoteTotalJpy: 15_000,
+          version: 4,
+          matchedAt: at,
+          exchangePost: {
+            id: 41,
+            authorUserId: 7,
+            ownerIdentityId: 17,
+            type: ExchangePostType.DEMAND,
+            status: ExchangePostStatus.MATCHED,
+            expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+            demand: { matchMode: ExchangeMatchMode.SELECTIVE }
+          },
+          participants: [
+            {
+              exchangeClaimId: 301,
+              participantIdentityId: 18,
+              shop: { id: 11, name: "Aoyama Care" },
+              technicianProfile: {
+                id: 81,
+                displayName: "山田 花子",
+                user: {
+                  identities: [
+                    { displayName: "山田 花子", publicIdentifier: { publicId: "S000000081" } }
+                  ]
+                }
+              },
+              exchangeClaim: {
+                claimantIdentity: {
+                  displayName: "青山店",
+                  publicIdentifier: { publicId: "M000000018" },
+                  user: { username: "aoyama", avatarUrl: null }
+                }
+              },
+              serviceId: 501,
+              technicianServiceId: null,
+              serviceNameSnapshot: "Matched service snapshot",
+              serviceDurationSnapshot: 90,
+              quoteAmountJpy: 15_000,
+              scheduleSlotId: 91,
+              estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+              estimatedEndsAt: new Date("2026-09-02T02:30:00.000Z"),
+              matchedAt: at,
+              bookingOrderId: null,
+              bookingOrder: null
+            }
+          ]
+        }))
+      }
+    } as unknown as PrismaClient);
+
+    await expect(repository.findForViewer(41, 17)).resolves.toMatchObject({
+      payload: { viewer: { canCreateBookings: true } }
+    });
+  });
+
+  it("maps every formal BookingOrder status in the matching projection", async () => {
+    const expectedStatuses = [
+      ["PENDING", "pending"],
+      ["CONFIRMED", "confirmed"],
+      ["IN_SERVICE", "inService"],
+      ["AWAITING_CHECKOUT", "awaitingCheckout"],
+      ["AWAITING_PAYMENT_CONFIRMATION", "awaitingPaymentConfirmation"],
+      ["COMPLETED", "completed"],
+      ["CANCELLED", "cancelled"]
+    ] as const;
+
+    for (const [databaseStatus, expectedStatus] of expectedStatuses) {
+      const repository = new ExchangeMatchingRepository({
+        exchangeRequestMatching: {
+          findFirst: jest.fn(async () => ({
+            id: 51,
+            exchangePostId: 41,
+            status: ExchangeMatchingStatus.MATCHED,
+            effectiveTargetProviderCount: 1,
+            effectiveBudgetMaxJpy: 15_000,
+            selectedQuoteTotalJpy: 15_000,
+            version: 4,
+            matchedAt: at,
+            exchangePost: {
+              id: 41,
+              authorUserId: 7,
+              ownerIdentityId: 17,
+              type: ExchangePostType.DEMAND,
+              status: ExchangePostStatus.MATCHED,
+              expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+              demand: { matchMode: ExchangeMatchMode.SELECTIVE }
+            },
+            participants: [
+              {
+                exchangeClaimId: 301,
+                participantIdentityId: 18,
+                shop: { id: 11, name: "Aoyama Care" },
+                technicianProfile: {
+                  id: 81,
+                  displayName: "山田 花子",
+                  user: {
+                    identities: [
+                      { displayName: "山田 花子", publicIdentifier: { publicId: "S000000081" } }
+                    ]
+                  }
+                },
+                exchangeClaim: {
+                  claimantIdentity: {
+                    displayName: "青山店",
+                    publicIdentifier: { publicId: "M000000018" },
+                    user: { username: "aoyama", avatarUrl: null }
+                  }
+                },
+                serviceId: 501,
+                technicianServiceId: null,
+                serviceNameSnapshot: "Matched service snapshot",
+                serviceDurationSnapshot: 90,
+                quoteAmountJpy: 15_000,
+                scheduleSlotId: 91,
+                estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+                estimatedEndsAt: new Date("2026-09-02T02:30:00.000Z"),
+                matchedAt: at,
+                bookingOrderId: 501,
+                bookingOrder: { id: 501, orderNo: "ND501", status: databaseStatus }
+              }
+            ]
+          }))
+        }
+      } as unknown as PrismaClient);
+
+      await expect(repository.findForViewer(41, 17)).resolves.toMatchObject({
+        payload: { participants: [{ booking: { status: expectedStatus } }] }
+      });
+    }
+  });
+
   it("locks Request then matching before reading the aggregate", async () => {
     const events: string[] = [];
     const queryRaw = jest.fn(async (query: { sql?: string }) => {
