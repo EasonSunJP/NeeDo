@@ -37,6 +37,7 @@
     "check:shop-membership-card-redemption-flow": "tsx scripts/check-shop-membership-card-redemption-flow.ts",
     "check:shop-membership-card-refund-flow": "tsx scripts/check-shop-membership-card-refund-flow.ts",
     "check:order-acceptance-control-flow": "tsx scripts/check-order-acceptance-control-flow.ts && tsx scripts/check-affiliate-checkout-attribution-flow.ts",
+    "check:booking-expiry-rollback": "tsx scripts/check-booking-expiry-rollback.ts",
     "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:order-fulfillment-checkout": "tsx scripts/check-order-fulfillment-checkout-flow.ts",
     "check:dashboard-overview": "tsx scripts/check-dashboard-overview-flow.ts",

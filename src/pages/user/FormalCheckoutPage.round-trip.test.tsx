@@ -244,6 +244,7 @@ afterEach(async () => {
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("formal checkout technician-card round trip", () => {
@@ -391,5 +392,53 @@ describe("formal checkout technician-card round trip", () => {
       serviceId: 31,
       scheduleSlotId: 102
     })));
+  });
+
+  it("expires the selected slot at its start boundary and never submits the stale selection", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-02T22:59:59.000Z"));
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: slots,
+      total: slots.length,
+      page: 1,
+      page_size: 100
+    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue(createdOrder);
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=store"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const timeTrigger = container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!;
+    expect(timeTrigger.textContent).toContain("08:00");
+    await click(timeTrigger);
+    const selectedOption = container.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')!;
+    expect(selectedOption.textContent?.trim()).toBe("08:00");
+    expect(selectedOption.disabled).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_001);
+    });
+
+    expect(selectedOption.disabled).toBe(true);
+    expect(container.querySelector('[role="option"][aria-selected="true"]')).toBeNull();
+    expect(timeTrigger.textContent).toContain("—");
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    expect(confirm.disabled).toBe(true);
+    await click(confirm);
+    expect(createBooking).not.toHaveBeenCalled();
   });
 });

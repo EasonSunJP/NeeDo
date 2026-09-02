@@ -10,7 +10,8 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("coreReadApi.getServiceDetail(serviceId)");
     expect(formalSource).toContain("bookingApi.listAvailability");
     expect(formalSource).toContain("bookingApi.createBooking");
-    expect(formalSource).toContain("scheduleSlotId: selectedSlot.id");
+    expect(formalSource).toContain("isCheckoutSlotBookable(slot, Date.now())");
+    expect(formalSource).toContain("scheduleSlotId: freshSelectedSlot.id");
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");
   });
 

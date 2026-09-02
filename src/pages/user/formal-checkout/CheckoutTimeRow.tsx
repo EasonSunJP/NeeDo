@@ -8,17 +8,20 @@ import {
   slotsForCheckoutDate
 } from "./checkoutTimeSlots";
 
-export function CheckoutTimeRow({ date, people, slots, selectedSlotId, onSelect }: {
+export function CheckoutTimeRow({ date, people, slots, selectedSlotId, nowMs = Date.now(), onSelect }: {
   date: string;
   people: string;
   slots: BookingScheduleSlot[];
   selectedSlotId: number | null;
+  nowMs?: number;
   onSelect: (slotId: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sameDaySlots = useMemo(() => slotsForCheckoutDate(slots, date), [date, slots]);
-  const selectedSlot = sameDaySlots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot)) ?? null;
+  const selectedSlot = sameDaySlots.find(
+    (slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, nowMs)
+  ) ?? null;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -71,7 +74,7 @@ export function CheckoutTimeRow({ date, people, slots, selectedSlotId, onSelect 
           role="listbox"
         >
           {sameDaySlots.map((slot) => {
-            const bookable = isCheckoutSlotBookable(slot);
+            const bookable = isCheckoutSlotBookable(slot, nowMs);
             const selected = slot.id === selectedSlotId;
             const time = getTokyoSlotParts(slot.startsAt)?.time ?? "—";
             return (

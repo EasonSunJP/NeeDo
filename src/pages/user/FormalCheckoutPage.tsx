@@ -105,6 +105,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CoreServiceDetail | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [checkoutNowMs, setCheckoutNowMs] = useState(() => Date.now());
   const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
   const [technicianLoadStatus, setTechnicianLoadStatus] = useState<TechnicianLoadStatus>("idle");
   const [selectedDate] = useState(() => {
@@ -171,6 +172,29 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   }, [persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
 
   useEffect(() => {
+    const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
+      const startsAtMs = new Date(slot.startsAt).getTime();
+      if (!Number.isFinite(startsAtMs) || startsAtMs <= checkoutNowMs) return earliest;
+      return earliest === null || startsAtMs < earliest ? startsAtMs : earliest;
+    }, null);
+    if (nextBoundaryMs === null) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setCheckoutNowMs(Date.now());
+    }, Math.max(0, nextBoundaryMs - Date.now()));
+    return () => window.clearTimeout(timeoutId);
+  }, [checkoutNowMs, slots]);
+
+  useEffect(() => {
+    if (
+      selectedSlotId !== null
+      && !slots.some((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs))
+    ) {
+      setSelectedSlotId(null);
+    }
+  }, [checkoutNowMs, selectedSlotId, slots]);
+
+  useEffect(() => {
     const updateProgressByScroll = () => {
       const progressBottom = progressBarRef.current?.getBoundingClientRect().bottom ?? 138;
       const sectionTops = sectionRefs.current.map(
@@ -194,8 +218,8 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   }, [loadStatus]);
 
   const selectedSlot = useMemo(
-    () => slots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot)) ?? null,
-    [selectedSlotId, slots]
+    () => slots.find((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs)) ?? null,
+    [checkoutNowMs, selectedSlotId, slots]
   );
   const selectedTechnicianProfileId = selectedSlot?.technicianProfileId ?? null;
 
@@ -273,7 +297,9 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   };
 
   const selectCheckoutSlot = (slotId: number) => {
-    const slot = slots.find((candidate) => candidate.id === slotId && isCheckoutSlotBookable(candidate));
+    const slot = slots.find(
+      (candidate) => candidate.id === slotId && isCheckoutSlotBookable(candidate, Date.now())
+    );
     if (!slot) return;
     const selectedTime = getTokyoSlotParts(slot.startsAt)?.time;
     if (!selectedTime) return;
@@ -324,7 +350,14 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   };
 
   const submitBooking = async () => {
-    if (!selectedSlot || submitting) return;
+    if (submitting) return;
+    const freshSelectedSlot = slots.find(
+      (slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, Date.now())
+    );
+    if (!freshSelectedSlot) {
+      setSelectedSlotId(null);
+      return;
+    }
     if (!isAuthenticated) {
       navigate(`/login/user?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
@@ -339,7 +372,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     try {
       const order = await bookingApi.createBooking({
         serviceId,
-        scheduleSlotId: selectedSlot.id,
+        scheduleSlotId: freshSelectedSlot.id,
         fulfillmentMode,
         paymentMethod,
         note: [fulfillmentMode === "home" ? `上门地址：${address.trim()}` : "", note.trim()]
@@ -510,6 +543,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 <>
                   <CheckoutTimeRow
                     date={selectedDate}
+                    nowMs={checkoutNowMs}
                     onSelect={selectCheckoutSlot}
                     people={people}
                     selectedSlotId={selectedSlotId}
