@@ -53,10 +53,18 @@ export function slotsForCheckoutDate(slots: BookingScheduleSlot[], date: string)
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
 }
 
-export function resolveInitialCheckoutSlotId(slots: BookingScheduleSlot[], date: string, requestedTime: string | null) {
+export function resolveInitialCheckoutSlotId(
+  slots: BookingScheduleSlot[],
+  date: string,
+  requestedTime: string | null,
+  persistedSlotId: number | null = null
+) {
   const sameDay = slotsForCheckoutDate(slots, date);
+  const persisted = Number.isInteger(persistedSlotId)
+    ? sameDay.find((slot) => slot.id === persistedSlotId && isCheckoutSlotBookable(slot))
+    : null;
   const requested = requestedTime
     ? sameDay.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === requestedTime && isCheckoutSlotBookable(slot))
     : null;
-  return requested?.id ?? sameDay.find(isCheckoutSlotBookable)?.id ?? null;
+  return persisted?.id ?? requested?.id ?? sameDay.find(isCheckoutSlotBookable)?.id ?? null;
 }

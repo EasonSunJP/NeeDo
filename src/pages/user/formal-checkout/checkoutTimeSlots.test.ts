@@ -70,4 +70,17 @@ describe("checkout time slots", () => {
 
     expect(resolveInitialCheckoutSlotId(unavailableDayThenAvailableDay, "2026-09-03", "08:00")).toBeNull();
   });
+
+  it("prefers an exact persisted same-day bookable slot and rejects stale or unbookable persisted ids", () => {
+    const duplicateTimeSlots = [
+      slot(20, "2026-09-02T23:00:00.000Z", "available"),
+      slot(21, "2026-09-02T23:00:00.000Z", "available"),
+      slot(22, "2026-09-03T01:00:00.000Z", "blocked")
+    ];
+
+    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 21)).toBe(21);
+    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 22)).toBe(20);
+    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 999)).toBe(20);
+    expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", "08:00", 4)).toBe(1);
+  });
 });

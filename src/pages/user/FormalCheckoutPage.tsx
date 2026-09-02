@@ -35,6 +35,18 @@ import {
 type LoadStatus = "loading" | "success" | "error";
 
 const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
+const checkoutScheduleSlotStateKey = "checkoutScheduleSlotId";
+
+function checkoutHistoryState(value: unknown) {
+  return value !== null && typeof value === "object"
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function persistedCheckoutScheduleSlotId(value: unknown) {
+  const slotId = checkoutHistoryState(value)[checkoutScheduleSlotStateKey];
+  return typeof slotId === "number" && Number.isInteger(slotId) && slotId > 0 ? slotId : null;
+}
 
 function describeCheckoutError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -109,6 +121,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [activeProgressStep, setActiveProgressStep] = useState(0);
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
+  const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
 
   useEffect(() => {
     if (!selectedDayWindow) return undefined;
@@ -136,7 +149,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
         setService(serviceDetail);
         setSlots(formalSlots);
-        setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime));
+        setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
         setFulfillmentMode(resolveFulfillmentMode(serviceDetail, searchParams.get("mode")));
         setLoadStatus("success");
       })
@@ -151,7 +164,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     return () => {
       active = false;
     };
-  }, [revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
+  }, [persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
 
   useEffect(() => {
     const updateProgressByScroll = () => {
@@ -224,13 +237,23 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
     setSelectedSlotId(slot.id);
     const nextSearchParams = new URLSearchParams(location.search);
-    if (nextSearchParams.get("time") === selectedTime) return;
+    const previousState = checkoutHistoryState(location.state);
+    if (
+      nextSearchParams.get("time") === selectedTime
+      && persistedCheckoutScheduleSlotId(previousState) === slot.id
+    ) return;
     nextSearchParams.set("time", selectedTime);
     navigate({
       pathname: location.pathname,
       search: `?${nextSearchParams.toString()}`,
       hash: location.hash
-    }, { replace: true });
+    }, {
+      replace: true,
+      state: {
+        ...previousState,
+        [checkoutScheduleSlotStateKey]: slot.id
+      }
+    });
   };
 
   const copyAddress = async () => {

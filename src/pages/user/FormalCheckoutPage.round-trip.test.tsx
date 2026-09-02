@@ -102,12 +102,12 @@ const technicianDetail: CoreTechnicianDetail = {
   updatedAt: "2026-09-01T00:00:00.000Z"
 };
 
-const makeSlot = (id: number, startsAt: string): BookingScheduleSlot => ({
+const makeSlot = (id: number, startsAt: string, technicianProfileId = 17, technicianName = "Misaki"): BookingScheduleSlot => ({
   id,
   serviceId: 31,
   technicianServiceId: null,
   shopId: 7,
-  technicianProfileId: 17,
+  technicianProfileId,
   startsAt,
   endsAt: new Date(new Date(startsAt).getTime() + 3_600_000).toISOString(),
   capacity: 1,
@@ -115,7 +115,7 @@ const makeSlot = (id: number, startsAt: string): BookingScheduleSlot => ({
   status: "available",
   serviceName: "肩颈调理",
   shopName: "GINZA Calm Body Lab",
-  technicianName: "Misaki",
+  technicianName,
   priceAmount: "8800.00",
   currency: "JPY",
   durationMinutes: 60
@@ -123,7 +123,8 @@ const makeSlot = (id: number, startsAt: string): BookingScheduleSlot => ({
 
 const slots = [
   makeSlot(101, "2026-09-02T23:00:00.000Z"),
-  makeSlot(102, "2026-09-03T02:30:00.000Z")
+  makeSlot(102, "2026-09-03T02:30:00.000Z", 16, "Haruka"),
+  makeSlot(103, "2026-09-03T02:30:00.000Z", 17, "Misaki")
 ];
 
 const createdOrder: BookingOrder = {
@@ -147,15 +148,15 @@ const createdOrder: BookingOrder = {
   technicianServiceId: null,
   shopId: 7,
   technicianProfileId: 17,
-  scheduleSlotId: 102,
+  scheduleSlotId: 103,
   fulfillmentMode: "store",
   serviceName: "肩颈调理",
   shopName: "GINZA Calm Body Lab",
   technicianName: "Misaki",
   priceAmount: "8800.00",
   currency: "JPY",
-  startsAt: slots[1]!.startsAt,
-  endsAt: slots[1]!.endsAt,
+  startsAt: slots[2]!.startsAt,
+  endsAt: slots[2]!.endsAt,
   note: "quiet",
   cancelReason: null,
   createdAt: "2026-09-03T00:00:00.000Z",
@@ -168,7 +169,18 @@ let root: Root;
 
 function LocationProbe() {
   const location = useLocation();
-  return <output data-testid="location-probe">{`${location.pathname}${location.search}`}</output>;
+  const state = location.state && typeof location.state === "object"
+    ? location.state as Record<string, unknown>
+    : {};
+  return (
+    <output
+      data-checkout-schedule-slot-id={String(state.checkoutScheduleSlotId ?? "")}
+      data-existing-source={String(state.existingSource ?? "")}
+      data-testid="location-probe"
+    >
+      {`${location.pathname}${location.search}`}
+    </output>
+  );
 }
 
 function HistoryBackControl() {
@@ -227,7 +239,7 @@ afterEach(async () => {
 });
 
 describe("formal checkout technician-card round trip", () => {
-  it("keeps the selected formal slot in the replaced checkout URL and submits it after returning", async () => {
+  it("keeps the exact second same-time formal slot and existing history state across the technician-card round trip", async () => {
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
     vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
@@ -242,7 +254,14 @@ describe("formal checkout technician-card round trip", () => {
       root.render(
         <ClientThemeProvider>
           <MemoryRouter
-            initialEntries={["/origin", "/checkout/31?date=2026-09-03&time=08%3A00&mode=store&people=2%E5%90%8D&remark=quiet&coupon=keep"]}
+            initialEntries={[
+              "/origin",
+              {
+                pathname: "/checkout/31",
+                search: "?date=2026-09-03&time=08%3A00&mode=store&people=2%E5%90%8D&remark=quiet&coupon=keep",
+                state: { existingSource: "recommendation" }
+              }
+            ]}
             initialIndex={1}
           >
             <LocationProbe />
@@ -260,17 +279,20 @@ describe("formal checkout technician-card round trip", () => {
     await waitFor(() => expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("08:00"));
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!);
     const elevenThirty = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'))
-      .find((option) => option.textContent?.trim() === "11:30")!;
+      .filter((option) => option.textContent?.trim() === "11:30")[1]!;
     await click(elevenThirty);
 
     await waitFor(() => {
-      const current = container.querySelector('[data-testid="location-probe"]')?.textContent ?? "";
+      const probe = container.querySelector<HTMLOutputElement>('[data-testid="location-probe"]')!;
+      const current = probe.textContent ?? "";
       expect(current).toContain("time=11%3A30");
       expect(current).toContain("date=2026-09-03");
       expect(current).toContain("mode=store");
       expect(current).toContain("people=2%E5%90%8D");
       expect(current).toContain("remark=quiet");
       expect(current).toContain("coupon=keep");
+      expect(probe.dataset.checkoutScheduleSlotId).toBe("103");
+      expect(probe.dataset.existingSource).toBe("recommendation");
     });
 
     const technicianLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/17?view=card"]')!;
@@ -279,13 +301,17 @@ describe("formal checkout technician-card round trip", () => {
     await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回结算页"]')!);
 
     await waitFor(() => expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("11:30"));
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!);
+    const returnedOptions = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+    expect(returnedOptions[2]?.getAttribute("aria-selected")).toBe("true");
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!);
     const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
       .find((button) => button.textContent?.includes("确定预约"))!;
     await click(confirm);
 
     await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
       serviceId: 31,
-      scheduleSlotId: 102
+      scheduleSlotId: 103
     })));
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="测试返回上一条历史"]')!);
     await waitFor(() => expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/origin"));
