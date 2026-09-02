@@ -17,6 +17,77 @@ describe("GET /api/v1/openapi.json", () => {
     expect(`${document.servers[0].url.replace(/\/$/, "")}${loginPath}`).toBe(loginPath);
   });
 
+  it("documents Exchange matching adjustment confirmations and previews", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, { post: { responses: Record<string, { description: string }> } }>;
+      components: {
+        schemas: Record<
+          string,
+          {
+            additionalProperties?: boolean;
+            required?: string[];
+            properties: Record<string, unknown>;
+          }
+        >;
+      };
+    };
+    const request = document.components.schemas.ExchangeMatchSelectRequest;
+    const preview = document.components.schemas.ExchangeMatchAdjustmentPreview;
+
+    expect(request.additionalProperties).toBe(false);
+    expect(request.properties).toEqual(
+      expect.objectContaining({
+        budgetConfirmation: expect.objectContaining({
+          anyOf: expect.arrayContaining([
+            { $ref: "#/components/schemas/ExchangeMatchBudgetConfirmation" },
+            { type: "null" }
+          ])
+        }),
+        targetConfirmation: expect.objectContaining({
+          anyOf: expect.arrayContaining([
+            { $ref: "#/components/schemas/ExchangeMatchTargetConfirmation" },
+            { type: "null" }
+          ])
+        })
+      })
+    );
+    expect(preview.required).toEqual(
+      expect.arrayContaining([
+        "currentVersion",
+        "selectedCount",
+        "selectedQuoteTotalJpy",
+        "effectiveTargetProviderCount",
+        "effectiveBudgetMaxJpy",
+        "requiredTargetProviderCount",
+        "requiredBudgetMaxJpy",
+        "requiredBudgetIncreaseJpy",
+        "requiresTargetConfirmation",
+        "requiresBudgetConfirmation"
+      ])
+    );
+    const conflict = document.paths[
+      "/api/v1/exchange/posts/{id}/matching/select"
+    ].post.responses["409"];
+    expect(conflict).toMatchObject({
+      description: expect.stringContaining("error.exchange.match_target_confirmation_required"),
+      content: {
+        "application/json": {
+          schema: {
+            properties: {
+              data: {
+                anyOf: expect.arrayContaining([
+                  { $ref: "#/components/schemas/ExchangeMatchAdjustmentPreview" },
+                  { type: "null" }
+                ])
+              }
+            }
+          }
+        }
+      }
+    });
+    expect(conflict.description).toContain("error.exchange.match_budget_confirmation_required");
+  });
+
   it("describes the health endpoint with the versioned API prefix", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
 

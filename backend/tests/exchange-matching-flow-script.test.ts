@@ -20,6 +20,13 @@ describe("formal Exchange selective matching database checker", () => {
       "RollbackVerifiedMatchingFlow",
       "ExchangeMatchingService",
       "ExchangeMatchingRepository",
+      "match_target_confirmation_required",
+      "requiresBudgetConfirmation",
+      "requiresTargetConfirmation",
+      "adjustmentPreviewWriteFree",
+      "BUDGET_INCREASED",
+      "TARGET_REDUCED",
+      "adjustmentChainVersionLinked",
       "SELECTIVE_MATCHED",
       "exchange.matching.selected.title",
       "exchange.matching.not_selected.title",
@@ -37,9 +44,9 @@ describe("formal Exchange selective matching database checker", () => {
     expect(source).not.toContain("transaction.category.create");
     expect(source).not.toContain("digits(label.length)");
     const technicianFixture = source.slice(
-      source.indexOf("const [selectedTechnician, losingTechnician]"),
+      source.indexOf("const [selectedTechnician, secondSelectedTechnician, losingTechnician]"),
       source.indexOf("const owner =")
     );
-    expect(technicianFixture.match(/select: \{ id: true \}/gu) ?? []).toHaveLength(2);
+    expect(technicianFixture.match(/select: \{ id: true \}/gu) ?? []).toHaveLength(3);
   });
 });
