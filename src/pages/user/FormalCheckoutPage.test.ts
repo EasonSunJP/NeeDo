@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import formalSource from "./FormalCheckoutPage.tsx?raw";
 import checkoutSource from "./CheckoutPage.tsx?raw";
+import progressSource from "./formal-checkout/CheckoutProgressNav.tsx?raw";
 
 describe("formal customer checkout", () => {
   it("routes numeric services into an isolated API-only checkout", () => {
@@ -37,7 +38,7 @@ describe("formal customer checkout", () => {
 
   it("keeps the production confirmation structure while using formal data", () => {
     for (const label of ["套餐", "到店服务", "时间", "地址", "技师", "备注"]) {
-      expect(formalSource).toContain(`label: "${label}"`);
+      expect(progressSource).toContain(`label: "${label}"`);
     }
     expect(formalSource).toContain("注意事项");
     expect(formalSource).toContain("取消政策");
@@ -46,5 +47,17 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("SocialProfileMiniCard");
     expect(formalSource).not.toContain("选择可预约时段");
     expect(formalSource).not.toContain("提交正式预约");
+  });
+
+  it("tracks six approved sections through the viewport center", () => {
+    expect(formalSource).toContain("progressBarRef");
+    expect(formalSource).toContain("sectionRefs");
+    expect(formalSource).toContain("resolveActiveCheckoutStep");
+    expect(formalSource).toContain('window.addEventListener("scroll"');
+    expect(formalSource).toContain('window.addEventListener("resize"');
+    expect(formalSource).toContain('section.scrollIntoView({ behavior, block: "start" })');
+    expect(formalSource.match(/sectionRefs\.current\[[0-5]\]/g)).toHaveLength(6);
+    expect(formalSource).toContain("<CheckoutProgressNav");
+    expect(formalSource).toContain("activeIndex={activeProgressStep}");
   });
 });

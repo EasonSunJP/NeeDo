@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
@@ -8,8 +8,7 @@ import {
   PageScaffold,
   PrimaryButton,
   SecondaryButton,
-  SurfacePanel,
-  type IconName
+  SurfacePanel
 } from "../../components/client-ui/AppScaffold";
 import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "../../features/booking/api";
 import {
@@ -22,17 +21,13 @@ import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
 import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
 import type { FulfillmentMode } from "../../types/domain";
+import {
+  CheckoutProgressNav,
+  resolveActiveCheckoutStep,
+  type CheckoutProgressKey
+} from "./formal-checkout/CheckoutProgressNav";
 
 type LoadStatus = "loading" | "success" | "error";
-
-const checkoutSections: Array<{ icon: IconName; label: string }> = [
-  { icon: "sparkles", label: "套餐" },
-  { icon: "chat", label: "到店服务" },
-  { icon: "clock", label: "时间" },
-  { icon: "map", label: "地址" },
-  { icon: "manager", label: "技师" },
-  { icon: "chat", label: "备注" }
-];
 
 const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
 
@@ -106,6 +101,10 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [activeProgressStep, setActiveProgressStep] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -157,6 +156,29 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     };
   }, [revision, searchParams, serviceId]);
 
+  useEffect(() => {
+    const updateProgressByScroll = () => {
+      const progressBottom = progressBarRef.current?.getBoundingClientRect().bottom ?? 138;
+      const sectionTops = sectionRefs.current.map(
+        (section) => section?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY
+      );
+      const nextStep = resolveActiveCheckoutStep({
+        progressBottom,
+        sectionTops,
+        viewportHeight: window.innerHeight
+      });
+      setActiveProgressStep((current) => current === nextStep ? current : nextStep);
+    };
+    const frameId = window.requestAnimationFrame(updateProgressByScroll);
+    window.addEventListener("scroll", updateProgressByScroll, { passive: true });
+    window.addEventListener("resize", updateProgressByScroll);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", updateProgressByScroll);
+      window.removeEventListener("resize", updateProgressByScroll);
+    };
+  }, [loadStatus]);
+
   const selectedSlot = useMemo(
     () => slots.find((slot) => slot.id === selectedSlotId) ?? null,
     [selectedSlotId, slots]
@@ -174,6 +196,18 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
+  };
+
+  const jumpToSection = (index: number, key: CheckoutProgressKey) => {
+    const section = sectionRefs.current[index];
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
+    if (section) {
+      section.scrollIntoView({ behavior, block: "start" });
+    }
+    if (key === "remark") {
+      window.setTimeout(() => remarkInputRef.current?.focus(), reduceMotion ? 0 : 320);
+    }
   };
 
   const submitBooking = async () => {
@@ -211,31 +245,26 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   };
 
   return (
-    <PageScaffold contentClassName="space-y-5 pb-40" navItems={[]}>
+    <PageScaffold
+      contentClassName="space-y-4 pb-40 pt-[calc(env(safe-area-inset-top,0px)+148px)] sm:pt-[calc(env(safe-area-inset-top,0px)+156px)]"
+      navItems={[]}
+    >
       <AppTopBar
         closeLabel="关闭确认预约"
+        fixed
+        footer={(
+          <CheckoutProgressNav
+            activeIndex={activeProgressStep}
+            containerRef={progressBarRef}
+            fulfillmentMode={fulfillmentMode}
+            onSelect={jumpToSection}
+          />
+        )}
+        footerClassName="mt-3"
         info="请逐项确认正式服务、时间、地址及担当信息后再提交。"
         onBack={() => navigate(-1)}
         onClose={() => navigate("/", { replace: true })}
         title="确认预约"
-        footer={(
-          <nav aria-label="预约确认项目" className="grid grid-cols-6 gap-1.5">
-            {checkoutSections.map((section, index) => (
-              <div
-                className={cn(
-                  "flex min-w-0 flex-col items-center justify-center gap-1 rounded-[16px] px-1 py-2 text-[10px] font-black",
-                  index === 0
-                    ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
-                    : "bg-[color:var(--client-elevated)] text-[color:var(--client-text)]"
-                )}
-                key={section.label}
-              >
-                <AppIcon className="h-4 w-4" name={section.icon} />
-                <span className="truncate">{section.label}</span>
-              </div>
-            ))}
-          </nav>
-        )}
       />
 
       {loadStatus === "loading" ? (
@@ -258,8 +287,9 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
       {loadStatus === "success" && service && displayService ? (
         <>
-          <SectionTitle>套餐</SectionTitle>
-          <SurfacePanel className="overflow-hidden p-0">
+          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[0] = node)}>
+            <SectionTitle>套餐</SectionTitle>
+            <SurfacePanel className="overflow-hidden p-0">
             <img
               alt={service.name}
               className="h-48 w-full object-cover"
@@ -286,10 +316,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 </div>
               ) : null}
             </div>
-          </SurfacePanel>
+            </SurfacePanel>
+          </div>
 
-          <SectionTitle>服务方式</SectionTitle>
-          <SurfacePanel className="p-4">
+          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[1] = node)}>
+            <SectionTitle>服务方式</SectionTitle>
+            <SurfacePanel className="p-4">
             <div className="grid grid-cols-2 gap-2">
               {(["store", "home"] as const).map((mode) => {
                 const disabled = !supportsBothModes && fulfillmentMode !== mode;
@@ -326,10 +358,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 value={address}
               />
             )}
-          </SurfacePanel>
+            </SurfacePanel>
+          </div>
 
-          <SectionTitle>时间</SectionTitle>
-          <SurfacePanel className="p-4">
+          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[2] = node)}>
+            <SectionTitle>时间</SectionTitle>
+            <SurfacePanel className="p-4">
             {selectedSlot ? (
               <div className="mb-3 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--client-primary-soft)] p-3 text-sm font-black">
                 <span>{formatSlotDateTime(selectedSlot.startsAt)}</span>
@@ -366,10 +400,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 })}
               </div>
             )}
-          </SurfacePanel>
+            </SurfacePanel>
+          </div>
 
-          <SectionTitle>地址</SectionTitle>
-          <SurfacePanel className="p-4">
+          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[3] = node)}>
+            <SectionTitle>地址</SectionTitle>
+            <SurfacePanel className="p-4">
             <div className="flex items-start gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"><AppIcon name="map" /></span>
               <div>
@@ -377,26 +413,30 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{fulfillmentMode === "store" ? `${service.shop.city} · ${service.shop.address}` : address || "请填写上门地址"}</p>
               </div>
             </div>
-          </SurfacePanel>
-
-          <SectionTitle>技师</SectionTitle>
-          {displayTechnician ? (
-            <SocialProfileMiniCard
-              className="w-full"
-              detailTo={`/technicians/${displayTechnician.id}`}
-              showAction={false}
-              technician={displayTechnician}
-              topTags={[{ label: "本次担当", tone: "green" }]}
-            />
-          ) : (
-            <SurfacePanel className="p-4">
-              <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
-              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">确认接单后将在预约详情中显示正式担当信息。</p>
             </SurfacePanel>
-          )}
+          </div>
 
-          <SectionTitle>备注</SectionTitle>
-          <SurfacePanel className="p-4">
+          <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[4] = node)}>
+            <SectionTitle>技师</SectionTitle>
+            {displayTechnician ? (
+              <SocialProfileMiniCard
+                className="w-full"
+                detailTo={`/technicians/${displayTechnician.id}`}
+                showAction={false}
+                technician={displayTechnician}
+                topTags={[{ label: "本次担当", tone: "green" }]}
+              />
+            ) : (
+              <SurfacePanel className="p-4">
+                <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">确认接单后将在预约详情中显示正式担当信息。</p>
+              </SurfacePanel>
+            )}
+          </div>
+
+          <div className="scroll-mt-[170px] space-y-2 pt-1" ref={(node) => void (sectionRefs.current[5] = node)}>
+            <SectionTitle>备注</SectionTitle>
+            <SurfacePanel className="p-4">
             <div className="flex flex-wrap gap-2">
               {quickNotes.map((quickNote) => (
                 <button className="rounded-full bg-[color:var(--client-elevated)] px-3 py-2 text-xs font-black" key={quickNote} onClick={() => appendQuickNote(quickNote)} type="button">{quickNote}</button>
@@ -408,9 +448,11 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
               maxLength={500}
               onChange={(event) => setNote(event.target.value)}
               placeholder="过敏、门禁、语言等需要店铺提前了解的信息"
+              ref={remarkInputRef}
               value={note}
             />
-          </SurfacePanel>
+            </SurfacePanel>
+          </div>
 
           <div className="grid gap-3">
             <SurfacePanel className="p-4">
