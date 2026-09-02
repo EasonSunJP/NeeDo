@@ -40,6 +40,7 @@ import type { NdpExchangeRateRepositoryPort } from "./repositories/ndp-exchange-
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { SearchQueryRecorderRepositoryPort } from "./repositories/search-query-recorder.repository";
+import type { ServiceSearchAnalyticsRepositoryPort } from "./repositories/service-search-analytics.repository";
 import type { SearchQueryRecorderPort } from "./services/search-query-recorder.service";
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
@@ -203,6 +204,7 @@ import { createShopEmployeeDirectoryRoutes } from "./routes/shop-employee-direct
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
 import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.routes";
 import { createOperatingCostRoutes } from "./routes/operating-cost.routes";
+import { createServiceSearchAnalyticsRoutes } from "./routes/service-search-analytics.routes";
 import { createAgentSettlementRoutes } from "./routes/agent-settlement.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
@@ -268,6 +270,7 @@ export interface AppDependencies {
   coreReadRepository?: CoreReadRepositoryPort;
   searchQueryRecorderRepository?: SearchQueryRecorderRepositoryPort;
   searchQueryRecorder?: SearchQueryRecorderPort;
+  serviceSearchAnalyticsRepository?: ServiceSearchAnalyticsRepositoryPort;
   shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
   entityEngagementRepository?: EntityEngagementRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
@@ -585,6 +588,7 @@ export const createApp = (
   mount("backoffice", createPlatformPartnerRoutes(config, resolvedDependencies));
   mount("backoffice", createAgentCommissionRuleRoutes(config, resolvedDependencies));
   mount("backoffice", createOperatingCostRoutes(config, resolvedDependencies));
+  mount("backoffice", createServiceSearchAnalyticsRoutes(config, resolvedDependencies));
   mount("backoffice", createAgentSettlementRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED && options.routeManifest === undefined) {
     apiRouter.use(createOpenApiRoutes(config));

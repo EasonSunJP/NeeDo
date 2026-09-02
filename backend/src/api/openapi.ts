@@ -16330,6 +16330,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "Repeated keywords and categoryIds use OR semantics. Shop and technician names use substring matching. Omitting entityType preserves the legacy service result page. When a technician origin pair is supplied, ranking starts at 3 km and expands exactly 1 km until three eligible technicians are found or all eligible candidates are exhausted; precise technician coordinates are never returned.",
         parameters: [
           {
+            name: "X-Search-Session",
+            in: "header",
+            description: "Optional anonymous client identifier; the server stores only a domain-separated HMAC.",
+            schema: { type: "string", minLength: 8, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" }
+          },
+          {
             name: "entityType",
             in: "query",
             schema: {
@@ -19533,6 +19539,172 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "409": jsonErrorResponse("error.operating_cost.conflict"),
           "422": jsonErrorResponse("error.operating_cost.allocation_invalid")
         }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/categories`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "List versioned formal service types",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 120 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated formal service types", { type: "object" }),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Service Search Analytics"],
+        summary: "Create an audited formal service type",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        requestBody: authJsonBody(
+          {
+            code: { type: "string", pattern: "^[a-z0-9][a-z0-9._-]*$", maxLength: 120 },
+            sortOrder: { type: "integer", minimum: 0 },
+            isActive: { type: "boolean" },
+            translations: { type: "array", minItems: 1, maxItems: 5, items: { type: "object" } },
+            reason: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          ["code", "sortOrder", "isActive", "translations", "reason"]
+        ),
+        responses: {
+          "201": jsonDataResponse("Service type created", { type: "object" }),
+          "400": jsonErrorResponse("error.validation"),
+          "409": jsonErrorResponse("error.service_taxonomy.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/categories/{id}`]: {
+      patch: {
+        tags: ["Service Search Analytics"],
+        summary: "Update a service type with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            code: { type: "string", pattern: "^[a-z0-9][a-z0-9._-]*$", maxLength: 120 },
+            sortOrder: { type: "integer", minimum: 0 },
+            isActive: { type: "boolean" },
+            translations: { type: "array", minItems: 1, maxItems: 5, items: { type: "object" } },
+            expectedVersion: { type: "integer", minimum: 1 },
+            reason: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          ["code", "sortOrder", "isActive", "translations", "expectedVersion", "reason"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Service type updated", { type: "object" }),
+          "404": jsonErrorResponse("error.service_taxonomy.not_found"),
+          "409": jsonErrorResponse("error.service_taxonomy.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/categories/{categoryId}/keywords`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "List paginated search tags under a service type",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:read",
+        parameters: [
+          { name: "categoryId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 120 } }
+        ],
+        responses: { "200": jsonDataResponse("Paginated formal search tags", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/keywords`]: {
+      post: {
+        tags: ["Service Search Analytics"],
+        summary: "Create an audited search tag",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "201": jsonDataResponse("Search tag created", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/keywords/{id}`]: {
+      patch: {
+        tags: ["Service Search Analytics"],
+        summary: "Update a search tag with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        parameters: [idPathParameter()],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "200": jsonDataResponse("Search tag updated", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/keywords/{keywordId}/aliases`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "List paginated normalized search synonyms",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:read",
+        parameters: [
+          { name: "keywordId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": jsonDataResponse("Paginated keyword synonyms", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/aliases`]: {
+      post: {
+        tags: ["Service Search Analytics"],
+        summary: "Create an audited normalized keyword synonym",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "201": jsonDataResponse("Keyword synonym created", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/aliases/{id}`]: {
+      patch: {
+        tags: ["Service Search Analytics"],
+        summary: "Update a keyword synonym with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        parameters: [idPathParameter()],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "200": jsonDataResponse("Keyword synonym updated", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/search-analytics/top-keywords`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "Read actual submitted-search TOP10 by city, time and service type",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:search-analytics:read",
+        parameters: [
+          { name: "startAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "endAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": jsonDataResponse("Search keyword TOP10", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/search-analytics/trends`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "Compare up to five search keywords using raw counts and a labelled 0-100 index",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:search-analytics:read",
+        parameters: [
+          { name: "startAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "endAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "keywords", in: "query", required: true, description: "Comma-separated or repeated keywords; maximum five.", schema: { type: "array", maxItems: 5, items: { type: "string" } } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": jsonDataResponse("Raw and normalized Tokyo-day trend series", { type: "object" }) }
       }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}`]: {
