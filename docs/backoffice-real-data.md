@@ -121,6 +121,16 @@ Dashboard 与店铺列表读取分别要求 `backoffice:dashboard:read`、`merch
 
 运营后台技师详情保留平台范围的正式资料栏目。商户员工入口使用独立“员工详细信息卡”：path 只使用公开 NeeDoID，显示当前店铺从属、联系方式、账号状态、正式日程投影、薪酬与结算及工资结算周期；不得从旧全局技师详情或列表行补齐跨店资料。
 
+### 商户员工正式数据地基
+
+`ShopEmployee` 现在是用户与店铺之间的正式任职关系，覆盖店主、管理员、普通员工、会计、司机、总务、厨师和技师等人员。`ShopEmployeeRole` 保存全局系统角色与未来可扩展的店铺自定义角色；`ShopEmployeeRoleAssignment` 以起止时间保存任职角色，不能用浏览器标签替代。技师仍以既有 `TechnicianProfile` 和 `TechnicianShopAffiliation` 作为技师资格及店铺从属权威；`ShopEmployee` 只关联到对应正式从属，不复制或改写技师关系。
+
+迁移 `20260903130000_shop_employee_foundation` 只从正式数据库证据回填：店铺 owner、有效 shop-scoped 商户身份、有效 MerchantAccount 店铺关系，以及当前有效的技师从属。旧商户页面中仅保存在 localStorage、没有正式 `User` 和店铺关系的手工姓名不会被迁移，也不会被通知受众使用。只读检查命令 `npm --prefix backend run check:shop-employee-foundation` 只输出五类聚合缺口数量，不输出用户邮箱、姓名或员工明细。
+
+商户后端现提供只读 `GET /api/v1/merchant-admin/employee-directory`，从 `ShopEmployee` 分页返回当前店铺全部正式人员，而不只返回技师。查询支持 `page`、`pageSize`、`keyword`、`status` 和 `roleCode`；店铺范围只取自当前已认证 shop identity，严格拒绝调用方传入 `shopId`。接口复用 `merchant-admin:employee-affiliation:read`，返回用户级公开 NeeDoID、姓名、头像、联系方式、任职状态/时间、五语言职务，以及当前正式技师关系存在时的可空技师投影；不返回员工、用户、职务、从属或身份内部主键。该路由只挂载于独立商户后端，运营后端不提供此路由。
+
+原有 `/api/v1/merchant-admin/employees` 及其详情、日程、从属、薪酬和工资接口继续保持技师范围，不在本微步骤中改变。员工写 API、商户页面切换、通知员工/技师受众快照、共享数据库 migration 部署和认证浏览器验收仍未执行；因此现在可以确认“全部正式员工”的后端只读合同已建立，但不能宣称商户通知链路已经完成。
+
 用户详情统一使用五个 tab：`基础资料`、`会员等级`、`预约与消费`、`权限与账号`、`用户动态`。头部只显示公开 NeeDoID 与业务状态，不显示内部 User/Profile 主键。用户动态通过独立分页 API 读取，每页可选 `10 / 30 / 50 / 100` 条，并复用正式联系人时间线视觉；正式空列表可显示明确的无记录状态，但不得用 demo 数值、列表行或 mock 关系补位。
 
 商户用户管理只读会员等级；运营后台可在独立“会员等级”插页调用 `PUT /api/v1/backoffice/customers/:id/membership` 免费赋予等级，期限支持永久、按天或按月。后端持久化赋予方式、期限、起止时间与操作人，写操作要求 `backoffice:customers:write` 并记录 `backoffice.customer.membership.assign` 审计。此操作不扣款、不自动续费，也不触发转账。
