@@ -27,7 +27,7 @@ const analyticsFacts = () => ({
     dedicatedTechnicianCommission: { current: 25, previous: 100, dataStatus: "ready" as const },
     partTimeTechnicianCommission: { current: 20, previous: 10, dataStatus: "ready" as const },
     marketingCommission: { current: 30, previous: 20, dataStatus: "ready" as const },
-    agentCommission: { current: null, previous: null, dataStatus: "not_available" as const },
+    agentCommission: { current: 35, previous: 20, dataStatus: "ready" as const },
     ndpIncome: { current: 40, previous: 40, dataStatus: "ready" as const },
     affiliatePlatformIncome: { current: 12, previous: 8, dataStatus: "ready" as const },
     consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" as const }
@@ -36,9 +36,9 @@ const analyticsFacts = () => ({
     newUsers: { current: 8, previous: 4, dataStatus: "ready" as const },
     newPaidMembers: { current: 2, previous: 1, dataStatus: "ready" as const },
     technicianOnboarding: { current: 3, previous: 3, dataStatus: "ready" as const },
-    agentOnboarding: { current: null, previous: null, dataStatus: "not_available" as const },
-    franchiseeOnboarding: { current: null, previous: null, dataStatus: "not_available" as const },
-    supplierOnboarding: { current: null, previous: null, dataStatus: "not_available" as const }
+    agentOnboarding: { current: 2, previous: 1, dataStatus: "ready" as const },
+    franchiseeOnboarding: { current: 1, previous: 0, dataStatus: "ready" as const },
+    supplierOnboarding: { current: 3, previous: 2, dataStatus: "ready" as const }
   }
 });
 
@@ -187,7 +187,7 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
     }));
   });
 
-  it("preserves null TEST detail values without querying unrelated readers", async () => {
+  it("returns ready summary values for a metric that intentionally has no detail route", async () => {
     const fixture = createService();
     const result = await fixture.service.getDashboardMetricDetail(
       actor,
@@ -197,12 +197,12 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
     );
     expect(result.metric).toMatchObject({
       metricKey: "supplier_onboarding",
-      currentValue: null,
-      previousValue: null,
-      dataStatus: "not_available",
+      currentValue: 3,
+      previousValue: 2,
+      dataStatus: "ready",
       detailRoute: null
     });
-    expect(result.series[0]?.points.map((point) => point.value)).toEqual([null, null]);
+    expect(result.series[0]?.points.map((point) => point.value)).toEqual([2, 3]);
     expect(fixture.reader.getGrowthFacts).toHaveBeenCalledTimes(1);
     expect(fixture.reader.getOperationsFinance).not.toHaveBeenCalled();
     expect(fixture.reader.getCommissionFacts).not.toHaveBeenCalled();

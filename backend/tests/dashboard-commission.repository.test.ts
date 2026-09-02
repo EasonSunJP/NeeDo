@@ -230,15 +230,15 @@ describe("DashboardCommissionRepository", () => {
 
   it("maps current/previous immutable commission facts from one bounded query", async () => {
     const fixture = createReader([
-      { periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: 52_000n, partTimeJpy: "12000", marketingNdp: 500, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 },
-      { period_key: "previous", salary_anomaly_count: 0, dedicated_jpy: 40_000, part_time_jpy: 9_000, marketing_ndp: 300, ndp_income_ndp: 700, affiliate_platform_ndp: 50 }
+      { periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: 52_000n, partTimeJpy: "12000", marketingNdp: 500, agentJpy: 62_000, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 },
+      { period_key: "previous", salary_anomaly_count: 0, dedicated_jpy: 40_000, part_time_jpy: 9_000, marketing_ndp: 300, agent_jpy: 40_000, ndp_income_ndp: 700, affiliate_platform_ndp: 50 }
     ]);
 
     await expect(fixture.reader.getCommissionFacts(input)).resolves.toEqual({
       dedicatedTechnicianCommission: { current: 52_000, previous: 40_000, dataStatus: "ready" },
       partTimeTechnicianCommission: { current: 12_000, previous: 9_000, dataStatus: "ready" },
       marketingCommission: { current: 500, previous: 300, dataStatus: "ready" },
-      agentCommission: { current: null, previous: null, dataStatus: "not_available" },
+      agentCommission: { current: 62_000, previous: 40_000, dataStatus: "ready" },
       ndpIncome: { current: 900, previous: 700, dataStatus: "ready" },
       affiliatePlatformIncome: { current: 80, previous: 50, dataStatus: "ready" },
       consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" }
@@ -294,6 +294,16 @@ describe("DashboardCommissionRepository", () => {
     expect(sql).toContain("financial.ndp_currency");
     expect(sql).toContain("settled_platform_income AS");
     expect(sql).toContain("settled_user_rewards AS");
+    expect(sql).toContain("confirmed_agent_commission AS");
+    expect(sql).toContain("agent_settlements AS settlement");
+    expect(sql).toContain("agent_settlement_lines AS agent_line");
+    expect(sql).toContain("settlement.confirmed_at >= period.from_inclusive");
+    expect(sql).toContain("settlement.confirmed_at < period.to_exclusive");
+    expect(sql).toContain("settlement.status IN");
+    expect(sql).toContain("settlement.currency =");
+    expect(sql).toContain("settlement.deleted_at IS NULL");
+    expect(sql).toContain("agent_line.shop_id = agent_shop.id");
+    expect(sql).toContain("agent_line.deleted_at IS NULL");
     expect(sql).toContain("financial.user_reward_granted_at >= period.from_inclusive");
     expect(sql).toContain("reward_entry.amount = financial.user_reward_ndp");
     expect(sql).toContain("reward_wallet.owner_id = financial.customer_user_id");
@@ -308,14 +318,15 @@ describe("DashboardCommissionRepository", () => {
   it("uses ready zero for an absent period and fails closed on malformed facts", async () => {
     await expect(createReader([]).reader.getCommissionFacts(input)).resolves.toMatchObject({
       dedicatedTechnicianCommission: { current: 0, previous: 0, dataStatus: "ready" },
-      marketingCommission: { current: 0, previous: 0, dataStatus: "ready" }
+      marketingCommission: { current: 0, previous: 0, dataStatus: "ready" },
+      agentCommission: { current: 0, previous: 0, dataStatus: "ready" }
     });
-    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: -1, partTimeJpy: 0, marketingNdp: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
+    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 0, dedicatedJpy: -1, partTimeJpy: 0, marketingNdp: 0, agentJpy: 0, ndpIncomeNdp: 0, affiliatePlatformNdp: 0 }]).reader.getCommissionFacts(input))
       .rejects.toThrow("Dashboard commission aggregate must be a non-negative safe integer");
   });
 
   it("rejects a projected profile-history anomaly alongside otherwise valid aggregates", async () => {
-    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 1, dedicatedJpy: 52_000, partTimeJpy: 12_000, marketingNdp: 500, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 }]).reader.getCommissionFacts(input))
+    await expect(createReader([{ periodKey: "current", salaryAnomalyCount: 1, dedicatedJpy: 52_000, partTimeJpy: 12_000, marketingNdp: 500, agentJpy: 62_000, ndpIncomeNdp: 900, affiliatePlatformNdp: 80 }]).reader.getCommissionFacts(input))
       .rejects.toThrow("Dashboard commission compensation anomaly detected");
   });
 
@@ -324,9 +335,9 @@ describe("DashboardCommissionRepository", () => {
       dedicatedTechnicianCommission: { current: 1, previous: 0, dataStatus: "ready" },
       partTimeTechnicianCommission: { current: 2, previous: 0, dataStatus: "ready" },
       marketingCommission: { current: 3, previous: 0, dataStatus: "ready" },
-      agentCommission: { current: null, previous: null, dataStatus: "not_available" },
-      ndpIncome: { current: 4, previous: 0, dataStatus: "ready" },
-      affiliatePlatformIncome: { current: 5, previous: 0, dataStatus: "ready" },
+      agentCommission: { current: 4, previous: 0, dataStatus: "ready" },
+      ndpIncome: { current: 5, previous: 0, dataStatus: "ready" },
+      affiliatePlatformIncome: { current: 6, previous: 0, dataStatus: "ready" },
       consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" }
     } satisfies CommissionFacts;
     const commissionReader = { getCommissionFacts: jest.fn(async () => facts) } satisfies DashboardCommissionReader;

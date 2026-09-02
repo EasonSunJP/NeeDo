@@ -292,13 +292,15 @@ git commit -m "feat: calculate auditable agent settlements"
 - Modify: `backend/tests/dashboard-commission.repository.test.ts`
 - Modify: `backend/tests/dashboard-growth.repository.test.ts`
 - Modify: `backend/tests/dashboard-overview-service.test.ts`
+- Modify: `backend/tests/dashboard-metric-detail-api.test.ts`
+- Modify: `src/pages/admin/DashboardPage.test.ts`
 
 **Interfaces:**
 - Consumes: confirmed `AgentSettlement` rows from Task 5
 - Produces: dashboard metric `agent_commission` with `dataStatus: "ready"`
 - Produces: `agent_onboarding`, `franchisee_onboarding`, `supplier_onboarding` from partner activation events
 
-- [ ] **Step 1: Write the failing dashboard integration test**
+- [x] **Step 1: Write the failing dashboard integration test**
 
 ```ts
 expect(await reader.getAgentCommission(input)).toEqual({ current: 62000, previous: 40000, dataStatus: "ready" });
@@ -307,23 +309,23 @@ expect(await growthReader.getPartnerOnboarding(input)).toEqual({ agent: 2, franc
 
 Fixtures include a draft settlement, a confirmed settlement outside the window and a confirmed settlement for another city.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- dashboard-commission.repository.test.ts dashboard-growth.repository.test.ts dashboard-overview-service.test.ts`
 
 Expected: FAIL because the metric still returns `not_available`.
 
-- [ ] **Step 3: Aggregate only confirmed settlement lines**
+- [x] **Step 3: Aggregate only confirmed settlement lines**
 
 Read immutable confirmed agent-settlement totals by referred shop, settlement period and dashboard city/shop scope. Do not recalculate commission rules inside the dashboard reader. Count partner onboarding by the first `activatedAt` for each user/type and use distinct user IDs.
 
-- [ ] **Step 4: Run commission/dashboard tests**
+- [x] **Step 4: Run commission/dashboard tests**
 
 Run: `cd backend && npm test -- dashboard-commission.repository.test.ts dashboard-growth.repository.test.ts dashboard-overview-service.test.ts agent-settlement.service.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit dashboard integration**
+- [x] **Step 5: Commit dashboard integration**
 
 ```bash
 git add backend/src/repositories/dashboard-commission.repository.ts backend/src/repositories/dashboard-growth.repository.ts backend/tests/dashboard-commission.repository.test.ts backend/tests/dashboard-growth.repository.test.ts backend/tests/dashboard-overview-service.test.ts
