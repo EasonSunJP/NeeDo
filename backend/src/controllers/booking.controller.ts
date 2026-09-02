@@ -16,6 +16,7 @@ import {
   orderIdParamSchema,
   orderListQuerySchema,
   orderReviewCreateBodySchema,
+  orderTimelineCommentBodySchema,
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
@@ -319,6 +320,27 @@ export class BookingController {
           await this.bookingService.getOwnOrderReview(
             this.getActor(response),
             this.getOrderId(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createOrderTimelineComment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { body } = orderTimelineCommentBodySchema.parse(request.body);
+      response.status(201).json(
+        successResponse(
+          await this.bookingService.createOrderTimelineComment(
+            this.getActor(response),
+            this.getOrderId(request),
+            body
           )
         )
       );

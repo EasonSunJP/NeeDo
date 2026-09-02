@@ -280,7 +280,19 @@ describe("core read API adapter", () => {
       rating: 4.8,
       tags: ["スパケア"]
     });
-    expect(technician).toMatchObject({ id: "5", systemId: "s5831047296", name: "Mika Tanaka", storeId: "3", rating: 4.8 });
+    expect(technician).toMatchObject({
+      id: "5",
+      systemId: "s5831047296",
+      name: "Mika Tanaka",
+      storeId: "3",
+      rating: 4.8,
+      primaryService: {
+        name: "肩颈调理",
+        priceAmount: "8800",
+        currency: "JPY",
+        durationMinutes: 60
+      }
+    });
     expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
   });
 });

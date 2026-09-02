@@ -8466,6 +8466,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publicReason: { type: ["string", "null"] }
         }
       },
+      OrderTimelineCommentEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "id",
+          "createdAt",
+          "actorUserId",
+          "actorDisplayName",
+          "actorAvatarUrl",
+          "body"
+        ],
+        properties: {
+          type: { type: "string", const: "ORDER_COMMENT_ADDED" },
+          id: { type: "string", pattern: "^comment:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: "integer", minimum: 1 },
+          actorDisplayName: { type: "string", minLength: 1 },
+          actorAvatarUrl: { type: ["string", "null"] },
+          body: { type: "string", minLength: 1, maxLength: 1000 }
+        }
+      },
       OperationsOrderTimelinePerformanceEvent: {
         type: "object",
         additionalProperties: false,
@@ -8502,6 +8524,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       OrderTimelineEvent: {
         oneOf: [
           { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+          { $ref: "#/components/schemas/OrderTimelineCommentEvent" },
           { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
         ],
         discriminator: { propertyName: "type" }
@@ -8551,6 +8574,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      BookingOrderCustomerSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "userId",
+          "profileId",
+          "publicId",
+          "displayName",
+          "avatarUrl",
+          "membershipLevel",
+          "ratingAverage",
+          "reviewCount"
+        ],
+        properties: {
+          userId: { type: "integer", minimum: 1 },
+          profileId: { type: ["integer", "null"], minimum: 1 },
+          publicId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"] },
+          membershipLevel: { type: "string" },
+          ratingAverage: { type: "string", pattern: "^[0-9]+(?:\\.[0-9]{2})$" },
+          reviewCount: { type: "integer", minimum: 0 }
+        }
+      },
       BookingOrder: {
         type: "object",
         required: [
@@ -8570,6 +8617,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "paymentRefundReference",
           "paymentRefundReason",
           "customerUserId",
+          "customer",
           "serviceId",
           "technicianServiceId",
           "shopId",
@@ -8623,6 +8671,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           paymentRefundReference: { type: ["string", "null"], maxLength: 120 },
           paymentRefundReason: { type: ["string", "null"], maxLength: 500 },
           customerUserId: { type: "integer" },
+          customer: { $ref: "#/components/schemas/BookingOrderCustomerSummary" },
           serviceId: { type: ["integer", "null"], minimum: 1 },
           technicianServiceId: { type: ["integer", "null"], minimum: 1 },
           shopId: { type: "integer" },
@@ -17660,6 +17709,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...formalOrderCommonErrorResponses,
           "403": fulfillmentForbiddenResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/timeline/comments`]: {
+      post: {
+        operationId: "createOrderTimelineComment",
+        tags: ["Booking Fulfillment"],
+        summary: "Add a participant-visible order tracking comment",
+        description:
+          "The server derives the customer or assigned-technician participant and returns the updated formal order timeline.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:read",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            body: {
+              type: "string",
+              minLength: 1,
+              maxLength: 1000,
+              "x-normalization": "NFKC+trim",
+              "x-requires-visible-code-point": true
+            }
+          },
+          ["body"]
+        ),
+        responses: {
+          "201": jsonDataResponse("Updated participant order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse,
+          "503": dependencyUnavailableResponse("the order timeline repository is unavailable")
         }
       }
     },

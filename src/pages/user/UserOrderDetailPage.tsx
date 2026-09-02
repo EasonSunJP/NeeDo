@@ -25,10 +25,12 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card/SocialProfileMiniCard";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useUserOrders } from "../../state/userOrderStore";
 
 function describeFormalOrderError(error: unknown) {
@@ -146,6 +148,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [orderShop, setOrderShop] = useState<CoreShopDetail | null>(null);
   const [orderTechnician, setOrderTechnician] = useState<CoreTechnicianDetail | null>(null);
   const [profileLoadError, setProfileLoadError] = useState("");
+  const [profileRevision, setProfileRevision] = useState(0);
   const [queryStatus, setQueryStatus] = useState<"loading" | "success" | "error">("loading");
   const [queryError, setQueryError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -179,6 +182,8 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     setOrder(data);
     return data;
   }, [orderId]);
+
+  useOrderRealtimeRefresh({ onRefresh: loadOrder, orderId });
 
   useEffect(() => {
     let active = true;
@@ -225,7 +230,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     };
     void loadProfiles();
     return () => { active = false; };
-  }, [order]);
+  }, [order, profileRevision]);
 
   useEffect(() => {
     if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
@@ -384,6 +389,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       retainedReviewCommand.current = null;
       setOwnReview(result.review);
       setReviewStatus("success");
+      setProfileRevision((revision) => revision + 1);
     } catch (error) {
       if (!isAmbiguousMutationError(error)) retainedReviewCommand.current = null;
       setReviewError(`评价提交失败：${describeFormalOrderError(error)}`);
@@ -474,7 +480,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ProfileSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
-                detailTo={`/technicians/${displayTechnician.id}`}
+                detailTo={`${getScopedProfileDetailPath("user", "technician", displayTechnician.id)}?view=card`}
                 showAction={false}
                 technician={displayTechnician}
                 topTags={[{ label: "本次担当", tone: "green" }]}
@@ -500,8 +506,13 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           ]} />
 
           <ContactEventTimelinePanel
-            title="联系信息"
+            title="订单追踪信息"
             events={buildFormalOrderTimelineEvents(order)}
+            onCommentSubmit={(body) => {
+              void runOrderMutation("timeline-comment", () =>
+                bookingApi.createTimelineComment(orderId, { body })
+              );
+            }}
           />
 
           {order.status === "confirmed" && /^\d{6}$/.test(order.serviceVerificationCode ?? "") ? (

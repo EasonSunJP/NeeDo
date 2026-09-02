@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
+vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
 vi.mock("../../theme/ClientThemeProvider", async () => {
   const actual = await vi.importActual<typeof import("../../theme/ClientThemeProvider")>("../../theme/ClientThemeProvider");
   return { ...actual, useClientTheme: () => ({ isNight: false, theme: "whiteGreen" }) };
@@ -214,6 +215,16 @@ function makeOrder(status: BookingOrderStatus, id = 29): BookingOrder {
     paymentRefundReference: null,
     paymentRefundReason: null,
     customerUserId: 71,
+    customer: {
+      userId: 71,
+      profileId: 17,
+      publicId: "u0000000071",
+      displayName: "预约用户 山田",
+      avatarUrl: "/images/formal/customer-71.jpg",
+      membershipLevel: "premium",
+      ratingAverage: "4.8",
+      reviewCount: 12
+    },
     serviceId: null,
     technicianServiceId: 102,
     shopId: 11,
@@ -586,6 +597,18 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("请准备无香精用品");
     expect(container.textContent).toContain("用户提交");
     expect(container.textContent).toContain("正式状态记录");
+    expect(container.textContent).toContain("订单追踪信息");
+  });
+
+  it("renders the formal customer as the shared simple profile card with a NeeDoID", async () => {
+    await renderOrder(makeOrder("confirmed"));
+
+    expect(container.textContent).toContain("用户");
+    expect(container.textContent).toContain("预约用户 山田");
+    expect(container.textContent).toContain("u0000000071");
+    expect(container.textContent).not.toContain("客户账号");
+    expect(container.querySelector("dl")?.textContent).not.toContain("#71");
+    expect(container.querySelector('a[href="/technician/profiles/user/17"]')).not.toBeNull();
   });
 
   it("keeps the existing formal pending confirmation transition", async () => {

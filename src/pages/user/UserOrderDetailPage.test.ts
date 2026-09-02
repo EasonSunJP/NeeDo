@@ -37,13 +37,17 @@ describe("UserOrderDetailPage header", () => {
     expect(source).not.toContain("submitOrderServiceUserReview");
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("sessionStorage");
+    expect(source).toContain("bookingApi.createTimelineComment");
+    expect(source).toContain("useOrderRealtimeRefresh");
   });
 
   it("keeps the production order-detail information hierarchy", () => {
     expect(source).toContain("SocialProfileMiniCard");
-    for (const title of ["服务", "店铺 / 服务方", "技师 / 担当", "预约情报", "联系信息"]) {
+    for (const title of ["服务", "店铺 / 服务方", "技师 / 担当", "预约情报", "订单追踪信息"]) {
       expect(source).toContain(`title=\"${title}\"`);
     }
+    expect(source).toContain('getScopedProfileDetailPath("user", "technician", displayTechnician.id)');
+    expect(source).not.toContain('detailTo={`/technicians/${displayTechnician.id}`}');
     expect(source).toContain("支付手段");
     expect(source).toContain("来源");
     expect(source).toContain("服务验证码");

@@ -101,6 +101,42 @@ describe("TechnicianShowcaseCard ranking badges", () => {
 });
 
 describe("TechnicianShowcaseCard engagement metrics", () => {
+  it("renders the persisted technician service on cards that use the shared domain adapter", () => {
+    const technician = {
+      id: "formal-service-technician",
+      systemId: "s0000000217",
+      name: "LifeDance 管理员 2",
+      storeId: "217",
+      role: "therapist" as const,
+      status: "available" as const,
+      rating: 5,
+      orderCount: 2,
+      income: 0,
+      skills: ["超级按摩"],
+      serviceAreas: ["东京"],
+      acceptRate: 98,
+      cancelRate: 0,
+      reviewCount: 2,
+      languages: ["ja"],
+      avatar: "/images/generated/profiles/profile-11.jpg",
+      primaryService: {
+        name: "超级按摩",
+        priceAmount: "1111",
+        currency: "JPY",
+        durationMinutes: 60
+      }
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(TechnicianShowcaseCard, { language: "zh", rankIndex: 0, technician }))
+    );
+
+    expect(markup).toContain("超级按摩");
+    expect(markup).toContain("¥1,111");
+    expect(markup).toContain("60分钟");
+    expect(markup).not.toContain("价格待确认");
+  });
+
   it("uses formal media and location without exposing legacy availability or generated fallbacks", () => {
     const technician: Technician = {
       id: "formal-no-media",

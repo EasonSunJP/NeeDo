@@ -375,8 +375,11 @@ export function TechnicianShowcaseCard({
 }: TechnicianShowcaseCardProps) {
   const location = useLocation();
   const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
-  const recommendedService = formalData ? null : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const formalPrimaryService = formalData?.primaryService ?? null;
+  const persistedPrimaryService = formalData ? formalPrimaryService : technician.primaryService ?? null;
+  const recommendedService = formalData || persistedPrimaryService
+    ? null
+    : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const copy = getTechnicianCardCopy(language);
   const displayName = formalData?.displayName?.trim() || getTechnicianDisplayName(technician);
   const formalRankBadge = formalData?.nearbyRank ? getTechnicianCardRankBadge(formalData.nearbyRank - 1) : null;
@@ -385,9 +388,9 @@ export function TechnicianShowcaseCard({
       ? [formalRankBadge]
       : []
     : buildTechnicianCardBadges(technician, rankIndex, language);
-  const primarySkillSource = formalData
-    ? formalPrimaryService?.name ?? ""
-    : technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback;
+  const primarySkillSource = persistedPrimaryService?.name ?? (
+    formalData ? "" : technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback
+  );
   const primarySkill = primarySkillSource ? localizeTechnicianCardText(primarySkillSource, language) : "";
   const areaSource = formalData ? formalData.city?.trim() ?? "" : technician.serviceAreas[0] ?? copy.tokyo;
   const areaLabel = areaSource ? localizeTechnicianCardText(areaSource, language) : "";
@@ -404,16 +407,18 @@ export function TechnicianShowcaseCard({
   const statusLine = [statusLabel, acceptanceRate === null ? "" : `${copy.acceptRate} ${acceptanceRate}%`].filter(Boolean).join(" · ");
   const packageInfo = recommendedService?.packages[0];
   const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
-  const duration = formalData ? formalPrimaryService?.durationMinutes : packageInfo?.durationMinutes ?? 60;
-  const priceLabel = formalData
-    ? formalPrimaryService
-      ? formatFormalServicePrice(formalPrimaryService.priceAmount, formalPrimaryService.currency)
-      : null
+  const duration = persistedPrimaryService?.durationMinutes ?? (formalData ? undefined : packageInfo?.durationMinutes ?? 60);
+  const priceLabel = persistedPrimaryService
+    ? formatFormalServicePrice(persistedPrimaryService.priceAmount, persistedPrimaryService.currency)
+    : formalData
+      ? null
     : Number.isFinite(price) && price > 0
       ? formatCardYen(price)
       : copy.pricePending;
-  const serviceName = formalData
-    ? formalPrimaryService?.name ?? ""
+  const serviceName = persistedPrimaryService
+    ? localizeTechnicianCardText(persistedPrimaryService.name, language)
+    : formalData
+      ? ""
     : localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
   const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);

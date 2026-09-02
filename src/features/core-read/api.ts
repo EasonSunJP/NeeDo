@@ -397,6 +397,7 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
   const firstService = detail?.services[0];
   const serviceAreas = splitServiceArea(detail?.serviceArea, technician.city);
   const skills = uniqueStrings([
+    technician.primaryService?.name ?? "",
     ...(detail?.services.map((service) => service.category.nameJa ?? service.category.name) ?? []),
     ...technician.reviewSummary.highlights
   ]).slice(0, 5);
@@ -422,7 +423,8 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
     identityLabel: "店铺所属技师",
     profileTags: skills.length > 0 ? skills : ["预约服务"],
     gallery: mediaGallery(detail?.mediaAssets, technician.avatarUrl ?? fallbackTechnicianAvatar),
-    paymentMethods: ["platform", "offline"]
+    paymentMethods: ["platform", "offline"],
+    primaryService: technician.primaryService
   };
 }
 

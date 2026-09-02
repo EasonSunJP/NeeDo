@@ -285,6 +285,13 @@ export interface Technician extends Staff {
   gallery?: string[];
   infoCardVisibility?: InfoCardVisibilitySettings;
   visible?: boolean;
+  primaryService?: {
+    id?: number;
+    name: string;
+    priceAmount: string;
+    currency: string;
+    durationMinutes: number;
+  } | null;
 }
 
 export interface ServiceCategory {

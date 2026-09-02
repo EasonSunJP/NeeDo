@@ -18,6 +18,7 @@ const fulfillmentPermissions = [
   "order:add-on:write",
   "order:service:end"
 ];
+const fixturePermissions = ["order:read", ...fulfillmentPermissions];
 
 const order: BookingOrderPayload = {
   id: 41,
@@ -72,7 +73,7 @@ const createFixture = () => {
     const base = {
       userId: 101,
       roles: ["customer"],
-      permissions: fulfillmentPermissions,
+      permissions: fixturePermissions,
       currentIdentityType: "customer",
       currentIdentityScopeType: "customer_profile",
       currentIdentityScopeId: 501
@@ -100,7 +101,8 @@ const createFixture = () => {
     startService: jest.fn(async () => ok),
     createOrderAddOn: jest.fn(async () => ok),
     decideOrderAddOn: jest.fn(async () => ok),
-    endService: jest.fn(async () => ok)
+    endService: jest.fn(async () => ok),
+    createOrderTimelineComment: jest.fn(async () => order)
   } as unknown as jest.Mocked<BookingRepositoryPort>;
   const app = express();
   app.use(express.json());
@@ -210,6 +212,44 @@ describe("formal order fulfillment API", () => {
       .post("/api/v1/orders/41/complete")
       .set("Authorization", "Bearer customer")
       .expect(404);
+  });
+
+  it("creates a normalized participant timeline comment through the formal route", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/orders/41/timeline/comments")
+      .set("Authorization", "Bearer customer")
+      .send({ body: "  请提前五分钟联系  " })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 0, message: "success", data: { id: 41 } });
+      });
+
+    expect(fixture.repository.createOrderTimelineComment).toHaveBeenCalledWith({
+      actorUserId: 101,
+      body: "请提前五分钟联系",
+      orderId: 41
+    });
+  });
+
+  it("validates timeline comments before repository access and enforces order:read", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/orders/41/timeline/comments")
+      .set("Authorization", "Bearer customer")
+      .send({ body: "   ", unexpected: true })
+      .expect(400)
+      .expect({ code: ERROR_CODES.VALIDATION, message: "error.validation", data: null });
+    await request(fixture.app)
+      .post("/api/v1/orders/41/timeline/comments")
+      .set("Authorization", "Bearer no-permission")
+      .send({ body: "需要联系" })
+      .expect(403)
+      .expect({ code: ERROR_CODES.FORBIDDEN, message: "error.forbidden", data: null });
+
+    expect(fixture.repository.createOrderTimelineComment).not.toHaveBeenCalled();
   });
 
   it("assigns the exact route permissions only to customer and technician roles", () => {

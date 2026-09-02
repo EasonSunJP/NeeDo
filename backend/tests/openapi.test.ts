@@ -1453,6 +1453,7 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(response.body.components.schemas.OrderTimelineEvent.oneOf).toEqual([
       { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+      { $ref: "#/components/schemas/OrderTimelineCommentEvent" },
       { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
     ]);
     expect(response.body.components.schemas.OrderTimelineStatusEvent.properties.type.const).toBe(
@@ -1466,6 +1467,22 @@ describe("GET /api/v1/openapi.json", () => {
       "SPECIAL_CANCELLATION_APPLIED",
       "SPECIAL_CANCELLATION_REVOKED"
     ]);
+    expect(response.body.components.schemas.OrderTimelineCommentEvent).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "type",
+        "id",
+        "createdAt",
+        "actorUserId",
+        "actorDisplayName",
+        "actorAvatarUrl",
+        "body"
+      ]),
+      properties: {
+        type: { type: "string", const: "ORDER_COMMENT_ADDED" },
+        body: { type: "string", minLength: 1, maxLength: 1000 }
+      }
+    });
     expect(
       response.body.components.schemas.OrderTimelinePerformanceEvent.properties
     ).not.toHaveProperty("internalNote");

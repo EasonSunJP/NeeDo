@@ -34,6 +34,42 @@ const technician = {
 const context = { ip: "127.0.0.1", userAgent: "jest" };
 
 describe("formal completed-order review service", () => {
+  it("persists participant timeline comments and emits a realtime refresh for the other identity", async () => {
+    const updatedOrder = { ...order, orderNo: "ND202609030041" };
+    const repository = {
+      findOrderById: jest.fn(async () => updatedOrder),
+      createOrderTimelineComment: jest.fn(async () => updatedOrder),
+      findOrderRealtimeRecipients: jest.fn(async () => [
+        { userId: 101, identityId: 1501 },
+        { userId: 202, identityId: 1702 }
+      ])
+    };
+    const realtime = {
+      notifyOrderStatusChanged: jest.fn(),
+      notifyOrderChanged: jest.fn()
+    };
+    const service = new BookingService(repository as never, undefined, realtime);
+
+    await expect(
+      service.createOrderTimelineComment(
+        { ...customer, currentIdentityId: 1501 },
+        41,
+        "  请提前五分钟联系  "
+      )
+    ).resolves.toBe(updatedOrder);
+
+    expect(repository.createOrderTimelineComment).toHaveBeenCalledWith({
+      actorUserId: 101,
+      body: "请提前五分钟联系",
+      orderId: 41
+    });
+    expect(realtime.notifyOrderChanged).toHaveBeenCalledWith(expect.objectContaining({
+      actorIdentityId: 1501,
+      changeType: "timeline_comment",
+      orderId: 41
+    }));
+  });
+
   it.each([
     [customer, "technician", null],
     [technician, "customer", 702]

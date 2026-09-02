@@ -234,6 +234,10 @@ export const orderReviewCreateBodySchema = z
     });
   });
 
+export const orderTimelineCommentBodySchema = z
+  .object({ body: visibleTextSchema(1000) })
+  .strict();
+
 export const orderListQuerySchema = z.object({
   ...paginationQuerySchema,
   customerUserId: z.coerce.number().int().positive().optional(),

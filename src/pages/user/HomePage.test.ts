@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublishedCarouselPayload } from "../../api/contentPublication";
+import type { BookingOrder } from "../../features/booking/api";
 import { translateText, type Language } from "../../i18n/translations";
 import { HomePage } from "./HomePage";
 import homePageSource from "./HomePage.tsx?raw";
@@ -12,11 +13,13 @@ import homePageSource from "./HomePage.tsx?raw";
 
 const apiMocks = vi.hoisted(() => ({
   getAffiliateCarousel: vi.fn(),
+  listOrders: vi.fn(),
   getUserHomeCarousel: vi.fn()
 }));
 
 const homeMocks = vi.hoisted(() => ({
   language: "zh" as Language,
+  petEnabled: false,
   config: {
     selectedLocationId: "tokyo",
     locations: [{ id: "tokyo", label: "东京", city: "东京", area: "港区" }],
@@ -54,7 +57,21 @@ vi.mock("../../api/contentPublication", async () => {
   return { ...actual, contentPublicationApi: apiMocks };
 });
 
-vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: null }) }));
+vi.mock("../../features/booking/api", async () => {
+  const actual = await vi.importActual<typeof import("../../features/booking/api")>(
+    "../../features/booking/api"
+  );
+
+  return {
+    ...actual,
+    bookingApi: {
+      ...actual.bookingApi,
+      listOrders: apiMocks.listOrders
+    }
+  };
+});
+
+vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ isAuthenticated: true, session: null }) }));
 vi.mock("../../features/core-read/hooks", () => ({
   useCoreReadQuery: () => ({ data: null, error: null, loading: false })
 }));
@@ -72,7 +89,7 @@ vi.mock("../../state/homeLocationStore", () => ({
   syncHomeDeviceLocationForAppOpen: () => Promise.resolve()
 }));
 vi.mock("../../state/needoPetSettings", () => ({
-  useNeedoPetSettings: () => ({ enabled: false })
+  useNeedoPetSettings: () => ({ enabled: homeMocks.petEnabled })
 }));
 vi.mock("../../state/userOrderStore", () => ({ useUserOrders: () => [] }));
 vi.mock("../../theme/ClientThemeProvider", () => ({
@@ -241,7 +258,9 @@ describe("HomePage formal carousel integration", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    apiMocks.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 100, total: 0 });
     homeMocks.language = "zh";
+    homeMocks.petEnabled = false;
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -274,6 +293,55 @@ describe("HomePage formal carousel integration", () => {
     expect(errorRegion.compareDocumentPosition(quickAction) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.textContent).toContain("精选推荐");
     expect(container.textContent).not.toContain("页面发生运行错误");
+  });
+
+  it("loads the formal current booking and restores the appointment overview button", async () => {
+    const currentBooking = {
+      id: 88,
+      orderNo: "ND202609030001",
+      orderType: "booking",
+      status: "pending",
+      paymentMethod: "onsite",
+      paymentStatus: "pending",
+      paymentAmountJpy: 8800,
+      paymentConfirmedById: null,
+      paymentConfirmedAt: null,
+      paymentReference: null,
+      paymentNote: null,
+      paymentRefundedById: null,
+      paymentRefundedAt: null,
+      paymentRefundReference: null,
+      paymentRefundReason: null,
+      customerUserId: 5,
+      serviceId: 12,
+      technicianServiceId: null,
+      shopId: 217,
+      technicianProfileId: 186,
+      scheduleSlotId: 80839,
+      fulfillmentMode: "store",
+      serviceName: "麻布十番ボディケア 60分",
+      shopName: "麻布十番超级按摩",
+      technicianName: "LifeDance 管理员 2",
+      priceAmount: "8800.00",
+      currency: "JPY",
+      startsAt: "2026-09-04T01:00:00.000Z",
+      endsAt: "2026-09-04T02:00:00.000Z",
+      note: null,
+      cancelReason: null,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+      statusHistory: []
+    } satisfies BookingOrder;
+    apiMocks.getUserHomeCarousel.mockResolvedValue(publishedPayload("正式轮播", "zh-CN"));
+    apiMocks.listOrders.mockResolvedValue({ list: [currentBooking], page: 1, page_size: 100, total: 1 });
+    homeMocks.petEnabled = true;
+
+    await renderHome();
+    await waitFor(() => expect(apiMocks.listOrders).toHaveBeenCalledWith({ page: 1, pageSize: 100 }));
+
+    const appointmentOverview = container.querySelector<HTMLAnchorElement>('a[aria-label="查看预约记录"][href="/orders"]');
+    expect(appointmentOverview).not.toBeNull();
+    expect(appointmentOverview?.textContent).toContain("10:00");
   });
 
   it("reloads the formal scene when the content locale changes", async () => {

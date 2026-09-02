@@ -22,6 +22,7 @@ import {
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician
 } from "../../features/core-read/api";
+import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { useCustomerSelfProfile } from "../../features/core-read/useCustomerSelfProfile";
@@ -31,9 +32,7 @@ import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
-import { useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
-import { useUserOrders } from "../../state/userOrderStore";
 import { SocialProfileMiniCard, TechnicianShowcaseCard, buildServiceMiniCardData, getTechnicianDynamicPath } from "../../shared/profile-card";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import {
@@ -46,7 +45,15 @@ import { syncHomeDeviceLocationForAppOpen } from "../../state/homeLocationStore"
 import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
 
 const reminderDismissStorageKey = "needo.home.reminder.dismiss.v1";
-const currentAppointmentStatuses: Order["status"][] = ["pending", "unpaid", "confirmed", "scheduled", "inService"];
+const currentAppointmentStatuses: Order["status"][] = [
+  "pending",
+  "unpaid",
+  "confirmed",
+  "scheduled",
+  "inService",
+  "awaitingCheckout",
+  "awaitingPaymentConfirmation"
+];
 
 type ServiceRecommendationCardData = {
   kind: "service";
@@ -647,12 +654,10 @@ export function HomePage() {
   const userPortalConfig = roleBasedTabConfig.user;
   const { theme } = useClientTheme();
   const { language } = useI18n();
-  const { session } = useAuth();
+  const { isAuthenticated, session } = useAuth();
   const { customer: currentCustomer } = useCustomerSelfProfile();
   const { config } = useHomeLayoutStore();
-  const petSettings = useNeedoPetSettings();
-  const userOrders = useUserOrders();
-  const currentCustomerId = currentCustomer?.id ?? "";
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
   const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
   const homeRecommendationsQuery = useCoreReadQuery(
@@ -702,6 +707,30 @@ export function HomePage() {
   useEffect(() => {
     setRecommendationTab(config.recommendation.defaultTab);
   }, [config.recommendation.defaultTab]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setUserOrders([]);
+      return undefined;
+    }
+
+    let active = true;
+    bookingApi.listOrders({ page: 1, pageSize: 100 })
+      .then((data) => {
+        if (active) {
+          setUserOrders(data.list.map(mapBookingOrderToDomainOrder));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUserOrders([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     saveDismissedReminder(dismissedReminder);
@@ -871,10 +900,9 @@ export function HomePage() {
   const activeAppointmentOrders = useMemo(
     () =>
       userOrders
-        .filter((order) => order.customerId === currentCustomerId)
         .filter((order) => currentAppointmentStatuses.includes(order.status))
         .sort((left, right) => getOrderTimeValue(right) - getOrderTimeValue(left)),
-    [currentCustomerId, userOrders]
+    [userOrders]
   );
   const latestActiveAppointment = activeAppointmentOrders[0];
 
@@ -884,7 +912,6 @@ export function HomePage() {
     }
 
     const candidates = userOrders
-      .filter((order) => order.customerId === currentCustomerId)
       .filter((order) => order.status === "confirmed" || order.status === "scheduled")
       .map((order) => {
         const start = parseDateTime(order.bookedAt);
@@ -912,7 +939,7 @@ export function HomePage() {
       store: resolveStoreForOrder(closest.order, apiStores, apiTechnicians),
       service: resolveServiceForOrder(closest.order, apiServices)
     };
-  }, [apiServices, apiStores, apiTechnicians, config.reminder.enabled, config.reminder.triggerWindowMinutes, currentCustomerId, now, userOrders]);
+  }, [apiServices, apiStores, apiTechnicians, config.reminder.enabled, config.reminder.triggerWindowMinutes, now, userOrders]);
 
   useEffect(() => {
     if (!reminderState) {
@@ -1130,7 +1157,7 @@ export function HomePage() {
         ) : null}
       </div>
 
-      {petSettings.enabled ? null : <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />}
+      <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />
 
     </MobileShell>
   );

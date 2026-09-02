@@ -251,6 +251,18 @@ describe("bookingApi", () => {
     expect(requestBodyAt(1)).not.toHaveProperty("tagCounts");
   });
 
+  it("persists participant order tracking comments through the formal order API", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking"), 201));
+
+    await bookingApi.createTimelineComment(88, { body: "请提前五分钟联系" });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/orders/88/timeline/comments",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({ body: "请提前五分钟联系" });
+  });
+
   it("calls the authenticated merchant schedule-slot CRUD endpoints", async () => {
     const slot = {
       id: 33,

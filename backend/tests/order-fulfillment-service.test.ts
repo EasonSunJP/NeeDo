@@ -18,6 +18,7 @@ const context: AuthRequestContext = { ip: "127.0.0.1", userAgent: "fulfillment-t
 const customer = {
   userId: 101,
   roles: ["customer"],
+  currentIdentityId: 1501,
   currentIdentityType: "customer",
   currentIdentityScopeType: "customer_profile",
   currentIdentityScopeId: 501
@@ -25,6 +26,7 @@ const customer = {
 const assignedTechnician = {
   userId: 202,
   roles: ["technician"],
+  currentIdentityId: 1702,
   currentIdentityType: "technician",
   currentIdentityScopeType: "technician_profile",
   currentIdentityScopeId: 702
@@ -313,6 +315,46 @@ describe("formal order fulfillment service", () => {
     expect(notifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
   });
 
+  it("emits an exact-identity realtime change when a customer proposes an add-on", async () => {
+    const inService = makeOrder("inService", {
+      serviceSession: {
+        startedAt: now,
+        expectedEndsAt: new Date("2026-09-01T11:00:00.000Z"),
+        endedAt: null,
+        addOns: []
+      }
+    });
+    const repository = createRepository(inService, ok(inService));
+    repository.findOrderRealtimeRecipients = jest.fn().mockResolvedValue([
+      { userId: 101, identityId: 1501 },
+      { userId: 202, identityId: 1702 }
+    ]);
+    const notifications = {
+      notifyOrderStatusChanged: jest.fn(),
+      notifyOrderChanged: jest.fn()
+    };
+    const service = new BookingService(repository, undefined, notifications);
+
+    await service.createOrderAddOn(
+      customer,
+      41,
+      { serviceId: 19, idempotencyKey: "customer-addon-realtime-01" },
+      context
+    );
+
+    expect(notifications.notifyOrderChanged).toHaveBeenCalledWith({
+      actorIdentityId: 1501,
+      actorUserId: 101,
+      changeType: "add_on",
+      orderId: 41,
+      orderNo: "ND202609010041",
+      recipients: [
+        { userId: 101, identityId: 1501 },
+        { userId: 202, identityId: 1702 }
+      ]
+    });
+  });
+
   it("shows the stable code only on the owning customer detail and never exposes a hash", async () => {
     const order = makeOrder("confirmed");
     const repository = createRepository(order);
@@ -406,6 +448,14 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     servicePriceSnapshot: new Prisma.Decimal(baseOrder.servicePriceSnapshot!),
     serviceSnapshotJson: baseOrder.serviceSnapshot,
     fulfillmentMode: "store",
+    customer: {
+      id: customer.userId,
+      needoId: "u0000000101",
+      username: "预约用户",
+      avatarUrl: null,
+      avatarBootstrapUrl: null,
+      customerProfile: null
+    },
     service: { id: 11, name: baseOrder.serviceName },
     technicianService: null,
     shop: { id: 12, name: baseOrder.shopName },
