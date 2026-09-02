@@ -1,9 +1,12 @@
 import { Router } from "express";
 import type { AppDependencies } from "../app";
+import type { AppConfig } from "../config/env";
 import { CoreReadController } from "../controllers/core-read.controller";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { CoreReadRepository } from "../repositories/core-read.repository";
+import { SearchQueryRecorderRepository } from "../repositories/search-query-recorder.repository";
 import { CoreReadService } from "../services/core-read.service";
+import { SearchQueryRecorderService } from "../services/search-query-recorder.service";
 import {
   categoryListQuerySchema,
   coreReadIdParamSchema,
@@ -14,10 +17,18 @@ import {
   serviceListQuerySchema
 } from "../validators/core-read.validator";
 
-export const createCoreReadRoutes = (dependencies: AppDependencies): Router => {
+export const createCoreReadRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+): Router => {
   const router = Router();
   const coreReadService = new CoreReadService(
-    dependencies.coreReadRepository ?? new CoreReadRepository()
+    dependencies.coreReadRepository ?? new CoreReadRepository(),
+    dependencies.searchQueryRecorder ??
+      new SearchQueryRecorderService(
+        dependencies.searchQueryRecorderRepository ?? new SearchQueryRecorderRepository(),
+        config.AUTH_VERIFICATION_SECRET
+      )
   );
   const controller = new CoreReadController(coreReadService);
 
