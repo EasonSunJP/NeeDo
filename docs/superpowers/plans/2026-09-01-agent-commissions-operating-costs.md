@@ -381,7 +381,7 @@ Run: `npm test -- src/api/platformPartners.test.ts src/pages/admin/AgentsPage.te
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit admin UI**
+- [x] **Step 5: Commit admin UI**
 
 ```bash
 git add src/api/platformPartners.ts src/api/platformPartners.test.ts src/pages/admin/AgentsPage.tsx src/pages/admin/AgentsPage.test.tsx src/pages/admin/OperatingCostsPage.tsx src/pages/admin/OperatingCostsPage.test.tsx src/pages/admin/UsersPage.tsx src/pages/admin/UsersPage.test.tsx src/App.tsx src/App.test.tsx src/components/admin/AdminLayout.tsx src/components/admin/AdminLayout.test.ts src/i18n/translations.ts
@@ -397,7 +397,7 @@ git commit -m "feat: manage agents and operating costs"
 **Interfaces:**
 - Documents partner profiles, referrals, rule versions, costs, allocations, settlement preview/confirm and payment
 
-- [ ] **Step 1: Write the failing OpenAPI test**
+- [x] **Step 1: Write the failing OpenAPI test**
 
 ```ts
 expect(document.paths["/api/v1/backoffice/agents"]).toBeDefined();
@@ -405,17 +405,17 @@ expect(document.paths["/api/v1/backoffice/operating-costs"]).toBeDefined();
 expect(document.components.schemas.AgentSettlement).toBeDefined();
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- agent-operating-cost-openapi.test.ts`
 
 Expected: FAIL on missing paths/schema.
 
-- [ ] **Step 3: Add exact schemas, permissions and errors**
+- [x] **Step 3: Add exact schemas, permissions and errors**
 
 Document BPS/amount bounds, effective dates, allocation discriminators, reason/idempotency requirements, paginated lists and immutable settlement snapshots.
 
-- [ ] **Step 4: Run OpenAPI/API tests**
+- [x] **Step 4: Run OpenAPI/API tests**
 
 Run: `cd backend && npm test -- agent-operating-cost-openapi.test.ts openapi.test.ts platform-partner-api.test.ts agent-commission-rule-api.test.ts operating-cost-api.test.ts agent-settlement-api.test.ts`
 

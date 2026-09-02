@@ -6048,6 +6048,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       OperatingCostConfiguration: {
         type: "object",
         additionalProperties: false,
+        discriminator: { propertyName: "allocationMode" },
+        oneOf: [
+          {
+            properties: { allocationMode: { const: "equal_active_shops" } },
+            not: { required: ["directAssignments"] }
+          },
+          {
+            properties: { allocationMode: { const: "platform_income_proportional" } },
+            not: { required: ["directAssignments"] }
+          },
+          {
+            required: ["directAssignments"],
+            properties: { allocationMode: { const: "direct_shops" } }
+          }
+        ],
         required: [
           "categoryCode", "name", "amountJpy", "periodStart", "periodEnd",
           "allocationMode", "effectiveAt", "reason"
@@ -6312,6 +6327,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       AgentSettlement: {
         unevaluatedProperties: false,
+        "x-immutable-after-confirmation": true,
+        "x-calculation-snapshot-fields": [
+          "rule",
+          "lines",
+          "orderPlatformFeesJpy",
+          "saasFeesJpy",
+          "userRebatesJpy",
+          "refundsAndReversalsJpy",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "allocatedOperatingCostsJpy",
+          "pureProfitJpy",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "profitShareAmountJpy",
+          "totalAmountJpy"
+        ],
         allOf: [
           { $ref: "#/components/schemas/AgentSettlementTotals" },
           {
