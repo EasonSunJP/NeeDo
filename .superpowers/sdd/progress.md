@@ -11,7 +11,7 @@ Plan: `docs/superpowers/plans/2026-09-03-exchange-matched-booking-conversion.md`
 - Task 2: complete — immutable projection, provider privacy, active-lock filtering, and RBAC reconciliation; spec and quality APPROVED at `aa25865e`
 - Task 3: complete — conversion contracts, validation, shared idempotency middleware, stable errors, and owner-only booking permission; spec and quality APPROVED at `0b13cba3`
 - Task 4: complete — atomic conversion repository hardened through three review rounds; 31/31 focused tests; spec and quality APPROVED at `e0902b84`
-- Task 5: pending
+- Task 5: complete — formal service/route/OpenAPI/realtime surface hardened through three review rounds; spec and quality APPROVED at `8354836e`
 - Task 6: pending
 - Task 7: pending
 - Task 8: pending
