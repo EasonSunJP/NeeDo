@@ -11,6 +11,7 @@ import {
   createTransactionBoundPrismaFacade,
   loadAndValidateFormalEnvironment,
   resolveFixtureLedgerCurrency,
+  runExpectedFailureRollbackTransaction,
   runRollbackOnlyTransaction,
   type FormalDatabaseSchemaEvidence
 } from "../scripts/check-order-fulfillment-checkout-flow";
@@ -30,6 +31,19 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(packageJson.scripts["check:order-fulfillment-checkout"]).toBe(
       "tsx scripts/check-order-fulfillment-checkout-flow.ts"
     );
+  });
+
+  it("runs the customer checkout as a Test NDP account with a valid NeeDo identifier", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).toContain("isTestAccount: true");
+    expect(source).toContain('assert(currency === "TEST_NDP"');
+    expect(source).toContain("reconciliation === null");
+    expect(source).toContain('activeKey: "ndp_exchange_rate"');
+    expect(source).toContain("runInsufficientBalanceRollbackFlow");
+    expect(source.match(/runExpectedFailureRollbackTransaction\(/g)).toHaveLength(1);
+    expect(source).not.toContain("needoId: `${marker}-customer`");
+    expect(source).not.toContain("needoId: `${marker}-technician`");
   });
 
   it("requires one explicit existing FORMAL_BACKEND_ENV_FILE and validates its database target", () => {
@@ -123,7 +137,8 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     const ready: FormalDatabaseSchemaEvidence = {
       appliedMigrations: [
         "20260901090000_order_fulfillment_checkout",
-        "20260901101500_order_review_idempotency"
+        "20260901101500_order_review_idempotency",
+        "20260902090000_order_status_history_fulfillment_statuses"
       ],
       tables: [
         "users",
@@ -503,7 +518,7 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     await expect(runRollbackOnlyTransaction(
       client,
       captureBaseline,
-      async (transaction) => {
+      async (transaction: { state: typeof state }) => {
         transaction.state.rows += 5;
       }
     )).resolves.toBeUndefined();
@@ -518,6 +533,34 @@ describe("rollback-only formal order fulfillment flow checker", () => {
       }
     )).rejects.toThrow("unexpected flow failure");
     expect(new RollbackCompleted()).toBeInstanceOf(Error);
+  });
+
+  it("verifies an expected command failure only after the database transaction rolls back", async () => {
+    const state = { rows: 7 };
+    const client = {
+      $transaction: async (callback: (transaction: { state: typeof state }) => Promise<void>) => {
+        const snapshot = structuredClone(state);
+        try {
+          await callback({ state });
+        } catch (error) {
+          Object.assign(state, snapshot);
+          throw error;
+        }
+      }
+    };
+    const captureBaseline = jest.fn(async () => ({ ...state }));
+
+    await expect(runExpectedFailureRollbackTransaction(
+      client,
+      captureBaseline,
+      async (transaction: { state: typeof state }) => {
+        transaction.state.rows += 5;
+        throw new Error("error.wallet.insufficient_available");
+      },
+      "error.wallet.insufficient_available"
+    )).resolves.toBeUndefined();
+    expect(state.rows).toBe(7);
+    expect(captureBaseline).toHaveBeenCalledTimes(2);
   });
 
   it("treats external baseline object key order as non-semantic", async () => {

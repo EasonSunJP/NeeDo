@@ -26,12 +26,40 @@ describe("schedule flow checker cleanup", () => {
     expect(source).not.toContain("successfulPooledOrders.map((order) => order.id)");
   });
 
-  it("removes generated public identifiers before their user identities", () => {
+  it("reuses the formal user foundation cleanup after removing shop identifiers", () => {
     const source = readFileSync(resolve(__dirname, "../scripts/check-schedule-flow.ts"), "utf8");
+    const shopIdentifierCleanup = source.indexOf("transaction.publicIdentifier.deleteMany");
+    const userFoundationCleanup = source.indexOf("deleteFormalTestUserFoundations(");
+
+    expect(shopIdentifierCleanup).toBeGreaterThan(-1);
+    expect(userFoundationCleanup).toBeGreaterThan(shopIdentifierCleanup);
+  });
+
+  it("deletes current identity and experience foundations in foreign-key order", () => {
+    const source = readFileSync(
+      resolve(__dirname, "../scripts/support/formal-test-user.ts"),
+      "utf8"
+    );
     const publicIdentifierCleanup = source.indexOf("transaction.publicIdentifier.deleteMany");
-    const userIdentityCleanup = source.indexOf("transaction.userIdentity.deleteMany");
+    const merchantProfileCleanup = source.indexOf("transaction.merchantIdentityProfile.deleteMany");
+    const experienceEntryCleanup = source.indexOf("transaction.userExperienceEntry.deleteMany");
+    const experienceAccountCleanup = source.indexOf("transaction.userExperienceAccount.deleteMany");
+    const identityCleanup = source.indexOf("transaction.userIdentity.deleteMany");
 
     expect(publicIdentifierCleanup).toBeGreaterThan(-1);
-    expect(userIdentityCleanup).toBeGreaterThan(publicIdentifierCleanup);
+    expect(merchantProfileCleanup).toBeGreaterThan(publicIdentifierCleanup);
+    expect(experienceEntryCleanup).toBeGreaterThan(merchantProfileCleanup);
+    expect(experienceAccountCleanup).toBeGreaterThan(experienceEntryCleanup);
+    expect(identityCleanup).toBeGreaterThan(experienceAccountCleanup);
+  });
+
+  it("uses the current merchant identity claim in the acceptance control checker", () => {
+    const source = readFileSync(
+      resolve(__dirname, "../scripts/check-order-acceptance-control-flow.ts"),
+      "utf8"
+    );
+    const providerActor = source.match(/const providerActor = \{[\s\S]*?\n\s{4}\};/)?.[0] ?? "";
+
+    expect(providerActor).toContain('currentIdentityType: "merchant_owner"');
   });
 });

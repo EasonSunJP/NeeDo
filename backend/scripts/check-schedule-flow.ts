@@ -25,7 +25,7 @@ const main = async (): Promise<void> => {
     { BackofficeRepository },
     { BookingRepository },
     { prisma, disconnectPrisma },
-    { createFormalTestUser }
+    { createFormalTestUser, deleteFormalTestUserFoundations }
   ] = await Promise.all([
     import("../src/repositories/backoffice.repository"),
     import("../src/repositories/booking.repository"),
@@ -276,22 +276,17 @@ const main = async (): Promise<void> => {
         if (createdAvailabilityIds.length > 0) await transaction.availability.deleteMany({ where: { id: { in: createdAvailabilityIds } } });
         if (technicianServiceId) await transaction.technicianService.deleteMany({ where: { id: technicianServiceId } });
         if (serviceId) await transaction.service.deleteMany({ where: { id: serviceId } });
-        await transaction.auditLog.deleteMany({ where: { targetType: "User", targetId: { in: createdUserIds } } });
-        await transaction.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-        const identityIds = (await transaction.userIdentity.findMany({
-          where: { userId: { in: createdUserIds } },
-          select: { id: true }
-        })).map((identity) => identity.id);
-        await transaction.publicIdentifier.deleteMany({
+        await transaction.auditLog.deleteMany({
           where: {
             OR: [
-              { userIdentityId: { in: identityIds } },
-              ...(shopId ? [{ shopId }] : [])
+              { actorId: { in: createdUserIds } },
+              { targetType: "User", targetId: { in: createdUserIds } }
             ]
           }
         });
-        await transaction.userIdentity.deleteMany({ where: { userId: { in: createdUserIds } } });
-        await transaction.customerProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
+        await transaction.publicIdentifier.deleteMany({
+          where: shopId ? { shopId } : { id: { in: [] } }
+        });
         if (technicianShopAffiliationId) {
           await transaction.technicianShopAffiliation.deleteMany({
             where: { id: technicianShopAffiliationId }
@@ -299,6 +294,7 @@ const main = async (): Promise<void> => {
         }
         await transaction.technicianProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
         if (shopId) await transaction.shop.deleteMany({ where: { id: shopId } });
+        await deleteFormalTestUserFoundations(transaction, createdUserIds);
         await transaction.user.deleteMany({ where: { id: { in: createdUserIds } } });
       });
     }

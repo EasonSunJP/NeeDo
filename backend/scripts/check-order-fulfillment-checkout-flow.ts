@@ -31,7 +31,8 @@ export interface FormalDatabaseSchemaEvidence {
 
 const REQUIRED_MIGRATIONS = [
   "20260901090000_order_fulfillment_checkout",
-  "20260901101500_order_review_idempotency"
+  "20260901101500_order_review_idempotency",
+  "20260902090000_order_status_history_fulfillment_statuses"
 ] as const;
 const REQUIRED_TABLES = [
   "users",
@@ -394,6 +395,37 @@ export async function runRollbackOnlyTransaction<TTransaction extends object, TB
   }
 }
 
+export async function runExpectedFailureRollbackTransaction<TTransaction extends object, TBaseline>(
+  client: RollbackClient<TTransaction>,
+  captureBaseline: () => Promise<TBaseline>,
+  flow: TransactionCallback<TTransaction, void>,
+  expectedMessage: string
+): Promise<void> {
+  const before = await captureBaseline();
+  let failure: unknown;
+  try {
+    await client.$transaction(
+      async (transaction) => {
+        await flow(transaction);
+        throw new Error(`Expected ${expectedMessage} was not rejected`);
+      },
+      { maxWait: 10_000, timeout: 120_000 }
+    );
+  } catch (error) {
+    failure = error;
+  }
+  const message = failure instanceof Error ? failure.message : String(failure);
+  if (message !== expectedMessage) {
+    throw new Error(
+      `Formal order checker assertion failed: expected ${expectedMessage}, received ${message}`
+    );
+  }
+  const after = await captureBaseline();
+  if (serializeEvidence(after) !== serializeEvidence(before)) {
+    throw new Error(`External database baseline changed after ${expectedMessage} rollback`);
+  }
+}
+
 type NameRow = { name: string };
 type ColumnRow = { tableName: string; columnName: string; collationName: string | null };
 
@@ -481,13 +513,18 @@ async function createCheckerFixture(
   now: Date
 ): Promise<CheckerFixture> {
   const marker = `order-flow-${now.getTime()}-${Math.random().toString(36).slice(2, 10)}`;
+  const accountPrefix = String(Math.floor(Math.random() * 100_000_000)).padStart(8, "0");
+  const customerAccountNo = `${accountPrefix}01`;
+  const technicianAccountNo = `${accountPrefix}02`;
   const customer = await tx.user.create({ data: {
-    needoId: `${marker}-customer`, email: `${marker}-customer@example.invalid`,
-    username: "Formal flow customer", isTestAccount: false
+    needoId: `u${customerAccountNo}`, accountNo: customerAccountNo, primaryIdentityType: "U",
+    email: `${marker}-customer@example.invalid`, username: "Formal flow customer",
+    isTestAccount: true
   } });
   const technician = await tx.user.create({ data: {
-    needoId: `${marker}-technician`, email: `${marker}-technician@example.invalid`,
-    username: "Formal flow technician", isTestAccount: true
+    needoId: `u${technicianAccountNo}`, accountNo: technicianAccountNo, primaryIdentityType: "U",
+    email: `${marker}-technician@example.invalid`, username: "Formal flow technician",
+    isTestAccount: true
   } });
   const customerProfile = await tx.customerProfile.create({ data: {
     userId: customer.id, displayName: "Formal flow customer", city: "Tokyo"
@@ -521,7 +558,7 @@ async function createCheckerFixture(
   const latestRate = await tx.ndpExchangeRateRule.aggregate({ _max: { version: true } });
   const rate = await tx.ndpExchangeRateRule.create({ data: {
     version: (latestRate._max.version ?? 0) + 1, ndpUnits: 1, jpyUnits: 1,
-    status: "ACTIVE", effectiveFrom: new Date(now.getTime() - 60_000), activeKey: "active",
+    status: "ACTIVE", effectiveFrom: new Date(now.getTime() - 60_000), activeKey: "ndp_exchange_rate",
     idempotencyKey: `${marker}-rate`, reason: "Rollback-only formal flow check"
   } });
   if (previousRates.some((row) => row.effectiveFrom >= now)) {
@@ -652,8 +689,7 @@ export async function captureOrderMutationState(
   };
 }
 
-async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
-  const now = new Date();
+async function createFormalFlowHarness(tx: Prisma.TransactionClient, now: Date) {
   const fixture = await createCheckerFixture(tx, now);
   const facade = createTransactionBoundPrismaFacade(tx) as unknown as PrismaClient;
   const [bookingModule, bookingRepositoryModule, ledgerModule, ledgerRepositoryModule,
@@ -675,7 +711,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     undefined, rate, () => now
   );
   const currency = await resolveFixtureLedgerCurrency(tx, fixture.customer.id);
-  assert(currency === "NDP", "non-test fixture did not resolve to formal NDP currency");
+  assert(currency === "TEST_NDP", "test fixture did not resolve to TEST_NDP currency");
   const customer: AuthenticatedAccessContext = {
     userId: fixture.customer.id, email: fixture.customer.email, accessTokenJti: fixture.marker,
     accessTokenExpiresAt: Math.floor(now.getTime() / 1000) + 600, roles: ["customer"],
@@ -695,7 +731,30 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     currentIdentityScopeType: "technician_profile",
     currentIdentityScopeId: fixture.technicianProfileId
   };
-  const context = { ip: "127.0.0.1", userAgent: "order-flow-checker" };
+  return {
+    fixture,
+    bookingRepositoryModule,
+    validatorModule,
+    service,
+    currency,
+    customer,
+    technician,
+    context: { ip: "127.0.0.1", userAgent: "order-flow-checker" }
+  };
+}
+
+async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
+  const now = new Date();
+  const {
+    fixture,
+    bookingRepositoryModule,
+    validatorModule,
+    service,
+    currency,
+    customer,
+    technician,
+    context
+  } = await createFormalFlowHarness(tx, now);
 
   const ndpOrder = await createConfirmedOrder(tx, fixture, 1, now, currency, 100_000);
   const ndpStart = { actor: "customer" as const, idempotencyKey: `${fixture.marker}-ndp-start` };
@@ -863,12 +922,8 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     paymentEntry.frozenBalanceAfter === 0 && ndpWalletBefore.availableBalance === 100_000 &&
     ndpWalletAfter.availableBalance === 89_000 && ndpWalletAfter.frozenBalance === 0,
   "NDP wallet/ledger balance evidence is not exact");
-  assert(reconciliation?.referenceType === "order_checkout_payment" &&
-    reconciliation.referenceId === persistedCheckout.id && reconciliation.currency === currency &&
-    reconciliation.expectedAmount === 11_000 && reconciliation.actualAmount === 11_000 &&
-    reconciliation.differenceAmount === 0 && reconciliation.status === "PENDING" &&
-    ndpEvidence.financial?.settlementStatus === "settled",
-  "NDP reconciliation/settlement evidence is not exact");
+  assert(reconciliation === null && ndpEvidence.financial?.settlementStatus === "settled",
+  "TEST_NDP reconciliation isolation/settlement evidence is not exact");
   assertFormalFulfillmentChain(
     {
       order: ndpEvidence as unknown as Record<string, unknown>,
@@ -1301,32 +1356,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     "invalid verification code"
   );
 
-  const insufficientOrder = await createConfirmedOrder(tx, fixture, 4, now, currency);
-  await service.startService(customer, insufficientOrder.id, {
-    actor: "customer", idempotencyKey: `${fixture.marker}-insufficient-start`
-  }, context);
-  await service.endService(customer, insufficientOrder.id, {
-    reason: "completed", idempotencyKey: `${fixture.marker}-insufficient-end`
-  }, context);
-  await service.getCheckout(customer, insufficientOrder.id);
-  await service.selectCheckoutPaymentMethod(customer, insufficientOrder.id, {
-    method: "ndp", idempotencyKey: `${fixture.marker}-insufficient-select`
-  }, context);
-  await tx.wallet.update({
-    where: { ownerType_ownerId_currency: { ownerType: "USER", ownerId: fixture.customer.id, currency } },
-    data: { availableBalance: 0 }
-  });
-  const insufficientBefore = await captureOrderMutationState(tx, insufficientOrder.id);
-  await assertRejectedWithMessage(() => service.payCheckoutWithNdp(customer, insufficientOrder.id, {
-    idempotencyKey: `${fixture.marker}-insufficient-pay`
-  }, context), "error.wallet.insufficient_available");
-  assertDeepSnapshotEqual(
-    insufficientBefore,
-    await captureOrderMutationState(tx, insufficientOrder.id),
-    "insufficient NDP"
-  );
-
-  const pendingAddOnOrder = await createConfirmedOrder(tx, fixture, 5, now, currency);
+  const pendingAddOnOrder = await createConfirmedOrder(tx, fixture, 4, now, currency);
   await service.startService(customer, pendingAddOnOrder.id, {
     actor: "customer", idempotencyKey: `${fixture.marker}-pending-start`
   }, context);
@@ -1344,6 +1374,25 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   );
 }
 
+async function runInsufficientBalanceRollbackFlow(tx: Prisma.TransactionClient): Promise<void> {
+  const now = new Date();
+  const { fixture, service, currency, customer, context } = await createFormalFlowHarness(tx, now);
+  const order = await createConfirmedOrder(tx, fixture, 1, now, currency);
+  await service.startService(customer, order.id, {
+    actor: "customer", idempotencyKey: `${fixture.marker}-insufficient-start`
+  }, context);
+  await service.endService(customer, order.id, {
+    reason: "completed", idempotencyKey: `${fixture.marker}-insufficient-end`
+  }, context);
+  await service.getCheckout(customer, order.id);
+  await service.selectCheckoutPaymentMethod(customer, order.id, {
+    method: "ndp", idempotencyKey: `${fixture.marker}-insufficient-select`
+  }, context);
+  await service.payCheckoutWithNdp(customer, order.id, {
+    idempotencyKey: `${fixture.marker}-insufficient-pay`
+  }, context);
+}
+
 export async function runOrderFulfillmentCheckoutCheck(): Promise<void> {
   const formalEnvironment = loadAndValidateFormalEnvironment(process.env);
   for (const [name, value] of Object.entries(formalEnvironment.values)) process.env[name] = value;
@@ -1354,6 +1403,12 @@ export async function runOrderFulfillmentCheckoutCheck(): Promise<void> {
       prisma,
       () => captureExternalBaseline(prisma),
       runFormalFlow
+    );
+    await runExpectedFailureRollbackTransaction(
+      prisma,
+      () => captureExternalBaseline(prisma),
+      runInsufficientBalanceRollbackFlow,
+      "error.wallet.insufficient_available"
     );
   } finally {
     await prisma.$disconnect();

@@ -417,6 +417,7 @@ const main = async (): Promise<void> => {
     const providerActor = {
       userId: merchantUser.id,
       roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
       currentIdentityScopeType: "shop",
       currentIdentityScopeId: shop.id
     };

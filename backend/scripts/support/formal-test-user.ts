@@ -24,6 +24,9 @@ export const deleteFormalTestUserFoundations = async (
   await transaction.publicIdentifier.deleteMany({
     where: { userIdentityId: { in: identities.map((identity) => identity.id) } }
   });
+  await transaction.merchantIdentityProfile.deleteMany({ where: { userId: { in: userIds } } });
+  await transaction.userExperienceEntry.deleteMany({ where: { userId: { in: userIds } } });
+  await transaction.userExperienceAccount.deleteMany({ where: { userId: { in: userIds } } });
   await transaction.userRole.deleteMany({ where: { userId: { in: userIds } } });
   await transaction.customerProfile.deleteMany({ where: { userId: { in: userIds } } });
   await transaction.userIdentity.deleteMany({ where: { userId: { in: userIds } } });
