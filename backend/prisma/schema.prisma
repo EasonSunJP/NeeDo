@@ -1000,6 +1000,60 @@ enum ContentPublicationAggregateType {
   @@map("content_publication_aggregate_type")
 }
 
+enum PlatformPartnerType {
+  AGENT      @map("agent")
+  FRANCHISEE @map("franchisee")
+  SUPPLIER   @map("supplier")
+
+  @@map("platform_partner_type")
+}
+
+enum AgentReferralStatus {
+  ACTIVE    @map("active")
+  QUALIFIED @map("qualified")
+  REVOKED   @map("revoked")
+
+  @@map("agent_referral_status")
+}
+
+enum AgentPaymentMethod {
+  BANK_TRANSFER @map("bank_transfer")
+  NDP           @map("ndp")
+  OTHER         @map("other")
+
+  @@map("agent_payment_method")
+}
+
+enum OperatingCostAllocationMode {
+  EQUAL_ACTIVE_SHOPS           @map("equal_active_shops")
+  PLATFORM_INCOME_PROPORTIONAL @map("platform_income_proportional")
+  DIRECT_SHOPS                 @map("direct_shops")
+
+  @@map("operating_cost_allocation_mode")
+}
+
+enum OperatingCostStatus {
+  DRAFT     @map("draft")
+  PUBLISHED @map("published")
+  ARCHIVED  @map("archived")
+
+  @@map("operating_cost_status")
+}
+
+enum AgentSettlementStatus {
+  CONFIRMED @map("confirmed")
+  PAID      @map("paid")
+
+  @@map("agent_settlement_status")
+}
+
+enum AgentSettlementLineType {
+  SUCCESS_REWARD @map("success_reward")
+  PROFIT_SHARE   @map("profit_share")
+
+  @@map("agent_settlement_line_type")
+}
+
 model User {
   id                   Int                  @id @default(autoincrement())
   needoId              String               @unique @map("needo_id") @db.VarChar(32)
@@ -1183,6 +1237,13 @@ model User {
   entityFavorites                         EntityFavorite[]                      @relation("EntityFavoriteOwner")
   createdEntityShareEvents                EntityShareEvent[]                    @relation("EntityShareActor")
   receivedEntityShareEvents               EntityShareEvent[]                    @relation("EntityShareRecipient")
+  platformPartnerProfiles                 PlatformPartnerProfile[]              @relation("PlatformPartnerProfileUser")
+  markedPlatformPartnerProfiles           PlatformPartnerProfile[]              @relation("PlatformPartnerProfileMarker")
+  confirmedAgentShopReferrals             AgentShopReferral[]                   @relation("AgentShopReferralConfirmer")
+  publishedAgentCommissionRules           AgentCommissionRuleVersion[]          @relation("AgentCommissionRulePublisher")
+  configuredOperatingCostItems            OperatingCostItem[]                   @relation("OperatingCostItemConfigurer")
+  confirmedAgentSettlements               AgentSettlement[]                     @relation("AgentSettlementConfirmer")
+  paidAgentSettlements                    AgentSettlement[]                     @relation("AgentSettlementPayer")
 
   @@index([email])
   @@index([phone])
@@ -1517,6 +1578,9 @@ model Shop {
   serviceTaxonomyState       ShopServiceTaxonomyState?
   serviceTaxonomyCommands    ShopServiceTaxonomyCommand[]
   serviceQualifications      ShopServiceQualification[]
+  agentShopReferrals         AgentShopReferral[]
+  operatingCostAllocations   OperatingCostAllocation[]
+  agentSettlementLines       AgentSettlementLine[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1527,6 +1591,224 @@ model Shop {
   @@index([pricingModeUpdatedBy])
   @@index([deletedAt])
   @@map("shops")
+}
+
+model PlatformPartnerProfile {
+  id               Int                 @id @default(autoincrement())
+  publicId         String              @unique(map: "platform_partner_profiles_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  userId           Int                 @map("user_id")
+  partnerType      PlatformPartnerType @map("partner_type")
+  activatedAt      DateTime            @map("activated_at")
+  markedById       Int                 @map("marked_by_id")
+  reason           String              @db.VarChar(500)
+  activePartnerKey String?             @unique(map: "platform_partner_profiles_active_partner_key") @default(dbgenerated()) @map("active_partner_key") @db.VarChar(191)
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  deletedAt        DateTime?           @map("deleted_at")
+
+  user            User                         @relation("PlatformPartnerProfileUser", fields: [userId], references: [id], onDelete: Restrict)
+  markedBy        User                         @relation("PlatformPartnerProfileMarker", fields: [markedById], references: [id], onDelete: Restrict)
+  referrals       AgentShopReferral[]
+  commissionRules AgentCommissionRuleVersion[]
+  settlements     AgentSettlement[]
+
+  @@index([userId, deletedAt], map: "platform_partner_profiles_user_deleted_idx")
+  @@index([partnerType, activatedAt, deletedAt], map: "platform_partner_profiles_type_activated_deleted_idx")
+  @@index([markedById], map: "platform_partner_profiles_marked_by_id_idx")
+  @@index([deletedAt], map: "platform_partner_profiles_deleted_at_idx")
+  @@map("platform_partner_profiles")
+}
+
+model AgentShopReferral {
+  id                 Int                 @id @default(autoincrement())
+  publicId           String              @unique(map: "agent_shop_referrals_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  agentProfileId     Int                 @map("agent_profile_id")
+  shopId             Int                 @map("shop_id")
+  status             AgentReferralStatus @default(ACTIVE)
+  source             String              @db.VarChar(100)
+  confirmedAt        DateTime            @map("confirmed_at")
+  confirmedById      Int                 @map("confirmed_by_id")
+  successQualifiedAt DateTime?           @map("success_qualified_at")
+  reason             String              @db.VarChar(500)
+  activeShopKey      String?             @unique(map: "agent_shop_referrals_active_shop_key") @default(dbgenerated()) @map("active_shop_key") @db.VarChar(64)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
+
+  agentProfile    PlatformPartnerProfile @relation(fields: [agentProfileId], references: [id], onDelete: Restrict)
+  shop            Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  confirmedBy     User                   @relation("AgentShopReferralConfirmer", fields: [confirmedById], references: [id], onDelete: Restrict)
+  settlementLines AgentSettlementLine[]
+
+  @@index([agentProfileId, status, confirmedAt, deletedAt], map: "agent_shop_referrals_agent_status_confirmed_idx")
+  @@index([shopId, status, deletedAt], map: "agent_shop_referrals_shop_status_deleted_idx")
+  @@index([confirmedById], map: "agent_shop_referrals_confirmed_by_id_idx")
+  @@index([deletedAt], map: "agent_shop_referrals_deleted_at_idx")
+  @@map("agent_shop_referrals")
+}
+
+model AgentCommissionRuleVersion {
+  id                    Int                @id @default(autoincrement())
+  publicId              String             @unique(map: "agent_commission_rule_versions_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  agentProfileId        Int                @map("agent_profile_id")
+  version               Int
+  fixedSuccessRewardJpy BigInt             @map("fixed_success_reward_jpy")
+  profitShareRateBps    Int                @map("profit_share_rate_bps")
+  paymentMethod         AgentPaymentMethod @map("payment_method")
+  paymentDetailsJson    Json?              @map("payment_details_json")
+  effectiveFrom         DateTime           @map("effective_from")
+  effectiveTo           DateTime?          @map("effective_to")
+  publishedAt           DateTime           @default(now()) @map("published_at")
+  publishedById         Int                @map("published_by_id")
+  reason                String             @db.VarChar(500)
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+  deletedAt             DateTime?          @map("deleted_at")
+
+  agentProfile PlatformPartnerProfile @relation(fields: [agentProfileId], references: [id], onDelete: Restrict)
+  publishedBy  User                   @relation("AgentCommissionRulePublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+  settlements  AgentSettlement[]
+
+  @@unique([agentProfileId, version], map: "agent_commission_rule_versions_agent_version_key")
+  @@index([agentProfileId, effectiveFrom, effectiveTo, deletedAt], map: "agent_commission_rule_versions_resolution_idx")
+  @@index([publishedById], map: "agent_commission_rule_versions_published_by_id_idx")
+  @@index([deletedAt], map: "agent_commission_rule_versions_deleted_at_idx")
+  @@map("agent_commission_rule_versions")
+}
+
+model OperatingCostItem {
+  id                        Int                         @id @default(autoincrement())
+  publicId                  String                      @unique(map: "operating_cost_items_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  costCode                  String                      @map("cost_code") @db.VarChar(100)
+  version                   Int
+  categoryCode              String                      @map("category_code") @db.VarChar(64)
+  name                      String                      @db.VarChar(160)
+  amountJpy                 BigInt                      @map("amount_jpy")
+  currency                  String                      @default("JPY") @db.Char(3)
+  periodStart               DateTime                    @map("period_start") @db.Date
+  periodEnd                 DateTime                    @map("period_end") @db.Date
+  allocationMode            OperatingCostAllocationMode @map("allocation_mode")
+  status                    OperatingCostStatus         @default(DRAFT)
+  effectiveAt               DateTime                    @map("effective_at")
+  publishedAt               DateTime?                   @map("published_at")
+  configuredById            Int                         @map("configured_by_id")
+  reason                    String                      @db.VarChar(500)
+  configurationSnapshotJson Json?                       @map("configuration_snapshot_json")
+  createdAt                 DateTime                    @default(now()) @map("created_at")
+  updatedAt                 DateTime                    @updatedAt @map("updated_at")
+  deletedAt                 DateTime?                   @map("deleted_at")
+
+  configuredBy User                      @relation("OperatingCostItemConfigurer", fields: [configuredById], references: [id], onDelete: Restrict)
+  allocations  OperatingCostAllocation[]
+
+  @@unique([costCode, version], map: "operating_cost_items_code_version_key")
+  @@index([status, periodStart, periodEnd, deletedAt], map: "operating_cost_items_status_period_idx")
+  @@index([categoryCode, periodStart, periodEnd, deletedAt], map: "operating_cost_items_category_period_idx")
+  @@index([configuredById], map: "operating_cost_items_configured_by_id_idx")
+  @@index([deletedAt], map: "operating_cost_items_deleted_at_idx")
+  @@map("operating_cost_items")
+}
+
+model OperatingCostAllocation {
+  id                      Int       @id @default(autoincrement())
+  operatingCostItemId     Int       @map("operating_cost_item_id")
+  shopId                  Int       @map("shop_id")
+  amountJpy               BigInt    @map("amount_jpy")
+  allocationWeight        Decimal?  @map("allocation_weight") @db.Decimal(20, 8)
+  calculationSnapshotJson Json      @map("calculation_snapshot_json")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  deletedAt               DateTime? @map("deleted_at")
+
+  operatingCostItem OperatingCostItem @relation(fields: [operatingCostItemId], references: [id], onDelete: Restrict)
+  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@unique([operatingCostItemId, shopId], map: "operating_cost_allocations_item_shop_key")
+  @@index([shopId, deletedAt], map: "operating_cost_allocations_shop_deleted_idx")
+  @@index([deletedAt], map: "operating_cost_allocations_deleted_at_idx")
+  @@map("operating_cost_allocations")
+}
+
+model AgentSettlement {
+  id                         Int                   @id @default(autoincrement())
+  publicId                   String                @unique(map: "agent_settlements_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  agentProfileId             Int                   @map("agent_profile_id")
+  ruleVersionId              Int                   @map("rule_version_id")
+  periodStart                DateTime              @map("period_start") @db.Date
+  periodEnd                  DateTime              @map("period_end") @db.Date
+  status                     AgentSettlementStatus @default(CONFIRMED)
+  currency                   String                @default("JPY") @db.Char(3)
+  orderPlatformFeesJpy       BigInt                @map("order_platform_fees_jpy")
+  saasFeesJpy                BigInt                @map("saas_fees_jpy")
+  userRebatesJpy             BigInt                @map("user_rebates_jpy")
+  refundsAndReversalsJpy     BigInt                @map("refunds_and_reversals_jpy")
+  channelFeesJpy             BigInt                @map("channel_fees_jpy")
+  consumptionTaxJpy          BigInt                @map("consumption_tax_jpy")
+  allocatedOperatingCostsJpy BigInt                @map("allocated_operating_costs_jpy")
+  pureProfitJpy              BigInt                @map("pure_profit_jpy")
+  fixedSuccessRewardJpy      BigInt                @map("fixed_success_reward_jpy")
+  profitShareRateBps         Int                   @map("profit_share_rate_bps")
+  profitShareAmountJpy       BigInt                @map("profit_share_amount_jpy")
+  totalAmountJpy             BigInt                @map("total_amount_jpy")
+  calculationSnapshotJson    Json                  @map("calculation_snapshot_json")
+  idempotencyKey             String                @map("idempotency_key") @db.VarChar(160)
+  confirmedAt                DateTime              @default(now()) @map("confirmed_at")
+  confirmedById              Int                   @map("confirmed_by_id")
+  paidAt                     DateTime?             @map("paid_at")
+  paidById                   Int?                  @map("paid_by_id")
+  paymentMethod              AgentPaymentMethod?   @map("payment_method")
+  paymentReference           String?               @map("payment_reference") @db.VarChar(255)
+  createdAt                  DateTime              @default(now()) @map("created_at")
+  updatedAt                  DateTime              @updatedAt @map("updated_at")
+  deletedAt                  DateTime?             @map("deleted_at")
+
+  agentProfile PlatformPartnerProfile     @relation(fields: [agentProfileId], references: [id], onDelete: Restrict)
+  ruleVersion  AgentCommissionRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  confirmedBy  User                       @relation("AgentSettlementConfirmer", fields: [confirmedById], references: [id], onDelete: Restrict)
+  paidBy       User?                      @relation("AgentSettlementPayer", fields: [paidById], references: [id], onDelete: Restrict)
+  lines        AgentSettlementLine[]
+
+  @@unique([agentProfileId, periodStart, periodEnd], map: "agent_settlements_agent_period_key")
+  @@unique([agentProfileId, idempotencyKey], map: "agent_settlements_agent_idempotency_key")
+  @@index([status, periodStart, periodEnd, deletedAt], map: "agent_settlements_status_period_idx")
+  @@index([ruleVersionId], map: "agent_settlements_rule_version_id_idx")
+  @@index([confirmedById], map: "agent_settlements_confirmed_by_id_idx")
+  @@index([paidById], map: "agent_settlements_paid_by_id_idx")
+  @@index([deletedAt], map: "agent_settlements_deleted_at_idx")
+  @@map("agent_settlements")
+}
+
+model AgentSettlementLine {
+  id                         Int                     @id @default(autoincrement())
+  settlementId               Int                     @map("settlement_id")
+  referralId                 Int                     @map("referral_id")
+  shopId                     Int                     @map("shop_id")
+  lineType                   AgentSettlementLineType @map("line_type")
+  orderPlatformFeesJpy       BigInt                  @map("order_platform_fees_jpy")
+  saasFeesJpy                BigInt                  @map("saas_fees_jpy")
+  userRebatesJpy             BigInt                  @map("user_rebates_jpy")
+  refundsAndReversalsJpy     BigInt                  @map("refunds_and_reversals_jpy")
+  channelFeesJpy             BigInt                  @map("channel_fees_jpy")
+  consumptionTaxJpy          BigInt                  @map("consumption_tax_jpy")
+  allocatedOperatingCostsJpy BigInt                  @map("allocated_operating_costs_jpy")
+  shopPureProfitJpy          BigInt                  @map("shop_pure_profit_jpy")
+  fixedSuccessRewardJpy      BigInt                  @map("fixed_success_reward_jpy")
+  profitShareRateBps         Int                     @map("profit_share_rate_bps")
+  amountJpy                  BigInt                  @map("amount_jpy")
+  calculationSnapshotJson    Json                    @map("calculation_snapshot_json")
+  createdAt                  DateTime                @default(now()) @map("created_at")
+  updatedAt                  DateTime                @updatedAt @map("updated_at")
+  deletedAt                  DateTime?               @map("deleted_at")
+
+  settlement AgentSettlement   @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  referral   AgentShopReferral @relation(fields: [referralId], references: [id], onDelete: Restrict)
+  shop       Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, referralId, lineType], map: "agent_settlement_lines_settlement_referral_type_key")
+  @@index([shopId, lineType], map: "agent_settlement_lines_shop_type_idx")
+  @@index([referralId], map: "agent_settlement_lines_referral_id_idx")
+  @@index([deletedAt], map: "agent_settlement_lines_deleted_at_idx")
+  @@map("agent_settlement_lines")
 }
 
 model ShopFinanceRuleSet {
