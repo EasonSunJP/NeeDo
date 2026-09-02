@@ -82,8 +82,8 @@ const metric = (metricKey: string, detailRoute: string | null = `/admin/analytic
 });
 const overviewPayload = {
   filter: (({ availableCities: _availableCities, ...rest }) => rest)(filter),
-  operationsFinance: [metric("gross_revenue")],
-  commissionMetrics: [metric("ndp_income")],
+  operationsFinance: [metric("gross_revenue"), metric("fare_revenue", null)],
+  commissionMetrics: [metric("ndp_income"), metric("agent_commission", null)],
   growthMetrics: [
     metric("new_users"),
     metric("franchisee_onboarding", null),
@@ -136,8 +136,11 @@ describe("operations unified data dashboard", () => {
     expect(text.indexOf("运营财务")).toBeLessThan(text.indexOf("佣金统计"));
     expect(text.indexOf("佣金统计")).toBeLessThan(text.indexOf("用户与增长"));
     expect(text).toContain("0");
-    expect(text).toContain("TEST 功能暂未开放");
+    expect(container.querySelector('[data-analytics-disabled-detail]')?.getAttribute("aria-label"))
+      .toBe("TEST 功能暂未开放");
     expect([...container.querySelectorAll("button")].some((item) => item.textContent?.includes("TEST"))).toBe(false);
+    expect(container.querySelectorAll("[data-analytics-disabled-detail]")).toHaveLength(4);
+    expect(container.querySelectorAll("[data-analytics-detail-accessory]")).toHaveLength(7);
     expect(container.querySelector('button[aria-label="查看营业总额说明和计算公式"]')).toBeTruthy();
   });
 

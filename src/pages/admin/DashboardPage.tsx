@@ -318,10 +318,9 @@ export function DashboardPage() {
                 ].map(([groupTitle, metrics]) => (
                   <AnalyticsMetricGrid
                     detailLabel={t("查看详细数据")}
-                    getDisabledDetailLabel={(metric) =>
-                      metric.metricKey === "franchisee_onboarding" || metric.metricKey === "supplier_onboarding"
-                        ? t("TEST 功能暂未开放")
-                        : undefined}
+                    getDisabledDetailLabel={(metric) => metric.detailRoute === null
+                      ? t("TEST 功能暂未开放")
+                      : undefined}
                     getInfoLabel={(title) => getAnalyticsMetricInfoLabel(title, language)}
                     getMetricTitle={(metric) => t(getAnalyticsMetricTitleSource(metric.metricKey))}
                     groupTitle={t(groupTitle as string)}

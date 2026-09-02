@@ -217,10 +217,15 @@ describe("AnalyticsMetricGrid", () => {
       (button) => button.textContent === "查看详情"
     );
     expect(detailButtons).toHaveLength(1);
+    const detailAccessory = detailButtons[0]?.closest<HTMLElement>("[data-analytics-detail-accessory]");
+    expect(detailAccessory).not.toBeNull();
+    expect(detailAccessory?.parentElement?.hasAttribute("data-analytics-card-header")).toBe(true);
     const testBadge = container.querySelector<HTMLElement>("[data-analytics-disabled-detail]");
     expect(testBadge?.textContent).toBe("TEST");
     expect(testBadge?.getAttribute("aria-disabled")).toBe("true");
     expect(testBadge?.tagName).toBe("SPAN");
+    expect(testBadge?.closest("[data-analytics-detail-accessory]")).not.toBeNull();
+    expect(testBadge?.closest("[data-analytics-card-header]")).not.toBeNull();
     expect(container.querySelector('button[aria-label="查看gross_revenue说明"]')).not.toBeNull();
     expect(container.querySelector('button[aria-label="查看supplier_onboarding说明"]')).not.toBeNull();
     await act(async () => detailButtons[0]?.click());

@@ -116,25 +116,53 @@ export function DashboardMetricCard({
           accent === "blue" && "bg-blue-500"
         )}
       />
-      <div className="flex items-center gap-2 text-sm font-black text-ink/60">
-        {icon ? <span className="grid h-8 w-8 place-items-center rounded-xl bg-paper">{icon}</span> : null}
-        {metric ? (
-          <TitleWithInfo
-            as="h3"
-            info={(
-              <div className="space-y-2" data-no-i18n>
-                <p>{metric.description}</p>
-                <p>{metric.formula}</p>
-              </div>
-            )}
-            label={infoLabel ?? `查看${title}说明和计算公式`}
-            title={title}
-            variant="paper"
-          />
-        ) : <h3>{title}</h3>}
+      <div
+        className="flex items-start justify-between gap-3 text-sm font-black text-ink/60"
+        data-analytics-card-header="true"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          {icon ? <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-paper">{icon}</span> : null}
+          {metric ? (
+            <TitleWithInfo
+              as="h3"
+              info={(
+                <div className="space-y-2" data-no-i18n>
+                  <p>{metric.description}</p>
+                  <p>{metric.formula}</p>
+                </div>
+              )}
+              label={infoLabel ?? `查看${title}说明和计算公式`}
+              title={title}
+              variant="paper"
+            />
+          ) : <h3>{title}</h3>}
+        </div>
+        {metric?.detailRoute && onDetail && detailLabel ? (
+          <span className="shrink-0" data-analytics-detail-accessory="true">
+            <button
+              className="whitespace-nowrap rounded-xl border border-line bg-paper px-3 py-2 text-xs font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
+              onClick={() => onDetail(metric.detailRoute as string)}
+              type="button"
+            >
+              {detailLabel}
+            </button>
+          </span>
+        ) : metric && metric.detailRoute === null && disabledAccessoryLabel ? (
+          <span className="shrink-0" data-analytics-detail-accessory="true">
+            <span
+              aria-disabled="true"
+              aria-label={disabledAccessoryLabel}
+              className="inline-flex rounded-full border border-line bg-paper px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-ink/45"
+              data-analytics-disabled-detail="true"
+              title={disabledAccessoryLabel}
+            >
+              TEST
+            </span>
+          </span>
+        ) : null}
       </div>
 
-      <div className="mt-4 flex min-w-0 items-baseline gap-1.5">
+      <div className="mt-4 flex min-w-0 items-baseline gap-1.5" data-analytics-metric-value="true">
         <strong className="truncate text-3xl font-black tracking-tight text-ink" data-no-i18n>
           {formatted?.number ?? "—"}
         </strong>
@@ -189,23 +217,6 @@ export function DashboardMetricCard({
 
       {note ? <p className="mt-3 text-xs font-bold leading-5 text-ink/45">{note}</p> : null}
 
-      {metric?.detailRoute && onDetail && detailLabel ? (
-        <button
-          className="mt-4 rounded-xl border border-line bg-paper px-3 py-2 text-xs font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
-          onClick={() => onDetail(metric.detailRoute as string)}
-          type="button"
-        >
-          {detailLabel}
-        </button>
-      ) : metric && metric.detailRoute === null && disabledAccessoryLabel ? (
-        <span
-          aria-disabled="true"
-          className="mt-4 inline-flex rounded-full border border-line bg-paper px-3 py-2 text-xs font-black text-ink/45"
-          data-analytics-disabled-detail="true"
-        >
-          {disabledAccessoryLabel}
-        </span>
-      ) : null}
     </article>
   );
 }

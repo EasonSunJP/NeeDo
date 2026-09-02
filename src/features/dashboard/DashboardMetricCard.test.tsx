@@ -161,9 +161,14 @@ describe("DashboardMetricCard", () => {
     );
 
     expect(markup).toContain('data-analytics-disabled-detail="true"');
+    expect(markup).toContain('data-analytics-card-header="true"');
+    expect(markup).toContain('data-analytics-detail-accessory="true"');
     expect(markup).toContain('aria-disabled="true"');
     expect(markup).toMatch(/<span[^>]*data-analytics-disabled-detail="true"[^>]*>TEST<\/span>/);
     expect(markup).not.toMatch(/<button[^>]*>TEST<\/button>/);
+    expect(markup.indexOf('data-analytics-detail-accessory="true"')).toBeLessThan(
+      markup.indexOf('data-analytics-metric-value="true"')
+    );
   });
 });
 
@@ -205,8 +210,12 @@ describe("DashboardMetricCard interactions", () => {
     const detail = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "查看详情"
     );
+    const header = container.querySelector<HTMLElement>("[data-analytics-card-header]");
+    const accessory = container.querySelector<HTMLElement>("[data-analytics-detail-accessory]");
     expect(info).not.toBeNull();
     expect(detail).not.toBeUndefined();
+    expect(header?.contains(accessory ?? null)).toBe(true);
+    expect(accessory?.contains(detail ?? null)).toBe(true);
     expect(info?.contains(detail ?? null)).toBe(false);
     expect(detail?.contains(info ?? null)).toBe(false);
 
