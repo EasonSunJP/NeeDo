@@ -8,6 +8,8 @@ Implementation commit: `4b3d77112504137cc85dfce677a35ac0e394b7db`
 
 Review-fix commit: `b2a304b01ebfefe45a29c6516fa7d5136d153495`
 
+Source-policy review-fix commit: `077dd7084fb091690acb2cfe8c52df018b11e57d`
+
 Included:
 
 - owner user and active owner identity enforcement;
@@ -135,6 +137,22 @@ Review GREEN:
 - 403, 404, and 409 response media expose named examples for all seven exact codes/messages; `version_conflict` alone contains `{ currentVersion: 8 }`, while the other six contain `data: null`;
 - source policy inventories every split Exchange route file, proves exactly one permitted formal booking-conversion POST, exercises the actual mounted app route, reconciles the OpenAPI operation, and continues to reject offer/order/payment/quick/close/cancel mutations.
 
+Second review RED command:
+
+```text
+cd backend && npm test -- --runInBand tests/exchange-source-policy.test.ts
+```
+
+Observed RED: 5 tests failed and 6 passed. The placement-sensitive policy missed `/quick-match`, terminal `/close` and `/cancel`, `/exchange/bookings/:id/cancel`, and the parallel booking mutation form.
+
+Second review GREEN:
+
+- the policy inventories all route source files before selecting Exchange paths, so a separately named/split route file cannot evade the check;
+- mutation methods containing any booking/order/payment/offer/quick/close/cancel token are rejected independently of token placement or path segmentation;
+- only the exact tuple `POST /exchange/posts/:id/matching/bookings` is permitted; changing the method to `PUT` is rejected;
+- table-driven coverage rejects quick-match, close, cancel, booking-cancel, and parallel booking/order/payment/offer mutations while an Exchange booking `GET` remains permitted;
+- the actual mounted authenticated route and generated OpenAPI operation are still reconciled exactly once.
+
 Final review verification:
 
 ```text
@@ -145,7 +163,7 @@ cd backend && npm test -- --runInBand tests/exchange-matching.openapi.test.ts te
 cd backend && npm run build
 ```
 
-Results: Task 5 `71/71`; source policy `2/2`; Task 4 repository `31/31`; matching projection `19/19`; backend build exit `0`; targeted ESLint and `git diff --check` exit `0`.
+Results: Task 5 `71/71`; source policy `11/11`; Task 4 repository `31/31`; matching projection `19/19`; backend build exit `0`; targeted ESLint and `git diff --check` exit `0`.
 
 ## Residual risks and deferred acceptance
 
