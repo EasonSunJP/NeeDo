@@ -143,6 +143,30 @@ function fieldValue(labelText: string) {
   )?.value;
 }
 
+function fillField(labelText: string, value: string) {
+  const label = [...document.querySelectorAll("label")].find((item) =>
+    item.textContent?.includes(labelText),
+  );
+  const input = label?.querySelector("input, textarea, select") as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | HTMLSelectElement
+    | null;
+  if (!input) throw new Error(`missing field: ${labelText}`);
+  const prototype =
+    input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : input instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  act(() => {
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 async function click(buttonText: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
     (item) => item.textContent?.includes(buttonText),
@@ -253,14 +277,27 @@ describe("OperatingCostsPage formal interactions", () => {
     await click("编辑");
     expect(fieldValue("成本代码")).toBe("server.monthly");
     expect(fieldValue("设置理由")).toBe("九月服务器账单");
+    fillField("金额 JPY", "125000");
+    fillField("设置理由", "调高服务器预算");
     await click("保存草稿");
     await waitFor(() => expect(container.textContent).toContain("草稿版本冲突"));
     expect(fieldValue("成本代码")).toBe("server.monthly");
-    expect(fieldValue("设置理由")).toBe("九月服务器账单");
+    expect(fieldValue("金额 JPY")).toBe("125000");
+    expect(fieldValue("设置理由")).toBe("调高服务器预算");
 
     await click("保存草稿");
     await waitFor(() =>
       expect(testState.updateOperatingCost).toHaveBeenCalledTimes(2),
     );
+    for (const callNumber of [1, 2]) {
+      expect(testState.updateOperatingCost).toHaveBeenNthCalledWith(
+        callNumber,
+        "cost-1",
+        expect.objectContaining({
+          amountJpy: 125_000,
+          reason: "调高服务器预算",
+        }),
+      );
+    }
   });
 });

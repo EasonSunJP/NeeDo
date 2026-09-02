@@ -317,6 +317,10 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
         ruleHistoryRequestRef.current !== requestId
       )
         return;
+      if (next.latestVersion !== rules.latestVersion) {
+        await load();
+        return;
+      }
       const known = new Set(rules.history.list.map((item) => item.publicId));
       const mergedList = [
         ...rules.history.list,

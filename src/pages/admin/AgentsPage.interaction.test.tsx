@@ -418,6 +418,81 @@ describe("AgentsPage formal interactions", () => {
     expect(container.textContent).not.toContain("过期历史页");
   });
 
+  it("restarts history pagination when a newer rule appears between pages", async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) =>
+      rule(21 - index, { reason: `snapshot-v21-${21 - index}` }),
+    );
+    const refreshedPage = Array.from({ length: 20 }, (_, index) =>
+      rule(22 - index, {
+        reason: index === 0 ? "并发新增当前规则" : `snapshot-v22-${22 - index}`,
+      }),
+    );
+    testState.getCommissionRules.mockReset();
+    testState.getCommissionRules
+      .mockResolvedValueOnce({
+        current: firstPage[0],
+        latestVersion: 21,
+        evaluatedAt: "2026-09-03T00:00:00.000Z",
+        history: {
+          list: firstPage,
+          total: 21,
+          page: 1,
+          page_size: 20,
+        },
+      })
+      .mockResolvedValueOnce({
+        current: refreshedPage[0],
+        latestVersion: 22,
+        evaluatedAt: "2026-09-04T00:00:00.000Z",
+        history: {
+          list: [
+            rule(2, { reason: "drifted-duplicate-v2" }),
+            rule(1, { reason: "drifted-v1" }),
+          ],
+          total: 22,
+          page: 2,
+          page_size: 20,
+        },
+      })
+      .mockResolvedValueOnce({
+        current: refreshedPage[0],
+        latestVersion: 22,
+        evaluatedAt: "2026-09-04T00:00:00.000Z",
+        history: {
+          list: refreshedPage,
+          total: 22,
+          page: 1,
+          page_size: 20,
+        },
+      })
+      .mockResolvedValueOnce({
+        current: refreshedPage[0],
+        latestVersion: 22,
+        evaluatedAt: "2026-09-04T00:00:00.000Z",
+        history: {
+          list: [rule(2), rule(1)],
+          total: 22,
+          page: 2,
+          page_size: 20,
+        },
+      });
+
+    renderDetail(root);
+    await waitFor(() => expect(container.textContent).toContain("snapshot-v21-21"));
+    await click("加载更多规则版本");
+
+    await waitFor(() =>
+      expect(container.textContent).toContain("并发新增当前规则"),
+    );
+    expect(container.textContent).not.toContain("drifted-v1");
+    expect(hasButton("加载更多规则版本")).toBe(true);
+
+    await click("加载更多规则版本");
+    await waitFor(() => expect(container.textContent).toContain("初始合同"));
+    expect(testState.getCommissionRules).toHaveBeenCalledTimes(4);
+    expect(hasButton("加载更多规则版本")).toBe(false);
+  });
+
   it("keeps formal detail readable while hiding every mutation without permission", async () => {
     renderDetail(root);
     await waitFor(() => expect(container.textContent).toContain("当前合同"));
