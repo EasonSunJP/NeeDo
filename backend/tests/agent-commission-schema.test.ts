@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  SYSTEM_PERMISSIONS,
   SYSTEM_PERMISSION_CODES,
   buildRolePermissionAssignments
 } from "../src/constants/permissions.constants";
@@ -100,16 +101,28 @@ describe("agent commission and operating cost schema contract", () => {
       "backoffice:agent-settlement:pay"
     ] as const;
 
-    for (const permission of permissions) {
-      expect(SYSTEM_PERMISSION_CODES).toContain(permission);
-      expect(migration).toContain(`'${permission}'`);
-    }
-    for (const role of ["admin", "operator", "finance", "viewer"] as const) {
-      expect(migration).toContain(`WHERE \`roles\`.\`code\` = '${role}'`);
+    for (const permissionCode of permissions) {
+      expect(SYSTEM_PERMISSION_CODES).toContain(permissionCode);
+      const permission = SYSTEM_PERMISSIONS.find(({ code }) => code === permissionCode);
+      expect(permission).toBeDefined();
+      expect(migration).toContain(
+        `('${permission?.name}', '${permissionCode}', '${permission?.type}', '${permission?.module}', '${permission?.description}', TRUE`
+      );
     }
     expect(migration).toContain("ON DUPLICATE KEY UPDATE");
 
     const assignments = buildRolePermissionAssignments();
+    for (const role of ["admin", "operator", "finance", "viewer"] as const) {
+      const marker = `WHERE \`roles\`.\`code\` = '${role}'`;
+      const markerIndex = migration.indexOf(marker);
+      expect(markerIndex).toBeGreaterThanOrEqual(0);
+      const blockStart = migration.lastIndexOf("INSERT INTO `role_permissions`", markerIndex);
+      expect(blockStart).toBeGreaterThanOrEqual(0);
+      const block = migration.slice(blockStart, markerIndex);
+      const granted = permissions.filter((permission) => block.includes(`'${permission}'`));
+      const expected = permissions.filter((permission) => assignments[role].includes(permission));
+      expect(granted).toEqual(expected);
+    }
     expect(assignments.operator).not.toContain("backoffice:agent-settlement:pay");
     expect(assignments.finance).toEqual(
       expect.arrayContaining([

@@ -11,14 +11,14 @@ INSERT INTO `permissions` (
   `deleted_at`
 )
 VALUES
-  ('平台合作身份管理', 'backoffice:partner-profile:write', 'api', 'backoffice', '标记现有用户为代理商、加盟商或供货商', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('代理商读取', 'backoffice:agent:read', 'api', 'backoffice', '分页读取代理商、关联店铺、佣金规则与结算资料', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('代理商管理', 'backoffice:agent:write', 'api', 'backoffice', '关联代理商介绍店铺并发布佣金规则', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('运营成本读取', 'backoffice:operating-cost:read', 'api', 'finance', '分页读取运营成本及店铺分摊结果', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('运营成本管理', 'backoffice:operating-cost:write', 'api', 'finance', '创建、编辑、删除及发布运营成本版本', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('代理商结算读取', 'backoffice:agent-settlement:read', 'api', 'finance', '读取代理商结算预览、正式结算及计算快照', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('代理商结算确认', 'backoffice:agent-settlement:write', 'api', 'finance', '确认不可变代理商结算及明细行', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
-  ('代理商结算支付', 'backoffice:agent-settlement:pay', 'api', 'finance', '记录代理商结算支付方式、凭证及执行人', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL)
+  ('运营后台合作方身份管理', 'backoffice:partner-profile:write', 'api', 'backoffice', '将正式用户标记为代理商、加盟商或供货商', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('运营后台代理商读取', 'backoffice:agent:read', 'api', 'backoffice', '分页读取代理商身份及其正式账号状态', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('运营后台代理商关系管理', 'backoffice:agent:write', 'api', 'backoffice', '确认代理商介绍的正式店铺关系', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('运营成本读取', 'backoffice:operating-cost:read', 'api', 'backoffice', '分页读取运营成本草稿、已发布版本及店铺分摊结果', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('运营成本管理', 'backoffice:operating-cost:write', 'api', 'backoffice', '创建、修改、删除草稿并发布可审计的运营成本分摊', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('代理商结算读取', 'backoffice:agent-settlement:read', 'api', 'backoffice', '读取代理商已确认及已支付的不可变结算记录', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('代理商结算确认', 'backoffice:agent-settlement:write', 'api', 'backoffice', '预览并确认含完整财务证据的代理商结算', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL),
+  ('代理商结算支付确认', 'backoffice:agent-settlement:pay', 'api', 'backoffice', '依据结算规则登记付款凭证并完成结算', TRUE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), NULL)
 ON DUPLICATE KEY UPDATE
   `name` = VALUES(`name`),
   `type` = VALUES(`type`),
