@@ -283,7 +283,6 @@ git commit -m "feat(exchange): require exact matching adjustments"
 **Files:**
 - Modify: `backend/src/repositories/exchange-matching.repository.ts`
 - Test: `backend/tests/exchange-matching.repository.test.ts`
-- Test: `backend/tests/exchange-matching.repository.integration.test.ts`
 
 **Interfaces:**
 - Consumes: ordered zero-to-two adjustment descriptors followed by the existing final selection.
@@ -324,21 +323,20 @@ adjustments: Array<
 
 Use the existing conditional `updateMany` on `(status=open, version=versionBefore)`, set both effective values, and set the final version. Build version-linked events in deterministic budget-then-target-then-match order. Adjustment payloads contain only post ID, before/after amount or count, and status; the final event retains the idempotency evidence and selected claim summary. Audit metadata records the before/after effective values without address, message, telephone, email, or token data.
 
-- [ ] **Step 4: Run GREEN and real-concurrency integration**
+- [ ] **Step 4: Run GREEN**
 
 Run:
 
 ```bash
 npm --prefix backend test -- --runInBand tests/exchange-matching.repository.test.ts tests/exchange-matching.service.test.ts
-RUN_EXCHANGE_MATCHING_INTEGRATION=true ALLOW_EXCHANGE_MATCHING_DEV_INTEGRATION=true ENV_FILE=.env.dev npm --prefix backend test -- --runTestsByPath tests/exchange-matching.repository.integration.test.ts --runInBand
 ```
 
-Expected: unit suites PASS; real MySQL permits exactly one terminal command and its adjustment/event chain is complete.
+Expected: repository and service suites PASS. The guarded real-MySQL transaction and conservation proof is owned by Task 6's existing `check:exchange-selective-matching-flow` rather than a nonexistent parallel integration file.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/repositories/exchange-matching.repository.ts backend/tests/exchange-matching.repository.test.ts backend/tests/exchange-matching.repository.integration.test.ts
+git add backend/src/repositories/exchange-matching.repository.ts backend/tests/exchange-matching.repository.test.ts
 git commit -m "feat(exchange): persist matching adjustment events"
 ```
 
