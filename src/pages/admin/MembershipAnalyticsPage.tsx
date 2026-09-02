@@ -115,6 +115,11 @@ export function MembershipAnalyticsPage({ scope = "backoffice" }: {
   const { language } = useI18n();
   const portal = scope === "backoffice" ? "admin" : "merchant";
   const t = (source: string) => translateTextForContext(source, language, { portal });
+  const seriesActionLabel = (action: "hide" | "show", label: string) => {
+    if (language === "zh") return `${action === "hide" ? "隐藏" : "显示"}${label}`;
+    const actionLabel = t(action === "hide" ? "隐藏图例" : "显示图例");
+    return `${actionLabel}${language === "en" ? ": " : "："}${label}`;
+  };
   const searchKey = searchParams.toString();
   const parsed = useMemo(
     () => readQuery(new URLSearchParams(searchKey), scope),
@@ -261,9 +266,9 @@ export function MembershipAnalyticsPage({ scope = "backoffice" }: {
           <>
             <AnalyticsMetricDetail
               allSeriesHiddenLabel={t("至少选择一个图例以显示图表")}
-              hideSeriesLabel={(label) => `${t("隐藏")}${label}`}
+              hideSeriesLabel={(label) => seriesActionLabel("hide", label)}
               series={series}
-              showSeriesLabel={(label) => `${t("显示")}${label}`}
+              showSeriesLabel={(label) => seriesActionLabel("show", label)}
               title={t("会员增加、减少与净变化")}
               unavailableValueLabel={t("暂无数据")}
             />

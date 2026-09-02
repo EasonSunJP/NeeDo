@@ -80,6 +80,12 @@ The current feature worktree was served by its own frontend and formal backend p
 - The committed rows formed the event chain `BUDGET_INCREASED` (`4→5`), `TARGET_REDUCED` (`5→6`), and `SELECTIVE_MATCHED` (`6→7`), with three provider notifications and one audit. Booking, schedule occupancy, wallet hold, and request-financial counts remained unchanged.
 - A second pass in the extension-free in-app browser reproduced the persisted result with zero console errors. Temporary fixture rows were then removed by exact captured IDs and marker, and residue verification returned zero.
 
+## Main integration evidence
+
+Before the local merge, the feature branch incorporated the newer committed `main` history. The shared HTTP client merged without a textual conflict but duplicated the `ApiClientError.data` declaration and assignment; the duplicate was removed and the focused frontend suite reran without warnings. The incoming dashboard work also put new membership/ranking copy into the already budgeted base i18n chunk. Those entries were moved, without changing their localized values, into the existing dedicated dashboard translation chunk; generic legend actions now use the pre-existing specific legend labels so global glossary locks remain intact. The production size budget was not raised.
+
+Fresh post-integration verification passed 144 backend tests, 79 Exchange/HTTP/mobile-route frontend tests, 78 dashboard/i18n tests, both frontend and backend lint/build gates, and the formal production bundle audit (`8` HTML entries, `35` assets).
+
 ## Financial interpretation
 
 `effectiveBudgetMaxJpy` is a matching ceiling, not wallet value. Increasing it does not top up, freeze, capture, release, reconcile, or settle NDP/TEST_NDP. The existing publication hold and wallet balances remain unchanged. Target reduction likewise changes only the matching aggregate. No `BookingOrder`, payment, ledger, reconciliation, or `ScheduleSlot.bookedCount` mutation belongs to this slice.
