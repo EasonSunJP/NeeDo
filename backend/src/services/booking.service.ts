@@ -924,13 +924,17 @@ export class BookingService {
               reason
             };
     const transitionOptions = this.createSettlementOptions(actor, order, action, confirmInput);
-    const guardedResult =
-      action === "confirm"
-        ? await this.repository.transitionOrderWithScheduleGuard?.(
-            transitionInput,
-            transitionOptions
-          )
-        : undefined;
+    const guardedResult = await this.repository.transitionOrderWithScheduleGuard?.(
+      transitionInput,
+      transitionOptions
+    );
+    if (guardedResult?.outcome === "exchange_cancellation_required") {
+      throw new AppError({
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      });
+    }
     if (guardedResult?.outcome === "schedule_conflict") {
       throw new AppError({
         code: ERROR_CODES.SCHEDULE_CONFLICT,

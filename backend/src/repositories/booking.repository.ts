@@ -627,6 +627,7 @@ export interface BookingOrderPayload {
   servicePriceSnapshot: string | null;
   serviceDurationSnapshot: number | null;
   serviceSnapshot: unknown;
+  fulfillmentAddressSnapshot: FulfillmentAddressSnapshot | null;
   shopName: string;
   technicianName: string | null;
   priceAmount: string;
@@ -644,6 +645,12 @@ export interface BookingOrderPayload {
   performanceAssessment: OrderPerformanceAssessmentPublicPayload | null;
   timelineEvents: OrderTimelineEventPayload[];
 }
+
+export type FulfillmentAddressSnapshot = {
+  line1: string;
+  line2: string | null;
+  line3: string | null;
+};
 
 export interface FulfillmentRequestContext {
   ip: string;
@@ -708,7 +715,7 @@ export type ManualPaymentMutationResult =
 export type OrderTransitionGuardedResult =
   | { outcome: "ok"; order: BookingOrderPayload }
   | { outcome: "acceptance_paused"; pauses: ActiveOrderAcceptancePauseSummary[] }
-  | { outcome: "invalid_state" | "schedule_conflict" };
+  | { outcome: "invalid_state" | "schedule_conflict" | "exchange_cancellation_required" };
 
 export interface BookingRepositoryPort {
   listAvailableSlots: (
@@ -832,6 +839,11 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
             publicCode: true;
           };
         };
+      };
+    };
+    exchangeMatchParticipant: {
+      select: {
+        id: true;
       };
     };
   };
@@ -1238,7 +1250,8 @@ export class BookingRepository implements BookingRepositoryPort {
                   where: {
                     customerUserId: input.customerUserId,
                     status: "PENDING",
-                    deletedAt: null
+                    deletedAt: null,
+                    exchangeMatchParticipant: { is: null }
                   },
                   include: this.orderInclude(),
                   orderBy: { id: "asc" }
@@ -1248,11 +1261,12 @@ export class BookingRepository implements BookingRepositoryPort {
 
             if (supersededOrderIds.length > 0) {
               const cancelled = await tx.bookingOrder.updateMany({
-                where: {
-                  id: { in: supersededOrderIds },
-                  customerUserId: input.customerUserId,
-                  status: "PENDING",
-                  deletedAt: null
+                  where: {
+                    id: { in: supersededOrderIds },
+                    customerUserId: input.customerUserId,
+                    status: "PENDING",
+                    deletedAt: null,
+                    exchangeMatchParticipant: { is: null }
                 },
                 data: {
                   status: "CANCELLED",
@@ -1577,7 +1591,7 @@ export class BookingRepository implements BookingRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((order) => this.mapOrder(order)),
+      list.map((order) => ({ ...this.mapOrder(order), fulfillmentAddressSnapshot: null })),
       total,
       pagination
     );
@@ -2548,6 +2562,10 @@ export class BookingRepository implements BookingRepositoryPort {
           return { outcome: "invalid_state" as const };
         }
 
+        if (input.toStatus === "cancelled" && current.exchangeMatchParticipant) {
+          return { outcome: "exchange_cancellation_required" as const };
+        }
+
         if (input.toStatus === "confirmed") {
           const pauses = await this.findActiveAcceptancePauses(tx, current.shopId);
           if (pauses.length > 0) {
@@ -3221,6 +3239,7 @@ export class BookingRepository implements BookingRepositoryPort {
           technicianProfileId,
           estimatedStartsAt: { lt: endsAt },
           estimatedEndsAt: { gt: startsAt },
+          activeReservationKey: { not: null },
           deletedAt: null
         },
         select: { id: true }
@@ -3996,6 +4015,9 @@ export class BookingRepository implements BookingRepositoryPort {
             select: { publicCode: true }
           }
         }
+      },
+      exchangeMatchParticipant: {
+        select: { id: true }
       }
     };
   }
@@ -4098,6 +4120,9 @@ export class BookingRepository implements BookingRepositoryPort {
         : null,
       serviceDurationSnapshot: order.serviceDurationSnapshot,
       serviceSnapshot: order.serviceSnapshotJson,
+      fulfillmentAddressSnapshot: this.fulfillmentAddressSnapshot(
+        order.fulfillmentAddressSnapshot
+      ),
       shopName: order.shop.name,
       technicianName: order.technicianProfile?.displayName ?? null,
       priceAmount: this.formatDecimal(order.priceAmount, 2),
@@ -4180,6 +4205,17 @@ export class BookingRepository implements BookingRepositoryPort {
           }
         : null,
       timelineEvents
+    };
+  }
+
+  private fulfillmentAddressSnapshot(value: unknown): FulfillmentAddressSnapshot | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    if (typeof record.line1 !== "string" || record.line1.trim().length === 0) return null;
+    return {
+      line1: record.line1,
+      line2: typeof record.line2 === "string" ? record.line2 : null,
+      line3: typeof record.line3 === "string" ? record.line3 : null
     };
   }
 

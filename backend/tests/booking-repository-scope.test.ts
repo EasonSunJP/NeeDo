@@ -649,12 +649,48 @@ describe("BookingRepository order list scope", () => {
         technicianProfileId: 47,
         estimatedStartsAt: { lt: current.endsAt },
         estimatedEndsAt: { gt: current.startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }
     });
     expect(updateMany).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("rejects generic cancellation of an Exchange-linked order before all writes", async () => {
+    const current = {
+      ...makeTransitionOrderRecord("PENDING"),
+      exchangeMatchParticipant: { id: 71 }
+    };
+    const orderUpdate = jest.fn();
+    const slotUpdate = jest.fn();
+    const historyCreate = jest.fn();
+    const tx = {
+      bookingOrder: {
+        findFirst: jest.fn().mockResolvedValue(current),
+        updateMany: orderUpdate
+      },
+      scheduleSlot: { updateMany: slotUpdate },
+      orderStatusHistory: { create: historyCreate }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrderWithScheduleGuard({
+        id: 701,
+        actorUserId: 101,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        reason: "changed mind"
+      })
+    ).resolves.toEqual({ outcome: "exchange_cancellation_required" });
+
+    expect(orderUpdate).not.toHaveBeenCalled();
+    expect(slotUpdate).not.toHaveBeenCalled();
+    expect(historyCreate).not.toHaveBeenCalled();
   });
 
   it("merges public performance revisions into a stable timeline without exposing internal notes", async () => {
@@ -746,5 +782,49 @@ describe("BookingRepository order list scope", () => {
         })
       })
     );
+  });
+
+  it("projects only a structurally valid fulfillment address snapshot", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("PENDING"),
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: 99,
+        privateNote: "do not expose"
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(order) }
+    } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    });
+  });
+
+  it("omits fulfillment addresses from non-detail order list projections", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("PENDING"),
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{ fulfillmentAddressSnapshot: null }]
+    });
   });
 });
