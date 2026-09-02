@@ -94,6 +94,20 @@ async function createFinancialEvidence(
   await transaction.$queryRaw<Array<{ id: number }>>(
     Prisma.sql`SELECT id FROM ndp_exchange_rate_rules ORDER BY version DESC LIMIT 1 FOR UPDATE`
   );
+  const rateEffectiveFrom = new Date();
+  const activeRates = await transaction.ndpExchangeRateRule.findMany({
+    where: { status: "ACTIVE", deletedAt: null },
+    select: { effectiveFrom: true }
+  });
+  if (activeRates.some((row) => row.effectiveFrom >= rateEffectiveFrom)) {
+    throw new Error(
+      "Formal agent settlement checker requires no future active exchange rate inside its isolated transaction"
+    );
+  }
+  await transaction.ndpExchangeRateRule.updateMany({
+    where: { status: "ACTIVE", deletedAt: null },
+    data: { status: "SUPERSEDED", activeKey: null, effectiveTo: rateEffectiveFrom }
+  });
   const latestRate = await transaction.ndpExchangeRateRule.findFirst({
     orderBy: [{ version: "desc" }, { id: "desc" }],
     select: { version: true }
@@ -104,8 +118,8 @@ async function createFinancialEvidence(
       ndpUnits: 1,
       jpyUnits: 1,
       status: "ACTIVE",
-      effectiveFrom: input.periodStart,
-      activeKey: null,
+      effectiveFrom: rateEffectiveFrom,
+      activeKey: "ndp_exchange_rate",
       idempotencyKey: `rollback-rate-${input.marker}`,
       reason: "rollback settlement 1:1 evidence rate",
       createdById: input.actorUserId
@@ -429,7 +443,7 @@ export async function runFormalAgentSettlementFlow(
   });
   const shopIdentifier = await transaction.publicIdentifier.create({
     data: {
-      publicId: `S${numericSuffix}`,
+      publicId: `shop${numericSuffix}`,
       numberPart: numericSuffix,
       kind: "SHOP",
       shopId: shop.id,
@@ -437,6 +451,57 @@ export async function runFormalAgentSettlementFlow(
       status: "ACTIVE"
     }
   });
+  const publishedShops = await transaction.shop.findMany({
+    where: { status: "published", deletedAt: null },
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      publicIdentifier: {
+        select: { kind: true, status: true, deletedAt: true }
+      }
+    }
+  });
+  let candidateNumber = BigInt(numericSuffix);
+  for (const publishedShop of publishedShops) {
+    if (
+      publishedShop.publicIdentifier &&
+      (publishedShop.publicIdentifier.kind !== "SHOP" ||
+        publishedShop.publicIdentifier.status !== "ACTIVE" ||
+        publishedShop.publicIdentifier.deletedAt !== null)
+    ) {
+      throw new Error(
+        `Published shop ${publishedShop.id} has an invalid canonical public identifier`
+      );
+    }
+    if (!publishedShop.publicIdentifier) {
+      let temporaryNumberPart: string | null = null;
+      for (let attempt = 0; attempt < 10_000; attempt += 1) {
+        candidateNumber = (candidateNumber % 9_999_999_999n) + 1n;
+        const candidate = candidateNumber.toString().padStart(10, "0");
+        const occupied = await transaction.publicIdentifier.findUnique({
+          where: { publicId: `shop${candidate}` },
+          select: { id: true }
+        });
+        if (!occupied) {
+          temporaryNumberPart = candidate;
+          break;
+        }
+      }
+      if (!temporaryNumberPart) {
+        throw new Error("Unable to reserve a rollback-only shop public identifier");
+      }
+      await transaction.publicIdentifier.create({
+        data: {
+          publicId: `shop${temporaryNumberPart}`,
+          numberPart: temporaryNumberPart,
+          kind: "SHOP",
+          shopId: publishedShop.id,
+          searchable: true,
+          status: "ACTIVE"
+        }
+      });
+    }
+  }
 
   const actor = createActor(actorUser.id, actorUser.email);
   const audit = new AuditLogService(new AuditLogRepository(facade));

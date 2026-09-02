@@ -92,7 +92,21 @@ export function assertSettlementSnapshotUnchanged(
   before: SettlementSnapshotEvidence,
   after: SettlementSnapshotEvidence
 ): void {
-  assertPersistedSettlementEvidenceUnchanged(before, after);
+  const snapshot = (value: SettlementSnapshotEvidence): SettlementSnapshotEvidence => ({
+    orderPlatformFeesJpy: value.orderPlatformFeesJpy,
+    saasFeesJpy: value.saasFeesJpy,
+    userRebatesJpy: value.userRebatesJpy,
+    refundsAndReversalsJpy: value.refundsAndReversalsJpy,
+    channelFeesJpy: value.channelFeesJpy,
+    consumptionTaxJpy: value.consumptionTaxJpy,
+    allocatedOperatingCostsJpy: value.allocatedOperatingCostsJpy,
+    fixedSuccessRewardJpy: value.fixedSuccessRewardJpy,
+    profitShareRateBps: value.profitShareRateBps,
+    pureProfitJpy: value.pureProfitJpy,
+    profitShareAmountJpy: value.profitShareAmountJpy,
+    totalAmountJpy: value.totalAmountJpy
+  });
+  assertPersistedSettlementEvidenceUnchanged(snapshot(before), snapshot(after));
 }
 
 type FormalEnvironmentResult = { values: Record<string, string> };
