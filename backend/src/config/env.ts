@@ -201,6 +201,7 @@ const envSchema = z
       .default("needo:realtime:events:v1"),
     AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
     AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
+    AUTH_TOKEN_AUDIENCE: z.string().regex(/^[a-z0-9][a-z0-9:_-]{2,127}$/),
     AUTH_VERIFICATION_SECRET: z.string().min(32),
     AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
     AUTH_ACTION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),

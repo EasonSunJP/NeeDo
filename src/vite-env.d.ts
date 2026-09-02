@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_API_BASE_URL?: string;
+  readonly VITE_MERCHANT_API_BASE_URL?: string;
+  readonly VITE_OPS_API_BASE_URL?: string;
+}
+
 
 type GoogleIdentityCredentialResponse = {
   credential?: string;

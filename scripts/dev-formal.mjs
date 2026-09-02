@@ -6,7 +6,17 @@ import { resolveFormalDevConfig } from "./dev-formal-config.mjs";
 import { waitForService } from "./dev-formal-runtime.mjs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const { backendPort, frontendPort, proxyTarget } = resolveFormalDevConfig(process.env);
+const {
+  backendPort,
+  frontendPort,
+  merchantApiPort,
+  merchantApiProxyTarget,
+  merchantApiRedisUrl,
+  opsApiPort,
+  opsApiProxyTarget,
+  opsApiRedisUrl,
+  proxyTarget
+} = resolveFormalDevConfig(process.env);
 const backendDirectory = path.resolve("backend");
 const backendEnvFile = process.env.FORMAL_BACKEND_ENV_FILE || path.join(backendDirectory, ".env.dev");
 const tsxCommand = path.join(
@@ -38,17 +48,22 @@ function isPortAvailable(port) {
   });
 }
 
-async function isFormalBackendRunning() {
+async function isApiServiceRunning(target, expectedService) {
   try {
     const response = await withTimeout(
-      fetch(`${proxyTarget}/api/v1/health`, { signal: AbortSignal.timeout(1200) })
+      fetch(`${target}/api/v1/health`, { signal: AbortSignal.timeout(1200) })
     );
     const payload = await response.json();
-    return response.ok && payload?.code === 0 && payload?.data?.service === "needo-backend";
+    return response.ok && payload?.code === 0 && payload?.data?.service === expectedService;
   } catch {
     return false;
   }
 }
+
+const isFormalBackendRunning = () => isApiServiceRunning(proxyTarget, "needo-backend");
+const isOpsApiRunning = () => isApiServiceRunning(opsApiProxyTarget, "needo-ops-api");
+const isMerchantApiRunning = () =>
+  isApiServiceRunning(merchantApiProxyTarget, "needo-merchant-api");
 
 async function isFrontendRunning() {
   try {
@@ -109,25 +124,67 @@ function shutdown(exitCode = 0) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-const [backendState, frontendState] = await Promise.all([
+const [backendState, opsApiState, merchantApiState, frontendState] = await Promise.all([
   resolveServiceState("formal backend", backendPort, isFormalBackendRunning),
+  resolveServiceState("operations API", opsApiPort, isOpsApiRunning),
+  resolveServiceState("merchant API", merchantApiPort, isMerchantApiRunning),
   resolveServiceState("frontend", frontendPort, isFrontendRunning)
 ]);
 
-if (backendState === "blocked" || frontendState === "blocked") {
+if (
+  backendState === "blocked" ||
+  opsApiState === "blocked" ||
+  merchantApiState === "blocked" ||
+  frontendState === "blocked"
+) {
   process.exit(1);
 }
 
 if (backendState === "free") {
   start("formal backend", tsxCommand, ["watch", "src/server.ts"], {
     cwd: backendDirectory,
-    env: { ENV_FILE: backendEnvFile, PORT: String(backendPort) }
+    env: {
+      AUTH_TOKEN_AUDIENCE: "needo-backend",
+      ENV_FILE: backendEnvFile,
+      PORT: String(backendPort),
+      SERVICE_NAME: "needo-backend"
+    }
+  });
+}
+
+if (opsApiState === "free") {
+  start("operations API", tsxCommand, ["watch", "src/ops-server.ts"], {
+    cwd: backendDirectory,
+    env: {
+      AUTH_TOKEN_AUDIENCE: "needo-ops-api",
+      ENV_FILE: backendEnvFile,
+      PORT: String(opsApiPort),
+      REDIS_URL: opsApiRedisUrl,
+      SERVICE_NAME: "needo-ops-api"
+    }
+  });
+}
+
+if (merchantApiState === "free") {
+  start("merchant API", tsxCommand, ["watch", "src/merchant-server.ts"], {
+    cwd: backendDirectory,
+    env: {
+      AUTH_TOKEN_AUDIENCE: "needo-merchant-api",
+      ENV_FILE: backendEnvFile,
+      PORT: String(merchantApiPort),
+      REDIS_URL: merchantApiRedisUrl,
+      SERVICE_NAME: "needo-merchant-api"
+    }
   });
 }
 
 if (frontendState === "free") {
   start("frontend", npmCommand, ["run", "dev:frontend", "--", "--port", String(frontendPort)], {
-    env: { NEEDO_API_PROXY_TARGET: proxyTarget }
+    env: {
+      NEEDO_API_PROXY_TARGET: proxyTarget,
+      NEEDO_MERCHANT_API_PROXY_TARGET: merchantApiProxyTarget,
+      NEEDO_OPS_API_PROXY_TARGET: opsApiProxyTarget
+    }
   });
 }
 
@@ -136,6 +193,18 @@ try {
     waitForService({
       name: "formal backend",
       detector: isFormalBackendRunning,
+      timeoutMs: 15_000,
+      intervalMs: 250
+    }),
+    waitForService({
+      name: "operations API",
+      detector: isOpsApiRunning,
+      timeoutMs: 15_000,
+      intervalMs: 250
+    }),
+    waitForService({
+      name: "merchant API",
+      detector: isMerchantApiRunning,
       timeoutMs: 15_000,
       intervalMs: 250
     }),
@@ -149,6 +218,8 @@ try {
 
   console.log(`[dev:formal] frontend ready http://127.0.0.1:${frontendPort}`);
   console.log(`[dev:formal] backend ready  ${proxyTarget}/api/v1`);
+  console.log(`[dev:formal] ops API ready  ${opsApiProxyTarget}/api/v1`);
+  console.log(`[dev:formal] merchant API ready  ${merchantApiProxyTarget}/api/v1`);
 } catch (error) {
   console.error(`[dev:formal] startup failed: ${error instanceof Error ? error.message : error}`);
   shutdown(1);
