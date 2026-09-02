@@ -16,15 +16,16 @@ Selective Exchange matching now keeps the existing exact-selection path and adds
 Focused frontend and shared HTTP client:
 
 ```text
-npm test -- src/api/httpClient.test.ts src/features/exchange/api.test.ts src/features/exchange/ExchangeReceivedClaims.test.tsx
-3 files passed; 56 tests passed
+npm test -- <Exchange, HTTP client, and mobile-route suites>
+13 files passed; 114 tests passed
 ```
 
 Production frontend build:
 
 ```text
-npm run build
-TypeScript and Vite build passed
+npm run lint
+npm run verify:production-build
+Lint passed; TypeScript/Vite production build and bundle audit passed for 8 HTML entries and 35 assets
 ```
 
 Backend type/lint and checker contract:
@@ -32,8 +33,8 @@ Backend type/lint and checker contract:
 ```text
 npm --prefix backend run build
 npm --prefix backend run lint
-npm --prefix backend test -- --runInBand tests/exchange-matching-flow-script.test.ts
-All passed
+npm --prefix backend test -- --runInBand <matching, claim, schema, OpenAPI, and flow suites>
+12 suites passed; 144 tests passed
 ```
 
 ## Real MySQL rollback evidence
@@ -67,6 +68,17 @@ The checker accepted only local MySQL and reported the database name `needo_dev`
 ```
 
 Target-only, budget-only, and combined confirmation branches are independently covered by service/repository/UI tests; the physical transaction checker exercises the combined branch so both adjustment writes and their ordering are proven together.
+
+## Authenticated browser acceptance
+
+The current feature worktree was served by its own frontend and formal backend processes. Listener PID, working directory, branch, frontend proxy target, `/health`, and `/ready` were checked before acceptance. A uniquely marked local `needo_dev` demand with three formal claims was opened through an authenticated customer session.
+
+- At both `440×956` and `320×956`, selecting two providers showed `2/3` and a selected quote total of `¥23,000` without horizontal overflow.
+- The first submit displayed the server-supplied confirmation card with target `3 → 2`, effective budget `¥20,000 → ¥23,000`, and increase `¥3,000`.
+- A direct database snapshot after that preview remained at `OPEN`, version `4`, with zero participants, audits, notifications, bookings, wallet holds, and request financial rows; all three schedule slots remained available with `bookedCount=0`.
+- The explicit confirmation completed the match. A full reload preserved target `2`, effective budget `¥23,000`, two matched providers, and one unselected provider. No Booking or payment action was exposed.
+- The committed rows formed the event chain `BUDGET_INCREASED` (`4→5`), `TARGET_REDUCED` (`5→6`), and `SELECTIVE_MATCHED` (`6→7`), with three provider notifications and one audit. Booking, schedule occupancy, wallet hold, and request-financial counts remained unchanged.
+- A second pass in the extension-free in-app browser reproduced the persisted result with zero console errors. Temporary fixture rows were then removed by exact captured IDs and marker, and residue verification returned zero.
 
 ## Financial interpretation
 
