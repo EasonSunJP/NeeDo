@@ -130,6 +130,48 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(markup).not.toContain("关注：");
   });
 
+  it("can reuse the technician card without social counts or level", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        ClientThemeProvider,
+        null,
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(SocialProfileMiniCard, {
+            data: {
+              id: "17",
+              entityType: "technician",
+              displayName: "Misaki",
+              avatar: "/images/misaki.jpg",
+              coverImage: "/images/misaki.jpg",
+              regionLabel: "东京都",
+              addressValue: "东京都",
+              primaryLabel: "技师",
+              kycVerified: false,
+              levelLabel: "Lv.99",
+              scoreLabel: "服务评价",
+              scoreValue: "5.0/5",
+              followerCount: 1200,
+              followingCount: 300
+            },
+            detailTo: "/profiles/technician/17?view=card",
+            showAction: false,
+            showLevel: false,
+            showSocialStats: false
+          })
+        )
+      )
+    );
+
+    expect(markup).toContain("Misaki");
+    expect(markup).toContain("5.0");
+    expect(markup).toContain("东京都");
+    expect(markup).not.toContain("粉丝：");
+    expect(markup).not.toContain("关注：");
+    expect(markup).not.toContain("Lv.99");
+  });
+
   it("opens the public technician info card from the technician avatar while keeping a dynamic-page action", () => {
     expect(cardSource).toContain('import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard"');
     expect(cardSource).toContain('const sourceTechnician = "technician" in props ? props.technician : null;');

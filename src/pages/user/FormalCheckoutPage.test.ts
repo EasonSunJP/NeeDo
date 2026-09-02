@@ -22,11 +22,6 @@ describe("formal customer checkout", () => {
     expect(formalSource).not.toContain("formatSlotDateTime(slot.startsAt)");
   });
 
-  it("marks the formal technician available only when the selected bookable slot belongs to them", () => {
-    expect(formalSource).toContain("selectedSlot?.technicianProfileId === technicianProfileId");
-    expect(formalSource).not.toContain("slots.some((slot) => slot.technicianProfileId === technicianProfileId");
-  });
-
   it("keeps mock checkout data exclusive to explicit static-demo mode", () => {
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
@@ -61,13 +56,19 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("门店位置预览");
     expect(formalSource).toContain("复制地址");
     expect(formalSource).toContain("预约时间");
-    expect(formalSource).toContain("接单率");
-    expect(formalSource).toContain("service.technician.acceptanceRatePercent");
-    expect(formalSource).toContain("service.technician.reviewSummary.reviewCount");
-    expect(formalSource).toContain("service.technician.reviewSummary.ratingAverage");
+    expect(formalSource).toContain("technician.reviewSummary.ratingAverage");
     expect(formalSource).not.toContain("acceptRate: 98");
     expect(formalSource).not.toContain("选择可预约时段");
     expect(formalSource).not.toContain("提交正式预约");
+  });
+
+  it("reuses a stripped shared technician card with the formal profile-card route", () => {
+    expect(formalSource).toContain("<SocialProfileMiniCard");
+    expect(formalSource).toContain("showSocialStats={false}");
+    expect(formalSource).toContain("showLevel={false}");
+    expect(formalSource).toContain("?view=card");
+    expect(formalSource).not.toContain("navigate(`/technicians/");
+    expect(formalSource).not.toContain("acceptanceRatePercent}% 接单率");
   });
 
   it("renders the approved detailed body without reviving unsupported stores", () => {

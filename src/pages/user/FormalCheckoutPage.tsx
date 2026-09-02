@@ -17,6 +17,7 @@ import {
 } from "../../features/core-read/api";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
+import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
 import type { FulfillmentMode } from "../../types/domain";
 import {
   CheckoutProgressNav,
@@ -189,14 +190,27 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
   const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
   const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
-  const technicianSkills = service?.technician
-    ? [service.technician.primaryService?.name, ...service.technician.reviewSummary.highlights]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .slice(0, 3)
-    : [];
-  const technicianProfileId = service?.technician?.id ?? null;
-  const technicianIsAvailable = technicianProfileId !== null
-    && selectedSlot?.technicianProfileId === technicianProfileId;
+  const checkoutTechnicianCardData = useMemo(() => {
+    const technician = service?.technician;
+    if (!technician) return null;
+
+    return {
+      id: String(technician.id),
+      entityType: "technician" as const,
+      displayName: technician.displayName,
+      avatar: technician.avatarUrl ?? "",
+      coverImage: technician.avatarUrl ?? "",
+      regionLabel: technician.city,
+      addressValue: technician.city,
+      primaryLabel: "技师",
+      kycVerified: false,
+      levelLabel: "",
+      scoreLabel: "服务评价",
+      scoreValue: `${finiteRating(technician.reviewSummary.ratingAverage).toFixed(1)}/5`,
+      followerCount: 0,
+      followingCount: 0
+    };
+  }, [service?.technician]);
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
@@ -481,63 +495,16 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[4] = node)}>
             <SectionTitle>技师</SectionTitle>
-            {service.technician ? (
-              <button
-                className="w-full rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 text-left shadow-[0_14px_28px_rgba(0,0,0,0.06)]"
-                onClick={() => navigate(`/technicians/${service.technician?.id}`)}
-                type="button"
-              >
-                <div className="grid grid-cols-[92px_minmax(0,1fr)_16px] gap-4">
-                  {service.technician.avatarUrl ? (
-                    <img
-                      alt={service.technician.displayName}
-                      className="h-[92px] w-[92px] rounded-[24px] object-cover"
-                      src={service.technician.avatarUrl}
-                    />
-                  ) : (
-                    <span
-                      aria-hidden="true"
-                      className="grid h-[92px] w-[92px] place-items-center rounded-[24px] bg-[color:var(--client-primary-soft)] text-3xl font-black text-[color:var(--client-primary)]"
-                    >
-                      {service.technician.displayName.trim().charAt(0)}
-                    </span>
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-[18px] font-black leading-none tracking-[-0.03em] text-[color:var(--client-text)]">{service.technician.displayName}</p>
-                    <p className="mt-2 text-[13px] text-[color:var(--client-muted)]">{service.technician.city}</p>
-                    <p className="mt-3 text-[13px] font-black text-[color:var(--client-text)]">
-                      ★ {finiteRating(service.technician.reviewSummary.ratingAverage).toFixed(1)} · {service.technician.reviewSummary.reviewCount} 评价
-                    </p>
-                    {technicianSkills.length ? (
-                      <p className="mt-2 line-clamp-1 text-sm leading-6 text-[color:var(--client-muted)]">{technicianSkills.join(" / ")}</p>
-                    ) : null}
-                    <div className="mt-4 flex items-end justify-between gap-3">
-                      <div className="flex min-w-0 flex-wrap gap-2">
-                        {technicianSkills.slice(0, 2).map((tag) => (
-                          <span
-                            className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
-                            key={tag}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className={cn(
-                          "text-[14px] font-black",
-                          technicianIsAvailable ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]"
-                        )}>
-                          {technicianIsAvailable ? "当前可约" : "档期待确认"}
-                        </p>
-                        <p className="mt-1 text-xs text-[color:var(--client-muted)]">{service.technician.acceptanceRatePercent}% 接单率</p>
-                      </div>
-                    </div>
-                  </div>
-                  <svg aria-hidden="true" className="mt-1 h-4 w-4 text-[color:var(--client-muted)]" fill="none" viewBox="0 0 24 24">
-                    <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
-                  </svg>
-                </div>
-              </button>
+            {checkoutTechnicianCardData ? (
+              <SocialProfileMiniCard
+                className="cursor-pointer"
+                data={checkoutTechnicianCardData}
+                detailTo={`/profiles/technician/${checkoutTechnicianCardData.id}?view=card`}
+                onOpenDetails={() => navigate(`/profiles/technician/${checkoutTechnicianCardData.id}?view=card`)}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+              />
             ) : (
               <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
                 <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
