@@ -779,6 +779,35 @@ describe("httpClient auth tokens", () => {
     });
   });
 
+  it("preserves structured server error data for confirmation previews", async () => {
+    const preview = {
+      selectedCount: 1,
+      effectiveTargetProviderCount: 2
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(
+        {
+          code: 40999,
+          message: "error.exchange.match_target_confirmation_required",
+          data: preview
+        },
+        409
+      )
+    );
+
+    await expect(
+      httpClient.request("/exchange/posts/41/matching/select", {
+        auth: false,
+        body: { selectedClaimIds: [11], expectedVersion: 4 },
+        method: "POST"
+      })
+    ).rejects.toMatchObject({
+      code: 40999,
+      status: 409,
+      data: preview
+    });
+  });
+
   it("sends protected application images as raw binary without a JSON content type", async () => {
     setAuthTokens({ accessToken: "applicant-access-token" });
     const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", {
