@@ -45,3 +45,14 @@ A temporary uncommitted read-only entry rendered the exact production `FormalChe
 ## Authentication boundary
 
 The protected production route correctly redirects an anonymous browser session to `/login/user?redirect=%2Fcheckout%2F753`. No customer credentials were entered and no booking was submitted during this UI task. Authenticated booking creation remains governed by the existing route guard, RBAC, and formal `POST /api/v1/bookings` flow.
+
+## Post-merge verification on local main
+
+- Local `main` merge completed without overwriting unrelated working-tree changes.
+- Standard frontend listener: port 5180, cwd `/Users/eason/Documents/New project`.
+- Standard backend listener: port 3000, cwd `/Users/eason/Documents/New project/backend`.
+- The 5180 source response contains `CheckoutProgressNav`, `resolveActiveCheckoutStep`, and the formal `bookingApi.createBooking` call.
+- Full current-main suite: PASS, 790 suites / 2452 tests (includes the user's current uncommitted test files).
+- `npm run lint`: PASS.
+- `npm run verify:production-build`: PASS, including the production bundle audit.
+- Standard route `user.html#/checkout/753`: PASS; an anonymous session redirects to the expected login URL with no console warning/error.
