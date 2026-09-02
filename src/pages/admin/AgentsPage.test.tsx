@@ -77,5 +77,8 @@ describe("formal agent administration", () => {
       "固定成功報酬（円）",
     );
     expect(translateText("纯利润分成比例", "en")).toBe("Net profit share rate");
+    expect(translateText("佣金规则版本历史", "ja")).toBe(
+      "コミッションルールのバージョン履歴",
+    );
   });
 });

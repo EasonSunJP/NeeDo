@@ -57,6 +57,7 @@ const analyticsTask6Translations: TranslationMap = {
   "标记理由": fourLanguageTranslation("標記理由", "設定理由", "Marker reason", "지정 사유"),
   "固定成功奖励（日元）": fourLanguageTranslation("固定成功獎勵（日圓）", "固定成功報酬（円）", "Fixed success reward (JPY)", "고정 성공 보상(엔)"),
   "纯利润分成比例": fourLanguageTranslation("純利潤分成比例", "純利益分配率", "Net profit share rate", "순이익 배분율"),
+  "佣金规则版本历史": fourLanguageTranslation("佣金規則版本歷史", "コミッションルールのバージョン履歴", "Commission rule version history", "수수료 규칙 버전 기록"),
   "按活跃店铺等额分摊": fourLanguageTranslation("按活躍店鋪等額分攤", "有効店舗へ均等配賦", "Allocate equally across active shops", "활성 매장 균등 배분"),
   "加盟商": fourLanguageTranslation("加盟商", "加盟店", "Franchisees", "가맹점"),
   "供货商": fourLanguageTranslation("供貨商", "仕入先", "Suppliers", "공급업체"),

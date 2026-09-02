@@ -514,6 +514,54 @@ function RulePanel({
       ) : (
         <Empty text="尚无当前生效规则，结算前必须先发布规则。" />
       )}
+      {rules?.history.list.length ? (
+        <div className="mt-4 border-t border-line pt-4">
+          <SectionHeader
+            title="佣金规则版本历史"
+            badge={`${rules.history.total}`}
+          />
+          <div className="space-y-3">
+            {rules.history.list.map((rule) => (
+              <article
+                className="rounded-xl border border-line bg-paper p-3"
+                key={rule.publicId}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      tone={
+                        rule.publicId === rules.current?.publicId
+                          ? "green"
+                          : "neutral"
+                      }
+                    >
+                      v{rule.version}
+                    </Badge>
+                    <strong>{rule.reason}</strong>
+                  </div>
+                  <span className="text-xs text-ink/50">
+                    {new Date(rule.effectiveFrom).toLocaleString()} ～{" "}
+                    {rule.effectiveTo
+                      ? new Date(rule.effectiveTo).toLocaleString()
+                      : "长期有效"}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                  <SummaryFact
+                    label="固定成功奖励（日元）"
+                    value={formatJpy(rule.fixedSuccessRewardJpy)}
+                  />
+                  <SummaryFact
+                    label="纯利润分成比例"
+                    value={`${(rule.profitShareRateBps / 100).toFixed(2)}%`}
+                  />
+                  <SummaryFact label="支付方式" value={rule.paymentMethod} />
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {canWrite ? (
         <form
           className="mt-4 grid gap-3 border-t border-line pt-4"

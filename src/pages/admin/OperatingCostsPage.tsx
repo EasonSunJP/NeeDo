@@ -479,7 +479,7 @@ export function OperatingCostsPage() {
               正在读取正式运营成本…
             </div>
           ) : null}
-          {!loading && !error ? (
+          {!loading && data ? (
             <div className="space-y-4">
               {data?.list.map((item) => (
                 <article
