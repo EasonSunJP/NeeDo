@@ -100,9 +100,30 @@ export type ExchangeMatching = {
   viewer: { canSelect: boolean };
 };
 
+export type ExchangeMatchAdjustmentPreview = {
+  currentVersion: number;
+  selectedCount: number;
+  selectedQuoteTotalJpy: number;
+  effectiveTargetProviderCount: number;
+  effectiveBudgetMaxJpy: number;
+  requiredTargetProviderCount: number | null;
+  requiredBudgetMaxJpy: number | null;
+  requiredBudgetIncreaseJpy: number;
+  requiresTargetConfirmation: boolean;
+  requiresBudgetConfirmation: boolean;
+};
+
 export type SelectExchangeMatchingInput = {
   selectedClaimIds: number[];
   expectedVersion: number;
+  budgetConfirmation: {
+    action: "increase_to_selected_total";
+    confirmedBudgetMaxJpy: number;
+  } | null;
+  targetConfirmation: {
+    action: "reduce_to_selected_count";
+    confirmedTargetProviderCount: number;
+  } | null;
 };
 
 export type ExchangeClaimOptionListInput = PaginationInput & {

@@ -258,7 +258,12 @@ describe("formal Exchange API client", () => {
     await getExchangeMatching("41", signal);
     await selectExchangeMatching(
       "41",
-      { selectedClaimIds: [73, 75], expectedVersion: 6 },
+      {
+        selectedClaimIds: [73, 75],
+        expectedVersion: 6,
+        budgetConfirmation: null,
+        targetConfirmation: null
+      },
       "exchange-match-select-0001"
     );
 
@@ -266,7 +271,12 @@ describe("formal Exchange API client", () => {
       signal
     });
     expect(httpClient.request).toHaveBeenNthCalledWith(2, "/exchange/posts/41/matching/select", {
-      body: { selectedClaimIds: [73, 75], expectedVersion: 6 },
+      body: {
+        selectedClaimIds: [73, 75],
+        expectedVersion: 6,
+        budgetConfirmation: null,
+        targetConfirmation: null
+      },
       headers: { "Idempotency-Key": "exchange-match-select-0001" },
       method: "POST"
     });

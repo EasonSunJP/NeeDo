@@ -228,7 +228,7 @@ function assertSuccess<TData>(envelope: ApiEnvelope<TData>, status: number): TDa
     throw new ApiClientError(message, envelope.code, status, envelope.data);
   }
 
-  return envelope.data;
+  return (envelope as ApiSuccessResponse<TData>).data;
 }
 
 function createRequestBody(body: unknown) {
