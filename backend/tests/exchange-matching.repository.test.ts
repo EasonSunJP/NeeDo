@@ -54,6 +54,10 @@ describe("ExchangeMatchingRepository", () => {
         create: jest.fn(async () => {
           events.push("participant");
           return { id: 71 };
+        }),
+        createMany: jest.fn(async () => {
+          events.push("participant");
+          return { count: 1 };
         })
       },
       exchangeClaim: {
@@ -131,6 +135,8 @@ describe("ExchangeMatchingRepository", () => {
             technicianServiceId: null,
             scheduleSlotId: 91,
             quoteAmountJpy: 15_000,
+            serviceNameSnapshot: "Selected shop service",
+            serviceDurationSnapshot: 60,
             currency: "JPY",
             status: "active",
             estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
@@ -150,6 +156,8 @@ describe("ExchangeMatchingRepository", () => {
             technicianServiceId: null,
             scheduleSlotId: 92,
             quoteAmountJpy: 16_000,
+            serviceNameSnapshot: "Unselected shop service",
+            serviceDurationSnapshot: 60,
             currency: "JPY",
             status: "active",
             estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
@@ -238,7 +246,10 @@ describe("ExchangeMatchingRepository", () => {
   it("persists budget and target adjustments as one linked atomic event chain", async () => {
     const createdEvents: Array<Record<string, unknown>> = [];
     const client = {
-      exchangeMatchParticipant: { create: jest.fn(async () => ({ id: 71 })) },
+      exchangeMatchParticipant: {
+        create: jest.fn(async () => ({ id: 71 })),
+        createMany: jest.fn(async () => ({ count: 1 }))
+      },
       exchangeClaim: { updateMany: jest.fn(async () => ({ count: 1 })) },
       exchangeRequestMatching: {
         updateMany: jest.fn(async () => ({ count: 1 })),
@@ -290,6 +301,8 @@ describe("ExchangeMatchingRepository", () => {
           technicianServiceId: null,
           scheduleSlotId: 91,
           quoteAmountJpy: 31_000,
+          serviceNameSnapshot: "Adjusted shop service",
+          serviceDurationSnapshot: 60,
           currency: "JPY",
           status: "active",
           estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
@@ -357,5 +370,92 @@ describe("ExchangeMatchingRepository", () => {
         payloadFingerprint: "b".repeat(64)
       })
     ]);
+  });
+
+  it("locks formal service snapshots and writes them through the atomic participant createMany payload", async () => {
+    const client = {
+      $queryRaw: jest.fn(async () => [{ id: 301 }]),
+      exchangeClaim: {
+        findMany: jest.fn(async () => [
+          {
+            id: 301,
+            exchangePostId: 41,
+            claimantUserId: 8,
+            claimantIdentityId: 18,
+            shopId: 11,
+            technicianProfileId: 81,
+            serviceId: 501,
+            technicianServiceId: null,
+            scheduleSlotId: 91,
+            quoteAmountJpy: 15_000,
+            scheduleSlot: {
+              startsAt: new Date("2026-09-02T01:00:00.000Z"),
+              endsAt: new Date("2026-09-02T02:00:00.000Z")
+            },
+            service: { name: "Locked formal service", durationMinutes: 60 },
+            technicianService: null
+          }
+        ]),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      exchangeMatchParticipant: {
+        create: jest.fn(async () => ({ id: 71 })),
+        createMany: jest.fn(async () => ({ count: 1 }))
+      },
+      exchangeRequestMatching: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        findFirst: jest.fn(async () => null)
+      },
+      exchangePost: { update: jest.fn(async () => ({ id: 41 })) },
+      exchangeMatchEvent: { create: jest.fn(async () => ({ id: 81 })) },
+      notification: { createMany: jest.fn(async () => ({ count: 1 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 91 })) }
+    };
+    const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient);
+
+    const claims = await repository.lockActiveClaims(41);
+
+    expect(claims).toEqual([
+      expect.objectContaining({
+        serviceNameSnapshot: "Locked formal service",
+        serviceDurationSnapshot: 60
+      })
+    ]);
+
+    await repository.completeSelection({
+      matchingId: 51,
+      exchangePostId: 41,
+      selectedClaims: claims,
+      selectedClaimIds: [301],
+      unselectedClaims: [],
+      unselectedClaimIds: [],
+      selectedQuoteTotalJpy: 15_000,
+      effectiveTargetProviderCountAfter: 1,
+      effectiveBudgetMaxJpyAfter: 30_000,
+      adjustments: [],
+      versionBefore: 3,
+      versionAfter: 4,
+      actorUserId: 7,
+      actorIdentityId: 17,
+      idempotencyKey: "matching-snapshot-key-0001",
+      payloadFingerprint: "c".repeat(64),
+      at,
+      audit: {
+        actorId: 7,
+        action: "exchange.matching.select",
+        targetType: "exchange_request_matching",
+        targetId: 51
+      }
+    });
+
+    expect(client.exchangeMatchParticipant.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          exchangeClaimId: 301,
+          serviceNameSnapshot: "Locked formal service",
+          serviceDurationSnapshot: 60
+        })
+      ]
+    });
   });
 });

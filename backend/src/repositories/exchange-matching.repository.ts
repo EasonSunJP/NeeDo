@@ -104,6 +104,8 @@ export interface ExchangeMatchingSelectionClaim {
   technicianServiceId: number | null;
   scheduleSlotId: number;
   quoteAmountJpy: number;
+  serviceNameSnapshot: string;
+  serviceDurationSnapshot: number;
   currency: "JPY";
   status: "active";
   estimatedStartsAt: Date;
@@ -234,25 +236,35 @@ export class ExchangeMatchingRepository {
     if (ids.length === 0) return [];
     const rows = await this.client.exchangeClaim.findMany({
       where: { id: { in: ids }, exchangePostId, status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
-      include: { scheduleSlot: { select: { startsAt: true, endsAt: true } } },
+      include: {
+        scheduleSlot: { select: { startsAt: true, endsAt: true } },
+        service: { select: { name: true, durationMinutes: true } },
+        technicianService: { select: { name: true, durationMinutes: true } }
+      },
       orderBy: { id: "asc" }
     });
-    return rows.map((row) => ({
-      id: row.id,
-      exchangePostId: row.exchangePostId,
-      claimantUserId: row.claimantUserId,
-      claimantIdentityId: row.claimantIdentityId,
-      shopId: row.shopId,
-      technicianProfileId: row.technicianProfileId,
-      serviceId: row.serviceId,
-      technicianServiceId: row.technicianServiceId,
-      scheduleSlotId: row.scheduleSlotId,
-      quoteAmountJpy: row.quoteAmountJpy,
-      currency: "JPY",
-      status: "active",
-      estimatedStartsAt: row.scheduleSlot.startsAt,
-      estimatedEndsAt: row.scheduleSlot.endsAt
-    }));
+    return rows.map((row) => {
+      const service = row.service ?? row.technicianService;
+      if (!service) throw new Error("Exchange claim is missing its service relation");
+      return {
+        id: row.id,
+        exchangePostId: row.exchangePostId,
+        claimantUserId: row.claimantUserId,
+        claimantIdentityId: row.claimantIdentityId,
+        shopId: row.shopId,
+        technicianProfileId: row.technicianProfileId,
+        serviceId: row.serviceId,
+        technicianServiceId: row.technicianServiceId,
+        scheduleSlotId: row.scheduleSlotId,
+        quoteAmountJpy: row.quoteAmountJpy,
+        serviceNameSnapshot: service.name,
+        serviceDurationSnapshot: service.durationMinutes,
+        currency: "JPY",
+        status: "active",
+        estimatedStartsAt: row.scheduleSlot.startsAt,
+        estimatedEndsAt: row.scheduleSlot.endsAt
+      };
+    });
   }
 
   public async lockTechnicians(technicianProfileIds: number[]): Promise<boolean> {
@@ -305,28 +317,28 @@ export class ExchangeMatchingRepository {
   public async completeSelection(
     input: CompleteExchangeSelectionInput
   ): Promise<ExchangeMatchingPayload | null> {
-    for (const claim of input.selectedClaims) {
-      await this.client.exchangeMatchParticipant.create({
-        data: {
-          matchingId: input.matchingId,
-          exchangePostId: input.exchangePostId,
-          exchangeClaimId: claim.id,
-          participantUserId: claim.claimantUserId,
-          participantIdentityId: claim.claimantIdentityId,
-          shopId: claim.shopId,
-          technicianProfileId: claim.technicianProfileId,
-          serviceId: claim.serviceId,
-          technicianServiceId: claim.technicianServiceId,
-          scheduleSlotId: claim.scheduleSlotId,
-          quoteAmountJpy: claim.quoteAmountJpy,
-          currency: "JPY",
-          estimatedStartsAt: claim.estimatedStartsAt,
-          estimatedEndsAt: claim.estimatedEndsAt,
-          activeReservationKey: `request:${input.exchangePostId}:technician:${claim.technicianProfileId}`,
-          matchedAt: input.at
-        }
-      });
-    }
+    await this.client.exchangeMatchParticipant.createMany({
+      data: input.selectedClaims.map((claim) => ({
+        matchingId: input.matchingId,
+        exchangePostId: input.exchangePostId,
+        exchangeClaimId: claim.id,
+        participantUserId: claim.claimantUserId,
+        participantIdentityId: claim.claimantIdentityId,
+        shopId: claim.shopId,
+        technicianProfileId: claim.technicianProfileId,
+        serviceId: claim.serviceId,
+        technicianServiceId: claim.technicianServiceId,
+        scheduleSlotId: claim.scheduleSlotId,
+        quoteAmountJpy: claim.quoteAmountJpy,
+        serviceNameSnapshot: claim.serviceNameSnapshot,
+        serviceDurationSnapshot: claim.serviceDurationSnapshot,
+        currency: "JPY",
+        estimatedStartsAt: claim.estimatedStartsAt,
+        estimatedEndsAt: claim.estimatedEndsAt,
+        activeReservationKey: `request:${input.exchangePostId}:technician:${claim.technicianProfileId}`,
+        matchedAt: input.at
+      }))
+    });
     await this.client.exchangeClaim.updateMany({
       where: { id: { in: input.selectedClaimIds }, status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
       data: { status: DatabaseExchangeClaimStatus.MATCHED, activeKey: null, terminalAt: input.at }
