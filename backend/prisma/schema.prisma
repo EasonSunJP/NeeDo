@@ -727,7 +727,7 @@ enum ShopMembershipCardIssuanceSource {
 enum ShopMembershipCardStatusEventSource {
   ISSUANCE           @map("issuance")
   MIGRATION_BACKFILL @map("migration_backfill")
-  STATUS_TRANSITION @map("status_transition")
+  STATUS_TRANSITION  @map("status_transition")
 
   @@map("shop_membership_card_status_event_source")
 }
@@ -1084,136 +1084,136 @@ model User {
   updatedAt            DateTime             @updatedAt @map("updated_at")
   deletedAt            DateTime?            @map("deleted_at")
 
-  identities                            UserIdentity[]
-  userRoles                             UserRole[]
-  loginLogs                             LoginLog[]                          @relation("LoginLogUser")
-  auditLogs                             AuditLog[]                          @relation("AuditLogActor")
-  grantedCustomerMemberships            CustomerProfile[]                   @relation("CustomerMembershipGrantedBy")
-  createdShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipCreatedBy")
-  updatedShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipUpdatedBy")
-  createdShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanCreatedBy")
-  updatedShopMembershipCardPlans        ShopMembershipCardPlan[]            @relation("ShopMembershipCardPlanUpdatedBy")
-  publishedShopMembershipPlanVersions   ShopMembershipCardPlanVersion[]     @relation("ShopMembershipCardPlanVersionPublishedBy")
-  issuedShopMembershipCards             ShopMembershipCard[]                @relation("ShopMembershipCardIssuedBy")
-  actedShopMembershipCardStatusEvents    ShopMembershipCardStatusEvent[]     @relation("ShopMembershipCardStatusEventActor")
-  createdMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyCreatedBy")
-  updatedMembershipRewardFeePolicies    MembershipRewardFeePolicyVersion[]  @relation("MembershipRewardFeePolicyUpdatedBy")
-  ledgerTransactions                    LedgerTransaction[]                 @relation("LedgerTransactionActor")
-  requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
-  reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
-  ownedShops                            Shop[]                              @relation("ShopOwner")
-  technicianProfile                     TechnicianProfile?
-  customerProfile                       CustomerProfile?
-  affiliateProfile                      AffiliateProfile?
-  ownedAffiliateAlliances               AffiliateAlliance[]                 @relation("AffiliateAllianceOwner")
-  affiliateAllianceMemberships          AffiliateAllianceMember[]           @relation("AffiliateAllianceMemberUser")
-  receivedAffiliateAllianceInvitations  AffiliateAllianceInvitation[]       @relation("AffiliateAllianceInvitationInvitee")
-  bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
-  orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
-  orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
-  assignedBackofficeTags                BackofficeProfileTag[]              @relation("BackofficeProfileTagAssigner")
-  orderTimelineComments                 OrderTimelineComment[]              @relation("OrderTimelineCommentActor")
-  pricingModeUpdates                    Shop[]                              @relation("ShopPricingModeUpdatedBy")
-  createdTechnicianServices             TechnicianService[]                 @relation("TechnicianServiceCreatedBy")
-  updatedTechnicianServices             TechnicianService[]                 @relation("TechnicianServiceUpdatedBy")
-  reportedOrderFinancials               OrderFinancial[]                    @relation("OrderFinancialIncomeReporter")
-  confirmedOrderFinancials              OrderFinancial[]                    @relation("OrderFinancialIncomeConfirmer")
-  confirmedBookingPayments              BookingOrder[]                      @relation("BookingOrderPaymentConfirmer")
-  refundedBookingPayments               BookingOrder[]                      @relation("BookingOrderPaymentRefunder")
-  startedOrderServiceSessions           OrderServiceSession[]               @relation("OrderServiceSessionStartedBy")
-  endedOrderServiceSessions             OrderServiceSession[]               @relation("OrderServiceSessionEndedBy")
-  orderServiceEvents                    OrderServiceEvent[]                 @relation("OrderServiceEventActor")
-  proposedOrderAddOns                   OrderAddOn[]                        @relation("OrderAddOnProposedBy")
-  acceptedOrderAddOns                   OrderAddOn[]                        @relation("OrderAddOnAcceptedBy")
-  rejectedOrderAddOns                   OrderAddOn[]                        @relation("OrderAddOnRejectedBy")
-  receiptConfirmedOrderCheckouts        OrderCheckout[]                     @relation("OrderCheckoutReceiptConfirmer")
-  createdNdpExchangeRateRules           NdpExchangeRateRule[]               @relation("NdpExchangeRateRuleCreatedBy")
-  generatedPayRuns                      PayRun[]                            @relation("PayRunGeneratedBy")
-  approvedPayRuns                       PayRun[]                            @relation("PayRunApprovedBy")
-  createdPayslipLines                   PayslipLine[]                       @relation("PayslipLineCreatedBy")
-  createdPayoutRecords                  PayoutRecord[]                      @relation("PayoutRecordCreatedBy")
-  requestedPayrollAdjustments           PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentRequestedBy")
-  approvedPayrollAdjustments            PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentApprovedBy")
-  rejectedPayrollAdjustments            PayrollAdjustmentRequest[]          @relation("PayrollAdjustmentRejectedBy")
-  createdConversations                  Conversation[]                      @relation("ConversationCreator")
-  conversationParticipants              ConversationParticipant[]
-  sentMessages                          Message[]                           @relation("MessageSender")
-  messageReactions                      MessageReaction[]
-  messageUserDeletions                  MessageUserDeletion[]
-  createdImChatRecordBundles            ImChatRecordBundle[]            @relation("ImChatRecordBundleCreator")
-  sentImChatRecordItems                 ImChatRecordItem[]              @relation("ImChatRecordItemSender")
-  imChatRecordFavorites                 ImChatRecordFavorite[]          @relation("ImChatRecordFavoriteOwner")
-  imBatchDeleteCommands                 ImMessageBatchDeleteCommand[]   @relation("ImMessageBatchDeleteOwner")
-  imPoliciesUpdated                     ImPolicy[]                          @relation("ImPolicyUpdater")
-  conversationPrivacyUpdates            Conversation[]                      @relation("ConversationPrivacyUpdater")
-  ownedContacts                         Contact[]                           @relation("ContactOwner")
-  contactEntries                        Contact[]                           @relation("ContactUser")
-  sentFriendRequests                    FriendRequest[]                     @relation("FriendRequestRequester")
-  receivedFriendRequests                FriendRequest[]                     @relation("FriendRequestTarget")
-  socialPosts                           SocialPost[]                        @relation("SocialPostAuthor")
-  socialPostLikes                      SocialPostLike[]                    @relation("SocialPostLikeActor")
-  socialPostBookmarks                  SocialPostBookmark[]                @relation("SocialPostBookmarkActor")
-  socialPostViews                      SocialPostView[]                    @relation("SocialPostViewActor")
-  socialPostShares                     SocialPostShare[]                   @relation("SocialPostShareActor")
-  receivedSocialPostShares             SocialPostShare[]                   @relation("SocialPostShareRecipient")
-  following                             Follow[]                            @relation("FollowFollower")
-  followers                             Follow[]                            @relation("FollowFollowing")
-  exchangePosts                         ExchangePost[]                      @relation("ExchangePostAuthor")
-  exchangeComments                      ExchangeComment[]                   @relation("ExchangeCommentAuthor")
-  exchangeLikes                         ExchangeLike[]                      @relation("ExchangeLikeActor")
-  exchangeShares                        ExchangeShare[]                     @relation("ExchangeShareActor")
-  receivedNotifications                 Notification[]                      @relation("NotificationRecipient")
-  actedNotifications                    Notification[]                      @relation("NotificationActor")
-  ownedMerchantAccounts                 MerchantAccount[]                   @relation("MerchantAccountOwner")
-  createdMerchantMemberships            MerchantShopMembership[]            @relation("MerchantMembershipCreatedBy")
-  removedMerchantMemberships            MerchantShopMembership[]            @relation("MerchantMembershipRemovedBy")
-  createdSaasFreePeriods                SaasFreePeriod[]                    @relation("SaasFreePeriodCreatedBy")
-  reviewedSaasPayments                  SaasPayment[]                       @relation("SaasPaymentReviewedBy")
-  createdEntitySuspensions              EntitySuspension[]                  @relation("EntitySuspensionCreatedBy")
-  releasedEntitySuspensions             EntitySuspension[]                  @relation("EntitySuspensionReleasedBy")
-  reviewedAffiliateTasks                AffiliateTask[]                     @relation("AffiliateTaskReviewer")
-  createdAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleCreatedBy")
-  updatedAffiliatePlatformFeeRules      AffiliatePlatformFeeRule[]          @relation("AffiliatePlatformFeeRuleUpdatedBy")
-  affiliateClaims                       AffiliateClaim[]                    @relation("AffiliateClaimUser")
-  affiliateTouchesAsClaimant            AffiliateTouch[]                    @relation("AffiliateTouchClaimant")
-  affiliateTouchesAsCustomer            AffiliateTouch[]                    @relation("AffiliateTouchCustomer")
-  affiliateAttributionsClaimed          AffiliateAttribution[]              @relation("AffiliateAttributionClaimant")
-  affiliateAttributionsAsCustomer       AffiliateAttribution[]              @relation("AffiliateAttributionCustomer")
-  reviewedAffiliateRisks                AffiliateRiskEvent[]                @relation("AffiliateRiskReviewer")
-  identityApplications                  IdentityApplication[]               @relation("IdentityApplicationApplicant")
-  reviewedIdentityApplications          IdentityApplication[]               @relation("IdentityApplicationReviewer")
-  protectedBankAccounts                 ProtectedBankAccount[]
-  contractAcceptances                   ContractAcceptance[]
-  applicationMediaAssets                MediaAsset[]                        @relation("ApplicationMediaOwner")
-  ekycVerifications                     EkycVerification[]
-  externalAccounts                      ExternalAuthAccount[]
-  createdTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationCreatedBy")
-  updatedTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationUpdatedBy")
-  shopEmployees                         ShopEmployee[]                      @relation("ShopEmployeeUser")
-  createdShopEmployees                  ShopEmployee[]                      @relation("ShopEmployeeCreatedBy")
-  updatedShopEmployees                  ShopEmployee[]                      @relation("ShopEmployeeUpdatedBy")
-  createdShopEmployeeRoles              ShopEmployeeRole[]                  @relation("ShopEmployeeRoleCreatedBy")
-  updatedShopEmployeeRoles              ShopEmployeeRole[]                  @relation("ShopEmployeeRoleUpdatedBy")
-  createdShopEmployeeRoleAssignments    ShopEmployeeRoleAssignment[]        @relation("ShopEmployeeRoleAssignmentCreatedBy")
-  updatedShopEmployeeRoleAssignments    ShopEmployeeRoleAssignment[]        @relation("ShopEmployeeRoleAssignmentUpdatedBy")
-  createdShopPayrollSchedulePolicies    ShopPayrollSchedulePolicy[]         @relation("ShopPayrollSchedulePolicyCreatedBy")
-  updatedShopPayrollSchedulePolicies    ShopPayrollSchedulePolicy[]         @relation("ShopPayrollSchedulePolicyUpdatedBy")
-  createdTechnicianPayrollOverrides     TechnicianPayrollScheduleOverride[] @relation("TechnicianPayrollScheduleOverrideCreatedBy")
-  updatedTechnicianPayrollOverrides     TechnicianPayrollScheduleOverride[] @relation("TechnicianPayrollScheduleOverrideUpdatedBy")
-  createdShopPlatformFeePolicies        ShopPlatformFeePolicy[]             @relation("ShopPlatformFeePolicyCreatedBy")
-  updatedShopPlatformFeePolicies        ShopPlatformFeePolicy[]             @relation("ShopPlatformFeePolicyUpdatedBy")
-  createdOrderAcceptancePauses          OrderAcceptancePause[]              @relation("OrderAcceptancePauseCreatedBy")
-  releasedOrderAcceptancePauses         OrderAcceptancePause[]              @relation("OrderAcceptancePauseReleasedBy")
-  createdOfficialAnnouncements          OfficialAnnouncement[]              @relation("OfficialAnnouncementCreatedBy")
-  createdOfficialAnnouncementReleases   OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseCreatedBy")
-  updatedOfficialAnnouncementReleases   OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseUpdatedBy")
-  publishedOfficialAnnouncementReleases OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleasePublishedBy")
-  disabledOfficialAnnouncementReleases  OfficialAnnouncementRelease[]       @relation("OfficialAnnouncementReleaseDisabledBy")
-  createdCarouselReleases               CarouselRelease[]                   @relation("CarouselReleaseCreatedBy")
-  updatedCarouselReleases               CarouselRelease[]                   @relation("CarouselReleaseUpdatedBy")
-  publishedCarouselReleases             CarouselRelease[]                   @relation("CarouselReleasePublishedBy")
-  disabledCarouselReleases              CarouselRelease[]                   @relation("CarouselReleaseDisabledBy")
-  contentPublicationCommands            ContentPublicationCommand[]         @relation("ContentPublicationCommandActor")
+  identities                              UserIdentity[]
+  userRoles                               UserRole[]
+  loginLogs                               LoginLog[]                            @relation("LoginLogUser")
+  auditLogs                               AuditLog[]                            @relation("AuditLogActor")
+  grantedCustomerMemberships              CustomerProfile[]                     @relation("CustomerMembershipGrantedBy")
+  createdShopCustomerMemberships          ShopCustomerMembership[]              @relation("ShopMembershipCreatedBy")
+  updatedShopCustomerMemberships          ShopCustomerMembership[]              @relation("ShopMembershipUpdatedBy")
+  createdShopMembershipCardPlans          ShopMembershipCardPlan[]              @relation("ShopMembershipCardPlanCreatedBy")
+  updatedShopMembershipCardPlans          ShopMembershipCardPlan[]              @relation("ShopMembershipCardPlanUpdatedBy")
+  publishedShopMembershipPlanVersions     ShopMembershipCardPlanVersion[]       @relation("ShopMembershipCardPlanVersionPublishedBy")
+  issuedShopMembershipCards               ShopMembershipCard[]                  @relation("ShopMembershipCardIssuedBy")
+  actedShopMembershipCardStatusEvents     ShopMembershipCardStatusEvent[]       @relation("ShopMembershipCardStatusEventActor")
+  createdMembershipRewardFeePolicies      MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyCreatedBy")
+  updatedMembershipRewardFeePolicies      MembershipRewardFeePolicyVersion[]    @relation("MembershipRewardFeePolicyUpdatedBy")
+  ledgerTransactions                      LedgerTransaction[]                   @relation("LedgerTransactionActor")
+  requestedWalletAdjustments              WalletAdjustmentRequest[]             @relation("WalletAdjustmentRequestedBy")
+  reviewedWalletAdjustments               WalletAdjustmentRequest[]             @relation("WalletAdjustmentReviewedBy")
+  ownedShops                              Shop[]                                @relation("ShopOwner")
+  technicianProfile                       TechnicianProfile?
+  customerProfile                         CustomerProfile?
+  affiliateProfile                        AffiliateProfile?
+  ownedAffiliateAlliances                 AffiliateAlliance[]                   @relation("AffiliateAllianceOwner")
+  affiliateAllianceMemberships            AffiliateAllianceMember[]             @relation("AffiliateAllianceMemberUser")
+  receivedAffiliateAllianceInvitations    AffiliateAllianceInvitation[]         @relation("AffiliateAllianceInvitationInvitee")
+  bookingOrders                           BookingOrder[]                        @relation("BookingOrderCustomer")
+  orderHistories                          OrderStatusHistory[]                  @relation("OrderStatusHistoryActor")
+  orderReviewsGiven                       OrderReview[]                         @relation("OrderReviewReviewer")
+  assignedBackofficeTags                  BackofficeProfileTag[]                @relation("BackofficeProfileTagAssigner")
+  orderTimelineComments                   OrderTimelineComment[]                @relation("OrderTimelineCommentActor")
+  pricingModeUpdates                      Shop[]                                @relation("ShopPricingModeUpdatedBy")
+  createdTechnicianServices               TechnicianService[]                   @relation("TechnicianServiceCreatedBy")
+  updatedTechnicianServices               TechnicianService[]                   @relation("TechnicianServiceUpdatedBy")
+  reportedOrderFinancials                 OrderFinancial[]                      @relation("OrderFinancialIncomeReporter")
+  confirmedOrderFinancials                OrderFinancial[]                      @relation("OrderFinancialIncomeConfirmer")
+  confirmedBookingPayments                BookingOrder[]                        @relation("BookingOrderPaymentConfirmer")
+  refundedBookingPayments                 BookingOrder[]                        @relation("BookingOrderPaymentRefunder")
+  startedOrderServiceSessions             OrderServiceSession[]                 @relation("OrderServiceSessionStartedBy")
+  endedOrderServiceSessions               OrderServiceSession[]                 @relation("OrderServiceSessionEndedBy")
+  orderServiceEvents                      OrderServiceEvent[]                   @relation("OrderServiceEventActor")
+  proposedOrderAddOns                     OrderAddOn[]                          @relation("OrderAddOnProposedBy")
+  acceptedOrderAddOns                     OrderAddOn[]                          @relation("OrderAddOnAcceptedBy")
+  rejectedOrderAddOns                     OrderAddOn[]                          @relation("OrderAddOnRejectedBy")
+  receiptConfirmedOrderCheckouts          OrderCheckout[]                       @relation("OrderCheckoutReceiptConfirmer")
+  createdNdpExchangeRateRules             NdpExchangeRateRule[]                 @relation("NdpExchangeRateRuleCreatedBy")
+  generatedPayRuns                        PayRun[]                              @relation("PayRunGeneratedBy")
+  approvedPayRuns                         PayRun[]                              @relation("PayRunApprovedBy")
+  createdPayslipLines                     PayslipLine[]                         @relation("PayslipLineCreatedBy")
+  createdPayoutRecords                    PayoutRecord[]                        @relation("PayoutRecordCreatedBy")
+  requestedPayrollAdjustments             PayrollAdjustmentRequest[]            @relation("PayrollAdjustmentRequestedBy")
+  approvedPayrollAdjustments              PayrollAdjustmentRequest[]            @relation("PayrollAdjustmentApprovedBy")
+  rejectedPayrollAdjustments              PayrollAdjustmentRequest[]            @relation("PayrollAdjustmentRejectedBy")
+  createdConversations                    Conversation[]                        @relation("ConversationCreator")
+  conversationParticipants                ConversationParticipant[]
+  sentMessages                            Message[]                             @relation("MessageSender")
+  messageReactions                        MessageReaction[]
+  messageUserDeletions                    MessageUserDeletion[]
+  createdImChatRecordBundles              ImChatRecordBundle[]                  @relation("ImChatRecordBundleCreator")
+  sentImChatRecordItems                   ImChatRecordItem[]                    @relation("ImChatRecordItemSender")
+  imChatRecordFavorites                   ImChatRecordFavorite[]                @relation("ImChatRecordFavoriteOwner")
+  imBatchDeleteCommands                   ImMessageBatchDeleteCommand[]         @relation("ImMessageBatchDeleteOwner")
+  imPoliciesUpdated                       ImPolicy[]                            @relation("ImPolicyUpdater")
+  conversationPrivacyUpdates              Conversation[]                        @relation("ConversationPrivacyUpdater")
+  ownedContacts                           Contact[]                             @relation("ContactOwner")
+  contactEntries                          Contact[]                             @relation("ContactUser")
+  sentFriendRequests                      FriendRequest[]                       @relation("FriendRequestRequester")
+  receivedFriendRequests                  FriendRequest[]                       @relation("FriendRequestTarget")
+  socialPosts                             SocialPost[]                          @relation("SocialPostAuthor")
+  socialPostLikes                         SocialPostLike[]                      @relation("SocialPostLikeActor")
+  socialPostBookmarks                     SocialPostBookmark[]                  @relation("SocialPostBookmarkActor")
+  socialPostViews                         SocialPostView[]                      @relation("SocialPostViewActor")
+  socialPostShares                        SocialPostShare[]                     @relation("SocialPostShareActor")
+  receivedSocialPostShares                SocialPostShare[]                     @relation("SocialPostShareRecipient")
+  following                               Follow[]                              @relation("FollowFollower")
+  followers                               Follow[]                              @relation("FollowFollowing")
+  exchangePosts                           ExchangePost[]                        @relation("ExchangePostAuthor")
+  exchangeComments                        ExchangeComment[]                     @relation("ExchangeCommentAuthor")
+  exchangeLikes                           ExchangeLike[]                        @relation("ExchangeLikeActor")
+  exchangeShares                          ExchangeShare[]                       @relation("ExchangeShareActor")
+  receivedNotifications                   Notification[]                        @relation("NotificationRecipient")
+  actedNotifications                      Notification[]                        @relation("NotificationActor")
+  ownedMerchantAccounts                   MerchantAccount[]                     @relation("MerchantAccountOwner")
+  createdMerchantMemberships              MerchantShopMembership[]              @relation("MerchantMembershipCreatedBy")
+  removedMerchantMemberships              MerchantShopMembership[]              @relation("MerchantMembershipRemovedBy")
+  createdSaasFreePeriods                  SaasFreePeriod[]                      @relation("SaasFreePeriodCreatedBy")
+  reviewedSaasPayments                    SaasPayment[]                         @relation("SaasPaymentReviewedBy")
+  createdEntitySuspensions                EntitySuspension[]                    @relation("EntitySuspensionCreatedBy")
+  releasedEntitySuspensions               EntitySuspension[]                    @relation("EntitySuspensionReleasedBy")
+  reviewedAffiliateTasks                  AffiliateTask[]                       @relation("AffiliateTaskReviewer")
+  createdAffiliatePlatformFeeRules        AffiliatePlatformFeeRule[]            @relation("AffiliatePlatformFeeRuleCreatedBy")
+  updatedAffiliatePlatformFeeRules        AffiliatePlatformFeeRule[]            @relation("AffiliatePlatformFeeRuleUpdatedBy")
+  affiliateClaims                         AffiliateClaim[]                      @relation("AffiliateClaimUser")
+  affiliateTouchesAsClaimant              AffiliateTouch[]                      @relation("AffiliateTouchClaimant")
+  affiliateTouchesAsCustomer              AffiliateTouch[]                      @relation("AffiliateTouchCustomer")
+  affiliateAttributionsClaimed            AffiliateAttribution[]                @relation("AffiliateAttributionClaimant")
+  affiliateAttributionsAsCustomer         AffiliateAttribution[]                @relation("AffiliateAttributionCustomer")
+  reviewedAffiliateRisks                  AffiliateRiskEvent[]                  @relation("AffiliateRiskReviewer")
+  identityApplications                    IdentityApplication[]                 @relation("IdentityApplicationApplicant")
+  reviewedIdentityApplications            IdentityApplication[]                 @relation("IdentityApplicationReviewer")
+  protectedBankAccounts                   ProtectedBankAccount[]
+  contractAcceptances                     ContractAcceptance[]
+  applicationMediaAssets                  MediaAsset[]                          @relation("ApplicationMediaOwner")
+  ekycVerifications                       EkycVerification[]
+  externalAccounts                        ExternalAuthAccount[]
+  createdTechnicianShopAffiliations       TechnicianShopAffiliation[]           @relation("TechnicianShopAffiliationCreatedBy")
+  updatedTechnicianShopAffiliations       TechnicianShopAffiliation[]           @relation("TechnicianShopAffiliationUpdatedBy")
+  shopEmployees                           ShopEmployee[]                        @relation("ShopEmployeeUser")
+  createdShopEmployees                    ShopEmployee[]                        @relation("ShopEmployeeCreatedBy")
+  updatedShopEmployees                    ShopEmployee[]                        @relation("ShopEmployeeUpdatedBy")
+  createdShopEmployeeRoles                ShopEmployeeRole[]                    @relation("ShopEmployeeRoleCreatedBy")
+  updatedShopEmployeeRoles                ShopEmployeeRole[]                    @relation("ShopEmployeeRoleUpdatedBy")
+  createdShopEmployeeRoleAssignments      ShopEmployeeRoleAssignment[]          @relation("ShopEmployeeRoleAssignmentCreatedBy")
+  updatedShopEmployeeRoleAssignments      ShopEmployeeRoleAssignment[]          @relation("ShopEmployeeRoleAssignmentUpdatedBy")
+  createdShopPayrollSchedulePolicies      ShopPayrollSchedulePolicy[]           @relation("ShopPayrollSchedulePolicyCreatedBy")
+  updatedShopPayrollSchedulePolicies      ShopPayrollSchedulePolicy[]           @relation("ShopPayrollSchedulePolicyUpdatedBy")
+  createdTechnicianPayrollOverrides       TechnicianPayrollScheduleOverride[]   @relation("TechnicianPayrollScheduleOverrideCreatedBy")
+  updatedTechnicianPayrollOverrides       TechnicianPayrollScheduleOverride[]   @relation("TechnicianPayrollScheduleOverrideUpdatedBy")
+  createdShopPlatformFeePolicies          ShopPlatformFeePolicy[]               @relation("ShopPlatformFeePolicyCreatedBy")
+  updatedShopPlatformFeePolicies          ShopPlatformFeePolicy[]               @relation("ShopPlatformFeePolicyUpdatedBy")
+  createdOrderAcceptancePauses            OrderAcceptancePause[]                @relation("OrderAcceptancePauseCreatedBy")
+  releasedOrderAcceptancePauses           OrderAcceptancePause[]                @relation("OrderAcceptancePauseReleasedBy")
+  createdOfficialAnnouncements            OfficialAnnouncement[]                @relation("OfficialAnnouncementCreatedBy")
+  createdOfficialAnnouncementReleases     OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleaseCreatedBy")
+  updatedOfficialAnnouncementReleases     OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleaseUpdatedBy")
+  publishedOfficialAnnouncementReleases   OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleasePublishedBy")
+  disabledOfficialAnnouncementReleases    OfficialAnnouncementRelease[]         @relation("OfficialAnnouncementReleaseDisabledBy")
+  createdCarouselReleases                 CarouselRelease[]                     @relation("CarouselReleaseCreatedBy")
+  updatedCarouselReleases                 CarouselRelease[]                     @relation("CarouselReleaseUpdatedBy")
+  publishedCarouselReleases               CarouselRelease[]                     @relation("CarouselReleasePublishedBy")
+  disabledCarouselReleases                CarouselRelease[]                     @relation("CarouselReleaseDisabledBy")
+  contentPublicationCommands              ContentPublicationCommand[]           @relation("ContentPublicationCommandActor")
   requestedShopMembershipCardAdjustments  ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentRequestedBy")
   decidedShopMembershipCardAdjustments    ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentDecidedBy")
   cancelledShopMembershipCardAdjustments  ShopMembershipCardAdjustmentRequest[] @relation("ShopMembershipCardAdjustmentCancelledBy")
@@ -1249,7 +1249,7 @@ model User {
   approvedShopServiceQualifications       ShopServiceQualification[]            @relation("ShopServiceQualificationApprover")
   selectedApplicationServiceCategories    MerchantApplicationServiceCategory[]  @relation("MerchantApplicationServiceCategorySelector")
   selectedApplicationBusinessKeywords     MerchantApplicationBusinessKeyword[]  @relation("MerchantApplicationBusinessKeywordSelector")
-  orderPerformanceRevisionActions        OrderPerformanceAssessmentRevision[]  @relation("OrderPerformanceRevisionActor")
+  orderPerformanceRevisionActions         OrderPerformanceAssessmentRevision[]  @relation("OrderPerformanceRevisionActor")
   entityFavorites                         EntityFavorite[]                      @relation("EntityFavoriteOwner")
   createdEntityShareEvents                EntityShareEvent[]                    @relation("EntityShareActor")
   receivedEntityShareEvents               EntityShareEvent[]                    @relation("EntityShareRecipient")
@@ -1291,29 +1291,32 @@ model ExternalAuthAccount {
 }
 
 model Category {
-  id                  Int                            @id @default(autoincrement())
-  code                String                         @unique @db.VarChar(100)
-  name                String                         @db.VarChar(120)
-  nameJa              String?                        @map("name_ja") @db.VarChar(120)
-  nameEn              String?                        @map("name_en") @db.VarChar(120)
-  parentId            Int?                           @map("parent_id")
-  iconUrl             String?                        @map("icon_url") @db.VarChar(500)
-  qualificationPolicy BusinessQualificationPolicy    @default(OPEN) @map("qualification_policy")
-  sortOrder           Int                            @default(0) @map("sort_order")
-  isActive            Boolean                        @default(true) @map("is_active")
-  createdAt           DateTime                       @default(now()) @map("created_at")
-  updatedAt           DateTime                       @updatedAt @map("updated_at")
-  deletedAt           DateTime?                      @map("deleted_at")
+  id                   Int                         @id @default(autoincrement())
+  code                 String                      @unique @db.VarChar(100)
+  name                 String                      @db.VarChar(120)
+  nameJa               String?                     @map("name_ja") @db.VarChar(120)
+  nameEn               String?                     @map("name_en") @db.VarChar(120)
+  parentId             Int?                        @map("parent_id")
+  iconUrl              String?                     @map("icon_url") @db.VarChar(500)
+  qualificationPolicy  BusinessQualificationPolicy @default(OPEN) @map("qualification_policy")
+  sortOrder            Int                         @default(0) @map("sort_order")
+  isActive             Boolean                     @default(true) @map("is_active")
+  configurationVersion Int                         @default(1) @map("configuration_version")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+  deletedAt            DateTime?                   @map("deleted_at")
 
-  parent             Category?           @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children           Category[]          @relation("CategoryTree")
-  services           Service[]
-  technicianServices TechnicianService[]
-  mediaAssets        MediaAsset[]
-  translations       CategoryTranslation[]
-  businessKeywords   BusinessKeyword[]
-  shopSelections     ShopServiceCategory[]
-  qualifications     ShopServiceQualification[]
+  parent                Category?                            @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children              Category[]                           @relation("CategoryTree")
+  services              Service[]
+  technicianServices    TechnicianService[]
+  mediaAssets           MediaAsset[]
+  translations          CategoryTranslation[]
+  businessKeywords      BusinessKeyword[]
+  searchKeywordAliases  SearchKeywordAlias[]
+  searchQueryEvents     SearchQueryEvent[]
+  shopSelections        ShopServiceCategory[]
+  qualifications        ShopServiceQualification[]
   applicationSelections MerchantApplicationServiceCategory[]
 
   @@index([parentId])
@@ -1341,21 +1344,24 @@ model CategoryTranslation {
 }
 
 model BusinessKeyword {
-  id                  Int                         @id @default(autoincrement())
-  code                String                      @unique(map: "business_keywords_code_key") @db.VarChar(120)
-  categoryId          Int                         @map("category_id")
-  qualificationPolicy BusinessQualificationPolicy @default(OPEN) @map("qualification_policy")
-  sortOrder           Int                         @default(0) @map("sort_order")
-  isActive            Boolean                     @default(true) @map("is_active")
-  createdAt           DateTime                    @default(now()) @map("created_at")
-  updatedAt           DateTime                    @updatedAt @map("updated_at")
-  deletedAt           DateTime?                   @map("deleted_at")
+  id                   Int                         @id @default(autoincrement())
+  code                 String                      @unique(map: "business_keywords_code_key") @db.VarChar(120)
+  categoryId           Int                         @map("category_id")
+  qualificationPolicy  BusinessQualificationPolicy @default(OPEN) @map("qualification_policy")
+  sortOrder            Int                         @default(0) @map("sort_order")
+  isActive             Boolean                     @default(true) @map("is_active")
+  configurationVersion Int                         @default(1) @map("configuration_version")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+  deletedAt            DateTime?                   @map("deleted_at")
 
   category              Category                             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   translations          BusinessKeywordTranslation[]
   shopSelections        ShopBusinessKeyword[]
   qualifications        ShopServiceQualification[]
   applicationSelections MerchantApplicationBusinessKeyword[]
+  searchAliases         SearchKeywordAlias[]
+  searchQueryEvents     SearchQueryEvent[]
 
   @@index([categoryId, isActive, sortOrder], map: "business_keywords_category_active_sort_idx")
   @@index([deletedAt])
@@ -1377,6 +1383,51 @@ model BusinessKeywordTranslation {
   @@index([locale, label, deletedAt], map: "business_keyword_translations_locale_label_deleted_idx")
   @@index([deletedAt])
   @@map("business_keyword_translations")
+}
+
+model SearchKeywordAlias {
+  id                   Int       @id @default(autoincrement())
+  alias                String    @db.VarChar(191)
+  normalizedAlias      String    @map("normalized_alias") @db.VarChar(191)
+  categoryId           Int       @map("category_id")
+  businessKeywordId    Int       @map("business_keyword_id")
+  isActive             Boolean   @default(true) @map("is_active")
+  configurationVersion Int       @default(1) @map("configuration_version")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  category        Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  businessKeyword BusinessKeyword @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+
+  @@index([normalizedAlias, isActive, deletedAt], map: "search_keyword_aliases_normalized_active_deleted_idx")
+  @@index([categoryId, businessKeywordId, deletedAt], map: "search_keyword_aliases_taxonomy_deleted_idx")
+  @@map("search_keyword_aliases")
+}
+
+model SearchQueryEvent {
+  id                   Int       @id @default(autoincrement())
+  originalKeyword      String    @map("original_keyword") @db.VarChar(191)
+  normalizedKeyword    String    @map("normalized_keyword") @db.VarChar(191)
+  city                 String?   @db.VarChar(120)
+  entityType           String    @map("entity_type") @db.VarChar(32)
+  categoryId           Int?      @map("category_id")
+  businessKeywordId    Int?      @map("business_keyword_id")
+  resultCount          Int       @map("result_count")
+  anonymousSessionHash String?   @map("anonymous_session_hash") @db.Char(64)
+  searchedAt           DateTime  @default(now()) @map("searched_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  businessKeyword BusinessKeyword? @relation(fields: [businessKeywordId], references: [id], onDelete: SetNull)
+
+  @@index([searchedAt, city, categoryId, deletedAt], map: "search_query_events_window_city_category_idx")
+  @@index([normalizedKeyword, searchedAt, deletedAt], map: "search_query_events_keyword_window_idx")
+  @@index([businessKeywordId, searchedAt, deletedAt], map: "search_query_events_business_keyword_window_idx")
+  @@index([anonymousSessionHash, searchedAt], map: "search_query_events_session_window_idx")
+  @@map("search_query_events")
 }
 
 model ShopServiceCategory {
@@ -1456,18 +1507,18 @@ model ShopServiceTaxonomyCommand {
 }
 
 model ShopServiceQualification {
-  id                      Int                                @id @default(autoincrement())
-  shopId                  Int                                @map("shop_id")
-  categoryId              Int?                               @map("category_id")
-  businessKeywordId       Int?                               @map("business_keyword_id")
-  sourceApplicationId     Int?                               @map("source_application_id")
-  status                  ShopServiceQualificationStatus
-  expiresAt               DateTime?                          @map("expires_at")
-  approvedByUserId        Int                                @map("approved_by_user_id")
-  reason                  String                             @db.VarChar(1000)
-  createdAt               DateTime                           @default(now()) @map("created_at")
-  updatedAt               DateTime                           @updatedAt @map("updated_at")
-  deletedAt               DateTime?                          @map("deleted_at")
+  id                  Int                            @id @default(autoincrement())
+  shopId              Int                            @map("shop_id")
+  categoryId          Int?                           @map("category_id")
+  businessKeywordId   Int?                           @map("business_keyword_id")
+  sourceApplicationId Int?                           @map("source_application_id")
+  status              ShopServiceQualificationStatus
+  expiresAt           DateTime?                      @map("expires_at")
+  approvedByUserId    Int                            @map("approved_by_user_id")
+  reason              String                         @db.VarChar(1000)
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  deletedAt           DateTime?                      @map("deleted_at")
 
   shop              Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
   category          Category?            @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -1830,30 +1881,30 @@ model AgentSettlementLine {
 }
 
 model ShopFinanceRuleSet {
-  id                    Int       @id @default(autoincrement())
-  shopId                Int       @map("shop_id")
-  name                  String    @db.VarChar(160)
-  status                String    @default("active") @db.VarChar(40)
-  wageMode              String    @default("commission") @map("wage_mode") @db.VarChar(60)
-  baseSalaryJpy         Int       @default(0) @map("base_salary_jpy")
-  hourlyRateJpy         Int       @default(0) @map("hourly_rate_jpy")
-  dailyRateJpy          Int       @default(0) @map("daily_rate_jpy")
-  fixedOrderPayJpy      Int       @default(0) @map("fixed_order_pay_jpy")
-  commissionRateBps     Int       @default(6000) @map("commission_rate_bps")
-  extensionCommissionRateBps Int  @default(6000) @map("extension_commission_rate_bps")
-  nominationFeeJpy      Int       @default(0) @map("nomination_fee_jpy")
-  guaranteedMinimumJpy  Int       @default(0) @map("guaranteed_minimum_jpy")
-  ndpFeeBearer          String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
-  technicianNdpShareBps Int       @default(0) @map("technician_ndp_share_bps")
-  bonusRulesJson        Json?     @map("bonus_rules_json")
-  deductionRulesJson    Json?     @map("deduction_rules_json")
-  effectiveFrom         DateTime? @map("effective_from")
-  effectiveTo           DateTime? @map("effective_to")
-  createdById           Int?      @map("created_by_id")
-  updatedById           Int?      @map("updated_by_id")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  deletedAt             DateTime? @map("deleted_at")
+  id                         Int       @id @default(autoincrement())
+  shopId                     Int       @map("shop_id")
+  name                       String    @db.VarChar(160)
+  status                     String    @default("active") @db.VarChar(40)
+  wageMode                   String    @default("commission") @map("wage_mode") @db.VarChar(60)
+  baseSalaryJpy              Int       @default(0) @map("base_salary_jpy")
+  hourlyRateJpy              Int       @default(0) @map("hourly_rate_jpy")
+  dailyRateJpy               Int       @default(0) @map("daily_rate_jpy")
+  fixedOrderPayJpy           Int       @default(0) @map("fixed_order_pay_jpy")
+  commissionRateBps          Int       @default(6000) @map("commission_rate_bps")
+  extensionCommissionRateBps Int       @default(6000) @map("extension_commission_rate_bps")
+  nominationFeeJpy           Int       @default(0) @map("nomination_fee_jpy")
+  guaranteedMinimumJpy       Int       @default(0) @map("guaranteed_minimum_jpy")
+  ndpFeeBearer               String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
+  technicianNdpShareBps      Int       @default(0) @map("technician_ndp_share_bps")
+  bonusRulesJson             Json?     @map("bonus_rules_json")
+  deductionRulesJson         Json?     @map("deduction_rules_json")
+  effectiveFrom              DateTime? @map("effective_from")
+  effectiveTo                DateTime? @map("effective_to")
+  createdById                Int?      @map("created_by_id")
+  updatedById                Int?      @map("updated_by_id")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  deletedAt                  DateTime? @map("deleted_at")
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
 
@@ -1869,32 +1920,32 @@ model ShopFinanceRuleSet {
 }
 
 model TechnicianCompensationProfile {
-  id                    Int       @id @default(autoincrement())
-  shopId                Int       @map("shop_id")
-  technicianProfileId   Int       @map("technician_profile_id")
-  name                  String    @db.VarChar(160)
-  status                String    @default("active") @db.VarChar(40)
-  version               Int       @default(1)
-  wageMode              String    @default("commission") @map("wage_mode") @db.VarChar(60)
-  baseSalaryJpy         Int       @default(0) @map("base_salary_jpy")
-  hourlyRateJpy         Int       @default(0) @map("hourly_rate_jpy")
-  dailyRateJpy          Int       @default(0) @map("daily_rate_jpy")
-  fixedOrderPayJpy      Int       @default(0) @map("fixed_order_pay_jpy")
-  commissionRateBps     Int       @default(6000) @map("commission_rate_bps")
-  extensionCommissionRateBps Int  @default(6000) @map("extension_commission_rate_bps")
-  nominationFeeJpy      Int       @default(0) @map("nomination_fee_jpy")
-  guaranteedMinimumJpy  Int       @default(0) @map("guaranteed_minimum_jpy")
-  ndpFeeBearer          String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
-  technicianNdpShareBps Int       @default(0) @map("technician_ndp_share_bps")
-  bonusRulesJson        Json?     @map("bonus_rules_json")
-  deductionRulesJson    Json?     @map("deduction_rules_json")
-  effectiveFrom         DateTime? @map("effective_from")
-  effectiveTo           DateTime? @map("effective_to")
-  createdById           Int?      @map("created_by_id")
-  updatedById           Int?      @map("updated_by_id")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  deletedAt             DateTime? @map("deleted_at")
+  id                         Int       @id @default(autoincrement())
+  shopId                     Int       @map("shop_id")
+  technicianProfileId        Int       @map("technician_profile_id")
+  name                       String    @db.VarChar(160)
+  status                     String    @default("active") @db.VarChar(40)
+  version                    Int       @default(1)
+  wageMode                   String    @default("commission") @map("wage_mode") @db.VarChar(60)
+  baseSalaryJpy              Int       @default(0) @map("base_salary_jpy")
+  hourlyRateJpy              Int       @default(0) @map("hourly_rate_jpy")
+  dailyRateJpy               Int       @default(0) @map("daily_rate_jpy")
+  fixedOrderPayJpy           Int       @default(0) @map("fixed_order_pay_jpy")
+  commissionRateBps          Int       @default(6000) @map("commission_rate_bps")
+  extensionCommissionRateBps Int       @default(6000) @map("extension_commission_rate_bps")
+  nominationFeeJpy           Int       @default(0) @map("nomination_fee_jpy")
+  guaranteedMinimumJpy       Int       @default(0) @map("guaranteed_minimum_jpy")
+  ndpFeeBearer               String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
+  technicianNdpShareBps      Int       @default(0) @map("technician_ndp_share_bps")
+  bonusRulesJson             Json?     @map("bonus_rules_json")
+  deductionRulesJson         Json?     @map("deduction_rules_json")
+  effectiveFrom              DateTime? @map("effective_from")
+  effectiveTo                DateTime? @map("effective_to")
+  createdById                Int?      @map("created_by_id")
+  updatedById                Int?      @map("updated_by_id")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  deletedAt                  DateTime? @map("deleted_at")
 
   shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
@@ -2086,11 +2137,11 @@ model ShopEmployee {
   updatedAt                   DateTime           @updatedAt @map("updated_at")
   deletedAt                   DateTime?          @map("deleted_at")
 
-  shop                      Shop                       @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  user                      User                       @relation("ShopEmployeeUser", fields: [userId], references: [id], onDelete: Restrict)
-  technicianShopAffiliation TechnicianShopAffiliation? @relation("ShopEmployeeTechnicianAffiliation", fields: [technicianShopAffiliationId], references: [id], onDelete: Restrict)
-  createdBy                 User?                      @relation("ShopEmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy                 User?                      @relation("ShopEmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  shop                      Shop                         @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  user                      User                         @relation("ShopEmployeeUser", fields: [userId], references: [id], onDelete: Restrict)
+  technicianShopAffiliation TechnicianShopAffiliation?   @relation("ShopEmployeeTechnicianAffiliation", fields: [technicianShopAffiliationId], references: [id], onDelete: Restrict)
+  createdBy                 User?                        @relation("ShopEmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy                 User?                        @relation("ShopEmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   roleAssignments           ShopEmployeeRoleAssignment[]
 
   @@index([shopId, status, deletedAt], map: "shop_employees_shop_status_deleted_idx")
@@ -2326,43 +2377,43 @@ model UserExperienceAccount {
 }
 
 model UserExperienceEntry {
-  id                      Int                         @id @default(autoincrement())
-  publicId                String                      @unique @default(uuid()) @map("public_id") @db.Char(36)
-  accountId               Int                         @map("account_id")
-  userId                  Int                         @map("user_id")
-  eventType               UserExperienceEventType     @map("event_type")
-  sourceType              String                      @map("source_type") @db.VarChar(80)
-  sourcePublicId          String?                     @map("source_public_id") @db.VarChar(96)
-  idempotencyKey          String                      @unique @map("idempotency_key") @db.VarChar(191)
-  baseUnits               BigInt                      @map("base_units")
-  campaignFactorBps       Int                         @default(10000) @map("campaign_factor_bps")
-  membershipMultiplierBps Int                         @default(10000) @map("membership_multiplier_bps")
-  extraUnits              BigInt                      @default(0) @map("extra_units")
-  finalUnits              BigInt                      @map("final_units")
-  membershipTierCode      PlatformMembershipTierCode? @map("membership_tier_code")
-  membershipTierVersionId String?                     @map("membership_tier_version_id") @db.Char(36)
-  policyVersionId         String?                     @map("policy_version_id") @db.Char(36)
-  campaignVersionId       String?                     @map("campaign_version_id") @db.Char(36)
-  occurredAt              DateTime                    @map("occurred_at")
-  reversalOfEntryId       Int?                        @map("reversal_of_entry_id")
-  ledgerTransactionId     Int?                        @unique(map: "user_experience_entries_ledger_transaction_id_key") @map("ledger_transaction_id")
-  entitlementId           Int?                        @unique(map: "user_experience_entries_entitlement_id_key") @map("entitlement_id")
-  tierBenefitId           Int?                        @map("tier_benefit_id")
-  ndpAmount               Int?                        @map("ndp_amount")
-  ndpPerBaseExp           Int?                        @map("ndp_per_base_exp")
-  extraThresholdNdp       Int?                        @map("extra_threshold_ndp")
-  extraAwardUnits         BigInt?                     @map("extra_award_units")
-  accumulatorBeforeNumerator BigInt?                  @map("accumulator_before_numerator")
-  accumulatorAfterNumerator  BigInt?                  @map("accumulator_after_numerator")
-  createdAt               DateTime                    @default(now()) @map("created_at")
-  updatedAt               DateTime                    @updatedAt @map("updated_at")
-  deletedAt               DateTime?                   @map("deleted_at")
+  id                         Int                         @id @default(autoincrement())
+  publicId                   String                      @unique @default(uuid()) @map("public_id") @db.Char(36)
+  accountId                  Int                         @map("account_id")
+  userId                     Int                         @map("user_id")
+  eventType                  UserExperienceEventType     @map("event_type")
+  sourceType                 String                      @map("source_type") @db.VarChar(80)
+  sourcePublicId             String?                     @map("source_public_id") @db.VarChar(96)
+  idempotencyKey             String                      @unique @map("idempotency_key") @db.VarChar(191)
+  baseUnits                  BigInt                      @map("base_units")
+  campaignFactorBps          Int                         @default(10000) @map("campaign_factor_bps")
+  membershipMultiplierBps    Int                         @default(10000) @map("membership_multiplier_bps")
+  extraUnits                 BigInt                      @default(0) @map("extra_units")
+  finalUnits                 BigInt                      @map("final_units")
+  membershipTierCode         PlatformMembershipTierCode? @map("membership_tier_code")
+  membershipTierVersionId    String?                     @map("membership_tier_version_id") @db.Char(36)
+  policyVersionId            String?                     @map("policy_version_id") @db.Char(36)
+  campaignVersionId          String?                     @map("campaign_version_id") @db.Char(36)
+  occurredAt                 DateTime                    @map("occurred_at")
+  reversalOfEntryId          Int?                        @map("reversal_of_entry_id")
+  ledgerTransactionId        Int?                        @unique(map: "user_experience_entries_ledger_transaction_id_key") @map("ledger_transaction_id")
+  entitlementId              Int?                        @unique(map: "user_experience_entries_entitlement_id_key") @map("entitlement_id")
+  tierBenefitId              Int?                        @map("tier_benefit_id")
+  ndpAmount                  Int?                        @map("ndp_amount")
+  ndpPerBaseExp              Int?                        @map("ndp_per_base_exp")
+  extraThresholdNdp          Int?                        @map("extra_threshold_ndp")
+  extraAwardUnits            BigInt?                     @map("extra_award_units")
+  accumulatorBeforeNumerator BigInt?                     @map("accumulator_before_numerator")
+  accumulatorAfterNumerator  BigInt?                     @map("accumulator_after_numerator")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  deletedAt                  DateTime?                   @map("deleted_at")
 
-  account         UserExperienceAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  user            User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  reversalOfEntry UserExperienceEntry?  @relation("UserExperienceEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
-  reversals       UserExperienceEntry[] @relation("UserExperienceEntryReversal")
-  ledgerTransaction LedgerTransaction?  @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+  account           UserExperienceAccount          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  user              User                           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reversalOfEntry   UserExperienceEntry?           @relation("UserExperienceEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
+  reversals         UserExperienceEntry[]          @relation("UserExperienceEntryReversal")
+  ledgerTransaction LedgerTransaction?             @relation(fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
   entitlement       PlatformMembershipEntitlement? @relation(fields: [entitlementId], references: [id], onDelete: Restrict)
   tierBenefit       PlatformMembershipTierBenefit? @relation(fields: [tierBenefitId], references: [id], onDelete: Restrict)
 
@@ -2385,8 +2436,8 @@ model UserNdpExperienceAccumulator {
   updatedAt          DateTime  @updatedAt @map("updated_at")
   deletedAt          DateTime? @map("deleted_at")
 
-  user        User                              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  tierBenefit PlatformMembershipTierBenefit    @relation(fields: [tierBenefitId], references: [id], onDelete: Restrict)
+  user        User                          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tierBenefit PlatformMembershipTierBenefit @relation(fields: [tierBenefitId], references: [id], onDelete: Restrict)
 
   @@unique([userId, tierBenefitId], map: "user_ndp_experience_accumulator_key")
   @@index([tierBenefitId], map: "user_ndp_experience_accumulators_tier_benefit_idx")
@@ -2454,17 +2505,17 @@ model PlatformMembershipTierVersion {
 }
 
 model PlatformMembershipBenefit {
-  id                Int                           @id @default(autoincrement())
-  publicId          String                        @unique @default(uuid()) @map("public_id") @db.Char(36)
-  code              PlatformMembershipBenefitCode @unique
-  sortOrder         Int                           @map("sort_order")
-  isGloballyEnabled Boolean                       @default(true) @map("is_globally_enabled")
-  nameTranslations  Json                          @map("name_translations")
-  descriptionTranslations Json                    @map("description_translations")
-  lockVersion       Int                           @default(1) @map("lock_version")
-  createdAt         DateTime                      @default(now()) @map("created_at")
-  updatedAt         DateTime                      @updatedAt @map("updated_at")
-  deletedAt         DateTime?                     @map("deleted_at")
+  id                      Int                           @id @default(autoincrement())
+  publicId                String                        @unique @default(uuid()) @map("public_id") @db.Char(36)
+  code                    PlatformMembershipBenefitCode @unique
+  sortOrder               Int                           @map("sort_order")
+  isGloballyEnabled       Boolean                       @default(true) @map("is_globally_enabled")
+  nameTranslations        Json                          @map("name_translations")
+  descriptionTranslations Json                          @map("description_translations")
+  lockVersion             Int                           @default(1) @map("lock_version")
+  createdAt               DateTime                      @default(now()) @map("created_at")
+  updatedAt               DateTime                      @updatedAt @map("updated_at")
+  deletedAt               DateTime?                     @map("deleted_at")
 
   tierBenefits PlatformMembershipTierBenefit[]
 
@@ -2484,10 +2535,10 @@ model PlatformMembershipTierBenefit {
   updatedAt         DateTime  @updatedAt @map("updated_at")
   deletedAt         DateTime? @map("deleted_at")
 
-  tierVersion PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
-  benefit     PlatformMembershipBenefit     @relation(fields: [benefitId], references: [id], onDelete: Restrict)
+  tierVersion               PlatformMembershipTierVersion  @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
+  benefit                   PlatformMembershipBenefit      @relation(fields: [benefitId], references: [id], onDelete: Restrict)
   ndpExperienceAccumulators UserNdpExperienceAccumulator[]
-  experienceEntries UserExperienceEntry[]
+  experienceEntries         UserExperienceEntry[]
 
   @@unique([tierVersionId, benefitId], map: "platform_membership_tier_benefit_key")
   @@index([benefitId, isEnabled, deletedAt], map: "platform_membership_tier_benefit_enabled_idx")
@@ -2514,9 +2565,9 @@ model PlatformMembershipEntitlement {
   updatedAt          DateTime                                @updatedAt @map("updated_at")
   deletedAt          DateTime?                               @map("deleted_at")
 
-  user        User                          @relation("PlatformMembershipEntitlementOwner", fields: [userId], references: [id], onDelete: Restrict)
-  tierVersion PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
-  createdBy   User?                         @relation("PlatformMembershipEntitlementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  user            User                          @relation("PlatformMembershipEntitlementOwner", fields: [userId], references: [id], onDelete: Restrict)
+  tierVersion     PlatformMembershipTierVersion @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
+  createdBy       User?                         @relation("PlatformMembershipEntitlementCreator", fields: [createdById], references: [id], onDelete: SetNull)
   experienceEntry UserExperienceEntry?
 
   @@unique([userId, source, sourceReference], map: "platform_membership_entitlement_source_key")
@@ -2694,15 +2745,15 @@ model ShopMembershipCard {
   updatedAt                  DateTime                          @updatedAt @map("updated_at")
   deletedAt                  DateTime?                         @map("deleted_at")
 
-  membership  ShopCustomerMembership          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
-  plan        ShopMembershipCardPlan?          @relation("ShopMembershipCardPlanCards", fields: [planId], references: [id], onDelete: Restrict)
-  planVersion ShopMembershipCardPlanVersion?   @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
-  issuedBy    User?                            @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  membership   ShopCustomerMembership                @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  plan         ShopMembershipCardPlan?               @relation("ShopMembershipCardPlanCards", fields: [planId], references: [id], onDelete: Restrict)
+  planVersion  ShopMembershipCardPlanVersion?        @relation("ShopMembershipCardPlanVersionCards", fields: [planVersionId], references: [id], onDelete: Restrict)
+  issuedBy     User?                                 @relation("ShopMembershipCardIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
   statusEvents ShopMembershipCardStatusEvent[]
-  adjustments ShopMembershipCardAdjustmentRequest[]
-  topUps      ShopMembershipCardTopUp[]
-  redemptions ShopMembershipCardRedemption[]
-  refunds     ShopMembershipCardRedemptionRefund[]
+  adjustments  ShopMembershipCardAdjustmentRequest[]
+  topUps       ShopMembershipCardTopUp[]
+  redemptions  ShopMembershipCardRedemption[]
+  refunds      ShopMembershipCardRedemptionRefund[]
 
   @@index([membershipId, status, deletedAt], map: "shop_membership_cards_membership_status_idx")
   @@index([planId, deletedAt], map: "shop_membership_cards_plan_idx")
@@ -2720,19 +2771,19 @@ model ShopMembershipCard {
 /// count transitions (0->1 additions, 1->0 removals) in Tokyo half-open buckets. Overlapping
 /// eligible cards suppress false removals; explicit frozen/void events outrank mutable rows.
 model ShopMembershipCardStatusEvent {
-  id             Int                       @id @default(autoincrement())
-  cardId         Int                       @map("card_id")
-  fromStatus     ShopMembershipCardStatus? @map("from_status")
-  toStatus       ShopMembershipCardStatus  @map("to_status")
-  source         ShopMembershipCardStatusEventSource
-  occurredAt     DateTime                  @map("occurred_at")
-  reasonCode     String                    @map("reason_code") @db.VarChar(160)
-  actorUserId    Int?                      @map("actor_user_id")
-  metadata       Json?
-  eventKey       String                    @unique(map: "shop_membership_card_status_events_event_key") @map("event_key") @db.VarChar(160)
-  createdAt      DateTime                  @default(now()) @map("created_at")
-  updatedAt      DateTime                  @updatedAt @map("updated_at")
-  deletedAt      DateTime?                 @map("deleted_at")
+  id          Int                                 @id @default(autoincrement())
+  cardId      Int                                 @map("card_id")
+  fromStatus  ShopMembershipCardStatus?           @map("from_status")
+  toStatus    ShopMembershipCardStatus            @map("to_status")
+  source      ShopMembershipCardStatusEventSource
+  occurredAt  DateTime                            @map("occurred_at")
+  reasonCode  String                              @map("reason_code") @db.VarChar(160)
+  actorUserId Int?                                @map("actor_user_id")
+  metadata    Json?
+  eventKey    String                              @unique(map: "shop_membership_card_status_events_event_key") @map("event_key") @db.VarChar(160)
+  createdAt   DateTime                            @default(now()) @map("created_at")
+  updatedAt   DateTime                            @updatedAt @map("updated_at")
+  deletedAt   DateTime?                           @map("deleted_at")
 
   card      ShopMembershipCard @relation(fields: [cardId], references: [id], onDelete: Restrict)
   actorUser User?              @relation("ShopMembershipCardStatusEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
@@ -3089,21 +3140,21 @@ model Service {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  category              Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  shop                  Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile     TechnicianProfile?     @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  mediaAssets           MediaAsset[]
-  reviewSummary         ReviewSummary?
-  scheduleSlots         ScheduleSlot[]
-  bookingOrders         BookingOrder[]
-  orderAddOns           OrderAddOn[]
-  technicianServices    TechnicianService[]    @relation("TechnicianServiceSourceShopService")
-  affiliateTaskScopes   AffiliateTaskService[]
-  affiliateTouches      AffiliateTouch[]
-  affiliateAttributions AffiliateAttribution[]
-  exchangeClaims        ExchangeClaim[]
+  category                  Category                   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shop                      Shop                       @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile         TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  mediaAssets               MediaAsset[]
+  reviewSummary             ReviewSummary?
+  scheduleSlots             ScheduleSlot[]
+  bookingOrders             BookingOrder[]
+  orderAddOns               OrderAddOn[]
+  technicianServices        TechnicianService[]        @relation("TechnicianServiceSourceShopService")
+  affiliateTaskScopes       AffiliateTaskService[]
+  affiliateTouches          AffiliateTouch[]
+  affiliateAttributions     AffiliateAttribution[]
+  exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
-  carouselSlides        CarouselSlide[]
+  carouselSlides            CarouselSlide[]
 
   @@index([categoryId])
   @@index([shopId])
@@ -3118,7 +3169,7 @@ model Service {
 
 model TechnicianService {
   id                  Int                           @id @default(autoincrement())
-  publicId String @unique(map: "technician_services_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  publicId            String                        @unique(map: "technician_services_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
   shopId              Int                           @map("shop_id")
   technicianId        Int                           @map("technician_id")
   sourceShopServiceId Int?                          @map("source_shop_service_id")
@@ -3143,15 +3194,15 @@ model TechnicianService {
   updatedAt           DateTime                      @updatedAt @map("updated_at")
   deletedAt           DateTime?                     @map("deleted_at")
 
-  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile TechnicianProfile @relation(fields: [technicianId], references: [id], onDelete: Restrict)
-  sourceShopService Service?          @relation("TechnicianServiceSourceShopService", fields: [sourceShopServiceId], references: [id], onDelete: SetNull)
-  category          Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  creator           User?             @relation("TechnicianServiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updater           User?             @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-  scheduleSlots     ScheduleSlot[]
-  bookingOrders     BookingOrder[]
-  exchangeClaims    ExchangeClaim[]
+  shop                      Shop                       @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile         TechnicianProfile          @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  sourceShopService         Service?                   @relation("TechnicianServiceSourceShopService", fields: [sourceShopServiceId], references: [id], onDelete: SetNull)
+  category                  Category                   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  creator                   User?                      @relation("TechnicianServiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater                   User?                      @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  scheduleSlots             ScheduleSlot[]
+  bookingOrders             BookingOrder[]
+  exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
 
   @@index([shopId, technicianId, isActive, deletedAt])
@@ -3514,13 +3565,13 @@ model ScheduleSlot {
   updatedAt           DateTime           @updatedAt @map("updated_at")
   deletedAt           DateTime?          @map("deleted_at")
 
-  availability      Availability?      @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
-  service           Service?           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
-  shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  bookingOrders     BookingOrder[]
-  exchangeClaims    ExchangeClaim[]
+  availability              Availability?              @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
+  service                   Service?                   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService         TechnicianService?         @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
+  shop                      Shop                       @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile         TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  bookingOrders             BookingOrder[]
+  exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
 
   @@index([availabilityId])
@@ -3575,26 +3626,26 @@ model BookingOrder {
   updatedAt               DateTime             @updatedAt @map("updated_at")
   deletedAt               DateTime?            @map("deleted_at")
 
-  customer              User                   @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  service               Service?               @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  technicianService     TechnicianService?     @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
-  shop                  Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile     TechnicianProfile?     @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  scheduleSlot          ScheduleSlot           @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
-  statusHistory         OrderStatusHistory[]
-  reviews               OrderReview[]
-  timelineComments      OrderTimelineComment[]
-  feeCalculationLogs    FeeCalculationLog[]
-  walletHolds           WalletHold[]
-  financial             OrderFinancial?
-  paymentConfirmer      User?                  @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
-  paymentRefunder       User?                  @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
-  affiliateAttributions AffiliateAttribution[]
-  affiliateRewards      AffiliateReward[]
-  serviceSession        OrderServiceSession?
-  serviceEvents         OrderServiceEvent[]
-  addOns                OrderAddOn[]
-  checkout              OrderCheckout?
+  customer                       User                                 @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  service                        Service?                             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService              TechnicianService?                   @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
+  shop                           Shop                                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile              TechnicianProfile?                   @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  scheduleSlot                   ScheduleSlot                         @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
+  statusHistory                  OrderStatusHistory[]
+  reviews                        OrderReview[]
+  timelineComments               OrderTimelineComment[]
+  feeCalculationLogs             FeeCalculationLog[]
+  walletHolds                    WalletHold[]
+  financial                      OrderFinancial?
+  paymentConfirmer               User?                                @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
+  paymentRefunder                User?                                @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
+  affiliateAttributions          AffiliateAttribution[]
+  affiliateRewards               AffiliateReward[]
+  serviceSession                 OrderServiceSession?
+  serviceEvents                  OrderServiceEvent[]
+  addOns                         OrderAddOn[]
+  checkout                       OrderCheckout?
   membershipCardRedemption       ShopMembershipCardRedemption?
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
@@ -4695,9 +4746,9 @@ model ExchangePost {
   updatedAt             DateTime           @updatedAt @map("updated_at")
   deletedAt             DateTime?          @map("deleted_at")
 
-  author             User                      @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
-  authorIdentity     UserIdentity              @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
-  ownerIdentity      UserIdentity              @relation("ExchangePostOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+  author             User                       @relation("ExchangePostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorIdentity     UserIdentity               @relation("ExchangePostAuthorIdentity", fields: [authorIdentityId], references: [id], onDelete: Restrict)
+  ownerIdentity      UserIdentity               @relation("ExchangePostOwnerIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)
   demand             ExchangeDemand?
   intelligence       ExchangeIntelligence?
   comments           ExchangeComment[]
@@ -4773,14 +4824,14 @@ model ExchangeClaim {
   updatedAt                    DateTime            @updatedAt @map("updated_at")
   deletedAt                    DateTime?           @map("deleted_at")
 
-  exchangePost      ExchangePost      @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  claimantUser      User              @relation(fields: [claimantUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  claimantIdentity  UserIdentity      @relation(fields: [claimantIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  service           Service?          @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  scheduleSlot      ScheduleSlot      @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  exchangePost      ExchangePost              @relation(fields: [exchangePostId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  claimantUser      User                      @relation(fields: [claimantUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  claimantIdentity  UserIdentity              @relation(fields: [claimantIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop              Shop                      @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianProfile TechnicianProfile         @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  service           Service?                  @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianService TechnicianService?        @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  scheduleSlot      ScheduleSlot              @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   matchParticipant  ExchangeMatchParticipant?
 
   @@index([exchangePostId, status, createdAt], map: "exchange_claims_post_status_created_idx")
@@ -5079,14 +5130,14 @@ model IdentityApplication {
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")
 
-  applicant           User                         @relation("IdentityApplicationApplicant", fields: [userId], references: [id], onDelete: Restrict)
-  reviewer            User?                        @relation("IdentityApplicationReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
-  technicianDetail    TechnicianApplicationDetail?
-  merchantDetail      MerchantApplicationDetail?
-  contractAcceptances ContractAcceptance[]
-  media               IdentityApplicationMedia[]
-  serviceCategories   MerchantApplicationServiceCategory[]
-  businessKeywords    MerchantApplicationBusinessKeyword[]
+  applicant             User                                 @relation("IdentityApplicationApplicant", fields: [userId], references: [id], onDelete: Restrict)
+  reviewer              User?                                @relation("IdentityApplicationReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  technicianDetail      TechnicianApplicationDetail?
+  merchantDetail        MerchantApplicationDetail?
+  contractAcceptances   ContractAcceptance[]
+  media                 IdentityApplicationMedia[]
+  serviceCategories     MerchantApplicationServiceCategory[]
+  businessKeywords      MerchantApplicationBusinessKeyword[]
   serviceQualifications ShopServiceQualification[]
 
   @@index([userId, type, status])
@@ -5432,16 +5483,16 @@ model LedgerTransaction {
   updatedAt      DateTime                @updatedAt @map("updated_at")
   deletedAt      DateTime?               @map("deleted_at")
 
-  actor                       User?                        @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  entries                     WalletLedger[]
-  reconciliation              FinanceReconciliation?
-  walletAdjustmentRequest     WalletAdjustmentRequest?
-  orderCheckout               OrderCheckout?
-  affiliateRewardTransactions AffiliateRewardTransaction[] @relation("AffiliateRewardLedgerTransaction")
-  affiliateBudgetTransactions AffiliateBudgetTransaction[] @relation("AffiliateBudgetLedgerTransaction")
+  actor                              User?                               @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  entries                            WalletLedger[]
+  reconciliation                     FinanceReconciliation?
+  walletAdjustmentRequest            WalletAdjustmentRequest?
+  orderCheckout                      OrderCheckout?
+  affiliateRewardTransactions        AffiliateRewardTransaction[]        @relation("AffiliateRewardLedgerTransaction")
+  affiliateBudgetTransactions        AffiliateBudgetTransaction[]        @relation("AffiliateBudgetLedgerTransaction")
   shopMembershipCardRedemption       ShopMembershipCardRedemption?
   shopMembershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
-  experienceEntry                     UserExperienceEntry?
+  experienceEntry                    UserExperienceEntry?
 
   @@index([type])
   @@index([status])
