@@ -64,6 +64,9 @@ describe("Step 08 core read API", () => {
   };
 
   const createFixture = () => {
+    const searchQueryRecorder = {
+      recordSuccessfulSearch: jest.fn(async () => undefined)
+    };
     const coreReadRepository = {
       listCategories: jest.fn(async () => paginated([category])),
       listServices: jest.fn(async () => paginated([serviceCard])),
@@ -158,10 +161,11 @@ describe("Step 08 core read API", () => {
     };
     const app = createApp(undefined, {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-      coreReadRepository
+      coreReadRepository,
+      searchQueryRecorder
     } as never);
 
-    return { app, coreReadRepository };
+    return { app, coreReadRepository, searchQueryRecorder };
   };
 
   it("lists categories and service cards from the core read repository", async () => {
@@ -198,6 +202,7 @@ describe("Step 08 core read API", () => {
 
     const searchResponse = await request(fixture.app)
       .get("/api/v1/search?keyword=shiatsu&categoryId=1&city=Tokyo&page=1&pageSize=20")
+      .set("X-Search-Session", "session-20260903")
       .expect(200);
     expect(searchResponse.body.data).toEqual(paginated([serviceCard]));
     expect(fixture.coreReadRepository.search).toHaveBeenCalledWith(
@@ -207,6 +212,27 @@ describe("Step 08 core read API", () => {
         city: "Tokyo"
       })
     );
+    expect(fixture.searchQueryRecorder.recordSuccessfulSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ keyword: "shiatsu", city: "Tokyo" }),
+        resultCount: 1,
+        anonymousSessionId: "session-20260903"
+      })
+    );
+  });
+
+  it("records only actual submitted keywords after a successful search", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .get("/api/v1/search?keyword=shiatsu&city=Tokyo")
+      .set("X-Search-Session", "session-20260903")
+      .expect(200);
+    expect(fixture.searchQueryRecorder.recordSuccessfulSearch).toHaveBeenCalledTimes(1);
+
+    fixture.searchQueryRecorder.recordSuccessfulSearch.mockClear();
+    await request(fixture.app).get("/api/v1/search?city=Tokyo").expect(200);
+    expect(fixture.searchQueryRecorder.recordSuccessfulSearch).not.toHaveBeenCalled();
   });
 
   it("dispatches typed shop and technician searches with repeated OR inputs", async () => {

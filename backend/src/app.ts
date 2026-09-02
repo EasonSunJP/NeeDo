@@ -39,6 +39,8 @@ import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { NdpExchangeRateRepositoryPort } from "./repositories/ndp-exchange-rate.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
+import type { SearchQueryRecorderRepositoryPort } from "./repositories/search-query-recorder.repository";
+import type { SearchQueryRecorderPort } from "./services/search-query-recorder.service";
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
@@ -264,6 +266,8 @@ export interface AppDependencies {
   userRepository?: UserRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
+  searchQueryRecorderRepository?: SearchQueryRecorderRepositoryPort;
+  searchQueryRecorder?: SearchQueryRecorderPort;
   shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
   entityEngagementRepository?: EntityEngagementRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
@@ -507,7 +511,7 @@ export const createApp = (
   mount("backoffice", createPermissionRoutes(config, resolvedDependencies));
   mount("backoffice", createRoleRoutes(config, resolvedDependencies));
   mount("backoffice", createUserRoutes(config, resolvedDependencies));
-  mount("shared", createCoreReadRoutes(resolvedDependencies));
+  mount("shared", createCoreReadRoutes(config, resolvedDependencies));
   mount(["shared", "merchant-admin"], createShopTaxonomyRoutes(config, resolvedDependencies));
   mount("shared", createEntityEngagementRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCustomerProfileRoutes(config, resolvedDependencies));
