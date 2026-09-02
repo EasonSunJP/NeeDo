@@ -28,7 +28,7 @@ const actor = (overrides: Record<string, unknown> = {}) => ({
   userId: 9,
   roles: ["operator"],
   permissions: ["backoffice.member.analytics.view"],
-  currentIdentityType: "operator",
+  currentIdentityType: "platform_admin",
   currentIdentityScopeType: "global",
   currentIdentityScopeId: null,
   ...overrides
