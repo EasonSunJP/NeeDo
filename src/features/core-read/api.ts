@@ -463,10 +463,23 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
 }
 
 function searchEntity<TItem>(entityType: "service" | "shop" | "technician", query: CoreSearchListQuery) {
+  const searchSessionId = getSearchSessionId();
   return httpClient.request<PaginatedCoreReadData<TItem>>("/search", {
     auth: false,
+    ...(searchSessionId ? { headers: { "X-Search-Session": searchSessionId } } : {}),
     query: { ...query, entityType }
   });
+}
+
+export function getSearchSessionId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const key = "needo.search.session.v1";
+  const existing = window.sessionStorage.getItem(key)?.trim();
+  if (existing && /^[A-Za-z0-9_-]{8,128}$/u.test(existing)) return existing;
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const created = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  window.sessionStorage.setItem(key, created);
+  return created;
 }
 
 export const coreReadApi = {

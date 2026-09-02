@@ -114,6 +114,13 @@ describe("core read API adapter", () => {
   });
 
   it("calls the Step 08 public search endpoint without auth", async () => {
+    const sessionValues = new Map<string, string>();
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => sessionValues.get(key) ?? null,
+        setItem: (key: string, value: string) => sessionValues.set(key, value)
+      }
+    });
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({
         code: 0,
@@ -127,7 +134,9 @@ describe("core read API adapter", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/search?keyword=shiatsu&page=2&pageSize=8&sort=rating_desc&entityType=service",
       expect.objectContaining({
-        headers: expect.not.objectContaining({ Authorization: expect.any(String) })
+        headers: expect.objectContaining({
+          "X-Search-Session": expect.stringMatching(/^[a-f0-9]{32}$/)
+        })
       })
     );
   });
