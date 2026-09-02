@@ -192,6 +192,40 @@ function needoPortalEntryFallbackPlugin(): Plugin {
   };
 }
 
+export function resolveNeedoManualChunk(id: string): string | undefined {
+  const normalizedId = id.split("\\").join("/");
+
+  if (normalizedId.includes("node_modules/react")) {
+    return "vendor-react";
+  }
+
+  if (normalizedId.includes("node_modules/react-router")) {
+    return "vendor-router";
+  }
+
+  if (normalizedId.includes("node_modules")) {
+    return "vendor";
+  }
+
+  if (normalizedId.endsWith("/src/features/identity-applications/i18n.ts")) {
+    return "identity-applications-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/dashboard/dashboardTranslations.ts")) {
+    return "dashboard-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
+    return "order-performance-i18n";
+  }
+
+  if (normalizedId.includes("/src/i18n/")) {
+    return "i18n";
+  }
+
+  return undefined;
+}
+
 export default defineConfig(({ command, mode }) => {
   const loadedEnv = loadEnv(mode, ".", "");
   const buildTarget = resolveBuildTarget(loadedEnv, command);
@@ -223,35 +257,7 @@ export default defineConfig(({ command, mode }) => {
           storeAdmin: "store-admin.html"
         },
         output: {
-          manualChunks(id) {
-            const normalizedId = id.split("\\").join("/");
-
-            if (normalizedId.includes("node_modules/react")) {
-              return "vendor-react";
-            }
-
-            if (normalizedId.includes("node_modules/react-router")) {
-              return "vendor-router";
-            }
-
-            if (normalizedId.includes("node_modules")) {
-              return "vendor";
-            }
-
-            if (
-              normalizedId.endsWith("/src/features/dashboard/dashboardTranslations.ts")
-            ) {
-              return "dashboard-i18n";
-            }
-
-            if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
-              return "order-performance-i18n";
-            }
-
-            if (normalizedId.includes("/src/i18n/")) {
-              return "i18n";
-            }
-          }
+          manualChunks: resolveNeedoManualChunk
         }
       }
     },
