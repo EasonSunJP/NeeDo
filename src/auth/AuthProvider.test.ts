@@ -18,6 +18,7 @@ import {
   type AuthEnvelopeLockAdapter,
   writePersistedAuthEnvelope
 } from "./authEnvelope";
+import { getAuthEnvelopeStorageKey } from "./authPersistenceScope";
 import {
   hasRememberedPortalAuthorization,
   readRememberedPortalRefreshToken,
@@ -2253,6 +2254,33 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(mocked.tokenState).toMatchObject({ accessToken: null, refreshToken: null });
     expect(auth.restoreError).toBe("error.auth.durable_logout_unconfirmed");
     expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).toBe(previousRaw);
+  });
+
+  it("ignores a storage event from another portal envelope", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(
+      formalLoginPayload(customerMe, "access-user", "refresh-user")
+    );
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: getAuthEnvelopeStorageKey("merchant-admin"),
+          newValue: JSON.stringify(
+            createAnonymousAuthEnvelope({
+              authInstanceId: "00000000-0000-4000-8000-000000000099",
+              credentialVersion: 1
+            })
+          ),
+          storageArea: window.localStorage
+        })
+      );
+    });
+
+    expect(auth.session?.portal).toBe("user");
+    expect(mocked.tokenState.refreshToken).toBe("refresh-user");
+    expect(mocked.authApi.logout).not.toHaveBeenCalled();
   });
 
   it("uses a remote tombstone event as authority, revokes R2, and does not reread storage", async () => {
