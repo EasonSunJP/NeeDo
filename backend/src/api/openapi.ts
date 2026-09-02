@@ -6093,6 +6093,231 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           updatedAt: { type: "string", format: "date-time" }
         }
       },
+      AgentSettlementExternalDeduction: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "shopPublicId",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "evidenceReference",
+          "reason"
+        ],
+        properties: {
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          channelFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          consumptionTaxJpy: { type: "integer", format: "int64", minimum: 0 },
+          evidenceReference: { type: "string", minLength: 1, maxLength: 255 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      AgentSettlementPeriodRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["periodStart", "periodEnd", "externalDeductions"],
+        properties: {
+          periodStart: { type: "string", format: "date" },
+          periodEnd: { type: "string", format: "date" },
+          externalDeductions: {
+            type: "array",
+            minItems: 1,
+            maxItems: 500,
+            items: { $ref: "#/components/schemas/AgentSettlementExternalDeduction" }
+          }
+        }
+      },
+      AgentSettlementRuleSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "version",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "paymentMethod"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          fixedSuccessRewardJpy: { type: "integer", format: "int64", minimum: 0 },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          paymentMethod: { type: "string", enum: ["bank_transfer", "ndp", "other"] }
+        }
+      },
+      AgentSettlementTotals: {
+        type: "object",
+        required: [
+          "orderPlatformFeesJpy",
+          "saasFeesJpy",
+          "userRebatesJpy",
+          "refundsAndReversalsJpy",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "allocatedOperatingCostsJpy",
+          "pureProfitJpy",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "profitShareAmountJpy",
+          "totalAmountJpy"
+        ],
+        properties: {
+          orderPlatformFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          saasFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          userRebatesJpy: { type: "integer", format: "int64", minimum: 0 },
+          refundsAndReversalsJpy: { type: "integer", format: "int64", minimum: 0 },
+          channelFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          consumptionTaxJpy: { type: "integer", format: "int64", minimum: 0 },
+          allocatedOperatingCostsJpy: { type: "integer", format: "int64", minimum: 0 },
+          pureProfitJpy: { type: "integer", format: "int64" },
+          fixedSuccessRewardJpy: { type: "integer", format: "int64", minimum: 0 },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          profitShareAmountJpy: { type: "integer", format: "int64", minimum: 0 },
+          totalAmountJpy: { type: "integer", format: "int64", minimum: 0 }
+        }
+      },
+      AgentSettlementShopPreview: {
+        unevaluatedProperties: false,
+        allOf: [
+          { $ref: "#/components/schemas/AgentSettlementTotals" },
+          {
+            type: "object",
+            required: [
+              "referralPublicId",
+              "shopPublicId",
+              "shopName",
+              "successRewardEligible",
+              "externalEvidenceReference",
+              "externalEvidenceReason"
+            ],
+            properties: {
+              referralPublicId: { type: "string", format: "uuid" },
+              shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+              shopName: { type: "string" },
+              successRewardEligible: { type: "boolean" },
+              externalEvidenceReference: { type: "string" },
+              externalEvidenceReason: { type: "string" }
+            }
+          }
+        ]
+      },
+      AgentSettlementPreview: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "agentPublicId",
+          "periodStart",
+          "periodEnd",
+          "currency",
+          "rule",
+          "totals",
+          "shops",
+          "generatedAt"
+        ],
+        properties: {
+          agentPublicId: { type: "string", format: "uuid" },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          currency: { type: "string", enum: ["JPY"] },
+          rule: { $ref: "#/components/schemas/AgentSettlementRuleSummary" },
+          totals: { $ref: "#/components/schemas/AgentSettlementTotals" },
+          shops: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AgentSettlementShopPreview" }
+          },
+          generatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AgentSettlementLine: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "lineType",
+          "referralPublicId",
+          "shopPublicId",
+          "shopName",
+          "orderPlatformFeesJpy",
+          "saasFeesJpy",
+          "userRebatesJpy",
+          "refundsAndReversalsJpy",
+          "channelFeesJpy",
+          "consumptionTaxJpy",
+          "allocatedOperatingCostsJpy",
+          "pureProfitJpy",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "amountJpy"
+        ],
+        properties: {
+          lineType: { type: "string", enum: ["success_reward", "profit_share"] },
+          referralPublicId: { type: "string", format: "uuid" },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          shopName: { type: "string" },
+          orderPlatformFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          saasFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          userRebatesJpy: { type: "integer", format: "int64", minimum: 0 },
+          refundsAndReversalsJpy: { type: "integer", format: "int64", minimum: 0 },
+          channelFeesJpy: { type: "integer", format: "int64", minimum: 0 },
+          consumptionTaxJpy: { type: "integer", format: "int64", minimum: 0 },
+          allocatedOperatingCostsJpy: { type: "integer", format: "int64", minimum: 0 },
+          pureProfitJpy: { type: "integer", format: "int64" },
+          fixedSuccessRewardJpy: { type: "integer", format: "int64", minimum: 0 },
+          profitShareRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+          amountJpy: { type: "integer", format: "int64", minimum: 0 }
+        }
+      },
+      AgentSettlement: {
+        unevaluatedProperties: false,
+        allOf: [
+          { $ref: "#/components/schemas/AgentSettlementTotals" },
+          {
+            type: "object",
+            required: [
+              "publicId",
+              "agentPublicId",
+              "periodStart",
+              "periodEnd",
+              "status",
+              "currency",
+              "rule",
+              "idempotencyKey",
+              "confirmedAt",
+              "confirmedById",
+              "paidAt",
+              "paidById",
+              "paymentMethod",
+              "paymentReference",
+              "lines",
+              "createdAt",
+              "updatedAt"
+            ],
+            properties: {
+              publicId: { type: "string", format: "uuid" },
+              agentPublicId: { type: "string", format: "uuid" },
+              periodStart: { type: "string", format: "date-time" },
+              periodEnd: { type: "string", format: "date-time" },
+              status: { type: "string", enum: ["confirmed", "paid"] },
+              currency: { type: "string", enum: ["JPY"] },
+              rule: { $ref: "#/components/schemas/AgentSettlementRuleSummary" },
+              idempotencyKey: { type: "string" },
+              confirmedAt: { type: "string", format: "date-time" },
+              confirmedById: { type: "integer", minimum: 1 },
+              paidAt: { type: ["string", "null"], format: "date-time" },
+              paidById: { type: ["integer", "null"], minimum: 1 },
+              paymentMethod: {
+                type: ["string", "null"],
+                enum: ["bank_transfer", "ndp", "other", null]
+              },
+              paymentReference: { type: ["string", "null"] },
+              lines: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AgentSettlementLine" }
+              },
+              createdAt: { type: "string", format: "date-time" },
+              updatedAt: { type: "string", format: "date-time" }
+            }
+          }
+        ]
+      },
       BackofficeService: {
         type: "object",
         required: [
@@ -18701,6 +18926,211 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.platform_partner.agent_not_found"),
           "409": jsonErrorResponse("error.agent_commission_rule.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/preview`]: {
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Preview an evidence-backed agent settlement",
+        description:
+          "Calculates shop pure profit and agent commission without persistence. Formal order fees, SaaS receipts, refunds and published operating-cost allocations are loaded from the database; payment-channel fees and consumption tax require explicit evidence per referred shop.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:write",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AgentSettlementPeriodRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Agent settlement preview", {
+            $ref: "#/components/schemas/AgentSettlementPreview"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.agent_settlement.not_found"),
+          "422": jsonErrorResponse(
+            "error.agent_settlement.rule_unavailable or error.agent_settlement.financial_evidence_invalid"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List immutable agent settlements",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:read",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["confirmed", "paid"] }
+          },
+          { name: "periodStart", in: "query", schema: { type: "string", format: "date" } },
+          { name: "periodEnd", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated agent settlements", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AgentSettlement" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Confirm an immutable agent settlement",
+        description:
+          "Serializes confirmation per agent, applies each referral success reward only once, stores calculation and evidence snapshots, and writes the audit entry in the same transaction. Replays with the same idempotency key and request are safe.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:write",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "periodStart",
+                  "periodEnd",
+                  "externalDeductions",
+                  "idempotencyKey"
+                ],
+                properties: {
+                  periodStart: { type: "string", format: "date" },
+                  periodEnd: { type: "string", format: "date" },
+                  externalDeductions: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 500,
+                    items: {
+                      $ref: "#/components/schemas/AgentSettlementExternalDeduction"
+                    }
+                  },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Existing idempotent agent settlement", {
+            $ref: "#/components/schemas/AgentSettlement"
+          }),
+          "201": jsonDataResponse("Agent settlement confirmed", {
+            $ref: "#/components/schemas/AgentSettlement"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.agent_settlement.not_found"),
+          "409": jsonErrorResponse(
+            "error.agent_settlement.conflict or error.agent_settlement.idempotency_conflict"
+          ),
+          "422": jsonErrorResponse(
+            "error.agent_settlement.rule_unavailable or error.agent_settlement.financial_evidence_invalid"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment`]: {
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Confirm payment of an agent settlement",
+        description:
+          "Records an external payment reference using the method fixed by the confirmed rule snapshot. Settlement lines are never recalculated or rewritten.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent-settlement:pay",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          {
+            name: "settlementPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["paymentMethod", "paymentReference", "reason"],
+                properties: {
+                  paymentMethod: {
+                    type: "string",
+                    enum: ["bank_transfer", "ndp", "other"]
+                  },
+                  paymentReference: { type: "string", minLength: 1, maxLength: 255 },
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Agent settlement payment confirmed", {
+            $ref: "#/components/schemas/AgentSettlement"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.agent_settlement.not_found"),
+          "409": jsonErrorResponse(
+            "error.agent_settlement.conflict or error.agent_settlement.payment_method_mismatch"
+          )
         }
       }
     },

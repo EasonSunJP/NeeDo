@@ -240,12 +240,13 @@ git commit -m "feat: allocate versioned operating costs"
 - Modify: `backend/src/app.ts`
 - Create: `backend/tests/agent-settlement.service.test.ts`
 - Create: `backend/tests/agent-settlement-api.test.ts`
+- Create: `backend/tests/agent-settlement.repository.test.ts`
 
 **Interfaces:**
 - Produces: `previewSettlement(agentPublicId: string, period: SettlementPeriod)` and `confirmSettlement(agentPublicId: string, period: SettlementPeriod, idempotencyKey: string)`
 - Produces: `/api/v1/backoffice/agents/:agentPublicId/settlements`
 
-- [ ] **Step 1: Write failing pure-profit tests**
+- [x] **Step 1: Write failing pure-profit tests**
 
 ```ts
 expect(calculatePureProfit({
@@ -260,23 +261,23 @@ expect(calculatePureProfit({
 expect(calculateAgentCommission(50000, 1500, 80000)).toBe(62000);
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `cd backend && npm test -- agent-settlement.service.test.ts`
 
 Expected: FAIL because settlement service is absent.
 
-- [ ] **Step 3: Implement preview, immutable confirmation and payment state**
+- [x] **Step 3: Implement preview, immutable confirmation and payment state**
 
 Success reward applies once per referral when its formal success condition first becomes true. Confirmed settlement saves every input component, rule version, cost allocations and result as JSON plus normalized lines. Payment confirmation records method, reference, actor and time; it never rewrites calculation lines.
 
-- [ ] **Step 4: Run service/API/idempotency tests**
+- [x] **Step 4: Run service/API/idempotency tests**
 
 Run: `cd backend && npm test -- agent-settlement.service.test.ts agent-settlement-api.test.ts`
 
 Expected: PASS including negative-profit floor rules, repeated confirmation and rule changes after confirmation.
 
-- [ ] **Step 5: Commit settlements**
+- [x] **Step 5: Commit settlements**
 
 ```bash
 git add backend/src/repositories/agent-settlement.repository.ts backend/src/services/agent-settlement.service.ts backend/src/controllers/agent-settlement.controller.ts backend/src/validators/agent-settlement.validator.ts backend/src/routes/agent-settlement.routes.ts backend/src/app.ts backend/tests/agent-settlement.service.test.ts backend/tests/agent-settlement-api.test.ts

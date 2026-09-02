@@ -59,6 +59,7 @@ import type { ShopMembershipCardRefundRepositoryPort } from "./services/shop-mem
 import type { AnalyticsRankingRepositoryPort } from "./repositories/analytics-ranking.repository";
 import type { AgentCommissionRuleRepositoryPort } from "./repositories/agent-commission-rule.repository";
 import type { OperatingCostRepositoryPort } from "./repositories/operating-cost.repository";
+import type { AgentSettlementRepositoryPort } from "./repositories/agent-settlement.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
@@ -197,6 +198,7 @@ import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
 import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.routes";
 import { createOperatingCostRoutes } from "./routes/operating-cost.routes";
+import { createAgentSettlementRoutes } from "./routes/agent-settlement.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
@@ -272,6 +274,7 @@ export interface AppDependencies {
   analyticsRankingRepository?: AnalyticsRankingRepositoryPort;
   agentCommissionRuleRepository?: AgentCommissionRuleRepositoryPort;
   operatingCostRepository?: OperatingCostRepositoryPort;
+  agentSettlementRepository?: AgentSettlementRepositoryPort;
   analyticsRankingClock?: () => Date;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;
@@ -534,6 +537,7 @@ export const createApp = (
   apiRouter.use(createPlatformPartnerRoutes(config, resolvedDependencies));
   apiRouter.use(createAgentCommissionRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createOperatingCostRoutes(config, resolvedDependencies));
+  apiRouter.use(createAgentSettlementRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));
   }
