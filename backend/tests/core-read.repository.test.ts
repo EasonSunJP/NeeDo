@@ -393,6 +393,34 @@ describe("CoreReadRepository multi-entity search", () => {
     }));
   });
 
+  it("excludes services whose shop has no active formal public identifier", async () => {
+    const fixture = createRepositoryFixture();
+
+    await fixture.repository.search({
+      entityType: "service",
+      keywords: ["Sho"],
+      categoryIds: [],
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(fixture.serviceFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        shop: expect.objectContaining({
+          deletedAt: null,
+          status: "published",
+          publicIdentifier: {
+            is: expect.objectContaining({
+              kind: "SHOP",
+              status: "ACTIVE",
+              deletedAt: null
+            })
+          }
+        })
+      })
+    }));
+  });
+
   it("counts only searchable technicians that have an eligible public location", async () => {
     const fixture = createRepositoryFixture();
 
