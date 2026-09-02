@@ -118,6 +118,12 @@ export interface CompleteExchangeSelectionInput {
   unselectedClaims: ExchangeMatchingSelectionClaim[];
   unselectedClaimIds: number[];
   selectedQuoteTotalJpy: number;
+  effectiveTargetProviderCountAfter: number;
+  effectiveBudgetMaxJpyAfter: number;
+  adjustments: Array<
+    | { type: "budget_increased"; before: number; after: number }
+    | { type: "target_reduced"; before: number; after: number }
+  >;
   versionBefore: number;
   versionAfter: number;
   actorUserId: number;
@@ -341,6 +347,8 @@ export class ExchangeMatchingRepository {
       },
       data: {
         status: DatabaseExchangeMatchingStatus.MATCHED,
+        effectiveTargetProviderCount: input.effectiveTargetProviderCountAfter,
+        effectiveBudgetMaxJpy: input.effectiveBudgetMaxJpyAfter,
         selectedQuoteTotalJpy: input.selectedQuoteTotalJpy,
         version: input.versionAfter,
         matchedAt: input.at
@@ -351,6 +359,33 @@ export class ExchangeMatchingRepository {
       where: { id: input.exchangePostId },
       data: { status: DatabaseExchangePostStatus.MATCHED }
     });
+    let eventVersion = input.versionBefore;
+    for (const adjustment of input.adjustments) {
+      const versionAfter = eventVersion + 1;
+      await this.client.exchangeMatchEvent.create({
+        data: {
+          matchingId: input.matchingId,
+          sequence: versionAfter,
+          type:
+            adjustment.type === "budget_increased"
+              ? ExchangeMatchEventType.BUDGET_INCREASED
+              : ExchangeMatchEventType.TARGET_REDUCED,
+          actorUserId: input.actorUserId,
+          actorIdentityId: input.actorIdentityId,
+          versionBefore: eventVersion,
+          versionAfter,
+          idempotencyKey: null,
+          payloadFingerprint: null,
+          payload: {
+            exchangePostId: input.exchangePostId,
+            before: adjustment.before,
+            after: adjustment.after,
+            status: "open"
+          }
+        }
+      });
+      eventVersion = versionAfter;
+    }
     await this.client.exchangeMatchEvent.create({
       data: {
         matchingId: input.matchingId,
@@ -358,7 +393,7 @@ export class ExchangeMatchingRepository {
         type: ExchangeMatchEventType.SELECTIVE_MATCHED,
         actorUserId: input.actorUserId,
         actorIdentityId: input.actorIdentityId,
-        versionBefore: input.versionBefore,
+        versionBefore: eventVersion,
         versionAfter: input.versionAfter,
         idempotencyKey: input.idempotencyKey,
         payloadFingerprint: input.payloadFingerprint,

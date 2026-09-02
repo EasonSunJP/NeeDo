@@ -158,6 +158,9 @@ describe("ExchangeMatchingRepository", () => {
         ],
         unselectedClaimIds: [302],
         selectedQuoteTotalJpy: 15_000,
+        effectiveTargetProviderCountAfter: 1,
+        effectiveBudgetMaxJpyAfter: 30_000,
+        adjustments: [],
         versionBefore: 3,
         versionAfter: 4,
         actorUserId: 7,
@@ -211,5 +214,148 @@ describe("ExchangeMatchingRepository", () => {
     expect(client).not.toHaveProperty("bookingOrder");
     expect(client).not.toHaveProperty("wallet");
     expect(client).not.toHaveProperty("ledgerTransaction");
+    expect(client.exchangeRequestMatching.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          effectiveTargetProviderCount: 1,
+          effectiveBudgetMaxJpy: 30_000,
+          version: 4
+        })
+      })
+    );
+    expect(client.exchangeMatchEvent.create).toHaveBeenCalledTimes(1);
+    expect(client.exchangeMatchEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "SELECTIVE_MATCHED",
+        sequence: 4,
+        versionBefore: 3,
+        versionAfter: 4,
+        idempotencyKey: "matching-repository-key-0001"
+      })
+    });
+  });
+
+  it("persists budget and target adjustments as one linked atomic event chain", async () => {
+    const createdEvents: Array<Record<string, unknown>> = [];
+    const client = {
+      exchangeMatchParticipant: { create: jest.fn(async () => ({ id: 71 })) },
+      exchangeClaim: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      exchangeRequestMatching: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        findFirst: jest.fn(async () => ({
+          id: 51,
+          exchangePostId: 41,
+          status: ExchangeMatchingStatus.MATCHED,
+          effectiveTargetProviderCount: 1,
+          effectiveBudgetMaxJpy: 31_000,
+          selectedQuoteTotalJpy: 31_000,
+          version: 6,
+          matchedAt: at,
+          exchangePost: {
+            id: 41,
+            authorUserId: 7,
+            ownerIdentityId: 17,
+            type: ExchangePostType.DEMAND,
+            status: ExchangePostStatus.MATCHED,
+            expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+            demand: { matchMode: ExchangeMatchMode.SELECTIVE }
+          },
+          participants: []
+        }))
+      },
+      exchangePost: { update: jest.fn(async () => ({ id: 41 })) },
+      exchangeMatchEvent: {
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          createdEvents.push(data);
+          return { id: 80 + createdEvents.length };
+        })
+      },
+      notification: { createMany: jest.fn(async () => ({ count: 1 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 91 })) }
+    };
+    const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient);
+
+    await repository.completeSelection({
+      matchingId: 51,
+      exchangePostId: 41,
+      selectedClaims: [
+        {
+          id: 301,
+          exchangePostId: 41,
+          claimantUserId: 8,
+          claimantIdentityId: 18,
+          shopId: 11,
+          technicianProfileId: 81,
+          serviceId: 501,
+          technicianServiceId: null,
+          scheduleSlotId: 91,
+          quoteAmountJpy: 31_000,
+          currency: "JPY",
+          status: "active",
+          estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+          estimatedEndsAt: new Date("2026-09-02T02:00:00.000Z")
+        }
+      ],
+      selectedClaimIds: [301],
+      unselectedClaims: [],
+      unselectedClaimIds: [],
+      selectedQuoteTotalJpy: 31_000,
+      effectiveTargetProviderCountAfter: 1,
+      effectiveBudgetMaxJpyAfter: 31_000,
+      adjustments: [
+        { type: "budget_increased", before: 30_000, after: 31_000 },
+        { type: "target_reduced", before: 2, after: 1 }
+      ],
+      versionBefore: 3,
+      versionAfter: 6,
+      actorUserId: 7,
+      actorIdentityId: 17,
+      idempotencyKey: "matching-adjustment-key-0001",
+      payloadFingerprint: "b".repeat(64),
+      at,
+      audit: {
+        actorId: 7,
+        action: "exchange.matching.select",
+        targetType: "exchange_request_matching",
+        targetId: 51
+      }
+    });
+
+    expect(client.exchangeRequestMatching.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          effectiveTargetProviderCount: 1,
+          effectiveBudgetMaxJpy: 31_000,
+          selectedQuoteTotalJpy: 31_000,
+          version: 6
+        })
+      })
+    );
+    expect(createdEvents).toEqual([
+      expect.objectContaining({
+        type: "BUDGET_INCREASED",
+        sequence: 4,
+        versionBefore: 3,
+        versionAfter: 4,
+        idempotencyKey: null,
+        payloadFingerprint: null
+      }),
+      expect.objectContaining({
+        type: "TARGET_REDUCED",
+        sequence: 5,
+        versionBefore: 4,
+        versionAfter: 5,
+        idempotencyKey: null,
+        payloadFingerprint: null
+      }),
+      expect.objectContaining({
+        type: "SELECTIVE_MATCHED",
+        sequence: 6,
+        versionBefore: 5,
+        versionAfter: 6,
+        idempotencyKey: "matching-adjustment-key-0001",
+        payloadFingerprint: "b".repeat(64)
+      })
+    ]);
   });
 });

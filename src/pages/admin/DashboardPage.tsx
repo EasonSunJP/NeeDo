@@ -318,7 +318,7 @@ export function DashboardPage() {
                 ].map(([groupTitle, metrics]) => (
                   <AnalyticsMetricGrid
                     detailLabel={t("查看详细数据")}
-                    getDisabledDetailLabel={(metric) => metric.detailRoute === null
+                    getDisabledDetailLabel={(metric) => metric.detailRoute === null || metric.dataStatus !== "ready"
                       ? t("TEST 功能暂未开放")
                       : undefined}
                     getInfoLabel={(title) => getAnalyticsMetricInfoLabel(title, language)}

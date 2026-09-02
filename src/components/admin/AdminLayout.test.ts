@@ -28,6 +28,19 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain("module=big-screen");
   });
 
+  it("renames operations and keeps disabled TEST partner sections in the top navigation", () => {
+    expect(source).toContain('title: "运营管理"');
+    expect(source).toContain('title: "加盟商"');
+    expect(source).toContain('title: "供货商"');
+    expect(source.match(/badge: "TEST"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(source.match(/disabled: true/g)).toHaveLength(2);
+    expect(source).toContain("section.disabled || section.items.length > 0");
+    expect(source).toContain("if (section.disabled) return;");
+    expect(source).toContain("disabled={section.disabled}");
+    expect(source).toContain("aria-disabled={section.disabled}");
+    expect(source).not.toContain('section.title === "平台运营" ? "PF運営" : section.title');
+  });
+
   it("does not render the obstructive bottom-left operations notice", () => {
     expect(source).not.toContain("东京城市组");
     expect(source).not.toContain("19 个待审核商家，36 个工单需要运营介入。");

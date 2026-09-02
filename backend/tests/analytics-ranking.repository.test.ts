@@ -103,6 +103,27 @@ describe("AnalyticsRankingRepository", () => {
     ]));
   });
 
+  it("validates evidence only for identities that are eligible to enter rankings", async () => {
+    const test = fixture([[{ anomalyCount: 0n }], [{ total: 0n }]]);
+
+    await expect(test.repository.listRankings({ ...input, kind: "customer", categoryId: null }))
+      .resolves.toMatchObject({ total: 0, list: [] });
+
+    const validationSql = queryText(test.queryRaw.mock.calls[0]?.[0] as SqlQuery);
+    expect(validationSql).toMatch(/FROM formal_order_evidence\s+WHERE entity_eligible = 1/u);
+  });
+
+  it("uses a non-reserved SQL name for the window-function ranking position", async () => {
+    const test = fixture([[{ anomalyCount: 0n }], [{ total: 1n }], [row]]);
+
+    await expect(test.repository.listRankings(input)).resolves.toMatchObject({ total: 1 });
+
+    const sql = test.queryRaw.mock.calls.map(([query]) => queryText(query)).join("\n");
+    expect(sql).toContain("AS ranking_position");
+    expect(sql).toContain("ranking_position AS rankingPosition");
+    expect(sql).not.toMatch(/\bAS rank\b/u);
+  });
+
   it("fails closed before SQL for invalid pagination and accepts the exported maximum", async () => {
     const invalid = fixture([]);
     await expect(invalid.repository.listRankings({ ...input, page: MAX_ANALYTICS_RANKING_PAGE + 1 }))

@@ -55,15 +55,15 @@ export type HttpClientBinaryPayload = { blob: Blob; cacheControl: string | null;
 
 export class ApiClientError extends Error {
   public readonly code: number;
-  public readonly data: unknown;
   public readonly status: number;
+  public readonly data: unknown;
 
   public constructor(message: string, code: number, status: number, data: unknown = null) {
     super(message);
     this.name = "ApiClientError";
     this.code = code;
-    this.data = data;
     this.status = status;
+    this.data = data;
   }
 }
 

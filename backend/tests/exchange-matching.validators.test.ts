@@ -13,7 +13,75 @@ describe("Exchange selective exact matching validators", () => {
   it("accepts a bounded unique selection and optimistic version", () => {
     expect(
       selectExchangeMatchSchema.parse({ selectedClaimIds: [9, 4], expectedVersion: 3 })
-    ).toEqual({ selectedClaimIds: [9, 4], expectedVersion: 3 });
+    ).toEqual({
+      selectedClaimIds: [9, 4],
+      expectedVersion: 3,
+      budgetConfirmation: null,
+      targetConfirmation: null
+    });
+  });
+
+  it("accepts only strict budget and target adjustment confirmations", () => {
+    expect(
+      selectExchangeMatchSchema.parse({
+        selectedClaimIds: [11],
+        expectedVersion: 4,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 24_000
+        },
+        targetConfirmation: {
+          action: "reduce_to_selected_count",
+          confirmedTargetProviderCount: 1
+        }
+      })
+    ).toEqual({
+      selectedClaimIds: [11],
+      expectedVersion: 4,
+      budgetConfirmation: {
+        action: "increase_to_selected_total",
+        confirmedBudgetMaxJpy: 24_000
+      },
+      targetConfirmation: {
+        action: "reduce_to_selected_count",
+        confirmedTargetProviderCount: 1
+      }
+    });
+
+    for (const invalid of [
+      {
+        selectedClaimIds: [11],
+        expectedVersion: 4,
+        budgetConfirmation: { action: "raise", confirmedBudgetMaxJpy: 24_000 }
+      },
+      {
+        selectedClaimIds: [11],
+        expectedVersion: 4,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 1_000_000_001
+        }
+      },
+      {
+        selectedClaimIds: [11],
+        expectedVersion: 4,
+        targetConfirmation: {
+          action: "reduce_to_selected_count",
+          confirmedTargetProviderCount: 0
+        }
+      },
+      {
+        selectedClaimIds: [11],
+        expectedVersion: 4,
+        targetConfirmation: {
+          action: "reduce_to_selected_count",
+          confirmedTargetProviderCount: 1,
+          createBooking: true
+        }
+      }
+    ]) {
+      expect(selectExchangeMatchSchema.safeParse(invalid).success).toBe(false);
+    }
   });
 
   it("rejects duplicates, empty selections, unknown fields and invalid versions", () => {
@@ -48,7 +116,9 @@ describe("Exchange selective exact matching validators", () => {
       EXCHANGE_MATCH_COUNT_MISMATCH: 40995,
       EXCHANGE_MATCH_BUDGET_EXCEEDED: 40996,
       EXCHANGE_MATCH_TIME_CONFLICT: 40997,
-      EXCHANGE_MATCH_IDEMPOTENCY_CONFLICT: 40998
+      EXCHANGE_MATCH_IDEMPOTENCY_CONFLICT: 40998,
+      EXCHANGE_MATCH_TARGET_CONFIRMATION_REQUIRED: 40999,
+      EXCHANGE_MATCH_BUDGET_CONFIRMATION_REQUIRED: 41001
     });
   });
 

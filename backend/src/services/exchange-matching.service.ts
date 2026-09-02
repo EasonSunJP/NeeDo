@@ -5,7 +5,10 @@ import type {
   ExchangeMatchingRecord,
   ExchangeMatchingSelectionClaim
 } from "../repositories/exchange-matching.repository";
-import type { ExchangeMatchingPayload } from "../types/exchange-matching.types";
+import type {
+  ExchangeMatchAdjustmentPreview,
+  ExchangeMatchingPayload
+} from "../types/exchange-matching.types";
 import { AppError } from "../utils/app-error";
 import { sha256StableJson } from "../utils/stable-json";
 import type { SelectExchangeMatchBody } from "../validators/exchange-matching.validators";
@@ -74,7 +77,9 @@ export class ExchangeMatchingService {
       actorIdentityId: identityId,
       exchangePostId,
       selectedClaimIds,
-      expectedVersion: input.expectedVersion
+      expectedVersion: input.expectedVersion,
+      budgetConfirmation: input.budgetConfirmation,
+      targetConfirmation: input.targetConfirmation
     });
 
     try {
@@ -84,7 +89,7 @@ export class ExchangeMatchingService {
 
         const matching = await repository.lockMatching(exchangePostId);
         this.assertSelectable(matching, access, input.expectedVersion, this.now());
-        if (selectedClaimIds.length !== matching!.effectiveTargetProviderCount) {
+        if (selectedClaimIds.length > matching!.effectiveTargetProviderCount) {
           throw this.countMismatch();
         }
 
@@ -101,8 +106,26 @@ export class ExchangeMatchingService {
           (total, claim) => total + claim.quoteAmountJpy,
           0
         );
-        if (selectedQuoteTotalJpy > matching!.effectiveBudgetMaxJpy) {
-          throw this.budgetExceeded();
+        const preview = this.adjustmentPreview(
+          matching!,
+          exactClaims.length,
+          selectedQuoteTotalJpy
+        );
+        this.assertExactConfirmations(input, preview);
+        const adjustments: CompleteExchangeSelectionInput["adjustments"] = [];
+        if (preview.requiresBudgetConfirmation) {
+          adjustments.push({
+            type: "budget_increased",
+            before: matching!.effectiveBudgetMaxJpy,
+            after: preview.requiredBudgetMaxJpy!
+          });
+        }
+        if (preview.requiresTargetConfirmation) {
+          adjustments.push({
+            type: "target_reduced",
+            before: matching!.effectiveTargetProviderCount,
+            after: preview.requiredTargetProviderCount!
+          });
         }
 
         const technicianProfileIds = exactClaims
@@ -132,7 +155,7 @@ export class ExchangeMatchingService {
           (claim) => !selectedClaimIds.includes(claim.id)
         );
         const unselectedClaimIds = unselectedClaims.map((claim) => claim.id);
-        const versionAfter = matching!.version + 1;
+        const versionAfter = matching!.version + adjustments.length + 1;
         const completed = await repository.completeSelection({
           matchingId: matching!.id,
           exchangePostId,
@@ -141,6 +164,11 @@ export class ExchangeMatchingService {
           unselectedClaims,
           unselectedClaimIds,
           selectedQuoteTotalJpy,
+          effectiveTargetProviderCountAfter:
+            preview.requiredTargetProviderCount ?? matching!.effectiveTargetProviderCount,
+          effectiveBudgetMaxJpyAfter:
+            preview.requiredBudgetMaxJpy ?? matching!.effectiveBudgetMaxJpy,
+          adjustments,
           versionBefore: matching!.version,
           versionAfter,
           actorUserId: access.userId,
@@ -154,7 +182,8 @@ export class ExchangeMatchingService {
             context,
             matching!,
             selectedClaimIds,
-            selectedQuoteTotalJpy
+            selectedQuoteTotalJpy,
+            preview
           )
         });
         if (!completed) throw this.versionConflict();
@@ -207,13 +236,58 @@ export class ExchangeMatchingService {
     return replay.payload;
   }
 
+  private adjustmentPreview(
+    matching: ExchangeMatchingRecord,
+    selectedCount: number,
+    selectedQuoteTotalJpy: number
+  ): ExchangeMatchAdjustmentPreview {
+    const requiresTargetConfirmation =
+      selectedCount < matching.effectiveTargetProviderCount;
+    const requiresBudgetConfirmation =
+      selectedQuoteTotalJpy > matching.effectiveBudgetMaxJpy;
+    return {
+      currentVersion: matching.version,
+      selectedCount,
+      selectedQuoteTotalJpy,
+      effectiveTargetProviderCount: matching.effectiveTargetProviderCount,
+      effectiveBudgetMaxJpy: matching.effectiveBudgetMaxJpy,
+      requiredTargetProviderCount: requiresTargetConfirmation ? selectedCount : null,
+      requiredBudgetMaxJpy: requiresBudgetConfirmation ? selectedQuoteTotalJpy : null,
+      requiredBudgetIncreaseJpy: Math.max(
+        0,
+        selectedQuoteTotalJpy - matching.effectiveBudgetMaxJpy
+      ),
+      requiresTargetConfirmation,
+      requiresBudgetConfirmation
+    };
+  }
+
+  private assertExactConfirmations(
+    input: SelectExchangeMatchBody,
+    preview: ExchangeMatchAdjustmentPreview
+  ): void {
+    const targetMatches = preview.requiresTargetConfirmation
+      ? input.targetConfirmation?.action === "reduce_to_selected_count" &&
+        input.targetConfirmation.confirmedTargetProviderCount ===
+          preview.requiredTargetProviderCount
+      : input.targetConfirmation === null;
+    if (!targetMatches) throw this.targetConfirmationRequired(preview);
+
+    const budgetMatches = preview.requiresBudgetConfirmation
+      ? input.budgetConfirmation?.action === "increase_to_selected_total" &&
+        input.budgetConfirmation.confirmedBudgetMaxJpy === preview.requiredBudgetMaxJpy
+      : input.budgetConfirmation === null;
+    if (!budgetMatches) throw this.budgetConfirmationRequired(preview);
+  }
+
   private audit(
     access: AuthenticatedAccessContext,
     identityId: number,
     context: AuthRequestContext,
     matching: ExchangeMatchingRecord,
     selectedClaimIds: number[],
-    selectedQuoteTotalJpy: number
+    selectedQuoteTotalJpy: number,
+    preview: ExchangeMatchAdjustmentPreview
   ): AuditLogCreateInput {
     return {
       actorId: access.userId,
@@ -228,8 +302,18 @@ export class ExchangeMatchingService {
         selectedClaimIds,
         selectedCount: selectedClaimIds.length,
         selectedQuoteTotalJpy,
+        effectiveTargetProviderCountBefore: matching.effectiveTargetProviderCount,
+        effectiveTargetProviderCountAfter:
+          preview.requiredTargetProviderCount ?? matching.effectiveTargetProviderCount,
+        effectiveBudgetMaxJpyBefore: matching.effectiveBudgetMaxJpy,
+        effectiveBudgetMaxJpyAfter:
+          preview.requiredBudgetMaxJpy ?? matching.effectiveBudgetMaxJpy,
         versionBefore: matching.version,
-        versionAfter: matching.version + 1
+        versionAfter:
+          matching.version +
+          Number(preview.requiresTargetConfirmation) +
+          Number(preview.requiresBudgetConfirmation) +
+          1
       }
     };
   }
@@ -291,11 +375,21 @@ export class ExchangeMatchingService {
     });
   }
 
-  private budgetExceeded(): AppError {
+  private targetConfirmationRequired(preview: ExchangeMatchAdjustmentPreview): AppError {
     return new AppError({
-      code: ERROR_CODES.EXCHANGE_MATCH_BUDGET_EXCEEDED,
-      message: "error.exchange.match_budget_exceeded",
-      statusCode: 409
+      code: ERROR_CODES.EXCHANGE_MATCH_TARGET_CONFIRMATION_REQUIRED,
+      message: "error.exchange.match_target_confirmation_required",
+      statusCode: 409,
+      data: preview
+    });
+  }
+
+  private budgetConfirmationRequired(preview: ExchangeMatchAdjustmentPreview): AppError {
+    return new AppError({
+      code: ERROR_CODES.EXCHANGE_MATCH_BUDGET_CONFIRMATION_REQUIRED,
+      message: "error.exchange.match_budget_confirmation_required",
+      statusCode: 409,
+      data: preview
     });
   }
 

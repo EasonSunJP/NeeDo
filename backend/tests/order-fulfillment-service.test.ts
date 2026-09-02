@@ -441,13 +441,16 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
       ? null
       : {
           id: serviceOption.id ?? 19,
+          publicId: "00000000-0000-4000-8000-000000000019",
           shopId: serviceOption.shopId ?? dbOrder.shopId,
+          categoryId: 7,
           status: serviceOption.status ?? "published",
           name: "追加舒缓 30 分钟",
           description: "肩颈放松",
           priceAmount: new Prisma.Decimal(serviceOption.priceAmount ?? "4000.00"),
           currency: serviceOption.currency ?? "JPY",
           durationMinutes: serviceOption.durationMinutes ?? 30,
+          createdAt: now,
           deletedAt: null
         };
   const projectedOrder = () => ({

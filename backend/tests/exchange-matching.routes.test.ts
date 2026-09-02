@@ -69,7 +69,12 @@ describe("formal Exchange matching routes", () => {
     expect(service.selectMatching).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 1, currentIdentityId: expect.any(Number) }),
       41,
-      { selectedClaimIds: [301], expectedVersion: 3 },
+      {
+        selectedClaimIds: [301],
+        expectedVersion: 3,
+        budgetConfirmation: null,
+        targetConfirmation: null
+      },
       "matching-select-route-0001",
       expect.objectContaining({ ip: expect.any(String) })
     );
