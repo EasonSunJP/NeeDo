@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { ProfileDetailPage } from "./ProfileDetailPage";
 import { TechnicianInfoCardRoutePage } from "./TechnicianInfoCardRoutePage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,6 +53,11 @@ async function waitFor(assertion: () => void) {
 function LocationProbe() {
   const location = useLocation();
   return <output data-testid="location-probe">{`${location.pathname}${location.search}`}</output>;
+}
+
+function TechnicianRouteTransitionControl() {
+  const navigate = useNavigate();
+  return <button aria-label="切换技师" onClick={() => navigate("/profiles/technician/18?view=card")} type="button" />;
 }
 
 function renderPage(initialEntries = ["/profiles/technician/17?view=card"], initialIndex?: number) {
@@ -147,5 +153,50 @@ describe("TechnicianInfoCardRoutePage", () => {
       document.body.querySelector<HTMLButtonElement>('button[aria-label="返回结算页"]')?.click();
     });
     expect(document.body.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/checkout/31");
+  });
+
+  it("clears the previous technician while a changed route id is loading", async () => {
+    let resolveSeventeen!: (value: CoreTechnicianDetail) => void;
+    let resolveEighteen!: (value: CoreTechnicianDetail) => void;
+    const seventeenRequest = new Promise<CoreTechnicianDetail>((resolve) => {
+      resolveSeventeen = resolve;
+    });
+    const eighteenRequest = new Promise<CoreTechnicianDetail>((resolve) => {
+      resolveEighteen = resolve;
+    });
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockImplementation((id) => (
+      id === 17 ? seventeenRequest : eighteenRequest
+    ));
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/profiles/technician/17?view=card"]}>
+            <TechnicianRouteTransitionControl />
+            <Routes>
+              <Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+    await act(async () => resolveSeventeen(detail));
+    await waitFor(() => expect(document.body.textContent).toContain("Misaki"));
+
+    await act(async () => {
+      document.body.querySelector<HTMLButtonElement>('button[aria-label="切换技师"]')?.click();
+    });
+    expect(coreReadApi.getTechnicianDetail).toHaveBeenCalledWith(18);
+    expect(document.body.textContent).not.toContain("Misaki");
+    expect(document.body.textContent).toContain("正在读取技师详细信息");
+
+    await act(async () => resolveEighteen({
+      ...detail,
+      id: 18,
+      publicId: "s0000000018",
+      displayName: "Haruka"
+    }));
+    await waitFor(() => expect(document.body.textContent).toContain("Haruka"));
+    expect(document.body.textContent).not.toContain("Misaki");
   });
 });

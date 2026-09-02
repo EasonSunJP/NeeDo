@@ -13,7 +13,7 @@ export function ProfileDetailPage() {
 
   if (entityType === "technician") {
     return searchParams.get("view") === "card" && apiId
-      ? <TechnicianInfoCardRoutePage id={apiId} />
+      ? <TechnicianInfoCardRoutePage id={apiId} key={apiId} />
       : <SocialProfilePage />;
   }
 
