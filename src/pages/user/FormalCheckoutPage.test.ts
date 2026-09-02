@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import formalSource from "./FormalCheckoutPage.tsx?raw";
 import checkoutSource from "./CheckoutPage.tsx?raw";
+import progressSource from "./formal-checkout/CheckoutProgressNav.tsx?raw";
 
 describe("formal customer checkout", () => {
   it("routes numeric services into an isolated API-only checkout", () => {
@@ -37,14 +38,55 @@ describe("formal customer checkout", () => {
 
   it("keeps the production confirmation structure while using formal data", () => {
     for (const label of ["套餐", "到店服务", "时间", "地址", "技师", "备注"]) {
-      expect(formalSource).toContain(`label: "${label}"`);
+      expect(progressSource).toContain(`label: "${label}"`);
     }
     expect(formalSource).toContain("注意事项");
     expect(formalSource).toContain("取消政策");
     expect(formalSource).toContain("NDP（NeeDoPoint）");
     expect(formalSource).toContain("确定预约");
-    expect(formalSource).toContain("SocialProfileMiniCard");
+    expect(formalSource).toContain("Google Maps");
+    expect(formalSource).toContain("门店位置预览");
+    expect(formalSource).toContain("复制地址");
+    expect(formalSource).toContain("预约时间");
+    expect(formalSource).toContain("接单率");
+    expect(formalSource).toContain("service.technician.acceptanceRatePercent");
+    expect(formalSource).toContain("service.technician.reviewSummary.reviewCount");
+    expect(formalSource).toContain("service.technician.reviewSummary.ratingAverage");
+    expect(formalSource).not.toContain("acceptRate: 98");
     expect(formalSource).not.toContain("选择可预约时段");
     expect(formalSource).not.toContain("提交正式预约");
+  });
+
+  it("renders the approved detailed body without reviving unsupported stores", () => {
+    for (const copy of ["套餐", "服务方式", "预约时间", "地址", "技师", "特殊需求", "注意事项", "取消政策", "NDP（NeeDoPoint）"]) {
+      expect(formalSource).toContain(copy);
+    }
+    expect(formalSource).not.toContain("entityStore");
+    expect(formalSource).not.toContain("shiftPlanningStore");
+    expect(formalSource).not.toContain("userOrderStore");
+    expect(formalSource).not.toContain("../../data/mock");
+  });
+
+  it("tracks six approved sections through the viewport center", () => {
+    expect(formalSource).toContain("progressBarRef");
+    expect(formalSource).toContain("sectionRefs");
+    expect(formalSource).toContain("resolveActiveCheckoutStep");
+    expect(formalSource).toContain('window.addEventListener("scroll"');
+    expect(formalSource).toContain('window.addEventListener("resize"');
+    expect(formalSource).toContain('section.scrollIntoView({ behavior, block: "start" })');
+    expect(formalSource.match(/sectionRefs\.current\[[0-5]\]/g)).toHaveLength(6);
+    expect(formalSource).toContain("<CheckoutProgressNav");
+    expect(formalSource).toContain("activeIndex={activeProgressStep}");
+  });
+
+  it("keeps the approved action footer attached to the formal booking submission", () => {
+    expect(formalSource).toContain("应付金额");
+    expect(formalSource).toContain("联系");
+    expect(formalSource).toContain("确定预约");
+    expect(formalSource).toContain("safe-nav-bottom");
+    expect(formalSource).toContain("pointer-events-none fixed inset-x-0 bottom-0");
+    expect(formalSource).toContain("paymentMethod");
+    expect(formalSource).toContain("void submitBooking()");
+    expect(formalSource).toContain("disabled={!selectedSlot || submitting}");
   });
 });
