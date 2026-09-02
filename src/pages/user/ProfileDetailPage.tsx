@@ -1,18 +1,21 @@
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { coreReadApi, coreReadIdFromRoute, mapCoreCustomerToCustomer, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { SocialProfilePage } from "../../features/social/pages/SocialProfilePage";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
+import { TechnicianInfoCardRoutePage } from "./TechnicianInfoCardRoutePage";
 
 export function ProfileDetailPage() {
   const { entityType, id } = useParams();
+  const [searchParams] = useSearchParams();
+  const apiId = coreReadIdFromRoute(id);
 
   if (entityType === "technician") {
-    return <SocialProfilePage />;
+    return searchParams.get("view") === "card" && apiId
+      ? <TechnicianInfoCardRoutePage id={apiId} />
+      : <SocialProfilePage />;
   }
-
-  const apiId = coreReadIdFromRoute(id);
 
   if (!apiId || (entityType !== "user" && entityType !== "shop")) {
     return <SocialProfilePage />;
