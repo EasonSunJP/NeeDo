@@ -278,7 +278,7 @@ CREATE TABLE `agent_settlement_lines` (
 ALTER TABLE `platform_partner_profiles`
     ADD CONSTRAINT `platform_partner_profiles_user_id_fkey`
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
-    ON DELETE RESTRICT ON UPDATE CASCADE,
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
     ADD CONSTRAINT `platform_partner_profiles_marked_by_id_fkey`
     FOREIGN KEY (`marked_by_id`) REFERENCES `users`(`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -289,7 +289,7 @@ ALTER TABLE `agent_shop_referrals`
     ON DELETE RESTRICT ON UPDATE CASCADE,
     ADD CONSTRAINT `agent_shop_referrals_shop_id_fkey`
     FOREIGN KEY (`shop_id`) REFERENCES `shops`(`id`)
-    ON DELETE RESTRICT ON UPDATE CASCADE,
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
     ADD CONSTRAINT `agent_shop_referrals_confirmed_by_id_fkey`
     FOREIGN KEY (`confirmed_by_id`) REFERENCES `users`(`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -327,7 +327,7 @@ ALTER TABLE `agent_settlements`
     ON DELETE RESTRICT ON UPDATE CASCADE,
     ADD CONSTRAINT `agent_settlements_paid_by_id_fkey`
     FOREIGN KEY (`paid_by_id`) REFERENCES `users`(`id`)
-    ON DELETE RESTRICT ON UPDATE CASCADE;
+    ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 ALTER TABLE `agent_settlement_lines`
     ADD CONSTRAINT `agent_settlement_lines_settlement_id_fkey`
