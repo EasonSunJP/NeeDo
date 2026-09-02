@@ -82,8 +82,14 @@ const metric = (metricKey: string, detailRoute: string | null = `/admin/analytic
 });
 const overviewPayload = {
   filter: (({ availableCities: _availableCities, ...rest }) => rest)(filter),
-  operationsFinance: [metric("gross_revenue"), metric("fare_revenue", null)],
-  commissionMetrics: [metric("ndp_income"), metric("agent_commission", null)],
+  operationsFinance: [
+    metric("gross_revenue"),
+    { ...metric("fare_revenue"), dataStatus: "not_connected" }
+  ],
+  commissionMetrics: [
+    metric("ndp_income"),
+    { ...metric("agent_commission"), dataStatus: "not_available" }
+  ],
   growthMetrics: [
     metric("new_users"),
     metric("franchisee_onboarding", null),
