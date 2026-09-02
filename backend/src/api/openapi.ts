@@ -1643,15 +1643,79 @@ const exchangeMatchingAdjustmentConflictResponse = {
   }
 };
 
+const exchangeBookingConversionErrorExamples = {
+  not_found: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_NOT_FOUND,
+      message: "error.exchange.match_booking_not_found",
+      data: null
+    }
+  },
+  not_allowed: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_NOT_ALLOWED,
+      message: "error.exchange.match_booking_not_allowed",
+      data: null
+    }
+  },
+  invalid_state: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_INVALID_STATE,
+      message: "error.exchange.match_booking_invalid_state",
+      data: null
+    }
+  },
+  version_conflict: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_VERSION_CONFLICT,
+      message: "error.exchange.match_booking_version_conflict",
+      data: { currentVersion: 8 }
+    }
+  },
+  already_created: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_ALREADY_CREATED,
+      message: "error.exchange.match_booking_already_created",
+      data: null
+    }
+  },
+  slot_unavailable: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_SLOT_UNAVAILABLE,
+      message: "error.exchange.match_booking_slot_unavailable",
+      data: null
+    }
+  },
+  idempotency_conflict: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_MATCH_BOOKING_IDEMPOTENCY_CONFLICT,
+      message: "error.exchange.match_booking_idempotency_conflict",
+      data: null
+    }
+  }
+} as const;
+
 const exchangeBookingConversionErrorResponses = {
   "400": { description: "error.validation — strict booking conversion request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
   "403": {
     description:
-      "error.forbidden, error.exchange.match_booking_not_allowed, or error.user_policy.ekyc_required"
+      "error.forbidden, error.exchange.match_booking_not_allowed, or error.user_policy.ekyc_required",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/ApiError" },
+        examples: { not_allowed: exchangeBookingConversionErrorExamples.not_allowed }
+      }
+    }
   },
   "404": {
-    description: "error.exchange.match_booking_not_found — matching is not visible"
+    description: "error.exchange.match_booking_not_found — matching is not visible",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/ApiError" },
+        examples: { not_found: exchangeBookingConversionErrorExamples.not_found }
+      }
+    }
   },
   "409": {
     description:
@@ -1677,6 +1741,13 @@ const exchangeBookingConversionErrorResponses = {
               ]
             }
           }
+        },
+        examples: {
+          invalid_state: exchangeBookingConversionErrorExamples.invalid_state,
+          version_conflict: exchangeBookingConversionErrorExamples.version_conflict,
+          already_created: exchangeBookingConversionErrorExamples.already_created,
+          slot_unavailable: exchangeBookingConversionErrorExamples.slot_unavailable,
+          idempotency_conflict: exchangeBookingConversionErrorExamples.idempotency_conflict
         }
       }
     }
@@ -3835,7 +3906,6 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           estimatedEndsAt: { type: "string", format: "date-time" },
           matchedAt: { type: "string", format: "date-time" },
           booking: {
-            nullable: true,
             oneOf: [
               {
                 type: "object",
@@ -3857,7 +3927,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     ]
                   }
                 }
-              }
+              },
+              { type: "null" }
             ]
           }
         }
