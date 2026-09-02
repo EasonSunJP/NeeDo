@@ -13,6 +13,8 @@ import {
   ServicePaymentMethod,
   ServicePaymentStatus,
   ShopPricingMode,
+  TechnicianServiceReviewStatus,
+  TechnicianShopWorkStatus,
   type PrismaClient
 } from "@prisma/client";
 import { randomInt } from "node:crypto";
@@ -57,7 +59,36 @@ const matchingInclude = {
 } satisfies Prisma.ExchangeRequestMatchingInclude;
 
 const slotInclude = {
-  shop: { select: { id: true, status: true, deletedAt: true } },
+  shop: {
+    select: {
+      id: true,
+      status: true,
+      pricingMode: true,
+      deletedAt: true,
+      entitySuspensions: {
+        where: { status: "ACTIVE", activeKey: { not: null }, deletedAt: null },
+        select: { id: true }
+      }
+    }
+  },
+  technicianProfile: {
+    select: {
+      id: true,
+      status: true,
+      deletedAt: true,
+      user: { select: { isActive: true, deletedAt: true } },
+      technicianShopAffiliations: {
+        select: {
+          shopId: true,
+          workStatus: true,
+          activeKey: true,
+          startsAt: true,
+          endsAt: true,
+          deletedAt: true
+        }
+      }
+    }
+  },
   service: {
     select: {
       id: true,
@@ -74,6 +105,7 @@ const slotInclude = {
       technicianId: true,
       isActive: true,
       isBookable: true,
+      reviewStatus: true,
       deletedAt: true
     }
   }
@@ -119,9 +151,13 @@ interface CreatedOrder {
 }
 
 const sameDate = (left: Date, right: Date): boolean => left.getTime() === right.getTime();
+const ORDER_NUMBER_ATTEMPTS = 5;
 
 export class ExchangeBookingConversionRepository {
-  public constructor(private readonly client: ExchangeBookingConversionClient = prisma) {}
+  public constructor(
+    private readonly client: ExchangeBookingConversionClient = prisma,
+    private readonly orderNumberSuffix: () => number = () => randomInt(1000, 10_000)
+  ) {}
 
   public async findOwnerContext(
     exchangePostId: number,
@@ -159,17 +195,17 @@ export class ExchangeBookingConversionRepository {
     input: ExchangeBookingConversionInput,
     options: ExchangeBookingConversionRepositoryOptions = {}
   ): Promise<ExchangeBookingConversionRepositoryResult> {
+    if (!("$transaction" in this.client)) {
+      return this.convertInTransaction(input, options);
+    }
     try {
-      if (!("$transaction" in this.client)) {
-        return await this.convertInTransaction(input, options);
-      }
       return await runWithTransactionConflictRetry(() =>
         this.client.$transaction(
           (transaction) =>
-            new ExchangeBookingConversionRepository(transaction).convertInTransaction(
-              input,
-              options
-            ),
+            new ExchangeBookingConversionRepository(
+              transaction,
+              this.orderNumberSuffix
+            ).convertInTransaction(input, options),
           { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
         )
       );
@@ -183,9 +219,6 @@ export class ExchangeBookingConversionRepository {
     input: ExchangeBookingConversionInput,
     options: ExchangeBookingConversionRepositoryOptions
   ): Promise<ExchangeBookingConversionRepositoryResult> {
-    const replay = await this.findReplay(input);
-    if (replay) return replay;
-
     if (!(await this.lockOne("users", input.actorUserId))) {
       this.abort("not_found");
     }
@@ -212,6 +245,9 @@ export class ExchangeBookingConversionRepository {
       this.abort("not_allowed");
     }
 
+    const replay = await this.findAuthorizedReplay(input, matching);
+    if (replay) return replay;
+
     const committedEvent = await this.client.exchangeMatchEvent.findFirst({
       where: {
         matchingId: matching.id,
@@ -222,10 +258,13 @@ export class ExchangeBookingConversionRepository {
         matchingId: true,
         idempotencyKey: true,
         payloadFingerprint: true,
+        actorUserId: true,
+        actorIdentityId: true,
         type: true
       }
     });
     if (committedEvent) {
+      this.validateCommittedActor(matching, committedEvent);
       if (committedEvent.idempotencyKey !== input.idempotencyKey) {
         this.abort("already_created");
       }
@@ -248,6 +287,7 @@ export class ExchangeBookingConversionRepository {
     ) {
       this.abort("invalid_state");
     }
+    const demand = matching.exchangePost.demand;
     if (matching.version !== input.expectedVersion) {
       this.abort("version_conflict", matching.version);
     }
@@ -296,9 +336,30 @@ export class ExchangeBookingConversionRepository {
     `);
     if (lockedTechnicians.length !== technicianIds.length) this.abort("slot_unavailable");
 
-    const slotIds = [...new Set(participants.map(({ scheduleSlotId }) => scheduleSlotId))].sort(
-      (left, right) => left - right
-    );
+    const customerProfile = await this.client.customerProfile.findFirst({
+      where: { userId: matching.exchangePost.authorUserId, deletedAt: null },
+      select: { membershipLevel: true }
+    });
+    const isBlackMember = customerProfile?.membershipLevel.toLowerCase() === "black";
+    const superseded = isBlackMember
+      ? []
+      : await this.client.bookingOrder.findMany({
+          where: {
+            customerUserId: matching.exchangePost.authorUserId,
+            status: BookingOrderStatus.PENDING,
+            deletedAt: null,
+            exchangeMatchParticipant: { is: null }
+          },
+          select: { id: true, scheduleSlotId: true },
+          orderBy: { id: "asc" }
+        });
+
+    const participantSlotIds = [
+      ...new Set(participants.map(({ scheduleSlotId }) => scheduleSlotId))
+    ];
+    const slotIds = [
+      ...new Set([...participantSlotIds, ...superseded.map(({ scheduleSlotId }) => scheduleSlotId)])
+    ].sort((left, right) => left - right);
     const lockedSlots = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id
       FROM schedule_slots
@@ -315,34 +376,16 @@ export class ExchangeBookingConversionRepository {
       orderBy: { id: "asc" }
     });
     if (slots.length !== slotIds.length) this.abort("slot_unavailable");
-    const slotsById = new Map(slots.map((slot) => [slot.id, slot]));
+    let slotsById = new Map(slots.map((slot) => [slot.id, slot]));
 
     this.validateParticipants(participants, slotsById, input.occurredAt);
     await this.validateExternalOverlaps(participants, participantIds);
 
-    const customerProfile = await this.client.customerProfile.findFirst({
-      where: { userId: matching.exchangePost.authorUserId, deletedAt: null },
-      select: { membershipLevel: true }
-    });
-    const isBlackMember = customerProfile?.membershipLevel.toLowerCase() === "black";
     await this.validateCustomerOverlap(
       matching.exchangePost.authorUserId,
       participants,
       isBlackMember
     );
-
-    const superseded = isBlackMember
-      ? []
-      : await this.client.bookingOrder.findMany({
-          where: {
-            customerUserId: matching.exchangePost.authorUserId,
-            status: BookingOrderStatus.PENDING,
-            deletedAt: null,
-            exchangeMatchParticipant: { is: null }
-          },
-          select: { id: true, scheduleSlotId: true },
-          orderBy: { id: "asc" }
-        });
 
     await this.replaceOrdinaryPending(
       superseded,
@@ -351,8 +394,18 @@ export class ExchangeBookingConversionRepository {
       options
     );
 
-    const serviceMode = matching.exchangePost.demand.serviceMode === "HOME" ? "home" : "store";
+    const reloadedSlots = await this.client.scheduleSlot.findMany({
+      where: { id: { in: slotIds }, deletedAt: null },
+      include: slotInclude,
+      orderBy: { id: "asc" }
+    });
+    if (reloadedSlots.length !== slotIds.length) this.abort("slot_unavailable");
+    slotsById = new Map(reloadedSlots.map((slot) => [slot.id, slot]));
+    this.validateParticipants(participants, slotsById, input.occurredAt);
+
+    const serviceMode = demand.serviceMode === "HOME" ? "home" : "store";
     const created: CreatedOrder[] = [];
+    const usedOrderNumbers = new Set<string>();
     for (const participant of participants) {
       const slot = slotsById.get(participant.scheduleSlotId);
       if (!slot) this.abort("slot_unavailable");
@@ -378,9 +431,11 @@ export class ExchangeBookingConversionRepository {
       slot.status =
         nextBookedCount >= slot.capacity ? ScheduleSlotStatus.BOOKED : ScheduleSlotStatus.AVAILABLE;
 
-      const order = await this.client.bookingOrder.create({
-        data: {
-          orderNo: this.createOrderNo(input.occurredAt),
+      const order = await this.createBookingOrderWithUniqueNumber(
+        input.occurredAt,
+        usedOrderNumbers,
+        (orderNo) => ({
+          orderNo,
           orderType: OrderType.REQUEST,
           customerUserId: matching.exchangePost.authorUserId,
           serviceId: participant.serviceId,
@@ -393,9 +448,9 @@ export class ExchangeBookingConversionRepository {
           fulfillmentAddressSnapshot:
             serviceMode === "home"
               ? {
-                  line1: matching.exchangePost.demand.addressLine1,
-                  line2: matching.exchangePost.demand.addressLine2,
-                  line3: matching.exchangePost.demand.addressLine3
+                  line1: demand.addressLine1,
+                  line2: demand.addressLine2,
+                  line3: demand.addressLine3
                 }
               : Prisma.DbNull,
           priceAmount: participant.quoteAmountJpy,
@@ -433,8 +488,8 @@ export class ExchangeBookingConversionRepository {
               actorUserId: input.actorUserId
             }
           }
-        }
-      });
+        })
+      );
 
       const participantUpdate = await this.client.exchangeMatchParticipant.updateMany({
         where: {
@@ -562,7 +617,10 @@ export class ExchangeBookingConversionRepository {
     };
   }
 
-  private async findReplay(input: ExchangeBookingConversionInput): Promise<{
+  private async findAuthorizedReplay(
+    input: ExchangeBookingConversionInput,
+    matching: MatchingRow
+  ): Promise<{
     outcome: "replayed";
     payload: ExchangeBookingConversionPayload;
     notifications: ExchangeCommittedNotification[];
@@ -572,12 +630,16 @@ export class ExchangeBookingConversionRepository {
       select: {
         matchingId: true,
         type: true,
-        payloadFingerprint: true
+        payloadFingerprint: true,
+        actorUserId: true,
+        actorIdentityId: true
       }
     });
     if (!event) return null;
+    this.validateCommittedActor(matching, event);
     if (
       event.type !== ExchangeMatchEventType.BOOKINGS_CREATED ||
+      event.matchingId !== matching.id ||
       event.payloadFingerprint !== input.payloadFingerprint
     ) {
       this.abort("idempotency_conflict");
@@ -585,6 +647,18 @@ export class ExchangeBookingConversionRepository {
     const payload = await this.reconstructPayload(input.exchangePostId, event.matchingId);
     if (!payload) this.abort("idempotency_conflict");
     return { outcome: "replayed", payload, notifications: [] };
+  }
+
+  private validateCommittedActor(
+    matching: MatchingRow,
+    event: { actorUserId: number | null; actorIdentityId: number | null }
+  ): void {
+    if (
+      event.actorUserId !== matching.exchangePost.authorUserId ||
+      event.actorIdentityId !== matching.exchangePost.ownerIdentityId
+    ) {
+      this.abort("not_allowed");
+    }
   }
 
   private async reconstructPayload(
@@ -653,6 +727,15 @@ export class ExchangeBookingConversionRepository {
     for (const participant of participants) {
       const claim = participant.exchangeClaim;
       const slot = slotsById.get(participant.scheduleSlotId);
+      const activeAffiliation = slot?.technicianProfile?.technicianShopAffiliations.some(
+        (affiliation) =>
+          affiliation.shopId === participant.shopId &&
+          affiliation.workStatus === TechnicianShopWorkStatus.ACTIVE &&
+          affiliation.activeKey !== null &&
+          affiliation.startsAt <= occurredAt &&
+          (affiliation.endsAt === null || affiliation.endsAt > occurredAt) &&
+          affiliation.deletedAt === null
+      );
       if (
         participant.bookingOrderId !== null ||
         participant.activeReservationKey === null ||
@@ -672,6 +755,13 @@ export class ExchangeBookingConversionRepository {
         !sameDate(slot.endsAt, participant.estimatedEndsAt) ||
         slot.shop.deletedAt !== null ||
         slot.shop.status !== "published" ||
+        slot.shop.entitySuspensions.length !== 0 ||
+        !slot.technicianProfile ||
+        slot.technicianProfile.deletedAt !== null ||
+        slot.technicianProfile.status !== "published" ||
+        slot.technicianProfile.user.deletedAt !== null ||
+        !slot.technicianProfile.user.isActive ||
+        !activeAffiliation ||
         claim.deletedAt !== null ||
         claim.status !== ExchangeClaimStatus.MATCHED ||
         claim.exchangePostId !== participant.exchangePostId ||
@@ -688,6 +778,7 @@ export class ExchangeBookingConversionRepository {
       }
       if (participant.serviceId !== null) {
         if (
+          slot.shop.pricingMode !== ShopPricingMode.MERCHANT ||
           participant.technicianServiceId !== null ||
           !slot.service ||
           slot.technicianService !== null ||
@@ -701,11 +792,13 @@ export class ExchangeBookingConversionRepository {
         }
       } else if (
         participant.technicianServiceId === null ||
+        slot.shop.pricingMode !== ShopPricingMode.TECHNICIAN ||
         slot.service !== null ||
         !slot.technicianService ||
         slot.technicianService.deletedAt !== null ||
         !slot.technicianService.isActive ||
         !slot.technicianService.isBookable ||
+        slot.technicianService.reviewStatus !== TechnicianServiceReviewStatus.APPROVED ||
         slot.technicianService.shopId !== participant.shopId ||
         slot.technicianService.technicianId !== participant.technicianProfileId
       ) {
@@ -718,31 +811,34 @@ export class ExchangeBookingConversionRepository {
     participants: ParticipantRow[],
     participantIds: number[]
   ): Promise<void> {
-    for (const participant of participants) {
-      const booking = await this.client.bookingOrder.findFirst({
-        where: {
+    const booking = await this.client.bookingOrder.findFirst({
+      where: {
+        status: { in: [BookingOrderStatus.CONFIRMED, BookingOrderStatus.IN_SERVICE] },
+        deletedAt: null,
+        OR: participants.map((participant) => ({
           technicianProfileId: participant.technicianProfileId,
-          status: { in: [BookingOrderStatus.CONFIRMED, BookingOrderStatus.IN_SERVICE] },
           startsAt: { lt: participant.estimatedEndsAt },
-          endsAt: { gt: participant.estimatedStartsAt },
-          deletedAt: null
-        },
-        select: { id: true }
-      });
-      if (booking) this.abort("slot_unavailable");
-      const reservation = await this.client.exchangeMatchParticipant.findFirst({
-        where: {
-          id: { notIn: participantIds },
+          endsAt: { gt: participant.estimatedStartsAt }
+        }))
+      },
+      select: { id: true }
+    });
+    if (booking) this.abort("slot_unavailable");
+
+    const reservation = await this.client.exchangeMatchParticipant.findFirst({
+      where: {
+        id: { notIn: participantIds },
+        activeReservationKey: { not: null },
+        deletedAt: null,
+        OR: participants.map((participant) => ({
           technicianProfileId: participant.technicianProfileId,
-          activeReservationKey: { not: null },
           estimatedStartsAt: { lt: participant.estimatedEndsAt },
-          estimatedEndsAt: { gt: participant.estimatedStartsAt },
-          deletedAt: null
-        },
-        select: { id: true }
-      });
-      if (reservation) this.abort("slot_unavailable");
-    }
+          estimatedEndsAt: { gt: participant.estimatedStartsAt }
+        }))
+      },
+      select: { id: true }
+    });
+    if (reservation) this.abort("slot_unavailable");
   }
 
   private async validateCustomerOverlap(
@@ -839,6 +935,42 @@ export class ExchangeBookingConversionRepository {
     }
   }
 
+  private async createBookingOrderWithUniqueNumber(
+    occurredAt: Date,
+    usedOrderNumbers: Set<string>,
+    createData: (orderNo: string) => Prisma.BookingOrderCreateArgs["data"]
+  ): Promise<{ id: number; orderNo: string }> {
+    for (let attempt = 0; attempt < ORDER_NUMBER_ATTEMPTS; attempt += 1) {
+      const orderNo = this.createOrderNo(occurredAt);
+      if (usedOrderNumbers.has(orderNo)) continue;
+      try {
+        const order = await this.client.bookingOrder.create({ data: createData(orderNo) });
+        usedOrderNumbers.add(orderNo);
+        return order;
+      } catch (error) {
+        if (!this.isOrderNumberConflict(error)) throw error;
+      }
+    }
+    throw new Error("error.booking.order_number_unavailable");
+  }
+
+  private isOrderNumberConflict(error: unknown): boolean {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") {
+      return false;
+    }
+    const meta =
+      "meta" in error && error.meta && typeof error.meta === "object" ? error.meta : null;
+    const target = meta && "target" in meta ? meta.target : null;
+    const targets = Array.isArray(target) ? target : [target];
+    return targets.some(
+      (value) =>
+        value === "booking_orders_order_no_key" ||
+        value === "booking_orders.order_no" ||
+        value === "order_no" ||
+        value === "orderNo"
+    );
+  }
+
   private toPayload(
     exchangePostId: number,
     matchingVersion: number,
@@ -880,6 +1012,6 @@ export class ExchangeBookingConversionRepository {
       String(at.getUTCMinutes()).padStart(2, "0"),
       String(at.getUTCSeconds()).padStart(2, "0")
     ].join("");
-    return `ND${timestamp}${String(randomInt(1000, 10_000))}`;
+    return `ND${timestamp}${String(this.orderNumberSuffix()).padStart(4, "0")}`;
   }
 }

@@ -167,8 +167,18 @@ interface HarnessOptions {
   membershipLevel?: string;
   failSlotUpdateId?: number;
   ordinaryPending?: boolean;
+  replacementSlotId?: number;
   customerConflict?: boolean;
+  externalBookingConflict?: boolean;
+  externalParticipantConflict?: boolean;
   serviceMode?: "HOME" | "STORE";
+  shopSuspended?: boolean;
+  pricingModeMismatch?: boolean;
+  technicianStatus?: string;
+  affiliationActive?: boolean;
+  technicianServiceReviewStatus?: string;
+  orderNoCollisionCount?: number;
+  unrelatedUniqueConflict?: boolean;
   participantMutator?: (participants: Participant[]) => void;
 }
 
@@ -182,13 +192,20 @@ const createHarness = (options: HarnessOptions = {}) => {
   const events: any[] = [];
   const notifications: any[] = [];
   const audits: any[] = [];
+  const queryCounts = {
+    externalBookingConflicts: 0,
+    externalParticipantConflicts: 0,
+    orderCreateAttempts: 0
+  };
+  let remainingOrderNoCollisions = options.orderNoCollisionCount ?? 0;
+  const replacementSlotId = options.replacementSlotId ?? 40;
   const orders: any[] = options.ordinaryPending
     ? [
         {
           id: 800,
           orderNo: "NDOLD",
           customerUserId: 9,
-          scheduleSlotId: 40,
+          scheduleSlotId: replacementSlotId,
           status: "PENDING",
           startsAt: new Date("2026-09-05T01:00:00.000Z"),
           endsAt: new Date("2026-09-05T02:00:00.000Z"),
@@ -198,15 +215,60 @@ const createHarness = (options: HarnessOptions = {}) => {
       ]
     : [];
   if (options.ordinaryPending) {
-    slots.push({
-      ...makeSlots()[0],
-      id: 40,
-      startsAt: new Date("2026-09-05T01:00:00.000Z"),
-      endsAt: new Date("2026-09-05T02:00:00.000Z"),
-      capacity: 1,
-      bookedCount: 1,
-      status: "BOOKED"
-    });
+    const existingReplacementSlot = slots.find((slot) => slot.id === replacementSlotId);
+    if (existingReplacementSlot) {
+      existingReplacementSlot.bookedCount += 1;
+      existingReplacementSlot.status =
+        existingReplacementSlot.bookedCount >= existingReplacementSlot.capacity
+          ? "BOOKED"
+          : "AVAILABLE";
+    } else {
+      slots.push({
+        ...makeSlots()[0],
+        id: replacementSlotId,
+        startsAt: new Date("2026-09-05T01:00:00.000Z"),
+        endsAt: new Date("2026-09-05T02:00:00.000Z"),
+        capacity: 1,
+        bookedCount: 1,
+        status: "BOOKED"
+      });
+    }
+  }
+
+  for (const slot of slots) {
+    slot.shop = {
+      ...slot.shop,
+      pricingMode:
+        options.pricingModeMismatch && slot.id === 30
+          ? "TECHNICIAN"
+          : slot.serviceId
+            ? "MERCHANT"
+            : "TECHNICIAN",
+      entitySuspensions:
+        options.shopSuspended && slot.id === 30
+          ? [{ status: "ACTIVE", activeKey: "shop:200", deletedAt: null }]
+          : []
+    } as any;
+    (slot as any).technicianProfile = {
+      id: slot.technicianProfileId,
+      status: options.technicianStatus ?? "published",
+      deletedAt: null,
+      user: { isActive: true, deletedAt: null },
+      technicianShopAffiliations: [
+        {
+          shopId: slot.shopId,
+          workStatus: options.affiliationActive === false ? "SUSPENDED" : "ACTIVE",
+          activeKey: options.affiliationActive === false ? null : `affiliation:${slot.id}`,
+          startsAt: new Date("2026-09-01T00:00:00.000Z"),
+          endsAt: null,
+          deletedAt: null
+        }
+      ]
+    };
+    if (slot.technicianService) {
+      (slot.technicianService as any).reviewStatus =
+        options.technicianServiceReviewStatus ?? "APPROVED";
+    }
   }
 
   const post = {
@@ -267,7 +329,7 @@ const createHarness = (options: HarnessOptions = {}) => {
         const values = queryValues(query);
         if (/\busers\b/.test(sql)) {
           lockOrder.push(`customer:${values[0]}`);
-          return values[0] === 9 ? [{ id: 9 }] : [];
+          return [{ id: values[0] }];
         }
         if (/\bexchange_posts\b/.test(sql)) {
           lockOrder.push(`post:${values[0]}`);
@@ -351,7 +413,10 @@ const createHarness = (options: HarnessOptions = {}) => {
       },
       exchangeMatchParticipant: {
         findMany: jest.fn(async () => stagedParticipants),
-        findFirst: jest.fn(async () => null),
+        findFirst: jest.fn(async () => {
+          queryCounts.externalParticipantConflicts += 1;
+          return options.externalParticipantConflict ? { id: 999 } : null;
+        }),
         updateMany: jest.fn(async ({ where, data }: any) => {
           const participant = stagedParticipants.find(
             (candidate) =>
@@ -367,7 +432,7 @@ const createHarness = (options: HarnessOptions = {}) => {
       },
       scheduleSlot: {
         findMany: jest.fn(async ({ where }: any) =>
-          stagedSlots.filter((slot) => where.id.in.includes(slot.id))
+          structuredClone(stagedSlots.filter((slot) => where.id.in.includes(slot.id)))
         ),
         updateMany: jest.fn(async ({ where, data }: any) => {
           const slot = stagedSlots.find((candidate) => candidate.id === where.id);
@@ -395,6 +460,10 @@ const createHarness = (options: HarnessOptions = {}) => {
       bookingOrder: {
         findFirst: jest.fn(async ({ where }: any) => {
           if (options.customerConflict && where.customerUserId === 9) return { id: 700 };
+          if (where.customerUserId === undefined) {
+            queryCounts.externalBookingConflicts += 1;
+            if (options.externalBookingConflict) return { id: 701 };
+          }
           return null;
         }),
         findMany: jest.fn(async ({ where }: any) =>
@@ -415,6 +484,20 @@ const createHarness = (options: HarnessOptions = {}) => {
           return { count: candidates.length };
         }),
         create: jest.fn(async ({ data }: any) => {
+          queryCounts.orderCreateAttempts += 1;
+          if (options.unrelatedUniqueConflict) {
+            throw {
+              code: "P2002",
+              meta: { target: ["exchange_match_participants_booking_order_key"] }
+            };
+          }
+          if (remainingOrderNoCollisions > 0) {
+            remainingOrderNoCollisions -= 1;
+            throw { code: "P2002", meta: { target: ["booking_orders_order_no_key"] } };
+          }
+          if (stagedOrders.some((order) => order.orderNo === data.orderNo)) {
+            throw { code: "P2002", meta: { target: ["booking_orders_order_no_key"] } };
+          }
           const order = {
             id: stagedNextOrderId++,
             ...data,
@@ -494,7 +577,8 @@ const createHarness = (options: HarnessOptions = {}) => {
     events,
     notifications,
     audits,
-    orders
+    orders,
+    queryCounts
   };
 };
 
@@ -590,6 +674,39 @@ describe("ExchangeBookingConversionRepository", () => {
     expect(h.committedWrites).toHaveLength(writesAfterCreate);
   });
 
+  it.each([
+    ["wrong user", { actorUserId: 8 }],
+    ["wrong identity", { actorIdentityId: 18 }],
+    ["wrong user and identity", { actorUserId: 8, actorIdentityId: 18 }]
+  ])("authorizes the current owner before replay lookup for %s", async (_label, actorOverrides) => {
+    const h = createHarness();
+    const repository = new ExchangeBookingConversionRepository(h.client);
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    const writesAfterCreate = h.committedWrites.length;
+
+    await expect(repository.convert(input(actorOverrides))).resolves.toEqual({
+      outcome: "not_allowed"
+    });
+    await expect(
+      repository.convert(input({ ...actorOverrides, payloadFingerprint: "b".repeat(64) }))
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    expect(h.committedWrites).toHaveLength(writesAfterCreate);
+  });
+
+  it("rejects a replay event whose persisted actor is not the current owner before fingerprint comparison", async () => {
+    const h = createHarness();
+    const repository = new ExchangeBookingConversionRepository(h.client);
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    const writesAfterCreate = h.committedWrites.length;
+    h.events[0].actorIdentityId = 999;
+
+    await expect(repository.convert(input())).resolves.toEqual({ outcome: "not_allowed" });
+    await expect(
+      repository.convert(input({ payloadFingerprint: "b".repeat(64) }))
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    expect(h.committedWrites).toHaveLength(writesAfterCreate);
+  });
+
   it("stores database null rather than an address or JSON null for store fulfillment", async () => {
     const h = createHarness({ serviceMode: "STORE" });
     const repository = new ExchangeBookingConversionRepository(h.client);
@@ -640,6 +757,20 @@ describe("ExchangeBookingConversionRepository", () => {
     expect(h.financeWrites).toEqual([]);
   });
 
+  it("lets a late ConversionAbort escape an externally owned TransactionClient", async () => {
+    const h = createHarness({ failSlotUpdateId: 31, ordinaryPending: true });
+
+    await expect(
+      (h.client as any).$transaction(async (transactionClient: any) =>
+        new ExchangeBookingConversionRepository(transactionClient).convert(input())
+      )
+    ).rejects.toMatchObject({
+      name: "ExchangeBookingConversionAbort",
+      message: "slot_unavailable"
+    });
+    expect(h.committedWrites).toEqual([]);
+  });
+
   it("replaces only ordinary unlinked pending orders and invalidates their Affiliate attribution in-transaction", async () => {
     const h = createHarness({ ordinaryPending: true });
     const invalidateSupersededAffiliate = jest.fn(async ({ transactionClient, bookingOrderId }) => {
@@ -661,6 +792,128 @@ describe("ExchangeBookingConversionRepository", () => {
     expect(h.committedWrites.filter((write) => write.kind === "history")).toHaveLength(1);
     expect(invalidateSupersededAffiliate).toHaveBeenCalledTimes(1);
     expect(h.financeWrites).toEqual([]);
+  });
+
+  it("locks the sorted participant/replacement slot union and reloads a same-target slot after release", async () => {
+    const h = createHarness({ ordinaryPending: true, replacementSlotId: 30 });
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    expect(h.lockOrder).toEqual([
+      "customer:9",
+      "post:42",
+      "matching:77",
+      "participants:11,12",
+      "technicians:20,21",
+      "slots:30,31"
+    ]);
+    expect(h.slots.find((slot) => slot.id === 30)).toMatchObject({
+      bookedCount: 1,
+      status: "AVAILABLE"
+    });
+  });
+
+  it("locks replacement slots in ascending union order even when the old slot sorts first", async () => {
+    const h = createHarness({ ordinaryPending: true, replacementSlotId: 10 });
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    expect(h.lockOrder.at(-1)).toBe("slots:10,30,31");
+  });
+
+  it.each([
+    ["active shop suspension", { shopSuspended: true }],
+    ["pricing-mode mismatch", { pricingModeMismatch: true }],
+    ["unpublished technician", { technicianStatus: "suspended" }],
+    ["inactive shop affiliation", { affiliationActive: false }],
+    ["revoked technician-service approval", { technicianServiceReviewStatus: "REJECTED" }]
+  ])("rejects revoked live eligibility: %s", async (_label, harnessOptions) => {
+    const h = createHarness(harnessOptions);
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toEqual({ outcome: "slot_unavailable" });
+    expect(h.committedWrites).toEqual([]);
+  });
+
+  it("uses one batched Booking query and one batched active-Participant query for external overlaps", async () => {
+    const h = createHarness();
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    expect(h.queryCounts.externalBookingConflicts).toBe(1);
+    expect(h.queryCounts.externalParticipantConflicts).toBe(1);
+  });
+
+  it.each([
+    ["hard-lock Booking", { externalBookingConflict: true }, 0],
+    ["active Exchange Participant", { externalParticipantConflict: true }, 1]
+  ])(
+    "preserves %s overlap rejection with batched queries",
+    async (_label, options, participantQueries) => {
+      const h = createHarness(options);
+      const repository = new ExchangeBookingConversionRepository(h.client);
+
+      await expect(repository.convert(input())).resolves.toEqual({ outcome: "slot_unavailable" });
+      expect(h.queryCounts.externalBookingConflicts).toBe(1);
+      expect(h.queryCounts.externalParticipantConflicts).toBe(participantQueries);
+      expect(h.committedWrites).toEqual([]);
+    }
+  );
+
+  it("generates unique order numbers inside one batch without issuing a duplicate insert", async () => {
+    const suffixes = [1111, 1111, 2222];
+    const h = createHarness();
+    const RepositoryWithGenerator = ExchangeBookingConversionRepository as unknown as new (
+      client: PrismaClient,
+      suffixGenerator: () => number
+    ) => ExchangeBookingConversionRepository;
+    const repository = new RepositoryWithGenerator(h.client, () => suffixes.shift() ?? 3333);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    const orderNumbers = h.orders.map((order) => order.orderNo);
+    expect(orderNumbers.map((orderNo) => orderNo.slice(-4))).toEqual(["1111", "2222"]);
+    expect(new Set(orderNumbers).size).toBe(2);
+    expect(h.queryCounts.orderCreateAttempts).toBe(2);
+  });
+
+  it("retries only an order-number P2002 collision and then succeeds", async () => {
+    const suffixes = [1111, 2222, 3333];
+    const h = createHarness({ orderNoCollisionCount: 1 });
+    const RepositoryWithGenerator = ExchangeBookingConversionRepository as unknown as new (
+      client: PrismaClient,
+      suffixGenerator: () => number
+    ) => ExchangeBookingConversionRepository;
+    const repository = new RepositoryWithGenerator(h.client, () => suffixes.shift() ?? 4444);
+
+    await expect(repository.convert(input())).resolves.toMatchObject({ outcome: "created" });
+    expect(h.queryCounts.orderCreateAttempts).toBe(3);
+  });
+
+  it("rolls back with a stable error after bounded order-number collision exhaustion", async () => {
+    const h = createHarness({ orderNoCollisionCount: 5 });
+    const RepositoryWithGenerator = ExchangeBookingConversionRepository as unknown as new (
+      client: PrismaClient,
+      suffixGenerator: () => number
+    ) => ExchangeBookingConversionRepository;
+    const repository = new RepositoryWithGenerator(h.client, () => 1111);
+
+    await expect(repository.convert(input())).rejects.toThrow(
+      "error.booking.order_number_unavailable"
+    );
+    expect(h.queryCounts.orderCreateAttempts).toBe(5);
+    expect(h.committedWrites).toEqual([]);
+  });
+
+  it("does not retry an unrelated P2002 unique conflict", async () => {
+    const h = createHarness({ unrelatedUniqueConflict: true });
+    const repository = new ExchangeBookingConversionRepository(h.client);
+
+    await expect(repository.convert(input())).rejects.toMatchObject({
+      code: "P2002",
+      meta: { target: ["exchange_match_participants_booking_order_key"] }
+    });
+    expect(h.queryCounts.orderCreateAttempts).toBe(1);
+    expect(h.committedWrites).toEqual([]);
   });
 
   it("applies the Black-member pending overlap rule only to pre-existing orders", async () => {
