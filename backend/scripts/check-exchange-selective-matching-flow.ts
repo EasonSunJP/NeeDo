@@ -23,12 +23,28 @@ async function expectErrorMessage(
   assert(caught instanceof Error && caught.message === expected, `expected ${expected}`);
 }
 
+async function captureExpectedError(
+  operation: () => Promise<unknown>,
+  expected: string
+): Promise<Error & { data?: unknown }> {
+  let caught: unknown;
+  try {
+    await operation();
+  } catch (error) {
+    caught = error;
+  }
+  assert(caught instanceof Error && caught.message === expected, `expected ${expected}`);
+  return caught;
+}
+
 class RollbackVerifiedMatchingFlow extends Error {}
 
 async function main(): Promise<void> {
   const target = requireSafeExchangeClaimFlowEnvironment(process.env.ENV_FILE);
   process.env.ENV_FILE = target.envFile;
-  console.log(JSON.stringify({ databaseTarget: target.maskedDatabaseTarget, safety: "local-only" }));
+  console.log(
+    JSON.stringify({ databaseTarget: target.maskedDatabaseTarget, safety: "local-only" })
+  );
 
   const [prismaModule, repositoryModule, serviceModule, postRepositoryModule] = await Promise.all([
     import("../src/prisma/client"),
@@ -110,14 +126,23 @@ async function main(): Promise<void> {
             return { identity, publicId: publicIdentifier.publicId };
           };
 
-          const [ownerUser, selectedUser, losingUser, selectedTechnicianUser, losingTechnicianUser] =
-            await Promise.all([
-              createUser("owner"),
-              createUser("selected"),
-              createUser("loser"),
-              createUser("selected-tech"),
-              createUser("losing-tech")
-            ]);
+          const [
+            ownerUser,
+            selectedUser,
+            secondSelectedUser,
+            losingUser,
+            selectedTechnicianUser,
+            secondSelectedTechnicianUser,
+            losingTechnicianUser
+          ] = await Promise.all([
+            createUser("owner"),
+            createUser("selected"),
+            createUser("second-selected"),
+            createUser("loser"),
+            createUser("selected-tech"),
+            createUser("second-selected-tech"),
+            createUser("losing-tech")
+          ]);
           const shop = await transaction.shop.create({
             data: {
               ownerUserId: selectedUser.id,
@@ -128,28 +153,39 @@ async function main(): Promise<void> {
               pricingMode: "MERCHANT"
             }
           });
-          const [selectedTechnician, losingTechnician] = await Promise.all([
-            transaction.technicianProfile.create({
-              data: {
-                userId: selectedTechnicianUser.id,
-                shopId: shop.id,
-                displayName: `${marker} selected technician`,
-                city: "Tokyo",
-                status: "published"
-              },
-              select: { id: true }
-            }),
-            transaction.technicianProfile.create({
-              data: {
-                userId: losingTechnicianUser.id,
-                shopId: shop.id,
-                displayName: `${marker} losing technician`,
-                city: "Tokyo",
-                status: "published"
-              },
-              select: { id: true }
-            })
-          ]);
+          const [selectedTechnician, secondSelectedTechnician, losingTechnician] =
+            await Promise.all([
+              transaction.technicianProfile.create({
+                data: {
+                  userId: selectedTechnicianUser.id,
+                  shopId: shop.id,
+                  displayName: `${marker} selected technician`,
+                  city: "Tokyo",
+                  status: "published"
+                },
+                select: { id: true }
+              }),
+              transaction.technicianProfile.create({
+                data: {
+                  userId: secondSelectedTechnicianUser.id,
+                  shopId: shop.id,
+                  displayName: `${marker} second selected technician`,
+                  city: "Tokyo",
+                  status: "published"
+                },
+                select: { id: true }
+              }),
+              transaction.technicianProfile.create({
+                data: {
+                  userId: losingTechnicianUser.id,
+                  shopId: shop.id,
+                  displayName: `${marker} losing technician`,
+                  city: "Tokyo",
+                  status: "published"
+                },
+                select: { id: true }
+              })
+            ]);
           const owner = await createIdentity({
             userId: ownerUser.id,
             type: "merchant_owner",
@@ -168,6 +204,15 @@ async function main(): Promise<void> {
             kind: "B",
             sequence: 2
           });
+          const secondSelected = await createIdentity({
+            userId: secondSelectedUser.id,
+            type: "merchant_owner",
+            displayName: `${marker} second selected provider`,
+            scopeType: "shop",
+            scopeId: shop.id,
+            kind: "B",
+            sequence: 3
+          });
           const losing = await createIdentity({
             userId: losingUser.id,
             type: "merchant_owner",
@@ -175,7 +220,7 @@ async function main(): Promise<void> {
             scopeType: "shop",
             scopeId: shop.id,
             kind: "B",
-            sequence: 3
+            sequence: 4
           });
           await createIdentity({
             userId: selectedTechnicianUser.id,
@@ -184,7 +229,16 @@ async function main(): Promise<void> {
             scopeType: "technician_profile",
             scopeId: selectedTechnician.id,
             kind: "S",
-            sequence: 4
+            sequence: 5
+          });
+          await createIdentity({
+            userId: secondSelectedTechnicianUser.id,
+            type: "technician",
+            displayName: `${marker} second selected technician`,
+            scopeType: "technician_profile",
+            scopeId: secondSelectedTechnician.id,
+            kind: "S",
+            sequence: 6
           });
           await createIdentity({
             userId: losingTechnicianUser.id,
@@ -193,7 +247,7 @@ async function main(): Promise<void> {
             scopeType: "technician_profile",
             scopeId: losingTechnician.id,
             kind: "S",
-            sequence: 5
+            sequence: 7
           });
 
           const categoryCode = `${marker.slice(-28)}-category`;
@@ -205,7 +259,10 @@ async function main(): Promise<void> {
             SELECT LAST_INSERT_ID() AS id
           `;
           const categoryId = Number(categoryRows[0]?.id);
-          assert(Number.isSafeInteger(categoryId) && categoryId > 0, "category fixture was not created");
+          assert(
+            Number.isSafeInteger(categoryId) && categoryId > 0,
+            "category fixture was not created"
+          );
           const serviceRecord = await transaction.service.create({
             data: {
               categoryId,
@@ -217,12 +274,24 @@ async function main(): Promise<void> {
               status: "published"
             }
           });
-          const [selectedSlot, losingSlot] = await Promise.all([
+          const [selectedSlot, secondSelectedSlot, losingSlot] = await Promise.all([
             transaction.scheduleSlot.create({
               data: {
                 serviceId: serviceRecord.id,
                 shopId: shop.id,
                 technicianProfileId: selectedTechnician.id,
+                startsAt,
+                endsAt,
+                capacity: 1,
+                bookedCount: 0,
+                status: "AVAILABLE"
+              }
+            }),
+            transaction.scheduleSlot.create({
+              data: {
+                serviceId: serviceRecord.id,
+                shopId: shop.id,
+                technicianProfileId: secondSelectedTechnician.id,
                 startsAt,
                 endsAt,
                 capacity: 1,
@@ -254,8 +323,8 @@ async function main(): Promise<void> {
               publisherDisplayName: `${marker} owner`,
               type: "DEMAND",
               status: "PUBLISHED",
-              title: `${marker} exact selective Request`,
-              detail: "Rollback-contained formal exact matching verification",
+              title: `${marker} adjusted selective Request`,
+              detail: "Rollback-contained formal matching adjustment verification",
               contentLocale: "EN",
               areaLabel: "Tokyo",
               serviceStartAt: startsAt,
@@ -265,13 +334,13 @@ async function main(): Promise<void> {
               payloadFingerprint: "a".repeat(64),
               demand: {
                 create: {
-                  targetProviderCount: 1,
+                  targetProviderCount: 3,
                   targetProviderLimitSnapshot: 20,
                   publisherCapacitySource: "SHOP_MERCHANT",
                   matchMode: "SELECTIVE",
                   budgetMode: "TOTAL",
                   budgetMinJpy: 8_000,
-                  budgetMaxJpy: 12_000,
+                  budgetMaxJpy: 20_000,
                   addressLine1: "Tokyo",
                   addressLine2: "Akasaka 1-2-3",
                   addressLine3: "NeeDo Tower 8F",
@@ -283,8 +352,8 @@ async function main(): Promise<void> {
               matching: {
                 create: {
                   status: "OPEN",
-                  effectiveTargetProviderCount: 1,
-                  effectiveBudgetMaxJpy: 12_000,
+                  effectiveTargetProviderCount: 3,
+                  effectiveBudgetMaxJpy: 20_000,
                   selectedQuoteTotalJpy: 0,
                   version: 1,
                   events: {
@@ -305,6 +374,7 @@ async function main(): Promise<void> {
           });
           createdPostId = post.id;
           assert(post.matching, "matching aggregate was not created");
+          const matchingId = post.matching.id;
 
           await transaction.wallet.create({
             data: {
@@ -345,6 +415,22 @@ async function main(): Promise<void> {
               payloadFingerprint: "b".repeat(64)
             }
           });
+          const secondSelectedClaim = await transaction.exchangeClaim.create({
+            data: {
+              exchangePostId: post.id,
+              claimantUserId: secondSelectedUser.id,
+              claimantIdentityId: secondSelected.identity.id,
+              shopId: shop.id,
+              technicianProfileId: secondSelectedTechnician.id,
+              serviceId: serviceRecord.id,
+              scheduleSlotId: secondSelectedSlot.id,
+              quoteAmountJpy: 12_000,
+              message: `${marker} second selected claim`,
+              activeKey: `${post.id}:${secondSelected.identity.id}`,
+              idempotencyKey: `${marker}:claim:second-selected`,
+              payloadFingerprint: "c".repeat(64)
+            }
+          });
           const losingClaim = await transaction.exchangeClaim.create({
             data: {
               exchangePostId: post.id,
@@ -358,17 +444,17 @@ async function main(): Promise<void> {
               message: `${marker} losing claim`,
               activeKey: `${post.id}:${losing.identity.id}`,
               idempotencyKey: `${marker}:claim:losing`,
-              payloadFingerprint: "c".repeat(64)
+              payloadFingerprint: "d".repeat(64)
             }
           });
           await transaction.exchangeRequestMatching.update({
-            where: { id: post.matching.id },
-            data: { version: 3 }
+            where: { id: matchingId },
+            data: { version: 4 }
           });
           await transaction.exchangeMatchEvent.createMany({
             data: [
               {
-                matchingId: post.matching.id,
+                matchingId,
                 sequence: 2,
                 type: "CLAIM_ADDED",
                 actorUserId: selectedUser.id,
@@ -378,18 +464,75 @@ async function main(): Promise<void> {
                 payload: { exchangePostId: post.id, exchangeClaimId: selectedClaim.id }
               },
               {
-                matchingId: post.matching.id,
+                matchingId,
                 sequence: 3,
+                type: "CLAIM_ADDED",
+                actorUserId: secondSelectedUser.id,
+                actorIdentityId: secondSelected.identity.id,
+                versionBefore: 2,
+                versionAfter: 3,
+                payload: { exchangePostId: post.id, exchangeClaimId: secondSelectedClaim.id }
+              },
+              {
+                matchingId,
+                sequence: 4,
                 type: "CLAIM_ADDED",
                 actorUserId: losingUser.id,
                 actorIdentityId: losing.identity.id,
-                versionBefore: 2,
-                versionAfter: 3,
+                versionBefore: 3,
+                versionAfter: 4,
                 payload: { exchangePostId: post.id, exchangeClaimId: losingClaim.id }
               }
             ]
           });
 
+          const notificationIdentityIds = [
+            selected.identity.id,
+            secondSelected.identity.id,
+            losing.identity.id
+          ];
+          const captureMatchingState = async () => ({
+            post: await transaction.exchangePost.findUnique({
+              where: { id: post.id },
+              select: { status: true }
+            }),
+            matching: await transaction.exchangeRequestMatching.findUnique({
+              where: { id: matchingId },
+              select: {
+                status: true,
+                effectiveTargetProviderCount: true,
+                effectiveBudgetMaxJpy: true,
+                selectedQuoteTotalJpy: true,
+                version: true,
+                matchedAt: true
+              }
+            }),
+            claims: await transaction.exchangeClaim.findMany({
+              where: { exchangePostId: post.id },
+              orderBy: { id: "asc" },
+              select: { id: true, status: true, activeKey: true, terminalAt: true }
+            }),
+            participants: await transaction.exchangeMatchParticipant.count({
+              where: { exchangePostId: post.id, deletedAt: null }
+            }),
+            events: await transaction.exchangeMatchEvent.count({
+              where: { matchingId, deletedAt: null }
+            }),
+            notifications: await transaction.notification.count({
+              where: {
+                recipientIdentityId: { in: notificationIdentityIds },
+                createdAt: { gte: now }
+              }
+            }),
+            audits: await transaction.auditLog.count({
+              where: {
+                action: "exchange.matching.select",
+                targetType: "exchange_request_matching",
+                targetId: matchingId,
+                userAgent: marker
+              }
+            })
+          });
           const captureFinancialState = async () => ({
             wallet: await transaction.wallet.findUnique({
               where: {
@@ -411,12 +554,14 @@ async function main(): Promise<void> {
               }
             }),
             slots: await transaction.scheduleSlot.findMany({
-              where: { id: { in: [selectedSlot.id, losingSlot.id] } },
+              where: { id: { in: [selectedSlot.id, secondSelectedSlot.id, losingSlot.id] } },
               orderBy: { id: "asc" },
               select: { id: true, bookedCount: true, status: true }
             }),
             bookings: await transaction.bookingOrder.count({
-              where: { scheduleSlotId: { in: [selectedSlot.id, losingSlot.id] } }
+              where: {
+                scheduleSlotId: { in: [selectedSlot.id, secondSelectedSlot.id, losingSlot.id] }
+              }
             }),
             ledgerTransactions: await transaction.ledgerTransaction.count({
               where: { referenceType: "exchange_request_publication", referenceId: post.id }
@@ -446,25 +591,81 @@ async function main(): Promise<void> {
           const matchingService = new ExchangeMatchingService(repository, () => now);
           const idempotencyKey = `${marker}:select`;
           const context = { ip: "127.0.0.1", userAgent: marker };
+          const selectedClaimIds = [selectedClaim.id, secondSelectedClaim.id];
+          const matchingBeforePreview = await captureMatchingState();
+          const previewError = await captureExpectedError(
+            () =>
+              matchingService.selectMatching(
+                ownerAccess,
+                post.id,
+                {
+                  selectedClaimIds,
+                  expectedVersion: 4,
+                  budgetConfirmation: null,
+                  targetConfirmation: null
+                },
+                `${marker}:preview`,
+                context
+              ),
+            "error.exchange.match_target_confirmation_required"
+          );
+          const preview = previewError.data as Record<string, unknown> | undefined;
+          assert(
+            preview?.currentVersion === 4 &&
+              preview.selectedCount === 2 &&
+              preview.selectedQuoteTotalJpy === 23_000 &&
+              preview.effectiveTargetProviderCount === 3 &&
+              preview.effectiveBudgetMaxJpy === 20_000 &&
+              preview.requiredTargetProviderCount === 2 &&
+              preview.requiredBudgetMaxJpy === 23_000 &&
+              preview.requiredBudgetIncreaseJpy === 3_000 &&
+              preview.requiresTargetConfirmation === true &&
+              preview.requiresBudgetConfirmation === true,
+            "matching adjustment preview is not exact"
+          );
+          const matchingAfterPreview = await captureMatchingState();
+          const adjustmentPreviewWriteFree = sameValue(matchingBeforePreview, matchingAfterPreview);
+          assert(adjustmentPreviewWriteFree, "adjustment preview changed matching state");
+
+          const confirmedSelection = {
+            selectedClaimIds,
+            expectedVersion: 4,
+            budgetConfirmation: {
+              action: "increase_to_selected_total" as const,
+              confirmedBudgetMaxJpy: 23_000
+            },
+            targetConfirmation: {
+              action: "reduce_to_selected_count" as const,
+              confirmedTargetProviderCount: 2
+            }
+          };
           const selectedResult = await matchingService.selectMatching(
             ownerAccess,
             post.id,
-            { selectedClaimIds: [selectedClaim.id], expectedVersion: 3 },
+            confirmedSelection,
             idempotencyKey,
             context
           );
           assert(
             selectedResult.status === "matched" &&
-              selectedResult.version === 4 &&
-              selectedResult.selectedQuoteTotalJpy === 11_000 &&
-              selectedResult.participants[0]?.exchangeClaimId === selectedClaim.id,
-            "exact match result was not persisted"
+              selectedResult.version === 7 &&
+              selectedResult.effectiveTargetProviderCount === 2 &&
+              selectedResult.effectiveBudgetMaxJpy === 23_000 &&
+              selectedResult.selectedQuoteTotalJpy === 23_000 &&
+              selectedResult.participants.length === 2 &&
+              selectedResult.participants.some(
+                (participant) => participant.exchangeClaimId === selectedClaim.id
+              ) &&
+              selectedResult.participants.some(
+                (participant) => participant.exchangeClaimId === secondSelectedClaim.id
+              ),
+            "adjusted match result was not persisted"
           );
 
           const replay = await matchingService.selectMatching(
             ownerAccess,
             post.id,
-            { selectedClaimIds: [selectedClaim.id], expectedVersion: 3 },
+            confirmedSelection,
             idempotencyKey,
             context
           );
@@ -475,7 +676,7 @@ async function main(): Promise<void> {
               matchingService.selectMatching(
                 ownerAccess,
                 post.id,
-                { selectedClaimIds: [losingClaim.id], expectedVersion: 3 },
+                { ...confirmedSelection, selectedClaimIds: [selectedClaim.id, losingClaim.id] },
                 idempotencyKey,
                 context
               ),
@@ -483,60 +684,105 @@ async function main(): Promise<void> {
           );
           const idempotencyConflictRejected = true;
 
-          const [persistedPost, persistedMatching, persistedClaims, participants, events, notifications, audits] =
-            await Promise.all([
-              transaction.exchangePost.findUniqueOrThrow({ where: { id: post.id } }),
-              transaction.exchangeRequestMatching.findUniqueOrThrow({ where: { exchangePostId: post.id } }),
-              transaction.exchangeClaim.findMany({
-                where: { exchangePostId: post.id },
-                orderBy: { id: "asc" }
-              }),
-              transaction.exchangeMatchParticipant.findMany({
-                where: { exchangePostId: post.id, deletedAt: null }
-              }),
-              transaction.exchangeMatchEvent.findMany({
-                where: { matchingId: post.matching.id, type: "SELECTIVE_MATCHED", deletedAt: null }
-              }),
-              transaction.notification.findMany({
-                where: {
-                  recipientIdentityId: { in: [selected.identity.id, losing.identity.id] },
-                  createdAt: { gte: now }
-                },
-                orderBy: { recipientIdentityId: "asc" }
-              }),
-              transaction.auditLog.findMany({
-                where: {
-                  action: "exchange.matching.select",
-                  targetType: "exchange_request_matching",
-                  targetId: post.matching.id,
-                  userAgent: marker
-                }
-              })
-            ]);
+          const [
+            persistedPost,
+            persistedMatching,
+            persistedClaims,
+            participants,
+            events,
+            notifications,
+            audits
+          ] = await Promise.all([
+            transaction.exchangePost.findUniqueOrThrow({ where: { id: post.id } }),
+            transaction.exchangeRequestMatching.findUniqueOrThrow({
+              where: { exchangePostId: post.id }
+            }),
+            transaction.exchangeClaim.findMany({
+              where: { exchangePostId: post.id },
+              orderBy: { id: "asc" }
+            }),
+            transaction.exchangeMatchParticipant.findMany({
+              where: { exchangePostId: post.id, deletedAt: null }
+            }),
+            transaction.exchangeMatchEvent.findMany({
+              where: {
+                matchingId,
+                type: { in: ["BUDGET_INCREASED", "TARGET_REDUCED", "SELECTIVE_MATCHED"] },
+                deletedAt: null
+              },
+              orderBy: { sequence: "asc" }
+            }),
+            transaction.notification.findMany({
+              where: {
+                recipientIdentityId: { in: notificationIdentityIds },
+                createdAt: { gte: now }
+              },
+              orderBy: { recipientIdentityId: "asc" }
+            }),
+            transaction.auditLog.findMany({
+              where: {
+                action: "exchange.matching.select",
+                targetType: "exchange_request_matching",
+                targetId: matchingId,
+                userAgent: marker
+              }
+            })
+          ]);
           assert(persistedPost.status === "MATCHED", "Request did not reach MATCHED");
           assert(
             persistedMatching.status === "MATCHED" &&
-              persistedMatching.version === 4 &&
-              persistedMatching.selectedQuoteTotalJpy === 11_000,
+              persistedMatching.version === 7 &&
+              persistedMatching.effectiveTargetProviderCount === 2 &&
+              persistedMatching.effectiveBudgetMaxJpy === 23_000 &&
+              persistedMatching.selectedQuoteTotalJpy === 23_000,
             "matching aggregate terminal state is incorrect"
           );
           const selectedPersisted = persistedClaims.find((claim) => claim.id === selectedClaim.id);
+          const secondSelectedPersisted = persistedClaims.find(
+            (claim) => claim.id === secondSelectedClaim.id
+          );
           const losingPersisted = persistedClaims.find((claim) => claim.id === losingClaim.id);
           assert(
             selectedPersisted?.status === "MATCHED" && selectedPersisted.activeKey === null,
             "selected claim terminal state is incorrect"
           );
           assert(
+            secondSelectedPersisted?.status === "MATCHED" &&
+              secondSelectedPersisted.activeKey === null,
+            "second selected claim terminal state is incorrect"
+          );
+          assert(
             losingPersisted?.status === "NOT_SELECTED" && losingPersisted.activeKey === null,
             "losing claim terminal state is incorrect"
           );
-          assert(participants.length === 1, "participant reservation cardinality is incorrect");
-          assert(events.length === 1, "idempotent replay duplicated SELECTIVE_MATCHED");
+          assert(participants.length === 2, "participant reservation cardinality is incorrect");
+          const budgetIncreasedEvent = events[0]?.type === "BUDGET_INCREASED";
+          const targetReducedEvent = events[1]?.type === "TARGET_REDUCED";
+          const adjustmentChainVersionLinked =
+            events.length === 3 &&
+            events[0]?.sequence === 5 &&
+            events[0].versionBefore === 4 &&
+            events[0].versionAfter === 5 &&
+            events[0].idempotencyKey === null &&
+            events[1]?.sequence === 6 &&
+            events[1].versionBefore === 5 &&
+            events[1].versionAfter === 6 &&
+            events[1].idempotencyKey === null &&
+            events[2]?.type === "SELECTIVE_MATCHED" &&
+            events[2].sequence === 7 &&
+            events[2].versionBefore === 6 &&
+            events[2].versionAfter === 7 &&
+            events[2].idempotencyKey === idempotencyKey;
+          assert(budgetIncreasedEvent, "BUDGET_INCREASED event was not persisted first");
+          assert(targetReducedEvent, "TARGET_REDUCED event was not persisted second");
+          assert(adjustmentChainVersionLinked, "adjustment event versions are not linked");
           assert(audits.length === 1, "idempotent replay duplicated matching audit");
           assert(
-            notifications.length === 2 &&
-              notifications.some((item) => item.title === "exchange.matching.selected.title") &&
-              notifications.some((item) => item.title === "exchange.matching.not_selected.title"),
+            notifications.length === 3 &&
+              notifications.filter((item) => item.title === "exchange.matching.selected.title")
+                .length === 2 &&
+              notifications.filter((item) => item.title === "exchange.matching.not_selected.title")
+                .length === 1,
             "selected and not-selected notifications were not persisted exactly once"
           );
 
@@ -595,6 +841,10 @@ async function main(): Promise<void> {
             selectedCount: participants.length,
             selectedQuoteTotalJpy: persistedMatching.selectedQuoteTotalJpy,
             selectedAndLoserNotifications: notifications.length,
+            adjustmentPreviewWriteFree,
+            budgetIncreasedEvent,
+            targetReducedEvent,
+            adjustmentChainVersionLinked,
             matchedParticipantPrivacy: true,
             losingProviderPrivacy: true,
             idempotentReplay,
@@ -610,14 +860,15 @@ async function main(): Promise<void> {
       if (!(error instanceof RollbackVerifiedMatchingFlow)) throw error;
     }
 
-    assert(report, "matching checker did not produce a report");
+    const finalReport = report as Record<string, unknown> | null;
+    assert(finalReport, "matching checker did not produce a report");
     const cleanupVerified =
       (await prisma.user.count({ where: { email: { startsWith: marker } } })) === 0 &&
       (createdPostId === null ||
         (await prisma.exchangePost.count({ where: { id: createdPostId } })) === 0) &&
       (await prisma.auditLog.count({ where: { userAgent: marker } })) === 0;
     assert(cleanupVerified, "rollback left marker-owned matching rows");
-    console.log(JSON.stringify({ ...report, cleanupVerified }, null, 2));
+    console.log(JSON.stringify({ ...finalReport, cleanupVerified }, null, 2));
   } finally {
     await disconnectPrisma();
   }

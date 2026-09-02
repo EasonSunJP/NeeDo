@@ -145,8 +145,9 @@ describe("ExchangeMatchingService", () => {
     expect(repository.findForViewer).toHaveBeenCalledWith(41, 17);
 
     const hidden = createRepository({ findForViewer: jest.fn(async () => null) });
-    await expect(new ExchangeMatchingService(hidden, () => now).getMatching(access, 41))
-      .rejects.toMatchObject({ code: 40423 });
+    await expect(
+      new ExchangeMatchingService(hidden, () => now).getMatching(access, 41)
+    ).rejects.toMatchObject({ code: 40423 });
   });
 
   it("matches the exact selected count and budget in one repository transaction", async () => {
@@ -154,13 +155,10 @@ describe("ExchangeMatchingService", () => {
     const service = new ExchangeMatchingService(repository, () => now);
 
     await expect(
-      service.selectMatching(
-        access,
-        41,
-        selection([302, 301]),
-        "matching-select-key-0001",
-        { ip: "127.0.0.1", userAgent: "jest" }
-      )
+      service.selectMatching(access, 41, selection([302, 301]), "matching-select-key-0001", {
+        ip: "127.0.0.1",
+        userAgent: "jest"
+      })
     ).resolves.toEqual(matchedPayload);
 
     expect(repository.lockMatching).toHaveBeenCalledWith(41);
@@ -188,13 +186,10 @@ describe("ExchangeMatchingService", () => {
     const service = new ExchangeMatchingService(repository, () => now);
 
     await expect(
-      service.selectMatching(
-        access,
-        41,
-        selection([301]),
-        "matching-target-preview-0001",
-        { ip: "127.0.0.1", userAgent: "jest" }
-      )
+      service.selectMatching(access, 41, selection([301]), "matching-target-preview-0001", {
+        ip: "127.0.0.1",
+        userAgent: "jest"
+      })
     ).rejects.toMatchObject({
       code: 40999,
       message: "error.exchange.match_target_confirmation_required",
@@ -244,13 +239,10 @@ describe("ExchangeMatchingService", () => {
     const service = new ExchangeMatchingService(repository, () => now);
 
     await expect(
-      service.selectMatching(
-        access,
-        41,
-        selection([301, 302]),
-        "matching-budget-preview-0001",
-        { ip: "127.0.0.1", userAgent: "jest" }
-      )
+      service.selectMatching(access, 41, selection([301, 302]), "matching-budget-preview-0001", {
+        ip: "127.0.0.1",
+        userAgent: "jest"
+      })
     ).rejects.toMatchObject({
       code: 41001,
       message: "error.exchange.match_budget_confirmation_required",
@@ -304,13 +296,10 @@ describe("ExchangeMatchingService", () => {
       }
     });
 
-    await service.selectMatching(
-      access,
-      41,
-      command,
-      "matching-combined-confirm-0001",
-      { ip: "127.0.0.1", userAgent: "jest" }
-    );
+    await service.selectMatching(access, 41, command, "matching-combined-confirm-0001", {
+      ip: "127.0.0.1",
+      userAgent: "jest"
+    });
     expect(repository.completeSelection).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 1,
@@ -388,19 +377,15 @@ describe("ExchangeMatchingService", () => {
     });
     const service = new ExchangeMatchingService(repository, () => now);
     await expect(
-      service.selectMatching(
-        access,
-        41,
-        selection([301, 302]),
-        "matching-select-key-0001",
-        { ip: "127.0.0.1", userAgent: "jest" }
-      )
+      service.selectMatching(access, 41, selection([301, 302]), "matching-select-key-0001", {
+        ip: "127.0.0.1",
+        userAgent: "jest"
+      })
     ).rejects.toMatchObject({ code });
     expect(repository.completeSelection).not.toHaveBeenCalled();
   });
 
   it("rejects an inactive claim set and duplicate technician", async () => {
-    const service = new ExchangeMatchingService(createRepository(), () => now);
     const missing = createRepository({ lockActiveClaims: jest.fn(async () => [claims[0]!]) });
     await expect(
       new ExchangeMatchingService(missing, () => now).selectMatching(
@@ -413,7 +398,10 @@ describe("ExchangeMatchingService", () => {
     ).rejects.toMatchObject({ code: 40994 });
 
     const duplicateTechnician = createRepository({
-      lockActiveClaims: jest.fn(async () => [claims[0]!, { ...claims[1]!, technicianProfileId: 81 }])
+      lockActiveClaims: jest.fn(async () => [
+        claims[0]!,
+        { ...claims[1]!, technicianProfileId: 81 }
+      ])
     });
     await expect(
       new ExchangeMatchingService(duplicateTechnician, () => now).selectMatching(
@@ -424,7 +412,6 @@ describe("ExchangeMatchingService", () => {
         { ip: "127.0.0.1", userAgent: "jest" }
       )
     ).rejects.toMatchObject({ code: 40994 });
-
   });
 
   it("rejects participant and booking overlaps before completing", async () => {
@@ -446,13 +433,10 @@ describe("ExchangeMatchingService", () => {
   it("replays the same idempotency fingerprint and rejects changed commands", async () => {
     const initial = createRepository();
     const service = new ExchangeMatchingService(initial, () => now);
-    await service.selectMatching(
-      access,
-      41,
-      selection([301, 302]),
-      "matching-select-key-0001",
-      { ip: "127.0.0.1", userAgent: "jest" }
-    );
+    await service.selectMatching(access, 41, selection([301, 302]), "matching-select-key-0001", {
+      ip: "127.0.0.1",
+      userAgent: "jest"
+    });
     const input = (initial.completeSelection as jest.Mock).mock.calls[0]?.[0] as {
       payloadFingerprint: string;
     };

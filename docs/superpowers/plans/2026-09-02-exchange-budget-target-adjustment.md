@@ -437,7 +437,7 @@ git commit -m "feat(exchange): confirm budget and target adjustments"
 
 **Files:**
 - Modify: `backend/scripts/check-exchange-selective-matching-flow.ts`
-- Modify: `backend/tests/exchange-selective-matching-flow-script.test.ts`
+- Modify: `backend/tests/exchange-matching-flow-script.test.ts`
 - Modify: `README.md`
 - Modify: `docs/ledger.md`
 - Create: `docs/verification/2026-09-02-exchange-budget-target-adjustment.md`
@@ -448,33 +448,33 @@ git commit -m "feat(exchange): confirm budget and target adjustments"
 
 - [ ] **Step 1: Write the failing checker-contract test**
 
-Require the checker to exercise target-only, budget-only, and combined confirmation, and report:
+Require the checker to exercise a combined confirmation in real MySQL while the focused service, repository, route, and UI suites exercise target-only and budget-only paths independently. Require the checker to report:
 
 ```ts
-expect(source).toContain("targetPreviewZeroWrite");
-expect(source).toContain("budgetPreviewZeroWrite");
-expect(source).toContain("combinedAdjustmentMatched");
-expect(source).toContain("adjustmentEventVersionChain");
+expect(source).toContain("adjustmentPreviewWriteFree");
+expect(source).toContain("BUDGET_INCREASED");
+expect(source).toContain("TARGET_REDUCED");
+expect(source).toContain("adjustmentChainVersionLinked");
 expect(source).toContain("walletAndHoldUnchanged");
 expect(source).toContain("bookingAndFinancialCountsUnchanged");
 ```
 
 - [ ] **Step 2: Run RED**
 
-Run: `npm --prefix backend test -- --runInBand tests/exchange-selective-matching-flow-script.test.ts`
+Run: `npm --prefix backend test -- --runInBand tests/exchange-matching-flow-script.test.ts`
 
 Expected: FAIL because the checker only covers exact matching.
 
 - [ ] **Step 3: Extend the rollback-contained checker and docs**
 
-Inside the existing outer rollback transaction, create three independent marker Requests or reset-isolated aggregates. Prove missing and inexact confirmations create no matching/event/participant/claim/audit/notification changes; prove target-only, budget-only, and combined exact confirmations; prove version/event chains and final payload values; retain existing idempotency, privacy, time-lock, wallet/hold/ledger/reconciliation/Booking/bookedCount invariants. Update README and ledger docs to mark only budget increase/target reduction complete while keeping quick/close/cancellation/Booking/payment deferred.
+Inside the existing outer rollback transaction, use one marker Request with three claims to prove a combined missing confirmation creates no matching/event/participant/claim/audit/notification changes. Confirm the exact server values, prove the ordered budget/target/match version chain and final payload, and retain existing idempotency, privacy, time-lock, wallet/hold/ledger/reconciliation/Booking/bookedCount invariants. The target-only and budget-only branches are independently asserted by automated suites. Update README and ledger docs to mark only budget increase/target reduction complete while keeping quick/close/cancellation/Booking/payment deferred.
 
 - [ ] **Step 4: Run GREEN and the real checker**
 
 Run:
 
 ```bash
-npm --prefix backend test -- --runInBand tests/exchange-selective-matching-flow-script.test.ts
+npm --prefix backend test -- --runInBand tests/exchange-matching-flow-script.test.ts
 ENV_FILE=.env.dev npm --prefix backend run check:exchange-selective-matching-flow
 ```
 
@@ -483,7 +483,7 @@ Expected: contract test PASS; checker reports all adjustment and conservation bo
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/scripts/check-exchange-selective-matching-flow.ts backend/tests/exchange-selective-matching-flow-script.test.ts README.md docs/ledger.md docs/verification/2026-09-02-exchange-budget-target-adjustment.md
+git add backend/scripts/check-exchange-selective-matching-flow.ts backend/tests/exchange-matching-flow-script.test.ts README.md docs/ledger.md docs/verification/2026-09-02-exchange-budget-target-adjustment.md
 git commit -m "test(exchange): verify matching adjustments"
 ```
 
@@ -502,7 +502,7 @@ git commit -m "test(exchange): verify matching adjustments"
 npm --prefix backend run prisma:generate
 npm --prefix backend run lint
 npm --prefix backend run build
-npm --prefix backend test -- --runInBand tests/exchange-matching.validators.test.ts tests/exchange-matching.repository.test.ts tests/exchange-matching.service.test.ts tests/exchange-matching.routes.test.ts tests/exchange-matching.repository.integration.test.ts tests/exchange-claim.repository.test.ts tests/exchange-claim.service.test.ts tests/exchange.repository.test.ts tests/exchange.service.test.ts tests/exchange-selective-matching-flow-script.test.ts tests/openapi.test.ts
+npm --prefix backend test -- --runInBand tests/exchange-matching.validators.test.ts tests/exchange-matching.repository.test.ts tests/exchange-matching.service.test.ts tests/exchange-matching.routes.test.ts tests/exchange-claim.repository.test.ts tests/exchange-claim.service.test.ts tests/exchange.repository.test.ts tests/exchange.service.test.ts tests/exchange-matching-flow-script.test.ts tests/openapi.test.ts
 ENV_FILE=.env.dev npm --prefix backend run check:exchange-selective-matching-flow
 npm test -- src/api/httpClient.test.ts src/features/exchange src/pages/mobile/NeedoExchangePage.test.tsx src/pages/mobile/NeedoRoutePages.test.tsx
 npm run lint

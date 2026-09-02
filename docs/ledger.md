@@ -80,15 +80,18 @@ Manual service payments remain JPY records, not NDP wallet mutations. Confirming
 
 These mutations run inside the same Prisma transaction as the booking state transition. If ledger settlement fails, the order transition rolls back.
 
-## Exchange Selective Exact Matching Boundary
+## Exchange Selective Matching Boundary
 
-Exchange Request publication and Booking Request dispatch are separate financial lifecycles. Selective exact matching only decides which active Exchange claims become participants; it never calls the Booking settlement path above.
+Exchange Request publication and Booking Request dispatch are separate financial lifecycles. Selective matching, including an explicitly confirmed target reduction or total-budget increase, only decides which active Exchange claims become participants; it never calls the Booking settlement path above.
 
-- A successful exact match leaves the existing Exchange publication-fee `WalletHold` active and its `ExchangeRequestFinancial` projection in `HELD`.
+- The first adjustment attempt returns an exact server preview with no matching, participant, claim, event, audit, notification, wallet, or Booking write.
+- A successful exact or adjusted match leaves the existing Exchange publication-fee `WalletHold` active and its `ExchangeRequestFinancial` projection in `HELD`.
 - Available and frozen wallet balances, ledger transaction/entry counts, reconciliation rows, hold captured/released counters, and publication-fee currency are unchanged by matching.
 - Matching creates no `Booking`, `OrderFinancial`, `ExchangeRequestFinancial`, `LedgerTransaction`, or `FinanceReconciliation` row.
 - `ScheduleSlot.bookedCount` is unchanged. The matched technician-time lock is the active `ExchangeMatchParticipant.activeReservationKey`, which existing claim-option, claim-create, and Booking conflict checks must honor.
-- Capture or release of the publication fee remains owned by a later, explicit Exchange terminal lifecycle. Exact matching itself cannot charge, refund, settle, export, or cross currencies.
+- Budget increase changes only `ExchangeRequestMatching.effectiveBudgetMaxJpy`; it is a JPY matching ceiling and never a wallet top-up, hold increase, charge, or ledger entry.
+- Target reduction changes only `ExchangeRequestMatching.effectiveTargetProviderCount`; it never releases or captures the publication fee.
+- Capture or release of the publication fee remains owned by a later, explicit Exchange terminal lifecycle. Matching itself cannot charge, refund, settle, export, or cross currencies.
 
 The guarded local checker for this boundary is:
 
@@ -97,7 +100,7 @@ cd backend
 ENV_FILE=.env.dev npm run check:exchange-selective-matching-flow
 ```
 
-It executes the real matching service inside a rollback-only marker fixture and compares wallet, hold, Booking, ledger, reconciliation, Request-financial, and schedule-capacity snapshots before and after the selection command.
+It executes the real matching service inside a rollback-only marker fixture, proves the adjustment preview is write-free, verifies the ordered `BUDGET_INCREASED → TARGET_REDUCED → SELECTIVE_MATCHED` version chain, and compares wallet, hold, Booking, ledger, reconciliation, Request-financial, and schedule-capacity snapshots before and after the confirmed command.
 
 The default seed keeps the historical behavior through rules rather than business constants:
 
