@@ -14,6 +14,38 @@ import technicianPublicInfoCardSource from "./TechnicianPublicInfoCard.tsx?raw";
 import technicianShowcaseCardSource from "./TechnicianShowcaseCard.tsx?raw";
 
 describe("SocialProfileMiniCard cover readability", () => {
+  it("renders a neutral initial surface when formal data has no public image", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        ClientThemeProvider,
+        null,
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(SocialProfileMiniCard, {
+            data: {
+              id: "formal-shop-no-photo",
+              entityType: "shop",
+              displayName: "LifeDance Ginza",
+              avatar: "",
+              coverImage: "",
+              regionLabel: "Tokyo",
+              primaryLabel: "店铺",
+              levelLabel: "",
+              scoreLabel: "服务评价",
+              scoreValue: "4.9/5",
+              followerCount: 0,
+              followingCount: 0
+            }
+          })
+        )
+      )
+    );
+
+    expect(markup).toContain('aria-label="LifeDance Ginza 暂无公开照片"');
+    expect(markup).not.toContain('src=""');
+  });
+
   it("changes cover text colors without adding a title capsule container", () => {
     expect(cardSource).toContain("coverDark ? \"text-white");
     expect(cardSource).toContain("text-[#25282d]");

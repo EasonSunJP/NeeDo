@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import categoryPageSource from "./CategoryPage.tsx?raw";
-import formalSearchResultCardsSource from "../../features/core-read/FormalSearchResultCards.tsx?raw";
+import homePageSource from "./HomePage.tsx?raw";
 
 describe("CategoryPage service preview card", () => {
   it("keeps the short availability badge on one line", () => {
@@ -9,18 +9,13 @@ describe("CategoryPage service preview card", () => {
 });
 
 describe("CategoryPage formal entity cards", () => {
-  it("routes card labels through i18n and keeps the tax-inclusive service line", () => {
-    expect(formalSearchResultCardsSource).toContain('translateText("推荐服务", language)');
-    expect(formalSearchResultCardsSource).toContain('translateText("接单率", language)');
-    expect(formalSearchResultCardsSource).toContain('translateText("含税", language)');
-    expect(formalSearchResultCardsSource).toContain("{primaryService.durationMinutes}{minuteLabel}({taxLabel})");
-  });
-
-  it("uses the approved portrait technician and horizontal shop structures", () => {
-    expect(formalSearchResultCardsSource).toContain('aspect-[0.78]');
-    expect(formalSearchResultCardsSource).toContain('grid-cols-[42%_1fr]');
-    expect(formalSearchResultCardsSource).toContain('data-search-entity="technician"');
-    expect(formalSearchResultCardsSource).toContain('data-search-entity="shop"');
+  it("reuses the homepage shop and technician card components", () => {
+    expect(homePageSource).toContain("SocialProfileMiniCard");
+    expect(homePageSource).toContain("TechnicianShowcaseCard");
+    expect(categoryPageSource).toContain("SocialProfileMiniCard");
+    expect(categoryPageSource).toContain("TechnicianShowcaseCard");
+    expect(categoryPageSource).not.toContain("FormalShopSearchCard");
+    expect(categoryPageSource).not.toContain("FormalTechnicianSearchCard");
   });
 
   it("keeps the expanded entity filter to store, technician, and service only", () => {
@@ -46,18 +41,21 @@ describe("CategoryPage formal entity cards", () => {
   it("shows up to 20 technician cards and routes cards to the formal profile", () => {
     expect(categoryPageSource).toContain('pageSize: 40');
     expect(categoryPageSource).toContain('entityFilter === "technician" ? 20');
-    expect(formalSearchResultCardsSource).toContain('`/profiles/technician/${profile.id}`');
+    expect(categoryPageSource).toContain('const detailPath = `/profiles/technician/${item.profile.id}`');
   });
 
-  it("keeps direct shop and technician cards capability-neutral", () => {
+  it("adapts formal search DTOs into the shared cards without legacy mock collections", () => {
     expect(categoryPageSource).toContain("serviceSearchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
     expect(categoryPageSource).toContain("shopSearchQuery.data?.list ?? []");
     expect(categoryPageSource).toContain("technicianSearchQuery.data?.list ?? []");
     expect(categoryPageSource).not.toContain("mapCoreShopToStore");
     expect(categoryPageSource).not.toContain("mapCoreTechnicianToTechnician");
-    expect(categoryPageSource).not.toContain("TechnicianShowcaseCard");
-    expect(categoryPageSource).toContain("FormalShopSearchCard");
-    expect(categoryPageSource).toContain("FormalTechnicianSearchCard");
+    expect(categoryPageSource).toContain("formalData={{");
+    expect(categoryPageSource).toContain("EntitySearchCardActions");
+    expect(categoryPageSource).toContain("getFavoriteStatuses(");
+    expect(categoryPageSource).toContain("createSystemShareAttempt");
+    expect(categoryPageSource).toContain("formalActionSlot=");
+    expect(categoryPageSource).toContain("actionSlot=");
     expect(categoryPageSource).not.toContain("DirectSearchProfileCard");
     expect(categoryPageSource).not.toContain("legacyServices");
     expect(categoryPageSource).not.toContain("legacyStores");

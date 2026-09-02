@@ -366,6 +366,7 @@ export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServi
 export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
   const detail = "services" in shop ? shop : undefined;
   const gallery = mediaGallery(detail?.mediaAssets, shop.coverUrl ?? fallbackStoreImage);
+  const businessKeywords = Array.isArray(shop.businessKeywords) ? shop.businessKeywords : [];
 
   return {
     id: String(shop.id),
@@ -377,7 +378,7 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     rating: parseRating(shop.reviewSummary),
     reviewCount: shop.reviewSummary.reviewCount,
     priceLabel: priceRangeFromServices(detail?.services),
-    tags: uniqueStrings(shop.businessKeywords.map((keyword) => keyword.label)).slice(0, 5),
+    tags: uniqueStrings(businessKeywords.map((keyword) => keyword.label)).slice(0, 5),
     openStatus: "open",
     nextSlot: "可预约",
     alwaysBookable: true,

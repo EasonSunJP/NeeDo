@@ -1,7 +1,12 @@
-import { createElement, type ReactNode } from "react";
+/** @vitest-environment jsdom */
+
+import { act, createElement, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { entityEngagementApi } from "../../features/entity-engagement/api";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { CategoryPage } from "./CategoryPage";
 
 type QueryKey = "categories" | "service" | "shop" | "technician";
@@ -43,6 +48,8 @@ const locationHarness = vi.hoisted((): LocationHarness => ({
   },
   state: { promptStatus: "unrequested", source: "default" }
 }));
+
+const authHarness = vi.hoisted(() => ({ isAuthenticated: false }));
 
 const category = {
   id: 3,
@@ -142,17 +149,26 @@ function resetQueryStates(overrides: Partial<Record<QueryKey, QueryState>> = {})
     ]
   };
   locationHarness.state = { promptStatus: "unrequested", source: "default" };
+  authHarness.isAuthenticated = false;
 }
 
 function renderCategoryPage(path: string) {
   return renderToString(
-    createElement(MemoryRouter, { initialEntries: [path] }, createElement(CategoryPage))
+    createElement(
+      ClientThemeProvider,
+      null,
+      createElement(MemoryRouter, { initialEntries: [path] }, createElement(CategoryPage))
+    )
   );
 }
 
 vi.mock("../../components/client-ui/FeatureCarousel", () => ({
   featureCarouselFrameClassName: "",
   FeatureCarousel: ({ slides }: { slides: unknown[] }) => createElement("div", { "data-slide-count": slides.length })
+}));
+
+vi.mock("../../auth/AuthProvider", () => ({
+  useOptionalAuth: () => authHarness
 }));
 
 vi.mock("../../components/mobile/FloatingHomeHeader", () => ({
@@ -232,9 +248,40 @@ describe("CategoryPage formal category state", () => {
     expect(html).toContain("橘 ひかり");
     expect(html).toContain("肩颈调理");
     expect(html).toMatch(/接单率[\s\S]*98[\s\S]*%/);
-    expect(html).toContain("收藏 154");
+    expect(html).toContain('aria-label="收藏 技师 橘 ひかり"');
+    expect(html).toContain(">154</span>");
     expect(html).toContain("包间");
     expect(html).not.toContain(">放松<");
+  });
+
+  it("keeps older search responses usable without inventing missing card metrics", () => {
+    const {
+      businessKeywords: _businessKeywords,
+      favoriteCount: _shopFavoriteCount,
+      shareCount: _shopShareCount,
+      ...olderShop
+    } = shop;
+    const {
+      acceptanceRatePercent: _acceptanceRatePercent,
+      age: _age,
+      favoriteCount: _technicianFavoriteCount,
+      primaryService: _primaryService,
+      shareCount: _technicianShareCount,
+      ...olderTechnician
+    } = technician;
+    resetQueryStates({
+      shop: { data: page([olderShop]), error: null, loading: false },
+      technician: { data: page([olderTechnician]), error: null, loading: false }
+    });
+
+    const html = renderCategoryPage("/categories");
+
+    expect(html).toContain("LifeDance Wellness 渋谷");
+    expect(html).toContain("橘 ひかり");
+    expect(html).not.toContain("收藏");
+    expect(html).not.toContain("分享");
+    expect(html).not.toContain("接单率");
+    expect(html).not.toContain("肩颈调理");
   });
 
   it("keeps the bare category route scoped to the displayed cleaning category", () => {
@@ -290,5 +337,55 @@ describe("CategoryPage formal category state", () => {
     renderCategoryPage("/categories?type=store&tag=tag-massage-door&tag=tag-moving-city");
 
     expect(queryHarness.queries.shop).toMatchObject({ categoryIds: [3, 19] });
+  });
+
+  it("loads favorite status for all visible shops and technicians in one page-level batch", async () => {
+    resetQueryStates();
+    authHarness.isAuthenticated = true;
+    const getFavoriteStatuses = vi.spyOn(entityEngagementApi, "getFavoriteStatuses").mockResolvedValue({
+      list: [
+        {
+          targetType: "shop",
+          publicId: shop.publicId,
+          favoriteCount: 2050,
+          isFavorited: true
+        },
+        {
+          targetType: "technician",
+          publicId: technician.publicId,
+          favoriteCount: 154,
+          isFavorited: false
+        }
+      ]
+    });
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          createElement(
+            ClientThemeProvider,
+            null,
+            createElement(MemoryRouter, { initialEntries: ["/categories"] }, createElement(CategoryPage))
+          )
+        );
+        await Promise.resolve();
+      });
+
+      expect(getFavoriteStatuses).toHaveBeenCalledTimes(1);
+      expect(getFavoriteStatuses).toHaveBeenCalledWith([
+        { targetType: "shop", publicId: shop.publicId },
+        { targetType: "technician", publicId: technician.publicId }
+      ]);
+      expect(container.querySelector('button[aria-label="取消收藏 店铺 LifeDance Wellness 渋谷"]')).not.toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+      vi.restoreAllMocks();
+    }
   });
 });

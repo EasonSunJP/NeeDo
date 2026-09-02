@@ -13,26 +13,38 @@ import {
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { useOptionalAuth } from "../../auth/AuthProvider";
 import {
   coreReadApi,
   mapCoreCategoryToServiceCategory,
-  mapCoreServiceToServiceItem
+  mapCoreServiceToServiceItem,
+  type CoreShopCard,
+  type CoreTechnicianCard
 } from "../../features/core-read/api";
 import {
-  FormalShopSearchCard,
-  FormalTechnicianSearchCard
-} from "../../features/core-read/FormalSearchResultCards";
+  createSystemShareAttempt,
+  entityEngagementApi,
+  type EntityFavoriteState,
+  type EntityTarget
+} from "../../features/entity-engagement/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { resolveSearchOrigin } from "../../features/location/searchOrigin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategories";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
+import { shareContent } from "../../lib/share";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { useHomeLayoutStore } from "../../state/homeLayoutStore";
 import { useHomeLocationPreference } from "../../state/homeLocationStore";
 import { cn, yen } from "../../lib/utils";
-import type { ServiceCategory, ServiceItem } from "../../types/domain";
+import type { ServiceCategory, ServiceItem, Technician } from "../../types/domain";
+import {
+  EntitySearchCardActions,
+  SocialProfileMiniCard,
+  TechnicianShowcaseCard,
+  type SocialProfileMiniData
+} from "../../shared/profile-card";
 import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
 
 const categoryDescriptionMap: Record<HomeCategoryId, string> = {
@@ -119,6 +131,67 @@ function uniqueById<T extends { id: string }>(items: T[]) {
 
 function uniqueStrings(items: string[]) {
   return Array.from(new Set(items));
+}
+
+function isFiniteMetric(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function normalizeMetric(value: unknown) {
+  return isFiniteMetric(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function parseFormalRating(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function entityTargetKey(target: EntityTarget) {
+  return `${target.targetType}:${target.publicId}`;
+}
+
+function buildFormalShopCardData(shop: CoreShopCard): SocialProfileMiniData {
+  return {
+    id: String(shop.id),
+    entityType: "shop",
+    displayName: shop.name,
+    avatar: shop.coverUrl ?? "",
+    coverImage: shop.coverUrl ?? "",
+    regionLabel: shop.city,
+    addressLabel: shop.city,
+    addressValue: shop.address,
+    primaryLabel: "店铺",
+    kycVerified: false,
+    serviceTags: (Array.isArray(shop.businessKeywords) ? shop.businessKeywords : []).map((keyword) => keyword.label).slice(0, 5),
+    levelLabel: "",
+    scoreLabel: "服务评价",
+    scoreValue: `${parseFormalRating(shop.reviewSummary.ratingAverage).toFixed(1)}/5`,
+    followerCount: normalizeMetric(shop.favoriteCount),
+    followingCount: 0,
+    shareCount: normalizeMetric(shop.shareCount),
+    detailPath: `/stores/${shop.id}`
+  };
+}
+
+function buildFormalTechnicianInput(technician: CoreTechnicianCard): Technician {
+  return {
+    id: String(technician.id),
+    systemId: technician.publicId,
+    name: technician.displayName,
+    storeId: "",
+    role: "therapist",
+    status: "off",
+    rating: parseFormalRating(technician.reviewSummary.ratingAverage),
+    orderCount: normalizeMetric(technician.completedOrderCount),
+    income: 0,
+    skills: [],
+    serviceAreas: technician.city ? [technician.city] : [],
+    acceptRate: normalizeMetric(technician.acceptanceRatePercent),
+    cancelRate: 0,
+    reviewCount: normalizeMetric(technician.reviewSummary.reviewCount),
+    languages: [],
+    avatar: technician.avatarUrl ?? ""
+  };
 }
 
 function findTagByText(value: string) {
@@ -282,6 +355,7 @@ function ServicePreviewCard({ service }: { service: ServiceItem }) {
 
 export function CategoryPage() {
   const navigate = useNavigate();
+  const auth = useOptionalAuth();
   const { language } = useI18n();
   const t = (text: string) => translateText(text, language);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -485,13 +559,133 @@ export function CategoryPage() {
   );
 
   const shopProfiles = useMemo(
-    () => relatedStores.map((store) => ({ id: `shop-${store.id}`, store })),
+    () => relatedStores.map((profile) => ({
+      id: `shop-${profile.id}`,
+      profile,
+      cardData: buildFormalShopCardData(profile)
+    })),
     [relatedStores]
   );
   const technicianProfiles = useMemo(
-    () => relatedTechnicians.map((technician) => ({ id: `technician-${technician.id}`, technician })),
+    () => relatedTechnicians.map((profile) => ({
+      id: `technician-${profile.id}`,
+      profile,
+      technician: buildFormalTechnicianInput(profile)
+    })),
     [relatedTechnicians]
   );
+  const visibleEngagementTargets = useMemo(
+    () => [
+      ...relatedStores.map((profile) => ({
+        targetType: "shop" as const,
+        publicId: profile.publicId,
+        favoriteCount: normalizeMetric(profile.favoriteCount),
+        shareCount: normalizeMetric(profile.shareCount)
+      })),
+      ...relatedTechnicians.map((profile) => ({
+        targetType: "technician" as const,
+        publicId: profile.publicId,
+        favoriteCount: normalizeMetric(profile.favoriteCount),
+        shareCount: normalizeMetric(profile.shareCount)
+      }))
+    ],
+    [relatedStores, relatedTechnicians]
+  );
+  const visibleEngagementTargetKey = useMemo(
+    () => visibleEngagementTargets.map(entityTargetKey).join("|"),
+    [visibleEngagementTargets]
+  );
+  const [favoriteStates, setFavoriteStates] = useState<Record<string, EntityFavoriteState>>({});
+  const [shareCounts, setShareCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const visibleKeys = new Set(visibleEngagementTargets.map(entityTargetKey));
+
+    setFavoriteStates((current) => {
+      const next: Record<string, EntityFavoriteState> = {};
+      visibleEngagementTargets.forEach((target) => {
+        const key = entityTargetKey(target);
+        next[key] = current[key] ?? {
+          targetType: target.targetType,
+          publicId: target.publicId,
+          favoriteCount: target.favoriteCount,
+          isFavorited: false
+        };
+      });
+      return Object.keys(current).every((key) => visibleKeys.has(key)) && Object.keys(current).length === Object.keys(next).length
+        ? current
+        : next;
+    });
+    setShareCounts((current) => {
+      const next = Object.fromEntries(
+        visibleEngagementTargets.map((target) => {
+          const key = entityTargetKey(target);
+          return [key, current[key] ?? target.shareCount];
+        })
+      );
+      return Object.keys(current).every((key) => visibleKeys.has(key)) && Object.keys(current).length === Object.keys(next).length
+        ? current
+        : next;
+    });
+
+    if (!auth?.isAuthenticated || visibleEngagementTargets.length === 0) {
+      return undefined;
+    }
+
+    let stale = false;
+    void entityEngagementApi
+      .getFavoriteStatuses(visibleEngagementTargets.map(({ targetType, publicId }) => ({ targetType, publicId })))
+      .then(({ list }) => {
+        if (stale) return;
+        setFavoriteStates((current) => {
+          const next = { ...current };
+          list.forEach((state) => {
+            next[entityTargetKey(state)] = state;
+          });
+          return next;
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      stale = true;
+    };
+  }, [auth?.isAuthenticated, visibleEngagementTargetKey]);
+
+  const getFavoriteState = (target: EntityTarget, fallbackCount: number): EntityFavoriteState =>
+    favoriteStates[entityTargetKey(target)] ?? { ...target, favoriteCount: fallbackCount, isFavorited: false };
+
+  const handleFavoriteChange = (state: EntityFavoriteState) => {
+    setFavoriteStates((current) => ({ ...current, [entityTargetKey(state)]: state }));
+  };
+
+  const handleSystemShare = async ({
+    detailPath,
+    displayName,
+    target
+  }: {
+    detailPath: string;
+    displayName: string;
+    target: EntityTarget;
+  }) => {
+    const attempt = createSystemShareAttempt({
+      target,
+      invokeCapability: async () => {
+        const result = await shareContent({
+          title: `${displayName} | NeeDo`,
+          text: displayName,
+          url: detailPath,
+          copiedMessage: "链接已复制，可以转发给联系人"
+        });
+        return result.status === "shared";
+      }
+    });
+    const receipt = await attempt.execute();
+
+    if (receipt) {
+      setShareCounts((current) => ({ ...current, [entityTargetKey(target)]: receipt.shareCount }));
+    }
+  };
 
   const categoryHeroSlides = useMemo<FeatureCarouselSlide[]>(() => {
     if (!activeCategory) {
@@ -925,13 +1119,36 @@ export function CategoryPage() {
                     />
                   ) : shopProfiles.length > 0 ? (
                     <div className="space-y-3">
-                      {shopProfiles.map((item) => (
-                        <FormalShopSearchCard
-                          key={item.id}
-                          language={language}
-                          profile={item.store}
-                        />
-                      ))}
+                      {shopProfiles.map((item) => {
+                        const target: EntityTarget = { targetType: "shop", publicId: item.profile.publicId };
+                        const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
+                        const shareCount = shareCounts[entityTargetKey(target)] ?? normalizeMetric(item.profile.shareCount);
+                        const hasEngagementMetrics = isFiniteMetric(item.profile.favoriteCount) && isFiniteMetric(item.profile.shareCount);
+                        const detailPath = `/stores/${item.profile.id}`;
+
+                        return (
+                          <SocialProfileMiniCard
+                            actionSlot={hasEngagementMetrics ? (
+                              <EntitySearchCardActions
+                                favoriteCount={favoriteState.favoriteCount}
+                                isFavorited={favoriteState.isFavorited}
+                                language={language}
+                                onFavoriteChange={handleFavoriteChange}
+                                onSystemShare={() => handleSystemShare({ detailPath, displayName: item.profile.name, target })}
+                                publicId={target.publicId}
+                                shareCount={shareCount}
+                                size="compactLg"
+                                targetLabel={`店铺 ${item.profile.name}`}
+                                targetType={target.targetType}
+                              />
+                            ) : undefined}
+                            data={item.cardData}
+                            detailTo={detailPath}
+                            key={item.id}
+                            showAction={hasEngagementMetrics}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <CoreReadScopedState description={t("没有找到匹配结果")} title={t("店铺")} />
@@ -960,13 +1177,48 @@ export function CategoryPage() {
                     />
                   ) : technicianProfiles.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
-                      {technicianProfiles.map((item) => (
-                        <FormalTechnicianSearchCard
-                          key={item.id}
-                          language={language}
-                          profile={item.technician}
-                        />
-                      ))}
+                      {technicianProfiles.map((item, index) => {
+                        const target: EntityTarget = { targetType: "technician", publicId: item.profile.publicId };
+                        const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
+                        const shareCount = shareCounts[entityTargetKey(target)] ?? normalizeMetric(item.profile.shareCount);
+                        const hasEngagementMetrics = isFiniteMetric(item.profile.favoriteCount) && isFiniteMetric(item.profile.shareCount);
+                        const detailPath = `/profiles/technician/${item.profile.id}`;
+
+                        return (
+                          <TechnicianShowcaseCard
+                            detailTo={detailPath}
+                            formalActionSlot={hasEngagementMetrics ? (
+                              <EntitySearchCardActions
+                                favoriteCount={favoriteState.favoriteCount}
+                                isFavorited={favoriteState.isFavorited}
+                                language={language}
+                                onFavoriteChange={handleFavoriteChange}
+                                onSystemShare={() => handleSystemShare({ detailPath, displayName: item.profile.displayName, target })}
+                                publicId={target.publicId}
+                                shareCount={shareCount}
+                                targetLabel={`技师 ${item.profile.displayName}`}
+                                targetType={target.targetType}
+                              />
+                            ) : undefined}
+                            formalData={{
+                              acceptanceRatePercent: item.profile.acceptanceRatePercent,
+                              age: item.profile.age,
+                              avatarUrl: item.profile.avatarUrl,
+                              city: item.profile.city,
+                              displayName: item.profile.displayName,
+                              favoriteCount: hasEngagementMetrics ? favoriteState.favoriteCount : undefined,
+                              nearbyRank: item.profile.nearbyRank,
+                              primaryService: item.profile.primaryService,
+                              ratingAverage: item.profile.reviewSummary.ratingAverage,
+                              shareCount: hasEngagementMetrics ? shareCount : undefined
+                            }}
+                            key={item.id}
+                            language={language}
+                            rankIndex={index}
+                            technician={item.technician}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <CoreReadScopedState description={t("没有找到匹配结果")} title={t("技师")} />
