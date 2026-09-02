@@ -122,6 +122,22 @@ function fill(labelText: string, value: string) {
   });
 }
 
+function fillByPlaceholder(placeholder: string, value: string) {
+  const input = document.querySelector<HTMLInputElement>(
+    `input[placeholder="${placeholder}"]`,
+  );
+  if (!input) throw new Error(`missing input: ${placeholder}`);
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  act(() => {
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 async function click(buttonText: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
     (item) => item.textContent?.includes(buttonText),
@@ -197,6 +213,30 @@ function settlementPreview() {
       },
     ],
     generatedAt: "2026-09-30T12:00:00.000Z",
+  };
+}
+
+function confirmedSettlement() {
+  const preview = settlementPreview();
+  return {
+    ...preview.totals,
+    publicId: "settlement-1",
+    agentPublicId: "agent-1",
+    periodStart: "2026-09-01T00:00:00.000Z",
+    periodEnd: "2026-09-30T00:00:00.000Z",
+    status: "confirmed" as const,
+    currency: "JPY" as const,
+    rule: preview.rule,
+    idempotencyKey: "settlement-key-1",
+    confirmedAt: "2026-09-30T12:00:00.000Z",
+    confirmedById: 1,
+    paidAt: null,
+    paidById: null,
+    paymentMethod: null,
+    paymentReference: null,
+    lines: [],
+    createdAt: "2026-09-30T12:00:00.000Z",
+    updatedAt: "2026-09-30T12:00:00.000Z",
   };
 }
 
@@ -294,7 +334,10 @@ describe("AgentsPage formal interactions", () => {
         latestVersion: 21,
         evaluatedAt: "2026-09-03T00:00:00.000Z",
         history: {
-          list: [rule(1, { reason: "page-two-1" })],
+          list: [
+            rule(2, { reason: "duplicate-page-two-2" }),
+            rule(1, { reason: "page-two-1" }),
+          ],
           total: 21,
           page: 2,
           page_size: 20,
@@ -308,10 +351,71 @@ describe("AgentsPage formal interactions", () => {
     await click("加载更多规则版本");
 
     await waitFor(() => expect(container.textContent).toContain("page-two-1"));
+    expect(container.textContent).not.toContain("duplicate-page-two-2");
+    expect(hasButton("加载更多规则版本")).toBe(false);
     expect(testState.getCommissionRules).toHaveBeenLastCalledWith("agent-1", {
       page: 2,
       pageSize: 20,
     });
+  });
+
+  it("ignores a stale history response after a full rule refresh", async () => {
+    let resolveStalePage: (value: unknown) => void = () => undefined;
+    const stalePage = new Promise((resolve) => {
+      resolveStalePage = resolve;
+    });
+    testState.getCommissionRules.mockReset();
+    testState.getCommissionRules
+      .mockResolvedValueOnce({
+        current: rule(2),
+        latestVersion: 2,
+        evaluatedAt: "2026-09-03T00:00:00.000Z",
+        history: {
+          list: [rule(2)],
+          total: 21,
+          page: 1,
+          page_size: 20,
+        },
+      })
+      .mockReturnValueOnce(stalePage)
+      .mockResolvedValueOnce({
+        current: rule(3, { reason: "刷新后的当前规则" }),
+        latestVersion: 3,
+        evaluatedAt: "2026-09-04T00:00:00.000Z",
+        history: {
+          list: [rule(3, { reason: "刷新后的当前规则" }), rule(2)],
+          total: 2,
+          page: 1,
+          page_size: 20,
+        },
+      });
+
+    renderDetail(root);
+    await waitFor(() => expect(container.textContent).toContain("当前合同"));
+    await click("加载更多规则版本");
+    await click("刷新");
+    await waitFor(() =>
+      expect(container.textContent).toContain("刷新后的当前规则"),
+    );
+
+    await act(async () => {
+      resolveStalePage({
+        current: rule(1, { reason: "过期当前规则" }),
+        latestVersion: 1,
+        evaluatedAt: "2026-09-02T00:00:00.000Z",
+        history: {
+          list: [rule(1, { reason: "过期历史页" })],
+          total: 21,
+          page: 2,
+          page_size: 20,
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("刷新后的当前规则");
+    expect(container.textContent).not.toContain("过期当前规则");
+    expect(container.textContent).not.toContain("过期历史页");
   });
 
   it("keeps formal detail readable while hiding every mutation without permission", async () => {
@@ -428,6 +532,44 @@ describe("AgentsPage formal interactions", () => {
     await click("确认并生成结算凭证");
     await waitFor(() =>
       expect(testState.confirmSettlement).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("keeps payment evidence retryable after marking a settlement paid fails", async () => {
+    testState.permissions.add("backoffice:agent-settlement:pay");
+    testState.listSettlements.mockResolvedValue({
+      list: [confirmedSettlement()],
+      total: 1,
+      page: 1,
+      page_size: 50,
+    });
+    testState.markSettlementPaid
+      .mockRejectedValueOnce(new Error("支付凭证版本冲突"))
+      .mockResolvedValueOnce({ publicId: "settlement-1" });
+    renderDetail(root);
+    await waitFor(() => expect(container.textContent).toContain("¥62,000"));
+
+    await click("登记支付凭证");
+    fillByPlaceholder("支付凭证编号", "BANK-202609-1");
+    fillByPlaceholder("确认理由", "财务复核完成");
+    await click("确认已支付");
+    await waitFor(() =>
+      expect(container.textContent).toContain("支付凭证版本冲突"),
+    );
+    expect(
+      document.querySelector<HTMLInputElement>(
+        'input[placeholder="支付凭证编号"]',
+      )?.value,
+    ).toBe("BANK-202609-1");
+    expect(
+      document.querySelector<HTMLInputElement>(
+        'input[placeholder="确认理由"]',
+      )?.value,
+    ).toBe("财务复核完成");
+
+    await click("确认已支付");
+    await waitFor(() =>
+      expect(testState.markSettlementPaid).toHaveBeenCalledTimes(2),
     );
   });
 });

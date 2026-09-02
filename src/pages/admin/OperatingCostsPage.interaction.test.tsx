@@ -130,6 +130,19 @@ function fillByPlaceholder(placeholder: string, value: string) {
   });
 }
 
+function fieldValue(labelText: string) {
+  const label = [...document.querySelectorAll("label")].find((item) =>
+    item.textContent?.includes(labelText),
+  );
+  return (
+    label?.querySelector("input, textarea, select") as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | HTMLSelectElement
+      | null
+  )?.value;
+}
+
 async function click(buttonText: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
     (item) => item.textContent?.includes(buttonText),
@@ -147,6 +160,10 @@ describe("OperatingCostsPage formal interactions", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
     testState.canWrite = false;
     testState.listOperatingCosts.mockResolvedValue({
       list: [cost()],
@@ -217,5 +234,33 @@ describe("OperatingCostsPage formal interactions", () => {
     );
     expect(testState.publishOperatingCost).toHaveBeenCalledTimes(2);
     expect(testState.listOperatingCosts).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an edited cost draft retryable after the formal API rejects it", async () => {
+    testState.canWrite = true;
+    testState.listOperatingCosts.mockResolvedValue({
+      list: [cost("draft")],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    testState.updateOperatingCost
+      .mockRejectedValueOnce(new Error("草稿版本冲突"))
+      .mockResolvedValueOnce(cost("draft"));
+    act(() => root.render(<OperatingCostsPage />));
+    await waitFor(() => expect(container.textContent).toContain("服务器成本"));
+
+    await click("编辑");
+    expect(fieldValue("成本代码")).toBe("server.monthly");
+    expect(fieldValue("设置理由")).toBe("九月服务器账单");
+    await click("保存草稿");
+    await waitFor(() => expect(container.textContent).toContain("草稿版本冲突"));
+    expect(fieldValue("成本代码")).toBe("server.monthly");
+    expect(fieldValue("设置理由")).toBe("九月服务器账单");
+
+    await click("保存草稿");
+    await waitFor(() =>
+      expect(testState.updateOperatingCost).toHaveBeenCalledTimes(2),
+    );
   });
 });

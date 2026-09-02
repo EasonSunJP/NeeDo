@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import {
@@ -235,10 +235,17 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
     useState<Paginated<AgentSettlement> | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMoreRules, setLoadingMoreRules] = useState(false);
+  const [ruleHistoryExhausted, setRuleHistoryExhausted] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const detailLoadEpochRef = useRef(0);
+  const ruleHistoryRequestRef = useRef(0);
 
   const load = useCallback(async () => {
+    const loadEpoch = detailLoadEpochRef.current + 1;
+    detailLoadEpochRef.current = loadEpoch;
+    ruleHistoryRequestRef.current += 1;
+    setLoadingMoreRules(false);
     setLoading(true);
     setError("");
     try {
@@ -256,13 +263,18 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
           pageSize: 50,
         }),
       ]);
+      if (detailLoadEpochRef.current !== loadEpoch) return;
       setReferrals(nextReferrals);
       setRules(nextRules);
+      setRuleHistoryExhausted(
+        nextRules.history.list.length >= nextRules.history.total,
+      );
       setSettlements(nextSettlements);
     } catch (loadError) {
+      if (detailLoadEpochRef.current !== loadEpoch) return;
       setError(errorMessage(loadError));
     } finally {
-      setLoading(false);
+      if (detailLoadEpochRef.current === loadEpoch) setLoading(false);
     }
   }, [agentPublicId]);
 
@@ -286,9 +298,13 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
     if (
       !rules ||
       loadingMoreRules ||
+      ruleHistoryExhausted ||
       rules.history.list.length >= rules.history.total
     )
       return;
+    const loadEpoch = detailLoadEpochRef.current;
+    const requestId = ruleHistoryRequestRef.current + 1;
+    ruleHistoryRequestRef.current = requestId;
     setLoadingMoreRules(true);
     setError("");
     try {
@@ -296,26 +312,40 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
         page: rules.history.page + 1,
         pageSize: rules.history.page_size,
       });
+      if (
+        detailLoadEpochRef.current !== loadEpoch ||
+        ruleHistoryRequestRef.current !== requestId
+      )
+        return;
+      const known = new Set(rules.history.list.map((item) => item.publicId));
+      const mergedList = [
+        ...rules.history.list,
+        ...next.history.list.filter((item) => !known.has(item.publicId)),
+      ];
+      setRuleHistoryExhausted(
+        next.history.list.length === 0 ||
+          mergedList.length >= next.history.total,
+      );
       setRules((current) => {
-        if (!current) return next;
-        const known = new Set(
-          current.history.list.map((item) => item.publicId),
-        );
+        if (!current) return current;
         return {
-          ...next,
+          ...current,
           history: {
             ...next.history,
-            list: [
-              ...current.history.list,
-              ...next.history.list.filter((item) => !known.has(item.publicId)),
-            ],
+            list: mergedList,
           },
         };
       });
     } catch (historyError) {
+      if (
+        detailLoadEpochRef.current !== loadEpoch ||
+        ruleHistoryRequestRef.current !== requestId
+      )
+        return;
       setError(errorMessage(historyError));
     } finally {
-      setLoadingMoreRules(false);
+      if (ruleHistoryRequestRef.current === requestId)
+        setLoadingMoreRules(false);
     }
   };
 
@@ -359,6 +389,11 @@ function AgentDetailPage({ agentPublicId }: { agentPublicId: string }) {
                 <RulePanel
                   agentPublicId={agentPublicId}
                   canWrite={canWriteAgent}
+                  hasMore={
+                    !ruleHistoryExhausted &&
+                    (rules?.history.list.length ?? 0) <
+                      (rules?.history.total ?? 0)
+                  }
                   loadingMore={loadingMoreRules}
                   loadMore={loadMoreRules}
                   mutate={mutation}
@@ -513,6 +548,7 @@ function ReferralPanel({
 function RulePanel({
   agentPublicId,
   canWrite,
+  hasMore,
   loadingMore,
   loadMore,
   mutate,
@@ -520,6 +556,7 @@ function RulePanel({
 }: {
   agentPublicId: string;
   canWrite: boolean;
+  hasMore: boolean;
   loadingMore: boolean;
   loadMore: () => Promise<void>;
   mutate: (action: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -617,7 +654,7 @@ function RulePanel({
               </article>
             ))}
           </div>
-          {rules.history.list.length < rules.history.total ? (
+          {hasMore ? (
             <Button
               className="mt-3"
               disabled={loadingMore}
