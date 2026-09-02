@@ -666,6 +666,27 @@ export const SYSTEM_PERMISSIONS = [
     "分页读取全量用户、身份、会员、经验与分组摘要"
   ),
   createPermission(
+    "backoffice:partner-profile:write",
+    "运营后台合作方身份管理",
+    "api",
+    "backoffice",
+    "将正式用户标记为代理商、加盟商或供货商"
+  ),
+  createPermission(
+    "backoffice:agent:read",
+    "运营后台代理商读取",
+    "api",
+    "backoffice",
+    "分页读取代理商身份及其正式账号状态"
+  ),
+  createPermission(
+    "backoffice:agent:write",
+    "运营后台代理商关系管理",
+    "api",
+    "backoffice",
+    "确认代理商介绍的正式店铺关系"
+  ),
+  createPermission(
     "backoffice:membership-tier:publish",
     "平台会员等级发布",
     "api",
@@ -1828,6 +1849,7 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:ndp-exchange-rate:read",
   "backoffice:membership-tier:read",
   "backoffice:users:read",
+  "backoffice:agent:read",
   "backoffice:membership-benefit:read",
   "backoffice:user-experience:read",
   "backoffice:user-group:read",
@@ -1955,6 +1977,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:ndp-exchange-rate:write",
   "backoffice:membership-tier:publish",
   "backoffice:users:read",
+  "backoffice:partner-profile:write",
+  "backoffice:agent:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
   "backoffice:user-group:write",

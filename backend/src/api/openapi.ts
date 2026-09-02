@@ -5852,6 +5852,58 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      PlatformPartnerProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "partnerType", "activatedAt", "markedAt", "reason", "user"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          partnerType: { type: "string", enum: ["agent", "franchisee", "supplier"] },
+          activatedAt: { type: "string", format: "date-time" },
+          markedAt: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          user: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "needoId", "nickname", "avatarUrl", "status"],
+            properties: {
+              id: { type: "integer", minimum: 1 },
+              needoId: { type: "string" },
+              nickname: { type: "string" },
+              avatarUrl: { type: ["string", "null"] },
+              status: { type: "string", enum: ["active", "inactive"] }
+            }
+          }
+        }
+      },
+      AgentShopReferral: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "agentPublicId", "status", "source", "confirmedAt",
+          "successQualifiedAt", "reason", "createdAt", "shop"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          agentPublicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["active", "qualified", "revoked"] },
+          source: { type: "string", minLength: 1, maxLength: 100 },
+          confirmedAt: { type: "string", format: "date-time" },
+          successQualifiedAt: { type: ["string", "null"], format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          createdAt: { type: "string", format: "date-time" },
+          shop: {
+            type: "object",
+            additionalProperties: false,
+            required: ["publicId", "name", "city"],
+            properties: {
+              publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+              name: { type: "string" },
+              city: { type: "string" }
+            }
+          }
+        }
+      },
       BackofficeService: {
         type: "object",
         required: [
@@ -18237,6 +18289,137 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/partner-profiles`]: {
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Mark a formal user as a platform partner",
+        description:
+          "Creates one active agent, franchisee, or supplier marker for an existing non-deleted user and records the operator reason in audit evidence.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:partner-profile:write",
+        parameters: [idPathParameter("userId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["partnerType", "activatedAt", "reason"],
+                properties: {
+                  partnerType: {
+                    type: "string",
+                    enum: ["agent", "franchisee", "supplier"]
+                  },
+                  activatedAt: { type: "string", format: "date-time" },
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Platform partner profile created", {
+            $ref: "#/components/schemas/PlatformPartnerProfile"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.user.not_found"),
+          "409": jsonErrorResponse("error.platform_partner.duplicate")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List formal platform agents",
+        description:
+          "Returns a paginated agent projection searchable by formal NeeDo ID or nickname and filterable by account status.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "inactive"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated platform agents", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/PlatformPartnerProfile" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/shop-referrals`]: {
+      post: {
+        tags: ["Platform Partners"],
+        summary: "Link an introduced shop to an active agent",
+        description:
+          "Creates one auditable active referral for a formally identified shop. A shop cannot belong to two active or qualified agent referrals.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:agent:write",
+        parameters: [
+          {
+            name: "agentPublicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["shopPublicId", "source", "confirmedAt", "reason"],
+                properties: {
+                  shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+                  source: { type: "string", minLength: 1, maxLength: 100 },
+                  confirmedAt: { type: "string", format: "date-time" },
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Agent shop referral created", {
+            $ref: "#/components/schemas/AgentShopReferral"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse(
+            "error.platform_partner.agent_not_found or error.platform_partner.shop_not_found"
+          ),
+          "409": jsonErrorResponse("error.platform_partner.shop_referral_conflict")
         }
       }
     },

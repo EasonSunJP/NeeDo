@@ -120,6 +120,7 @@ import type { PayrollSchedulePolicyRepositoryPort } from "./services/payroll-sch
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
 import type { PricingModeRepositoryPort } from "./services/pricing-mode.service";
 import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
+import type { PlatformPartnerRepositoryPort } from "./services/platform-partner.service";
 import type { TechnicianShopAffiliationRepositoryPort } from "./services/technician-shop-affiliation.service";
 import {
   RealtimeRepository,
@@ -191,6 +192,7 @@ import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
+import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
@@ -246,6 +248,7 @@ export interface AppDependencies {
   permissionRepository?: PermissionRepositoryPort;
   pricingModeRepository?: PricingModeRepositoryPort;
   publicIdentifierRepository?: PublicIdentifierRepositoryPort;
+  platformPartnerRepository?: PlatformPartnerRepositoryPort;
   technicianShopAffiliationRepository?: TechnicianShopAffiliationRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
@@ -522,6 +525,7 @@ export const createApp = (
   apiRouter.use(createExchangeMatchingRoutes(config, resolvedDependencies));
   apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
+  apiRouter.use(createPlatformPartnerRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));
   }
