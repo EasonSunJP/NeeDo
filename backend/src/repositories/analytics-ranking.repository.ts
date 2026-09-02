@@ -15,6 +15,8 @@ interface AnomalyRow { anomalyCount?: NumericValue; anomaly_count?: NumericValue
 interface CountRow { total?: NumericValue }
 interface RankingRow {
   rank?: NumericValue;
+  rankingPosition?: NumericValue;
+  ranking_position?: NumericValue;
   entityType?: unknown;
   entity_type?: unknown;
   entityPublicId?: unknown;
@@ -75,6 +77,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       WITH ${this.formalRankingCtes(input)}
       SELECT COALESCE(SUM(incomplete_evidence), 0) AS anomalyCount
       FROM formal_order_evidence
+      WHERE entity_eligible = 1
     `);
     if (
       anomalyRows.length !== 1 ||
@@ -93,13 +96,14 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     const rows = await client.$queryRaw<RankingRow[]>(Prisma.sql`
       /* analytics_ranking_page */
       WITH ${this.formalRankingCtes(input)}, ${this.rankingCtes(input)}
-      SELECT rank, entity_type AS entityType, entity_public_id AS entityPublicId,
+      SELECT ranking_position AS rankingPosition,
+             entity_type AS entityType, entity_public_id AS entityPublicId,
              entity_numeric_id AS entityNumericId, display_name AS displayName,
              avatar_url AS avatarUrl, category_id AS categoryId, gmv_jpy AS gmvJpy,
              completed_count AS completedCount, registered_at AS registeredAt
       FROM ranked_entities
-      WHERE rank > ${offset} AND rank <= ${offset + input.pageSize}
-      ORDER BY rank ASC
+      WHERE ranking_position > ${offset} AND ranking_position <= ${offset + input.pageSize}
+      ORDER BY ranking_position ASC
     `);
     const expected = Math.max(0, Math.min(input.pageSize, total - offset));
     if (rows.length !== expected) this.incomplete();
@@ -568,7 +572,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       ),
       entity_aggregates AS (${entityRows}),
       ranked_entities AS (
-        SELECT ROW_NUMBER() OVER (ORDER BY ${ordering}) AS rank, aggregate.*
+        SELECT ROW_NUMBER() OVER (ORDER BY ${ordering}) AS ranking_position, aggregate.*
         FROM entity_aggregates AS aggregate
       )
     `;
@@ -588,7 +592,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     if (!registeredAt || Number.isNaN(registeredAt.getTime())) this.incomplete();
     const category = row.categoryId ?? row.category_id;
     return {
-      rank: this.safeInteger(row.rank),
+      rank: this.safeInteger(row.rankingPosition ?? row.ranking_position ?? row.rank),
       entityType: entityType as RankingEntityType,
       entityPublicId,
       entityNumericId: this.safeInteger(row.entityNumericId ?? row.entity_numeric_id),
