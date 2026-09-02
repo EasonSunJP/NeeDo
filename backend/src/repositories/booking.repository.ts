@@ -173,6 +173,7 @@ export interface AvailabilityListInput extends PaginationInput {
   technicianServiceId?: number;
   shopId?: number;
   technicianId?: number;
+  includeUnavailable?: boolean;
   from: Date;
   to: Date;
 }
@@ -852,8 +853,12 @@ export class BookingRepository implements BookingRepositoryPort {
     const pagination = toPrismaPagination(input);
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
-      status: "AVAILABLE",
-      bookedCount: { lt: this.client.scheduleSlot.fields.capacity },
+      ...(input.includeUnavailable
+        ? {}
+        : {
+            status: "AVAILABLE",
+            bookedCount: { lt: this.client.scheduleSlot.fields.capacity }
+          }),
       ...(input.serviceId ? { serviceId: input.serviceId } : {}),
       ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
       startsAt: { gte: input.from },

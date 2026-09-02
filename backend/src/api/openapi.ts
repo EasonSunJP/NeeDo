@@ -16525,7 +16525,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Paginated available schedule slots",
         description:
-          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results are limited to published, unsuspended shops and available slots with remaining capacity.",
+          "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. By default, results are limited to published, unsuspended shops and bookable slots with remaining capacity.",
         parameters: [
           {
             name: "serviceId",
@@ -16535,6 +16535,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "technicianServiceId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "technicianId", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "includeUnavailable",
+            in: "query",
+            description: "When true, include booked, blocked, and full formal slots for disabled time-option display.",
+            schema: { type: "boolean", default: false }
+          },
           {
             name: "from",
             in: "query",

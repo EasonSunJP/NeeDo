@@ -1,4 +1,26 @@
-import { orderListQuerySchema } from "../src/validators/booking.validator";
+import {
+  availabilityListQuerySchema,
+  orderListQuerySchema
+} from "../src/validators/booking.validator";
+
+describe("availabilityListQuerySchema", () => {
+  const base = {
+    serviceId: "12",
+    from: "2026-09-02T15:00:00.000Z",
+    to: "2026-09-03T15:00:00.000Z"
+  };
+
+  it("parses the opt-in unavailable-slot flag without changing the omitted default", () => {
+    expect(availabilityListQuerySchema.parse(base)).not.toHaveProperty("includeUnavailable");
+    expect(availabilityListQuerySchema.parse({ ...base, includeUnavailable: "true" }).includeUnavailable).toBe(true);
+    expect(availabilityListQuerySchema.parse({ ...base, includeUnavailable: "false" }).includeUnavailable).toBe(false);
+  });
+
+  it("rejects ambiguous unavailable-slot query values", () => {
+    expect(availabilityListQuerySchema.safeParse({ ...base, includeUnavailable: "1" }).success).toBe(false);
+    expect(availabilityListQuerySchema.safeParse({ ...base, includeUnavailable: "yes" }).success).toBe(false);
+  });
+});
 
 describe("orderListQuerySchema", () => {
   it("accepts no date window or one complete date window up to 93 days", () => {

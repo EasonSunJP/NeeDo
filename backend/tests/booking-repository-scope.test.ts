@@ -242,6 +242,37 @@ describe("BookingRepository order list scope", () => {
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
+  it("includes formal unavailable rows only when the public caller opts in", async () => {
+    const scheduleSlot = {
+      fields: { capacity: Symbol("capacity") },
+      findMany: jest.fn(async (_args: { where: unknown }) => []),
+      count: jest.fn(async () => 0)
+    };
+    const repository = new BookingRepository({ scheduleSlot } as never);
+
+    await repository.listAvailableSlots({
+      serviceId: 12,
+      includeUnavailable: true,
+      from: new Date("2026-09-02T15:00:00.000Z"),
+      to: new Date("2026-09-03T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
+    expect(where).not.toHaveProperty("status");
+    expect(where).not.toHaveProperty("bookedCount");
+    expect(where).toEqual(expect.objectContaining({
+      deletedAt: null,
+      serviceId: 12,
+      startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
+      endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
+      service: { deletedAt: null, status: "published" },
+      shop: expect.objectContaining({ deletedAt: null, status: "published" })
+    }));
+    expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
+  });
+
   it("rejects a partial affiliate hook pair before opening the booking transaction", async () => {
     const client = { $transaction: jest.fn().mockResolvedValue(null) };
     const repository = new BookingRepository(client as never);
