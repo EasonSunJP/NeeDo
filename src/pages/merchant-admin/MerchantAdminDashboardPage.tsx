@@ -373,14 +373,16 @@ function NdpCostCard({
 }
 
 export function MerchantMembershipMetricCard({
+  canViewDetails,
   membership
 }: {
+  canViewDetails: boolean;
   membership: BackofficeDashboardPayload["membership"];
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "merchant" });
 
-  return (
+  const card = (
     <DashboardMetricCard
       accent="orange"
       icon="♡"
@@ -399,6 +401,16 @@ export function MerchantMembershipMetricCard({
       value={membership?.memberCount}
     />
   );
+  if (!canViewDetails) return card;
+  return (
+    <Link
+      aria-label={t("查看会员详细分析")}
+      className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-main/60"
+      to="/merchant-admin/analytics/members"
+    >
+      {card}
+    </Link>
+  );
 }
 
 export function shouldBlockMerchantDashboardForOwnerTransition(
@@ -411,7 +423,7 @@ export function shouldBlockMerchantDashboardForOwnerTransition(
 
 function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDashboardResource }) {
   const { language } = useI18n();
-  const { session, switchMerchantShop } = useAuth();
+  const { hasPermission, session, switchMerchantShop } = useAuth();
   const t = (source: string) => translateTextForContext(source, language, { portal: "merchant" });
   const [committedDashboard, setCommittedDashboard] = useState<BackofficeDashboardPayload | null>(
     resource.dashboard
@@ -534,7 +546,10 @@ function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDa
               title={t("注册技师")}
               unit="people"
             />
-            <MerchantMembershipMetricCard membership={dashboard.membership} />
+            <MerchantMembershipMetricCard
+              canViewDetails={hasPermission("shop.member.analytics.view")}
+              membership={dashboard.membership}
+            />
           </section>
 
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs font-bold text-ink/45">

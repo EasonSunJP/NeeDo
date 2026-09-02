@@ -479,6 +479,22 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
   }
 }
 
+class RollbackCreatedWalletRepository extends InMemoryLedgerRepository {
+  public override async runInTransaction<T>(
+    handler: (repository: LedgerRepositoryPort) => Promise<T>
+  ): Promise<T> {
+    const existingWalletKeys = new Set(this.wallets.keys());
+    try {
+      return await handler(this);
+    } catch (error) {
+      for (const key of this.wallets.keys()) {
+        if (!existingWalletKeys.has(key)) this.wallets.delete(key);
+      }
+      throw error;
+    }
+  }
+}
+
 describe("LedgerService wallet mutations", () => {
   it("returns both wallet balances with the account's active Test NDP currency", async () => {
     const findWallets = jest.fn(async () => [
@@ -947,6 +963,44 @@ describe("LedgerService wallet mutations", () => {
         })
       ])
     );
+  });
+
+  it("keeps an insufficient-balance preview valid when creating the wallet was rolled back", async () => {
+    const repository = new RollbackCreatedWalletRepository();
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 1051,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+
+    const warning = await service.freezeBookingAcceptance(input).catch((error) => error) as {
+      data: { previewVersion: string };
+    };
+    expect(repository.wallets.size).toBe(0);
+
+    await expect(service.freezeBookingAcceptance({
+      ...input,
+      insufficientBalanceConfirmation: {
+        confirmed: true,
+        idempotencyKey: "fee-confirm-order-1051",
+        previewVersion: warning.data.previewVersion
+      }
+    })).resolves.toMatchObject({
+      idempotencyKey: "booking:1051:accept:freeze",
+      type: "booking_accept_freeze"
+    });
+    expect(repository.wallets.get("shop:10:NDP")).toMatchObject({
+      availableBalance: -500,
+      frozenBalance: 500
+    });
   });
 
   it("records only the new marginal deficit when the same payer accepts consecutive overdrafts", async () => {

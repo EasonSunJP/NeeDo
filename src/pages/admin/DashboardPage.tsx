@@ -15,6 +15,7 @@ import { DualAxisLineChart } from "../../features/dashboard/DashboardCharts";
 import { DashboardFilterBar, type DashboardFilterValue } from "../../features/dashboard/DashboardFilterBar";
 import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCard";
 import { AnalyticsMetricGrid } from "../../features/dashboard/AnalyticsMetricGrid";
+import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";
 import { useI18n } from "../../i18n/I18nProvider";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
@@ -317,10 +318,9 @@ export function DashboardPage() {
                 ].map(([groupTitle, metrics]) => (
                   <AnalyticsMetricGrid
                     detailLabel={t("查看详细数据")}
-                    getDisabledDetailLabel={(metric) =>
-                      metric.metricKey === "franchisee_onboarding" || metric.metricKey === "supplier_onboarding"
-                        ? t("TEST 功能暂未开放")
-                        : undefined}
+                    getDisabledDetailLabel={(metric) => metric.detailRoute === null
+                      ? t("TEST 功能暂未开放")
+                      : undefined}
                     getInfoLabel={(title) => getAnalyticsMetricInfoLabel(title, language)}
                     getMetricTitle={(metric) => t(getAnalyticsMetricTitleSource(metric.metricKey))}
                     groupTitle={t(groupTitle as string)}
@@ -341,6 +341,8 @@ export function DashboardPage() {
                 ))}
               </div>
             ) : null}
+
+            <AnalyticsRankingsSection query={committedQuery} />
           </>
         ) : null}
       </div>

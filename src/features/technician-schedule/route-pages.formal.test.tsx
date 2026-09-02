@@ -596,6 +596,41 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("已确认");
   });
 
+  it("requires an explicit second confirmation when the shop platform-fee balance is insufficient", async () => {
+    const previewVersion = `sha256:${"c".repeat(64)}`;
+    mocks.confirmOrder
+      .mockRejectedValueOnce(new ApiClientError(
+        "error.platform_fee.insufficient_balance_confirmation_required",
+        40936,
+        409,
+        {
+          availableBalanceNdp: 0,
+          feeAmountNdp: 100,
+          payerType: "shop",
+          previewVersion,
+          shortfallNdp: 100,
+          walletOwnerType: "shop"
+        }
+      ))
+      .mockResolvedValueOnce(makeOrder("confirmed"));
+    await renderOrder(makeOrder("pending"));
+
+    await click("确认接单");
+    await waitFor(() => expect(container.textContent).toContain("店铺可用余额 0 NDP"));
+    expect(container.textContent).toContain("还差 100 NDP");
+    expect(mocks.confirmOrder).toHaveBeenNthCalledWith(1, 29);
+
+    await click("余额不足，仍确认接单");
+    await waitFor(() => expect(mocks.confirmOrder).toHaveBeenNthCalledWith(2, 29, {
+      insufficientBalanceConfirmation: {
+        confirmed: true,
+        idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/),
+        previewVersion
+      }
+    }));
+    expect(container.textContent).toContain("已确认");
+  });
+
   it("renders public performance revisions in the shared timeline without operations-only notes", async () => {
     const order = {
       ...makeOrder("cancelled"),

@@ -574,6 +574,38 @@ function isAmbiguousOrderMutationError(error: unknown) {
   return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
+type PlatformFeeInsufficientBalanceWarning = {
+  availableBalanceNdp: number;
+  feeAmountNdp: number;
+  idempotencyKey: string;
+  previewVersion: string;
+  shortfallNdp: number;
+};
+
+function readPlatformFeeInsufficientBalanceWarning(
+  error: unknown
+): Omit<PlatformFeeInsufficientBalanceWarning, "idempotencyKey"> | null {
+  if (!(error instanceof ApiClientError) || error.code !== 40936 || !error.data || typeof error.data !== "object") {
+    return null;
+  }
+  const data = error.data as Record<string, unknown>;
+  if (
+    typeof data.availableBalanceNdp !== "number" ||
+    typeof data.feeAmountNdp !== "number" ||
+    typeof data.shortfallNdp !== "number" ||
+    typeof data.previewVersion !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/.test(data.previewVersion)
+  ) {
+    return null;
+  }
+  return {
+    availableBalanceNdp: data.availableBalanceNdp,
+    feeAmountNdp: data.feeAmountNdp,
+    previewVersion: data.previewVersion,
+    shortfallNdp: data.shortfallNdp
+  };
+}
+
 function serviceRemainingSeconds(expectedEndsAt: string | null | undefined, now: number) {
   if (!expectedEndsAt) return 0;
   const target = new Date(expectedEndsAt).getTime();
@@ -593,6 +625,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [acceptanceWarning, setAcceptanceWarning] = useState<PlatformFeeInsufficientBalanceWarning | null>(null);
   const [cancelArmed, setCancelArmed] = useState(false);
   const [endArmed, setEndArmed] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
@@ -737,9 +770,30 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
     setPending(true);
     setActionError("");
     try {
-      setOrder(await bookingApi.confirmOrder(order.id));
+      const confirmed = acceptanceWarning
+        ? await bookingApi.confirmOrder(order.id, {
+            insufficientBalanceConfirmation: {
+              confirmed: true,
+              idempotencyKey: acceptanceWarning.idempotencyKey,
+              previewVersion: acceptanceWarning.previewVersion
+            }
+          })
+        : await bookingApi.confirmOrder(order.id);
+      setOrder(confirmed);
+      setAcceptanceWarning(null);
     } catch (error) {
-      setActionError(orderMutationError(error));
+      const warning = readPlatformFeeInsufficientBalanceWarning(error);
+      if (warning) {
+        setAcceptanceWarning((current) => ({
+          ...warning,
+          idempotencyKey:
+            current?.previewVersion === warning.previewVersion
+              ? current.idempotencyKey
+              : createBookingIdempotencyKey()
+        }));
+      } else {
+        setActionError(orderMutationError(error));
+      }
     } finally {
       setPending(false);
     }
@@ -888,6 +942,14 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
 
         {order.status === "completed" ? <section className={panelClass}><h2 className="text-base font-black">订单已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkoutEvidenceLabel(checkout)}</p></section> : null}
 
+        {acceptanceWarning ? (
+          <section className="rounded-2xl border border-amber-400/45 bg-amber-400/10 p-4" role="alert">
+            <h2 className="text-sm font-black text-amber-500">店铺平台费余额不足</h2>
+            <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
+              本次接单需冻结 {acceptanceWarning.feeAmountNdp.toLocaleString("ja-JP")} NDP，店铺可用余额 {acceptanceWarning.availableBalanceNdp.toLocaleString("ja-JP")} NDP，还差 {acceptanceWarning.shortfallNdp.toLocaleString("ja-JP")} NDP。确认后将记录欠费并继续接单。
+            </p>
+          </section>
+        ) : null}
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
         {reviewEligible && reviewStatus === "loading" ? <p className="text-center text-sm font-black">正在读取评价状态</p> : null}
         {reviewEligible && reviewStatus === "error" ? <section className="space-y-3 rounded-2xl border border-red-400/35 bg-red-500/10 p-4" role="alert"><p className="text-sm font-black text-red-500">{reviewError}</p><Button className="w-full" onClick={() => setReviewRevision((value) => value + 1)} variant="secondary">重新读取评价状态</Button></section> : null}
@@ -898,7 +960,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
                 {cancelArmed ? "再次点击确认取消" : "取消预约"}
               </Button>
             ) : null}
-            {order.status === "pending" ? <Button disabled={pending} onClick={() => void confirmOrder()}>确认接单</Button> : null}
+            {order.status === "pending" ? <Button disabled={pending} onClick={() => void confirmOrder()}>{acceptanceWarning ? "余额不足，仍确认接单" : "确认接单"}</Button> : null}
           </section>
         ) : null}
       </div>

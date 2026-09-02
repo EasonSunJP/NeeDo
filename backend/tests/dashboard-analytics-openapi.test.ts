@@ -206,7 +206,12 @@ describe("dashboard analytics OpenAPI contract", () => {
     for (const [index, metricKey] of metricKeys.slice(0, 15).entries()) {
       expect(metric.allOf[1].oneOf[index].properties).toEqual({
         metricKey: { type: "string", const: metricKey },
-        detailRoute: { type: "string", const: `/admin/analytics/metrics/${metricKey}` }
+        detailRoute: {
+          type: "string",
+          const: metricKey === "new_paid_members"
+            ? "/admin/analytics/members"
+            : `/admin/analytics/metrics/${metricKey}`
+        }
       });
     }
     expect(metric.allOf[1].oneOf[15].properties).toMatchObject({

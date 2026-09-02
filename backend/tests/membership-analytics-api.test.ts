@@ -134,7 +134,7 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 describe("formal membership analytics API", () => {
   it("serves platform trend and paginated list through actual createApp routes", async () => {
     const operator = fixture(makeUser({
-      id: 91, identityType: "operator", scopeType: "global", scopeId: null,
+      id: 91, identityType: "platform", scopeType: "global", scopeId: null,
       role: "operator", permissions: [MEMBERSHIP_ANALYTICS_ROUTE_PERMISSIONS.backoffice]
     }));
     const trend = await request(operator.app)
@@ -184,7 +184,7 @@ describe("formal membership analytics API", () => {
 
   it("accepts the largest page whose maximum page-size offset remains a safe integer", async () => {
     const operator = fixture(makeUser({
-      id: 192, identityType: "operator", scopeType: "global", scopeId: null,
+      id: 192, identityType: "platform", scopeType: "global", scopeId: null,
       role: "operator", permissions: [MEMBERSHIP_ANALYTICS_ROUTE_PERMISSIONS.backoffice]
     }));
     await request(operator.app)
@@ -199,7 +199,7 @@ describe("formal membership analytics API", () => {
 
   it("requires authentication and exact permissions for both scopes", async () => {
     const noPermission = fixture(makeUser({
-      id: 93, identityType: "operator", scopeType: "global", scopeId: null,
+      id: 93, identityType: "platform", scopeType: "global", scopeId: null,
       role: "viewer", permissions: []
     }));
     await request(noPermission.app).get("/api/v1/backoffice/analytics/members/trend").expect(401);
@@ -216,6 +216,27 @@ describe("formal membership analytics API", () => {
       .get("/api/v1/merchant-admin/analytics/members")
       .set(bearer(staff.token))
       .expect(403);
+  });
+
+  it("rejects platform permissions when the active identity is scout", async () => {
+    const switched = fixture(makeUser({
+      id: 193,
+      identityType: "scout",
+      scopeType: "global",
+      scopeId: null,
+      role: "operator",
+      permissions: [MEMBERSHIP_ANALYTICS_ROUTE_PERMISSIONS.backoffice]
+    }));
+    await request(switched.app)
+      .get("/api/v1/backoffice/analytics/members/trend")
+      .set(bearer(switched.token))
+      .expect(403);
+    await request(switched.app)
+      .get("/api/v1/backoffice/analytics/members")
+      .set(bearer(switched.token))
+      .expect(403);
+    expect(switched.repository.getTrend).not.toHaveBeenCalled();
+    expect(switched.repository.listAddedMembers).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -262,7 +283,7 @@ describe("formal membership analytics API", () => {
 
   it("publishes incomplete authority as the stable 409 without a partial payload", async () => {
     const operator = fixture(makeUser({
-      id: 192, identityType: "operator", scopeType: "global", scopeId: null,
+      id: 192, identityType: "platform", scopeType: "global", scopeId: null,
       role: "operator", permissions: [MEMBERSHIP_ANALYTICS_ROUTE_PERMISSIONS.backoffice]
     }));
     operator.repository.getTrend.mockRejectedValueOnce(new MembershipAnalyticsIncompleteHistoryError());

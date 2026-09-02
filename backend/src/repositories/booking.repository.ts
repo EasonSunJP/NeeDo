@@ -1745,11 +1745,14 @@ export class BookingRepository implements BookingRepositoryPort {
         },
         select: {
           id: true,
+          publicId: true,
+          categoryId: true,
           name: true,
           description: true,
           priceAmount: true,
           currency: true,
-          durationMinutes: true
+          durationMinutes: true,
+          createdAt: true
         }
       });
       const priceAmountJpy = service ? Number(service.priceAmount.toString()) : Number.NaN;
@@ -1775,12 +1778,17 @@ export class BookingRepository implements BookingRepositoryPort {
           currency: "JPY",
           durationMinutes: service.durationMinutes,
           serviceSnapshotJson: {
+            entityType: "service",
+            entityNumericId: service.id,
             serviceId: service.id,
+            publicId: service.publicId,
+            categoryId: service.categoryId,
             name: service.name,
             description: service.description,
             priceAmountJpy,
             currency: "JPY",
-            durationMinutes: service.durationMinutes
+            durationMinutes: service.durationMinutes,
+            registeredAt: service.createdAt.toISOString()
           },
           proposedByUserId: input.actorUserId,
           proposedAt: now,
@@ -4208,12 +4216,17 @@ export class BookingRepository implements BookingRepositoryPort {
       currency: slot.service.currency,
       durationMinutes: slot.service.durationMinutes,
       snapshot: {
+        entityType: "service",
+        entityNumericId: slot.serviceId,
         serviceId: slot.serviceId,
+        publicId: slot.service.publicId,
+        categoryId: slot.service.categoryId,
         name: slot.service.name,
         description: slot.service.description,
         priceAmount: this.formatDecimal(slot.service.priceAmount, 2),
         currency: slot.service.currency,
-        durationMinutes: slot.service.durationMinutes
+        durationMinutes: slot.service.durationMinutes,
+        registeredAt: slot.service.createdAt.toISOString()
       }
     };
   }
@@ -4238,13 +4251,18 @@ export class BookingRepository implements BookingRepositoryPort {
       currency: slot.technicianService.currency,
       durationMinutes: slot.technicianService.durationMinutes,
       snapshot: {
+        entityType: "technician_service",
+        entityNumericId: slot.technicianServiceId,
         technicianServiceId: slot.technicianServiceId,
+        publicId: slot.technicianService.publicId,
+        categoryId: slot.technicianService.categoryId,
         name: slot.technicianService.name,
         description: slot.technicianService.description,
         priceAmount: slot.technicianService.priceAmount,
         currency: slot.technicianService.currency,
         durationMinutes: slot.technicianService.durationMinutes,
-        technicianId: slot.technicianService.technicianId
+        technicianId: slot.technicianService.technicianId,
+        registeredAt: slot.technicianService.createdAt.toISOString()
       }
     };
   }

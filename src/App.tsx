@@ -23,6 +23,7 @@ import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";
+import { MembershipAnalyticsPage } from "./pages/admin/MembershipAnalyticsPage";
 import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
@@ -1292,6 +1293,7 @@ export default function App() {
               <Route path="/merchant/settings/delete-account" element={protect("merchant", <UnifiedSettingsDeleteAccountPage portal="merchant" />)} />
               <Route path="/merchant/:view" element={protect("merchant", <MerchantPortalPage />)} />
               <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
+              <Route path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <MembershipAnalyticsPage scope="merchant-admin" />)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />
@@ -1396,6 +1398,7 @@ export default function App() {
 
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
               <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <DashboardMetricDetailPage />)} />
+              <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <MembershipAnalyticsPage scope="backoffice" />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />

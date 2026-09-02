@@ -281,3 +281,22 @@ Migration 为 `20260831170000_shop_membership_card_adjustment_approval`。由于
 Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` 已独立确认 16 个受检业务列、7 个 CHECK/外键、幂等唯一索引和仅 `admin`/`merchant_owner` 的默认授权。由于本地 migration 表另含当前分支没有的 Exchange migration，而当前分支有未应用 IM migration，本步没有运行会夹带无关变更的全量 deploy，只执行、核对并登记本次 additive migration。
 
 `check:shop-membership-card-topup-flow` 已证明实收 5000 JPY 仅令本金 10000→15000、赠送余额保持 500；充值、审计、通知各 1 条；幂等、冲突、待确认调整、跨店、商家/客户只读范围均正确；NDP 钱包与账本零变化，临时业务数据全部回滚。核销和退款继续作为后续独立微步骤。
+
+## 19. 2026-09-02 会员详细分析与三类完成订单排行
+
+运营后台“新增付费会员”指标进入 `/pf-admin.html#/admin/analytics/members`，商户后台会员卡进入 `/store-admin.html#/merchant-admin/analytics/members`。页面共用正式会员趋势和分页会员列表：运营范围支持城市、期间、自定义日期、NeeDo ID、昵称和服务端分页；商户范围由当前 JWT 店铺决定，不接受城市或店铺覆盖。趋势固定为增加、减少、净变化三条序列，图例只能显示或隐藏，不提供运营自定义图表能力。
+
+正式会员接口：
+
+- `GET /api/v1/backoffice/analytics/members/trend`
+- `GET /api/v1/backoffice/analytics/members`
+- `GET /api/v1/merchant-admin/analytics/members/trend`
+- `GET /api/v1/merchant-admin/analytics/members`
+
+运营数据大盘最下方增加服务项目、技师、用户消费三个 `TOP10` 面板，统一调用 `GET /api/v1/backoffice/analytics/rankings/:kind`。每个面板独立切换 `gmv` 或 `completedCount`；技师和用户排行可按正式启用服务分类筛选，并继承数据大盘城市与期间。前端不重新排序后端响应。排行只接受有完整完成与收款凭证、未退款或冲正的订单；NDP、现金和其他方式分别要求正式账本或收款确认。相同主指标时按次指标降序、注册时间升序、数字 ID 升序确定唯一顺序。
+
+新增权限 `backoffice:analytics-ranking:read` 与 migration `20260902100000_analytics_ranking_identity_permission`。平台排行与平台会员分析同时要求当前身份为 `platform` / `platform_admin` 且范围为全局或平台，避免用户切换到同为 global scope 的业务身份后复用角色权限读取平台数据。排行读取使用一致性事务快照，并写入 `backoffice.analytics_ranking.read` 审计。OpenAPI 锁定查询、分页、返回字段和错误响应；前端 adapter 对会员与排行响应执行严格运行时投影，拒绝额外字段、筛选错配、不安全整数及排行种类与实体种类错配。
+
+服务排行以订单和追加服务保存的服务名称、公开 ID、数字 ID、分类 ID 快照为历史权威；migration 会对存量订单从当时仍受外键保护的目录记录一次性补齐这些快照。之后服务或分类被停用、软删除或调整分类，不会回溯性改写已完成订单所在统计窗口的排行。当前启用目录只决定筛选下拉项和新请求允许选择的分类。
+
+验收命令 `check:membership-ranking` 只允许显式的本机 `needo_test` 数据库，在回滚事务内运行会员与排行真实 MySQL fixture，并覆盖付费/赠送/试用/续费来源、完整退款排除、城市/期间/分类、两种排行口径和稳定并列规则。未提供该隔离测试库时命令会在写入前终止，不会退化为使用 `needo_dev`。

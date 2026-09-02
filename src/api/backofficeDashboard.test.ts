@@ -120,6 +120,187 @@ describe("formal dashboard frontend API contract", () => {
     });
   });
 
+  it("serializes formal member trend and member-list filters for each scope", async () => {
+    const point = { key: "2026-08-26", label: "08-26", value: 0 };
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({
+        dataStatus: "ready",
+        filter: {
+          period: "last7days",
+          from: "2026-08-26",
+          to: "2026-09-01",
+          previousFrom: "2026-08-19",
+          previousTo: "2026-08-25",
+          timeZone: "Asia/Tokyo",
+          granularity: "day",
+          city: "东京",
+          evaluatedAt: "2026-09-02T05:00:00.000Z"
+        },
+        series: [
+          { seriesKey: "added", label: "Added members", unit: "people", points: [point] },
+          { seriesKey: "removed", label: "Removed members", unit: "people", points: [point] },
+          { seriesKey: "net", label: "Net members", unit: "people", points: [point] }
+        ]
+      })
+      .mockResolvedValueOnce({ list: [], total: 0, page: 2, page_size: 20 })
+      .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 20 });
+    const controller = new AbortController();
+
+    await backofficeRealDataApi.membershipTrend(
+      "backoffice",
+      { period: "last7days", city: "东京" },
+      { signal: controller.signal }
+    );
+    await backofficeRealDataApi.membershipMembers(
+      "backoffice",
+      {
+        period: "last7days",
+        city: "东京",
+        needoId: " u0000000041 ",
+        nickname: " 美咲 ",
+        page: 2,
+        pageSize: 20
+      },
+      { signal: controller.signal }
+    );
+    await backofficeRealDataApi.membershipMembers("merchant-admin", {
+      period: "last7days",
+      city: "大阪",
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/analytics/members/trend", {
+      query: { period: "last7days", city: "东京" },
+      signal: controller.signal
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/backoffice/analytics/members", {
+      query: {
+        period: "last7days",
+        city: "东京",
+        needoId: "u0000000041",
+        nickname: "美咲",
+        page: 2,
+        pageSize: 20
+      },
+      signal: controller.signal
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(3, "/merchant-admin/analytics/members", {
+      query: { period: "last7days", page: 1, pageSize: 20 }
+    });
+  });
+
+  it("rejects unsafe member-list pagination before issuing a request", async () => {
+    await expect(backofficeRealDataApi.membershipMembers("backoffice", {
+      period: "last7days", page: 0, pageSize: 20
+    })).rejects.toThrow("error.pagination.invalid");
+    await expect(backofficeRealDataApi.membershipMembers("backoffice", {
+      period: "last7days", page: 1, pageSize: 101
+    })).rejects.toThrow("error.pagination.invalid");
+    expect(httpClient.request).not.toHaveBeenCalled();
+  });
+
+  it("serializes the formal Top10 ranking metric, category and dashboard filter", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      dataStatus: "ready",
+      filter: {
+        kind: "technician",
+        metric: "completedCount",
+        period: "custom",
+        from: "2026-08-01",
+        to: "2026-08-31",
+        timeZone: "Asia/Tokyo",
+        city: "东京",
+        categoryId: 7,
+        evaluatedAt: "2026-09-02T05:00:00.000Z"
+      },
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 10
+    });
+
+    await backofficeRealDataApi.analyticsRankings("technician", {
+      metric: "completedCount",
+      period: "custom",
+      from: "2026-08-01",
+      to: "2026-08-31",
+      city: "东京",
+      categoryId: 7,
+      page: 1,
+      pageSize: 10
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/backoffice/analytics/rankings/technician",
+      {
+        query: {
+          metric: "completedCount",
+          period: "custom",
+          from: "2026-08-01",
+          to: "2026-08-31",
+          city: "东京",
+          categoryId: 7,
+          page: 1,
+          pageSize: 10
+        }
+      }
+    );
+  });
+
+  it.each([
+    ["technician", "customer"],
+    ["customer", "technician"],
+    ["service", "customer"]
+  ] as const)("rejects a %s ranking row with mismatched %s identity", async (kind, entityType) => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      dataStatus: "ready",
+      filter: {
+        kind,
+        metric: "gmv",
+        period: "last7days",
+        from: "2026-08-27",
+        to: "2026-09-02",
+        timeZone: "Asia/Tokyo",
+        city: null,
+        categoryId: null,
+        evaluatedAt: "2026-09-02T05:00:00.000Z"
+      },
+      list: [{
+        rank: 1,
+        entityType,
+        entityPublicId: "u0000000041",
+        entityNumericId: 41,
+        displayName: "Mismatch",
+        avatarUrl: null,
+        categoryId: null,
+        gmvJpy: 1000,
+        completedCount: 1,
+        registeredAt: "2026-01-01T00:00:00.000Z"
+      }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+
+    await expect(backofficeRealDataApi.analyticsRankings(kind, {
+      metric: "gmv",
+      period: "last7days",
+      page: 1,
+      pageSize: 10
+    })).rejects.toThrow("error.api");
+  });
+
+  it("rejects invalid ranking identifiers and pagination before issuing a request", async () => {
+    await expect(backofficeRealDataApi.analyticsRankings("shop" as "service", {
+      metric: "gmv", period: "last7days", page: 1, pageSize: 10
+    })).rejects.toThrow("error.analytics_ranking.invalid");
+    await expect(backofficeRealDataApi.analyticsRankings("service", {
+      metric: "gmv", period: "last7days", page: 1, pageSize: 11
+    })).rejects.toThrow("error.pagination.invalid");
+    expect(httpClient.request).not.toHaveBeenCalled();
+  });
+
   it("uses strict backend pagination names for manageable merchant shops", async () => {
     const page = {
       list: [
@@ -358,7 +539,9 @@ describe("formal dashboard frontend API contract", () => {
         : "jpy",
     detailRoute: metricKey === "franchisee_onboarding" || metricKey === "supplier_onboarding"
       ? null
-      : `/admin/analytics/metrics/${metricKey}`
+      : metricKey === "new_paid_members"
+        ? "/admin/analytics/members"
+        : `/admin/analytics/metrics/${metricKey}`
   });
   const analyticsOverview = (grossRevenue = readyMetric): DashboardOverviewPayload => ({
     filter: analyticsFilter,

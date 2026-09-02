@@ -34,4 +34,17 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("创建预约中");
     expect(formalSource).toContain("预约状态已变化，请重新选择时段");
   });
+
+  it("keeps the production confirmation structure while using formal data", () => {
+    for (const label of ["套餐", "到店服务", "时间", "地址", "技师", "备注"]) {
+      expect(formalSource).toContain(`label: "${label}"`);
+    }
+    expect(formalSource).toContain("注意事项");
+    expect(formalSource).toContain("取消政策");
+    expect(formalSource).toContain("NDP（NeeDoPoint）");
+    expect(formalSource).toContain("确定预约");
+    expect(formalSource).toContain("SocialProfileMiniCard");
+    expect(formalSource).not.toContain("选择可预约时段");
+    expect(formalSource).not.toContain("提交正式预约");
+  });
 });
