@@ -547,6 +547,14 @@ describe("StoreDetailPage formal route isolation", () => {
     expect(pageSource).toContain("const formalStoreLinkCopy: Record<Language");
     expect(pageSource).toContain("formalStoreLinkCopy[language]");
   });
+
+  it("never sends a formal shop without persisted services through the legacy fallback checkout", () => {
+    expect(pageSource).toContain("formalApiOnly");
+    expect(pageSource).toContain("hasBookableCheckoutTarget");
+    expect(pageSource).toContain("暂无可预约服务");
+    expect(pageSource).toContain("formalApiOnly={true}");
+    expect(pageSource).not.toContain('const primaryCheckoutTarget = menuCards[0]?.sourceServiceId ?? services[0]?.id ?? "svc-fallback";');
+  });
 });
 
 describe("StoreDetailPage public Shop route", () => {

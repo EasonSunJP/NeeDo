@@ -54,6 +54,7 @@
     "check:future-operations": "ALLOW_SIMULATION_SEED=true ENV_FILE=.env.dev tsx scripts/check-future-six-month-operations.ts",
     "check:lifedance-admin-ownership": "tsx scripts/check-lifedance-admin-ownership.ts",
     "provision:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/provision-lifedance-admin2.ts",
+    "repair:lifedance-admin2-booking": "ENV_FILE=.env.dev tsx scripts/repair-lifedance-admin2-booking.ts",
     "check:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/check-lifedance-admin2.ts",
     "check:formal-social-test": "tsx scripts/check-formal-social-test.ts",
     "audit:database-indexes": "tsx scripts/audit-database-indexes.ts",

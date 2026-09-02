@@ -1,6 +1,7 @@
 import {
   LIFEDANCE_ADMIN2_PLAN,
   assertLocalAdmin2ProvisioningTarget,
+  buildLifeDanceAdmin2BookingSlotStarts,
   buildLifeDanceAdmin2UserData,
   calibrateLifeDanceAdmin2TestNdp,
   resolveLifeDanceAdmin2Password,
@@ -16,6 +17,12 @@ describe("LifeDance admin2 provisioning plan", () => {
       needoId: "needo0000000002",
       numberPart: "0000000002",
       shopName: "麻布十番超级按摩",
+      bookingService: {
+        categoryCode: "wellness",
+        name: "麻布十番ボディケア 60分",
+        priceAmount: "8800.00",
+        durationMinutes: 60
+      },
       friendCount: 20,
       identityTypes: [
         "platform",
@@ -26,6 +33,26 @@ describe("LifeDance admin2 provisioning plan", () => {
         "scout"
       ],
       roleCodes: ["admin", "customer", "technician", "merchant_owner", "scout"]
+    });
+  });
+
+  it("builds a deterministic seven-day JST booking horizon with two slots per day", () => {
+    const slots = buildLifeDanceAdmin2BookingSlotStarts(
+      new Date("2026-09-02T09:00:00.000Z")
+    );
+
+    expect(slots).toHaveLength(14);
+    expect(slots[0]).toEqual({
+      startsAt: new Date("2026-09-03T01:00:00.000Z"),
+      endsAt: new Date("2026-09-03T02:00:00.000Z")
+    });
+    expect(slots[1]).toEqual({
+      startsAt: new Date("2026-09-03T05:00:00.000Z"),
+      endsAt: new Date("2026-09-03T06:00:00.000Z")
+    });
+    expect(slots[13]).toEqual({
+      startsAt: new Date("2026-09-09T05:00:00.000Z"),
+      endsAt: new Date("2026-09-09T06:00:00.000Z")
     });
   });
 

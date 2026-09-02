@@ -90,6 +90,7 @@ type PendingStoreImageEdit = {
 };
 type StoreDetailExperienceProps = {
   embedded?: boolean;
+  formalApiOnly?: boolean;
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   pricingControl?: ReactNode;
   pricingMode?: "store" | "technician";
@@ -2682,6 +2683,7 @@ function EnvironmentGalleryCard({
 
 export function StoreDetailExperience({
   embedded = false,
+  formalApiOnly = false,
   onEditFocus,
   pricingControl,
   pricingMode = "store",
@@ -2771,7 +2773,10 @@ export function StoreDetailExperience({
     [industry, presentationOverride, store, store.presentation]
   );
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
-  const baseMenuCards = useMemo(() => buildMenuCards(store, industry), [industry, store]);
+  const baseMenuCards = useMemo(
+    () => (formalApiOnly ? [] : buildMenuCards(store, industry)),
+    [formalApiOnly, industry, store]
+  );
   const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
@@ -2840,7 +2845,8 @@ export function StoreDetailExperience({
       ) ?? null,
     [displayedTechnicians, routeTechnicianId, store.id]
   );
-  const primaryCheckoutTarget = menuCards[0]?.sourceServiceId ?? services[0]?.id ?? "svc-fallback";
+  const primaryCheckoutTarget =
+    menuCards[0]?.sourceServiceId ?? (formalApiOnly ? "" : services[0]?.id ?? "svc-fallback");
   const baseShareCount = useMemo(() => socialPosts.reduce((sum, post) => sum + post.repostCount, 0), [socialPosts]);
   const pinnedSocialPost = socialPosts.find((post) => post.isPinned);
   const regularSocialPosts = pinnedSocialPost ? socialPosts.filter((post) => post.id !== pinnedSocialPost.id) : socialPosts;
@@ -2937,6 +2943,7 @@ export function StoreDetailExperience({
   const favoriteCount = config.favoriteCount + (isFavorite ? 1 : 0);
   const shareCount = baseShareCount + shareBoost;
   const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
+  const hasBookableCheckoutTarget = selectedCheckoutTarget.length > 0;
   const selectedBookingDurationMinutes = useMemo(
     () => parseBookingDurationMinutes(menuCards.find((item) => item.sourceServiceId === selectedCheckoutTarget)?.duration),
     [menuCards, selectedCheckoutTarget]
@@ -2997,7 +3004,26 @@ export function StoreDetailExperience({
       technicianId: selectedBookingTechnician?.id,
       time: selectedTime
     });
-  const bookingHref = buildBookingHref(selectedCheckoutTarget);
+  const bookingHref = hasBookableCheckoutTarget ? buildBookingHref(selectedCheckoutTarget) : undefined;
+  const renderBookingAction = (className: string, label: string) =>
+    hasBookableCheckoutTarget ? (
+      <PrimaryButton className={className} to={bookingHref}>
+        <AppIcon className="h-4 w-4" name="calendar" />
+        <span>{label}</span>
+      </PrimaryButton>
+    ) : (
+      <div
+        aria-disabled="true"
+        className={cn(
+          className,
+          "inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] px-5 text-sm font-black text-[color:var(--client-muted)] opacity-70"
+        )}
+        role="button"
+      >
+        <AppIcon className="h-4 w-4" name="calendar" />
+        <span>暂无可预约服务</span>
+      </div>
+    );
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
   const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
     updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, StoreBasicEditorFieldKey>>);
@@ -3533,10 +3559,7 @@ export function StoreDetailExperience({
                     title="来店日"
                   />
                   <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pt-3">
-                    <PrimaryButton className={storeBookingCtaButtonClassName} to={bookingHref}>
-                      <AppIcon className="h-4 w-4" name="calendar" />
-                      <span>{bookingCtaCopy(store.openStatus)}</span>
-                    </PrimaryButton>
+                    {renderBookingAction(storeBookingCtaButtonClassName, bookingCtaCopy(store.openStatus))}
                   </div>
                 </FlatCard>
               </div>
@@ -3849,10 +3872,7 @@ export function StoreDetailExperience({
                 <StoreMapTagList items={[config.distance, config.parking, store.openStatus === "open" ? "可预约" : "需确认时段"]} />
                 {isMerchantEditable ? null : (
                   <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_50%,transparent)] pt-3">
-                    <PrimaryButton className={storeBookingCtaButtonClassName} to={bookingHref}>
-                      <AppIcon className="h-4 w-4" name="calendar" />
-                      <span>立即预约</span>
-                    </PrimaryButton>
+                    {renderBookingAction(storeBookingCtaButtonClassName, "立即预约")}
                   </div>
                 )}
               </FlatCard>
@@ -4136,10 +4156,7 @@ export function StoreDetailExperience({
             <AppIcon className="h-4 w-4" name="chat" />
             <span>聊天咨询</span>
           </SecondaryButton>
-          <PrimaryButton className={storeBottomPrimaryButtonClassName} to={bookingHref}>
-            <AppIcon className="h-4 w-4" name="calendar" />
-            <span>{bookingCtaCopy(store.openStatus)}</span>
-          </PrimaryButton>
+          {renderBookingAction(storeBottomPrimaryButtonClassName, bookingCtaCopy(store.openStatus))}
         </div>
       </div>
 
@@ -4257,6 +4274,7 @@ function UnifiedFormalStoreDetail({
 
   return (
     <StoreDetailExperience
+      formalApiOnly={true}
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
