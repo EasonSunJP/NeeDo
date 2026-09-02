@@ -11145,6 +11145,93 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      ShopEmployeeDirectoryRole: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "names", "isTechnicianRole"],
+        properties: {
+          code: { type: "string", minLength: 1, maxLength: 64 },
+          names: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zhHans", "zhHant", "ja", "en", "ko"],
+            properties: {
+              zhHans: { type: "string" },
+              zhHant: { type: "string" },
+              ja: { type: "string" },
+              en: { type: "string" },
+              ko: { type: "string" }
+            }
+          },
+          isTechnicianRole: { type: "boolean" }
+        }
+      },
+      ShopEmployeeDirectoryTechnician: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "relationshipType", "workStatus"],
+        properties: {
+          needoId: { type: "string", pattern: "^s[0-9]{10}$" },
+          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          workStatus: {
+            type: "string",
+            enum: ["active", "on_leave", "suspended"]
+          }
+        }
+      },
+      ShopEmployeeDirectoryItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "needoId",
+          "displayName",
+          "avatarUrl",
+          "email",
+          "phone",
+          "status",
+          "startsAt",
+          "endsAt",
+          "roles",
+          "technician"
+        ],
+        properties: {
+          needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"], format: "uri-reference" },
+          email: { type: "string", format: "email" },
+          phone: { type: ["string", "null"] },
+          status: {
+            type: "string",
+            enum: ["active", "on_leave", "suspended"]
+          },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: ["string", "null"], format: "date-time" },
+          roles: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopEmployeeDirectoryRole" }
+          },
+          technician: {
+            anyOf: [
+              { $ref: "#/components/schemas/ShopEmployeeDirectoryTechnician" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      ShopEmployeeDirectoryPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopEmployeeDirectoryItem" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       MerchantEmployeeTimelineEvent: {
         type: "object",
         additionalProperties: false,
@@ -13734,6 +13821,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/MerchantEmployeePage"
           }),
           ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employee-directory`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "List all employees of the authenticated shop",
+        description:
+          "Returns owners, administrators, staff, technicians and other formal employees. The shop scope is taken only from the authenticated identity; shopId is not accepted.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:employee-affiliation:read",
+        parameters: [
+          {
+            name: "page",
+            in: "query",
+            schema: { type: "integer", minimum: 1, default: 1 }
+          },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "keyword",
+            in: "query",
+            schema: { type: "string", maxLength: 100 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "on_leave", "suspended"] }
+          },
+          {
+            name: "roleCode",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 64 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-shop employee directory", {
+            $ref: "#/components/schemas/ShopEmployeeDirectoryPage"
+          }),
+          "400": jsonErrorResponse("error.validation — strict directory query validation failed"),
+          "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+          "403": jsonErrorResponse(
+            "error.identity.forbidden — missing permission or authenticated shop scope"
+          )
         }
       }
     },

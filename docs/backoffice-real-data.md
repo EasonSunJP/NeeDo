@@ -127,7 +127,9 @@ Dashboard 与店铺列表读取分别要求 `backoffice:dashboard:read`、`merch
 
 迁移 `20260903130000_shop_employee_foundation` 只从正式数据库证据回填：店铺 owner、有效 shop-scoped 商户身份、有效 MerchantAccount 店铺关系，以及当前有效的技师从属。旧商户页面中仅保存在 localStorage、没有正式 `User` 和店铺关系的手工姓名不会被迁移，也不会被通知受众使用。只读检查命令 `npm --prefix backend run check:shop-employee-foundation` 只输出五类聚合缺口数量，不输出用户邮箱、姓名或员工明细。
 
-本微步骤仅交付 schema、migration、确定性回填与只读 checker。员工 CRUD API、商户页面正式切换、通知受众快照、共享数据库部署和浏览器验收仍未执行；在这些后续步骤完成前，现有技师员工接口仍是技师范围接口，不能宣称已经覆盖全部商户员工。
+商户后端现提供只读 `GET /api/v1/merchant-admin/employee-directory`，从 `ShopEmployee` 分页返回当前店铺全部正式人员，而不只返回技师。查询支持 `page`、`pageSize`、`keyword`、`status` 和 `roleCode`；店铺范围只取自当前已认证 shop identity，严格拒绝调用方传入 `shopId`。接口复用 `merchant-admin:employee-affiliation:read`，返回用户级公开 NeeDoID、姓名、头像、联系方式、任职状态/时间、五语言职务，以及当前正式技师关系存在时的可空技师投影；不返回员工、用户、职务、从属或身份内部主键。该路由只挂载于独立商户后端，运营后端不提供此路由。
+
+原有 `/api/v1/merchant-admin/employees` 及其详情、日程、从属、薪酬和工资接口继续保持技师范围，不在本微步骤中改变。员工写 API、商户页面切换、通知员工/技师受众快照、共享数据库 migration 部署和认证浏览器验收仍未执行；因此现在可以确认“全部正式员工”的后端只读合同已建立，但不能宣称商户通知链路已经完成。
 
 用户详情统一使用五个 tab：`基础资料`、`会员等级`、`预约与消费`、`权限与账号`、`用户动态`。头部只显示公开 NeeDoID 与业务状态，不显示内部 User/Profile 主键。用户动态通过独立分页 API 读取，每页可选 `10 / 30 / 50 / 100` 条，并复用正式联系人时间线视觉；正式空列表可显示明确的无记录状态，但不得用 demo 数值、列表行或 mock 关系补位。
 

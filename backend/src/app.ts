@@ -126,6 +126,7 @@ import type { PricingModeRepositoryPort } from "./services/pricing-mode.service"
 import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
 import type { PlatformPartnerRepositoryPort } from "./services/platform-partner.service";
 import type { TechnicianShopAffiliationRepositoryPort } from "./services/technician-shop-affiliation.service";
+import type { ShopEmployeeDirectoryRepositoryPort } from "./services/shop-employee-directory.service";
 import {
   RealtimeRepository,
   type RealtimeRepositoryPort
@@ -196,6 +197,7 @@ import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
+import { createShopEmployeeDirectoryRoutes } from "./routes/shop-employee-directory.routes";
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
 import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.routes";
 import { createOperatingCostRoutes } from "./routes/operating-cost.routes";
@@ -257,6 +259,7 @@ export interface AppDependencies {
   publicIdentifierRepository?: PublicIdentifierRepositoryPort;
   platformPartnerRepository?: PlatformPartnerRepositoryPort;
   technicianShopAffiliationRepository?: TechnicianShopAffiliationRepositoryPort;
+  shopEmployeeDirectoryRepository?: ShopEmployeeDirectoryRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
@@ -574,6 +577,7 @@ export const createApp = (
   mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));
   mount("backoffice", createExchangeRequestFeeRoutes(config, resolvedDependencies));
   mount("merchant-admin", createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopEmployeeDirectoryRoutes(config, resolvedDependencies));
   mount("backoffice", createPlatformPartnerRoutes(config, resolvedDependencies));
   mount("backoffice", createAgentCommissionRuleRoutes(config, resolvedDependencies));
   mount("backoffice", createOperatingCostRoutes(config, resolvedDependencies));
