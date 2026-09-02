@@ -5981,6 +5981,118 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reason: { type: "string", minLength: 1, maxLength: 500 }
         }
       },
+      OperatingCostDirectAssignment: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shopPublicId"],
+        properties: {
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          amountJpy: {
+            type: "integer",
+            format: "int64",
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER
+          },
+          shareBps: { type: "integer", minimum: 0, maximum: 10000 }
+        },
+        oneOf: [
+          { required: ["amountJpy"], not: { required: ["shareBps"] } },
+          { required: ["shareBps"], not: { required: ["amountJpy"] } }
+        ]
+      },
+      OperatingCostConfiguration: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "categoryCode", "name", "amountJpy", "periodStart", "periodEnd",
+          "allocationMode", "effectiveAt", "reason"
+        ],
+        properties: {
+          categoryCode: {
+            type: "string",
+            enum: ["personnel", "server", "third_party_api", "other"]
+          },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          amountJpy: {
+            type: "integer",
+            format: "int64",
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER
+          },
+          periodStart: { type: "string", format: "date" },
+          periodEnd: { type: "string", format: "date" },
+          allocationMode: {
+            type: "string",
+            enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"]
+          },
+          directAssignments: {
+            type: "array",
+            minItems: 1,
+            maxItems: 500,
+            items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
+          },
+          effectiveAt: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      OperatingCostItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId", "costCode", "version", "categoryCode", "name", "amountJpy",
+          "currency", "periodStart", "periodEnd", "allocationMode", "status",
+          "effectiveAt", "publishedAt", "configuredById", "reason", "directAssignments",
+          "allocations", "createdAt", "updatedAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          costCode: { type: "string", minLength: 1, maxLength: 100 },
+          version: { type: "integer", minimum: 1 },
+          categoryCode: {
+            type: "string",
+            enum: ["personnel", "server", "third_party_api", "other"]
+          },
+          name: { type: "string" },
+          amountJpy: { type: "integer", format: "int64", minimum: 0 },
+          currency: { type: "string", enum: ["JPY"] },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          allocationMode: {
+            type: "string",
+            enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"]
+          },
+          status: { type: "string", enum: ["draft", "published", "archived"] },
+          effectiveAt: { type: "string", format: "date-time" },
+          publishedAt: { type: ["string", "null"], format: "date-time" },
+          configuredById: { type: "integer", minimum: 1 },
+          reason: { type: "string" },
+          directAssignments: {
+            oneOf: [
+              {
+                type: "array",
+                items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
+              },
+              { type: "null" }
+            ]
+          },
+          allocations: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["shopPublicId", "shopName", "amountJpy", "allocationWeight"],
+              properties: {
+                shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+                shopName: { type: "string" },
+                amountJpy: { type: "integer", format: "int64", minimum: 0 },
+                allocationWeight: { type: ["string", "null"], pattern: "^[0-9]+\\.[0-9]{8}$" }
+              }
+            }
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
       BackofficeService: {
         type: "object",
         required: [
@@ -18589,6 +18701,144 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.platform_partner.agent_not_found"),
           "409": jsonErrorResponse("error.agent_commission_rule.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/operating-costs`]: {
+      get: {
+        tags: ["Operating Costs"],
+        summary: "List versioned operating cost items",
+        description:
+          "Returns paginated draft and published cost versions with immutable published shop allocations.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 160 } },
+          { name: "categoryCode", in: "query", schema: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["draft", "published", "archived"] } },
+          { name: "periodStart", in: "query", schema: { type: "string", format: "date" } },
+          { name: "periodEnd", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated operating cost versions", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: { type: "array", items: { $ref: "#/components/schemas/OperatingCostItem" } },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Operating Costs"],
+        summary: "Create the next draft version of an operating cost",
+        description: "Creates a JPY operating-cost draft. Only one live draft may exist for a cost code.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "costCode", "categoryCode", "name", "amountJpy", "periodStart",
+                  "periodEnd", "allocationMode", "effectiveAt", "reason"
+                ],
+                properties: {
+                  costCode: { type: "string", minLength: 1, maxLength: 100, pattern: "^[a-z0-9][a-z0-9._-]*$" },
+                  categoryCode: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] },
+                  name: { type: "string", minLength: 1, maxLength: 160 },
+                  amountJpy: { type: "integer", format: "int64", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+                  periodStart: { type: "string", format: "date" },
+                  periodEnd: { type: "string", format: "date" },
+                  allocationMode: { type: "string", enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"] },
+                  directAssignments: {
+                    type: "array", minItems: 1, maxItems: 500,
+                    items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
+                  },
+                  effectiveAt: { type: "string", format: "date-time" },
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Operating cost draft created", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("error.operating_cost.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/operating-costs/{publicId}`]: {
+      patch: {
+        tags: ["Operating Costs"],
+        summary: "Replace a draft operating-cost configuration",
+        description: "Updates all configurable fields of a draft. Published versions are immutable.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OperatingCostConfiguration" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Operating cost draft updated", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.operating_cost.not_found"),
+          "409": jsonErrorResponse("error.operating_cost.conflict")
+        }
+      },
+      delete: {
+        tags: ["Operating Costs"],
+        summary: "Soft-delete an operating-cost draft",
+        description: "Deletes only an unpublished draft and retains the atomic audit record.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, ["reason"]),
+        responses: {
+          "204": { description: "Operating cost draft deleted" },
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.operating_cost.not_found"),
+          "409": jsonErrorResponse("error.operating_cost.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/operating-costs/{publicId}/publish`]: {
+      post: {
+        tags: ["Operating Costs"],
+        summary: "Publish and allocate an operating-cost draft",
+        description:
+          "Atomically locks the draft, resolves formal shop evidence, creates exact integer JPY allocations, publishes the version and records calculation/audit snapshots. Proportional basis is settled order platform fees converted by the order rate plus confirmed SaaS receipts.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:operating-cost:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, ["reason"]),
+        responses: {
+          "200": jsonDataResponse("Operating cost published with shop allocations", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.operating_cost.not_found or error.operating_cost.shop_not_found"),
+          "409": jsonErrorResponse("error.operating_cost.conflict"),
+          "422": jsonErrorResponse("error.operating_cost.allocation_invalid")
         }
       }
     },

@@ -687,6 +687,20 @@ export const SYSTEM_PERMISSIONS = [
     "确认代理商介绍的正式店铺关系"
   ),
   createPermission(
+    "backoffice:operating-cost:read",
+    "运营成本读取",
+    "api",
+    "backoffice",
+    "分页读取运营成本草稿、已发布版本及店铺分摊结果"
+  ),
+  createPermission(
+    "backoffice:operating-cost:write",
+    "运营成本管理",
+    "api",
+    "backoffice",
+    "创建、修改、删除草稿并发布可审计的运营成本分摊"
+  ),
+  createPermission(
     "backoffice:membership-tier:publish",
     "平台会员等级发布",
     "api",
@@ -1850,6 +1864,7 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:membership-tier:read",
   "backoffice:users:read",
   "backoffice:agent:read",
+  "backoffice:operating-cost:read",
   "backoffice:membership-benefit:read",
   "backoffice:user-experience:read",
   "backoffice:user-group:read",
@@ -1958,6 +1973,8 @@ const FINANCE_PERMISSION_CODES = [
   "backoffice:platform-fee-policy:read",
   "backoffice:ndp-exchange-rate:read",
   "backoffice:ndp-exchange-rate:write",
+  "backoffice:operating-cost:read",
+  "backoffice:operating-cost:write",
   "page:backoffice-membership-reward-fee",
   "button:backoffice-membership-reward-fee-create",
   "menu:finance",
@@ -1979,6 +1996,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:users:read",
   "backoffice:partner-profile:write",
   "backoffice:agent:write",
+  "backoffice:operating-cost:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
   "backoffice:user-group:write",

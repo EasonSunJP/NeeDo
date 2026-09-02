@@ -58,6 +58,7 @@ import type { ShopMembershipCardRedemptionRepositoryPort } from "./services/shop
 import type { ShopMembershipCardRefundRepositoryPort } from "./services/shop-membership-card-refund.service";
 import type { AnalyticsRankingRepositoryPort } from "./repositories/analytics-ranking.repository";
 import type { AgentCommissionRuleRepositoryPort } from "./repositories/agent-commission-rule.repository";
+import type { OperatingCostRepositoryPort } from "./repositories/operating-cost.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
@@ -195,6 +196,7 @@ import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.ro
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
 import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.routes";
+import { createOperatingCostRoutes } from "./routes/operating-cost.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
@@ -269,6 +271,7 @@ export interface AppDependencies {
   shopMembershipCardRefundRepository?: ShopMembershipCardRefundRepositoryPort;
   analyticsRankingRepository?: AnalyticsRankingRepositoryPort;
   agentCommissionRuleRepository?: AgentCommissionRuleRepositoryPort;
+  operatingCostRepository?: OperatingCostRepositoryPort;
   analyticsRankingClock?: () => Date;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;
@@ -530,6 +533,7 @@ export const createApp = (
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   apiRouter.use(createPlatformPartnerRoutes(config, resolvedDependencies));
   apiRouter.use(createAgentCommissionRuleRoutes(config, resolvedDependencies));
+  apiRouter.use(createOperatingCostRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));
   }
