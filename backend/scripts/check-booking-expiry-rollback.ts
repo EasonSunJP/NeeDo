@@ -1,12 +1,53 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { loadAndValidateFormalEnvironment } from "./check-order-fulfillment-checkout-flow";
 
-const assert = (condition: unknown, message: string): asserts condition => {
+type Assert = (condition: unknown, message: string) => asserts condition;
+
+const assert: Assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+export function awaitOldSlotLockOrThrow(
+  oldSlotLocked: Promise<void>,
+  lockTransaction: Promise<unknown>
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    void oldSlotLocked.then(resolve, reject);
+    void lockTransaction.then(
+      () => reject(new Error("lock transaction completed before acquiring the old-slot lock")),
+      reject
+    );
+  });
+}
+
+export async function runBookingExpiryRollbackLifecycle({
+  execute,
+  settle,
+  cleanupMarker,
+  disconnectClients
+}: {
+  execute: () => Promise<void>;
+  settle: () => Promise<void>;
+  cleanupMarker: () => Promise<void>;
+  disconnectClients: readonly (() => Promise<void>)[];
+}): Promise<void> {
+  try {
+    await execute();
+  } finally {
+    try {
+      await settle();
+    } finally {
+      try {
+        await cleanupMarker();
+      } finally {
+        await Promise.all(disconnectClients.map((disconnect) => disconnect()));
+      }
+    }
+  }
+}
 
 type Fixture = {
   marker: string;
@@ -319,90 +360,94 @@ export async function runBookingExpiryRollbackCheck(): Promise<void> {
   let lockTransaction: Promise<unknown> | null = null;
   let replacementAttempt: Promise<unknown> | null = null;
 
-  try {
-    await assertMarkerCleanup(observerClient, marker);
-    fixture = await createFixture(fixtureClient, marker);
-    const before = await captureEvidence(observerClient, fixture);
-    let confirmOldSlotLocked: (() => void) | null = null;
-    const oldSlotLocked = new Promise<void>((resolve) => {
-      confirmOldSlotLocked = resolve;
-    });
-    const oldSlotLockReleased = new Promise<void>((resolve) => {
-      releaseOldSlotLock = resolve;
-    });
-    lockTransaction = lockClient.$transaction(
-      async (tx) => {
-        await tx.$queryRaw<Array<{ id: number }>>(
-          Prisma.sql`SELECT \`id\` FROM \`schedule_slots\` WHERE \`id\` = ${fixture?.oldSlotId ?? -1} FOR UPDATE`
-        );
-        confirmOldSlotLocked?.();
-        await oldSlotLockReleased;
-      },
-      { maxWait: 5_000, timeout: 15_000 }
-    );
-    await oldSlotLocked;
+  await runBookingExpiryRollbackLifecycle({
+    execute: async () => {
+      await assertMarkerCleanup(observerClient, marker);
+      fixture = await createFixture(fixtureClient, marker);
+      const before = await captureEvidence(observerClient, fixture);
+      let confirmOldSlotLocked: (() => void) | null = null;
+      const oldSlotLocked = new Promise<void>((resolve) => {
+        confirmOldSlotLocked = resolve;
+      });
+      const oldSlotLockReleased = new Promise<void>((resolve) => {
+        releaseOldSlotLock = resolve;
+      });
+      lockTransaction = lockClient.$transaction(
+        async (tx) => {
+          await tx.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT \`id\` FROM \`schedule_slots\` WHERE \`id\` = ${fixture?.oldSlotId ?? -1} FOR UPDATE`
+          );
+          confirmOldSlotLocked?.();
+          await oldSlotLockReleased;
+        },
+        { maxWait: 5_000, timeout: 15_000 }
+      );
+      await awaitOldSlotLockOrThrow(oldSlotLocked, lockTransaction);
 
-    const repository = new BookingRepository(attemptClient);
-    let attemptSettled = false;
-    const replacement = repository.createBooking({
-      customerUserId: fixture.customerUserId,
-      serviceId: fixture.serviceId,
-      scheduleSlotId: fixture.targetSlotId,
-      fulfillmentMode: "store"
-    });
-    replacementAttempt = replacement;
-    void replacement.then(
-      () => { attemptSettled = true; },
-      () => { attemptSettled = true; }
-    );
-    const waitState = await waitForBlockedSlotRelease(observerClient, () => attemptSettled);
-    const waitUntilExpiredMs = Math.max(0, fixture.targetStartsAt.getTime() + 250 - Date.now());
-    await delay(waitUntilExpiredMs);
-    releaseOldSlotLock();
-    releaseOldSlotLock = null;
-    await lockTransaction;
-    lockTransaction = null;
+      const repository = new BookingRepository(attemptClient);
+      let attemptSettled = false;
+      const replacement = repository.createBooking({
+        customerUserId: fixture.customerUserId,
+        serviceId: fixture.serviceId,
+        scheduleSlotId: fixture.targetSlotId,
+        fulfillmentMode: "store"
+      });
+      replacementAttempt = replacement;
+      void replacement.then(
+        () => { attemptSettled = true; },
+        () => { attemptSettled = true; }
+      );
+      const waitState = await waitForBlockedSlotRelease(observerClient, () => attemptSettled);
+      const waitUntilExpiredMs = Math.max(0, fixture.targetStartsAt.getTime() + 250 - Date.now());
+      await delay(waitUntilExpiredMs);
+      const releaseLock = releaseOldSlotLock;
+      assert(releaseLock !== null, "old-slot lock release callback was not initialized");
+      releaseLock();
+      releaseOldSlotLock = null;
+      await lockTransaction;
+      lockTransaction = null;
 
-    const result = await replacement;
-    replacementAttempt = null;
-    assert(result === null, "expired replacement unexpectedly created an order");
-    const after = await captureEvidence(observerClient, fixture);
-    assertRollbackEvidence(before, after);
+      const result = await replacement;
+      replacementAttempt = null;
+      assert(result === null, "expired replacement unexpectedly created an order");
+      const after = await captureEvidence(observerClient, fixture);
+      assertRollbackEvidence(before, after);
 
-    process.stdout.write(
-      `${JSON.stringify({
-        status: "ok",
-        database: formalEnvironment.databaseName,
-        marker,
-        firstValidationPassed: true,
-        blockedAfterPendingCancellation: true,
-        observedProcessState: waitState,
-        expiredAtSecondValidation: true,
-        independentRollbackEvidence: after
-      }, null, 2)}\n`
-    );
-    console.log("PASS booking expiry replacement rolled back without residue");
-  } finally {
-    if (releaseOldSlotLock && fixture) {
-      await delay(Math.max(0, fixture.targetStartsAt.getTime() + 250 - Date.now()));
-    }
-    releaseOldSlotLock?.();
-    await Promise.allSettled([
-      lockTransaction ?? Promise.resolve(),
-      replacementAttempt ?? Promise.resolve()
-    ]);
-    try {
+      process.stdout.write(
+        `${JSON.stringify({
+          status: "ok",
+          database: formalEnvironment.databaseName,
+          marker,
+          firstValidationPassed: true,
+          blockedAfterPendingCancellation: true,
+          observedProcessState: waitState,
+          expiredAtSecondValidation: true,
+          independentRollbackEvidence: after
+        }, null, 2)}\n`
+      );
+      console.log("PASS booking expiry replacement rolled back without residue");
+    },
+    settle: async () => {
+      if (releaseOldSlotLock && fixture && replacementAttempt) {
+        await delay(Math.max(0, fixture.targetStartsAt.getTime() + 250 - Date.now()));
+      }
+      releaseOldSlotLock?.();
+      await Promise.allSettled([
+        lockTransaction ?? Promise.resolve(),
+        replacementAttempt ?? Promise.resolve()
+      ]);
+    },
+    cleanupMarker: async () => {
       await cleanupMarkerFixture(fixtureClient, marker);
       await assertMarkerCleanup(observerClient, marker);
-    } finally {
-      await Promise.all([
-        fixtureClient.$disconnect(),
-        attemptClient.$disconnect(),
-        lockClient.$disconnect(),
-        observerClient.$disconnect()
-      ]);
-    }
-  }
+    },
+    disconnectClients: [
+      () => fixtureClient.$disconnect(),
+      () => attemptClient.$disconnect(),
+      () => lockClient.$disconnect(),
+      () => observerClient.$disconnect()
+    ]
+  });
 }
 
 if (process.env.JEST_WORKER_ID === undefined && require.main === module) {

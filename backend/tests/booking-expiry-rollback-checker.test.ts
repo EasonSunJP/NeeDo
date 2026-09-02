@@ -23,4 +23,47 @@ describe("booking expiry rollback checker contract", () => {
     expect(source).toContain("affiliateAttribution");
     expect(source).toContain("PASS booking expiry replacement rolled back without residue");
   });
+
+  it("cleans marker rows and disconnects every client when the lock transaction rejects before readiness", async () => {
+    const checker = await import("../scripts/check-booking-expiry-rollback") as Partial<{
+      awaitOldSlotLockOrThrow: (
+        oldSlotLocked: Promise<void>,
+        lockTransaction: Promise<unknown>
+      ) => Promise<void>;
+      runBookingExpiryRollbackLifecycle: (dependencies: {
+        execute: () => Promise<void>;
+        settle: () => Promise<void>;
+        cleanupMarker: () => Promise<void>;
+        disconnectClients: readonly (() => Promise<void>)[];
+      }) => Promise<void>;
+    }>;
+
+    if (!checker.awaitOldSlotLockOrThrow || !checker.runBookingExpiryRollbackLifecycle) {
+      throw new Error("booking expiry rollback lifecycle seam is missing");
+    }
+
+    const lockFailure = new Error("lock transaction failed before FOR UPDATE");
+    const markerCleanup = jest.fn(async () => undefined);
+    const settle = jest.fn(async () => undefined);
+    const disconnectClients = Array.from({ length: 4 }, () => jest.fn(async () => undefined));
+    let continuedAfterLock = false;
+
+    await expect(checker.runBookingExpiryRollbackLifecycle({
+      execute: async () => {
+        await checker.awaitOldSlotLockOrThrow!(
+          new Promise<void>(() => undefined),
+          Promise.reject(lockFailure)
+        );
+        continuedAfterLock = true;
+      },
+      settle,
+      cleanupMarker: markerCleanup,
+      disconnectClients
+    })).rejects.toBe(lockFailure);
+
+    expect(continuedAfterLock).toBe(false);
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(markerCleanup).toHaveBeenCalledTimes(1);
+    for (const disconnect of disconnectClients) expect(disconnect).toHaveBeenCalledTimes(1);
+  });
 });
