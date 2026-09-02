@@ -216,6 +216,23 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
   };
 
+  const selectCheckoutSlot = (slotId: number) => {
+    const slot = slots.find((candidate) => candidate.id === slotId && isCheckoutSlotBookable(candidate));
+    if (!slot) return;
+    const selectedTime = getTokyoSlotParts(slot.startsAt)?.time;
+    if (!selectedTime) return;
+
+    setSelectedSlotId(slot.id);
+    const nextSearchParams = new URLSearchParams(location.search);
+    if (nextSearchParams.get("time") === selectedTime) return;
+    nextSearchParams.set("time", selectedTime);
+    navigate({
+      pathname: location.pathname,
+      search: `?${nextSearchParams.toString()}`,
+      hash: location.hash
+    }, { replace: true });
+  };
+
   const copyAddress = async () => {
     if (!locationAddress) return;
     try {
@@ -427,7 +444,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 <>
                   <CheckoutTimeRow
                     date={selectedDate}
-                    onSelect={setSelectedSlotId}
+                    onSelect={selectCheckoutSlot}
                     people={people}
                     selectedSlotId={selectedSlotId}
                     slots={slots}

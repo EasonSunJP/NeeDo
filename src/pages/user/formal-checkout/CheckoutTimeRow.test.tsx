@@ -29,6 +29,7 @@ const slot = (id: number, startsAt: string, status: BookingScheduleSlot["status"
 const slots = [
   slot(1, "2026-09-02T23:00:00.000Z", "available"),
   slot(2, "2026-09-03T01:00:00.000Z", "booked", 1),
+  slot(4, "2026-09-03T02:00:00.000Z", "blocked"),
   slot(3, "2026-09-03T23:00:00.000Z", "available")
 ];
 
@@ -75,9 +76,10 @@ describe("CheckoutTimeRow", () => {
     const listbox = container.querySelector('[role="listbox"]')!;
     const options = Array.from(listbox.querySelectorAll<HTMLButtonElement>('[role="option"]'));
     expect(listbox.getAttribute("aria-label")).toBe("2026-09-03 可预约时间");
-    expect(options.map((option) => option.textContent?.trim())).toEqual(["08:00", "10:00"]);
+    expect(options.map((option) => option.textContent?.trim())).toEqual(["08:00", "10:00", "11:00"]);
     expect(options[0]?.disabled).toBe(false);
     expect(options[1]?.disabled).toBe(true);
+    expect(options[2]?.disabled).toBe(true);
 
     await click(options[1]!);
     expect(onSelect).not.toHaveBeenCalled();
