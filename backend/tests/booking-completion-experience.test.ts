@@ -1,18 +1,23 @@
 import type {
   BookingOrderPayload,
   BookingRepositoryPort,
+  CheckoutReceiptOptions,
+  OrderCheckoutPayload,
   OrderTransitionRepositoryOptions
 } from "../src/repositories/booking.repository";
 import { BookingService } from "../src/services/booking.service";
+import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import type { UserExperienceService } from "../src/services/user-experience.service";
 
 const completedAt = new Date("2026-09-01T09:30:00.000Z");
 const actor = {
   userId: 30,
   roles: ["technician"],
+  currentIdentityType: "technician",
   currentIdentityScopeType: "technician_profile",
   currentIdentityScopeId: 31
-};
+} as AuthenticatedAccessContext;
+const context = { ip: "127.0.0.1", userAgent: "jest" };
 
 const order = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
   id: 7,
@@ -64,6 +69,41 @@ const order = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
 const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
   let persisted = order(initialStatus);
   const transactionClient = { marker: "booking-transaction" };
+  const checkout: OrderCheckoutPayload = {
+    id: 17,
+    orderId: persisted.id,
+    status: "completed",
+    baseAmountJpy: 10_000,
+    addOnAmountJpy: 0,
+    discountAmountJpy: 0,
+    checkoutAmountJpy: 10_000,
+    payableNdp: 10_000,
+    rate: {
+      ruleId: 1,
+      publicId: "00000000-0000-4000-8000-000000000001",
+      version: 1,
+      ndpUnits: 1,
+      jpyUnits: 1,
+      effectiveFrom: "2026-09-01T00:00:00.000Z"
+    },
+    calculation: {
+      formula: "base_plus_accepted_add_ons_minus_discount",
+      baseAmountJpy: 10_000,
+      acceptedAddOnIds: [],
+      addOnAmountJpy: 0,
+      discountAmountJpy: 0,
+      checkoutAmountJpy: 10_000,
+      rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
+    },
+    paymentMethod: "cash",
+    paymentSelectedAt: completedAt,
+    otherMethod: null,
+    paymentEvidence: "technician_receipt_confirmation",
+    receiptConfirmedAt: completedAt,
+    receiptConfirmationReason: "cash received",
+    createdAt: completedAt,
+    updatedAt: completedAt
+  };
   const repository = {
     listAvailableSlots: jest.fn(),
     createBooking: jest.fn(),
@@ -80,6 +120,27 @@ const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
           await options?.settle?.({ transactionClient, order: previous });
           persisted = { ...previous, status: input.toStatus };
           return persisted;
+        } catch (error) {
+          persisted = previous;
+          throw error;
+        }
+      }
+    ),
+    confirmCheckoutReceipt: jest.fn(
+      async (
+        _input: Parameters<BookingRepositoryPort["confirmCheckoutReceipt"]>[0],
+        options: CheckoutReceiptOptions
+      ) => {
+        if (persisted.status !== "awaitingPaymentConfirmation") {
+          return { outcome: "invalid_state" as const };
+        }
+        const previous = persisted;
+        try {
+          const completionContext = { transactionClient, order: previous, checkout };
+          await options.settle(completionContext);
+          await options.settleAffiliate(completionContext);
+          persisted = { ...previous, status: "completed" };
+          return { outcome: "ok" as const, checkout, applied: true };
         } catch (error) {
           persisted = previous;
           throw error;
@@ -104,13 +165,21 @@ const createExperienceService = () => ({
   }))
 });
 
+const createLedgerService = () => ({
+  freezeBookingAcceptance: jest.fn(async () => undefined),
+  releaseBookingHold: jest.fn(async () => undefined),
+  settleBookingCompletion: jest.fn(async () => undefined),
+  compensateCustomerForMerchantCancellation: jest.fn(async () => undefined)
+});
+
 describe("booking completion experience", () => {
   it("awards the customer inside the completion transaction using the completion snapshot", async () => {
-    const { repository, transactionClient } = createRepository("inService");
+    const { repository, transactionClient } = createRepository("awaitingPaymentConfirmation");
     const experienceService = createExperienceService();
+    const ledgerService = createLedgerService();
     const service = new BookingService(
       repository,
-      undefined,
+      ledgerService,
       undefined,
       undefined,
       undefined,
@@ -118,7 +187,12 @@ describe("booking completion experience", () => {
       () => completedAt
     );
 
-    await expect(service.transitionOrder(actor, 7, "complete")).resolves.toMatchObject({
+    await expect(service.confirmCheckoutReceipt(
+      actor,
+      7,
+      { reason: "cash received", idempotencyKey: "experience-completion-1" },
+      context
+    )).resolves.toMatchObject({
       status: "completed"
     });
     expect(experienceService.recordEvent).toHaveBeenCalledWith(
@@ -151,39 +225,49 @@ describe("booking completion experience", () => {
 
     const completed = createRepository("completed");
     const completedExperience = createExperienceService();
+    const ledgerService = createLedgerService();
     const completedService = new BookingService(
       completed.repository,
-      undefined,
+      ledgerService,
       undefined,
       undefined,
       undefined,
       completedExperience as Pick<UserExperienceService, "recordEvent">
     );
-    await expect(completedService.transitionOrder(actor, 7, "complete")).rejects.toMatchObject({
+    await expect(completedService.confirmCheckoutReceipt(
+      actor,
+      7,
+      { reason: "cash received", idempotencyKey: "experience-replay-1" },
+      context
+    )).rejects.toMatchObject({
       statusCode: 409
     });
     expect(completedExperience.recordEvent).not.toHaveBeenCalled();
   });
 
   it("rolls back completion when experience persistence fails", async () => {
-    const { repository, current } = createRepository("inService");
+    const { repository, current } = createRepository("awaitingPaymentConfirmation");
     const experienceService = {
       recordEvent: jest.fn(async () => {
         throw new Error("experience write failed");
       })
     };
+    const ledgerService = createLedgerService();
     const service = new BookingService(
       repository,
-      undefined,
+      ledgerService,
       undefined,
       undefined,
       undefined,
       experienceService
     );
 
-    await expect(service.transitionOrder(actor, 7, "complete")).rejects.toThrow(
-      "experience write failed"
-    );
-    expect(current().status).toBe("inService");
+    await expect(service.confirmCheckoutReceipt(
+      actor,
+      7,
+      { reason: "cash received", idempotencyKey: "experience-rollback-1" },
+      context
+    )).rejects.toThrow("experience write failed");
+    expect(current().status).toBe("awaitingPaymentConfirmation");
   });
 });

@@ -574,7 +574,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
         ownerIdentityId: targetIdentityId,
         contactIdentityId: requesterIdentityId,
         source: "friend_request",
-        deletedAt: null
+        deletedAt: null,
+        blockedAt: null
       },
       select: { id: true }
     });
@@ -635,12 +636,21 @@ describe("RealtimeRepository friend request lifecycle", () => {
         where: {
           ownerIdentityId: requesterIdentityId,
           contactIdentityId: targetIdentityId,
-          source: "friend_request",
-          deletedAt: null
+          deletedAt: null,
+          blockedAt: null
         },
         select: { id: true }
       });
-      expect(findContact).not.toHaveBeenCalledTimes(2);
+      expect(findContact).toHaveBeenNthCalledWith(2, {
+        where: {
+          ownerIdentityId: targetIdentityId,
+          contactIdentityId: requesterIdentityId,
+          source: "friend_request",
+          deletedAt: null,
+          blockedAt: null
+        },
+        select: { id: true }
+      });
     }
   );
 
@@ -676,8 +686,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
       where: {
         ownerIdentityId: requesterIdentityId,
         contactIdentityId: targetIdentityId,
-        source: "friend_request",
-        deletedAt: null
+        deletedAt: null,
+        blockedAt: null
       },
       select: { id: true }
     });
@@ -686,7 +696,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
         ownerIdentityId: targetIdentityId,
         contactIdentityId: requesterIdentityId,
         source: "friend_request",
-        deletedAt: null
+        deletedAt: null,
+        blockedAt: null
       },
       select: { id: true }
     });
@@ -791,7 +802,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
       user: { findFirst: jest.fn().mockResolvedValue(technicianTarget) },
       contact: { findFirst: jest.fn().mockResolvedValue({ id: 92 }) },
-      friendRequest: { findFirst: jest.fn() }
+      friendRequest: { findFirst: jest.fn() },
+      technicianProfile: { findFirst: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaClient;
 
     await expect(

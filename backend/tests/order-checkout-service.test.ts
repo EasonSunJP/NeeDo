@@ -266,6 +266,7 @@ const createRepositoryHarness = (options: { affiliateInvalid?: boolean; overflow
     events,
     histories,
     audits,
+    performanceSummaryUpsert: tx.technicianPerformanceSummary.upsert,
     transaction: client.$transaction,
     get checkout() { return checkout; }
   };
@@ -430,6 +431,15 @@ describe("formal checkout repository state", () => {
     const affiliate = jest.fn(async () => undefined);
     const receipt = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-cash-01", evidence: "technician_receipt_confirmation" }, { settle, settleAffiliate: affiliate });
     expect(receipt).toMatchObject({ outcome: "ok", applied: true, checkout: { status: "completed", paymentEvidence: "technician_receipt_confirmation" } });
+    expect(h.performanceSummaryUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          technicianProfileId: 702,
+          completedOrderCount: 1,
+          acceptanceRateBps: 10_000
+        })
+      })
+    );
     expect(settle).toHaveBeenCalledTimes(1); expect(affiliate).toHaveBeenCalledTimes(1);
     const replay = await h.repository.confirmCheckoutReceipt({ orderId: 41, actorUserId: 202, technicianProfileId: 702, reason: "cash received", idempotencyKey: "checkout-receipt-cash-01", evidence: "technician_receipt_confirmation" }, { settle, settleAffiliate: affiliate });
     expect(replay).toMatchObject({ outcome: "ok", applied: false });

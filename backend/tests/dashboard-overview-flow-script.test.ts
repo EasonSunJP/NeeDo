@@ -297,19 +297,29 @@ describe("zero-write comprehensive dashboard checker", () => {
       FORMAL_BACKEND_ENV_FILE: authority.envPath
     })).toThrow("repository-controlled");
 
-    const mainCheckout = resolve(backendRoot, "../../..");
-    const commonGitDirectory = join(mainCheckout, ".git");
+    const currentCheckout = resolve(backendRoot, "..");
+    const gitEntry = join(currentCheckout, ".git");
+    const worktreeGitDirectory = existsSync(join(gitEntry, "HEAD"))
+      ? gitEntry
+      : resolve(currentCheckout, /^gitdir:\s*(.+)\s*$/imu.exec(readFileSync(gitEntry, "utf8"))![1]!);
+    const commonDirectoryFile = join(worktreeGitDirectory, "commondir");
+    const commonGitDirectory = existsSync(commonDirectoryFile)
+      ? realpathSync(resolve(worktreeGitDirectory, readFileSync(commonDirectoryFile, "utf8").trim()))
+      : realpathSync(worktreeGitDirectory);
+    const mainCheckout = realpathSync(dirname(commonGitDirectory));
     const forbiddenTargets = [
       join(mainCheckout, "package.json"),
       join(commonGitDirectory, "HEAD")
     ];
-    const sibling = readdirSync(join(commonGitDirectory, "worktrees"), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && entry.name !== "operations-dashboard-program")
-      .map((entry) => readFileSync(join(commonGitDirectory, "worktrees", entry.name, "gitdir"), "utf8").trim())
-      .map((gitFile) => dirname(gitFile))
-      .find((checkout) => existsSync(join(checkout, "package.json")));
-    expect(sibling).toBeDefined();
-    forbiddenTargets.push(join(sibling!, "package.json"));
+    const worktreesDirectory = join(commonGitDirectory, "worktrees");
+    const sibling = existsSync(worktreesDirectory)
+      ? readdirSync(worktreesDirectory, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => readFileSync(join(worktreesDirectory, entry.name, "gitdir"), "utf8").trim())
+          .map((gitFile) => dirname(gitFile))
+          .find((checkout) => checkout !== currentCheckout && existsSync(join(checkout, "package.json")))
+      : undefined;
+    if (sibling) forbiddenTargets.push(join(sibling, "package.json"));
 
     for (const forbiddenTarget of forbiddenTargets) {
       const candidate = createTempAuthority();
