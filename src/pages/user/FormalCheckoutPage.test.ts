@@ -22,6 +22,11 @@ describe("formal customer checkout", () => {
     expect(formalSource).not.toContain("formatSlotDateTime(slot.startsAt)");
   });
 
+  it("marks the formal technician available only when the selected bookable slot belongs to them", () => {
+    expect(formalSource).toContain("selectedSlot?.technicianProfileId === technicianProfileId");
+    expect(formalSource).not.toContain("slots.some((slot) => slot.technicianProfileId === technicianProfileId");
+  });
+
   it("keeps mock checkout data exclusive to explicit static-demo mode", () => {
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');

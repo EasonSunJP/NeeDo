@@ -196,7 +196,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     : [];
   const technicianProfileId = service?.technician?.id ?? null;
   const technicianIsAvailable = technicianProfileId !== null
-    && slots.some((slot) => slot.technicianProfileId === technicianProfileId && isCheckoutSlotBookable(slot));
+    && selectedSlot?.technicianProfileId === technicianProfileId;
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
