@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "../../api/httpClient";
 import type { BookingOrder, OrderCheckout } from "../../features/booking/api";
 
 const mocks = vi.hoisted(() => ({
@@ -173,5 +174,29 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     expect(container.textContent).toContain("佐藤 美咲");
     expect(container.textContent).toContain("￥14,500");
     expect(container.textContent).toContain("NDP 账本已结算");
+  });
+
+  it("keeps a historical completed order visible when no checkout record exists", async () => {
+    mocks.getCheckout.mockRejectedValueOnce(
+      new ApiClientError("error.order.not_found", 404, 404)
+    );
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/merchant/orders/46397"]}>
+          <Routes>
+            <Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.getOrder).toHaveBeenCalledWith(46397);
+    expect(container.textContent).toContain("ND202609021800398191");
+    expect(container.textContent).toContain("LifeDance 管理员");
+    expect(container.textContent).not.toContain("本店订单加载失败");
+    expect(container.textContent).not.toContain("正式结算");
   });
 });

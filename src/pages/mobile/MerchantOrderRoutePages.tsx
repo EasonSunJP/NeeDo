@@ -1072,7 +1072,10 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
       if (!scopedOrder) throw new ApiClientError("error.booking_order.not_found", 404, 404);
 
       const checkoutResult = ["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(formalOrder.status)
-        ? await bookingApi.getCheckout(formalOrder.id)
+        ? await bookingApi.getCheckout(formalOrder.id).catch((error: unknown) => {
+            if (error instanceof ApiClientError && error.status === 404) return null;
+            throw error;
+          })
         : null;
       const [serviceResult, shopResult, technicianResult, customerResult] = await Promise.allSettled([
         formalOrder.serviceId ? coreReadApi.getServiceDetail(formalOrder.serviceId) : Promise.resolve(null),
