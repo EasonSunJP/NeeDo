@@ -245,7 +245,10 @@ describe("BookingRepository order list scope", () => {
   it("includes formal unavailable rows only when the public caller opts in", async () => {
     const scheduleSlot = {
       fields: { capacity: Symbol("capacity") },
-      findMany: jest.fn(async (_args: { where: unknown }) => []),
+      findMany: jest.fn(async (args: { where: unknown }) => {
+        void args;
+        return [];
+      }),
       count: jest.fn(async () => 0)
     };
     const repository = new BookingRepository({ scheduleSlot } as never);
