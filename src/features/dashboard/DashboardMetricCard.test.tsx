@@ -170,6 +170,24 @@ describe("DashboardMetricCard", () => {
       markup.indexOf('data-analytics-metric-value="true"')
     );
   });
+
+  it("renders TEST instead of navigation when a routed metric is not ready", () => {
+    const markup = renderCard(
+      <DashboardMetricCard
+        detailLabel="查看详细数据"
+        disabledAccessoryLabel="TEST 功能暂未开放"
+        metric={analyticsMetric({ dataStatus: "not_connected" })}
+        onDetail={() => undefined}
+        previousLabel="上期"
+        statusMessage="数据接口尚未连接"
+        title="车费"
+      />
+    );
+
+    expect(markup).toContain('data-analytics-disabled-detail="true"');
+    expect(markup).toContain(">TEST</span>");
+    expect(markup).not.toContain(">查看详细数据</button>");
+  });
 });
 
 describe("DashboardMetricCard interactions", () => {

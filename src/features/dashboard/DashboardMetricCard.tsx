@@ -137,7 +137,7 @@ export function DashboardMetricCard({
             />
           ) : <h3>{title}</h3>}
         </div>
-        {metric?.detailRoute && onDetail && detailLabel ? (
+        {metric?.detailRoute && onDetail && detailLabel && !disabledAccessoryLabel ? (
           <span className="shrink-0" data-analytics-detail-accessory="true">
             <button
               className="whitespace-nowrap rounded-xl border border-line bg-paper px-3 py-2 text-xs font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
@@ -147,7 +147,7 @@ export function DashboardMetricCard({
               {detailLabel}
             </button>
           </span>
-        ) : metric && metric.detailRoute === null && disabledAccessoryLabel ? (
+        ) : metric && disabledAccessoryLabel ? (
           <span className="shrink-0" data-analytics-detail-accessory="true">
             <span
               aria-disabled="true"
