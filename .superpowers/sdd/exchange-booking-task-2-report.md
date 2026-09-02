@@ -52,3 +52,25 @@ Result: 3 suites / 32 tests passed; `tsc -p tsconfig.build.json` passed. `git di
 
 - Formal batch `BookingOrder` creation, idempotency, capacity transfer, cancellation protection, route/RBAC/OpenAPI wiring, real-MySQL checker, and browser acceptance remain later tasks.
 - This Task 2 verification is repository-unit plus TypeScript build only; no database mutation was run.
+
+## Review follow-up: RBAC reconciliation and characterization coverage
+
+Implementation commit: `2b540637c17f0a379f12ef66011aa57bebea3ae4` — `fix(exchange): grant matched providers read access`
+
+### RED evidence
+
+The matching validator/RBAC contract was changed first to require `merchant_staff` and `technician` to receive `exchange:matching:read-own`, while continuing to deny `exchange:matching:select-own` and the deferred `exchange:matching:book-own`. The focused run failed exactly because both provider role assignments lacked the read permission.
+
+The requested positive `canCreateBookings` and complete BookingOrder-status tests were also added. They passed immediately against the existing repository behavior, documenting previously uncharacterized behavior rather than a new defect.
+
+### GREEN evidence
+
+`buildRolePermissionAssignments` now adds only the existing `matchingReadOwn` permission to the two provider roles. It does not add selection or booking permissions.
+
+```sh
+cd backend && npm test -- --runInBand tests/exchange-matching.repository.test.ts tests/exchange-claim.repository.test.ts tests/exchange.repository.test.ts tests/exchange-matching.validators.test.ts
+cd backend && npm test -- --runInBand tests/exchange-permissions.test.ts tests/exchange-matching.validators.test.ts
+cd backend && npm run build
+```
+
+Result: the first focused run passed 4 suites / 40 tests; the Exchange RBAC run passed 2 suites / 14 tests; backend TypeScript build passed. No migration, route, validator implementation, OpenAPI, deployment, or database mutation was performed.
