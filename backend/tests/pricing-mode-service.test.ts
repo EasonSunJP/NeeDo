@@ -73,31 +73,31 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> => {
     createTechnicianService: jest.fn(async (_input) => {
       void _input;
       return {
-      id: 11,
-      publicId: "00000000-0000-4000-8000-000000000011",
-      shopId: 1,
-      technicianId: 3,
-      sourceShopServiceId: null,
-      name: "深层护理 60 分钟",
-      description: "肩颈放松",
-      categoryId: 2,
-      priceAmount: 8800,
-      currency: "JPY",
-      durationMinutes: 60,
-      usageCount: 7,
-      taxIncluded: true as const,
-      coverImageUrl: null,
-      images: [],
-      tags: ["推荐"],
-      shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
-      isActive: true,
-      isBookable: true,
-      isRecommended: false,
-      sortOrder: 0,
-      reviewStatus: "approved",
-      rejectionReason: null,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString()
+        id: 11,
+        publicId: "00000000-0000-4000-8000-000000000011",
+        shopId: 1,
+        technicianId: 3,
+        sourceShopServiceId: null,
+        name: "深层护理 60 分钟",
+        description: "肩颈放松",
+        categoryId: 2,
+        priceAmount: 8800,
+        currency: "JPY",
+        durationMinutes: 60,
+        usageCount: 7,
+        taxIncluded: true as const,
+        coverImageUrl: null,
+        images: [],
+        tags: ["推荐"],
+        shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
+        isActive: true,
+        isBookable: true,
+        isRecommended: false,
+        sortOrder: 0,
+        reviewStatus: "approved",
+        rejectionReason: null,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
       };
     }),
     updateTechnicianService: jest.fn(),
@@ -134,38 +134,38 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> => {
     listPublicTechnicianServices: jest.fn(async (_input) => {
       void _input;
       return {
-      list: [
-        {
-          id: 11,
-          publicId: "00000000-0000-4000-8000-000000000011",
-          shopId: 1,
-          technicianId: 3,
-          sourceShopServiceId: null,
-          name: "深层护理 60 分钟",
-          description: null,
-          categoryId: 2,
-          priceAmount: 8800,
-          currency: "JPY",
-          durationMinutes: 60,
-          usageCount: 7,
-          taxIncluded: true as const,
-          coverImageUrl: null,
-          images: [],
-          tags: ["推荐"],
-          shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
-          isActive: true,
-          isBookable: true,
-          isRecommended: false,
-          sortOrder: 0,
-          reviewStatus: "approved",
-          rejectionReason: null,
-          createdAt: now.toISOString(),
-          updatedAt: now.toISOString()
-        }
-      ],
-      total: 1,
-      page: 1,
-      page_size: 20
+        list: [
+          {
+            id: 11,
+            publicId: "00000000-0000-4000-8000-000000000011",
+            shopId: 1,
+            technicianId: 3,
+            sourceShopServiceId: null,
+            name: "深层护理 60 分钟",
+            description: null,
+            categoryId: 2,
+            priceAmount: 8800,
+            currency: "JPY",
+            durationMinutes: 60,
+            usageCount: 7,
+            taxIncluded: true as const,
+            coverImageUrl: null,
+            images: [],
+            tags: ["推荐"],
+            shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
+            isActive: true,
+            isBookable: true,
+            isRecommended: false,
+            sortOrder: 0,
+            reviewStatus: "approved",
+            rejectionReason: null,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString()
+          }
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20
       };
     })
   };
@@ -284,6 +284,37 @@ describe("PricingModeService", () => {
         })
       })
     );
+  });
+
+  it("passes service deletion audit evidence into the repository transaction only once", async () => {
+    const repository = createRepository();
+    repository.deleteTechnicianService.mockResolvedValueOnce(true);
+    const auditLogService = { record: jest.fn(async () => undefined) };
+    const service = new PricingModeService(repository, auditLogService);
+
+    await expect(service.deleteTechnicianService(technicianActor, context, 1, 11)).resolves.toEqual(
+      { deleted: true }
+    );
+
+    expect(repository.deleteTechnicianService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: 1,
+        technicianId: 3,
+        serviceId: 11,
+        updatedBy: 8,
+        now: expect.any(Date),
+        auditLog: {
+          actorId: 8,
+          action: "technician.services.delete",
+          targetType: "shop",
+          targetId: 1,
+          ip: "127.0.0.1",
+          userAgent: "jest",
+          metadata: { technicianId: 3, serviceId: 11 }
+        }
+      })
+    );
+    expect(auditLogService.record).not.toHaveBeenCalled();
   });
 
   it("rejects global portfolio access outside technician identity scope", async () => {

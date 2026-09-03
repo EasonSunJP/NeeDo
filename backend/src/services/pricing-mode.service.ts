@@ -105,6 +105,15 @@ export interface TechnicianServiceReorderRepositoryInput {
   auditLog: AuditLogCreateInput;
 }
 
+export interface TechnicianServiceDeleteRepositoryInput {
+  shopId: number;
+  technicianId: number;
+  serviceId: number;
+  updatedBy: number;
+  now: Date;
+  auditLog: AuditLogCreateInput;
+}
+
 export interface TechnicianServiceCoverTarget {
   service: TechnicianServicePayload;
   activeMediaAssetId: number | null;
@@ -143,9 +152,7 @@ export interface PricingModeRepositoryPort {
   listTechnicianServicesByProfile: (
     input: PaginationInput & { technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
-  findPrimaryTechnicianService: (
-    technicianId: number
-  ) => Promise<TechnicianServicePayload | null>;
+  findPrimaryTechnicianService: (technicianId: number) => Promise<TechnicianServicePayload | null>;
   reorderTechnicianServices: (
     input: TechnicianServiceReorderRepositoryInput
   ) => Promise<TechnicianServicePayload[]>;
@@ -155,12 +162,7 @@ export interface PricingModeRepositoryPort {
   updateTechnicianService: (
     input: TechnicianServiceUpdateRepositoryInput
   ) => Promise<TechnicianServicePayload | null>;
-  deleteTechnicianService: (input: {
-    shopId: number;
-    technicianId: number;
-    serviceId: number;
-    updatedBy: number;
-  }) => Promise<boolean>;
+  deleteTechnicianService: (input: TechnicianServiceDeleteRepositoryInput) => Promise<boolean>;
   findTechnicianServiceCoverTarget(input: {
     shopId: number;
     technicianId: number;
@@ -371,17 +373,20 @@ export class PricingModeService {
       shopId,
       technicianId: scope.technicianId,
       serviceId,
-      updatedBy: actor.userId
+      updatedBy: actor.userId,
+      now: new Date(),
+      auditLog: {
+        ...this.transactionalAuditLog(actor, context, "technician.services.delete", "shop", {
+          technicianId: scope.technicianId,
+          serviceId
+        }),
+        targetId: shopId
+      }
     });
 
     if (!deleted) {
       throw this.notFound("error.technician_service.not_found");
     }
-
-    await this.record(actor, context, "technician.services.delete", shopId, {
-      technicianId: scope.technicianId,
-      serviceId
-    });
 
     return { deleted: true };
   }

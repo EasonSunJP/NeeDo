@@ -7,21 +7,242 @@ import { AppError } from "../utils/app-error";
 
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 
+const JPEG_START_OF_FRAME_MARKERS = new Set([
+  0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf
+]);
+
+const matchesJpeg = (bytes: Buffer): boolean => {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return false;
+  }
+
+  let offset = 2;
+  let inScan = false;
+  let sawFrame = false;
+  let sawScan = false;
+
+  while (offset < bytes.length) {
+    if (inScan && bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    if (bytes[offset] !== 0xff) {
+      return false;
+    }
+
+    const markerStart = offset;
+    while (offset < bytes.length && bytes[offset] === 0xff) {
+      offset += 1;
+    }
+    if (offset >= bytes.length) {
+      return false;
+    }
+
+    const marker = bytes[offset]!;
+    offset += 1;
+    if (inScan) {
+      if (marker === 0x00 || (marker >= 0xd0 && marker <= 0xd7)) {
+        continue;
+      }
+      inScan = false;
+      offset = markerStart;
+      continue;
+    }
+
+    if (marker === 0xd9) {
+      return sawFrame && sawScan && offset === bytes.length;
+    }
+    if (
+      marker === 0x00 ||
+      marker === 0xd8 ||
+      marker === 0x01 ||
+      (marker >= 0xd0 && marker <= 0xd7)
+    ) {
+      return false;
+    }
+    if (offset + 2 > bytes.length) {
+      return false;
+    }
+
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+      return false;
+    }
+    if (JPEG_START_OF_FRAME_MARKERS.has(marker)) {
+      if (
+        segmentLength < 8 ||
+        bytes.readUInt16BE(offset + 3) === 0 ||
+        bytes.readUInt16BE(offset + 5) === 0
+      ) {
+        return false;
+      }
+      sawFrame = true;
+    }
+    if (marker === 0xda) {
+      if (!sawFrame || segmentLength < 6) {
+        return false;
+      }
+      sawScan = true;
+      inScan = true;
+    }
+    offset += segmentLength;
+  }
+
+  return false;
+};
+
+const crc32 = (bytes: Buffer, start: number, end: number): number => {
+  let crc = 0xffffffff;
+  for (let index = start; index < end; index += 1) {
+    crc ^= bytes[index]!;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const validPngHeader = (bytes: Buffer, dataOffset: number): boolean => {
+  const width = bytes.readUInt32BE(dataOffset);
+  const height = bytes.readUInt32BE(dataOffset + 4);
+  const bitDepth = bytes[dataOffset + 8]!;
+  const colorType = bytes[dataOffset + 9]!;
+  const validDepths: Record<number, readonly number[]> = {
+    0: [1, 2, 4, 8, 16],
+    2: [8, 16],
+    3: [1, 2, 4, 8],
+    4: [8, 16],
+    6: [8, 16]
+  };
+
+  return (
+    width > 0 &&
+    height > 0 &&
+    validDepths[colorType]?.includes(bitDepth) === true &&
+    bytes[dataOffset + 10] === 0 &&
+    bytes[dataOffset + 11] === 0 &&
+    (bytes[dataOffset + 12] === 0 || bytes[dataOffset + 12] === 1)
+  );
+};
+
+const matchesPng = (bytes: Buffer): boolean => {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length < 8 || !bytes.subarray(0, 8).equals(signature)) {
+    return false;
+  }
+
+  let offset = 8;
+  let chunkIndex = 0;
+  let sawImageData = false;
+  while (offset < bytes.length) {
+    if (offset + 12 > bytes.length) {
+      return false;
+    }
+    const dataLength = bytes.readUInt32BE(offset);
+    const typeOffset = offset + 4;
+    const dataOffset = typeOffset + 4;
+    const crcOffset = dataOffset + dataLength;
+    const nextOffset = crcOffset + 4;
+    if (nextOffset > bytes.length) {
+      return false;
+    }
+
+    const type = bytes.subarray(typeOffset, dataOffset).toString("ascii");
+    if (!/^[A-Za-z]{4}$/u.test(type) || (bytes[typeOffset + 2]! & 0x20) !== 0) {
+      return false;
+    }
+    if (bytes.readUInt32BE(crcOffset) !== crc32(bytes, typeOffset, crcOffset)) {
+      return false;
+    }
+    if (chunkIndex === 0 && (type !== "IHDR" || dataLength !== 13)) {
+      return false;
+    }
+    if (type === "IHDR" && (chunkIndex !== 0 || !validPngHeader(bytes, dataOffset))) {
+      return false;
+    }
+    if (type === "IDAT") {
+      sawImageData = true;
+    }
+    if (type === "IEND") {
+      return dataLength === 0 && sawImageData && nextOffset === bytes.length;
+    }
+
+    chunkIndex += 1;
+    offset = nextOffset;
+  }
+
+  return false;
+};
+
+const matchesWebp = (bytes: Buffer): boolean => {
+  if (
+    bytes.length < 20 ||
+    bytes.subarray(0, 4).toString("ascii") !== "RIFF" ||
+    bytes.subarray(8, 12).toString("ascii") !== "WEBP" ||
+    bytes.readUInt32LE(4) !== bytes.length - 8
+  ) {
+    return false;
+  }
+
+  let offset = 12;
+  let sawImageData = false;
+  while (offset < bytes.length) {
+    if (offset + 8 > bytes.length) {
+      return false;
+    }
+    const type = bytes.subarray(offset, offset + 4).toString("ascii");
+    const dataLength = bytes.readUInt32LE(offset + 4);
+    const dataOffset = offset + 8;
+    const dataEnd = dataOffset + dataLength;
+    const nextOffset = dataEnd + (dataLength & 1);
+    if (dataEnd > bytes.length || nextOffset > bytes.length) {
+      return false;
+    }
+
+    if (type === "VP8 ") {
+      if (
+        dataLength < 10 ||
+        !bytes.subarray(dataOffset + 3, dataOffset + 6).equals(Buffer.from([0x9d, 0x01, 0x2a])) ||
+        (bytes.readUInt16LE(dataOffset + 6) & 0x3fff) === 0 ||
+        (bytes.readUInt16LE(dataOffset + 8) & 0x3fff) === 0
+      ) {
+        return false;
+      }
+      sawImageData = true;
+    } else if (type === "VP8L") {
+      if (dataLength < 5 || bytes[dataOffset] !== 0x2f || (bytes[dataOffset + 4]! & 0xe0) !== 0) {
+        return false;
+      }
+      sawImageData = true;
+    } else if (type === "VP8X") {
+      if (dataLength !== 10) {
+        return false;
+      }
+    } else if (type === "ANMF") {
+      if (dataLength < 16) {
+        return false;
+      }
+      sawImageData = true;
+    }
+
+    offset = nextOffset;
+  }
+
+  return offset === bytes.length && sawImageData;
+};
+
 const imageMetadata = {
   "image/jpeg": {
     extension: "jpg",
-    matches: (bytes: Buffer) => bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+    matches: matchesJpeg
   },
   "image/png": {
     extension: "png",
-    matches: (bytes: Buffer) =>
-      bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    matches: matchesPng
   },
   "image/webp": {
     extension: "webp",
-    matches: (bytes: Buffer) =>
-      bytes.subarray(0, 4).equals(Buffer.from("RIFF")) &&
-      bytes.subarray(8, 12).equals(Buffer.from("WEBP"))
+    matches: matchesWebp
   }
 } as const;
 

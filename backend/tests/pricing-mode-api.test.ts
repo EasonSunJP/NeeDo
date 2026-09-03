@@ -5,6 +5,7 @@ import type { ContentMediaRepositoryPort } from "../src/services/content-media.s
 import type { ContentMediaStoragePort } from "../src/services/content-media.storage";
 import type { PricingModeRepositoryPort } from "../src/services/pricing-mode.service";
 import { AppError } from "../src/utils/app-error";
+import { validJpeg } from "./fixtures/content-images";
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
 const now = new Date("2026-06-02T00:00:00.000Z");
@@ -279,7 +280,7 @@ describe("pricing mode public API", () => {
     await request(fixture.app)
       .put("/api/v1/technicians/me/shops/1/services/11/cover")
       .set("Content-Type", "image/jpeg")
-      .send(Buffer.from([0xff, 0xd8, 0xff, 0xdb]))
+      .send(validJpeg)
       .expect(401);
     expect(pricingModeRepository.findTechnicianShopScope).not.toHaveBeenCalled();
     expect(contentMediaStorage.prepare).not.toHaveBeenCalled();
@@ -291,7 +292,7 @@ describe("pricing mode public API", () => {
       .put("/api/v1/technicians/me/shops/1/services/11/cover")
       .set("Authorization", `Bearer ${accessToken}`)
       .set("Content-Type", "image/jpeg")
-      .send(Buffer.from([0xff, 0xd8, 0xff, 0xdb]))
+      .send(validJpeg)
       .expect(403);
     expect(pricingModeRepository.findTechnicianShopScope).not.toHaveBeenCalled();
     expect(contentMediaStorage.prepare).not.toHaveBeenCalled();
@@ -331,7 +332,7 @@ describe("pricing mode public API", () => {
       .put("/api/v1/technicians/me/shops/1/services/11/cover")
       .set("Authorization", `Bearer ${accessToken}`)
       .set("Content-Type", "image/jpeg")
-      .send(Buffer.from([0xff, 0xd8, 0xff, 0xdb]))
+      .send(validJpeg)
       .expect(200);
     expect(upload.body.data).toMatchObject({
       id: 11,

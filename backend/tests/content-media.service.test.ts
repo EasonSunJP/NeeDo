@@ -11,21 +11,7 @@ import {
   type ContentMediaLockedRepositoryPort,
   type ContentMediaRepositoryPort
 } from "../src/services/content-media.service";
-
-const validPng = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("needo-content-media")
-]);
-const validJpeg = Buffer.concat([
-  Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
-  Buffer.from("needo-content-media")
-]);
-const validWebp = Buffer.concat([
-  Buffer.from("RIFF"),
-  Buffer.from([0x10, 0x00, 0x00, 0x00]),
-  Buffer.from("WEBPVP8 "),
-  Buffer.from("needo")
-]);
+import { validJpeg, validPng, validWebp } from "./fixtures/content-images";
 
 const actor = {
   userId: 7,
@@ -111,6 +97,25 @@ describe("ContentMediaFileStorage", () => {
       message: "error.content.media_invalid"
     });
   });
+
+  it.each([
+    ["truncated JPEG", "image/jpeg" as const, validJpeg.subarray(0, validJpeg.length - 2)],
+    [
+      "malformed PNG",
+      "image/png" as const,
+      Buffer.concat([validPng.subarray(0, 29), Buffer.from([0x00]), validPng.subarray(30)])
+    ],
+    ["truncated WebP", "image/webp" as const, validWebp.subarray(0, validWebp.length - 1)]
+  ])(
+    "rejects a %s body even when its leading magic bytes match",
+    async (_name, mimeType, bytes) => {
+      const storage = new ContentMediaFileStorage("/unused");
+
+      expect(() => storage.prepare({ bytes, mimeType })).toThrow(
+        expect.objectContaining({ message: "error.content.media_invalid" })
+      );
+    }
+  );
 
   it("rejects empty and oversized files with stable content errors", async () => {
     const directory = await mkdtemp(join(tmpdir(), "needo-content-media-"));

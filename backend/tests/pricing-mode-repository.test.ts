@@ -142,14 +142,16 @@ describe("PricingModeRepository", () => {
     };
     let serialization = Promise.resolve();
     const client = {
-      $transaction: jest.fn(<T>(callback: (transaction: typeof transactionClient) => Promise<T>) => {
-        const result = serialization.then(() => callback(transactionClient));
-        serialization = result.then(
-          () => undefined,
-          () => undefined
-        );
-        return result;
-      })
+      $transaction: jest.fn(
+        <T>(callback: (transaction: typeof transactionClient) => Promise<T>) => {
+          const result = serialization.then(() => callback(transactionClient));
+          serialization = result.then(
+            () => undefined,
+            () => undefined
+          );
+          return result;
+        }
+      )
     };
     const repository = new PricingModeRepository(client as unknown as PrismaClient);
 
@@ -238,59 +240,69 @@ describe("PricingModeRepository", () => {
       }
     } as unknown as PrismaClient);
 
-    await expect(repository.listTechnicianServices({
-      shopId: 9,
-      technicianId: 3,
-      page: 1,
-      pageSize: 20
-    })).resolves.toMatchObject({
-      list: [{
-        id: 21,
-        publicId: "00000000-0000-4000-8000-000000000021",
-        usageCount: 7,
-        shop: {
-          publicId: "shop0000000009",
-          name: "Shop 9",
-          address: "Address 9"
+    await expect(
+      repository.listTechnicianServices({
+        shopId: 9,
+        technicianId: 3,
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          id: 21,
+          publicId: "00000000-0000-4000-8000-000000000021",
+          usageCount: 7,
+          shop: {
+            publicId: "shop0000000009",
+            name: "Shop 9",
+            address: "Address 9"
+          }
         }
-      }]
+      ]
     });
 
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      include: {
-        shop: {
-          select: expect.objectContaining({
-            name: true,
-            address: true,
-            publicIdentifier: expect.any(Object)
-          })
-        },
-        _count: {
-          select: {
-            bookingOrders: {
-              where: { status: "COMPLETED", deletedAt: null }
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          shop: {
+            select: expect.objectContaining({
+              name: true,
+              address: true,
+              publicIdentifier: expect.any(Object)
+            })
+          },
+          _count: {
+            select: {
+              bookingOrders: {
+                where: { status: "COMPLETED", deletedAt: null }
+              }
             }
           }
         }
-      }
-    }));
+      })
+    );
 
-    findMany.mockResolvedValueOnce([{
-      ...serviceRecord(22, 9),
-      shop: {
-        ...serviceRecord(22, 9).shop,
-        publicIdentifier: {
-          ...serviceRecord(22, 9).shop.publicIdentifier,
-          status: "RETIRED"
+    findMany.mockResolvedValueOnce([
+      {
+        ...serviceRecord(22, 9),
+        shop: {
+          ...serviceRecord(22, 9).shop,
+          publicIdentifier: {
+            ...serviceRecord(22, 9).shop.publicIdentifier,
+            status: "RETIRED"
+          }
         }
       }
-    }]);
-    await expect(repository.listTechnicianServices({
-      shopId: 9,
-      technicianId: 3,
-      page: 1,
-      pageSize: 20
-    })).resolves.toMatchObject({
+    ]);
+    await expect(
+      repository.listTechnicianServices({
+        shopId: 9,
+        technicianId: 3,
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
       list: [{ shop: { publicId: null } }]
     });
   });
@@ -412,11 +424,23 @@ describe("PricingModeRepository", () => {
     const transaction = {
       $queryRaw: jest.fn(async () => [{ id: 11 }]),
       mediaAsset: {
+        findFirst: jest.fn(async () => ({
+          id: 101,
+          checksumSha256: "b".repeat(64),
+          mimeType: "image/png"
+        })),
         updateMany: jest.fn(async () => ({ count: 1 })),
-        create: jest.fn(async () => ({ id: 102 }))
+        create: jest.fn(async () => ({
+          id: 102,
+          checksumSha256: "a".repeat(64),
+          mimeType: "image/jpeg"
+        }))
       },
       technicianService: { update: jest.fn(async () => updated) },
-      auditLog: { create: jest.fn(async () => ({})) }
+      auditLog: {
+        findFirst: jest.fn(async () => ({ metadata: { newByteCount: 321 } })),
+        create: jest.fn(async () => ({}))
+      }
     };
     const client = {
       $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
@@ -453,6 +477,17 @@ describe("PricingModeRepository", () => {
       },
       data: { isActive: false, deletedAt: now }
     });
+    expect(transaction.mediaAsset.findFirst).toHaveBeenCalledWith({
+      where: {
+        entityType: "technician_service",
+        entityId: 11,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true, checksumSha256: true, mimeType: true }
+    });
     expect(transaction.mediaAsset.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         entityType: "technician_service",
@@ -472,11 +507,26 @@ describe("PricingModeRepository", () => {
       include: expect.any(Object)
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
+        actorId: 8,
         action: "technician.service.cover.updated",
         targetType: "technician_service",
-        targetId: 11
-      })
+        targetId: 11,
+        ip: "127.0.0.1",
+        userAgent: "jest",
+        metadata: {
+          shopId: 1,
+          technicianProfileId: 3,
+          oldMediaAssetId: 101,
+          newMediaAssetId: 102,
+          oldChecksumSha256: "b".repeat(64),
+          newChecksumSha256: "a".repeat(64),
+          oldMimeType: "image/png",
+          newMimeType: "image/jpeg",
+          oldByteCount: 321,
+          newByteCount: 4
+        }
+      }
     });
   });
 
@@ -484,11 +534,21 @@ describe("PricingModeRepository", () => {
     const now = new Date("2026-09-04T01:00:00.000Z");
     const transaction = {
       $queryRaw: jest.fn(async () => [{ id: 11 }]),
-      mediaAsset: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      mediaAsset: {
+        findFirst: jest.fn(async () => ({
+          id: 101,
+          checksumSha256: "a".repeat(64),
+          mimeType: "image/jpeg"
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
       technicianService: {
         update: jest.fn(async () => ({ ...serviceRecord(11, 1), coverImageUrl: null }))
       },
-      auditLog: { create: jest.fn(async () => ({})) }
+      auditLog: {
+        findFirst: jest.fn(async () => ({ metadata: { fileSize: 4 } })),
+        create: jest.fn(async () => ({}))
+      }
     };
     const client = {
       $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
@@ -525,12 +585,161 @@ describe("PricingModeRepository", () => {
       include: expect.any(Object)
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
+        actorId: 8,
         action: "technician.service.cover.removed",
         targetType: "technician_service",
-        targetId: 11
-      })
+        targetId: 11,
+        ip: "127.0.0.1",
+        userAgent: "jest",
+        metadata: {
+          shopId: 1,
+          technicianProfileId: 3,
+          oldMediaAssetId: 101,
+          newMediaAssetId: null,
+          oldChecksumSha256: "a".repeat(64),
+          newChecksumSha256: null,
+          oldMimeType: "image/jpeg",
+          newMimeType: null,
+          oldByteCount: 4,
+          newByteCount: null
+        }
+      }
     });
+  });
+
+  it.each([
+    ["with an active cover", 1],
+    ["without an active cover", 0]
+  ])("soft-deletes an owned service %s in one audited transaction", async (_case, coverCount) => {
+    const now = new Date("2026-09-04T02:00:00.000Z");
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 11 }]),
+      mediaAsset: { updateMany: jest.fn(async () => ({ count: coverCount })) },
+      technicianService: { update: jest.fn(async () => serviceRecord(11, 1, now)) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const client = {
+      technicianService: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+    const auditLog = {
+      actorId: 8,
+      action: "technician.services.delete",
+      targetType: "shop",
+      targetId: 1,
+      ip: "127.0.0.1",
+      userAgent: "jest",
+      metadata: { technicianId: 3, serviceId: 11 }
+    };
+
+    await expect(
+      repository.deleteTechnicianService({
+        shopId: 1,
+        technicianId: 3,
+        serviceId: 11,
+        updatedBy: 8,
+        now,
+        auditLog
+      })
+    ).resolves.toBe(true);
+
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transaction.mediaAsset.updateMany).toHaveBeenCalledWith({
+      where: {
+        entityType: "technician_service",
+        entityId: 11,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null
+      },
+      data: { isActive: false, deletedAt: now }
+    });
+    expect(transaction.technicianService.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: {
+        coverImageUrl: null,
+        isActive: false,
+        isBookable: false,
+        updatedBy: 8,
+        deletedAt: now
+      }
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: auditLog
+    });
+  });
+
+  it("rejects a wrong-scope service deletion before media, service, or audit mutation", async () => {
+    const transaction = {
+      $queryRaw: jest.fn(async () => []),
+      mediaAsset: { updateMany: jest.fn() },
+      technicianService: { update: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const client = {
+      technicianService: { updateMany: jest.fn(async () => ({ count: 0 })) },
+      $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.deleteTechnicianService({
+        shopId: 2,
+        technicianId: 3,
+        serviceId: 11,
+        updatedBy: 8,
+        now: new Date("2026-09-04T02:00:00.000Z"),
+        auditLog: {
+          actorId: 8,
+          action: "technician.services.delete",
+          targetType: "shop",
+          targetId: 2
+        }
+      })
+    ).resolves.toBe(false);
+    expect(transaction.mediaAsset.updateMany).not.toHaveBeenCalled();
+    expect(transaction.technicianService.update).not.toHaveBeenCalled();
+    expect(transaction.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("propagates an audit failure so the service and cover cleanup transaction rolls back", async () => {
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 11 }]),
+      mediaAsset: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      technicianService: { update: jest.fn(async () => serviceRecord(11, 1)) },
+      auditLog: { create: jest.fn(async () => Promise.reject(new Error("audit failed"))) }
+    };
+    const client = {
+      technicianService: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.deleteTechnicianService({
+        shopId: 1,
+        technicianId: 3,
+        serviceId: 11,
+        updatedBy: 8,
+        now: new Date("2026-09-04T02:00:00.000Z"),
+        auditLog: {
+          actorId: 8,
+          action: "technician.services.delete",
+          targetType: "shop",
+          targetId: 1
+        }
+      })
+    ).rejects.toThrow("audit failed");
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("returns null for cross-scope cover writes without media, service, or audit mutations", async () => {

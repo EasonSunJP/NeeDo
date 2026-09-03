@@ -16,8 +16,9 @@ import {
 } from "../src/services/pricing-mode.service";
 import { TechnicianServiceCoverService } from "../src/services/technician-service-cover.service";
 import { AppError } from "../src/utils/app-error";
+import { validJpeg } from "./fixtures/content-images";
 
-const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xdb]);
+const jpeg = validJpeg;
 const now = new Date("2026-09-04T00:00:00.000Z");
 const checksumSha256 = "a".repeat(64);
 const fileKey = "cover.jpg";
@@ -101,7 +102,9 @@ const createRepository = (
     listBookingNavigationTechnicians: jest.fn(),
     listPublicTechnicianServices: jest.fn(),
     findTechnicianServiceCoverTarget: jest.fn(
-      async (_input: Parameters<PricingModeRepositoryPort["findTechnicianServiceCoverTarget"]>[0]) => {
+      async (
+        _input: Parameters<PricingModeRepositoryPort["findTechnicianServiceCoverTarget"]>[0]
+      ) => {
         void _input;
         return coverTarget;
       }
@@ -130,9 +133,7 @@ interface StorageOptions {
   created?: boolean;
 }
 
-const createStorage = (
-  options: StorageOptions = {}
-): jest.Mocked<ContentMediaStoragePort> => {
+const createStorage = (options: StorageOptions = {}): jest.Mocked<ContentMediaStoragePort> => {
   const prepared: PreparedContentMedia = {
     checksumSha256: options.checksumSha256 ?? checksumSha256,
     fileKey,
@@ -200,13 +201,11 @@ describe("TechnicianServiceCoverService", () => {
     const service = new TechnicianServiceCoverService(repository, storage, createChecksumLock());
 
     await expect(
-      service.uploadCover(
-        { ...actor, currentIdentityType: "customer" },
-        context,
-        1,
-        11,
-        { bytes: jpeg, mimeType: "image/jpeg", now }
-      )
+      service.uploadCover({ ...actor, currentIdentityType: "customer" }, context, 1, 11, {
+        bytes: jpeg,
+        mimeType: "image/jpeg",
+        now
+      })
     ).rejects.toMatchObject({
       code: ERROR_CODES.IDENTITY_FORBIDDEN,
       statusCode: 403,
