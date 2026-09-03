@@ -133,7 +133,7 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(markup).not.toContain("关注：");
   });
 
-  it("can reuse the technician card without social counts or level", () => {
+  it("hides technician social counts and level by default", () => {
     const markup = renderToStaticMarkup(
       createElement(
         ClientThemeProvider,
@@ -159,9 +159,7 @@ describe("SocialProfileMiniCard cover readability", () => {
               followingCount: 300
             },
             detailTo: "/profiles/technician/17?view=card",
-            showAction: false,
-            showLevel: false,
-            showSocialStats: false
+            showAction: false
           })
         )
       )
