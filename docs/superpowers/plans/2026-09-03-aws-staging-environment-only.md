@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-09-04 region amendment:** The personal-account live gate uses
+> `ap-southeast-2` because an AWS-managed SCP explicitly denies Tokyo. The
+> implementation now requires an explicit `--region` and accepts only
+> `ap-southeast-2` or `ap-northeast-1`; Tokyo remains the later company-account
+> target. See the approved dual-region design and implementation plan.
+
 **Goal:** Provision and prove the approved AWS Tokyo Staging infrastructure for NeeDo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
@@ -1428,6 +1434,8 @@ git commit -m "fix: harden AWS staging environment gate"
 **Required user inputs at this gate:**
 - named SSO/assumed-role AWS CLI profile or an equivalent approved temporary role flow;
 - exact 12-digit AWS account ID;
+- exact approved region: `ap-southeast-2` for the personal-account live gate,
+  or `ap-northeast-1` for a later company-account deployment;
 - approved Staging hostname `staging.needo.life` (apex `needo.life` and `www.needo.life` remain untouched);
 - alert email address;
 - actual AWS billing currency and explicitly approved monthly amount corresponding to the approximately 20,000 JPY ceiling.
@@ -1450,7 +1458,14 @@ Use the user-approved SSO/assumed-role flow. Never ask the user to paste access 
 - [ ] **Step 3: Run read-only preflight and preserve the summary**
 
 ```bash
-npm run aws:staging:preflight -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
+npm run aws:staging:preflight -- \
+  --profile <named-temporary-profile> \
+  --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
+  --hostname staging.needo.life \
+  --alert-email <alert-email> \
+  --budget-amount <amount-in-account-billing-currency> \
+  --budget-unit <three-letter-billing-currency>
 ```
 
 Expected: gate passes and reports stack/DNS baseline. Only `stackState=ABSENT`
@@ -1461,7 +1476,14 @@ preflight fails, no stack mutation occurs.
 - [ ] **Step 4: Deploy the CloudFormation environment**
 
 ```bash
-npm run aws:staging:deploy -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
+npm run aws:staging:deploy -- \
+  --profile <named-temporary-profile> \
+  --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
+  --hostname staging.needo.life \
+  --alert-email <alert-email> \
+  --budget-amount <amount-in-account-billing-currency> \
+  --budget-unit <three-letter-billing-currency>
 ```
 
 Expected: this initial creation reaches `CREATE_COMPLETE`; final verification
@@ -1473,8 +1495,23 @@ not an update target for this gate. `environment-stack.json` states
 - [ ] **Step 5: Initialize the host through SSM, then prove idempotency**
 
 ```bash
-npm run aws:staging:bootstrap-host -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
-npm run aws:staging:bootstrap-host -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
+npm run aws:staging:bootstrap-host -- \
+  --profile <named-temporary-profile> \
+  --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
+  --hostname staging.needo.life \
+  --alert-email <alert-email> \
+  --budget-amount <amount-in-account-billing-currency> \
+  --budget-unit <three-letter-billing-currency>
+
+npm run aws:staging:bootstrap-host -- \
+  --profile <named-temporary-profile> \
+  --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
+  --hostname staging.needo.life \
+  --alert-email <alert-email> \
+  --budget-amount <amount-in-account-billing-currency> \
+  --budget-unit <three-letter-billing-currency>
 ```
 
 Expected: both commands finish `Success`; the second does not format the volume again, duplicate `/etc/fstab`, or change resource identity.
@@ -1487,7 +1524,7 @@ Resolve the instance ID from the fresh stack outputs, then run:
 aws ssm start-session \
   --target <stack-output-instance-id> \
   --profile <named-temporary-profile> \
-  --region ap-northeast-1
+  --region <ap-southeast-2-or-ap-northeast-1>
 ```
 
 Expected: an SSM shell prompt opens without a key pair, inbound port 22, bastion, or public SSH. Run only `exit`; do not inspect application secrets or environment variables. Record the start/close timestamp and success boolean, not terminal content.
@@ -1499,7 +1536,14 @@ Ask the alert-email owner to confirm the AWS SNS email subscription. This is a u
 - [ ] **Step 8: Run the live acceptance gate**
 
 ```bash
-npm run aws:staging:verify -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
+npm run aws:staging:verify -- \
+  --profile <named-temporary-profile> \
+  --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
+  --hostname staging.needo.life \
+  --alert-email <alert-email> \
+  --budget-amount <amount-in-account-billing-currency> \
+  --budget-unit <three-letter-billing-currency>
 ```
 
 Expected: every Task 7 invariant passes and the redacted acceptance evidence is written.

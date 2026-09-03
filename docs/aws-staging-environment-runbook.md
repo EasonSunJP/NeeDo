@@ -1,9 +1,10 @@
 # AWS Staging Environment-Only Runbook
 
-This runbook is the operator procedure for the approved Tokyo (`ap-northeast-1`)
-single-EC2 **environment-only** gate. It creates and verifies infrastructure;
-it does not deploy the NeeDo application, run Docker Compose, run Prisma
-migrations, seed data, create business data, or change DNS.
+This runbook is the operator procedure for the approved single-EC2
+**environment-only** gate. The personal deployment test uses Sydney
+(`ap-southeast-2`); a later company deployment may use Tokyo
+(`ap-northeast-1`). Every command requires the exact approved region and never
+falls back automatically.
 
 The application deployment instructions in [deployment.md](./deployment.md)
 are deliberately deferred until their separate microstep is approved.
@@ -16,6 +17,15 @@ are deliberately deferred until their separate microstep is approved.
 - The AWS Session Manager plugin is verified as version `1.2.835.0` on
   `arm64`, installed from the AWS signed and Apple-notarized macOS package.
   Its executable resolves through `/usr/local/bin/session-manager-plugin`.
+- AWS CLI v2 `aws login` created the named temporary profile
+  `needo-staging-bootstrap`; STS identified account `430611185505` and an
+  assumed `AccountFullAccessRole` session.
+- The personal project's AWS-managed service control policy denies Tokyo
+  regional EC2 discovery. Sydney EC2 discovery and CloudFormation validation
+  succeed. Do not retry Tokyo or attempt to bypass that policy in the personal
+  account.
+- A later company account needs a new exact account-ID/role preflight; this
+  personal-account evidence is not transferable proof.
 - Public DNS was rechecked on 2026-09-04: both the `needo.life` NS query and
   the `staging.needo.life` A query returned `NXDOMAIN`. Public delegation and
   the eventual staging record are therefore not ready.
@@ -49,13 +59,15 @@ configuration before retrying.
 
 ## Operator command sequence
 
-All four commands use the same six flags. Substitute only the angle-bracketed
-operator values. `staging.needo.life` is the approved staging hostname.
+All five command invocations use the same seven flags. Substitute only the
+angle-bracketed operator values. `staging.needo.life` is the approved staging
+hostname. The personal live run uses `--region ap-southeast-2`.
 
 ```bash
 npm run aws:staging:preflight -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
@@ -73,6 +85,7 @@ exact-identity update review and microstep.
 npm run aws:staging:deploy -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
@@ -86,6 +99,7 @@ check; inspect its bounded SSM result rather than substituting SSH access.
 npm run aws:staging:bootstrap-host -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
@@ -94,6 +108,7 @@ npm run aws:staging:bootstrap-host -- \
 npm run aws:staging:bootstrap-host -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
@@ -106,6 +121,7 @@ Finally, run environment acceptance with the same values:
 npm run aws:staging:verify -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
