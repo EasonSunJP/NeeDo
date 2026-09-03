@@ -7,6 +7,9 @@ Parameters:
     AllowedValues:
       - ap-northeast-1
       - ap-southeast-2
+  ExpectedAccountId:
+    Type: String
+    AllowedPattern: "^[0-9]{12}$"
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
@@ -31,6 +34,13 @@ Rules:
             - !Ref AWS::Region
             - !Ref ExpectedRegion
         AssertDescription: NeeDo Staging region must match ExpectedRegion
+  RequireExpectedAccountId:
+    Assertions:
+      - Assert:
+          Fn::Equals:
+            - !Ref AWS::AccountId
+            - !Ref ExpectedAccountId
+        AssertDescription: NeeDo Staging account must match ExpectedAccountId
 
 Mappings:
   Network:
@@ -198,6 +208,8 @@ Resources:
 
   ReleaseBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Bucket: !Ref ReleaseBucket
       PolicyDocument:
@@ -263,6 +275,8 @@ Resources:
 
   BackupBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Bucket: !Ref BackupBucket
       PolicyDocument:

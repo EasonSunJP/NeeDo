@@ -34,14 +34,63 @@ const outputValues = Object.freeze({
   CloudWatchAgentConfigParameterName: "/needo/staging/cloudwatch-agent",
   BudgetName: "needo-staging-infrastructure-monthly-cost"
 });
+const stackId = "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/needo-staging-infrastructure/00000000-0000-4000-8000-000000000000";
+const templateBody = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
+const stackTags = Object.freeze([
+  { Key: "Project", Value: "needo" },
+  { Key: "Environment", Value: "staging" },
+  { Key: "Owner", Value: "needo" },
+  { Key: "ManagedBy", Value: "cloudformation" }
+]);
+const expectedResources = Object.freeze([
+  ["Vpc", "AWS::EC2::VPC", "vpc-0123456789abcdef0"],
+  ["InternetGateway", "AWS::EC2::InternetGateway", "igw-0123456789abcdef0"],
+  ["InternetGatewayAttachment", "AWS::EC2::VPCGatewayAttachment", "attachment"],
+  ["PublicSubnet", "AWS::EC2::Subnet", "subnet-0123456789abcdef0"],
+  ["PublicRouteTable", "AWS::EC2::RouteTable", "rtb-0123456789abcdef0"],
+  ["DefaultPublicRoute", "AWS::EC2::Route", "route"],
+  ["PublicSubnetRouteTableAssociation", "AWS::EC2::SubnetRouteTableAssociation", "rtbassoc-0123456789abcdef0"],
+  ["WebSecurityGroup", "AWS::EC2::SecurityGroup", "sg-0123456789abcdef0"],
+  ["ReleaseBucket", "AWS::S3::Bucket", outputValues.ReleaseBucketName],
+  ["ReleaseBucketPolicy", "AWS::S3::BucketPolicy", outputValues.ReleaseBucketName],
+  ["BackupBucket", "AWS::S3::Bucket", outputValues.BackupBucketName],
+  ["BackupBucketPolicy", "AWS::S3::BucketPolicy", outputValues.BackupBucketName],
+  ["ApplicationSecret", "AWS::SecretsManager::Secret", outputValues.ApplicationSecretArn],
+  ["SystemLogGroup", "AWS::Logs::LogGroup", "/needo/staging/system"],
+  ["DockerLogGroup", "AWS::Logs::LogGroup", "/needo/staging/docker"],
+  ["InstanceRole", "AWS::IAM::Role", "needo-staging-instance-role"],
+  ["InstanceProfile", "AWS::IAM::InstanceProfile", "needo-staging-instance-profile"],
+  ["Instance", "AWS::EC2::Instance", outputValues.InstanceId],
+  ["ElasticIp", "AWS::EC2::EIP", "eipalloc-0123456789abcdef0"],
+  ["ElasticIpAssociation", "AWS::EC2::EIPAssociation", "eipassoc-0123456789abcdef0"],
+  ["DataVolume", "AWS::EC2::Volume", outputValues.DataVolumeId],
+  ["DataVolumeAttachment", "AWS::EC2::VolumeAttachment", "volume-attachment"],
+  ["AlertTopic", "AWS::SNS::Topic", "arn:aws:sns:ap-northeast-1:123456789012:needo-staging-alert"],
+  ["AlertSubscription", "AWS::SNS::Subscription", "arn:aws:sns:ap-northeast-1:123456789012:needo-staging-alert:00000000-0000-4000-8000-000000000000"],
+  ["CloudWatchAgentConfigParameter", "AWS::SSM::Parameter", outputValues.CloudWatchAgentConfigParameterName],
+  ["StatusCheckFailedAlarm", "AWS::CloudWatch::Alarm", "needo-staging-status"],
+  ["HighMemoryAlarm", "AWS::CloudWatch::Alarm", "needo-staging-memory"],
+  ["RootDiskHighAlarm", "AWS::CloudWatch::Alarm", "needo-staging-root-disk"],
+  ["DataDiskHighAlarm", "AWS::CloudWatch::Alarm", "needo-staging-data-disk"],
+  ["MonthlyBudget", "AWS::Budgets::Budget", outputValues.BudgetName],
+  ["HostBootstrapDocument", "AWS::SSM::Document", outputValues.HostBootstrapDocumentName],
+  ["HostVerificationDocument", "AWS::SSM::Document", outputValues.HostVerificationDocumentName]
+]);
 
 function evidenceFixture(overrides = {}) {
   return {
     scope: "environment-only",
+    timestamp: "2026-09-04T00:00:00.000Z",
     accountId: config.accountId,
     region: config.region,
+    hostname: config.hostname,
+    stackId,
     stackName: config.stackName,
     stackStatus: "CREATE_COMPLETE",
+    templateSha256: "a".repeat(64),
+    resourceIdentitySha256: "b".repeat(64),
+    resourceCount: expectedResources.length,
+    stackTags: Object.fromEntries(stackTags.map(({ Key, Value }) => [Key, Value])),
     outputs: {
       ...outputValues,
       ApplicationSecretArn: "REDACTED"
@@ -62,13 +111,27 @@ function evidenceFixture(overrides = {}) {
 function stackResult({ status = "CREATE_COMPLETE", outputs = outputValues } = {}) {
   return {
     Stacks: [{
+      StackId: stackId,
       StackName: config.stackName,
       StackStatus: status,
+      Tags: stackTags,
       Outputs: Object.entries(outputs).map(([OutputKey, OutputValue]) => ({
         OutputKey,
         OutputValue
       }))
     }]
+  };
+}
+
+function stackResources(overrides = {}) {
+  return {
+    StackResourceSummaries: expectedResources.map(([LogicalResourceId, ResourceType, PhysicalResourceId]) => ({
+      LogicalResourceId,
+      ResourceType,
+      PhysicalResourceId,
+      ResourceStatus: "CREATE_COMPLETE",
+      ...overrides[LogicalResourceId]
+    }))
   };
 }
 
@@ -88,7 +151,13 @@ function preflight(overrides = {}) {
   });
 }
 
-function successfulAws({ describedStack = stackResult(), describedInstances, trace = [] } = {}) {
+function successfulAws({
+  createdStack = { StackId: stackId },
+  describedStack = stackResult(),
+  listedResources = stackResources(),
+  describedInstances,
+  trace = []
+} = {}) {
   const instanceResult = describedInstances ?? {
     Reservations: [{
       Instances: [{
@@ -106,7 +175,9 @@ function successfulAws({ describedStack = stackResult(), describedInstances, tra
     }),
     json: vi.fn(async (args) => {
       trace.push(`aws.json:${args[0]} ${args[1]}`);
-      if (args[0] === "cloudformation") return describedStack;
+      if (args[0] === "cloudformation" && args[1] === "create-stack") return createdStack;
+      if (args[0] === "cloudformation" && args[1] === "describe-stacks") return describedStack;
+      if (args[0] === "cloudformation" && args[1] === "list-stack-resources") return listedResources;
       if (args[0] === "ec2") return instanceResult;
       throw new Error(`Unexpected AWS call: ${args.join(" ")}`);
     })
@@ -117,13 +188,17 @@ async function deploy({
   aws = successfulAws(),
   preflightResult = preflight(),
   resolveDns,
-  resolvedConfig = config
+  resolvedConfig = config,
+  readTemplate = vi.fn(async () => templateBody),
+  now = () => Date.parse("2026-09-04T00:00:00.000Z")
 } = {}) {
   return deployAwsStagingInfrastructure({
     aws,
     config: resolvedConfig,
     resolveDns: resolveDns ?? vi.fn(async () => ["203.0.113.8", "203.0.113.2"]),
-    runPreflight: vi.fn(async () => preflightResult)
+    runPreflight: vi.fn(async () => preflightResult),
+    readTemplate,
+    now
   });
 }
 
@@ -145,44 +220,65 @@ describe("AWS Staging CloudFormation deployment", () => {
       aws,
       config,
       resolveDns,
-      runPreflight
+      runPreflight,
+      readTemplate: vi.fn(async () => templateBody),
+      now: () => Date.parse("2026-09-04T00:00:00.000Z")
     });
 
-    expect(aws.text).toHaveBeenCalledWith([
-      "cloudformation", "deploy",
+    expect(aws.json).toHaveBeenCalledWith([
+      "cloudformation", "create-stack",
       "--stack-name", "needo-staging-infrastructure",
-      "--template-file", config.templatePath,
-      "--parameter-overrides",
-      "ExpectedRegion=ap-northeast-1",
-      "AlertEmail=ops@example.com",
-      "BudgetAmount=20000",
-      "BudgetUnit=JPY",
-      "Owner=needo",
+      "--template-body", templateBody,
+      "--parameters",
+      "ParameterKey=ExpectedRegion,ParameterValue=ap-northeast-1",
+      "ParameterKey=ExpectedAccountId,ParameterValue=123456789012",
+      "ParameterKey=AlertEmail,ParameterValue=ops@example.com",
+      "ParameterKey=BudgetAmount,ParameterValue=20000",
+      "ParameterKey=BudgetUnit,ParameterValue=JPY",
+      "ParameterKey=Owner,ParameterValue=needo",
       "--capabilities", "CAPABILITY_NAMED_IAM",
-      "--no-fail-on-empty-changeset",
       "--tags",
-      "Project=needo",
-      "Environment=staging",
-      "Owner=needo",
-      "ManagedBy=cloudformation"
+      "Key=Project,Value=needo",
+      "Key=Environment,Value=staging",
+      "Key=Owner,Value=needo",
+      "Key=ManagedBy,Value=cloudformation",
+      "--on-failure", "DO_NOTHING"
     ]);
-    expect(aws.json.mock.calls).toEqual([
-      [["cloudformation", "describe-stacks", "--stack-name", config.stackName]],
+    expect(aws.text).toHaveBeenCalledWith([
+      "cloudformation", "wait", "stack-create-complete", "--stack-name", stackId
+    ]);
+    expect(aws.json.mock.calls.slice(1)).toEqual([
+      [["cloudformation", "describe-stacks", "--stack-name", stackId]],
+      [["cloudformation", "list-stack-resources", "--stack-name", stackId]],
       [["ec2", "describe-instances", "--instance-ids", outputValues.InstanceId]]
     ]);
     expect(trace).toEqual([
       "preflight",
       "dns:staging.needo.life",
-      "aws.text:cloudformation deploy",
+      "aws.json:cloudformation create-stack",
+      "aws.text:cloudformation wait",
       "aws.json:cloudformation describe-stacks",
+      "aws.json:cloudformation list-stack-resources",
       "aws.json:ec2 describe-instances"
     ]);
     expect(evidence).toEqual({
       scope: "environment-only",
+      timestamp: "2026-09-04T00:00:00.000Z",
       accountId: config.accountId,
       region: config.region,
+      hostname: config.hostname,
+      stackId,
       stackName: config.stackName,
       stackStatus: "CREATE_COMPLETE",
+      templateSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      resourceIdentitySha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      resourceCount: expectedResources.length,
+      stackTags: {
+        Project: "needo",
+        Environment: "staging",
+        Owner: "needo",
+        ManagedBy: "cloudformation"
+      },
       outputs: {
         ...outputValues,
         ApplicationSecretArn: "REDACTED"
@@ -203,6 +299,40 @@ describe("AWS Staging CloudFormation deployment", () => {
     expect(serialized).not.toContain("callerArn");
     expect(serialized).not.toContain("parameter-overrides");
     expect(serialized).not.toContain("UserData");
+  });
+
+  it("fails atomically on AlreadyExists without any wait, describe, or update", async () => {
+    const alreadyExists = new Error(
+      "AWS CLI failed (254): AlreadyExistsException: Stack already exists"
+    );
+    const aws = successfulAws();
+    aws.json.mockImplementationOnce(async () => {
+      throw alreadyExists;
+    });
+
+    await expect(deploy({ aws })).rejects.toThrow("AlreadyExistsException");
+
+    expect(aws.json).toHaveBeenCalledTimes(1);
+    expect(aws.json).toHaveBeenCalledWith(expect.arrayContaining([
+      "cloudformation", "create-stack"
+    ]));
+    expect(aws.text).not.toHaveBeenCalled();
+    const serializedCalls = JSON.stringify([aws.json.mock.calls, aws.text.mock.calls]);
+    expect(serializedCalls).not.toContain("deploy");
+    expect(serializedCalls).not.toContain("update-stack");
+  });
+
+  it.each([
+    ["arn:aws:cloudformation:ap-northeast-1:999999999999:stack/needo-staging-infrastructure/00000000-0000-4000-8000-000000000000", "account"],
+    ["arn:aws:cloudformation:ap-southeast-2:123456789012:stack/needo-staging-infrastructure/00000000-0000-4000-8000-000000000000", "region"],
+    ["arn:aws:cloudformation:ap-northeast-1:123456789012:stack/foreign/00000000-0000-4000-8000-000000000000", "name"]
+  ])("rejects a returned StackId with a mismatched %s", async (returnedStackId, expected) => {
+    const aws = successfulAws({ createdStack: { StackId: returnedStackId } });
+
+    await expect(deploy({ aws })).rejects.toThrow(new RegExp(`StackId.*${expected}`, "i"));
+
+    expect(aws.json).toHaveBeenCalledTimes(1);
+    expect(aws.text).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -281,21 +411,22 @@ describe("AWS Staging CloudFormation deployment", () => {
       const aws = successfulAws({ describedStack: stackResult({ status }) });
       await expect(deploy({ aws })).rejects.toThrow(status);
       expect(aws.text).toHaveBeenCalledTimes(1);
-      expect(aws.json).toHaveBeenCalledTimes(1);
+      expect(aws.json).toHaveBeenCalledTimes(2);
     }
   );
 
-  it("accepts UPDATE_COMPLETE as the other stable final state", async () => {
+  it("refuses UPDATE_COMPLETE because this path is create-only", async () => {
     const aws = successfulAws({ describedStack: stackResult({ status: "UPDATE_COMPLETE" }) });
-    await expect(deploy({ aws })).resolves.toMatchObject({ stackStatus: "UPDATE_COMPLETE" });
+    await expect(deploy({ aws })).rejects.toThrow("UPDATE_COMPLETE");
+    expect(JSON.stringify(aws.json.mock.calls)).not.toContain("list-stack-resources");
   });
 
   it("refuses any missing required Task 2 output", async () => {
     const { HostVerificationDocumentName: _missing, ...incompleteOutputs } = outputValues;
     const aws = successfulAws({ describedStack: stackResult({ outputs: incompleteOutputs }) });
 
-    await expect(deploy({ aws })).rejects.toThrow("HostVerificationDocumentName");
-    expect(aws.json).toHaveBeenCalledTimes(1);
+    await expect(deploy({ aws })).rejects.toThrow(/exactly 10|HostVerificationDocumentName/);
+    expect(aws.json).toHaveBeenCalledTimes(2);
   });
 
   it("refuses extra, duplicate, or empty CloudFormation outputs", async () => {
@@ -316,7 +447,7 @@ describe("AWS Staging CloudFormation deployment", () => {
     for (const describedStack of invalidStacks) {
       const aws = successfulAws({ describedStack });
       await expect(deploy({ aws })).rejects.toThrow(/exactly|duplicate|non-empty/);
-      expect(aws.json).toHaveBeenCalledTimes(1);
+      expect(aws.json).toHaveBeenCalledTimes(2);
     }
   });
 
@@ -345,7 +476,10 @@ describe("AWS Staging evidence writer", () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-sydney-"));
     const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
     try {
-      const evidence = evidenceFixture({ region: "ap-southeast-2" });
+      const evidence = evidenceFixture({
+        region: "ap-southeast-2",
+        stackId: stackId.replace("ap-northeast-1", "ap-southeast-2")
+      });
       const resultPath = await writeAwsStagingEnvironmentEvidence({
         evidence,
         trustedRoot: temporaryRoot,

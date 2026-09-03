@@ -98,6 +98,25 @@ describe("AWS Staging CloudFormation contract", () => {
     ]);
   });
 
+  it("locks stack creation to the explicit expected account", () => {
+    const parameters = topLevelSection("Parameters");
+    const expectedAccountId = mappingEntry(parameters, "ExpectedAccountId");
+    expect(compactLines(expectedAccountId)).toEqual([
+      "Type: String",
+      "AllowedPattern: \"^[0-9]{12}$\""
+    ]);
+
+    const rule = mappingEntry(topLevelSection("Rules"), "RequireExpectedAccountId");
+    expect(compactLines(rule)).toEqual([
+      "Assertions:",
+      "- Assert:",
+      "Fn::Equals:",
+      "- !Ref AWS::AccountId",
+      "- !Ref ExpectedAccountId",
+      "AssertDescription: NeeDo Staging account must match ExpectedAccountId"
+    ]);
+  });
+
   it("pins the ARM environment and propagates tags to the root volume", () => {
     const instance = resourceBlock("Instance");
     const dataVolume = resourceBlock("DataVolume");
@@ -135,6 +154,14 @@ describe("AWS Staging CloudFormation contract", () => {
       expect(bucket).toContain("        BlockPublicAcls: true");
       expect(bucket).toContain("              SSEAlgorithm: AES256");
       expect(bucket).toContain("        Status: Enabled");
+    }
+    for (const name of ["ReleaseBucketPolicy", "BackupBucketPolicy"]) {
+      const policy = resourceBlock(name);
+      expect(policy).toContain("  DeletionPolicy: Retain");
+      expect(policy).toContain("  UpdateReplacePolicy: Retain");
+      expect(policy).toContain('          aws:SecureTransport: "false"');
+      expect(policy).toContain("        Effect: Deny");
+      expect(policy).toContain('        Principal: "*"');
     }
   });
 

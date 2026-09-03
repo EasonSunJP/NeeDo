@@ -21,7 +21,8 @@ const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
   ["ec2", "wait"],
   ["cloudformation", "validate-template"],
   ["cloudformation", "describe-stacks"],
-  ["cloudformation", "deploy"],
+  ["cloudformation", "create-stack"],
+  ["cloudformation", "wait"],
   ["cloudformation", "list-stack-resources"],
   ["s3api", "get-public-access-block"],
   ["s3api", "get-bucket-encryption"],
@@ -222,6 +223,7 @@ describe("AWS CLI adapter", () => {
     ["SSO role credential retrieval", ["sso", "get-role-credentials"]],
     ["unknown service", ["lambda", "list-functions"]],
     ["unknown service operation", ["cloudformation", "delete-stack"]],
+    ["create-or-update deployment", ["cloudformation", "deploy"]],
     ["global-option-prefixed staging operation", ["--profile", "other", "sts", "get-caller-identity"]]
   ])("rejects %s synchronously before invoking the process runner", (_label, args) => {
     const execFileImpl = vi.fn();

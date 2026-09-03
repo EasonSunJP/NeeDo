@@ -7,24 +7,35 @@ import { fileURLToPath } from "node:url";
 import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
   parseAwsStagingArgs,
+  requireAwsStagingHostname,
   requireAwsStagingRegion,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import { deployAwsStagingInfrastructure } from "./aws-staging-deploy-lib.mjs";
 import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
+import {
+  AWS_STAGING_EXPECTED_RESOURCES,
+  requireAwsStagingStackId
+} from "./aws-staging-stack-contract.mjs";
 
 const modulePath = fileURLToPath(import.meta.url);
 const moduleDir = path.dirname(modulePath);
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
 const defaultOutputDirectory = path.join(defaultTrustedRoot, "outputs", "aws-staging");
 const evidenceFileName = "environment-stack.json";
-const stableStackStates = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
 const topLevelEvidenceKeys = Object.freeze([
   "scope",
+  "timestamp",
   "accountId",
   "region",
+  "hostname",
+  "stackId",
   "stackName",
   "stackStatus",
+  "templateSha256",
+  "resourceIdentitySha256",
+  "resourceCount",
+  "stackTags",
   "outputs",
   "instance",
   "applicationDeployed",
@@ -45,6 +56,7 @@ const outputKeys = Object.freeze([
   "BudgetName"
 ]);
 const instanceKeys = Object.freeze(["instanceId", "instanceType", "state"]);
+const stackTagKeys = Object.freeze(["Project", "Environment", "Owner", "ManagedBy"]);
 const temporaryOpenFlags = fsConstants.O_WRONLY
   | fsConstants.O_CREAT
   | fsConstants.O_EXCL
@@ -121,10 +133,10 @@ function requireBucketName(value, label) {
 }
 
 function reconstructRedactedEvidence(evidence) {
-  const region = requireAwsStagingRegion(evidence.region);
   requireExactKeys(evidence, topLevelEvidenceKeys, "AWS Staging evidence");
   requireExactKeys(evidence.outputs, outputKeys, "AWS Staging evidence outputs");
   requireExactKeys(evidence.instance, instanceKeys, "AWS Staging evidence instance");
+  requireExactKeys(evidence.stackTags, stackTagKeys, "AWS Staging evidence stackTags");
 
   if (evidence.scope !== "environment-only") {
     throw new Error("AWS Staging evidence scope must be environment-only");
@@ -132,11 +144,41 @@ function reconstructRedactedEvidence(evidence) {
   if (typeof evidence.accountId !== "string" || !/^\d{12}$/.test(evidence.accountId)) {
     throw new Error("AWS Staging evidence accountId must contain exactly 12 digits");
   }
+  const region = requireAwsStagingRegion(evidence.region);
+  const hostname = requireAwsStagingHostname(evidence.hostname);
   if (evidence.stackName !== "needo-staging-infrastructure") {
     throw new Error("AWS Staging evidence stackName is not approved");
   }
-  if (!stableStackStates.has(evidence.stackStatus)) {
-    throw new Error("AWS Staging evidence stackStatus is not stable complete");
+  const stackId = requireAwsStagingStackId(evidence.stackId, {
+    accountId: evidence.accountId,
+    region,
+    stackName: evidence.stackName
+  }, "AWS Staging evidence stackId");
+  if (evidence.stackStatus !== "CREATE_COMPLETE") {
+    throw new Error("AWS Staging evidence stackStatus must be CREATE_COMPLETE");
+  }
+  const timestampMilliseconds = Date.parse(evidence.timestamp);
+  if (typeof evidence.timestamp !== "string"
+    || !Number.isFinite(timestampMilliseconds)
+    || new Date(timestampMilliseconds).toISOString() !== evidence.timestamp) {
+    throw new Error("AWS Staging evidence timestamp must be a canonical ISO 8601 instant");
+  }
+  for (const key of ["templateSha256", "resourceIdentitySha256"]) {
+    if (typeof evidence[key] !== "string" || !/^[0-9a-f]{64}$/.test(evidence[key])) {
+      throw new Error(`AWS Staging evidence ${key} must be a SHA-256 digest`);
+    }
+  }
+  if (evidence.resourceCount !== AWS_STAGING_EXPECTED_RESOURCES.length) {
+    throw new Error("AWS Staging evidence resourceCount does not match the exact stack contract");
+  }
+  const expectedStackTags = {
+    Project: "needo",
+    Environment: "staging",
+    Owner: "needo",
+    ManagedBy: "cloudformation"
+  };
+  if (Object.entries(expectedStackTags).some(([key, value]) => evidence.stackTags[key] !== value)) {
+    throw new Error("AWS Staging evidence stackTags do not match the exact stack contract");
   }
   for (const flag of ["applicationDeployed", "migrationRun", "seedRun", "dnsModified"]) {
     if (evidence[flag] !== false) {
@@ -164,10 +206,16 @@ function reconstructRedactedEvidence(evidence) {
 
   const serializedValues = [
     evidence.scope,
+    evidence.timestamp,
     evidence.accountId,
     evidence.region,
+    evidence.hostname,
     evidence.stackName,
     evidence.stackStatus,
+    evidence.templateSha256,
+    evidence.resourceIdentitySha256,
+    String(evidence.resourceCount),
+    ...Object.values(evidence.stackTags),
     ...Object.values(outputs),
     ...Object.values(instance)
   ].join("\n");
@@ -218,10 +266,17 @@ function reconstructRedactedEvidence(evidence) {
 
   const reconstructed = {
     scope: "environment-only",
+    timestamp: evidence.timestamp,
     accountId: evidence.accountId,
     region,
+    hostname,
+    stackId,
     stackName: "needo-staging-infrastructure",
-    stackStatus: evidence.stackStatus,
+    stackStatus: "CREATE_COMPLETE",
+    templateSha256: evidence.templateSha256,
+    resourceIdentitySha256: evidence.resourceIdentitySha256,
+    resourceCount: AWS_STAGING_EXPECTED_RESOURCES.length,
+    stackTags: expectedStackTags,
     outputs,
     instance,
     applicationDeployed: false,

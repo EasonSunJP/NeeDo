@@ -1,20 +1,19 @@
+import { createHash } from "node:crypto";
 import { resolve4 } from "node:dns/promises";
+import { readFile } from "node:fs/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
+import {
+  AWS_STAGING_EXPECTED_RESOURCES,
+  awsStagingResourceIdentitySha256,
+  requireAwsStagingOutputs,
+  requireAwsStagingResources,
+  requireAwsStagingStack,
+  requireAwsStagingStackId
+} from "./aws-staging-stack-contract.mjs";
 
-const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
 const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT"]);
-const REQUIRED_OUTPUT_KEYS = Object.freeze([
-  "InstanceId",
-  "ElasticIp",
-  "DataVolumeId",
-  "ReleaseBucketName",
-  "BackupBucketName",
-  "ApplicationSecretArn",
-  "HostBootstrapDocumentName",
-  "HostVerificationDocumentName",
-  "CloudWatchAgentConfigParameterName",
-  "BudgetName"
-]);
+const CREATE_COMPLETE_ONLY = new Set(["CREATE_COMPLETE"]);
+const MAX_INLINE_TEMPLATE_BYTES = 51_200;
 
 function requireInProcessPreflight(preflight, config) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
@@ -70,50 +69,6 @@ function requireUnchangedDns(preflightDns, currentDns) {
   }
 }
 
-function requireSingleStableStack(described, stackName) {
-  const stacks = described?.Stacks;
-  if (!Array.isArray(stacks) || stacks.length !== 1) {
-    throw new Error(`Expected exactly one CloudFormation stack named ${stackName}`);
-  }
-  const [stack] = stacks;
-  const stackStatus = String(stack?.StackStatus ?? "");
-  if (!STABLE_STACK_STATES.has(stackStatus)) {
-    throw new Error(`CloudFormation stack ${stackName} did not finish safely: ${stackStatus || "UNKNOWN"}`);
-  }
-  return { stack, stackStatus };
-}
-
-function requireOutputs(stack) {
-  const rawOutputs = stack?.Outputs;
-  if (!Array.isArray(rawOutputs)) {
-    throw new Error("CloudFormation outputs must be an array");
-  }
-
-  const outputs = {};
-  for (const output of rawOutputs) {
-    const key = String(output?.OutputKey ?? "");
-    const value = String(output?.OutputValue ?? "");
-    if (!key || !value) {
-      throw new Error("Every CloudFormation output must have a non-empty key and value");
-    }
-    if (Object.hasOwn(outputs, key)) {
-      throw new Error(`CloudFormation output key is duplicate: ${key}`);
-    }
-    outputs[key] = value;
-  }
-
-  for (const key of REQUIRED_OUTPUT_KEYS) {
-    if (!Object.hasOwn(outputs, key)) {
-      throw new Error(`CloudFormation output is missing required key: ${key}`);
-    }
-  }
-  if (rawOutputs.length !== REQUIRED_OUTPUT_KEYS.length) {
-    throw new Error(`CloudFormation must return exactly ${REQUIRED_OUTPUT_KEYS.length} approved outputs`);
-  }
-
-  return outputs;
-}
-
 function requireInstance(described, expectedInstanceId) {
   const reservations = described?.Reservations;
   if (!Array.isArray(reservations)) {
@@ -136,24 +91,44 @@ function requireInstance(described, expectedInstanceId) {
   return Object.freeze({ instanceId, instanceType, state });
 }
 
-function deploymentArguments(config) {
+function requireTemplateBody(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("AWS Staging CloudFormation template must be non-empty UTF-8 text");
+  }
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes > MAX_INLINE_TEMPLATE_BYTES) {
+    throw new Error(`AWS Staging CloudFormation template exceeds ${MAX_INLINE_TEMPLATE_BYTES} bytes`);
+  }
+  return value;
+}
+
+function requireTimestamp(now) {
+  const milliseconds = now();
+  if (!Number.isFinite(milliseconds)) {
+    throw new Error("AWS Staging deployment timestamp source is invalid");
+  }
+  return new Date(milliseconds).toISOString();
+}
+
+function createArguments(config, templateBody) {
   return [
-    "cloudformation", "deploy",
+    "cloudformation", "create-stack",
     "--stack-name", config.stackName,
-    "--template-file", config.templatePath,
-    "--parameter-overrides",
-    `ExpectedRegion=${config.region}`,
-    `AlertEmail=${config.alertEmail}`,
-    `BudgetAmount=${config.budgetAmount}`,
-    `BudgetUnit=${config.budgetUnit}`,
-    `Owner=${config.owner}`,
+    "--template-body", templateBody,
+    "--parameters",
+    `ParameterKey=ExpectedRegion,ParameterValue=${config.region}`,
+    `ParameterKey=ExpectedAccountId,ParameterValue=${config.accountId}`,
+    `ParameterKey=AlertEmail,ParameterValue=${config.alertEmail}`,
+    `ParameterKey=BudgetAmount,ParameterValue=${config.budgetAmount}`,
+    `ParameterKey=BudgetUnit,ParameterValue=${config.budgetUnit}`,
+    `ParameterKey=Owner,ParameterValue=${config.owner}`,
     "--capabilities", "CAPABILITY_NAMED_IAM",
-    "--no-fail-on-empty-changeset",
     "--tags",
-    "Project=needo",
-    "Environment=staging",
-    `Owner=${config.owner}`,
-    "ManagedBy=cloudformation"
+    "Key=Project,Value=needo",
+    "Key=Environment,Value=staging",
+    `Key=Owner,Value=${config.owner}`,
+    "Key=ManagedBy,Value=cloudformation",
+    "--on-failure", "DO_NOTHING"
   ];
 }
 
@@ -161,11 +136,16 @@ export async function deployAwsStagingInfrastructure({
   aws,
   config,
   resolveDns = resolve4,
-  runPreflight
+  runPreflight,
+  readTemplate = readFile,
+  now = Date.now
 }) {
   const hostname = requireAwsStagingHostname(config.hostname);
   if (typeof runPreflight !== "function") {
     throw new Error("An in-process AWS Staging preflight runner is required");
+  }
+  if (typeof readTemplate !== "function" || typeof now !== "function") {
+    throw new Error("AWS Staging deployment dependencies are invalid");
   }
 
   const preflight = await runPreflight({ aws, config, resolveDns });
@@ -174,27 +154,51 @@ export async function deployAwsStagingInfrastructure({
   const currentDns = await resolveDnsA(resolveDns, hostname);
   requireUnchangedDns(preflight.dnsA, currentDns);
 
-  await aws.text(deploymentArguments(config));
+  // Read once and pass those exact bytes to create-stack. The recorded digest is
+  // therefore bound to the submitted template rather than a mutable path.
+  const templateBody = requireTemplateBody(await readTemplate(config.templatePath, "utf8"));
+  const templateSha256 = createHash("sha256").update(templateBody, "utf8").digest("hex");
+  const created = await aws.json(createArguments(config, templateBody));
+  const stackId = requireAwsStagingStackId(created?.StackId, config, "Created CloudFormation StackId");
+
+  await aws.text([
+    "cloudformation", "wait", "stack-create-complete", "--stack-name", stackId
+  ]);
 
   const describedStack = await aws.json([
-    "cloudformation", "describe-stacks",
-    "--stack-name", config.stackName
+    "cloudformation", "describe-stacks", "--stack-name", stackId
   ]);
-  const { stack, stackStatus } = requireSingleStableStack(describedStack, config.stackName);
-  const outputs = requireOutputs(stack);
+  const { stack, stackStatus, stackTags } = requireAwsStagingStack(describedStack, config, {
+    expectedStackId: stackId,
+    allowedStatuses: CREATE_COMPLETE_ONLY
+  });
+  const outputs = requireAwsStagingOutputs(stack, config);
+
+  const listedResources = await aws.json([
+    "cloudformation", "list-stack-resources", "--stack-name", stackId
+  ]);
+  const resources = requireAwsStagingResources(listedResources, outputs, config, {
+    allowedStatuses: CREATE_COMPLETE_ONLY
+  });
 
   const describedInstances = await aws.json([
-    "ec2", "describe-instances",
-    "--instance-ids", outputs.InstanceId
+    "ec2", "describe-instances", "--instance-ids", outputs.InstanceId
   ]);
   const instance = requireInstance(describedInstances, outputs.InstanceId);
 
   return Object.freeze({
     scope: "environment-only",
+    timestamp: requireTimestamp(now),
     accountId: config.accountId,
     region: config.region,
+    hostname,
+    stackId,
     stackName: config.stackName,
     stackStatus,
+    templateSha256,
+    resourceIdentitySha256: awsStagingResourceIdentitySha256(resources),
+    resourceCount: AWS_STAGING_EXPECTED_RESOURCES.length,
+    stackTags,
     outputs: Object.freeze({
       ...outputs,
       ApplicationSecretArn: "REDACTED"
