@@ -1,15 +1,22 @@
 import { execFile } from "node:child_process";
 
 const MAX_BUFFER = 4 * 1024 * 1024;
-const FORBIDDEN_ARGUMENT = /get-secret-value|aws_secret_access_key|aws_session_token|secretstring|password/i;
+const FORBIDDEN_ARGUMENTS = new Set([
+  "getsecretvalue",
+  "awssecretaccesskey",
+  "awssessiontoken",
+  "secretstring",
+  "secretbinary",
+  "password"
+]);
 
 function assertSafeArguments(args) {
   if (!Array.isArray(args) || args.some((argument) => typeof argument !== "string")) {
     throw new TypeError("AWS CLI arguments must be an array of strings");
   }
 
-  const command = args.join(" ");
-  if (FORBIDDEN_ARGUMENT.test(command) || /^configure$/i.test(args[0] ?? "")) {
+  const canonicalArguments = args.map((argument) => argument.toLowerCase().replace(/[-_]/g, ""));
+  if (canonicalArguments.some((argument) => [...FORBIDDEN_ARGUMENTS].some((forbidden) => argument.includes(forbidden))) || /^configure$/i.test(args[0] ?? "")) {
     throw new Error("forbidden AWS CLI credential or secret surface");
   }
 }

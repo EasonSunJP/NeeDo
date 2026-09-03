@@ -34,6 +34,16 @@ describe("AWS CLI adapter", () => {
     expect(() => aws.text(["configure", "set", "aws_secret_access_key", "x"])).toThrow("forbidden");
   });
 
+  it.each([
+    ["--secret-string", "value"],
+    ["--secret-binary", "value"]
+  ])("rejects %s before invoking the process runner", (flag, value) => {
+    const execFileImpl = vi.fn();
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+    expect(() => aws.text(["cloudformation", "deploy", flag, value])).toThrow("forbidden");
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
   it("returns a sanitized failure without command stdout", async () => {
     const execFileImpl = vi.fn((_file, _args, _options, callback) => {
       const error = Object.assign(new Error("process failed"), { code: 254 });
