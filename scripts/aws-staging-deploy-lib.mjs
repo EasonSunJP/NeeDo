@@ -91,6 +91,28 @@ function requireInstance(described, expectedInstanceId) {
   return Object.freeze({ instanceId, instanceType, state });
 }
 
+function requireElasticAddress(described, {
+  allocationId,
+  associationId,
+  instanceId,
+  publicIp
+}) {
+  if (!described || typeof described !== "object" || Array.isArray(described)
+    || described.NextToken !== undefined
+    || !Array.isArray(described.Addresses)
+    || described.Addresses.length !== 1) {
+    throw new Error("Elastic IP address identity does not match the created stack");
+  }
+  const [address] = described.Addresses;
+  if (address?.AllocationId !== allocationId
+    || address?.AssociationId !== associationId
+    || address?.InstanceId !== instanceId
+    || address?.PublicIp !== publicIp
+    || address?.Domain !== "vpc") {
+    throw new Error("Elastic IP address identity does not match the created stack");
+  }
+}
+
 function requireTemplateBody(value) {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error("AWS Staging CloudFormation template must be non-empty UTF-8 text");
@@ -179,6 +201,16 @@ export async function deployAwsStagingInfrastructure({
   ]);
   const resources = requireAwsStagingResources(listedResources, outputs, config, {
     allowedStatuses: CREATE_COMPLETE_ONLY
+  });
+
+  const describedAddresses = await aws.json([
+    "ec2", "describe-addresses", "--allocation-ids", resources.ElasticIp.physicalId
+  ]);
+  requireElasticAddress(describedAddresses, {
+    allocationId: resources.ElasticIp.physicalId,
+    associationId: resources.ElasticIpAssociation.physicalId,
+    instanceId: outputs.InstanceId,
+    publicIp: outputs.ElasticIp
   });
 
   const describedInstances = await aws.json([

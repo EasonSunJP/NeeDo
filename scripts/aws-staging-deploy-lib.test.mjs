@@ -157,9 +157,19 @@ function successfulAws({
   createdStack = { StackId: stackId },
   describedStack = stackResult(),
   listedResources = stackResources(),
+  describedAddresses,
   describedInstances,
   trace = []
 } = {}) {
+  const addressResult = describedAddresses ?? {
+    Addresses: [{
+      AllocationId: "eipalloc-0123456789abcdef0",
+      AssociationId: "eipassoc-0123456789abcdef0",
+      Domain: "vpc",
+      InstanceId: outputValues.InstanceId,
+      PublicIp: outputValues.ElasticIp
+    }]
+  };
   const instanceResult = describedInstances ?? {
     Reservations: [{
       Instances: [{
@@ -180,7 +190,8 @@ function successfulAws({
       if (args[0] === "cloudformation" && args[1] === "create-stack") return createdStack;
       if (args[0] === "cloudformation" && args[1] === "describe-stacks") return describedStack;
       if (args[0] === "cloudformation" && args[1] === "list-stack-resources") return listedResources;
-      if (args[0] === "ec2") return instanceResult;
+      if (args[0] === "ec2" && args[1] === "describe-addresses") return addressResult;
+      if (args[0] === "ec2" && args[1] === "describe-instances") return instanceResult;
       throw new Error(`Unexpected AWS call: ${args.join(" ")}`);
     })
   };
@@ -252,6 +263,7 @@ describe("AWS Staging CloudFormation deployment", () => {
     expect(aws.json.mock.calls.slice(1)).toEqual([
       [["cloudformation", "describe-stacks", "--stack-name", stackId]],
       [["cloudformation", "list-stack-resources", "--stack-name", stackId]],
+      [["ec2", "describe-addresses", "--allocation-ids", "eipalloc-0123456789abcdef0"]],
       [["ec2", "describe-instances", "--instance-ids", outputValues.InstanceId]]
     ]);
     expect(trace).toEqual([
@@ -261,6 +273,7 @@ describe("AWS Staging CloudFormation deployment", () => {
       "aws.text:cloudformation wait",
       "aws.json:cloudformation describe-stacks",
       "aws.json:cloudformation list-stack-resources",
+      "aws.json:ec2 describe-addresses",
       "aws.json:ec2 describe-instances"
     ]);
     expect(evidence).toEqual({
@@ -376,6 +389,42 @@ describe("AWS Staging CloudFormation deployment", () => {
     await expect(deploy({ aws })).rejects.toThrow(/ReleaseBucket.*output/i);
 
     expect(aws.json.mock.calls.some(([args]) => args[0] === "ec2")).toBe(false);
+  });
+
+  it("rejects a valid but foreign Elastic IP output before recording evidence", async () => {
+    const aws = successfulAws({
+      describedStack: stackResult({
+        outputs: { ...outputValues, ElasticIp: "198.51.100.88" }
+      })
+    });
+
+    await expect(deploy({ aws })).rejects.toThrow(/Elastic IP.*stack|address.*identity/i);
+  });
+
+  it.each([
+    ["allocation", { AllocationId: "eipalloc-0fedcba9876543210" }],
+    ["association", { AssociationId: "eipassoc-0fedcba9876543210" }],
+    ["instance", { InstanceId: "i-0fedcba9876543210" }],
+    ["public IP", { PublicIp: "198.51.100.88" }],
+    ["domain", { Domain: "standard" }]
+  ])("rejects an Elastic IP with a foreign %s binding", async (_label, override) => {
+    const aws = successfulAws({
+      describedAddresses: {
+        Addresses: [{
+          AllocationId: "eipalloc-0123456789abcdef0",
+          AssociationId: "eipassoc-0123456789abcdef0",
+          Domain: "vpc",
+          InstanceId: outputValues.InstanceId,
+          PublicIp: outputValues.ElasticIp,
+          ...override
+        }]
+      }
+    });
+
+    await expect(deploy({ aws })).rejects.toThrow(/Elastic IP.*stack|address.*identity/i);
+    expect(aws.json.mock.calls.some(([args]) => (
+      args[0] === "ec2" && args[1] === "describe-instances"
+    ))).toBe(false);
   });
 
   it("hashes the exact in-memory template bytes submitted once to create-stack", async () => {
