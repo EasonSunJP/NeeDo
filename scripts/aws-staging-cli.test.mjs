@@ -34,6 +34,13 @@ describe("AWS CLI adapter", () => {
     expect(() => aws.text(["configure", "set", "aws_secret_access_key", "x"])).toThrow("forbidden");
   });
 
+  it("rejects configure wherever it appears before invoking the process runner", () => {
+    const execFileImpl = vi.fn();
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+    expect(() => aws.text(["--profile", "x", "configure", "set", "aws_access_key_id", "value"])).toThrow("forbidden");
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["--secret-string", "value"],
     ["--secret-binary", "value"]
@@ -42,6 +49,23 @@ describe("AWS CLI adapter", () => {
     const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
     expect(() => aws.text(["cloudformation", "deploy", flag, value])).toThrow("forbidden");
     expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
+  it("allows metadata-only Secrets Manager reads through the direct runner", async () => {
+    const execFileImpl = vi.fn((_file, _args, _options, callback) => {
+      callback(null, "Secret metadata\n", "");
+    });
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+    await expect(aws.text(["secretsmanager", "describe-secret", "--secret-id", "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:staging"])).resolves.toBe("Secret metadata");
+    expect(execFileImpl).toHaveBeenCalledWith(
+      "aws",
+      [
+        "secretsmanager", "describe-secret", "--secret-id", "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:staging",
+        "--profile", "p", "--region", "ap-northeast-1", "--output", "text", "--no-cli-pager"
+      ],
+      expect.objectContaining({ shell: false }),
+      expect.any(Function)
+    );
   });
 
   it("returns a sanitized failure without command stdout", async () => {

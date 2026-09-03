@@ -16,7 +16,7 @@ function assertSafeArguments(args) {
   }
 
   const canonicalArguments = args.map((argument) => argument.toLowerCase().replace(/[-_]/g, ""));
-  if (canonicalArguments.some((argument) => [...FORBIDDEN_ARGUMENTS].some((forbidden) => argument.includes(forbidden))) || /^configure$/i.test(args[0] ?? "")) {
+  if (canonicalArguments.some((argument) => [...FORBIDDEN_ARGUMENTS].some((forbidden) => argument.includes(forbidden))) || canonicalArguments.includes("configure")) {
     throw new Error("forbidden AWS CLI credential or secret surface");
   }
 }
