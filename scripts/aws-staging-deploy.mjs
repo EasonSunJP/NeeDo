@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createAwsCli } from "./aws-staging-cli.mjs";
 import {
   parseAwsStagingArgs,
+  requireAwsStagingRegion,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import { deployAwsStagingInfrastructure } from "./aws-staging-deploy-lib.mjs";
@@ -120,6 +121,7 @@ function requireBucketName(value, label) {
 }
 
 function reconstructRedactedEvidence(evidence) {
+  const region = requireAwsStagingRegion(evidence.region);
   requireExactKeys(evidence, topLevelEvidenceKeys, "AWS Staging evidence");
   requireExactKeys(evidence.outputs, outputKeys, "AWS Staging evidence outputs");
   requireExactKeys(evidence.instance, instanceKeys, "AWS Staging evidence instance");
@@ -129,9 +131,6 @@ function reconstructRedactedEvidence(evidence) {
   }
   if (typeof evidence.accountId !== "string" || !/^\d{12}$/.test(evidence.accountId)) {
     throw new Error("AWS Staging evidence accountId must contain exactly 12 digits");
-  }
-  if (evidence.region !== "ap-northeast-1") {
-    throw new Error("AWS Staging evidence region must be ap-northeast-1");
   }
   if (evidence.stackName !== "needo-staging-infrastructure") {
     throw new Error("AWS Staging evidence stackName is not approved");
@@ -220,7 +219,7 @@ function reconstructRedactedEvidence(evidence) {
   const reconstructed = {
     scope: "environment-only",
     accountId: evidence.accountId,
-    region: "ap-northeast-1",
+    region,
     stackName: "needo-staging-infrastructure",
     stackStatus: evidence.stackStatus,
     outputs,

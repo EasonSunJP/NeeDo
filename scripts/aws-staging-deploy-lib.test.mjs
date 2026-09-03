@@ -341,6 +341,23 @@ describe("AWS Staging CloudFormation deployment", () => {
 });
 
 describe("AWS Staging evidence writer", () => {
+  it("preserves the approved Sydney region in reconstructed evidence", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-sydney-"));
+    const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
+    try {
+      const evidence = evidenceFixture({ region: "ap-southeast-2" });
+      const resultPath = await writeAwsStagingEnvironmentEvidence({
+        evidence,
+        trustedRoot: temporaryRoot,
+        outputDirectory
+      });
+      const persisted = JSON.parse(await fs.readFile(resultPath, "utf8"));
+      expect(persisted.region).toBe("ap-southeast-2");
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("uses a private directory, atomic rename, and a private final file", async () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-"));
     const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
