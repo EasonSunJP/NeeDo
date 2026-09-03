@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   coreReadApi,
   type CoreCustomerProfile,
-  type CoreShopDetail
+  type CoreShopDetail,
+  type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ProfileDetailPage } from "./ProfileDetailPage";
@@ -60,6 +61,33 @@ const shop: CoreShopDetail = {
   updatedAt: "2026-09-01T00:00:00.000Z"
 };
 
+const technician: CoreTechnicianDetail = {
+  id: 17,
+  publicId: "s0000000017",
+  displayName: "Misaki",
+  city: "东京都",
+  avatarUrl: null,
+  reviewSummary,
+  age: 28,
+  favoriteCount: 0,
+  shareCount: 0,
+  completedOrderCount: 12,
+  acceptanceRatePercent: 100,
+  primaryService: null,
+  shop: null,
+  bio: "专业肩颈护理。",
+  serviceArea: "银座",
+  gender: "female",
+  heightCm: 165,
+  languages: ["日本語", "中文"],
+  yearsExperience: 5,
+  reviewTagSummary: { special: [], custom: [] },
+  mediaAssets: [],
+  services: [],
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-09-01T00:00:00.000Z"
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -107,13 +135,15 @@ describe("ProfileDetailPage routing behavior", () => {
   it.each([
     "/profiles/technician/17",
     "/profiles/technician/17?view=social"
-  ])("keeps %s on the social profile without loading the explicit card API", async (path) => {
-    const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail");
+  ])("keeps %s on the formal technician information card", async (path) => {
+    const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technician);
 
     await renderRoute(path);
 
-    expect(container.querySelector('main[aria-label="社交资料页"]')).not.toBeNull();
-    expect(getTechnicianDetail).not.toHaveBeenCalled();
+    await waitFor(() => expect(getTechnicianDetail).toHaveBeenCalledWith(17));
+    expect(container.textContent).toContain("详细信息卡");
+    expect(container.textContent).toContain("Misaki");
+    expect(container.querySelector('main[aria-label="社交资料页"]')).toBeNull();
   });
 
   it("preserves customer and shop API profile routing", async () => {
