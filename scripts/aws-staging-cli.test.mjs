@@ -150,6 +150,18 @@ describe("AWS CLI adapter", () => {
     expect(execFileImpl).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["hyphenated flag", "--with-decryption"],
+    ["hyphenated equals form", "--with-decryption=true"],
+    ["uppercase underscored equals form", "--WITH_DECRYPTION=TRUE"]
+  ])("rejects decrypted SSM parameter reads with %s before invoking the process runner", (_name, flag) => {
+    const execFileImpl = vi.fn();
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+
+    expect(() => aws.json(["ssm", "get-parameter", "--name", "/needo/staging/example", flag])).toThrow("forbidden");
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
   it("allows metadata-only Secrets Manager reads through the direct runner", async () => {
     const execFileImpl = vi.fn((_file, _args, _options, callback) => {
       callback(null, "Secret metadata\n", "");

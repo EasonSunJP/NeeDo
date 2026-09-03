@@ -7,6 +7,7 @@ const FORBIDDEN_ARGUMENTS = new Set([
   "awssessiontoken",
   "secretstring",
   "secretbinary",
+  "withdecryption",
   "password"
 ]);
 const ALLOWED_SERVICE_OPERATIONS = new Set([
