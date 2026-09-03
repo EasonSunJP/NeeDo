@@ -191,6 +191,7 @@ export type UnifiedUserCalendarProps = {
   searchQuery?: string;
   showSourceDrawer?: boolean;
   scope?: UnifiedCalendarScope;
+  technicians?: Technician[];
 };
 
 type UnifiedCalendarPeriod = {
@@ -1131,12 +1132,14 @@ function getMerchantAppointmentStatusLaneLabel(technicianId?: string | null) {
 }
 
 function matchesMerchantAppointmentStatusFilter(event: UnifiedCalendarEvent, filter: MerchantAppointmentStatusFilter) {
+  const assigned = event.calendarId?.startsWith("technician:") ?? false;
+
   if (filter === "assigned") {
-    return event.calendarId === merchantAssignedAppointmentLaneId;
+    return assigned || event.calendarId === merchantAssignedAppointmentLaneId;
   }
 
   if (filter === "unassigned") {
-    return event.calendarId === merchantUnassignedAppointmentLaneId;
+    return !assigned && (event.calendarId === "merchant:unassigned" || event.calendarId === merchantUnassignedAppointmentLaneId);
   }
 
   return true;
@@ -4854,10 +4857,12 @@ export function UnifiedUserCalendar({
   merchantLaneMode = "technician",
   searchQuery = "",
   showSourceDrawer = !formalOnly,
-  scope = "user"
+  scope = "user",
+  technicians: providedTechnicians
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
-  const { customers, stores, technicians } = useEntityStore();
+  const { customers, stores, technicians: entityTechnicians } = useEntityStore();
+  const technicians = providedTechnicians ?? entityTechnicians;
   const scheduleSnapshot = useScheduleStore();
   const technicianSnapshot = useTechnicianScheduleStore();
   const dispatchSnapshot = useDispatchCenterStore();
@@ -5017,8 +5022,8 @@ export function UnifiedUserCalendar({
   ]);
 
   const parallelCalendarLanes = useMemo(
-    () => (resolvedDisplayMode === "parallel" && !isMerchantAppointmentStatusMode ? getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, effectiveMerchantLaneMode) : undefined),
-    [activeScope, currentStore, currentTechnician, effectiveMerchantLaneMode, isMerchantAppointmentStatusMode, resolvedDisplayMode, technicians]
+    () => (resolvedDisplayMode === "parallel" ? getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, "technician") : undefined),
+    [activeScope, currentStore, currentTechnician, resolvedDisplayMode, technicians]
   );
 
   const allEvents = useMemo(() => {
