@@ -500,6 +500,88 @@ async function verify({ fixture = passingFixture(), resolvedConfig = config, pre
 }
 
 describe("AWS Staging environment-only acceptance", () => {
+  it("requires the shared exact StackId UUID contract before resource or SSM reads", async () => {
+    const fixture = passingFixture();
+    fixture.stack.Stacks[0].StackId = [
+      `arn:aws:cloudformation:${config.region}:${config.accountId}:stack/${config.stackName}`,
+      "-".repeat(36)
+    ].join("/");
+    const trace = [];
+    const aws = createAws(fixture, trace);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    await expect(verifyAwsStagingEnvironment({
+      aws,
+      config,
+      resolveDns,
+      runPreflight: createPreflight(resolveDns, trace),
+      now: () => 0
+    })).rejects.toThrow(/StackId|stack ID.*invalid/i);
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "list-stack-resources")).toBe(false);
+    expect(aws.json.mock.calls.some(([args]) => args[0] === "ssm")).toBe(false);
+  });
+
+  it("captures StackId once and uses that immutable value for every later CloudFormation field", async () => {
+    const fixture = passingFixture();
+    const capturedStackId = fixture.stack.Stacks[0].StackId;
+    const replacementStackId = capturedStackId.replace(
+      "00000000-0000-4000-8000-000000000000",
+      "11111111-1111-4111-8111-111111111111"
+    );
+    const trace = [];
+    const baseAws = createAws(fixture, trace);
+    const baseJson = baseAws.json;
+    baseAws.json = vi.fn(async (args) => {
+      if (args[0] === "cloudformation" && args[1] === "list-stack-resources") {
+        fixture.stack.Stacks[0].StackId = replacementStackId;
+      }
+      return baseJson(args);
+    });
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    const evidence = await verifyAwsStagingEnvironment({
+      aws: baseAws,
+      config,
+      resolveDns,
+      runPreflight: createPreflight(resolveDns, trace),
+      now: () => 0
+    });
+
+    expect(baseAws.json.mock.calls.filter(([args]) => args[0] === "cloudformation"))
+      .toEqual([
+        [["cloudformation", "describe-stacks", "--stack-name", config.stackName]],
+        [["cloudformation", "list-stack-resources", "--stack-name", capturedStackId]]
+      ]);
+    expect(evidence.stack.id).toBe(capturedStackId);
+  });
+
+  it("rejects a same-name stack replacement before any SSM operation", async () => {
+    const fixture = passingFixture();
+    const swappedResources = structuredClone(fixture.stackResources);
+    swappedResources.StackResourceSummaries[0].ResourceStatus = "DELETE_COMPLETE";
+    const trace = [];
+    const baseAws = createAws(fixture, trace);
+    const baseJson = baseAws.json;
+    baseAws.json = vi.fn(async (args) => {
+      if (args[0] === "cloudformation" && args[1] === "list-stack-resources") {
+        return argument(args, "--stack-name") === ids.stackId
+          ? swappedResources
+          : fixture.stackResources;
+      }
+      return baseJson(args);
+    });
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    await expect(verifyAwsStagingEnvironment({
+      aws: baseAws,
+      config,
+      resolveDns,
+      runPreflight: createPreflight(resolveDns, trace),
+      now: () => 0
+    })).rejects.toThrow(/stack resource.*complete/i);
+    expect(baseAws.json.mock.calls.some(([args]) => args[0] === "ssm")).toBe(false);
+  });
+
   it("accepts the complete fixture and returns only frozen allowlisted evidence", async () => {
     const fixture = passingFixture();
     fixture.invocation.InternalRawMarker = "must-never-enter-evidence";
@@ -1081,6 +1163,26 @@ describe("AWS Staging environment-only acceptance", () => {
 });
 
 describe("AWS Staging acceptance evidence writer and CLI", () => {
+  it("rejects a permissive hyphen-only StackId before writing evidence", async () => {
+    const { evidence } = await verify();
+    const contaminated = structuredClone(evidence);
+    contaminated.stack.id = [
+      `arn:aws:cloudformation:${config.region}:${config.accountId}:stack/${config.stackName}`,
+      "-".repeat(36)
+    ].join("/");
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-verify-stack-id-"));
+    try {
+      await expect(writeAwsStagingAcceptanceEvidence({
+        evidence: contaminated,
+        trustedRoot: temporaryRoot,
+        outputDirectory: path.join(temporaryRoot, "outputs", "aws-staging")
+      })).rejects.toThrow(/StackId|stack ID.*invalid/i);
+      expect(await fs.readdir(temporaryRoot)).toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("writes reconstructed evidence atomically with private modes", async () => {
     const { evidence } = await verify();
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-verify-"));
@@ -1300,6 +1402,7 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     const { evidence } = await verify();
     const parsed = Object.freeze({ parsed: true });
     const aws = createAws(passingFixture());
+    aws.dispose = vi.fn(async () => {});
     const parseArgs = vi.fn(() => parsed);
     const resolveConfig = vi.fn(() => config);
     const createAwsCliFake = vi.fn(() => aws);
@@ -1323,6 +1426,7 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     expect(createAwsCliFake).toHaveBeenCalledWith({ profile: config.profile, region: config.region });
     expect(verifyEnvironment).toHaveBeenCalledWith({ aws, config, runPreflight: preflight });
     expect(writeEvidence).toHaveBeenCalledWith({ evidence });
+    expect(aws.dispose).toHaveBeenCalledTimes(1);
     expect(summary).toEqual({
       gate: "aws-staging-environment-acceptance",
       status: "passed",

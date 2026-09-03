@@ -16,6 +16,7 @@ import {
   attestAwsStagingCloudWatchParameter,
   attestAwsStagingDocument
 } from "./aws-staging-attestation.mjs";
+import { requireAwsStagingStackId } from "./aws-staging-stack-contract.mjs";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
@@ -291,13 +292,9 @@ function requireStack(response, config) {
   const [stack] = response.Stacks;
   if (stack?.StackName !== config.stackName) throw new Error("CloudFormation stack identity does not match");
   if (!stableStackStates.has(stack.StackStatus)) throw new Error("CloudFormation stack status is not stable complete");
-  const escapedName = config.stackName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const idPattern = new RegExp(
-    `^arn:aws:cloudformation:${config.region}:${config.accountId}:stack/${escapedName}/[0-9a-f-]{36}$`
-  );
-  if (!idPattern.test(String(stack.StackId ?? ""))) throw new Error("CloudFormation stack ID is invalid");
+  const stackId = requireAwsStagingStackId(stack.StackId, config);
   requireTags(stack.Tags, config.owner, "CloudFormation stack");
-  return stack;
+  return { stack, stackId };
 }
 
 function requireOutputs(stack, config) {
@@ -948,10 +945,10 @@ export async function verifyAwsStagingEnvironment({
   const describedStack = await aws.json([
     "cloudformation", "describe-stacks", "--stack-name", config.stackName
   ]);
-  const stack = requireStack(describedStack, config);
+  const { stack, stackId } = requireStack(describedStack, config);
   const outputs = requireOutputs(stack, config);
   const listedResources = await aws.json([
-    "cloudformation", "list-stack-resources", "--stack-name", config.stackName
+    "cloudformation", "list-stack-resources", "--stack-name", stackId
   ]);
   const resources = requireStackResources(listedResources, outputs);
 
@@ -1175,7 +1172,7 @@ export async function verifyAwsStagingEnvironment({
     accountId: config.accountId,
     region: config.region,
     hostname,
-    stack: { id: stack.StackId, name: stack.StackName, status: stack.StackStatus },
+    stack: { id: stackId, name: config.stackName, status: stack.StackStatus },
     resourceIds: {
       instanceId: outputs.InstanceId,
       rootVolumeId,
@@ -1265,10 +1262,11 @@ function reconstructAcceptanceEvidence(evidence) {
   exactKeys(evidence.stack, ["id", "name", "status"], "Acceptance stack");
   if (evidence.stack.name !== "needo-staging-infrastructure"
     || !stableStackStates.has(evidence.stack.status)) throw new Error("Acceptance stack identity or status is invalid");
-  const stackPattern = new RegExp(
-    `^arn:aws:cloudformation:${escapeRegExp(region)}:${accountId}:stack/needo-staging-infrastructure/[0-9a-f-]{36}$`
-  );
-  if (!stackPattern.test(evidence.stack.id)) throw new Error("Acceptance stack ID is invalid");
+  const stackId = requireAwsStagingStackId(evidence.stack.id, {
+    accountId,
+    region,
+    stackName: "needo-staging-infrastructure"
+  }, "Acceptance StackId");
 
   const resourceIdKeys = [
     "instanceId", "rootVolumeId", "dataVolumeId", "securityGroupId", "vpcId", "subnetId",
@@ -1506,7 +1504,7 @@ function reconstructAcceptanceEvidence(evidence) {
     accountId,
     region,
     hostname,
-    stack: { ...evidence.stack },
+    stack: { id: stackId, name: "needo-staging-infrastructure", status: evidence.stack.status },
     resourceIds: { ...evidence.resourceIds },
     elasticIp: evidence.elasticIp,
     tagCoverage: {

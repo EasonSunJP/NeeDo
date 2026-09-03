@@ -42,22 +42,26 @@ export async function main(argv = process.argv.slice(2), {
 } = {}) {
   const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
   const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
-  const evidence = await verifyAwsStagingEnvironmentImpl({
-    aws,
-    config,
-    runPreflight: runAwsStagingPreflightImpl
-  });
-  const evidencePath = await writeAwsStagingAcceptanceEvidenceImpl({ evidence });
-  return Object.freeze({
-    gate: "aws-staging-environment-acceptance",
-    status: "passed",
-    evidenceFile: path.relative(repoRoot, evidencePath),
-    applicationDeployed: false,
-    migrationRun: false,
-    seedRun: false,
-    dnsModified: false,
-    businessDataMutation: false
-  });
+  try {
+    const evidence = await verifyAwsStagingEnvironmentImpl({
+      aws,
+      config,
+      runPreflight: runAwsStagingPreflightImpl
+    });
+    const evidencePath = await writeAwsStagingAcceptanceEvidenceImpl({ evidence });
+    return Object.freeze({
+      gate: "aws-staging-environment-acceptance",
+      status: "passed",
+      evidenceFile: path.relative(repoRoot, evidencePath),
+      applicationDeployed: false,
+      migrationRun: false,
+      seedRun: false,
+      dnsModified: false,
+      businessDataMutation: false
+    });
+  } finally {
+    await aws.dispose?.();
+  }
 }
 
 export async function runCli({
