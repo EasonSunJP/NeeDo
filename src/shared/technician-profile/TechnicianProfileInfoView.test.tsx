@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import type { TechnicianProfileInfoModel } from "./model";
 import { TechnicianProfileInfoView } from "./TechnicianProfileInfoView";
+
+const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 const model: TechnicianProfileInfoModel = {
   publicId: "s0000000081",
@@ -125,6 +128,21 @@ describe("TechnicianProfileInfoView", () => {
     expect(markup).not.toContain("错误服务");
     expect(markup).not.toContain("错误情绪");
     expect(markup).not.toContain("错误元气");
+  });
+
+  it("renders the four approved icons in one compact four-column row", () => {
+    const markup = renderView();
+
+    expect(markup).toContain('class="social-profile-review-stamps mt-2 grid grid-cols-4 gap-1 px-0.5 pt-1.5"');
+    expect(markup).toContain("review-stamp-appeal.svg");
+    expect(markup).toContain("review-stamp-service.svg");
+    expect(markup).toContain("review-stamp-empathy.svg");
+    expect(markup).toContain("review-stamp-energy.svg");
+    expect(styles).toContain("aspect-ratio: auto;");
+    expect(styles).toContain("min-height: 72px;");
+    expect(styles).toContain("width: 32px;");
+    expect(styles).toContain("right: -2px;");
+    expect(styles).toContain("padding: 3px 5px;");
   });
 
   it("injects service actions without adding an outer service frame", () => {
