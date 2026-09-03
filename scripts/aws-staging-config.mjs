@@ -6,11 +6,28 @@ const repoRoot = path.resolve(moduleDir, "..");
 const requiredFlags = new Map([
   ["--profile", "profile"],
   ["--account-id", "accountId"],
+  ["--region", "region"],
   ["--hostname", "hostname"],
   ["--alert-email", "alertEmail"],
   ["--budget-amount", "budgetAmount"],
   ["--budget-unit", "budgetUnit"]
 ]);
+
+export const AWS_STAGING_REGIONS = Object.freeze([
+  "ap-northeast-1",
+  "ap-southeast-2"
+]);
+
+const awsStagingRegionSet = new Set(AWS_STAGING_REGIONS);
+
+export function requireAwsStagingRegion(value) {
+  if (typeof value !== "string" || !awsStagingRegionSet.has(value)) {
+    throw new Error(
+      `AWS Staging region must be one of: ${AWS_STAGING_REGIONS.join(", ")}`
+    );
+  }
+  return value;
+}
 
 export function requireAwsStagingHostname(value) {
   if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
@@ -49,13 +66,13 @@ export function parseAwsStagingArgs(argv) {
   for (const [flag, key] of requiredFlags) {
     if (!parsed[key]) throw new Error(`${flag} is required`);
   }
-  return { ...parsed, region: "ap-northeast-1", owner: "needo" };
+  return { ...parsed, owner: "needo" };
 }
 
 export function resolveAwsStagingConfig(input) {
   const profile = String(input.profile || "").trim();
   const accountId = String(input.accountId || "").trim();
-  const region = String(input.region || "").trim();
+  const region = requireAwsStagingRegion(input.region);
   const owner = String(input.owner || "").trim();
   const hostname = requireAwsStagingHostname(input.hostname);
   const alertEmail = String(input.alertEmail || "").trim().toLowerCase();
@@ -65,7 +82,6 @@ export function resolveAwsStagingConfig(input) {
 
   if (!profile || profile === "default") throw new Error("A named temporary AWS profile is required");
   if (!/^\d{12}$/.test(accountId)) throw new Error("A 12-digit AWS account ID is required");
-  if (region !== "ap-northeast-1") throw new Error("Region must be ap-northeast-1");
   if (!/^[a-z0-9][a-z0-9-]{1,31}$/.test(owner)) throw new Error("Invalid owner tag");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(alertEmail)) throw new Error("A valid alert email is required");
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(budgetAmount) || Number(budgetAmount) <= 0) {

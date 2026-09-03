@@ -38,7 +38,7 @@ describe("AWS Staging configuration", () => {
   it.each([
     [{ ...validInput, accountId: "" }, "account ID"],
     [{ ...validInput, accountId: "123" }, "account ID"],
-    [{ ...validInput, region: "us-east-1" }, "ap-northeast-1"],
+    [{ ...validInput, region: "us-east-1" }, "AWS Staging region"],
     [{ ...validInput, profile: "default" }, "profile"],
     [{ ...validInput, alertEmail: "not-an-email" }, "email"],
     [{ ...validInput, budgetAmount: "0" }, "budget amount"],
@@ -61,6 +61,7 @@ describe("AWS Staging configuration", () => {
       parseAwsStagingArgs([
         "--profile", "needo-staging-deployer",
         "--account-id", "123456789012",
+        "--region", "ap-northeast-1",
         "--hostname", "staging.needo.life",
         "--alert-email", "ops@example.com",
         "--budget-amount", "20000",
@@ -71,11 +72,36 @@ describe("AWS Staging configuration", () => {
     expect(() => parseAwsStagingArgs([
       "--profile", "needo-staging-deployer",
       "--account-id", "123456789012",
+      "--region", "ap-northeast-1",
       "--alert-email", "ops@example.com",
       "--budget-amount", "20000",
       "--budget-unit", "JPY"
     ])).toThrow("--hostname");
   });
+
+  it("accepts the approved Sydney personal-test region", () => {
+    expect(resolveAwsStagingConfig({
+      ...validInput,
+      region: "ap-southeast-2"
+    }).region).toBe("ap-southeast-2");
+  });
+
+  it("requires the deployment region explicitly", () => {
+    expect(() => parseAwsStagingArgs([
+      "--profile", "needo-staging-deployer",
+      "--account-id", "123456789012",
+      "--hostname", "staging.needo.life",
+      "--alert-email", "ops@example.com",
+      "--budget-amount", "20000",
+      "--budget-unit", "JPY"
+    ])).toThrow("--region");
+  });
+
+  it.each(["us-east-1", "AP-SOUTHEAST-2", " ap-southeast-2", "ap-southeast-2 "])(
+    "rejects an unapproved or non-canonical region %s",
+    (region) => expect(() => resolveAwsStagingConfig({ ...validInput, region }))
+      .toThrow("AWS Staging region")
+  );
 
   it("rejects unknown flags", () => {
     expect(() => parseAwsStagingArgs(["--unknown", "value"])).toThrow(

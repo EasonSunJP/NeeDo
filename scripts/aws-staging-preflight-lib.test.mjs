@@ -95,7 +95,7 @@ describe("AWS Staging preflight", () => {
     expect(Object.isFrozen(summary)).toBe(true);
   });
 
-  it.each(["sso", "assume-role", "custom-process"])(
+  it.each(["sso", "assume-role", "custom-process", "login"])(
     "accepts real configure-list credential rows with TYPE %s",
     async (credentialType) => {
       const aws = successfulAws({
