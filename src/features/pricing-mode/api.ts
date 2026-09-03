@@ -163,6 +163,20 @@ export const pricingModeApi = {
     });
   },
 
+  uploadTechnicianServiceCover(shopId: number, serviceId: number, file: File) {
+    return httpClient.request<TechnicianServicePayload>(
+      `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
+      { body: file, headers: { "Content-Type": file.type }, method: "PUT" }
+    );
+  },
+
+  removeTechnicianServiceCover(shopId: number, serviceId: number) {
+    return httpClient.request<TechnicianServicePayload>(
+      `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
+      { method: "DELETE" }
+    );
+  },
+
   listPublicTechnicianServices(shopId: number, technicianId: number, query: { page?: number; pageSize?: number } = {}) {
     return httpClient.request<PaginatedPricingData<TechnicianServicePayload>>(
       `/shops/${shopId}/technicians/${technicianId}/services`,
