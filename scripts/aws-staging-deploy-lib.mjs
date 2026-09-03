@@ -142,6 +142,7 @@ function deploymentArguments(config) {
     "--stack-name", config.stackName,
     "--template-file", config.templatePath,
     "--parameter-overrides",
+    `ExpectedRegion=${config.region}`,
     `AlertEmail=${config.alertEmail}`,
     `BudgetAmount=${config.budgetAmount}`,
     `BudgetUnit=${config.budgetUnit}`,

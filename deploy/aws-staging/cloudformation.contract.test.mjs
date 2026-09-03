@@ -77,15 +77,24 @@ const listTags = `      Tags:
           Value: cloudformation`;
 
 describe("AWS Staging CloudFormation contract", () => {
-  it("locks stack creation to ap-northeast-1 with a CloudFormation rule", () => {
-    const rule = mappingEntry(topLevelSection("Rules"), "RequireTokyoRegion");
+  it("locks stack creation to the explicit approved region", () => {
+    const parameters = topLevelSection("Parameters");
+    const expectedRegion = mappingEntry(parameters, "ExpectedRegion");
+    expect(compactLines(expectedRegion)).toEqual([
+      "Type: String",
+      "AllowedValues:",
+      "- ap-northeast-1",
+      "- ap-southeast-2"
+    ]);
+
+    const rule = mappingEntry(topLevelSection("Rules"), "RequireExpectedRegion");
     expect(compactLines(rule)).toEqual([
       "Assertions:",
       "- Assert:",
       "Fn::Equals:",
       "- !Ref AWS::Region",
-      "- ap-northeast-1",
-      "AssertDescription: NeeDo Staging must be deployed in ap-northeast-1",
+      "- !Ref ExpectedRegion",
+      "AssertDescription: NeeDo Staging region must match ExpectedRegion"
     ]);
   });
 

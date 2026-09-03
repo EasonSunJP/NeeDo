@@ -153,6 +153,7 @@ describe("AWS Staging CloudFormation deployment", () => {
       "--stack-name", "needo-staging-infrastructure",
       "--template-file", config.templatePath,
       "--parameter-overrides",
+      "ExpectedRegion=ap-northeast-1",
       "AlertEmail=ops@example.com",
       "BudgetAmount=20000",
       "BudgetUnit=JPY",
