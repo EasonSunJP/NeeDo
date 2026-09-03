@@ -24,7 +24,7 @@ function requireResolvedConfig(config) {
     throw new Error("AWS Staging bootstrap account is invalid");
   }
   requireAwsStagingRegion(config.region);
-  requireAwsStagingHostname(config.hostname ?? "staging.needo.life");
+  requireAwsStagingHostname(config.hostname);
   if (config.stackName !== "needo-staging-infrastructure"
     || config.owner !== "needo") {
     throw new Error("AWS Staging bootstrap stack configuration is not approved");
@@ -37,7 +37,7 @@ function requireFreshPreflight(preflight, config) {
   }
   if (preflight.accountId !== config.accountId) throw new Error("Bootstrap preflight account mismatch");
   if (preflight.region !== config.region) throw new Error("Bootstrap preflight region mismatch");
-  if (preflight.hostname !== (config.hostname ?? "staging.needo.life")) {
+  if (preflight.hostname !== config.hostname) {
     throw new Error("Bootstrap preflight hostname mismatch");
   }
   if (preflight.callerKind !== "assumed-role"

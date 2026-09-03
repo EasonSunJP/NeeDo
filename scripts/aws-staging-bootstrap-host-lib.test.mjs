@@ -10,6 +10,7 @@ const config = Object.freeze({
   budgetAmount: "20000",
   budgetUnit: "JPY",
   environment: "staging",
+  hostname: "staging.needo.life",
   owner: "needo",
   profile: "needo-staging-deployer",
   region: "ap-northeast-1",
@@ -342,6 +343,19 @@ describe("AWS Staging SSM host bootstrap", () => {
     const aws = successfulAws();
 
     await expect(bootstrap({ aws, preflightResult: preflight(overrides) })).rejects.toThrow(expected);
+
+    expect(aws.json).not.toHaveBeenCalled();
+    expect(aws.text).not.toHaveBeenCalled();
+  });
+
+  it("requires the exact approved hostname in the resolved bootstrap configuration", async () => {
+    const aws = successfulAws();
+    const { hostname: _hostname, ...withoutHostname } = config;
+
+    await expect(bootstrap({
+      aws,
+      resolvedConfig: Object.freeze(withoutHostname)
+    })).rejects.toThrow(/hostname/i);
 
     expect(aws.json).not.toHaveBeenCalled();
     expect(aws.text).not.toHaveBeenCalled();
