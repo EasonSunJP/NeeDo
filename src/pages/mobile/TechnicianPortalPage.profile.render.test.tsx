@@ -512,8 +512,18 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
 
   it("keeps a cover draft after partial success and retries only the failed upload", async () => {
     mockServiceEditorContext([]);
-    const created = { ...service, id: 902, publicId: "service0000000902", name: "新增封面服务", coverImageUrl: null };
+    const created = {
+      ...service,
+      id: 902,
+      publicId: "service0000000902",
+      name: "服务端规范名称",
+      description: "服务端说明",
+      priceAmount: 10800,
+      durationMinutes: 75,
+      coverImageUrl: null
+    };
     const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService").mockResolvedValue(created);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService");
     const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
       .mockRejectedValueOnce(new Error("upload unavailable"))
       .mockResolvedValue({ ...created, coverImageUrl: "/retry-cover.jpg" });
@@ -526,14 +536,63 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await flushUntil(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("服务已保存，封面上传失败，请重试"));
 
     expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(updateRequest).not.toHaveBeenCalled();
     expect(deleteRequest).not.toHaveBeenCalled();
     expect(uploadRequest).toHaveBeenCalledTimes(1);
+    expect(findButton("重试上传封面")).toBeDefined();
+    expect(findInput("服务名称")).toMatchObject({ disabled: true, value: "服务端规范名称" });
+    expect(findInput("价格")).toMatchObject({ disabled: true, value: "10800" });
+    expect(findInput("时长（分钟）")).toMatchObject({ disabled: true, value: "75" });
+    expect(container.querySelector<HTMLTextAreaElement>('[data-testid="technician-service-card"] textarea'))
+      .toMatchObject({ disabled: true, value: "服务端说明" });
+    expect(findButton("删除该服务")).toBeUndefined();
 
-    await act(async () => findButton("保存")?.click());
+    await act(async () => findButton("重试上传封面")?.click());
     await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(2));
 
     expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(updateRequest).not.toHaveBeenCalled();
     expect(deleteRequest).not.toHaveBeenCalled();
     expect(container.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it("retries an existing service cover without updating its persisted text twice", async () => {
+    mockServiceEditorContext([service]);
+    const persisted = {
+      ...service,
+      name: "服务端已保存名称",
+      description: "服务端已保存说明",
+      priceAmount: 9200,
+      durationMinutes: 70
+    };
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(persisted);
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockRejectedValueOnce(new Error("upload unavailable"))
+      .mockResolvedValue({ ...persisted, coverImageUrl: "/retry-existing-cover.jpg" });
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService");
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click());
+    const name = findInput("服务名称");
+    expect(name).toBeDefined();
+    await act(async () => name && setInputValue(name, "客户端编辑名称"));
+    const file = new File([new Uint8Array([1, 2, 3])], "retry-existing.webp", { type: "image/webp" });
+    await selectServiceCover(file);
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("服务已保存，封面上传失败，请重试"));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(createRequest).not.toHaveBeenCalled();
+    expect(uploadRequest).toHaveBeenCalledTimes(1);
+    expect(findInput("服务名称")).toMatchObject({ disabled: true, value: "服务端已保存名称" });
+    expect(findButton("重试上传封面")).toBeDefined();
+    expect(findButton("删除该服务")).toBeUndefined();
+
+    await act(async () => findButton("重试上传封面")?.click());
+    await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(2));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(createRequest).not.toHaveBeenCalled();
   });
 });
