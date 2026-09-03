@@ -8,6 +8,7 @@ import {
 } from "./aws-staging-cli.mjs";
 
 const TEST_AWS_EXECUTABLE = "/trusted/aws-cli-v2/aws";
+const VALID_LOGIN_CACHE_FILE = `${"a".repeat(64)}.json`;
 const fixtureRoots = [];
 
 function createAwsCli(options) {
@@ -214,9 +215,36 @@ describe("AWS CLI adapter", () => {
     expect(execFileImpl).not.toHaveBeenCalled();
   });
 
-  it("rejects a permissive or non-regular login cache entry before credential resolution", async () => {
+  it("accepts owner-only 0600 credential entries in the owner-controlled login cache", async () => {
     const fixture = await createLoginFixture();
-    await fs.writeFile(path.join(fixture.loginCache, "session.json"), "{}", { mode: 0o640 });
+    await fs.writeFile(
+      path.join(fixture.loginCache, VALID_LOGIN_CACHE_FILE),
+      "{}",
+      { mode: 0o600 }
+    );
+    const execFileImpl = successfulLoginResolver();
+
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    });
+
+    expect(execFileImpl).toHaveBeenCalledTimes(3);
+    await aws.dispose();
+  });
+
+  it("rejects a 0640 login cache entry with an otherwise valid name", async () => {
+    const fixture = await createLoginFixture();
+    await fs.writeFile(
+      path.join(fixture.loginCache, VALID_LOGIN_CACHE_FILE),
+      "{}",
+      { mode: 0o640 }
+    );
     const execFileImpl = successfulLoginResolver();
 
     await expect(createFrozenAwsCli({
@@ -228,6 +256,62 @@ describe("AWS CLI adapter", () => {
       userInfoImpl: fixture.userInfoImpl,
       now: () => Date.parse("2029-01-01T00:00:00.000Z")
     })).rejects.toThrow(/login cache entry.*0600/i);
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid login cache entry name even when its mode is 0600", async () => {
+    const fixture = await createLoginFixture();
+    await fs.writeFile(path.join(fixture.loginCache, "session.json"), "{}", { mode: 0o600 });
+    const execFileImpl = successfulLoginResolver();
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl
+    })).rejects.toThrow(/login cache entry.*0600/i);
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
+  it.each(["directory", "symlink"])(
+    "rejects a validly named login cache %s entry",
+    async (entryType) => {
+      const fixture = await createLoginFixture();
+      const entry = path.join(fixture.loginCache, VALID_LOGIN_CACHE_FILE);
+      if (entryType === "directory") {
+        await fs.mkdir(entry, { mode: 0o700 });
+      } else {
+        await fs.symlink(path.join(fixture.sourceHome, ".aws", "config"), entry);
+      }
+      const execFileImpl = successfulLoginResolver();
+
+      await expect(createFrozenAwsCli({
+        profile: "needo-staging-deployer",
+        region: "ap-northeast-1",
+        execFileImpl,
+        environment: fixture.environment,
+        temporaryRoot: fixture.temporaryRoot,
+        userInfoImpl: fixture.userInfoImpl
+      })).rejects.toThrow(/login cache entry.*0600/i);
+      expect(execFileImpl).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects a group-writable login cache directory before credential resolution", async () => {
+    const fixture = await createLoginFixture();
+    await fs.chmod(fixture.loginCache, 0o775);
+    const execFileImpl = successfulLoginResolver();
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl
+    })).rejects.toThrow(/login cache.*not group\/world-writable/i);
     expect(execFileImpl).not.toHaveBeenCalled();
   });
 
@@ -538,6 +622,42 @@ describe("AWS CLI adapter", () => {
       stderr: failure?.stderr
     });
     for (const marker of sensitive) expect(serialized).not.toContain(marker);
+    expect((await fs.readdir(fixture.root)).sort()).toEqual(["bin", "source-home"]);
+  });
+
+  it("redacts a synchronous credential-resolver throw and removes private state", async () => {
+    const fixture = await createLoginFixture();
+    const sensitive = "AKIAIOSFODNN7EXAMPLE sync-provider-secret-marker";
+    const execFileImpl = vi.fn((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      throw Object.assign(new Error(sensitive), {
+        stdout: sensitive,
+        stderr: sensitive
+      });
+    });
+
+    let failure;
+    try {
+      await createFrozenAwsCli({
+        profile: "needo-staging-deployer",
+        region: "ap-northeast-1",
+        execFileImpl,
+        environment: fixture.environment,
+        temporaryRoot: fixture.temporaryRoot,
+        userInfoImpl: fixture.userInfoImpl
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "AWS_CLI_CREDENTIAL_RESOLUTION_FAILED",
+      message: "AWS CLI credential resolution failed"
+    });
+    expect(JSON.stringify(failure, Object.getOwnPropertyNames(failure))).not.toContain(sensitive);
     expect((await fs.readdir(fixture.root)).sort()).toEqual(["bin", "source-home"]);
   });
 
