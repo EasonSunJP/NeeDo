@@ -21,7 +21,8 @@ const REMOVED_AWS_ENVIRONMENT_KEYS = new Set([
   "AWS_LOGIN_CACHE_DIRECTORY",
   "AWS_REGION",
   "AWS_DEFAULT_REGION",
-  "AWS_SDK_LOAD_CONFIG"
+  "AWS_SDK_LOAD_CONFIG",
+  "AWS_CA_BUNDLE"
 ]);
 const FORBIDDEN_ARGUMENTS = new Set([
   "getsecretvalue",
@@ -142,7 +143,7 @@ function sanitizedEnvironment(environment) {
     const upperKey = key.toUpperCase();
     if (value === undefined
       || REMOVED_AWS_ENVIRONMENT_KEYS.has(upperKey)
-      || upperKey.startsWith("AWS_ENDPOINT_URL")) {
+      || (upperKey.startsWith("AWS_") && upperKey.includes("ENDPOINT"))) {
       continue;
     }
     sanitized[key] = value;

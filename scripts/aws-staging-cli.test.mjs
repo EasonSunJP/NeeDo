@@ -65,7 +65,14 @@ describe("AWS CLI adapter", () => {
       AWS_WEB_IDENTITY_TOKEN_FILE: "/tmp/foreign-token",
       AWS_ROLE_ARN: "arn:aws:iam::999999999999:role/foreign",
       AWS_ENDPOINT_URL: "https://example.invalid",
-      AWS_ENDPOINT_URL_STS: "https://sts.example.invalid"
+      AWS_ENDPOINT_URL_STS: "https://sts.example.invalid",
+      AWS_USE_FIPS_ENDPOINT: "true",
+      AWS_USE_DUALSTACK_ENDPOINT: "true",
+      AWS_STS_REGIONAL_ENDPOINTS: "legacy",
+      AWS_ACCOUNT_ID_ENDPOINT_MODE: "required",
+      AWS_METADATA_SERVICE_ENDPOINT: "http://127.0.0.1:9999",
+      AWS_CA_BUNDLE: "/tmp/foreign-ca.pem",
+      aws_ignore_configured_endpoint_urls: "false"
     };
     const aws = createAwsCli({
       profile: "p",
@@ -79,8 +86,14 @@ describe("AWS CLI adapter", () => {
     expect(observedEnvironment.PATH).toBe("/usr/bin");
     expect(observedEnvironment.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS).toBe("true");
     expect(observedEnvironment.AWS_EC2_METADATA_DISABLED).toBe("true");
+    expect(Object.keys(observedEnvironment).filter((key) => (
+      key.toUpperCase() === "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"
+    ))).toEqual(["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"]);
     expect(Object.keys(observedEnvironment).some((key) => (
-      key.startsWith("AWS_ENDPOINT_URL")
+      (key.toUpperCase().startsWith("AWS_")
+        && key.toUpperCase().includes("ENDPOINT")
+        && key !== "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS")
+      || key.toUpperCase() === "AWS_CA_BUNDLE"
       || [
         "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
         "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_CONFIG_FILE",
