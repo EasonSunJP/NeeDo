@@ -306,6 +306,15 @@ function passingFixture() {
     alarms: { MetricAlarms: alarmObjects, CompositeAlarms: [] },
     alarmTags: Object.fromEntries(alarmObjects.map((alarm) => [alarm.AlarmArn, { Tags: tags() }])),
     topicTags: { Tags: tags() },
+    topicSubscriptions: {
+      Subscriptions: [{
+        SubscriptionArn: ids.subscriptionArn,
+        Owner: config.accountId,
+        Protocol: "email",
+        Endpoint: config.alertEmail,
+        TopicArn: ids.topicArn
+      }]
+    },
     budget: {
       Budget: {
         BudgetName: ids.budgetName,
@@ -375,6 +384,7 @@ function createAws(fixture, trace = []) {
         case "cloudwatch describe-alarms": return fixture.alarms;
         case "cloudwatch list-tags-for-resource": return fixture.alarmTags[argument(args, "--resource-arn")];
         case "sns list-tags-for-resource": return fixture.topicTags;
+        case "sns list-subscriptions-by-topic": return fixture.topicSubscriptions;
         case "budgets describe-budget": return fixture.budget;
         case "budgets describe-notifications-for-budget": return fixture.notifications;
         case "budgets describe-subscribers-for-notification": return fixture.subscribers;
@@ -476,6 +486,7 @@ describe("AWS Staging environment-only acceptance", () => {
       ssm: { online: true, commandId: ids.commandId, commandStatus: "Success", responseCode: 0 },
       host: { mount: true, filesystem: "xfs", directories: true, services: true, runningContainers: 0, activeRelease: false },
       secretVersionCount: 0,
+      monitoring: { snsSubscriptionConfirmed: true },
       dns: { preflightA: ["203.0.113.2"], postVerificationA: ["203.0.113.2"] },
       applicationDeployed: false,
       migrationRun: false,
@@ -540,6 +551,7 @@ describe("AWS Staging environment-only acceptance", () => {
     ["wrong budget unit", (f) => { f.budget.Budget.BudgetLimit.Unit = "USD"; }, /budget.*unit/i],
     ["missing budget notification", (f) => { f.notifications.Notifications.pop(); }, /notification/i],
     ["wrong subscriber", (f) => { f.subscribers.Subscribers[0].Address = "other@example.com"; }, /subscriber/i],
+    ["pending SNS subscription", (f) => { f.topicSubscriptions.Subscriptions[0].SubscriptionArn = "PendingConfirmation"; }, /subscription|confirm/i],
     ["missing service tag", (f) => { f.iamTags.Tags.pop(); }, /tag/i],
     ["missing resource groups tag", (f) => { f.resourceGroups.ResourceTagMappingList[0].Tags.pop(); }, /tag/i]
   ];
@@ -601,6 +613,7 @@ describe("AWS Staging environment-only acceptance", () => {
     ["alarm pagination", (f) => { f.alarms.NextToken = "more"; }],
     ["notification pagination", (f) => { f.notifications.NextToken = "more"; }],
     ["subscriber pagination", (f) => { f.subscribers.NextToken = "more"; }],
+    ["SNS subscription pagination", (f) => { f.topicSubscriptions.NextToken = "more"; }],
     ["resource groups pagination", (f) => { f.resourceGroups.PaginationToken = "more"; }]
   ])("fails closed on %s", async (_name, mutate) => {
     const fixture = passingFixture();
@@ -654,6 +667,7 @@ describe("AWS Staging environment-only acceptance", () => {
       "iam list-role-tags", "secretsmanager describe-secret", "secretsmanager list-secret-version-ids",
       "logs list-tags-for-resource", "logs describe-log-groups", "cloudwatch describe-alarms",
       "cloudwatch list-tags-for-resource", "sns list-tags-for-resource", "budgets describe-budget",
+      "sns list-subscriptions-by-topic",
       "budgets describe-notifications-for-budget", "budgets describe-subscribers-for-notification",
       "budgets list-tags-for-resource", "resourcegroupstaggingapi get-resources",
       "ssm send-command", "ssm get-command-invocation"
@@ -666,6 +680,12 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(operations.filter((operation) => operation === "cloudwatch list-tags-for-resource")).toHaveLength(4);
     expect(operations.filter((operation) => operation === "budgets describe-subscribers-for-notification")).toHaveLength(5);
     expect(operations.filter((operation) => operation === "resourcegroupstaggingapi get-resources")).toHaveLength(1);
+    expect(operations.filter((operation) => operation === "sns list-subscriptions-by-topic")).toHaveLength(1);
+    expect(aws.json.mock.calls.find(([args]) => (
+      args[0] === "sns" && args[1] === "list-subscriptions-by-topic"
+    ))).toEqual([[
+      "sns", "list-subscriptions-by-topic", "--topic-arn", ids.topicArn
+    ]]);
     for (const operation of [
       "get-public-access-block", "get-bucket-encryption", "get-bucket-versioning",
       "get-bucket-lifecycle-configuration", "get-bucket-tagging"
@@ -698,6 +718,30 @@ describe("AWS Staging environment-only acceptance", () => {
     const fixture = passingFixture();
     mutate(fixture);
     await expect(verify({ fixture })).rejects.toThrow(/tag|duplicate|mismatch|truncat|cardinality/i);
+  });
+
+  it.each([
+    ["missing", (f) => { f.topicSubscriptions.Subscriptions = []; }],
+    ["multiple", (f) => { f.topicSubscriptions.Subscriptions.push({ ...f.topicSubscriptions.Subscriptions[0] }); }],
+    ["wrong topic", (f) => { f.topicSubscriptions.Subscriptions[0].TopicArn = `${ids.topicArn}-other`; }],
+    ["wrong endpoint", (f) => { f.topicSubscriptions.Subscriptions[0].Endpoint = "other@example.com"; }],
+    ["wrong protocol", (f) => { f.topicSubscriptions.Subscriptions[0].Protocol = "http"; }],
+    ["wrong owner", (f) => { f.topicSubscriptions.Subscriptions[0].Owner = "999999999999"; }],
+    ["deleted", (f) => { f.topicSubscriptions.Subscriptions[0].SubscriptionArn = "Deleted"; }],
+    ["mismatched ARN", (f) => { f.topicSubscriptions.Subscriptions[0].SubscriptionArn = `arn:aws:sns:${config.region}:${config.accountId}:other-topic:12345678-1234-1234-1234-1234567890ab`; }],
+    ["stack physical mismatch", (f) => { f.stackResources.StackResourceSummaries.find((r) => r.LogicalResourceId === "AlertSubscription").PhysicalResourceId = "PendingConfirmation"; }]
+  ])("rejects %s SNS subscription before host verification", async (_name, mutate) => {
+    const fixture = passingFixture();
+    mutate(fixture);
+    const trace = [];
+    const aws = createAws(fixture, trace);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+    await expect(verifyAwsStagingEnvironment({
+      aws, config, resolveDns, runPreflight: createPreflight(resolveDns, trace), now: () => 0
+    })).rejects.toThrow(/SNS|subscription|confirm|identity|cardinality|match/i);
+    expect(aws.json.mock.calls.some(([args]) => (
+      args[0] === "ssm" && args[1] === "send-command"
+    ))).toBe(false);
   });
 
   it.each([
@@ -817,6 +861,11 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     ["unexpected lifecycle key", (e) => { e.buckets.release.lifecycleRules[0].unexpected = true; }],
     ["wrong alarm summary", (e) => { e.monitoring.alarms[0].threshold = 999; }],
     ["duplicate log summary", (e) => { e.monitoring.logGroups[1] = { ...e.monitoring.logGroups[0] }; }],
+    ["unconfirmed SNS", (e) => { e.monitoring.snsSubscriptionConfirmed = false; }],
+    ["wrong Resource Groups set", (e) => {
+      e.tagCoverage.resources.find((item) => item.logicalId === "Vpc").resourceGroupsTags = false;
+      e.tagCoverage.resources.find((item) => item.logicalId === "InstanceRole").resourceGroupsTags = true;
+    }],
     ["business mutation", (e) => { e.businessDataMutation = true; }],
     ["waiver expansion", (e) => { e.waivedBaselineFailures.push("another failure"); }]
   ])("rejects evidence contamination: %s", async (_name, mutate) => {

@@ -78,6 +78,13 @@ const taggableLogicalIds = Object.freeze([
   "RootDiskHighAlarm", "DataDiskHighAlarm", "MonthlyBudget",
   "HostBootstrapDocument", "HostVerificationDocument", "InstanceRootVolume"
 ]);
+const resourceGroupsLogicalIds = Object.freeze([
+  "Vpc", "InternetGateway", "PublicSubnet", "PublicRouteTable", "WebSecurityGroup",
+  "Instance", "ElasticIp", "DataVolume", "InstanceRootVolume", "ReleaseBucket",
+  "BackupBucket", "ApplicationSecret", "SystemLogGroup", "DockerLogGroup", "AlertTopic",
+  "StatusCheckFailedAlarm", "HighMemoryAlarm", "RootDiskHighAlarm", "DataDiskHighAlarm"
+]);
+const resourceGroupsLogicalIdSet = new Set(resourceGroupsLogicalIds);
 const alarmLogicalIds = Object.freeze([
   "StatusCheckFailedAlarm", "HighMemoryAlarm", "RootDiskHighAlarm", "DataDiskHighAlarm"
 ]);
@@ -124,6 +131,10 @@ function nonEmptyString(value, label) {
     throw new Error(`${label} must be a non-empty trimmed string`);
   }
   return value;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function safeArgument(value, label, pattern = safeNamePattern) {
@@ -662,6 +673,31 @@ function requireSubscriber(response, config) {
   }
 }
 
+function requireConfirmedSnsSubscription(response, resources, config) {
+  noPagination(response, "SNS list-subscriptions-by-topic");
+  if (!Array.isArray(response.Subscriptions) || response.Subscriptions.length !== 1) {
+    throw new Error("SNS email subscription cardinality must be exactly one");
+  }
+  const topicArn = resources.AlertTopic.physicalId;
+  const topicPattern = new RegExp(
+    `^arn:aws:sns:${escapeRegExp(config.region)}:${config.accountId}:[A-Za-z0-9_-]{1,256}$`
+  );
+  if (!topicPattern.test(topicArn)) throw new Error("SNS alert topic identity is invalid");
+  const [subscription] = response.Subscriptions;
+  const subscriptionArnPattern = new RegExp(
+    `^${escapeRegExp(topicArn)}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`
+  );
+  if (subscription.TopicArn !== topicArn
+    || subscription.Protocol !== "email"
+    || subscription.Endpoint !== config.alertEmail
+    || subscription.Owner !== config.accountId
+    || !subscriptionArnPattern.test(String(subscription.SubscriptionArn ?? ""))
+    || resources.AlertSubscription.physicalId !== subscription.SubscriptionArn) {
+    throw new Error("SNS email subscription is not confirmed or does not match the stack");
+  }
+  return true;
+}
+
 function notificationArgument(notification) {
   return [
     `NotificationType=${notification.notificationType}`,
@@ -909,6 +945,12 @@ export async function verifyAwsStagingEnvironment({
     "sns", "list-tags-for-resource", "--resource-arn", resources.AlertTopic.physicalId
   ]);
   requireTags(topicTags?.Tags, config.owner, "SNS alert topic");
+  const listedTopicSubscriptions = await aws.json([
+    "sns", "list-subscriptions-by-topic", "--topic-arn", resources.AlertTopic.physicalId
+  ]);
+  const snsSubscriptionConfirmed = requireConfirmedSnsSubscription(
+    listedTopicSubscriptions, resources, config
+  );
 
   const describedBudget = await aws.json([
     "budgets", "describe-budget", "--account-id", config.accountId,
@@ -1018,7 +1060,8 @@ export async function verifyAwsStagingEnvironment({
         name, namespace, metricName, threshold
       })),
       agentParameterName: outputs.CloudWatchAgentConfigParameterName,
-      topicTagged: true
+      topicTagged: true,
+      snsSubscriptionConfirmed
     },
     budget: {
       name: outputs.BudgetName,
@@ -1105,14 +1148,19 @@ function reconstructAcceptanceEvidence(evidence) {
   const actualLogicalIds = evidence.tagCoverage.resources.map((coverage) => {
     exactKeys(coverage, ["logicalId", "serviceTags", "resourceGroupsTags"], "Acceptance resource tag coverage");
     requireBoolean(coverage.serviceTags, true, "Acceptance service tag coverage");
-    if (typeof coverage.resourceGroupsTags !== "boolean") throw new Error("Acceptance Resource Groups tag coverage is invalid");
+    requireBoolean(
+      coverage.resourceGroupsTags,
+      resourceGroupsLogicalIdSet.has(coverage.logicalId),
+      `Acceptance Resource Groups tag coverage for ${String(coverage.logicalId)}`
+    );
     return coverage.logicalId;
   });
   if (JSON.stringify(actualLogicalIds) !== JSON.stringify(expectedLogicalIds)) {
     throw new Error("Acceptance tag coverage logical IDs are invalid");
   }
   const rgCount = evidence.tagCoverage.resources.filter((item) => item.resourceGroupsTags).length;
-  if (evidence.tagCoverage.resourceGroupsResultCount !== rgCount || rgCount !== 19) {
+  if (evidence.tagCoverage.resourceGroupsResultCount !== rgCount
+    || rgCount !== resourceGroupsLogicalIds.length) {
     throw new Error("Acceptance Resource Groups tag result count is invalid");
   }
 
@@ -1190,7 +1238,9 @@ function reconstructAcceptanceEvidence(evidence) {
   }
   if (evidence.secretVersionCount !== 0) throw new Error("Acceptance secret version count must be zero");
 
-  exactKeys(evidence.monitoring, ["logGroups", "alarms", "agentParameterName", "topicTagged"], "Acceptance monitoring");
+  exactKeys(evidence.monitoring, [
+    "logGroups", "alarms", "agentParameterName", "topicTagged", "snsSubscriptionConfirmed"
+  ], "Acceptance monitoring");
   if (!Array.isArray(evidence.monitoring.logGroups) || evidence.monitoring.logGroups.length !== 2) {
     throw new Error("Acceptance log groups are invalid");
   }
@@ -1221,7 +1271,10 @@ function reconstructAcceptanceEvidence(evidence) {
     throw new Error("Acceptance alarm summaries are invalid");
   }
   if (evidence.monitoring.agentParameterName !== evidence.resourceIds.cloudWatchAgentParameterName
-    || evidence.monitoring.topicTagged !== true) throw new Error("Acceptance monitoring parameter or topic is invalid");
+    || evidence.monitoring.topicTagged !== true
+    || evidence.monitoring.snsSubscriptionConfirmed !== true) {
+    throw new Error("Acceptance monitoring parameter, topic, or SNS subscription is invalid");
+  }
 
   exactKeys(evidence.budget, [
     "name", "amount", "unit", "timeUnit", "budgetType", "notifications", "maskedSubscriber"
@@ -1295,7 +1348,8 @@ function reconstructAcceptanceEvidence(evidence) {
       logGroups: evidence.monitoring.logGroups.map((group) => ({ ...group })),
       alarms: evidence.monitoring.alarms.map((alarm) => ({ ...alarm })),
       agentParameterName: evidence.monitoring.agentParameterName,
-      topicTagged: true
+      topicTagged: true,
+      snsSubscriptionConfirmed: true
     },
     budget: {
       ...evidence.budget,
