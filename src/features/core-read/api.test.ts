@@ -246,6 +246,15 @@ describe("core read API adapter", () => {
       bio: "Certified body care technician.",
       serviceArea: "Minato, Shibuya",
       yearsExperience: 8,
+      reviewTagSummary: {
+        special: [
+          { code: "appeal_max", label: "魅力max", count: 0 },
+          { code: "service_max", label: "服务max", count: 0 },
+          { code: "emotion_max", label: "情绪max", count: 0 },
+          { code: "energy_max", label: "元气max", count: 0 }
+        ],
+        custom: []
+      },
       mediaAssets: [],
       services: [],
       createdAt: coreService.createdAt,

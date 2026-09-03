@@ -17,6 +17,15 @@ export type CoreReviewSummary = {
   highlights: string[];
 };
 
+export type TechnicianReviewTagSummary = {
+  special: Array<{
+    code: "appeal_max" | "service_max" | "emotion_max" | "energy_max";
+    label: string;
+    count: number;
+  }>;
+  custom: Array<{ label: string; count: number }>;
+};
+
 export type CoreMediaAsset = {
   id: number;
   url: string;
@@ -121,6 +130,7 @@ export type CoreTechnicianDetail = CoreTechnicianCard & {
   bio: string | null;
   serviceArea: string | null;
   yearsExperience: number;
+  reviewTagSummary: TechnicianReviewTagSummary;
   mediaAssets: CoreMediaAsset[];
   services: CoreServiceCard[];
   createdAt: string;

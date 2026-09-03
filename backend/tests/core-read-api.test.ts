@@ -47,6 +47,15 @@ describe("Step 08 core read API", () => {
     avatarUrl: "https://cdn.example.test/technicians/mika.jpg",
     reviewSummary
   };
+  const reviewTagSummary = {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 3 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: [{ label: "手法细致", count: 2 }]
+  };
   const serviceCard = {
     id: 1,
     publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -138,6 +147,7 @@ describe("Step 08 core read API", () => {
         bio: "Certified body care technician.",
         serviceArea: "Minato, Shibuya",
         yearsExperience: 8,
+        reviewTagSummary,
         mediaAssets: [],
         services: [serviceCard],
         createdAt: nowIso,
@@ -338,6 +348,7 @@ describe("Step 08 core read API", () => {
       displayName: "Mika Tanaka",
       shop: shopCard,
       yearsExperience: 8,
+      reviewTagSummary,
       services: [serviceCard]
     });
 

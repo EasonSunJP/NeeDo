@@ -18,6 +18,10 @@ import type {
 } from "../services/nearby-technician-ranking.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import {
+  loadTechnicianReviewTagSummary,
+  type TechnicianReviewTagSummaryPayload
+} from "./technician-review-tag-summary.repository";
 
 const PUBLISHED_STATUS = "published";
 const DEFAULT_HOME_LIMIT = 6;
@@ -172,6 +176,7 @@ export interface TechnicianDetailPayload extends TechnicianCardPayload {
   bio: string | null;
   serviceArea: string | null;
   yearsExperience: number;
+  reviewTagSummary: TechnicianReviewTagSummaryPayload;
   mediaAssets: MediaAssetPayload[];
   services: ServiceCardPayload[];
   createdAt: Date;
@@ -597,25 +602,28 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   public async findTechnicianDetail(id: number): Promise<TechnicianDetailPayload | null> {
-    const technician = await this.client.technicianProfile.findFirst({
-      where: {
-        id,
-        ...this.publishedTechnicianProfileWhere()
-      },
-      include: {
-        ...this.technicianCardInclude(),
-        shop: {
-          include: this.shopCardInclude()
+    const [technician, reviewTagSummary] = await Promise.all([
+      this.client.technicianProfile.findFirst({
+        where: {
+          id,
+          ...this.publishedTechnicianProfileWhere()
         },
-        services: {
-          where: { deletedAt: null, status: PUBLISHED_STATUS },
-          include: this.serviceCardInclude(),
-          orderBy: this.buildServiceOrderBy("recommended")
+        include: {
+          ...this.technicianCardInclude(),
+          shop: {
+            include: this.shopCardInclude()
+          },
+          services: {
+            where: { deletedAt: null, status: PUBLISHED_STATUS },
+            include: this.serviceCardInclude(),
+            orderBy: this.buildServiceOrderBy("recommended")
+          }
         }
-      }
-    });
+      }),
+      loadTechnicianReviewTagSummary(this.client, id)
+    ]);
 
-    return technician ? this.mapTechnicianDetail(technician) : null;
+    return technician ? this.mapTechnicianDetail(technician, reviewTagSummary) : null;
   }
 
   public async findCustomerProfile(id: number): Promise<CustomerProfilePayload | null> {
@@ -1344,13 +1352,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  private mapTechnicianDetail(technician: TechnicianDetailRecord): TechnicianDetailPayload {
+  private mapTechnicianDetail(
+    technician: TechnicianDetailRecord,
+    reviewTagSummary: TechnicianReviewTagSummaryPayload
+  ): TechnicianDetailPayload {
     return {
       ...this.mapTechnicianCard(technician),
       shop: technician.shop ? this.mapShopCard(technician.shop) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,
       yearsExperience: technician.yearsExperience,
+      reviewTagSummary,
       mediaAssets: technician.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
       services: technician.services.map((service) => this.mapServiceCard(service)),
       createdAt: technician.createdAt,

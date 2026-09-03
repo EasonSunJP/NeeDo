@@ -7,6 +7,10 @@ import {
   type AuditLogCreateInput
 } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import {
+  loadTechnicianReviewTagSummary,
+  type TechnicianReviewTagSummaryPayload
+} from "./technician-review-tag-summary.repository";
 
 export type TechnicianPaymentMethod =
   | "platform"
@@ -53,6 +57,7 @@ export interface TechnicianProfilePayload {
   serviceAreas: string[];
   specialTags: string[];
   profileTags: string[];
+  reviewTagSummary: TechnicianReviewTagSummaryPayload;
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
@@ -77,11 +82,6 @@ export interface TechnicianProfileRepositoryPort {
 }
 
 const profileInclude = {
-  backofficeProfileTags: {
-    where: { isActive: true, deletedAt: null },
-    select: { id: true, label: true, isActive: true, expiresAt: true },
-    orderBy: { id: "asc" as const }
-  },
   mediaAssets: {
     where: { usageType: "avatar", isActive: true, deletedAt: null },
     orderBy: { id: "desc" as const },
@@ -110,11 +110,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     userId: number,
     profileId: number
   ): Promise<TechnicianProfilePayload | null> {
-    const profile = await this.client.technicianProfile.findFirst({
-      where: { id: profileId, userId, deletedAt: null },
-      include: profileInclude
-    });
-    return profile ? this.mapProfile(profile) : null;
+    const [profile, reviewTagSummary] = await Promise.all([
+      this.client.technicianProfile.findFirst({
+        where: { id: profileId, userId, deletedAt: null },
+        include: profileInclude
+      }),
+      loadTechnicianReviewTagSummary(this.client, profileId)
+    ]);
+    return profile ? this.mapProfile(profile, reviewTagSummary) : null;
   }
 
   public async updateMine(
@@ -152,7 +155,8 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
     });
 
-    return this.mapProfile(profile);
+    const reviewTagSummary = await loadTechnicianReviewTagSummary(this.client, profile.id);
+    return this.mapProfile(profile, reviewTagSummary);
   }
 
   private profileData(mutation: TechnicianProfileMutation): Prisma.TechnicianProfileUpdateInput {
@@ -189,7 +193,10 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     };
   }
 
-  private mapProfile(profile: TechnicianProfileRecord): TechnicianProfilePayload {
+  private mapProfile(
+    profile: TechnicianProfileRecord,
+    reviewTagSummary: TechnicianReviewTagSummaryPayload
+  ): TechnicianProfilePayload {
     const publicId = profile.user.identities
       .map((identity) => identity.publicIdentifier)
       .find((identifier) => identifier?.kind === "S" && identifier.status === "ACTIVE" && !identifier.deletedAt)
@@ -215,10 +222,9 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.stringArray(profile.languages, "languages"),
       serviceAreas: this.stringArray(profile.serviceAreasJson, "service_areas"),
-      specialTags: profile.backofficeProfileTags
-        .filter((tag) => tag.expiresAt === null || tag.expiresAt.getTime() > Date.now())
-        .map((tag) => tag.label),
-      profileTags: this.stringArray(profile.profileTags, "profile_tags"),
+      specialTags: [],
+      profileTags: [],
+      reviewTagSummary,
       canServeForeigners: profile.canServeForeigners,
       bidBudgetMinJpy: profile.bidBudgetMinJpy,
       bidBudgetMaxJpy: profile.bidBudgetMaxJpy,

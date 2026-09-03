@@ -524,4 +524,42 @@ describe("CoreReadRepository multi-entity search", () => {
       where: expect.objectContaining({ id: { in: [41] } })
     }));
   });
+
+  it("adds the formal review tag summary only to technician detail", async () => {
+    const technician = {
+      ...publishedTechnicianWithoutServices,
+      bio: "肩颈护理",
+      serviceArea: "港区",
+      yearsExperience: 8,
+      shop: null,
+      services: [],
+      status: "published",
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    const client = {
+      technicianProfile: { findFirst: jest.fn(async () => technician) },
+      orderReviewTag: {
+        groupBy: jest.fn(async () => [
+          { label: "服务精神", _count: { _all: 4 }, _min: { createdAt: now } },
+          { label: "手法细致", _count: { _all: 2 }, _min: { createdAt: now } }
+        ])
+      }
+    };
+    const repository = new CoreReadRepository(client as never);
+
+    await expect(repository.findTechnicianDetail(41)).resolves.toMatchObject({
+      id: 41,
+      reviewTagSummary: {
+        special: [
+          { code: "appeal_max", label: "魅力max", count: 0 },
+          { code: "service_max", label: "服务max", count: 4 },
+          { code: "emotion_max", label: "情绪max", count: 0 },
+          { code: "energy_max", label: "元气max", count: 0 }
+        ],
+        custom: [{ label: "手法细致", count: 2 }]
+      }
+    });
+  });
 });
