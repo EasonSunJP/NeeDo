@@ -13,10 +13,9 @@ are deliberately deferred until their separate microstep is approved.
 - The current machine's approved current-user AWS CLI installation is verified
   as AWS CLI v2 `aws-cli/2.36.38` on `arm64`. Earlier notes that said the CLI
   was absent describe the initial state and are superseded by this fact.
-- The Session Manager plugin is currently absent or unverified. Install and
-  verify it through a separately approved system change before attempting a
-  Session Manager session; do not treat AWS CLI installation as proof that the
-  plugin is available.
+- The AWS Session Manager plugin is verified as version `1.2.835.0` on
+  `arm64`, installed from the AWS signed and Apple-notarized macOS package.
+  Its executable resolves through `/usr/local/bin/session-manager-plugin`.
 - Public DNS was rechecked on 2026-09-04: both the `needo.life` NS query and
   the `staging.needo.life` A query returned `NXDOMAIN`. Public delegation and
   the eventual staging record are therefore not ready.
