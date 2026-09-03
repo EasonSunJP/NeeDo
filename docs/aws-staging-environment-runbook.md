@@ -62,10 +62,10 @@ Each command resolves the named profile once with AWS CLI v2
 `configure export-credentials --format process`, keeps that one temporary
 credential tuple only in process memory, and uses it for preflight and every
 subsequent read or mutation in that invocation. Inherited credential, profile,
-config-file, metadata, and endpoint variables are neutralized, and configured
-service endpoints are ignored. The tuple is never logged, returned, or
-persisted. If it expires, restart the whole command and repeat preflight; do not
-mix credential sessions within an invocation.
+config-file, metadata, endpoint-selection, and AWS CA-bundle overrides are
+neutralized, and configured service endpoints are ignored. The tuple is never
+logged, returned, or persisted. If it expires, restart the whole command and
+repeat preflight; do not mix credential sessions within an invocation.
 
 Do not use long-lived access keys, an SSH key, or secrets pasted into the CLI.
 The CLI profile must be named, temporary, and not `default`. If the preflight
@@ -102,6 +102,9 @@ Deployment submits the exact in-memory template bytes to atomic
 `ExpectedAccountId` rules. `AlreadyExists` is a hard stop: the gate never falls
 back to update behavior. The returned full StackId is validated and is the only
 identifier used for the waiter, stack description, and resource listing.
+Before deployment evidence is returned, `describe-addresses` must bind the
+stack's exact Elastic IP allocation and association to its exact instance and
+public-IP output.
 
 ```bash
 npm run aws:staging:deploy -- \
@@ -116,11 +119,12 @@ npm run aws:staging:deploy -- \
 
 Bootstrap the host twice. The second invocation is the required idempotency
 check; inspect its bounded SSM result rather than substituting SSH access.
-Before either invocation's first waiter or command, the gate repeats the fresh
-account/region preflight, validates the full StackId, tags, resource/output
+Before either invocation's first waiter or `ssm send-command`, the gate repeats
+the fresh account/region preflight, validates the full StackId, tags, resource/output
 bindings, instance/data-volume attachment, exact SSM document content/version,
 and exact CloudWatch Agent parameter content/version. It passes those immutable
-versions to Run Command; any drift stops with zero waiter and zero command.
+versions to Run Command; any drift stops with zero waiter and zero
+`ssm send-command`.
 
 ```bash
 npm run aws:staging:bootstrap-host -- \

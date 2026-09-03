@@ -221,7 +221,9 @@ git commit -m "feat: support explicit AWS staging regions"
 
 **Interfaces:**
 - Consumes: `config.region` from Task 1.
-- Produces: a CloudFormation `ExpectedRegion` parameter and rule, plus `ExpectedRegion=<config.region>` in the deploy argument array.
+- Produces: CloudFormation `ExpectedRegion` and `ExpectedAccountId` parameters
+  and rules, plus their `ParameterKey=...,ParameterValue=...` entries in the
+  atomic `create-stack` argument array.
 
 - [ ] **Step 1: Replace the Tokyo-only contract test with a failing exact dual-region rule test**
 
@@ -248,12 +250,33 @@ it("locks stack creation to the explicit approved region", () => {
     "AssertDescription: NeeDo Staging region must match ExpectedRegion"
   ]);
 });
+
+it("locks stack creation to the explicit expected account", () => {
+  const parameters = topLevelSection("Parameters");
+  const expectedAccountId = mappingEntry(parameters, "ExpectedAccountId");
+  expect(compactLines(expectedAccountId)).toEqual([
+    "Type: String",
+    "AllowedPattern: \"^[0-9]{12}$\""
+  ]);
+
+  const rule = mappingEntry(topLevelSection("Rules"), "RequireExpectedAccountId");
+  expect(compactLines(rule)).toEqual([
+    "Assertions:",
+    "- Assert:",
+    "Fn::Equals:",
+    "- !Ref AWS::AccountId",
+    "- !Ref ExpectedAccountId",
+    "AssertDescription: NeeDo Staging account must match ExpectedAccountId"
+  ]);
+});
 ```
 
-In `scripts/aws-staging-deploy-lib.test.mjs`, add this entry immediately after `--parameter-overrides` in the expected command:
+In `scripts/aws-staging-deploy-lib.test.mjs`, require the atomic `create-stack`
+arguments to contain these entries immediately after `--parameters`:
 
 ```js
-"ExpectedRegion=ap-northeast-1",
+"ParameterKey=ExpectedRegion,ParameterValue=ap-northeast-1",
+"ParameterKey=ExpectedAccountId,ParameterValue=123456789012",
 ```
 
 - [ ] **Step 2: Run the two tests and verify RED**
@@ -266,7 +289,8 @@ npm test -- --run \
   scripts/aws-staging-deploy-lib.test.mjs
 ```
 
-Expected: FAIL because `ExpectedRegion` and its parameter override do not exist.
+Expected: FAIL because the exact region/account parameters and server-side
+locks do not yet exist in the template and `create-stack` arguments.
 
 - [ ] **Step 3: Implement the CloudFormation parameter and server-side equality rule**
 
@@ -298,12 +322,14 @@ Replace `RequireTokyoRegion` with:
         AssertDescription: NeeDo Staging region must match ExpectedRegion
 ```
 
-In `scripts/aws-staging-deploy-lib.mjs`, pass the region first in the parameter overrides:
+In `scripts/aws-staging-deploy-lib.mjs`, pass the region and account lock first
+in the `create-stack` parameter list:
 
 ```js
-"--parameter-overrides",
-`ExpectedRegion=${config.region}`,
-`AlertEmail=${config.alertEmail}`,
+"--parameters",
+`ParameterKey=ExpectedRegion,ParameterValue=${config.region}`,
+`ParameterKey=ExpectedAccountId,ParameterValue=${config.accountId}`,
+`ParameterKey=AlertEmail,ParameterValue=${config.alertEmail}`,
 ```
 
 - [ ] **Step 4: Run the two tests and verify GREEN**
@@ -656,8 +682,8 @@ include this line immediately after the account ID:
   --region <ap-southeast-2-or-ap-northeast-1> \
 ```
 
-Change “same six flags” to “same seven flags.” State that the personal live run
-uses `--region ap-southeast-2`.
+Keep every operator command at the same seven explicit flags. State that the
+personal live run uses `--region ap-southeast-2`.
 
 - [ ] **Step 3: Amend the original environment-only plan without rewriting history**
 

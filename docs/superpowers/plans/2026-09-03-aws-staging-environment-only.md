@@ -15,14 +15,15 @@
 > inherited/configured endpoints; CloudFormation receives both
 > `ExpectedRegion` and `ExpectedAccountId`; initial deployment uses atomic
 > `create-stack` and binds every later call to its returned full StackId, with
-> `AlreadyExists` as a stop condition. Before any bootstrap waiter or command,
+> `AlreadyExists` as a stop condition. Before any bootstrap waiter or
+> `ssm send-command`,
 > a fresh preflight must prove account/region and the exact stack, tags,
 > resources, outputs, instance/data-volume attachment, SSM document content and
 > version, and CloudWatch Agent parameter content and version. Both S3 bucket
 > policies are retained with their buckets. No create-or-update behavior is
 > authorized by this environment-only plan.
 
-**Goal:** Provision and prove the approved AWS Tokyo Staging infrastructure for NeeDo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
+**Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
 
@@ -37,7 +38,7 @@
 - Human access must use an SSO/assumed-role temporary session. Reject the root user and long-lived shared access-key profiles.
 - Keep port 22 absent. Public inbound security-group rules are TCP 80 and 443 only; 3000, 3306, and 6379 are never exposed.
 - Keep the application secret empty in this microstep. Verification may call `describe-secret` and `list-secret-version-ids`, but never `get-secret-value`.
-- Keep EBS, S3, and secret resources recoverable: data volume uses snapshot policies; buckets and secret are retained on stack deletion.
+- Keep EBS, S3, and secret resources recoverable: data volume uses snapshot policies; buckets, their TLS-only BucketPolicy resources, and the secret are retained on stack deletion.
 - Never log AWS credentials, session tokens, future application secrets, or secret values. Evidence may contain account ID, role ARN, region, resource IDs, public IP, alert email in masked form, and non-secret configuration.
 - Treat the approved three pre-existing test failures as waived baseline evidence only: two `ProfileDetailPage.routing` frontend failures and one backend `shop-membership-card-adjustment-api` timing failure. Do not fix them and do not claim the full suites pass.
 - Deployment-specific tests, CloudFormation validation, focused repository regression checks, and live AWS acceptance are mandatory and cannot be waived by that baseline exception.
@@ -1096,9 +1097,9 @@ git commit -m "feat: deploy AWS staging environment stack"
 
 Prove that the library:
 
-- runs a fresh in-process preflight and stops before every waiter or command on an account, region, hostname, credential, or stable-stack mismatch;
+- runs a fresh in-process preflight and stops before every waiter or `ssm send-command` on an account, region, hostname, credential, or stable-stack mismatch;
 - validates the full account/region-bound StackId, exact tags, resource types, outputs and output bindings, then uses that StackId for `list-stack-resources`;
-- validates that the exact stack data volume is attached to the exact stack instance at `/dev/sdf` before any waiter or command;
+- validates that the exact stack data volume is attached to the exact stack instance at `/dev/sdf` before any waiter or `ssm send-command`;
 - retrieves and attests the exact bootstrap document content and positive immutable version, plus the exact CloudWatch Agent parameter ARN/content/version;
 - waits for EC2 `instance-status-ok` and SSM `PingStatus=Online`;
 - sends exactly one command pinned to the attested document version; its parameters contain only the data-volume ID, CloudWatch Agent parameter name, and attested numeric parameter version;
@@ -1355,7 +1356,7 @@ The runbook must distinguish:
 - CloudFormation create failure before useful resources: inspect stack events, preserve evidence, and request explicit approval before deleting the failed stack;
 - host bootstrap failure: do not format another device, inspect the SSM invocation and volume attachment, fix forward, rerun idempotently;
 - acceptance failure: do not deploy the application or change DNS;
-- stack rollback/removal: retained buckets and secret remain, data-volume deletion creates a snapshot, and material deletion requires a separate explicit user approval;
+- stack rollback/removal: retained buckets, their TLS-only BucketPolicy resources, and the secret remain, data-volume deletion creates a snapshot, and material deletion requires a separate explicit user approval;
 - budget/SNS email unconfirmed: infrastructure may exist, but the environment gate remains incomplete.
 
 Never recommend `aws cloudformation delete-stack`, EBS deletion, snapshot deletion, bucket emptying, or secret force deletion as an automatic cleanup command.
@@ -1431,9 +1432,22 @@ Use the exact focused command from Task 8. Do not rerun or repair the waived ful
 
 - [ ] **Step 4: Validate the template with AWS only after temporary read-only access is available**
 
-Run `npm run aws:staging:preflight -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life`. Expected:
+Run preflight with all seven approved flag pairs:
 
-- exact approved account and `ap-northeast-1`;
+```bash
+npm run aws:staging:preflight -- \
+  --profile <named-temporary-profile> \
+  --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
+  --hostname staging.needo.life \
+  --alert-email <alert-email> \
+  --budget-amount <amount-in-account-billing-currency> \
+  --budget-unit <three-letter-billing-currency>
+```
+
+Expected:
+
+- exact approved account and the explicitly selected approved region;
 - assumed-role/SSO caller;
 - AL2023 ARM64 AMI available;
 - CloudFormation template validates;
