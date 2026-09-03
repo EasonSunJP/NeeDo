@@ -294,6 +294,56 @@ describe("AWS Staging CloudFormation deployment", () => {
     expect(createAwsCliImpl).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "source revision",
+      { sourceRevision: "b".repeat(40), templateSha256 },
+      /source revision.*action-time approval/i
+    ],
+    [
+      "template digest",
+      { sourceRevision: "a".repeat(40), templateSha256: "f".repeat(64) },
+      /SHA-256.*action-time approval/i
+    ]
+  ])("rejects a valid but mismatched approved %s before creating credentials", async (
+    _label,
+    approvals,
+    expected
+  ) => {
+    const { captureAwsStagingTemplateArtifact } = await import(
+      "./aws-staging-template-artifact.mjs"
+    );
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-deploy-approval-"));
+    const templatePath = path.join(temporaryRoot, "deploy/aws-staging/cloudformation.yml");
+    const sourceRevision = "a".repeat(40);
+    const runGit = vi.fn(async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
+      if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${sourceRevision}\n`;
+      if (args[0] === "status") return "";
+      if (args[0] === "show") return Buffer.from(templateBody, "utf8");
+      throw new Error(`Unexpected git call: ${args.join(" ")}`);
+    });
+    const createAwsCliImpl = vi.fn();
+
+    try {
+      await fs.mkdir(path.dirname(templatePath), { recursive: true });
+      await fs.writeFile(templatePath, templateBody, { encoding: "utf8", mode: 0o600 });
+      await expect(runAwsStagingDeployCli(["approved"], {
+        parseAwsStagingDeployArgsImpl: vi.fn(() => approvals),
+        resolveAwsStagingConfigImpl: vi.fn(() => ({ ...config, templatePath })),
+        captureTemplateArtifactImpl: (input) => captureAwsStagingTemplateArtifact({
+          ...input,
+          repositoryRoot: temporaryRoot,
+          runGit
+        }),
+        createAwsCliImpl
+      })).rejects.toThrow(expected);
+      expect(createAwsCliImpl).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps the deploy CLI import-safe and redacts injectable and direct failures", () => {
     const cliUrl = new URL("./aws-staging-deploy.mjs", import.meta.url);
     const cliPath = fileURLToPath(cliUrl);
