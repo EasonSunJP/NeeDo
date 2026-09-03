@@ -352,6 +352,17 @@ describe("HomePage formal carousel integration", () => {
     expect(appointmentOverview?.textContent).toContain("10:00");
   });
 
+  it("keeps the appointment overview button available when there is no active booking", async () => {
+    apiMocks.getUserHomeCarousel.mockResolvedValue(publishedPayload("正式轮播", "zh-CN"));
+
+    await renderHome();
+    await waitFor(() => expect(apiMocks.listOrders).toHaveBeenCalledWith({ page: 1, pageSize: 100 }));
+
+    const appointmentOverview = container.querySelector<HTMLAnchorElement>('a[aria-label="查看预约记录"][href="/orders"]');
+    expect(appointmentOverview).not.toBeNull();
+    expect(appointmentOverview?.textContent).toContain("预约一览");
+  });
+
   it("reloads the formal scene when the content locale changes", async () => {
     apiMocks.getUserHomeCarousel
       .mockResolvedValueOnce(publishedPayload("中文公告", "zh-CN"))

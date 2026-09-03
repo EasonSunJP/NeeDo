@@ -489,16 +489,14 @@ function getOrderTimeValue(order: Order) {
 }
 
 function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: number; latestOrder?: Order }) {
-  if (count <= 0 || !latestOrder) {
-    return null;
-  }
-
-  const timeLabel = latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt;
+  const timeLabel = latestOrder
+    ? latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt
+    : "预约一览";
 
   return (
     <FloatingActionButton
       ariaLabel="查看预约记录"
-      badge={count}
+      badge={count > 0 ? count : undefined}
       srText={timeLabel}
       storageKey="needo.fab.current-appointment"
       title="查看预约记录"

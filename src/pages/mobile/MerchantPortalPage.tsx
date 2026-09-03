@@ -2778,7 +2778,14 @@ export function MerchantPortalContent({
               />
             ) : null}
             {merchantSchedulePrimaryTab === "appointments" ? (
-              <UnifiedUserCalendar currentStore={store} displayMode="parallel" merchantLaneMode="appointmentStatus" scope="merchant" searchQuery={merchantAppointmentSearchQuery} />
+              <UnifiedUserCalendar
+                currentStore={store}
+                displayMode="parallel"
+                merchantLaneMode="appointmentStatus"
+                scope="merchant"
+                searchQuery={merchantAppointmentSearchQuery}
+                technicians={storeTechnicians}
+              />
             ) : null}
             {merchantSchedulePrimaryTab === "planning" ? (
               <AutomationWizard operatorId={store.id} storeId={store.id} surface="mobile" />

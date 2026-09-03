@@ -150,6 +150,17 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(floatingActionSource).not.toContain("!isMerchantAppointmentStatusMode");
   });
 
+  it("keeps technician avatar lanes visible in the merchant appointment overview", () => {
+    const laneSource = source.slice(
+      source.indexOf("const parallelCalendarLanes = useMemo"),
+      source.indexOf("const allEvents = useMemo")
+    );
+
+    expect(laneSource).toContain('getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, "technician")');
+    expect(laneSource).not.toContain("&& !isMerchantAppointmentStatusMode");
+    expect(source).toContain('const assigned = event.calendarId?.startsWith("technician:") ?? false');
+  });
+
   it("centers day, three-day, and week timelines on the first timed event", () => {
     expect(source).toContain("function getTimelineAutoScrollAnchor");
     expect(source).toContain("function scrollTimelineToFirstEvent");
