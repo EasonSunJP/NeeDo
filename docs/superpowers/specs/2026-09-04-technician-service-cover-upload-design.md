@@ -4,7 +4,7 @@
 
 **适用阶段：** Step 09 前端第一批去 mock，对现有正式技师服务写接口做一个独立增量
 
-**状态：** 对话设计已批准，书面规范待用户复核
+**状态：** 实现、自动化、正式 API/MySQL 与跨页面读取已验收；浏览器文件选择与新增服务分类前置条件待补验，尚未标记完成
 
 **关联设计：** `2026-09-03-technician-profile-detail-service-card-review-tags-design.md`
 
@@ -298,3 +298,16 @@ Route -> Controller -> Service -> Repository -> Prisma/MySQL
 ## 13. 完成边界
 
 只有自动化、真实 API/数据库、浏览器刷新持久化和跨页面共享卡显示都通过，才可将“服务封面图上传”标记为完成。完成本微步骤后再单独设计和实施“技师资料 ID 与技师公开 ID 统一”，最后才进入功能分支与 `main` 的合并与全量回归。
+
+## 14. Cover Task 5 验收记录
+
+2026-09-04 在隔离功能分支上完成以下正式证据：
+
+- 后端 6 个目标套件共 57 项测试、后端 lint/build、前端 9 个目标文件共 154 项测试、前端 lint/build 均退出 0；Vite 仅保留既有 mixed-import 与大 chunk 警告。
+- 功能前端使用显式备用端口并代理到同一 worktree 的正式后端；标准 5180 运行时未被替换或作为本次验收依据。
+- 唯一验收服务通过正式 API 完成首次上传、替换和移除。MySQL 证明 `technician_services.cover_image_url` 跟随每次动作，替换/移除后的 `media_assets` 均为 inactive 且有 `deleted_at`，审计包含 `technician.service.cover.updated` 与 `technician.service.cover.removed`。
+- 技师个人中心刷新后读取同一 `/media/content/...` URL；用户端技师公开详情页读取相同替换 URL；移除后刷新显示诚实无图状态。服务上移/下移与编辑控件可用，验收前顺序已恢复。
+- 390 px 移动宽度下，独立刷新后的技师个人中心与公开详情页均无横向溢出，且各自干净标签页没有 console error。
+- 验收结束后，仅按捕获的服务 ID 调用认证服务 DELETE API；MySQL 确认该行软删除，正式本人服务列表不再返回它，原有服务的排序值恢复为验收前值。
+
+本轮状态为 `DONE_WITH_CONCERNS`，而不是完成：Chrome 扩展控制的文件选择器拒绝附加仓库图片，无法证明浏览器本地预览/替换上传；固定正式技师测试资料虽已有服务，但未提供新增表单所需的 `defaultCategoryId`，浏览器新增服务显示“当前没有可用的正式服务分类”。因此第 11 节第 1、3、5 项中的浏览器选图/本地校验链路仍待可用文件上传控制和正式分类前置数据补验。本轮不修改技师/资料 ID 格式，不合并 `main`，不声称部署。
