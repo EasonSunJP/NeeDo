@@ -18,6 +18,19 @@ const validInput = {
   budgetUnit: "JPY"
 };
 
+function containsRawAwsOperatorCommand(contents) {
+  const absoluteOrBare = String.raw`(?:aws|session-manager-plugin|(?:\/[^\/\s]+)*\/(?:aws|session-manager-plugin))`;
+  const prompt = String.raw`(?:\$\s+)?`;
+  const privilegePrefix = String.raw`(?:(?:sudo|exec)\s+)?`;
+  const envExecutable = String.raw`(?:env|(?:\/[^\/\s]+)*\/env)`;
+  const environmentPrefix = String.raw`(?:${envExecutable}\s+(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)*)?`;
+  const lookup = String.raw`(?:(?:command\s+-v|which)\s+${absoluteOrBare})`;
+  return new RegExp(
+    String.raw`^\s*${prompt}${privilegePrefix}${environmentPrefix}(?:${absoluteOrBare}|${lookup})(?:\s|$)`,
+    "m"
+  ).test(contents);
+}
+
 describe("AWS Staging configuration", () => {
   it("documents digest-bound immutable template approval without mutable file validation", async () => {
     const authoritativePaths = [
@@ -51,9 +64,21 @@ describe("AWS Staging configuration", () => {
     )));
     const combined = documents.join("\n");
 
-    expect(combined).not.toMatch(/^\s*(?:aws|session-manager-plugin)(?:\s|$)/m);
-    expect(combined).not.toMatch(/^\s*(?:command -v|which)\s+(?:aws|session-manager-plugin)(?:\s|$)/m);
+    expect(containsRawAwsOperatorCommand(combined)).toBe(false);
     expect(combined).toMatch(/dedicated hardened Session Manager microstep/i);
+  });
+
+  it.each([
+    "/usr/local/bin/aws --version",
+    "/opt/homebrew/bin/session-manager-plugin --version",
+    "$ aws ssm start-session --target i-0123456789abcdef0",
+    "env aws sts get-caller-identity",
+    "sudo aws ssm start-session --target i-0123456789abcdef0",
+    "/usr/bin/env AWS_PROFILE=p /usr/local/bin/aws --version",
+    "command -v /usr/local/bin/aws",
+    "which /opt/homebrew/bin/session-manager-plugin"
+  ])("recognizes equivalent raw operator-command bypass: %s", (line) => {
+    expect(containsRawAwsOperatorCommand(line)).toBe(true);
   });
 
   it("normalizes the approved environment without converting money", () => {
