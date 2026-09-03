@@ -6,8 +6,8 @@
 - 状态：用户已批准
 - AWS 区域：东京 `ap-northeast-1`
 - 月度预算上限：约 20,000 日元
-- Staging 域名：`staging.needo.dackou.com`
-- 正式域名：继续保留 `needo.dackou.com`
+- Staging 域名：`staging.needo.life`
+- 域名保留边界：不修改 apex `needo.life` 与 `www.needo.life`
 - 应用基线：本地 `main@3cc5a978e8afec42baa41bee0077bb4166c47265`
 - 发布原则：当前工作区的未提交和未跟踪修改全部排除
 
@@ -19,7 +19,7 @@
 2. 第一实施微步骤只创建 AWS 环境，不发布应用、不修改 DNS、不运行 migration。
 3. 后续从指定 `main` commit 派生最小 Release Candidate，只加入正式管理员 bootstrap 和 AWS Staging 部署能力。
 4. 使用全新 MySQL 数据目录，通过正式 Prisma migration 建库，不复制本地 MySQL 或 Redis 数据。
-5. 继续由万网管理 DNS；先使用 `staging.needo.dackou.com`，验收完成前不修改现有 `needo.dackou.com`。
+5. 继续由 Onamae 管理 DNS；先使用 `staging.needo.life`，验收完成前不修改 apex `needo.life` 或 `www.needo.life`。
 6. Staging 尽量只使用一台 EC2；S3、Secrets Manager、CloudWatch、Systems Manager 和 AWS Budgets 只承担备份、密钥、可观测性、无 SSH 管理和成本保护职责。
 
 ## 3. 明确不做
@@ -30,7 +30,7 @@
 - 不直接部署当前 dirty worktree。
 - 不开放公网 SSH、MySQL、Redis 或 `/api/v1/metrics`。
 - 不在没有压测数据时承诺正式生产容量或高可用。
-- 不修改现有 `needo.dackou.com -> 47.99.44.218` 记录。
+- 不创建或修改 apex `needo.life` 与 `www.needo.life` 的 DNS 记录。
 
 ## 4. 方案比较与选择
 
@@ -111,22 +111,23 @@ The backup policy keeps daily database/media backups for 30 days and pre-migrati
 
 ## 6. DNS and TLS
 
-Current read-only DNS evidence on 2026-09-03:
+Current read-only public DNS evidence on 2026-09-03:
 
-- authoritative nameservers: `dns11.hichina.com`, `dns12.hichina.com`;
-- `needo.dackou.com` A record: `47.99.44.218`;
-- `staging.needo.dackou.com`: no current A record.
+- `needo.life` returned `NXDOMAIN`;
+- no public delegation or authoritative nameserver was observed for `needo.life`;
+- therefore no public A record exists yet for `staging.needo.life`;
+- Onamae registration status, nameserver activation, and DNS-zone control remain external operator responsibilities and are not changed in this microstep.
 
 After the EC2 environment and application pass IP-level readiness, the DNS owner adds:
 
 ```text
 type: A
-host: staging.needo
+host: staging
 value: <staging Elastic IP>
 TTL: 300
 ```
 
-No wildcard record is required. Nginx uses Let's Encrypt for `staging.needo.dackou.com`; TCP 80 remains available for HTTP-01 issuance and redirects ordinary requests to HTTPS. Certificate renewal is automated and monitored. Google Web OAuth authorized JavaScript origins are updated only after HTTPS is live; no Google client secret is introduced.
+The DNS owner must first confirm that `needo.life` is active and publicly delegated from Onamae. No wildcard, apex, or `www` mutation is required. Nginx uses Let's Encrypt for `staging.needo.life`; TCP 80 remains available for HTTP-01 issuance and redirects ordinary requests to HTTPS. Certificate renewal is automated and monitored. Google Web OAuth authorized JavaScript origins are updated only after HTTPS is live; no Google client secret is introduced.
 
 ## 7. Environment and secrets
 
@@ -222,7 +223,7 @@ AWS Budgets sends threshold notifications at 15,000, 18,000 and 20,000 JPY of fo
 - Formal administrator bootstrap creates exactly one non-test administrator and zero customer/wallet/NDP/TEST_NDP rows attributable to bootstrap.
 - `/api/v1/health` is healthy and `/api/v1/ready` is ready.
 - `/api/v1/metrics` is inaccessible publicly and readable only through the approved internal path/token.
-- `staging.needo.dackou.com` serves valid HTTPS and same-origin `/api/v1` routes.
+- `staging.needo.life` serves valid HTTPS and same-origin `/api/v1` routes.
 - Operations administrator login, `/auth/me`, expected role/permission and logout pass without exposing credentials or tokens.
 - Backup and restore rehearsal plus application rollback rehearsal pass before Staging is called deployable.
 
@@ -247,8 +248,8 @@ Implement and verify the formal Staging administrator bootstrap plus immutable r
 
 ### Microstep 3 — Application, DNS and acceptance
 
-Populate secrets through the approved non-printing path, deploy the application, run migrations/bootstrap, configure the万网 A record, issue TLS, verify backups/rollback and complete browser/API acceptance. Promotion of `needo.dackou.com` is a later separately approved production decision.
+Populate secrets through the approved non-printing path, deploy the application, run migrations/bootstrap, configure the Onamae `staging` A record, issue TLS, verify backups/rollback and complete browser/API acceptance. Any apex `needo.life` or `www.needo.life` activation is a later separately approved production decision.
 
 ## 15. Required user-provided authority
 
-Before Microstep 1 cloud writes, the user provides an approved AWS short-lived access path with permission to manage the scoped Staging CloudFormation resources in `ap-northeast-1`. The user or domain owner later provides万网 DNS access for the single Staging A record. No root password, MFA code, long-lived access key secret, SSH private key, database password, JWT secret or production account password is sent in chat.
+Before Microstep 1 cloud writes, the user provides an approved AWS short-lived access path with permission to manage the scoped Staging CloudFormation resources in `ap-northeast-1`. The user or domain owner later confirms Onamae registration/delegation and provides DNS access for the single `staging` A record. No root password, MFA code, long-lived access key secret, SSH private key, database password, JWT secret or production account password is sent in chat.

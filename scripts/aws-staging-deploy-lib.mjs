@@ -1,6 +1,6 @@
 import { resolve4 } from "node:dns/promises";
+import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 
-const STAGING_HOSTNAME = "staging.needo.dackou.com";
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
 const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT", ...STABLE_STACK_STATES]);
 const REQUIRED_OUTPUT_KEYS = Object.freeze([
@@ -26,6 +26,9 @@ function requireInProcessPreflight(preflight, config) {
   if (preflight.region !== config.region) {
     throw new Error("AWS Staging preflight region does not match deployment configuration");
   }
+  if (preflight.hostname !== config.hostname) {
+    throw new Error("AWS Staging preflight hostname does not match deployment configuration");
+  }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
     || preflight.amiArchitecture !== "arm64") {
@@ -46,10 +49,10 @@ function requireInProcessPreflight(preflight, config) {
   }
 }
 
-async function resolveDnsA(resolveDns) {
+async function resolveDnsA(resolveDns, hostname) {
   let addresses;
   try {
-    addresses = await resolveDns(STAGING_HOSTNAME);
+    addresses = await resolveDns(hostname);
   } catch (error) {
     if (error?.code === "ENODATA" || error?.code === "ENOTFOUND") return [];
     throw error;
@@ -159,6 +162,7 @@ export async function deployAwsStagingInfrastructure({
   resolveDns = resolve4,
   runPreflight
 }) {
+  const hostname = requireAwsStagingHostname(config.hostname);
   if (typeof runPreflight !== "function") {
     throw new Error("An in-process AWS Staging preflight runner is required");
   }
@@ -166,7 +170,7 @@ export async function deployAwsStagingInfrastructure({
   const preflight = await runPreflight({ aws, config, resolveDns });
   requireInProcessPreflight(preflight, config);
 
-  const currentDns = await resolveDnsA(resolveDns);
+  const currentDns = await resolveDnsA(resolveDns, hostname);
   requireUnchangedDns(preflight.dnsA, currentDns);
 
   await aws.text(deploymentArguments(config));

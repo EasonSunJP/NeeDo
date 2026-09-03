@@ -14,6 +14,7 @@ const config = Object.freeze({
   budgetAmount: "20000",
   budgetUnit: "JPY",
   environment: "staging",
+  hostname: "staging.needo.life",
   owner: "needo",
   profile: "needo-staging-deployer",
   region: "ap-northeast-1",
@@ -76,6 +77,7 @@ function preflight(overrides = {}) {
     accountId: config.accountId,
     callerArn: "arn:aws:sts::123456789012:assumed-role/NeedoDeployer/session",
     callerKind: "assumed-role",
+    hostname: config.hostname,
     region: config.region,
     amiId: "ami-0123",
     amiArchitecture: "arm64",
@@ -169,7 +171,7 @@ describe("AWS Staging CloudFormation deployment", () => {
     ]);
     expect(trace).toEqual([
       "preflight",
-      "dns:staging.needo.dackou.com",
+      "dns:staging.needo.life",
       "aws.text:cloudformation deploy",
       "aws.json:cloudformation describe-stacks",
       "aws.json:ec2 describe-instances"
@@ -210,6 +212,37 @@ describe("AWS Staging CloudFormation deployment", () => {
     await expect(deploy({ aws, preflightResult: preflight(overrides) }))
       .rejects.toThrow(expected);
     expect(aws.text).not.toHaveBeenCalled();
+  });
+
+  it("refuses a hostname mismatch before CloudFormation mutation", async () => {
+    const aws = successfulAws();
+    const resolveDns = vi.fn();
+
+    await expect(deploy({
+      aws,
+      preflightResult: preflight({ hostname: "staging.example.com" }),
+      resolveDns
+    })).rejects.toThrow("hostname");
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json).not.toHaveBeenCalled();
+    expect(resolveDns).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsafe configured hostname before preflight, AWS, or DNS calls", async () => {
+    const aws = successfulAws();
+    const resolveDns = vi.fn();
+    const runPreflight = vi.fn();
+
+    await expect(deployAwsStagingInfrastructure({
+      aws,
+      config: { ...config, hostname: "Staging.needo.life" },
+      resolveDns,
+      runPreflight
+    })).rejects.toThrow("hostname");
+    expect(runPreflight).not.toHaveBeenCalled();
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json).not.toHaveBeenCalled();
+    expect(resolveDns).not.toHaveBeenCalled();
   });
 
   it.each([

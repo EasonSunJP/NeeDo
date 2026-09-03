@@ -8,6 +8,7 @@ const config = Object.freeze({
   accountId: "123456789012",
   profile: "needo-staging-deployer",
   region: "ap-northeast-1",
+  hostname: "staging.needo.life",
   stackName: "needo-staging-infrastructure",
   templatePath: "/repo/deploy/aws-staging/cloudformation.yml"
 });
@@ -71,6 +72,7 @@ describe("AWS Staging preflight", () => {
       callerArn,
       callerKind: "assumed-role",
       region: config.region,
+      hostname: config.hostname,
       amiArchitecture: "arm64",
       amiId: "ami-0123",
       templateValidation: "VALID",
@@ -83,6 +85,7 @@ describe("AWS Staging preflight", () => {
       accountId: config.accountId,
       callerKind: "assumed-role",
       region: config.region,
+      hostname: config.hostname,
       amiArchitecture: "arm64",
       stackState: "ABSENT",
       dnsA: []
@@ -124,6 +127,7 @@ describe("AWS Staging preflight", () => {
       callerArn,
       callerKind: "assumed-role",
       region: config.region,
+      hostname: config.hostname,
       amiId: "ami-0123",
       amiArchitecture: "arm64",
       templateValidation: "VALID",
@@ -145,7 +149,7 @@ describe("AWS Staging preflight", () => {
       ]],
       [["cloudformation", "describe-stacks", "--stack-name", config.stackName]]
     ]);
-    expect(resolveDns).toHaveBeenCalledWith("staging.needo.dackou.com");
+    expect(resolveDns).toHaveBeenCalledWith("staging.needo.life");
     expect(trace).toEqual([
       "aws.text:configure list",
       "aws.json:sts get-caller-identity",
@@ -153,8 +157,29 @@ describe("AWS Staging preflight", () => {
       "aws.json:ec2 describe-images",
       "aws.json:cloudformation validate-template",
       "aws.json:cloudformation describe-stacks",
-      "dns:staging.needo.dackou.com"
+      "dns:staging.needo.life"
     ]);
+  });
+
+  it.each([
+    "Staging.needo.life",
+    "staging.needo.life.",
+    "*.needo.life",
+    "staging.127.0.0.1",
+    "localhost",
+    "staging.localhost"
+  ])("rejects unsafe hostname %s before AWS or DNS calls", async (hostname) => {
+    const aws = successfulAws();
+    const resolveDns = vi.fn();
+
+    await expect(runAwsStagingPreflight({
+      aws,
+      config: { ...config, hostname },
+      resolveDns
+    })).rejects.toThrow("hostname");
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json).not.toHaveBeenCalled();
+    expect(resolveDns).not.toHaveBeenCalled();
   });
 
   it("stops on the first mismatch before template, stack, or DNS work", async () => {

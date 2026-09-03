@@ -1,9 +1,9 @@
 import path from "node:path";
 import { resolve4 } from "node:dns/promises";
+import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 
 const AMI_PARAMETER_NAME = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64";
 const AMAZON_AMI_OWNER_ID = "137112412989";
-const STAGING_HOSTNAME = "staging.needo.dackou.com";
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
 const TEMPORARY_CREDENTIAL_TYPES = new Set(["sso", "assume-role", "custom-process"]);
 
@@ -110,10 +110,10 @@ async function getStackState(aws, stackName) {
   return stackState;
 }
 
-async function getDnsBaseline(resolveDns) {
+async function getDnsBaseline(resolveDns, hostname) {
   let addresses;
   try {
-    addresses = await resolveDns(STAGING_HOSTNAME);
+    addresses = await resolveDns(hostname);
   } catch (error) {
     if (error?.code === "ENODATA" || error?.code === "ENOTFOUND") return Object.freeze([]);
     throw error;
@@ -131,6 +131,7 @@ export function createAwsStagingPreflightSummary(result) {
     accountId: result.accountId,
     callerKind: result.callerKind,
     region: result.region,
+    hostname: result.hostname,
     amiArchitecture: result.amiArchitecture,
     stackState: result.stackState,
     dnsA: result.dnsA
@@ -138,6 +139,7 @@ export function createAwsStagingPreflightSummary(result) {
 }
 
 export async function runAwsStagingPreflight({ aws, config, resolveDns = resolve4 }) {
+  const hostname = requireAwsStagingHostname(config.hostname);
   const credentialSource = await aws.text(["configure", "list"]);
   requireTemporaryCredentialSource(credentialSource);
 
@@ -162,13 +164,14 @@ export async function runAwsStagingPreflight({ aws, config, resolveDns = resolve
   ]);
 
   const stackState = await getStackState(aws, config.stackName);
-  const dnsA = await getDnsBaseline(resolveDns);
+  const dnsA = await getDnsBaseline(resolveDns, hostname);
 
   return Object.freeze({
     accountId: config.accountId,
     callerArn,
     callerKind: "assumed-role",
     region: config.region,
+    hostname,
     amiId,
     amiArchitecture,
     templateValidation: "VALID",

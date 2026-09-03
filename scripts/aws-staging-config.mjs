@@ -6,10 +6,33 @@ const repoRoot = path.resolve(moduleDir, "..");
 const requiredFlags = new Map([
   ["--profile", "profile"],
   ["--account-id", "accountId"],
+  ["--hostname", "hostname"],
   ["--alert-email", "alertEmail"],
   ["--budget-amount", "budgetAmount"],
   ["--budget-unit", "budgetUnit"]
 ]);
+
+export function requireAwsStagingHostname(value) {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    throw new Error("AWS Staging hostname must be a non-empty lower-case ASCII DNS name");
+  }
+  if (value.length > 253 || value !== value.toLowerCase() || !value.startsWith("staging.")) {
+    throw new Error("AWS Staging hostname must be a lower-case ASCII DNS name starting with staging.");
+  }
+
+  const labels = value.split(".");
+  const validLabels = labels.length >= 3 && labels.every((label) => (
+    label.length >= 1
+    && label.length <= 63
+    && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+  ));
+  const topLevelDomain = labels.at(-1) ?? "";
+  if (!validLabels || !/^[a-z]{2,63}$/.test(topLevelDomain)) {
+    throw new Error("AWS Staging hostname must have a registrable-looking DNS suffix");
+  }
+
+  return value;
+}
 
 export function parseAwsStagingArgs(argv) {
   const parsed = {};
@@ -34,6 +57,7 @@ export function resolveAwsStagingConfig(input) {
   const accountId = String(input.accountId || "").trim();
   const region = String(input.region || "").trim();
   const owner = String(input.owner || "").trim();
+  const hostname = requireAwsStagingHostname(input.hostname);
   const alertEmail = String(input.alertEmail || "").trim().toLowerCase();
   const budgetAmount = String(input.budgetAmount || "").trim();
   const budgetUnitInput = String(input.budgetUnit || "").trim();
@@ -57,6 +81,7 @@ export function resolveAwsStagingConfig(input) {
     budgetUnit,
     accountId,
     environment: "staging",
+    hostname,
     owner,
     profile,
     region,

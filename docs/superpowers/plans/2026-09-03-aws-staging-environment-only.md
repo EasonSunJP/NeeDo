@@ -13,6 +13,7 @@
 - Deploy only from the isolated branch based on `main@3cc5a978e8afec42baa41bee0077bb4166c47265`; do not include the original dirty worktree.
 - This plan is Microstep 1 only. Do not upload a NeeDo release, pull an application image, start application/MySQL/Redis/Nginx containers, run Prisma, seed/bootstrap users, retrieve secret values, issue TLS certificates, or modify DNS.
 - Use `ap-northeast-1` exactly and require an explicit 12-digit AWS account ID before any mutating command.
+- Require an explicit structurally valid lower-case Staging hostname on every command. The approved value is `staging.needo.life`; DNS remains external to AWS and untouched in this microstep.
 - Human access must use an SSO/assumed-role temporary session. Reject the root user and long-lived shared access-key profiles.
 - Keep port 22 absent. Public inbound security-group rules are TCP 80 and 443 only; 3000, 3306, and 6379 are never exposed.
 - Keep the application secret empty in this microstep. Verification may call `describe-secret` and `list-secret-version-ids`, but never `get-secret-value`.
@@ -32,7 +33,7 @@
 - Create: `scripts/aws-staging-config.mjs`
 
 **Interfaces:**
-- Consumes: CLI flags or environment values for profile, account ID, region, owner, alert email, budget amount, and billing currency.
+- Consumes: CLI flags or environment values for profile, account ID, Staging hostname, region, owner, alert email, budget amount, and billing currency.
 - Produces: a frozen `AwsStagingConfig` object that later orchestration can use without defaults that could target the wrong account.
 - Does not call AWS or mutate local/external state.
 
@@ -53,6 +54,7 @@ const validInput = {
   accountId: "123456789012",
   region: "ap-northeast-1",
   owner: "needo",
+  hostname: "staging.needo.life",
   alertEmail: "ops@example.com",
   budgetAmount: "20000",
   budgetUnit: "JPY"
@@ -66,6 +68,7 @@ describe("AWS Staging configuration", () => {
       budgetUnit: "JPY",
       accountId: "123456789012",
       environment: "staging",
+      hostname: "staging.needo.life",
       owner: "needo",
       profile: "needo-staging-deployer",
       region: "ap-northeast-1",
@@ -84,7 +87,12 @@ describe("AWS Staging configuration", () => {
     [{ ...validInput, alertEmail: "not-an-email" }, "email"],
     [{ ...validInput, budgetAmount: "0" }, "budget amount"],
     [{ ...validInput, budgetAmount: "20,000" }, "budget amount"],
-    [{ ...validInput, budgetUnit: "yen" }, "currency"]
+    [{ ...validInput, budgetUnit: "yen" }, "currency"],
+    [{ ...validInput, hostname: "Staging.needo.life" }, "hostname"],
+    [{ ...validInput, hostname: "staging.needo.life." }, "hostname"],
+    [{ ...validInput, hostname: "*.needo.life" }, "hostname"],
+    [{ ...validInput, hostname: "staging.127.0.0.1" }, "hostname"],
+    [{ ...validInput, hostname: "staging.localhost" }, "hostname"]
   ])("rejects unsafe input %#", (input, expected) => {
     expect(() => resolveAwsStagingConfig(input)).toThrow(expected);
   });
@@ -94,6 +102,7 @@ describe("AWS Staging configuration", () => {
       parseAwsStagingArgs([
         "--profile", "needo-staging-deployer",
         "--account-id", "123456789012",
+        "--hostname", "staging.needo.life",
         "--alert-email", "ops@example.com",
         "--budget-amount", "20000",
         "--budget-unit", "JPY"
@@ -120,7 +129,7 @@ Expected: FAIL because `scripts/aws-staging-config.mjs` does not exist.
 
 - [ ] **Step 3: Implement strict parsing and normalization**
 
-Create `scripts/aws-staging-config.mjs`. Use one internal `requiredFlags` table, reject unknown/duplicate flags, and expose only these functions:
+Create `scripts/aws-staging-config.mjs`. Use one internal `requiredFlags` table, reject unknown/duplicate flags, and expose the parser, structural hostname guard, resolver, and email masker:
 
 ```js
 import path from "node:path";
@@ -131,10 +140,28 @@ const repoRoot = path.resolve(moduleDir, "..");
 const requiredFlags = new Map([
   ["--profile", "profile"],
   ["--account-id", "accountId"],
+  ["--hostname", "hostname"],
   ["--alert-email", "alertEmail"],
   ["--budget-amount", "budgetAmount"],
   ["--budget-unit", "budgetUnit"]
 ]);
+
+export function requireAwsStagingHostname(value) {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    throw new Error("AWS Staging hostname must be a non-empty lower-case ASCII DNS name");
+  }
+  if (value.length > 253 || value !== value.toLowerCase() || !value.startsWith("staging.")) {
+    throw new Error("AWS Staging hostname must be a lower-case ASCII DNS name starting with staging.");
+  }
+  const labels = value.split(".");
+  if (labels.length < 3
+    || !labels.every((label) => label.length <= 63
+      && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))
+    || !/^[a-z]{2,63}$/.test(labels.at(-1) || "")) {
+    throw new Error("AWS Staging hostname must have a registrable-looking DNS suffix");
+  }
+  return value;
+}
 
 export function parseAwsStagingArgs(argv) {
   const parsed = {};
@@ -158,6 +185,7 @@ export function resolveAwsStagingConfig(input) {
   const accountId = String(input.accountId || "").trim();
   const region = String(input.region || "").trim();
   const owner = String(input.owner || "").trim();
+  const hostname = requireAwsStagingHostname(input.hostname);
   const alertEmail = String(input.alertEmail || "").trim().toLowerCase();
   const budgetAmount = String(input.budgetAmount || "").trim();
   const budgetUnit = String(input.budgetUnit || "").trim().toUpperCase();
@@ -178,6 +206,7 @@ export function resolveAwsStagingConfig(input) {
     budgetUnit,
     accountId,
     environment: "staging",
+    hostname,
     owner,
     profile,
     region,
@@ -200,7 +229,9 @@ Run:
 npm test -- --run scripts/aws-staging-config.test.mjs
 ```
 
-Expected: PASS with four tests and no external calls.
+Expected: PASS with all configuration contract tests and no external calls.
+
+The final contract must reject missing/duplicate/mixed-case hostnames, trailing dots, wildcards, IP/localhost forms, and non-registrable-looking suffixes before any AWS or DNS call. The hostname is operator-supplied and structural validation must not hardcode an operational domain.
 
 - [ ] **Step 5: Commit the configuration contract**
 
@@ -824,7 +855,7 @@ git commit -m "feat: add guarded AWS CLI adapter"
 
 **Interfaces:**
 - Consumes: Task 1 configuration and Task 3 AWS adapter.
-- Produces: a non-secret preflight record with caller account/ARN, AMI ID/architecture, template validation result, current stack state, and current `staging.needo.dackou.com` A-record set.
+- Produces: a non-secret preflight record with caller account/ARN, AMI ID/architecture, template validation result, current stack state, the exact configured hostname, and its current A-record set.
 - Makes only read-only AWS/DNS calls.
 
 - [ ] **Step 1: Write failing preflight policy tests**
@@ -839,6 +870,7 @@ const config = {
   accountId: "123456789012",
   profile: "needo-staging-deployer",
   region: "ap-northeast-1",
+  hostname: "staging.needo.life",
   stackName: "needo-staging-infrastructure",
   templatePath: "/repo/deploy/aws-staging/cloudformation.yml"
 };
@@ -883,7 +915,7 @@ Expected: FAIL because the library does not exist.
 
 - [ ] **Step 3: Implement the read-only sequence**
 
-`runAwsStagingPreflight` must execute in this order and stop on the first mismatch:
+`runAwsStagingPreflight` must first structurally validate `config.hostname` before any AWS or DNS call, then execute in this order and stop on the first mismatch:
 
 1. `aws configure list --profile ...` through the adapter's text surface and require `sso_session`, `sso_start_url`, `credential_process`, or an `assume-role` credential source; a direct IAM user ARN remains forbidden even if credentials are temporary.
 2. `sts get-caller-identity`; require exact account ID and an STS `assumed-role` ARN; reject root and `iam::...:user/...`.
@@ -891,7 +923,7 @@ Expected: FAIL because the library does not exist.
 4. `ec2 describe-images --image-ids <id>`; require `Architecture=arm64`, `State=available`, and an Amazon owner.
 5. `cloudformation validate-template --template-body file://<absolute-template>`.
 6. `cloudformation describe-stacks --stack-name needo-staging-infrastructure`; accept nonexistence only when AWS returns the specific CloudFormation `ValidationError` saying that this stack does not exist. Propagate `AccessDenied`, throttling, transport, and every other error. For an existing stack, accept a stable `CREATE_COMPLETE` or `UPDATE_COMPLETE` status and reject `*_IN_PROGRESS`, `*_FAILED`, rollback, and delete states.
-7. resolve `staging.needo.dackou.com` A records using `node:dns/promises.resolve4`; convert `ENODATA`/`ENOTFOUND` to `[]` and preserve any real addresses.
+7. resolve only `config.hostname` using `node:dns/promises.resolve4`; convert `ENODATA`/`ENOTFOUND` to `[]` and preserve any real A records. On 2026-09-03, public lookup of the approved `staging.needo.life` target was `NXDOMAIN` because no `needo.life` delegation was observed; Onamae DNS remains external and untouched.
 
 Return a frozen object. Do not include profile cache paths or credential source contents.
 
@@ -905,6 +937,7 @@ Return a frozen object. Do not include profile cache paths or credential source 
   "accountId": "123456789012",
   "callerKind": "assumed-role",
   "region": "ap-northeast-1",
+  "hostname": "staging.needo.life",
   "amiArchitecture": "arm64",
   "stackState": "ABSENT",
   "dnsA": []
@@ -967,6 +1000,7 @@ expect(aws.text).toHaveBeenCalledWith([
 Also test that deployment refuses when:
 
 - preflight account/region differs from configuration;
+- preflight hostname differs from configuration;
 - stack status is not absent or stable complete;
 - DNS result changes between preflight and the deploy call before stack mutation;
 - CloudFormation returns a final state other than `CREATE_COMPLETE` or `UPDATE_COMPLETE`;
@@ -985,7 +1019,7 @@ Expected: FAIL because deployment support does not exist.
 `deployAwsStagingInfrastructure` must:
 
 1. require the preflight result created in the same process;
-2. re-resolve DNS immediately before the mutation and require the same sorted A-record array as preflight;
+2. require `preflight.hostname === config.hostname`, then re-resolve only `config.hostname` immediately before the mutation and require the same sorted A-record array as preflight;
 3. invoke the exact `cloudformation deploy` argument array above;
 4. call `describe-stacks` and require stable success;
 5. turn `Outputs[]` into a key/value object and require the ten Task 2 output keys;
@@ -1260,22 +1294,23 @@ Do not add `.env` loading or credential values to `package.json`.
 - required AWS CLI v2 plus the Session Manager plugin, named SSO/assumed-role profile, explicit account ID, alert email, actual AWS billing currency, and approved monthly amount;
 - required deploy-role action families: CloudFormation stack/change-set operations, scoped EC2/VPC/EBS/EIP, IAM role/profile/policy and PassRole for the stack role, S3 bucket controls, Secrets Manager create/describe/tag, SSM document/parameter/command, Logs/CloudWatch/SNS, and Budgets create/describe/update;
 - no root, no long-lived keys, no SSH key, and no secrets pasted into the CLI;
-- current DNS baseline and the rule that DNS remains untouched;
+- current public DNS baseline (`needo.life` observed as `NXDOMAIN` with no delegation on 2026-09-03), Onamae's external registration/nameserver responsibility, and the rule that Staging/apex/`www` DNS remains untouched;
 - SNS email subscription confirmation is required before CloudWatch notifications are fully active;
 - the command sequence below uses the same flags every time.
 
-Use this invocation form, with operator-supplied values represented only in documentation angle brackets:
+Use this invocation form. Variable operator-supplied values remain in documentation angle brackets; the approved Staging hostname is shown concretely:
 
 ```bash
 npm run aws:staging:preflight -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
   --budget-unit <three-letter-billing-currency>
 ```
 
-Then `aws:staging:deploy`, `aws:staging:bootstrap-host` twice for idempotency, and `aws:staging:verify` with the identical flags.
+Then `aws:staging:deploy`, `aws:staging:bootstrap-host` twice for idempotency, and `aws:staging:verify` with the identical six flags, including `--hostname staging.needo.life`.
 
 - [ ] **Step 3: Document failure recovery without destructive shortcuts**
 
@@ -1360,7 +1395,7 @@ Use the exact focused command from Task 8. Do not rerun or repair the waived ful
 
 - [ ] **Step 4: Validate the template with AWS only after temporary read-only access is available**
 
-Run `npm run aws:staging:preflight -- ...`. Expected:
+Run `npm run aws:staging:preflight -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life`. Expected:
 
 - exact approved account and `ap-northeast-1`;
 - assumed-role/SSO caller;
@@ -1390,6 +1425,7 @@ git commit -m "fix: harden AWS staging environment gate"
 **Required user inputs at this gate:**
 - named SSO/assumed-role AWS CLI profile or an equivalent approved temporary role flow;
 - exact 12-digit AWS account ID;
+- approved Staging hostname `staging.needo.life` (apex `needo.life` and `www.needo.life` remain untouched);
 - alert email address;
 - actual AWS billing currency and explicitly approved monthly amount corresponding to the approximately 20,000 JPY ceiling.
 
@@ -1411,7 +1447,7 @@ Use the user-approved SSO/assumed-role flow. Never ask the user to paste access 
 - [ ] **Step 3: Run read-only preflight and preserve the summary**
 
 ```bash
-npm run aws:staging:preflight -- <the-five-approved-flag-pairs>
+npm run aws:staging:preflight -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
 ```
 
 Expected: gate passes and reports stack/DNS baseline. If it fails, no stack mutation occurs.
@@ -1419,7 +1455,7 @@ Expected: gate passes and reports stack/DNS baseline. If it fails, no stack muta
 - [ ] **Step 4: Deploy the CloudFormation environment**
 
 ```bash
-npm run aws:staging:deploy -- <the-same-five-approved-flag-pairs>
+npm run aws:staging:deploy -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
 ```
 
 Expected: stack reaches `CREATE_COMPLETE` or `UPDATE_COMPLETE`; `environment-stack.json` states `applicationDeployed=false`, `migrationRun=false`, `seedRun=false`, and `dnsModified=false`.
@@ -1427,8 +1463,8 @@ Expected: stack reaches `CREATE_COMPLETE` or `UPDATE_COMPLETE`; `environment-sta
 - [ ] **Step 5: Initialize the host through SSM, then prove idempotency**
 
 ```bash
-npm run aws:staging:bootstrap-host -- <the-same-five-approved-flag-pairs>
-npm run aws:staging:bootstrap-host -- <the-same-five-approved-flag-pairs>
+npm run aws:staging:bootstrap-host -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
+npm run aws:staging:bootstrap-host -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
 ```
 
 Expected: both commands finish `Success`; the second does not format the volume again, duplicate `/etc/fstab`, or change resource identity.
@@ -1453,7 +1489,7 @@ Ask the alert-email owner to confirm the AWS SNS email subscription. This is a u
 - [ ] **Step 8: Run the live acceptance gate**
 
 ```bash
-npm run aws:staging:verify -- <the-same-five-approved-flag-pairs>
+npm run aws:staging:verify -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
 ```
 
 Expected: every Task 7 invariant passes and the redacted acceptance evidence is written.
@@ -1469,7 +1505,7 @@ Confirm from the evidence and AWS descriptions:
 - buckets are private/encrypted/versioned with the approved lifecycle;
 - the secret has zero versions and no value was read;
 - budget thresholds are 75/90/100% against the explicitly approved account-currency amount;
-- `staging.needo.dackou.com` was not modified;
+- `staging.needo.life`, apex `needo.life`, and `www.needo.life` were not modified;
 - no migration, seed, administrator bootstrap, or business-data write occurred.
 
 - [ ] **Step 10: Stop at the environment-only approval boundary**
