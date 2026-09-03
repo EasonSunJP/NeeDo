@@ -108,7 +108,9 @@ const resourceIdPatterns = Object.freeze({
   DataVolume: volumeIdPattern
 });
 const ssmDocumentPattern = /^[A-Za-z0-9_.-]{3,128}$/;
-const commandIdPattern = /^[A-Za-z0-9_.-]{1,128}$/;
+const commandIdPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
+const instanceProfileNamePattern = /^[A-Za-z0-9+=,.@_-]{1,128}$/;
+const networkInterfaceIdPattern = /^eni-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
 const safeNamePattern = /^[A-Za-z0-9/][A-Za-z0-9_.:/|@-]{0,511}$/;
 const temporaryOpenFlags = fsConstants.O_WRONLY | fsConstants.O_CREAT
   | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
@@ -373,9 +375,57 @@ function requireInstance(response, outputs, resources, config) {
     throw new Error("EC2 IMDSv2/HttpTokens settings are not exact");
   }
   if (instance.Monitoring?.State !== "enabled") throw new Error("EC2 detailed monitoring must be enabled");
+  if (instance.VpcId !== resources.Vpc.physicalId) {
+    throw new Error("EC2 instance VPC does not match the stack VPC");
+  }
+  if (instance.SubnetId !== resources.PublicSubnet.physicalId) {
+    throw new Error("EC2 instance subnet does not match the stack public subnet");
+  }
+  const instanceProfileName = safeArgument(
+    resources.InstanceProfile.physicalId,
+    "EC2 instance profile physical name",
+    instanceProfileNamePattern
+  );
+  const expectedInstanceProfileArn = `arn:aws:iam::${config.accountId}:instance-profile/${instanceProfileName}`;
+  if (!instance.IamInstanceProfile || typeof instance.IamInstanceProfile !== "object"
+    || Array.isArray(instance.IamInstanceProfile)
+    || instance.IamInstanceProfile.Arn !== expectedInstanceProfileArn) {
+    throw new Error("EC2 instance profile ARN does not match the stack instance profile");
+  }
+  if (instance.PublicIpAddress !== outputs.ElasticIp) {
+    throw new Error("EC2 instance public IP does not match the stack Elastic IP output");
+  }
   if (!Array.isArray(instance.SecurityGroups) || instance.SecurityGroups.length !== 1
     || instance.SecurityGroups[0]?.GroupId !== resources.WebSecurityGroup.physicalId) {
     throw new Error("EC2 security group identity does not match the stack");
+  }
+  if (!Array.isArray(instance.NetworkInterfaces) || instance.NetworkInterfaces.length !== 1) {
+    throw new Error("EC2 instance must have exactly one primary network interface");
+  }
+  const [primaryNetworkInterface] = instance.NetworkInterfaces;
+  const networkInterfaceId = safeArgument(
+    primaryNetworkInterface?.NetworkInterfaceId,
+    "EC2 primary network interface ID",
+    networkInterfaceIdPattern
+  );
+  if (primaryNetworkInterface.VpcId !== resources.Vpc.physicalId
+    || primaryNetworkInterface.SubnetId !== resources.PublicSubnet.physicalId) {
+    throw new Error("EC2 primary network interface VPC or subnet does not match the stack");
+  }
+  if (primaryNetworkInterface.Attachment?.DeviceIndex !== 0) {
+    throw new Error("EC2 network interface must be the exact primary DeviceIndex=0 attachment");
+  }
+  if (!Array.isArray(primaryNetworkInterface.Groups)
+    || primaryNetworkInterface.Groups.length !== 1
+    || primaryNetworkInterface.Groups[0]?.GroupId !== resources.WebSecurityGroup.physicalId) {
+    throw new Error("EC2 primary network interface security group does not match the stack");
+  }
+  if (!primaryNetworkInterface.Association
+    || typeof primaryNetworkInterface.Association !== "object"
+    || Array.isArray(primaryNetworkInterface.Association)
+    || primaryNetworkInterface.Association.PublicIp !== outputs.ElasticIp
+    || primaryNetworkInterface.Association.IpOwnerId !== config.accountId) {
+    throw new Error("EC2 primary network interface Elastic IP association does not match the stack");
   }
   if (!Array.isArray(instance.BlockDeviceMappings) || instance.BlockDeviceMappings.length !== 2) {
     throw new Error("EC2 block-device mapping cardinality is not exact");
@@ -390,7 +440,23 @@ function requireInstance(response, outputs, resources, config) {
     throw new Error("EC2 data volume mapping does not match");
   }
   requireTags(instance.Tags, config.owner, "EC2 instance");
-  return { instance, rootVolumeId };
+  return { instance, rootVolumeId, networkInterfaceId };
+}
+
+function requireElasticAddress(response, outputs, resources, instanceId, networkInterfaceId) {
+  noPagination(response, "EC2 describe-addresses");
+  if (!Array.isArray(response.Addresses) || response.Addresses.length !== 1) {
+    throw new Error("Expected exactly one EC2 Elastic IP address");
+  }
+  const [address] = response.Addresses;
+  if (address.AllocationId !== resources.ElasticIp.physicalId
+    || address.AssociationId !== resources.ElasticIpAssociation.physicalId
+    || address.InstanceId !== instanceId
+    || address.NetworkInterfaceId !== networkInterfaceId
+    || address.PublicIp !== outputs.ElasticIp
+    || address.Domain !== "vpc") {
+    throw new Error("EC2 Elastic IP allocation and association do not match stack resources");
+  }
 }
 
 function requireImage(response, imageId) {
@@ -755,9 +821,27 @@ function requireCommandId(response) {
   return commandId;
 }
 
-function requireHostInvocation(invocation) {
+function requireHostInvocation(invocation, { commandId, instanceId, documentName }) {
   if (!invocation || typeof invocation !== "object" || Array.isArray(invocation)) {
     throw new Error("SSM command invocation is malformed");
+  }
+  if (typeof invocation.CommandId !== "string" || !commandIdPattern.test(invocation.CommandId)) {
+    throw new Error("SSM command invocation CommandId is invalid");
+  }
+  if (invocation.CommandId !== commandId) {
+    throw new Error("SSM command invocation CommandId does not match the sent command");
+  }
+  if (typeof invocation.InstanceId !== "string" || !instanceIdPattern.test(invocation.InstanceId)) {
+    throw new Error("SSM command invocation InstanceId is invalid");
+  }
+  if (invocation.InstanceId !== instanceId) {
+    throw new Error("SSM command invocation InstanceId does not match the stack instance");
+  }
+  if (typeof invocation.DocumentName !== "string" || !ssmDocumentPattern.test(invocation.DocumentName)) {
+    throw new Error("SSM command invocation DocumentName is invalid");
+  }
+  if (invocation.DocumentName !== documentName) {
+    throw new Error("SSM command invocation DocumentName does not match the verification document");
   }
   if (invocation.Status !== "Success") throw new Error("SSM command invocation must have Status=Success");
   if (typeof invocation.ResponseCode !== "number" || !Number.isFinite(invocation.ResponseCode)
@@ -840,7 +924,15 @@ export async function verifyAwsStagingEnvironment({
   const describedInstances = await aws.json([
     "ec2", "describe-instances", "--instance-ids", outputs.InstanceId
   ]);
-  const { instance, rootVolumeId } = requireInstance(describedInstances, outputs, resources, config);
+  const { instance, rootVolumeId, networkInterfaceId } = requireInstance(
+    describedInstances, outputs, resources, config
+  );
+  const describedAddresses = await aws.json([
+    "ec2", "describe-addresses", "--allocation-ids", resources.ElasticIp.physicalId
+  ]);
+  requireElasticAddress(
+    describedAddresses, outputs, resources, outputs.InstanceId, networkInterfaceId
+  );
   const describedImages = await aws.json([
     "ec2", "describe-images", "--image-ids", instance.ImageId
   ]);
@@ -999,7 +1091,11 @@ export async function verifyAwsStagingEnvironment({
     "ssm", "get-command-invocation", "--command-id", commandId,
     "--instance-id", outputs.InstanceId
   ]);
-  const host = requireHostInvocation(invocation);
+  const host = requireHostInvocation(invocation, {
+    commandId,
+    instanceId: outputs.InstanceId,
+    documentName: outputs.HostVerificationDocumentName
+  });
 
   const postVerificationDns = await resolveDnsA(resolveDns, hostname);
   if (JSON.stringify(preflightDns) !== JSON.stringify(postVerificationDns)) {

@@ -53,13 +53,16 @@ const ids = Object.freeze({
   dockerLogArn: `arn:aws:logs:${config.region}:${config.accountId}:log-group:/needo/staging/docker`,
   roleName: "needo-staging-instance-role",
   roleArn: `arn:aws:iam::${config.accountId}:role/needo-staging-instance-role`,
+  instanceProfileName: "needo-staging-instance-profile",
+  instanceProfileArn: `arn:aws:iam::${config.accountId}:instance-profile/needo-staging-instance-profile`,
+  networkInterface: "eni-0123456789abcdef0",
   topicArn: `arn:aws:sns:${config.region}:${config.accountId}:needo-staging-alerts`,
   subscriptionArn: `arn:aws:sns:${config.region}:${config.accountId}:needo-staging-alerts:12345678-1234-1234-1234-1234567890ab`,
   agentParameter: "/needo/staging/cloudwatch-agent",
   bootstrapDocument: "needo-staging-host-bootstrap",
   verificationDocument: "needo-staging-host-verification",
   budgetName: "needo-staging-infrastructure-monthly-cost",
-  commandId: "command-0001",
+  commandId: "12345678-1234-4abc-8def-1234567890ab",
   imageId: "ami-0123456789abcdef0"
 });
 
@@ -110,7 +113,7 @@ const resources = Object.freeze([
   ["SystemLogGroup", "AWS::Logs::LogGroup", "/needo/staging/system"],
   ["DockerLogGroup", "AWS::Logs::LogGroup", "/needo/staging/docker"],
   ["InstanceRole", "AWS::IAM::Role", ids.roleName],
-  ["InstanceProfile", "AWS::IAM::InstanceProfile", "needo-staging-instance-profile"],
+  ["InstanceProfile", "AWS::IAM::InstanceProfile", ids.instanceProfileName],
   ["Instance", "AWS::EC2::Instance", ids.instance],
   ["ElasticIp", "AWS::EC2::EIP", ids.elasticAllocation],
   ["ElasticIpAssociation", "AWS::EC2::EIPAssociation", ids.elasticAssociation],
@@ -258,13 +261,35 @@ function passingFixture() {
         KeyName: undefined,
         Monitoring: { State: "enabled" },
         MetadataOptions: { HttpTokens: "required", HttpEndpoint: "enabled", HttpPutResponseHopLimit: 1 },
+        VpcId: ids.vpc,
+        SubnetId: ids.subnet,
+        IamInstanceProfile: { Arn: ids.instanceProfileArn, Id: "AIPATESTINSTANCEPROFILE" },
+        PublicIpAddress: ids.elasticIp,
         SecurityGroups: [{ GroupId: ids.securityGroup, GroupName: "needo-staging-web" }],
+        NetworkInterfaces: [{
+          NetworkInterfaceId: ids.networkInterface,
+          VpcId: ids.vpc,
+          SubnetId: ids.subnet,
+          Groups: [{ GroupId: ids.securityGroup, GroupName: "needo-staging-web" }],
+          Attachment: { AttachmentId: "eni-attach-0123456789abcdef0", DeviceIndex: 0, Status: "attached" },
+          Association: { IpOwnerId: config.accountId, PublicIp: ids.elasticIp }
+        }],
         BlockDeviceMappings: [
           { DeviceName: "/dev/xvda", Ebs: { VolumeId: ids.rootVolume, DeleteOnTermination: true } },
           { DeviceName: "/dev/sdf", Ebs: { VolumeId: ids.dataVolume, DeleteOnTermination: false } }
         ],
         Tags: tags()
       }] }]
+    },
+    address: {
+      Addresses: [{
+        AllocationId: ids.elasticAllocation,
+        AssociationId: ids.elasticAssociation,
+        Domain: "vpc",
+        InstanceId: ids.instance,
+        NetworkInterfaceId: ids.networkInterface,
+        PublicIp: ids.elasticIp
+      }]
     },
     image: { Images: [{ ImageId: ids.imageId, Architecture: "arm64", State: "available", OwnerId: "137112412989" }] },
     securityGroup: {
@@ -339,6 +364,9 @@ function passingFixture() {
     },
     sendCommand: { Command: { CommandId: ids.commandId } },
     invocation: {
+      CommandId: ids.commandId,
+      InstanceId: ids.instance,
+      DocumentName: ids.verificationDocument,
       Status: "Success",
       ResponseCode: 0,
       StandardOutputContent: "{\"mount\":true,\"filesystem\":\"xfs\",\"directories\":true,\"services\":true,\"runningContainers\":0,\"activeRelease\":false}\n",
@@ -365,6 +393,7 @@ function createAws(fixture, trace = []) {
         case "cloudformation describe-stacks": return fixture.stack;
         case "cloudformation list-stack-resources": return fixture.stackResources;
         case "ec2 describe-instances": return fixture.instance;
+        case "ec2 describe-addresses": return fixture.address;
         case "ec2 describe-images": return fixture.image;
         case "ec2 describe-security-groups": return fixture.securityGroup;
         case "ec2 describe-volumes": return fixture.volumes;
@@ -442,7 +471,9 @@ async function verify({ fixture = passingFixture(), resolvedConfig = config, pre
 
 describe("AWS Staging environment-only acceptance", () => {
   it("accepts the complete fixture and returns only frozen allowlisted evidence", async () => {
-    const { evidence, aws, trace } = await verify();
+    const fixture = passingFixture();
+    fixture.invocation.InternalRawMarker = "must-never-enter-evidence";
+    const { evidence, aws, trace } = await verify({ fixture });
 
     expect(Object.isFrozen(evidence)).toBe(true);
     expect(Object.isFrozen(evidence.stack)).toBe(true);
@@ -503,6 +534,7 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(evidence.budget.maskedSubscriber).toBe("o***@example.com");
     expect(JSON.stringify(evidence)).not.toContain(config.alertEmail);
     expect(JSON.stringify(evidence)).not.toContain(ids.secretArn);
+    expect(JSON.stringify(evidence)).not.toContain("must-never-enter-evidence");
 
     const sendCalls = aws.json.mock.calls.filter(([args]) => args[0] === "ssm" && args[1] === "send-command");
     expect(sendCalls).toEqual([[([
@@ -516,6 +548,12 @@ describe("AWS Staging environment-only acceptance", () => {
       "ssm", "wait", "command-executed", "--command-id", ids.commandId,
       "--instance-id", ids.instance
     ])]]);
+    expect(aws.json.mock.calls.find(([args]) => (
+      args[0] === "ssm" && args[1] === "get-command-invocation"
+    ))).toEqual([[
+      "ssm", "get-command-invocation", "--command-id", ids.commandId,
+      "--instance-id", ids.instance
+    ]]);
     expect(trace[0]).toBe("preflight");
     expect(trace[1]).toBe(`dns:${config.hostname}`);
     expect(trace.at(-1)).toBe(`dns:${config.hostname}`);
@@ -630,6 +668,7 @@ describe("AWS Staging environment-only acceptance", () => {
     ["missing output", (f) => { f.stack.Stacks[0].Outputs.pop(); }],
     ["extra output", (f) => { f.stack.Stacks[0].Outputs.push({ OutputKey: "Unexpected", OutputValue: "value" }); }],
     ["duplicate instance", (f) => { f.instance.Reservations[0].Instances.push(f.instance.Reservations[0].Instances[0]); }],
+    ["malformed described EIP", (f) => { f.address = {}; }],
     ["duplicate image", (f) => { f.image.Images.push(f.image.Images[0]); }],
     ["duplicate security group", (f) => { f.securityGroup.SecurityGroups.push(f.securityGroup.SecurityGroups[0]); }],
     ["duplicate volume", (f) => { f.volumes.Volumes.push(f.volumes.Volumes[0]); }],
@@ -655,12 +694,55 @@ describe("AWS Staging environment-only acceptance", () => {
     }
   });
 
+  it.each([
+    ["missing instance VPC", (f) => { delete f.instance.Reservations[0].Instances[0].VpcId; }],
+    ["mismatched instance VPC", (f) => { f.instance.Reservations[0].Instances[0].VpcId = "vpc-0fedcba9876543210"; }],
+    ["missing instance subnet", (f) => { delete f.instance.Reservations[0].Instances[0].SubnetId; }],
+    ["mismatched instance subnet", (f) => { f.instance.Reservations[0].Instances[0].SubnetId = "subnet-0fedcba9876543210"; }],
+    ["missing instance profile", (f) => { delete f.instance.Reservations[0].Instances[0].IamInstanceProfile; }],
+    ["mismatched instance profile account", (f) => { f.instance.Reservations[0].Instances[0].IamInstanceProfile.Arn = "arn:aws:iam::999999999999:instance-profile/needo-staging-instance-profile"; }],
+    ["mismatched instance profile name", (f) => { f.instance.Reservations[0].Instances[0].IamInstanceProfile.Arn = `arn:aws:iam::${config.accountId}:instance-profile/other`; }],
+    ["missing instance public IP", (f) => { delete f.instance.Reservations[0].Instances[0].PublicIpAddress; }],
+    ["mismatched instance public IP", (f) => { f.instance.Reservations[0].Instances[0].PublicIpAddress = "203.0.113.99"; }],
+    ["missing network interfaces", (f) => { delete f.instance.Reservations[0].Instances[0].NetworkInterfaces; }],
+    ["multiple network interfaces", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces.push({ ...f.instance.Reservations[0].Instances[0].NetworkInterfaces[0] }); }],
+    ["non-primary network interface", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Attachment.DeviceIndex = 1; }],
+    ["mismatched network VPC", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].VpcId = "vpc-0fedcba9876543210"; }],
+    ["mismatched network subnet", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].SubnetId = "subnet-0fedcba9876543210"; }],
+    ["missing network security group", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Groups = []; }],
+    ["multiple network security groups", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Groups.push({ GroupId: "sg-0fedcba9876543210" }); }],
+    ["mismatched network security group", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Groups[0].GroupId = "sg-0fedcba9876543210"; }],
+    ["missing network EIP association", (f) => { delete f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Association; }],
+    ["mismatched network EIP", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Association.PublicIp = "203.0.113.99"; }],
+    ["mismatched network EIP owner", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Association.IpOwnerId = "999999999999"; }],
+    ["missing described EIP", (f) => { f.address.Addresses = []; }],
+    ["multiple described EIPs", (f) => { f.address.Addresses.push({ ...f.address.Addresses[0] }); }],
+    ["mismatched allocation", (f) => { f.address.Addresses[0].AllocationId = "eipalloc-0fedcba9876543210"; }],
+    ["mismatched EIP association", (f) => { f.address.Addresses[0].AssociationId = "eipassoc-0fedcba9876543210"; }],
+    ["mismatched EIP instance", (f) => { f.address.Addresses[0].InstanceId = "i-0fedcba9876543210"; }],
+    ["mismatched EIP network interface", (f) => { f.address.Addresses[0].NetworkInterfaceId = "eni-0fedcba9876543210"; }],
+    ["mismatched described public IP", (f) => { f.address.Addresses[0].PublicIp = "203.0.113.99"; }],
+    ["non-VPC EIP domain", (f) => { f.address.Addresses[0].Domain = "standard"; }]
+  ])("rejects EC2 placement/profile/EIP boundary before host verification: %s", async (_name, mutate) => {
+    const fixture = passingFixture();
+    mutate(fixture);
+    const trace = [];
+    const aws = createAws(fixture, trace);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+    await expect(verifyAwsStagingEnvironment({
+      aws, config, resolveDns, runPreflight: createPreflight(resolveDns, trace), now: () => 0
+    })).rejects.toThrow(/EC2|instance|profile|VPC|subnet|network|security|Elastic|EIP|address|association|public|cardinality|exactly/i);
+    expect(aws.json.mock.calls.some(([args]) => (
+      args[0] === "ssm" && args[1] === "send-command"
+    ))).toBe(false);
+  });
+
   it("uses only approved read-only descriptions plus one parameter-free SSM command", async () => {
     const { aws } = await verify();
     const operations = aws.json.mock.calls.map(([args]) => `${args[0]} ${args[1]}`);
     const allowed = new Set([
       "cloudformation describe-stacks", "cloudformation list-stack-resources",
-      "ec2 describe-instances", "ec2 describe-images", "ec2 describe-security-groups",
+      "ec2 describe-instances", "ec2 describe-addresses", "ec2 describe-images", "ec2 describe-security-groups",
       "ec2 describe-volumes", "ec2 describe-tags", "ssm describe-instance-information",
       "ssm list-tags-for-resource", "s3api get-public-access-block", "s3api get-bucket-encryption",
       "s3api get-bucket-versioning", "s3api get-bucket-lifecycle-configuration", "s3api get-bucket-tagging",
@@ -681,6 +763,12 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(operations.filter((operation) => operation === "budgets describe-subscribers-for-notification")).toHaveLength(5);
     expect(operations.filter((operation) => operation === "resourcegroupstaggingapi get-resources")).toHaveLength(1);
     expect(operations.filter((operation) => operation === "sns list-subscriptions-by-topic")).toHaveLength(1);
+    expect(operations.filter((operation) => operation === "ec2 describe-addresses")).toHaveLength(1);
+    expect(aws.json.mock.calls.find(([args]) => (
+      args[0] === "ec2" && args[1] === "describe-addresses"
+    ))).toEqual([[
+      "ec2", "describe-addresses", "--allocation-ids", ids.elasticAllocation
+    ]]);
     expect(aws.json.mock.calls.find(([args]) => (
       args[0] === "sns" && args[1] === "list-subscriptions-by-topic"
     ))).toEqual([[
@@ -780,6 +868,17 @@ describe("AWS Staging environment-only acceptance", () => {
   it.each([
     ["missing command ID", (f) => { f.sendCommand = {}; }, /CommandId/i],
     ["unsafe command ID", (f) => { f.sendCommand.Command.CommandId = "--query"; }, /CommandId/i],
+    ["non-UUID command ID", (f) => { f.sendCommand.Command.CommandId = "command-0001"; }, /CommandId/i],
+    ["uppercase command ID", (f) => { f.sendCommand.Command.CommandId = ids.commandId.toUpperCase(); }, /CommandId/i],
+    ["missing invocation command ID", (f) => { delete f.invocation.CommandId; }, /CommandId/i],
+    ["mismatched invocation command ID", (f) => { f.invocation.CommandId = "87654321-4321-4cba-8fed-ba0987654321"; }, /CommandId|match/i],
+    ["unsafe invocation command ID", (f) => { f.invocation.CommandId = "--query"; }, /CommandId|invalid|unsafe/i],
+    ["missing invocation instance ID", (f) => { delete f.invocation.InstanceId; }, /InstanceId/i],
+    ["mismatched invocation instance ID", (f) => { f.invocation.InstanceId = "i-0fedcba9876543210"; }, /InstanceId|match/i],
+    ["unsafe invocation instance ID", (f) => { f.invocation.InstanceId = "$(unsafe)"; }, /InstanceId|invalid|unsafe/i],
+    ["missing invocation document name", (f) => { delete f.invocation.DocumentName; }, /DocumentName/i],
+    ["mismatched invocation document name", (f) => { f.invocation.DocumentName = "other-document"; }, /DocumentName|match/i],
+    ["unsafe invocation document name", (f) => { f.invocation.DocumentName = "$(unsafe)"; }, /DocumentName|invalid|unsafe/i],
     ["failed status", (f) => { f.invocation.Status = "Failed"; }, /Success/i],
     ["nonzero response", (f) => { f.invocation.ResponseCode = 1; }, /response/i],
     ["unsafe stderr", (f) => { f.invocation.StandardErrorContent = "warning"; }, /stderr/i],
