@@ -280,8 +280,10 @@ A technician may have at most five non-deleted services across all shops. The li
 - `DELETE /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
   removes the current public cover association and returns the updated service.
 
-Both routes require `technician:services:write`, derive actor scope from the
-session, and persist `MediaAsset` plus audit evidence.
+Both routes require `technician:services:write` and derive actor scope from the
+session. Effective mutations persist the `MediaAsset` lifecycle change and audit
+evidence. An exact-image `PUT` retry or a `DELETE` when no cover is active returns
+the current service without creating duplicate media rows or audit entries.
 
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 
