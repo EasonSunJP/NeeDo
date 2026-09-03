@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -43,17 +44,19 @@ export function ProfileDetailPage() {
 function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const detailQuery = useCoreReadQuery(() => id ? coreReadApi.getTechnicianDetail(id) : null, [id]);
+  const [retryRevision, setRetryRevision] = useState(0);
+  const detailQuery = useCoreReadQuery(() => id ? coreReadApi.getTechnicianDetail(id) : null, [id, retryRevision]);
   const detail = detailQuery.data;
   const shopId = detail?.shop?.id ?? null;
   const technicianId = detail?.id ?? null;
   const servicesQuery = useCoreReadQuery(
     () => shopId && technicianId ? pricingModeApi.listPublicTechnicianServices(shopId, technicianId, { page: 1, pageSize: 20 }) : null,
-    [shopId, technicianId]
+    [shopId, technicianId, retryRevision]
   );
   const scope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
   const handleBack = () => navigate(-1);
   const handleClose = () => navigate(scope === "user" ? "/" : `/${scope}`);
+  const handleRetry = () => setRetryRevision((value) => value + 1);
 
   if (!id) {
     return <TechnicianProfileStatus description="技师资料链接无效。" onBack={handleBack} onClose={handleClose} title="暂无技师资料" />;
@@ -64,7 +67,7 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   }
 
   if (detailQuery.error || servicesQuery.error) {
-    return <TechnicianProfileStatus description={detailQuery.error ?? servicesQuery.error ?? "error.api"} onBack={handleBack} onClose={handleClose} title="技师资料读取失败" />;
+    return <TechnicianProfileStatus description={detailQuery.error ?? servicesQuery.error ?? "error.api"} onBack={handleBack} onClose={handleClose} onRetry={handleRetry} title="技师资料读取失败" />;
   }
 
   if (!detail) {
@@ -90,18 +93,24 @@ function TechnicianProfileStatus({
   description,
   onBack,
   onClose,
+  onRetry,
   title
 }: {
   description: string;
   onBack: () => void;
   onClose: () => void;
+  onRetry?: () => void;
   title: string;
 }) {
   return (
     <MobileShell showBottomNav={false}>
       <main className="mx-auto w-full max-w-[480px] space-y-4 px-4 pb-10 pt-4">
         <MobileFullscreenHeader onBack={onBack} onClose={onClose} title="详细信息卡" />
-        <EmptyStatePanel caption={description} title={title} />
+        <EmptyStatePanel
+          action={onRetry ? <button className="rounded-full bg-[color:var(--client-primary)] px-5 py-2.5 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={onRetry} type="button">重新加载技师资料</button> : undefined}
+          caption={description}
+          title={title}
+        />
       </main>
     </MobileShell>
   );

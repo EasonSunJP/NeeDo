@@ -489,7 +489,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ProfileSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
-                detailTo={`${getScopedProfileDetailPath("user", "technician", displayTechnician.id)}?view=card`}
+                detailTo={getScopedProfileDetailPath("user", "technician", displayTechnician.id)}
                 showAction={false}
                 technician={displayTechnician}
                 topTags={[{ label: "本次担当", tone: "green" }]}
