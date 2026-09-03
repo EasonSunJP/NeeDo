@@ -10,6 +10,7 @@ import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Customer, ServiceItem, Store, Technician } from "../../types/domain";
 import type { InfoCardData } from "../info-card";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
+import { mapServiceItemToUnifiedData, UnifiedServiceInfoCard, type UnifiedServiceInfoCardData } from "../service-card";
 import { CustomerMembershipIcon } from "./CustomerMembershipIcon";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
 import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
@@ -42,6 +43,7 @@ export type SocialProfileMiniData = {
   followingCount: number;
   shareCount?: number;
   usageCount?: number;
+  serviceInfo?: UnifiedServiceInfoCardData;
   actionLabel?: SocialProfileMiniActionLabel;
   detailPath?: string;
 };
@@ -184,6 +186,7 @@ function isStoreProvider(provider?: Store | Technician): provider is Store {
 }
 
 export function buildServiceMiniCardData(service: ServiceItem, provider?: Store | Technician): SocialProfileMiniData {
+  const serviceInfo = mapServiceItemToUnifiedData(service, provider);
   const providerAddress = provider
     ? isStoreProvider(provider)
       ? {
@@ -214,7 +217,8 @@ export function buildServiceMiniCardData(service: ServiceItem, provider?: Store 
     scoreValue: "",
     followerCount: 0,
     followingCount: 0,
-    usageCount: service.sales,
+    usageCount: serviceInfo.usageCount ?? undefined,
+    serviceInfo,
     detailPath: `/services/${service.id}`
   };
 }
@@ -792,6 +796,17 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
     }
   );
   const resolvedDetailTo = detailTo ?? data.detailPath;
+  if (data.entityType === "service" && data.serviceInfo) {
+    return (
+      <UnifiedServiceInfoCard
+        actionSlot={showAction ? actionSlot : undefined}
+        className={className}
+        data={data.serviceInfo}
+        detailTo={resolvedDetailTo}
+        onOpenDetails={onOpenDetails}
+      />
+    );
+  }
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
   const technicianDynamicPath = sourceTechnician ? getScopedProfileDetailPath(currentScope, "technician", sourceTechnician.id) : "";
   const shouldOpenTechnicianInfoCard = Boolean(sourceTechnician && !onOpenDetails);

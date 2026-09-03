@@ -3,8 +3,10 @@ import categoryPageSource from "./CategoryPage.tsx?raw";
 import homePageSource from "./HomePage.tsx?raw";
 
 describe("CategoryPage service preview card", () => {
-  it("keeps the short availability badge on one line", () => {
-    expect(categoryPageSource).toContain('className="shrink-0 whitespace-nowrap" tone="green"');
+  it("delegates service previews to the shared unified service-information card", () => {
+    expect(categoryPageSource).toContain("UnifiedServiceInfoCard");
+    expect(categoryPageSource).toContain("mapServiceItemToUnifiedData(service)");
+    expect(categoryPageSource).not.toContain("getGeneratedImageThumbnailUrl(service.cover)");
   });
 });
 

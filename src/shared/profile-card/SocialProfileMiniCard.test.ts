@@ -55,6 +55,8 @@ describe("SocialProfileMiniCard cover readability", () => {
   });
 
   it("does not append the generic service type chip in service card titles", () => {
+    expect(cardSource).toContain("UnifiedServiceInfoCard");
+    expect(cardSource).toContain("serviceInfo");
     expect(cardSource).toContain('if (data.entityType === "service")');
     expect(cardSource).toContain("return null;");
     expect(cardSource).toContain('data.entityType === "service" ? "max-w-full"');
