@@ -41,6 +41,20 @@ describe("AWS CLI adapter", () => {
     expect(execFileImpl).not.toHaveBeenCalled();
   });
 
+  it("allows only configure list through the direct runner", async () => {
+    const execFileImpl = vi.fn((_file, _args, _options, callback) => {
+      callback(null, "profile p\n", "");
+    });
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+    await expect(aws.text(["configure", "list"])).resolves.toBe("profile p");
+    expect(execFileImpl).toHaveBeenCalledWith(
+      "aws",
+      ["configure", "list", "--profile", "p", "--region", "ap-northeast-1", "--output", "text", "--no-cli-pager"],
+      expect.objectContaining({ shell: false }),
+      expect.any(Function)
+    );
+  });
+
   it.each([
     ["--secret-string", "value"],
     ["--secret-binary", "value"]
