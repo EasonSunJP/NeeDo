@@ -25,9 +25,9 @@ export class TechnicianServiceCoverService {
     input: { bytes: Buffer; mimeType: ContentMediaMimeType; now: Date }
   ): Promise<TechnicianServicePayload> {
     const { technicianId } = await this.getOwnedTarget(actor, shopId, serviceId);
-    let prepared: ReturnType<ContentMediaStoragePort["prepare"]>;
+    let prepared: Awaited<ReturnType<ContentMediaStoragePort["prepare"]>>;
     try {
-      prepared = this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+      prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
     } catch (error) {
       throw this.normalizeStorageError(error);
     }

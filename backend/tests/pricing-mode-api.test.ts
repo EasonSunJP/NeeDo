@@ -241,7 +241,7 @@ describe("pricing mode public API", () => {
       return { ...baseService, coverImageUrl };
     });
     const contentMediaStorage: jest.Mocked<ContentMediaStoragePort> = {
-      prepare: jest.fn(({ bytes, mimeType }) => {
+      prepare: jest.fn(async ({ bytes, mimeType }) => {
         if (!bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
           throw new AppError({
             code: ERROR_CODES.VALIDATION,

@@ -53,7 +53,7 @@ export class ContentMediaService {
     context: AuthRequestContext,
     input: UploadContentMediaInput
   ): Promise<ContentMediaProjection> {
-    const prepared = this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+    const prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
     return this.repository.withChecksumLock(prepared.checksumSha256, async (locked) => {
       const stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
       try {

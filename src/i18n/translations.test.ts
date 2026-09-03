@@ -18,7 +18,10 @@ describe("translations", () => {
       "图片不能超过 8 MiB": { "zh-Hant": "圖片不能超過 8 MiB", ja: "画像は 8 MiB 以下にしてください", en: "The image must not exceed 8 MiB", ko: "이미지는 8 MiB를 초과할 수 없습니다" },
       "服务已保存，封面上传失败，请重试": { "zh-Hant": "服務已儲存，封面上傳失敗，請重試", ja: "サービスは保存されましたが、カバーのアップロードに失敗しました。再試行してください", en: "Service saved, but the cover upload failed. Please retry", ko: "서비스는 저장되었지만 커버 업로드에 실패했습니다. 다시 시도해 주세요" },
       "封面上传失败，请重试": { "zh-Hant": "封面上傳失敗，請重試", ja: "カバーのアップロードに失敗しました。再試行してください", en: "Cover upload failed. Please retry", ko: "커버 업로드에 실패했습니다. 다시 시도해 주세요" },
-      "重试上传封面": { "zh-Hant": "重試上傳封面", ja: "カバーのアップロードを再試行", en: "Retry cover upload", ko: "커버 업로드 다시 시도" }
+      "重试上传封面": { "zh-Hant": "重試上傳封面", ja: "カバーのアップロードを再試行", en: "Retry cover upload", ko: "커버 업로드 다시 시도" },
+      "服务已保存，封面移除失败，请重试": { "zh-Hant": "服務已儲存，封面移除失敗，請重試", ja: "サービスは保存されましたが、カバーの削除に失敗しました。再試行してください", en: "Service saved, but cover removal failed. Please retry", ko: "서비스는 저장되었지만 커버 삭제에 실패했습니다. 다시 시도해 주세요" },
+      "封面移除失败，请重试": { "zh-Hant": "封面移除失敗，請重試", ja: "カバーの削除に失敗しました。再試行してください", en: "Cover removal failed. Please retry", ko: "커버 삭제에 실패했습니다. 다시 시도해 주세요" },
+      "重试移除封面": { "zh-Hant": "重試移除封面", ja: "カバーの削除を再試行", en: "Retry cover removal", ko: "커버 삭제 다시 시도" }
     } as const;
 
     for (const [source, localized] of Object.entries(expected)) {

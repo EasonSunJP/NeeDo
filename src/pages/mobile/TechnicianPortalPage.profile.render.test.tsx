@@ -496,6 +496,41 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(removeCoverRequest).toHaveBeenCalledWith(71, 901);
   });
 
+  it("keeps a removal draft after partial success and retries only the failed removal", async () => {
+    mockServiceEditorContext([service]);
+    const persisted = { ...service, name: "服务端已保存名称" };
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(persisted);
+    const removeCoverRequest = vi
+      .spyOn(pricingModeApi, "removeTechnicianServiceCover")
+      .mockRejectedValueOnce(new Error("remove unavailable"))
+      .mockResolvedValue({ ...persisted, coverImageUrl: null });
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover");
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click()
+    );
+    await act(async () => findButton("移除图片")?.click());
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "服务已保存，封面移除失败，请重试"
+      )
+    );
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(removeCoverRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).not.toHaveBeenCalled();
+    expect(findButton("重试移除封面")).toBeDefined();
+
+    await act(async () => findButton("重试移除封面")?.click());
+    await flushUntil(() => expect(removeCoverRequest).toHaveBeenCalledTimes(2));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).not.toHaveBeenCalled();
+  });
+
   it("cancels a selected cover without issuing a service or cover request", async () => {
     mockServiceEditorContext([]);
     const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService");

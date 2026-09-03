@@ -11,7 +11,15 @@ import {
   type ContentMediaLockedRepositoryPort,
   type ContentMediaRepositoryPort
 } from "../src/services/content-media.service";
-import { validJpeg, validPng, validWebp } from "./fixtures/content-images";
+import {
+  emptyImageDataPng,
+  excessivePixelPng,
+  headerOnlyJpeg,
+  headerOnlyWebp,
+  validJpeg,
+  validPng,
+  validWebp
+} from "./fixtures/content-images";
 
 const actor = {
   userId: 7,
@@ -103,7 +111,7 @@ describe("ContentMediaFileStorage", () => {
     [
       "malformed PNG",
       "image/png" as const,
-      Buffer.concat([validPng.subarray(0, 29), Buffer.from([0x00]), validPng.subarray(30)])
+      Buffer.concat([validPng.subarray(0, 62), Buffer.from([0xff]), validPng.subarray(63)])
     ],
     ["truncated WebP", "image/webp" as const, validWebp.subarray(0, validWebp.length - 1)]
   ])(
@@ -111,11 +119,45 @@ describe("ContentMediaFileStorage", () => {
     async (_name, mimeType, bytes) => {
       const storage = new ContentMediaFileStorage("/unused");
 
-      expect(() => storage.prepare({ bytes, mimeType })).toThrow(
-        expect.objectContaining({ message: "error.content.media_invalid" })
-      );
+      await expect(
+        Promise.resolve().then(() => storage.prepare({ bytes, mimeType }))
+      ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
     }
   );
+
+  it.each([
+    ["JPEG", "image/jpeg" as const, headerOnlyJpeg],
+    ["PNG", "image/png" as const, emptyImageDataPng],
+    ["WebP", "image/webp" as const, headerOnlyWebp]
+  ])(
+    "rejects a structurally complete %s header with no decodable pixels",
+    async (_name, mimeType, bytes) => {
+      const storage = new ContentMediaFileStorage("/unused");
+
+      await expect(
+        Promise.resolve().then(() => storage.prepare({ bytes, mimeType }))
+      ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
+    }
+  );
+
+  it("rejects a decoded image above the 25,000,000-pixel cover bound", async () => {
+    const storage = new ContentMediaFileStorage("/unused");
+
+    await expect(
+      Promise.resolve().then(() =>
+        storage.prepare({ bytes: excessivePixelPng, mimeType: "image/png" })
+      )
+    ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
+  });
+
+  it("prepares valid content asynchronously and rejects a decoded-format MIME mismatch", async () => {
+    const storage = new ContentMediaFileStorage("/unused");
+
+    expect(storage.prepare({ bytes: validPng, mimeType: "image/png" })).toBeInstanceOf(Promise);
+    await expect(
+      Promise.resolve().then(() => storage.prepare({ bytes: validPng, mimeType: "image/jpeg" }))
+    ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
+  });
 
   it("rejects empty and oversized files with stable content errors", async () => {
     const directory = await mkdtemp(join(tmpdir(), "needo-content-media-"));
@@ -194,7 +236,7 @@ describe("ContentMediaService", () => {
       created: true
     };
     const storage = {
-      prepare: jest.fn(() => preparedFrom(stored)),
+      prepare: jest.fn(async () => preparedFrom(stored)),
       save: jest.fn(async () => stored),
       read: jest.fn(),
       delete: jest.fn()
@@ -238,7 +280,7 @@ describe("ContentMediaService", () => {
       created: true
     };
     const storage = {
-      prepare: jest.fn(() => preparedFrom(stored)),
+      prepare: jest.fn(async () => preparedFrom(stored)),
       save: jest.fn(async () => stored),
       read: jest.fn(),
       delete: jest.fn(async () => undefined)
@@ -268,7 +310,7 @@ describe("ContentMediaService", () => {
       created: false
     };
     const storage = {
-      prepare: jest.fn(() => preparedFrom(stored)),
+      prepare: jest.fn(async () => preparedFrom(stored)),
       save: jest.fn(async () => stored),
       read: jest.fn(),
       delete: jest.fn()

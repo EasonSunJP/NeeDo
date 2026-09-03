@@ -488,6 +488,19 @@ describe("PricingModeRepository", () => {
       },
       select: { id: true, checksumSha256: true, mimeType: true }
     });
+    expect(transaction.auditLog.findFirst).toHaveBeenCalledWith({
+      where: {
+        action: "technician.service.cover.updated",
+        targetType: "technician_service",
+        targetId: 11,
+        OR: [
+          { metadata: { path: "$.newMediaAssetId", equals: 101 } },
+          { metadata: { path: "$.checksumSha256", equals: "b".repeat(64) } }
+        ]
+      },
+      orderBy: { id: "desc" },
+      select: { metadata: true }
+    });
     expect(transaction.mediaAsset.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         entityType: "technician_service",
@@ -530,6 +543,61 @@ describe("PricingModeRepository", () => {
     });
   });
 
+  it.each([
+    ["missing", null],
+    ["malformed", { metadata: { newByteCount: "321" } }]
+  ])(
+    "fails closed before replacement mutations when prior cover audit metadata is %s",
+    async (_case, priorAudit) => {
+      const transaction = {
+        $queryRaw: jest.fn(async () => [{ id: 11 }]),
+        mediaAsset: {
+          findFirst: jest.fn(async () => ({
+            id: 101,
+            checksumSha256: "b".repeat(64),
+            mimeType: "image/png"
+          })),
+          updateMany: jest.fn(),
+          create: jest.fn()
+        },
+        technicianService: { update: jest.fn() },
+        auditLog: {
+          findFirst: jest.fn(async () => priorAudit),
+          create: jest.fn()
+        }
+      };
+      const client = {
+        $transaction: jest.fn(
+          async (callback: (transactionClient: typeof transaction) => unknown) =>
+            callback(transaction)
+        )
+      };
+      const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+      await expect(
+        repository.replaceTechnicianServiceCover({
+          shopId: 1,
+          technicianId: 3,
+          serviceId: 11,
+          ownerUserId: 8,
+          ownerIdentityId: 18,
+          url: "/media/content/cover.jpg",
+          fileKey: "cover.jpg",
+          mimeType: "image/jpeg",
+          checksumSha256: "a".repeat(64),
+          fileSize: 225,
+          now: new Date("2026-09-04T00:00:00.000Z"),
+          action: "technician.service.cover.updated",
+          context: { ip: "127.0.0.1", userAgent: "jest" }
+        })
+      ).rejects.toThrow("error.technician_service.cover_lifecycle_incomplete");
+      expect(transaction.mediaAsset.updateMany).not.toHaveBeenCalled();
+      expect(transaction.mediaAsset.create).not.toHaveBeenCalled();
+      expect(transaction.technicianService.update).not.toHaveBeenCalled();
+      expect(transaction.auditLog.create).not.toHaveBeenCalled();
+    }
+  );
+
   it("removes active cover rows, clears the service cover, and audits atomically", async () => {
     const now = new Date("2026-09-04T01:00:00.000Z");
     const transaction = {
@@ -569,6 +637,19 @@ describe("PricingModeRepository", () => {
         context: { ip: "127.0.0.1", userAgent: "jest" }
       })
     ).resolves.toMatchObject({ id: 11, coverImageUrl: null });
+    expect(transaction.auditLog.findFirst).toHaveBeenCalledWith({
+      where: {
+        action: "technician.service.cover.updated",
+        targetType: "technician_service",
+        targetId: 11,
+        OR: [
+          { metadata: { path: "$.newMediaAssetId", equals: 101 } },
+          { metadata: { path: "$.checksumSha256", equals: "a".repeat(64) } }
+        ]
+      },
+      orderBy: { id: "desc" },
+      select: { metadata: true }
+    });
     expect(transaction.mediaAsset.updateMany).toHaveBeenCalledWith({
       where: {
         entityType: "technician_service",

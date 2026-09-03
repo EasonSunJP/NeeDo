@@ -16427,6 +16427,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       put: {
         tags: ["Pricing Mode"],
         summary: "Replace technician owned service cover image",
+        description:
+          "Accepts one raw JPEG, PNG, or WebP body up to 8 MiB. A maintained asynchronous image decode must confirm the declared format, complete pixel payload, and a maximum of 25,000,000 decoded pixels; violations return error.technician_service.cover_invalid.",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:services:write",
         parameters: [

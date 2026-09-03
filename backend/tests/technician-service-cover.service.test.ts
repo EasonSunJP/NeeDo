@@ -145,7 +145,7 @@ const createStorage = (options: StorageOptions = {}): jest.Mocked<ContentMediaSt
   };
 
   return {
-    prepare: jest.fn((_input: Parameters<ContentMediaStoragePort["prepare"]>[0]) => {
+    prepare: jest.fn(async (_input: Parameters<ContentMediaStoragePort["prepare"]>[0]) => {
       void _input;
       return prepared;
     }),

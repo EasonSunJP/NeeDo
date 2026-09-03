@@ -644,6 +644,7 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [removeCover, setRemoveCover] = useState(false);
   const [persistedAfterPartialSave, setPersistedAfterPartialSave] = useState<TechnicianServicePayload | null>(null);
+  const pendingCoverRemoval = removeCover && !coverFile;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -699,7 +700,7 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
         setServices((current) => upsertTechnicianService(current, completedService));
         closeAndResetServiceEditor();
       } catch {
-        setError("封面上传失败，请重试");
+        setError(pendingCoverRemoval ? "封面移除失败，请重试" : "封面上传失败，请重试");
       } finally {
         setSaving(false);
       }
@@ -756,7 +757,11 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
         });
         setPersistedAfterPartialSave(saved);
         setEditingId(saved.id);
-        setError("服务已保存，封面上传失败，请重试");
+        setError(
+          pendingCoverRemoval
+            ? "服务已保存，封面移除失败，请重试"
+            : "服务已保存，封面上传失败，请重试"
+        );
       }
     } finally {
       setSaving(false);
@@ -833,7 +838,7 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
           <label className="block text-xs font-bold"><span className={surface.muted}>时长（分钟）</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} value={draft.durationMinutes} /></label>
         </div>
         <label className="block text-xs font-bold"><span className={surface.muted}>描述</span><textarea className={cn(surface.metric, "mt-1 min-h-20 w-full rounded-[14px] border px-3 py-2 text-sm font-bold outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} /></label>
-        <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={closeAndResetServiceEditor} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : persistedAfterPartialSave ? "重试上传封面" : "保存"}</button></div>
+        <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={closeAndResetServiceEditor} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : persistedAfterPartialSave ? pendingCoverRemoval ? "重试移除封面" : "重试上传封面" : "保存"}</button></div>
         {editorService && !persistedAfterPartialSave ? <button className="w-full rounded-[16px] border border-red-500/40 px-3 py-2.5 text-sm font-black text-red-500" disabled={saving} onClick={() => void remove(editorService)} type="button">{deleteArmedId === editorService.id ? "再次点击确认删除" : "删除该服务"}</button> : null}
       </div>
     </article>
