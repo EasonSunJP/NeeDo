@@ -29,6 +29,7 @@ import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtime
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
+import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card/SocialProfileMiniCard";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useUserOrders } from "../../state/userOrderStore";
@@ -589,7 +590,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           onSubmit={(submission) => void submitReview(submission)}
           pending={reviewPending}
           showTagCounts={false}
-          tagOptions={["魅力值", "服务精神", "情绪价值", "元气"]}
+          tagOptions={serviceReviewSpecialTags}
           title="评价技师"
         />
       ) : null}

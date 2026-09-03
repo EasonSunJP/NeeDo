@@ -196,7 +196,10 @@ export function ServiceReviewPrompt({
   const [tagCounts, setTagCounts] = useState<Record<string, number>>(() =>
     Object.fromEntries(baseTags.map((tag) => [tag.label, tag.count ?? 0]))
   );
-  const selectedStampTag = selectedTags.find((label) => baseTags.some((tag) => tag.kind === "stamp" && tag.label === label));
+  const selectedCustomLabel = selectedTags.find((label) => {
+    const tag = baseTags.find((candidate) => candidate.label === label) ?? (customTag?.label === label ? customTag : undefined);
+    return tag?.kind !== "stamp";
+  });
   const headerInfo = (
     <div className="grid gap-1">
       <p className="text-xs font-black text-[color:var(--client-primary)]">服务评价</p>
@@ -214,7 +217,7 @@ export function ServiceReviewPrompt({
 
     const targetTag = baseTags.find((tag) => tag.label === label) ?? (customTag?.label === label ? customTag : undefined);
 
-    if (targetTag?.kind === "stamp" && selectedStampTag) {
+    if (targetTag?.kind !== "stamp" && selectedCustomLabel) {
       return;
     }
 
@@ -225,7 +228,7 @@ export function ServiceReviewPrompt({
     }));
   };
   const addCustomTag = () => {
-    if (pending || customTag) {
+    if (pending || customTag || selectedCustomLabel) {
       return;
     }
 
@@ -310,7 +313,7 @@ export function ServiceReviewPrompt({
                 const count = tagCounts[tag.label] ?? tag.count ?? 0;
                 const isStamp = tag.kind === "stamp";
                 const stampVisual = getServiceReviewStampVisual(tag, index);
-                const disabledByStampLimit = isStamp && Boolean(selectedStampTag) && !selected;
+                const disabledByCustomLimit = !isStamp && Boolean(selectedCustomLabel) && !selected;
 
                 return (
                   <button
@@ -320,9 +323,9 @@ export function ServiceReviewPrompt({
                         ? cn("service-review-stamp", `service-review-stamp--${stampVisual.tone}`, selected ? "is-selected" : "")
                         : "rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] px-3 py-3 text-sm font-black text-[color:var(--client-text)]",
                       selected && !isStamp ? "ring-2 ring-[color:var(--client-primary)]" : "",
-                      disabledByStampLimit ? "cursor-not-allowed opacity-48 saturate-50" : ""
+                      disabledByCustomLimit ? "cursor-not-allowed opacity-48 saturate-50" : ""
                     )}
-                    disabled={pending || disabledByStampLimit}
+                    disabled={pending || disabledByCustomLimit}
                     key={`${tag.label}-${index}`}
                     onClick={() => clickTag(tag.label)}
                     type="button"
@@ -362,15 +365,15 @@ export function ServiceReviewPrompt({
               <input
                 aria-label="自由追加标签"
                 className="h-12 min-w-0 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,var(--client-bg)_16%)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
-                disabled={pending || Boolean(customTag)}
+                disabled={pending || Boolean(customTag) || Boolean(selectedCustomLabel)}
                 maxLength={5}
                 onChange={(event) => setCustomLabel(clampReviewTag(event.target.value))}
-                placeholder={customTag ? "已追加" : "最多5个字"}
+                placeholder={customTag || selectedCustomLabel ? "已选择" : "最多5个字"}
                 value={customLabel}
               />
               <button
                 className="focus-ring h-12 rounded-[18px] bg-[color:var(--client-primary)] text-sm font-black text-[#090806] shadow-[0_12px_24px_color-mix(in_srgb,var(--client-primary)_26%,transparent)] disabled:opacity-45"
-                disabled={pending || Boolean(customTag) || !customLabel.trim()}
+                disabled={pending || Boolean(customTag) || Boolean(selectedCustomLabel) || !customLabel.trim()}
                 onClick={addCustomTag}
                 type="button"
               >
