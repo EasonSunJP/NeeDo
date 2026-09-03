@@ -15,4 +15,21 @@ describe("MerchantPortal formal employment data", () => {
     expect(source).not.toContain("index % 4");
     expect(source).not.toContain("getMerchantStaffEmploymentType(technician, index)");
   });
+
+  it("renders every staff role as a full-width top-level section", () => {
+    const roleSectionSource = source.slice(
+      source.indexOf("function MerchantStaffRoleSection"),
+      source.indexOf("function getMerchantOrderProvider")
+    );
+    const staffPanelSource = source.slice(
+      source.indexOf('{activeView === "staff" && ('),
+      source.indexOf('{activeView === "schedule" && (')
+    );
+
+    expect(staffPanelSource).not.toContain('title="职务与员工"');
+    expect(roleSectionSource).toContain("rounded-[28px]");
+    expect(roleSectionSource).toContain("<h2");
+    expect(roleSectionSource).toContain("{group.count} 人");
+    expect(roleSectionSource).not.toContain("rounded-[24px]");
+  });
 });
