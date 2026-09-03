@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -44,6 +44,7 @@ export function ProfileDetailPage() {
 function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [retryRevision, setRetryRevision] = useState(0);
   const detailQuery = useCoreReadQuery(() => id ? coreReadApi.getTechnicianDetail(id) : null, [id, retryRevision]);
   const detail = detailQuery.data;
@@ -55,7 +56,14 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   );
   const scope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
   const handleBack = () => navigate(-1);
-  const handleClose = () => navigate(scope === "user" ? "/" : `/${scope}`);
+  const handleClose = () => {
+    if (searchParams.get("view") === "card" && typeof window !== "undefined" && window.history.state?.idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(scope === "user" ? "/" : `/${scope}`);
+  };
   const handleRetry = () => setRetryRevision((value) => value + 1);
 
   if (!id) {
