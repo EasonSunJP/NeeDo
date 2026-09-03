@@ -187,6 +187,11 @@ async function renderPortal() {
   });
 }
 
+function setTextareaValue(textarea: HTMLTextAreaElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textarea, value);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function renderProfile() {
   const model = fromTechnicianSelfProfile(profile, technician, [service]);
   return renderToStaticMarkup(
@@ -275,6 +280,56 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(merchantPricingRequest).not.toHaveBeenCalled();
     expect(container.textContent).toContain("店铺当前定价模式：店铺定价");
     expect(container.textContent).not.toContain("error.identity.forbidden");
+  });
+
+  it("discards an edited draft on close and exits edit mode after a successful save", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    const updateRequest = vi.spyOn(technicianProfileApi, "updateMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+      shopId: 71,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 100,
+      entry: "service_menu",
+      services: { list: [], total: 0, page: 1, page_size: 1 }
+    });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("语言能力日本語中文"));
+
+    const editButton = container.querySelector<HTMLButtonElement>('button[aria-label="编辑信息卡"]');
+    expect(editButton).not.toBeNull();
+    await act(async () => editButton?.click());
+
+    const languageDraft = Array.from(container.querySelectorAll<HTMLTextAreaElement>("textarea"))
+      .find((textarea) => textarea.value === "日本語、中文");
+    expect(languageDraft).toBeDefined();
+    await act(async () => languageDraft && setTextareaValue(languageDraft, "QA-DRAFT-NOT-SAVED"));
+    expect(container.textContent).toContain("QA-DRAFT-NOT-SAVED");
+
+    const closeButton = container.querySelector<HTMLButtonElement>('button[aria-label="取消编辑"]');
+    expect(closeButton).not.toBeNull();
+    await act(async () => closeButton?.click());
+    expect(container.textContent).not.toContain("QA-DRAFT-NOT-SAVED");
+    expect(container.textContent).toContain("语言能力日本語中文");
+    expect(updateRequest).not.toHaveBeenCalled();
+
+    await act(async () => editButton?.click());
+    const saveButton = container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]');
+    expect(saveButton?.textContent).toContain("保存并退出编辑模式");
+    await act(async () => saveButton?.click());
+    await flushUntil(() => expect(updateRequest).toHaveBeenCalledTimes(1));
+
+    expect(updateRequest).toHaveBeenCalledWith({
+      gender: "female",
+      age: 29,
+      heightCm: 168,
+      languages: ["日本語", "中文"],
+      bio: "预约前请联系。",
+      visibility: "limited"
+    });
+    expect(container.querySelector('[data-testid="technician-profile-save-action"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="编辑信息卡"]')).not.toBeNull();
   });
 
   it("requests and renders formal metrics for an independent technician without a shop", async () => {
