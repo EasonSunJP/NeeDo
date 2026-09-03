@@ -21,6 +21,10 @@
     "verify:production-build": "npm run build -- --mode formal && npm run audit:production-bundle",
     "verify:production-smoke": "node scripts/production-smoke.mjs",
     "perf:local-baseline": "node scripts/local-performance-baseline.mjs",
+    "aws:staging:preflight": "node scripts/aws-staging-preflight.mjs",
+    "aws:staging:deploy": "node scripts/aws-staging-deploy.mjs",
+    "aws:staging:bootstrap-host": "node scripts/aws-staging-bootstrap-host.mjs",
+    "aws:staging:verify": "node scripts/aws-staging-verify.mjs",
     "test": "vitest run"
   },
   "dependencies": {

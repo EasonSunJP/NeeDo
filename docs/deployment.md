@@ -27,6 +27,12 @@ credentials, or Redis has no password.
 
 ## Staging
 
+For the approved AWS Tokyo single-EC2 environment-only gate, follow
+[`docs/aws-staging-environment-runbook.md`](./aws-staging-environment-runbook.md).
+That gate creates and verifies infrastructure only; the Compose commands below
+are application deployment steps and must not run until the separate application
+microstep is approved.
+
 ```bash
 docker compose -f deploy/staging/docker-compose.yml up --build -d
 docker compose -f deploy/staging/docker-compose.yml ps
