@@ -57,13 +57,13 @@ export function TechnicianReviewTagSummaryView({ model }: { model: TechnicianPro
 
             return (
               <div
-                aria-label={`${tag?.label ?? fallback.label} ×${count}`}
+                aria-label={`${fallback.label} ×${count}`}
                 className={cn("service-review-stamp min-w-0", `service-review-stamp--${visual.tone}`)}
                 key={fallback.code}
                 role="listitem"
               >
                 <span className="service-review-stamp__icon"><img alt="" aria-hidden="true" draggable={false} src={visual.iconSrc} /></span>
-                <span className="service-review-stamp__label"><ReviewStampLabel label={tag?.label ?? fallback.label} /></span>
+                <span className="service-review-stamp__label"><ReviewStampLabel label={fallback.label} /></span>
                 <span className="service-review-stamp__count">×{count}</span>
               </div>
             );
