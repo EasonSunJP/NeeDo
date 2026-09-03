@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  canonicalizeTechnicianReviewTag,
+  isTechnicianReviewSpecialTag,
+  technicianReviewTagKey
+} from "../domain/technician-review-tags";
 import { unicodeDefaultCaseFoldKey } from "../utils/unicode-default-case-fold";
 
 const paginationQuerySchema = {
@@ -218,7 +223,9 @@ export const orderReviewCreateBodySchema = z
   .superRefine((value, context) => {
     const seen = new Set<string>();
     value.tags.forEach((tag, index) => {
-      const folded = unicodeDefaultCaseFoldKey(tag);
+      const folded = value.targetType === "technician"
+        ? technicianReviewTagKey(tag)
+        : unicodeDefaultCaseFoldKey(tag);
       if (seen.has(folded)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -228,7 +235,21 @@ export const orderReviewCreateBodySchema = z
       }
       seen.add(folded);
     });
-  });
+
+    if (
+      value.targetType === "technician" &&
+      value.tags.filter((tag) => !isTechnicianReviewSpecialTag(tag)).length > 1
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "technician review accepts at most one custom tag",
+        path: ["tags"]
+      });
+    }
+  })
+  .transform((value) => value.targetType === "technician"
+    ? { ...value, tags: value.tags.map(canonicalizeTechnicianReviewTag) }
+    : value);
 
 export const orderListQuerySchema = z.object({
   ...paginationQuerySchema,

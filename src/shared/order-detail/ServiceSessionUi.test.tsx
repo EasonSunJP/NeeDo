@@ -51,6 +51,48 @@ describe("ServiceReviewPrompt formal order mode", () => {
     expect(onSubmit).toHaveBeenCalledWith({ rating: 4, tags: ["服务精神"], comment: "服务很好" });
   });
 
+  it("allows multiple fixed stamps and exactly one existing custom label", () => {
+    const onSubmit = vi.fn();
+    act(() => root.render(
+      <ServiceReviewPrompt
+        integerRating
+        message="请评价本次服务"
+        onSkip={vi.fn()}
+        onSubmit={onSubmit}
+        showTagCounts={false}
+        tagOptions={[
+          { label: "魅力max", count: 0, kind: "stamp", tone: "appeal" },
+          { label: "服务max", count: 0, kind: "stamp", tone: "service" },
+          { label: "情绪max", count: 0, kind: "stamp", tone: "empathy" },
+          { label: "元气max", count: 0, kind: "stamp", tone: "energy" },
+          { label: "手法细致", count: 2, kind: "chip" },
+          { label: "沟通耐心", count: 1, kind: "chip" }
+        ]}
+        title="评价技师"
+      />
+    ));
+
+    const findButton = (label: string) => Array.from(container.querySelectorAll("button"))
+      .find((candidate) => candidate.textContent === label) as HTMLButtonElement;
+
+    act(() => findButton("魅力max").click());
+    act(() => findButton("服务max").click());
+    act(() => findButton("手法细致").click());
+
+    expect(findButton("服务max").disabled).toBe(false);
+    expect(findButton("沟通耐心").disabled).toBe(true);
+    expect((container.querySelector('[aria-label="自由追加标签"]') as HTMLInputElement).disabled).toBe(true);
+
+    const submit = Array.from(container.querySelectorAll("button"))
+      .find((candidate) => candidate.textContent === "提交评价")!;
+    act(() => submit.click());
+    expect(onSubmit).toHaveBeenCalledWith({
+      rating: 5,
+      tags: ["魅力max", "服务max", "手法细致"],
+      comment: null
+    });
+  });
+
   it("shows retryable error and disables close, skip, editing, and double submit while pending", () => {
     const onSkip = vi.fn();
     const onSubmit = vi.fn();

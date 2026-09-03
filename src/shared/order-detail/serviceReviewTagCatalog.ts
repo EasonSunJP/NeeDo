@@ -33,10 +33,10 @@ export const serviceReviewStampVisuals: ServiceReviewStampVisual[] = [
 ];
 
 export const serviceReviewSpecialTags: Required<Pick<ServiceReviewTagOption, "label" | "count" | "kind" | "tone">>[] = [
-  { label: "魅力值MAX", count: 13, kind: "stamp", tone: "appeal" },
-  { label: "服务精神MAX", count: 2, kind: "stamp", tone: "service" },
-  { label: "情绪价值MAX", count: 1, kind: "stamp", tone: "empathy" },
-  { label: "元气MAX", count: 1, kind: "stamp", tone: "energy" }
+  { label: "魅力max", count: 0, kind: "stamp", tone: "appeal" },
+  { label: "服务max", count: 0, kind: "stamp", tone: "service" },
+  { label: "情绪max", count: 0, kind: "stamp", tone: "empathy" },
+  { label: "元气max", count: 0, kind: "stamp", tone: "energy" }
 ];
 
 export const serviceReviewSpecialLabelSet = new Set(serviceReviewSpecialTags.map((tag) => tag.label));
@@ -46,8 +46,8 @@ export function getServiceReviewStampVisual(tag: Pick<ServiceReviewTagOption, "t
 }
 
 export function splitMaxReviewStampLabel(label: string) {
-  const marker = "MAX";
-  const markerIndex = label.lastIndexOf(marker);
+  const marker = label.slice(-3);
+  const markerIndex = marker.toLowerCase() === "max" ? label.length - marker.length : -1;
 
   if (markerIndex <= 0 || markerIndex !== label.length - marker.length) {
     return {

@@ -41,7 +41,7 @@ describe("formal completed-order review service", () => {
     const review = {
       targetType,
       rating: 5,
-      tags: targetType === "technician" ? ["服务精神", "魅力值"] : ["准时到达"],
+      tags: targetType === "technician" ? ["服务max", "魅力max"] : ["准时到达"],
       comment: "很好",
       createdAt: new Date("2026-09-01T12:00:00.000Z")
     };
