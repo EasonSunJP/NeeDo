@@ -5,18 +5,22 @@ const AMI_PARAMETER_NAME = "/aws/service/ami-amazon-linux-latest/al2023-ami-kern
 const AMAZON_AMI_OWNER_ID = "137112412989";
 const STAGING_HOSTNAME = "staging.needo.dackou.com";
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
+const TEMPORARY_CREDENTIAL_TYPES = new Set(["sso", "assume-role", "custom-process"]);
 
 function requireTemporaryCredentialSource(configureList) {
-  const source = String(configureList).toLowerCase();
-  if (/shared[-_ ]credentials(?:[-_ ]file)?/.test(source)) {
-    throw new Error("A shared-credentials source is forbidden for AWS Staging");
-  }
-  const hasTemporarySourceLine = source
+  const rows = String(configureList)
     .split(/\r?\n/)
-    .some((line) => /^\s*(?:sso_session|sso_start_url|credential_process)\b/.test(line)
-      || /(?:^|\s)(?:sso|assume-role)\s*$/.test(line));
-  if (!hasTemporarySourceLine) {
-    throw new Error("A temporary SSO, credential_process, or assume-role credential source is required");
+    .map((line) => line.trim().split(/\s{2,}/))
+    .filter((columns) => columns.length >= 3);
+  const accessRow = rows.find(([name]) => name === "access_key");
+  const secretRow = rows.find(([name]) => name === "secret_key");
+  const accessType = accessRow?.[2];
+  const secretType = secretRow?.[2];
+
+  if (!TEMPORARY_CREDENTIAL_TYPES.has(accessType)
+    || !TEMPORARY_CREDENTIAL_TYPES.has(secretType)
+    || accessType !== secretType) {
+    throw new Error("AWS configure list credential TYPE must be the same temporary provider");
   }
 }
 
@@ -58,8 +62,8 @@ function requireSafeAmi(imageResult, amiId) {
   }
 
   const [image] = images;
-  if (image.ImageId && image.ImageId !== amiId) {
-    throw new Error(`EC2 returned an unexpected image for AMI ${amiId}`);
+  if (image.ImageId !== amiId) {
+    throw new Error(`EC2 ImageId must match requested AMI ${amiId}`);
   }
   if (image.Architecture !== "arm64") {
     throw new Error(`AMI ${amiId} architecture must be arm64`);
@@ -77,8 +81,10 @@ function requireSafeAmi(imageResult, amiId) {
 function isExactAbsentStackError(error, stackName) {
   const message = error instanceof Error ? error.message : "";
   const escapedStackName = stackName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return message.includes("ValidationError")
-    && new RegExp(`Stack with id ${escapedStackName} does not exist`, "i").test(message);
+  const absentStackPattern = new RegExp(
+    `^AWS CLI failed \\([^()\\r\\n]+\\): An error occurred \\(ValidationError\\) when calling the DescribeStacks operation: Stack with id ${escapedStackName} does not exist$`
+  );
+  return absentStackPattern.test(message);
 }
 
 async function getStackState(aws, stackName) {
