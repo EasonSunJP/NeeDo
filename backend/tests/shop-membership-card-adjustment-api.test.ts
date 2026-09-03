@@ -30,7 +30,7 @@ const record = (overrides: Partial<ShopMembershipCardAdjustmentRecord> = {}): Sh
   cardLockVersionBefore: 1,
   requestFingerprint: "fingerprint",
   decisionFingerprint: null,
-  expiresAt: new Date("2026-09-03T03:00:00.000Z"),
+  expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1_000),
   decidedAt: null,
   cancelledAt: null,
   invalidatedAt: null,
