@@ -94,6 +94,14 @@ CloudWatch Logs ARNs, Secrets Manager ARNs, Resource Groups mappings, and final
 acceptance evidence. A resource ARN from the other approved region is still a
 mismatch for the current run.
 
+Both retained S3 bucket-policy physical IDs must equal their same-run bucket
+outputs. Acceptance reads each live policy with the explicit expected bucket
+owner and requires the one exact deny-only `s3:*` statement whose
+`aws:SecureTransport` string value is `"false"` and whose resources are that
+bucket ARN and object ARN. Evidence persists only `tlsOnly: true` and a
+canonical expected-policy SHA-256, which reconstruction binds back to the
+captured bucket name.
+
 The same-process invariants remain unchanged:
 
 1. preflight verifies identity, explicit region, ARM64 AMI, one clean tracked

@@ -45,6 +45,7 @@ const ALLOWED_SERVICE_OPERATIONS = new Set([
   "s3api get-bucket-versioning",
   "s3api get-bucket-lifecycle-configuration",
   "s3api get-bucket-tagging",
+  "s3api get-bucket-policy",
   "iam list-role-tags",
   "secretsmanager describe-secret",
   "secretsmanager list-secret-version-ids",
@@ -127,6 +128,22 @@ function assertAllowedOperation(args) {
   const operation = `${args[0] ?? ""} ${args[1] ?? ""}`;
   if (!ALLOWED_SERVICE_OPERATIONS.has(operation)) {
     throw new Error("AWS CLI service operation is not allowed");
+  }
+  if (operation === "s3api get-bucket-policy") {
+    const bucket = args[3];
+    const owner = args[5];
+    if (args.length !== 6
+      || args[2] !== "--bucket"
+      || typeof bucket !== "string"
+      || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket)
+      || bucket.includes("..")
+      || bucket.includes(".-")
+      || bucket.includes("-.")
+      || args[4] !== "--expected-bucket-owner"
+      || typeof owner !== "string"
+      || !/^\d{12}$/.test(owner)) {
+      throw new Error("AWS CLI get-bucket-policy shape is not allowed");
+    }
   }
   if (policyScannableArguments(args).some((argument) => {
     const normalized = argument.toLowerCase();

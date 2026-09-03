@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -191,8 +192,29 @@ function listStackResourcesResponse() {
   };
 }
 
+function expectedBucketTlsPolicy(name) {
+  return {
+    Version: "2012-10-17",
+    Statement: [{
+      Sid: "DenyInsecureTransport",
+      Effect: "Deny",
+      Principal: "*",
+      Action: "s3:*",
+      Resource: [`arn:aws:s3:::${name}`, `arn:aws:s3:::${name}/*`],
+      Condition: { Bool: { "aws:SecureTransport": "false" } }
+    }]
+  };
+}
+
+function policySha256(name) {
+  return createHash("sha256")
+    .update(JSON.stringify(expectedBucketTlsPolicy(name)), "utf8")
+    .digest("hex");
+}
+
 function bucketFixture(kind) {
   const isBackup = kind === "backup";
+  const name = isBackup ? ids.backupBucket : ids.releaseBucket;
   return {
     publicAccess: {
       PublicAccessBlockConfiguration: {
@@ -225,7 +247,8 @@ function bucketFixture(kind) {
         AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 }
       }]
     },
-    tagging: { TagSet: tags() }
+    tagging: { TagSet: tags() },
+    policy: { Policy: JSON.stringify(expectedBucketTlsPolicy(name)) }
   };
 }
 
@@ -435,6 +458,7 @@ function createAws(fixture, trace = []) {
         case "s3api get-bucket-versioning": return fixture[argument(args, "--bucket") === ids.releaseBucket ? "releaseBucket" : "backupBucket"].versioning;
         case "s3api get-bucket-lifecycle-configuration": return fixture[argument(args, "--bucket") === ids.releaseBucket ? "releaseBucket" : "backupBucket"].lifecycle;
         case "s3api get-bucket-tagging": return fixture[argument(args, "--bucket") === ids.releaseBucket ? "releaseBucket" : "backupBucket"].tagging;
+        case "s3api get-bucket-policy": return fixture[argument(args, "--bucket") === ids.releaseBucket ? "releaseBucket" : "backupBucket"].policy;
         case "iam list-role-tags": return fixture.iamTags;
         case "secretsmanager describe-secret": return fixture.secret;
         case "secretsmanager list-secret-version-ids": return fixture.secretVersions;
@@ -829,6 +853,82 @@ describe("AWS Staging environment-only acceptance", () => {
     await expect(verify({ fixture })).rejects.toThrow(expected);
   });
 
+  it.each([
+    ["missing policy", (f) => { delete f.releaseBucket.policy.Policy; }],
+    ["non-string policy", (f) => { f.releaseBucket.policy.Policy = expectedBucketTlsPolicy(ids.releaseBucket); }],
+    ["weakened transport condition", (f) => {
+      const policy = JSON.parse(f.releaseBucket.policy.Policy);
+      policy.Statement[0].Condition.Bool["aws:SecureTransport"] = "true";
+      f.releaseBucket.policy.Policy = JSON.stringify(policy);
+    }],
+    ["mismatched object ARN", (f) => {
+      const policy = JSON.parse(f.backupBucket.policy.Policy);
+      policy.Statement[0].Resource[1] = `arn:aws:s3:::${ids.releaseBucket}/*`;
+      f.backupBucket.policy.Policy = JSON.stringify(policy);
+    }],
+    ["narrowed action", (f) => {
+      const policy = JSON.parse(f.releaseBucket.policy.Policy);
+      policy.Statement[0].Action = "s3:GetObject";
+      f.releaseBucket.policy.Policy = JSON.stringify(policy);
+    }],
+    ["additional allow statement", (f) => {
+      const policy = JSON.parse(f.backupBucket.policy.Policy);
+      policy.Statement.push({ Effect: "Allow", Principal: "*", Action: "s3:GetObject", Resource: "*" });
+      f.backupBucket.policy.Policy = JSON.stringify(policy);
+    }]
+  ])("rejects retained bucket policy drift before host execution: %s", async (_name, mutate) => {
+    const fixture = passingFixture();
+    mutate(fixture);
+    const aws = createAws(fixture);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+    await expect(verifyAwsStagingEnvironment({
+      aws, config, resolveDns, runPreflight: createPreflight(resolveDns), now: () => 0
+    })).rejects.toThrow(/bucket policy|secure transport|Policy|TLS/i);
+    expect(aws.json.mock.calls.some(([args]) => (
+      args[0] === "ssm" && args[1] === "send-command"
+    ))).toBe(false);
+  });
+
+  it("binds retained policy resources and reads each exact policy with the expected owner", async () => {
+    const { aws, evidence } = await verify();
+    expect(aws.json.mock.calls.filter(([args]) => (
+      args[0] === "s3api" && args[1] === "get-bucket-policy"
+    ))).toEqual([
+      [[
+        "s3api", "get-bucket-policy", "--bucket", ids.releaseBucket,
+        "--expected-bucket-owner", config.accountId
+      ]],
+      [[
+        "s3api", "get-bucket-policy", "--bucket", ids.backupBucket,
+        "--expected-bucket-owner", config.accountId
+      ]]
+    ]);
+    expect(evidence.buckets.release).toMatchObject({
+      tlsOnly: true,
+      policySha256: policySha256(ids.releaseBucket)
+    });
+    expect(evidence.buckets.backup).toMatchObject({
+      tlsOnly: true,
+      policySha256: policySha256(ids.backupBucket)
+    });
+  });
+
+  it.each(["ReleaseBucketPolicy", "BackupBucketPolicy"])(
+    "rejects a foreign %s physical identity before any SSM command",
+    async (logicalId) => {
+      const fixture = passingFixture();
+      fixture.stackResources.StackResourceSummaries.find((resource) => (
+        resource.LogicalResourceId === logicalId
+      )).PhysicalResourceId = "foreign-retained-bucket";
+      const aws = createAws(fixture);
+      const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+      await expect(verifyAwsStagingEnvironment({
+        aws, config, resolveDns, runPreflight: createPreflight(resolveDns), now: () => 0
+      })).rejects.toThrow(new RegExp(`${logicalId}.*output`, "i"));
+      expect(aws.json.mock.calls.some(([args]) => args[0] === "ssm")).toBe(false);
+    }
+  );
+
   it("runs a fresh in-process preflight with the same boundaries before any AWS description", async () => {
     const fixture = passingFixture();
     const trace = [];
@@ -976,6 +1076,7 @@ describe("AWS Staging environment-only acceptance", () => {
       "ssm get-document", "ssm get-parameter", "ssm list-tags-for-resource",
       "s3api get-public-access-block", "s3api get-bucket-encryption",
       "s3api get-bucket-versioning", "s3api get-bucket-lifecycle-configuration", "s3api get-bucket-tagging",
+      "s3api get-bucket-policy",
       "iam list-role-tags", "secretsmanager describe-secret", "secretsmanager list-secret-version-ids",
       "logs list-tags-for-resource", "logs describe-log-groups", "cloudwatch describe-alarms",
       "cloudwatch list-tags-for-resource", "sns list-tags-for-resource", "budgets describe-budget",
@@ -1008,7 +1109,7 @@ describe("AWS Staging environment-only acceptance", () => {
     ]]);
     for (const operation of [
       "get-public-access-block", "get-bucket-encryption", "get-bucket-versioning",
-      "get-bucket-lifecycle-configuration", "get-bucket-tagging"
+      "get-bucket-lifecycle-configuration", "get-bucket-tagging", "get-bucket-policy"
     ]) expect(operations.filter((candidate) => candidate === `s3api ${operation}`)).toHaveLength(2);
     expect(operations).not.toContain("secretsmanager get-secret-value");
     const budgetCalls = aws.json.mock.calls.filter(([args]) => args[0] === "budgets");
@@ -1241,6 +1342,8 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     ["home path", (e) => { e.resourceIds.budgetName = "/Users/eason/secret"; }],
     ["raw output", (e) => { e.ssm.stdout = "unsafe"; }],
     ["unexpected lifecycle key", (e) => { e.buckets.release.lifecycleRules[0].unexpected = true; }],
+    ["weakened retained policy flag", (e) => { e.buckets.release.tlsOnly = false; }],
+    ["mismatched retained policy hash", (e) => { e.buckets.backup.policySha256 = "0".repeat(64); }],
     ["wrong alarm summary", (e) => { e.monitoring.alarms[0].threshold = 999; }],
     ["duplicate log summary", (e) => { e.monitoring.logGroups[1] = { ...e.monitoring.logGroups[0] }; }],
     ["swapped log group ARNs", (e) => {

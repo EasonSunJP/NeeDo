@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isIPv4 } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -359,7 +359,9 @@ function requireStackResources(response, outputs) {
     ElasticIp: null,
     DataVolume: outputs.DataVolumeId,
     ReleaseBucket: outputs.ReleaseBucketName,
+    ReleaseBucketPolicy: outputs.ReleaseBucketName,
     BackupBucket: outputs.BackupBucketName,
+    BackupBucketPolicy: outputs.BackupBucketName,
     ApplicationSecret: outputs.ApplicationSecretArn,
     HostBootstrapDocument: outputs.HostBootstrapDocumentName,
     HostVerificationDocument: outputs.HostVerificationDocumentName,
@@ -635,7 +637,71 @@ function requireLifecycle(response, kind) {
   });
 }
 
-async function verifyBucket({ aws, name, kind, owner }) {
+function expectedBucketTlsPolicy(name) {
+  return {
+    Version: "2012-10-17",
+    Statement: [{
+      Sid: "DenyInsecureTransport",
+      Effect: "Deny",
+      Principal: "*",
+      Action: "s3:*",
+      Resource: [`arn:aws:s3:::${name}`, `arn:aws:s3:::${name}/*`],
+      Condition: { Bool: { "aws:SecureTransport": "false" } }
+    }]
+  };
+}
+
+function requireBucketTlsPolicy(response, name, kind) {
+  exactKeys(response, ["Policy"], `${kind} bucket policy response`);
+  if (typeof response.Policy !== "string" || !response.Policy) {
+    throw new Error(`${kind} bucket policy must be a JSON string`);
+  }
+  let policy;
+  try {
+    policy = JSON.parse(response.Policy);
+  } catch {
+    throw new Error(`${kind} bucket policy must be valid JSON`);
+  }
+  exactKeys(policy, ["Version", "Statement"], `${kind} bucket policy`);
+  if (policy.Version !== "2012-10-17"
+    || !Array.isArray(policy.Statement)
+    || policy.Statement.length !== 1) {
+    throw new Error(`${kind} bucket policy must contain the exact TLS-only statement`);
+  }
+  const [statement] = policy.Statement;
+  exactKeys(
+    statement,
+    ["Sid", "Effect", "Principal", "Action", "Resource", "Condition"],
+    `${kind} bucket policy statement`
+  );
+  exactKeys(statement.Condition, ["Bool"], `${kind} bucket policy condition`);
+  exactKeys(
+    statement.Condition.Bool,
+    ["aws:SecureTransport"],
+    `${kind} bucket policy secure transport condition`
+  );
+  const expectedResources = [`arn:aws:s3:::${name}`, `arn:aws:s3:::${name}/*`];
+  const actualResources = statement.Resource;
+  if (statement.Sid !== "DenyInsecureTransport"
+    || statement.Effect !== "Deny"
+    || statement.Principal !== "*"
+    || statement.Action !== "s3:*"
+    || statement.Condition.Bool["aws:SecureTransport"] !== "false"
+    || !Array.isArray(actualResources)
+    || actualResources.length !== expectedResources.length
+    || new Set(actualResources).size !== expectedResources.length
+    || expectedResources.some((resource) => !actualResources.includes(resource))) {
+    throw new Error(`${kind} bucket policy does not match the exact TLS-only deny policy`);
+  }
+  return {
+    tlsOnly: true,
+    policySha256: createHash("sha256")
+      .update(JSON.stringify(expectedBucketTlsPolicy(name)), "utf8")
+      .digest("hex")
+  };
+}
+
+async function verifyBucket({ aws, name, kind, owner, accountId }) {
   const publicAccess = await aws.json(["s3api", "get-public-access-block", "--bucket", name]);
   requirePublicBlock(publicAccess, kind);
   const encryption = await aws.json(["s3api", "get-bucket-encryption", "--bucket", name]);
@@ -646,7 +712,19 @@ async function verifyBucket({ aws, name, kind, owner }) {
   const lifecycleRules = requireLifecycle(lifecycle, kind);
   const tagging = await aws.json(["s3api", "get-bucket-tagging", "--bucket", name]);
   requireTags(tagging?.TagSet, owner, `${kind} bucket`);
-  return { name, encryption: "AES256", versioning: "Enabled", publicAccessBlocked: true, lifecycleRules };
+  const policy = await aws.json([
+    "s3api", "get-bucket-policy", "--bucket", name,
+    "--expected-bucket-owner", accountId
+  ]);
+  const policyAttestation = requireBucketTlsPolicy(policy, name, kind);
+  return {
+    name,
+    encryption: "AES256",
+    versioning: "Enabled",
+    publicAccessBlocked: true,
+    lifecycleRules,
+    ...policyAttestation
+  };
 }
 
 function requireLogGroups(response, resources, config) {
@@ -1035,10 +1113,12 @@ export async function verifyAwsStagingEnvironment({
   }
 
   const releaseBucket = await verifyBucket({
-    aws, name: outputs.ReleaseBucketName, kind: "release", owner: config.owner
+    aws, name: outputs.ReleaseBucketName, kind: "release",
+    owner: config.owner, accountId: config.accountId
   });
   const backupBucket = await verifyBucket({
-    aws, name: outputs.BackupBucketName, kind: "backup", owner: config.owner
+    aws, name: outputs.BackupBucketName, kind: "backup",
+    owner: config.owner, accountId: config.accountId
   });
 
   const roleTags = await aws.json([
@@ -1376,10 +1456,16 @@ function reconstructAcceptanceEvidence(evidence) {
     ["backup", evidence.resourceIds.backupBucketName, 2]
   ]) {
     const bucket = evidence.buckets[kind];
-    exactKeys(bucket, ["name", "encryption", "versioning", "publicAccessBlocked", "lifecycleRules"], `Acceptance ${kind} bucket`);
+    exactKeys(bucket, [
+      "name", "encryption", "versioning", "publicAccessBlocked", "lifecycleRules",
+      "tlsOnly", "policySha256"
+    ], `Acceptance ${kind} bucket`);
     if (bucket.name !== expectedName || bucket.encryption !== "AES256" || bucket.versioning !== "Enabled"
       || bucket.publicAccessBlocked !== true || !Array.isArray(bucket.lifecycleRules)
-      || bucket.lifecycleRules.length !== lifecycleCount) throw new Error(`Acceptance ${kind} bucket is invalid`);
+      || bucket.lifecycleRules.length !== lifecycleCount || bucket.tlsOnly !== true
+      || bucket.policySha256 !== createHash("sha256")
+        .update(JSON.stringify(expectedBucketTlsPolicy(expectedName)), "utf8")
+        .digest("hex")) throw new Error(`Acceptance ${kind} bucket is invalid`);
     if (kind === "release") {
       const [rule] = bucket.lifecycleRules;
       exactKeys(rule, ["id", "status", "abortIncompleteMultipartUploadDays"], "Acceptance release lifecycle rule");

@@ -237,7 +237,9 @@ AWS Budgets sends threshold notifications at 15,000, 18,000 and 20,000 JPY of fo
 - Session Manager opens without port 22 or an SSH key.
 - The 70 GiB volume is mounted at `/srv/needo` and mount-failure behavior is proven.
 - Security group exposes only 80/443; 22/3000/3306/6379 are not public.
-- S3 public access is blocked, versioning/encryption/lifecycle are verified.
+- S3 public access is blocked, versioning/encryption/lifecycle are verified,
+  and each retained bucket policy is live-read with the expected owner and
+  matched to the exact deny-only TLS policy for that bucket and its objects.
 - The Secrets Manager resource exists but no secret is printed.
 - CloudWatch log groups/alarms and AWS Budget thresholds exist.
 - No application, migration, seed, DNS or business-data mutation has occurred.

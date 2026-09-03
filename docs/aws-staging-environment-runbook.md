@@ -230,6 +230,14 @@ npm run aws:staging:verify -- \
   --budget-unit <three-letter-billing-currency>
 ```
 
+Before the bounded host command, acceptance binds both retained
+`AWS::S3::BucketPolicy` physical IDs to their bucket outputs and calls
+`s3api get-bucket-policy` with the exact expected bucket owner. Each returned
+JSON-string policy must be the single deny-only `s3:*` statement for
+`aws:SecureTransport = "false"` and the exact bucket/object ARNs. Evidence keeps
+only `tlsOnly: true` and the canonical policy SHA-256, and reconstructs both
+values from the captured bucket identity.
+
 A successful environment-only acceptance is not permission to deploy the
 application or to change DNS. Keep Compose, Prisma migration, seed, release
 artifact, TLS, and Onamae work in their separately approved follow-up steps.

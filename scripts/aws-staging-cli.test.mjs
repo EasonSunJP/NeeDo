@@ -99,6 +99,7 @@ const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
   ["s3api", "get-bucket-versioning"],
   ["s3api", "get-bucket-lifecycle-configuration"],
   ["s3api", "get-bucket-tagging"],
+  ["s3api", "get-bucket-policy"],
   ["iam", "list-role-tags"],
   ["secretsmanager", "describe-secret"],
   ["secretsmanager", "list-secret-version-ids"],
@@ -979,6 +980,8 @@ describe("AWS CLI adapter", () => {
       const args = service === "cloudformation"
         && (operation === "validate-template" || operation === "create-stack")
         ? [service, operation, "--template-body", "{}"]
+        : service === "s3api" && operation === "get-bucket-policy"
+          ? [service, operation, "--bucket", "needo-release-example", "--expected-bucket-owner", "123456789012"]
         : [service, operation];
 
       await expect(aws.json(args)).resolves.toEqual({});
@@ -986,6 +989,19 @@ describe("AWS CLI adapter", () => {
       expect(execFileImpl.mock.calls[0][1].slice(0, 2)).toEqual([service, operation]);
     }
   );
+
+  it.each([
+    ["missing all required arguments", ["s3api", "get-bucket-policy"]],
+    ["missing expected owner", ["s3api", "get-bucket-policy", "--bucket", "needo-release-example"]],
+    ["wrong owner flag", ["s3api", "get-bucket-policy", "--bucket", "needo-release-example", "--owner", "123456789012"]],
+    ["non-account owner", ["s3api", "get-bucket-policy", "--bucket", "needo-release-example", "--expected-bucket-owner", "123"]],
+    ["extra argument", ["s3api", "get-bucket-policy", "--bucket", "needo-release-example", "--expected-bucket-owner", "123456789012", "--no-paginate"]]
+  ])("rejects get-bucket-policy shape with %s", (_label, args) => {
+    const execFileImpl = vi.fn();
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+    expect(() => aws.json(args)).toThrow(/shape|not allowed/i);
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["STS credential minting", ["sts", "assume-role"]],

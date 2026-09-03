@@ -524,6 +524,20 @@ describe("AWS Staging CloudFormation deployment", () => {
     expect(aws.json.mock.calls.some(([args]) => args[0] === "ec2")).toBe(false);
   });
 
+  it.each(["ReleaseBucketPolicy", "BackupBucketPolicy"])(
+    "rejects a foreign %s physical resource that contradicts its retained bucket output",
+    async (logicalId) => {
+      const aws = successfulAws({
+        listedResources: stackResources({
+          [logicalId]: { PhysicalResourceId: "foreign-retained-bucket" }
+        })
+      });
+
+      await expect(deploy({ aws })).rejects.toThrow(new RegExp(`${logicalId}.*output`, "i"));
+      expect(aws.json.mock.calls.some(([args]) => args[0] === "ec2")).toBe(false);
+    }
+  );
+
   it("rejects a valid but foreign Elastic IP output before recording evidence", async () => {
     const aws = successfulAws({
       describedStack: stackResult({

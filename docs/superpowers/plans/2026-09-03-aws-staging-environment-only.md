@@ -20,7 +20,9 @@
 > a fresh preflight must prove account/region and the exact stack, tags,
 > resources, outputs, instance/data-volume attachment, SSM document content and
 > version, and CloudWatch Agent parameter content and version. Both S3 bucket
-> policies are retained with their buckets. No create-or-update behavior is
+> policies are retained with their buckets; acceptance binds their physical IDs
+> to the bucket outputs and verifies each live exact TLS-only deny policy with
+> the expected bucket owner before any host command. No create-or-update behavior is
 > authorized by this environment-only plan.
 
 > **2026-09-04 CLI isolation follow-up:** Before credentials are available, the
@@ -1234,7 +1236,7 @@ Build one fully passing fixture and mutate one invariant at a time. Required fai
 | Mount | `/srv/needo` is not XFS on the exact data volume or any approved directory is missing |
 | Services | Docker/SSM/CloudWatch Agent inactive |
 | Containers | any running container exists in environment-only stage |
-| S3 | either bucket lacks encryption/versioning/public block or lifecycle retention |
+| S3 | either bucket lacks encryption/versioning/public block/lifecycle retention, or its retained policy differs from the exact deny-only `aws:SecureTransport="false"` policy for the bucket and object ARNs |
 | Secret | secret has any version ID |
 | Monitoring | required alarms/log groups/agent parameter absent |
 | Budget | amount/unit differs or thresholds/types/subscriber differ |
@@ -1267,6 +1269,7 @@ s3api get-bucket-encryption
 s3api get-bucket-versioning
 s3api get-bucket-lifecycle-configuration
 s3api get-bucket-tagging
+s3api get-bucket-policy --expected-bucket-owner <approved-account-id>
 iam list-role-tags
 secretsmanager describe-secret
 secretsmanager list-secret-version-ids
@@ -1315,7 +1318,8 @@ Do not run `docker inspect`, list environment variables, read `/proc/*/environ`,
 - exact ingress ports;
 - volume sizes/types/encryption and data mount filesystem;
 - SSM online and bootstrap command status;
-- bucket controls/lifecycle summaries;
+- bucket controls/lifecycle summaries plus only the reconstructed
+  `tlsOnly: true` and canonical exact-policy SHA-256 attestations;
 - `secretVersionCount: 0` without secret values;
 - alarm/log/budget threshold summaries;
 - preflight and post-verification DNS A-record arrays;

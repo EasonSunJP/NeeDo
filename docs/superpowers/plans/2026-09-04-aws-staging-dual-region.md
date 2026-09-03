@@ -47,6 +47,10 @@
 - Resolve one temporary credential tuple in memory per command, neutralize inherited/configured AWS endpoints and credential sources, and never mix sessions after preflight.
 - Initial deployment is atomic `create-stack`; `AlreadyExists` is a hard stop and all later reads use the returned full StackId.
 - Before SSM execution, attest exact document and CloudWatch Agent parameter content and pin both returned versions.
+- Before SSM execution, bind both retained bucket-policy resource IDs to their
+  bucket outputs and verify the exact deny-only TLS policy using
+  `get-bucket-policy --expected-bucket-owner <approved-account-id>`; evidence
+  stores only the true attestation and canonical expected-policy SHA-256.
 - Do not create or modify AWS resources while implementing this plan.
 - Do not deploy the application, run containers, run Prisma, seed/bootstrap data, issue TLS certificates, or modify DNS.
 - Preserve the approved three unrelated baseline-test waivers without fixing or representing them as passing.
