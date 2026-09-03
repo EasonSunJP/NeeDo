@@ -12,6 +12,7 @@ import { SocialProfileMiniCard } from "./SocialProfileMiniCard";
 import { TechnicianPublicInfoCard } from "./TechnicianPublicInfoCard";
 import technicianPublicInfoCardSource from "./TechnicianPublicInfoCard.tsx?raw";
 import technicianShowcaseCardSource from "./TechnicianShowcaseCard.tsx?raw";
+import technicianProfileInfoViewSource from "../technician-profile/TechnicianProfileInfoView.tsx?raw";
 
 describe("SocialProfileMiniCard cover readability", () => {
   it("renders a neutral initial surface when formal data has no public image", () => {
@@ -174,39 +175,27 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(markup).not.toContain("Lv.99");
   });
 
-  it("opens the public technician info card from the technician avatar while keeping a dynamic-page action", () => {
-    expect(cardSource).toContain('import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard"');
-    expect(cardSource).toContain('const sourceTechnician = "technician" in props ? props.technician : null;');
-    expect(cardSource).toContain("shouldOpenTechnicianInfoCard");
-    expect(cardSource).toContain("avatarOnOpenDetails");
-    expect(cardSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(cardSource).toContain('dynamicTo={technicianDynamicPath}');
-    expect(cardSource).toContain("themeScope={currentScope}");
+  it("links technician avatars to the scoped full detail page without a dialog", () => {
+    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
+
+    expect(cardSource).toContain('const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";');
+    expect(cardSource).toContain('data.entityType === "technician" ? getScopedProfileDetailPath(currentScope, "technician", data.id)');
+    expect(cardSource).toContain("detailTo={avatarDetailTo}");
+    expect(cardSource).not.toContain(retiredModalName);
   });
 
-  it("keeps the public technician info card budget-free with special tags above normal tags", () => {
+  it("keeps the public technician information view budget-free with special tags above normal tags", () => {
     expect(appScaffoldSource).toContain('case "moments"');
     expect(technicianPublicInfoCardSource).toContain('name="moments"');
     expect(technicianPublicInfoCardSource).toContain("onClose");
     expect(technicianPublicInfoCardSource).toContain("TechnicianPublicInfoCardThemeScope");
-    expect(technicianPublicInfoCardSource).toContain('import { createPortal } from "react-dom";');
-    expect(technicianPublicInfoCardSource).toContain("getTechnicianPublicInfoCardThemeStyle");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-primary");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-primary-soft");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-soft-muted");
-    expect(technicianPublicInfoCardSource).toContain("radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--profile-card-primary)_22%,transparent),transparent_34%)");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-backdrop");
-    expect(technicianPublicInfoCardSource).toContain("bg-[color:var(--profile-card-backdrop)]");
-    expect(technicianPublicInfoCardSource).toContain("z-[180]");
-    expect(technicianPublicInfoCardSource).toContain('document.querySelector<HTMLElement>(".client-shell") ?? document.body');
-    expect(technicianPublicInfoCardSource).toContain("return createPortal(modal, portalTarget);");
     expect(technicianPublicInfoCardSource).toContain("data-theme-scope={themeScope}");
-    expect(technicianPublicInfoCardSource).toContain('data-testid="technician-info-special-tags"');
-    expect(technicianPublicInfoCardSource).toContain('data-testid="technician-info-tags"');
-    expect(technicianPublicInfoCardSource.indexOf('data-testid="technician-info-special-tags"')).toBeLessThan(
-      technicianPublicInfoCardSource.indexOf('data-testid="technician-info-tags"')
+    expect(technicianProfileInfoViewSource).toContain('data-testid="technician-info-special-tags"');
+    expect(technicianProfileInfoViewSource).toContain('data-testid="technician-info-tags"');
+    expect(technicianProfileInfoViewSource.indexOf('data-testid="technician-info-special-tags"')).toBeLessThan(
+      technicianProfileInfoViewSource.indexOf('data-testid="technician-info-tags"')
     );
-    expect(technicianPublicInfoCardSource).toContain("TechnicianReviewStampList");
+    expect(technicianPublicInfoCardSource).toContain("TechnicianProfileInfoView");
     expect(technicianPublicInfoCardSource).not.toContain('name="sparkles"');
     expect(technicianPublicInfoCardSource).toContain("formalData?.contactDetails");
     expect(technicianPublicInfoCardSource).not.toContain("bg-black/62");
@@ -246,15 +235,16 @@ describe("SocialProfileMiniCard cover readability", () => {
     );
 
     expect(markup).toContain("自我介绍");
-    expect(markup).toContain("这个技师暂时还没有补充介绍。");
+    expect(markup).toContain("暂无简介");
     expect(markup).not.toContain("接单预算");
     expect(markup).not.toContain("收入");
   });
 
-  it("opens the same public info card from technician showcase photos", () => {
+  it("keeps technician showcase photos on the scoped full detail path", () => {
+    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
+
     expect(technicianShowcaseCardSource).toContain("photoTrigger");
-    expect(technicianShowcaseCardSource).toContain("setTechnicianInfoCardOpen(true)");
-    expect(technicianShowcaseCardSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(technicianShowcaseCardSource).toContain("themeScope={currentScope}");
+    expect(technicianShowcaseCardSource).toContain("to={detailHref}");
+    expect(technicianShowcaseCardSource).not.toContain(retiredModalName);
   });
 });
