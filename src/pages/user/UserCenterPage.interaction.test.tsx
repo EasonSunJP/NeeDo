@@ -335,6 +335,18 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname?.className).toContain("[field-sizing:content]");
   });
 
+  it("places the edit-state privacy control after the basic-information labels", async () => {
+    await renderUserCenter();
+    await click(findIconButton("编辑资料"));
+
+    const languageLabel = Array.from(container.querySelectorAll("p")).find((element) => element.textContent === "语言能力");
+    const privacyControl = container.querySelector('[data-testid="user-profile-privacy-control"]');
+
+    expect(languageLabel).toBeDefined();
+    expect(privacyControl).not.toBeNull();
+    expect(languageLabel?.compareDocumentPosition(privacyControl!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("uses the same compact name font in view and edit modes so the ID remains visible", async () => {
     await renderUserCenter();
 
