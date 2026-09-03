@@ -575,6 +575,7 @@ function MerchantStaffRoleSection({
           {editing ? (
             <div className="flex min-w-0 items-center gap-2">
               <input
+                aria-label={`编辑${group.roleName}职务名`}
                 className="h-9 min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-surface)] px-3 text-sm font-black text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)]"
                 onChange={(event) => setRoleNameDraft(event.target.value)}
                 onKeyDown={(event) => {
@@ -1581,7 +1582,7 @@ function MerchantPortalDataGate() {
   return <MerchantPortalContent store={store} technicians={technicians} />;
 }
 
-function MerchantPortalContent({
+export function MerchantPortalContent({
   store,
   technicians
 }: {
@@ -2668,9 +2669,12 @@ function MerchantPortalContent({
                 ))}
             </div>
 
-            <section className="mt-3 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
+            <section aria-labelledby="merchant-staff-employee-form-title" className="mt-3 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
+              <h2 className="sr-only" id="merchant-staff-employee-form-title">添加员工</h2>
               <div className="relative">
+                <label className="sr-only" htmlFor="merchant-staff-role-input">职务名</label>
                   <input
+                    id="merchant-staff-role-input"
                     className="h-11 w-full min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_86%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,var(--client-surface)_22%)] px-4 pr-12 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
                     onChange={(event) => {
                       setCustomEmployeeRoleDraft(event.target.value);
@@ -2720,13 +2724,17 @@ function MerchantPortalContent({
                   ) : null}
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="sr-only" htmlFor="merchant-staff-name-input">员工姓名</label>
                   <input
+                    id="merchant-staff-name-input"
                     className="h-11 min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_86%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,var(--client-surface)_22%)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
                     onChange={(event) => setEmployeeNameDraft(event.target.value)}
                     placeholder="员工姓名"
                     value={employeeNameDraft}
                   />
+                  <label className="sr-only" htmlFor="merchant-staff-salary-input">月人件费（日元）</label>
                   <input
+                    id="merchant-staff-salary-input"
                     className="h-11 min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_86%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,var(--client-surface)_22%)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
                     inputMode="numeric"
                     onChange={(event) => setEmployeeSalaryDraft(event.target.value)}
