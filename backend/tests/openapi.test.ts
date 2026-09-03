@@ -1311,6 +1311,16 @@ describe("GET /api/v1/openapi.json", () => {
         address: { type: "string" }
       }
     });
+    const coverPath = response.body.paths[
+      "/api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover"
+    ];
+    expect(coverPath.put.requestBody.content).toEqual(expect.objectContaining({
+      "image/jpeg": expect.any(Object),
+      "image/png": expect.any(Object),
+      "image/webp": expect.any(Object)
+    }));
+    expect(coverPath.put.responses["200"]).toBeDefined();
+    expect(coverPath.delete.responses["200"]).toBeDefined();
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");
     expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toContain("shop");
     expect(response.body.components.schemas).toHaveProperty("CustomerProfile");

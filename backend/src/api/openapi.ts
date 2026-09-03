@@ -16423,6 +16423,74 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/technicians/me/shops/{shopId}/services/{serviceId}/cover`]: {
+      put: {
+        tags: ["Pricing Mode"],
+        summary: "Replace technician owned service cover image",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "serviceId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: Object.fromEntries(
+            ["image/jpeg", "image/png", "image/webp"].map((mimeType) => [
+              mimeType,
+              {
+                schema: {
+                  type: "string",
+                  format: "binary",
+                  maxLength: 8 * 1024 * 1024
+                }
+              }
+            ])
+          )
+        },
+        responses: {
+          "200": jsonDataResponse("Technician service with replaced cover", {
+            $ref: "#/components/schemas/TechnicianService"
+          }),
+          "400": jsonErrorResponse("error.technician_service.cover_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.technician_service.not_found"),
+          "413": jsonErrorResponse("error.technician_service.cover_too_large"),
+          "415": jsonErrorResponse("error.technician_service.cover_invalid"),
+          "500": jsonErrorResponse("error.internal_server_error")
+        }
+      },
+      delete: {
+        tags: ["Pricing Mode"],
+        summary: "Remove technician owned service cover image",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "serviceId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Technician service with removed cover", {
+            $ref: "#/components/schemas/TechnicianService"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.technician_service.not_found"),
+          "500": jsonErrorResponse("error.internal_server_error")
+        }
+      }
+    },
     [`${config.API_PREFIX}/technicians/{id}`]: {
       get: {
         tags: ["Core Read"],
