@@ -11,6 +11,8 @@
 > entire repository or worktree is clean and does not defend an
 > already-compromised same-user host.
 
+Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
+
 ## 1. 文件状态
 
 - 日期：2026-09-03

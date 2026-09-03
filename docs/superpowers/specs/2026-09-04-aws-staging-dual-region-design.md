@@ -13,6 +13,8 @@
 > repository or worktree is clean and does not defend an already-compromised
 > same-user host.
 
+Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
+
 ## Context
 
 The approved AWS Staging gate was intentionally locked to Tokyo

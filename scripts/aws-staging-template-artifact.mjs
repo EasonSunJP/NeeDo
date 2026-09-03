@@ -126,6 +126,34 @@ function requireSameIdentity(expected, actual) {
   }
 }
 
+export function requireAwsStagingTemplateArtifact(
+  templateArtifact,
+  expectedSourceRevision
+) {
+  if (!templateArtifact
+    || typeof templateArtifact !== "object"
+    || !Object.isFrozen(templateArtifact)
+    || typeof templateArtifact.body !== "string"
+    || templateArtifact.body.length === 0
+    || Buffer.byteLength(templateArtifact.body, "utf8") > MAX_INLINE_TEMPLATE_BYTES
+    || typeof templateArtifact.templateSha256 !== "string"
+    || !/^[0-9a-f]{64}$/.test(templateArtifact.templateSha256)
+    || typeof templateArtifact.sourceRevision !== "string"
+    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(templateArtifact.sourceRevision)
+    || typeof templateArtifact.assertCurrentState !== "function") {
+    throw new Error("AWS Staging requires an immutable approved template artifact");
+  }
+  if (expectedSourceRevision !== undefined
+    && templateArtifact.sourceRevision !== expectedSourceRevision) {
+    throw new Error("AWS Staging template revision does not match the approved source revision");
+  }
+  const actualSha256 = sha256(Buffer.from(templateArtifact.body, "utf8"));
+  if (actualSha256 !== templateArtifact.templateSha256) {
+    throw new Error("AWS Staging template artifact SHA-256 does not match its immutable bytes");
+  }
+  return templateArtifact;
+}
+
 export async function captureAwsStagingTemplateArtifact({
   templatePath,
   repositoryRoot = defaultRepositoryRoot,
@@ -270,10 +298,10 @@ export async function captureAwsStagingTemplateArtifact({
     }
   }
 
-  return Object.freeze({
+  return requireAwsStagingTemplateArtifact(Object.freeze({
     body,
     sourceRevision,
     templateSha256,
     assertCurrentState
-  });
+  }));
 }

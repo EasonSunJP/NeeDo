@@ -36,6 +36,8 @@
 > repository or worktree is clean and does not defend an already-compromised
 > same-user host.
 
+Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
+
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
 
 **Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is the only current credential provider; STS must still prove an exact-account assumed-role caller.

@@ -81,6 +81,23 @@ describe("AWS Staging configuration", () => {
     }
   });
 
+  it("documents immutable template wiring for bootstrap and verification", async () => {
+    const authoritativePaths = [
+      "docs/aws-staging-environment-runbook.md",
+      "docs/superpowers/plans/2026-09-03-aws-staging-environment-only.md",
+      "docs/superpowers/plans/2026-09-04-aws-staging-dual-region.md",
+      "docs/superpowers/specs/2026-09-03-aws-staging-single-ec2-deployment-design.md",
+      "docs/superpowers/specs/2026-09-04-aws-staging-dual-region-design.md"
+    ];
+    const requiredStatement = "Bootstrap and verify each capture the tracked template artifact "
+      + "at the approved revision before credential resolution and pass that same object into "
+      + "the real in-process preflight.";
+    for (const documentPath of authoritativePaths) {
+      const contents = await fs.readFile(new URL(`../${documentPath}`, import.meta.url), "utf8");
+      expect(contents, documentPath).toContain(requiredStatement);
+    }
+  });
+
   it("forbids raw AWS and Session Manager commands in authoritative operator documents", async () => {
     const authoritativePaths = [
       "docs/aws-staging-environment-runbook.md",

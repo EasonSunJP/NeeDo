@@ -14,6 +14,7 @@ import {
   captureAwsStagingRuntimeArtifact,
   requireAwsStagingRuntimeArtifact
 } from "./aws-staging-runtime-artifact.mjs";
+import { captureAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 
 const modulePath = fileURLToPath(import.meta.url);
 const moduleDir = path.dirname(modulePath);
@@ -40,6 +41,7 @@ export async function main(argv = process.argv.slice(2), {
   captureRuntimeArtifactImpl = captureAwsStagingRuntimeArtifact,
   parseAwsStagingBoundArgsImpl = parseAwsStagingBoundArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
+  captureTemplateArtifactImpl = captureAwsStagingTemplateArtifact,
   createAwsCliImpl = createFrozenAwsCli,
   runAwsStagingPreflightImpl = runAwsStagingPreflight,
   verifyAwsStagingEnvironmentImpl = verifyAwsStagingEnvironment,
@@ -49,7 +51,12 @@ export async function main(argv = process.argv.slice(2), {
   const parsed = parseAwsStagingBoundArgsImpl(argv);
   requireAwsStagingRuntimeArtifact(runtimeArtifact, parsed.sourceRevision);
   const config = resolveAwsStagingConfigImpl(parsed);
+  const templateArtifact = await captureTemplateArtifactImpl({
+    templatePath: config.templatePath,
+    approvedRevision: parsed.sourceRevision
+  });
   await runtimeArtifact.assertCurrentState();
+  await templateArtifact.assertCurrentState();
   const aws = await createAwsCliImpl({
     profile: config.profile,
     region: config.region,
@@ -60,6 +67,7 @@ export async function main(argv = process.argv.slice(2), {
       aws,
       config,
       runtimeArtifact,
+      templateArtifact,
       runPreflight: runAwsStagingPreflightImpl
     });
     const evidencePath = await writeAwsStagingAcceptanceEvidenceImpl({ evidence });

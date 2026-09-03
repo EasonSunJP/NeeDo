@@ -10,6 +10,7 @@ import {
   verifyAwsStagingEnvironment as verifyAwsStagingEnvironmentImpl,
   writeAwsStagingAcceptanceEvidence
 } from "./aws-staging-verify-lib.mjs";
+import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
 import {
   AWS_STAGING_CLOUDWATCH_AGENT_CONFIG,
   AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT
@@ -36,9 +37,17 @@ const runtimeArtifact = Object.freeze({
   runtimeEntrypoint: "scripts/aws-staging-verify.mjs",
   assertCurrentState: vi.fn(async () => undefined)
 });
+const templateBody = "AWSTemplateFormatVersion: '2010-09-09'\nResources: {}\n";
+const templateSha256 = createHash("sha256").update(templateBody, "utf8").digest("hex");
+const templateArtifact = Object.freeze({
+  body: templateBody,
+  templateSha256,
+  sourceRevision: runtimeSourceRevision,
+  assertCurrentState: vi.fn(async () => undefined)
+});
 
 function verifyAwsStagingEnvironment(input) {
-  return verifyAwsStagingEnvironmentImpl({ runtimeArtifact, ...input });
+  return verifyAwsStagingEnvironmentImpl({ runtimeArtifact, templateArtifact, ...input });
 }
 
 const requiredTags = Object.freeze({
@@ -509,6 +518,8 @@ function createPreflight(resolveDns, trace = [], overrides = {}, expectedConfig 
       hostname: expectedConfig.hostname,
       amiId: ids.imageId,
       amiArchitecture: "arm64",
+      templateSha256,
+      sourceRevision: runtimeSourceRevision,
       templateValidation: "VALID",
       runtimeSourceRevision,
       runtimeManifestSha256,
@@ -541,6 +552,57 @@ async function verify({ fixture = passingFixture(), resolvedConfig = config, pre
 }
 
 describe("AWS Staging environment-only acceptance", () => {
+  it("wires the same immutable template artifact into the real preflight", async () => {
+    let describeStackCalls = 0;
+    const fixture = passingFixture();
+    const aws = {
+      text: vi.fn(async (args) => {
+        if (args.join(" ") !== "configure list") {
+          throw new Error(`Unexpected AWS text call: ${args.join(" ")}`);
+        }
+        return [
+          "access_key                ****************ABCD      login",
+          "secret_key                ****************EFGH      login"
+        ].join("\n");
+      }),
+      json: vi.fn(async (args) => {
+        const operation = args.slice(0, 2).join(" ");
+        if (operation === "sts get-caller-identity") {
+          return {
+            Account: config.accountId,
+            Arn: `arn:aws:sts::${config.accountId}:assumed-role/NeedoDeployer/session`
+          };
+        }
+        if (operation === "ssm get-parameter") {
+          return { Parameter: { Value: ids.imageId } };
+        }
+        if (operation === "ec2 describe-images") return fixture.image;
+        if (operation === "cloudformation validate-template") return {};
+        if (operation === "cloudformation describe-stacks") {
+          describeStackCalls += 1;
+          if (describeStackCalls === 1) return fixture.stack;
+          throw new Error("post-preflight verify sentinel");
+        }
+        throw new Error(`Unexpected AWS JSON call: ${args.join(" ")}`);
+      })
+    };
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    await expect(verifyAwsStagingEnvironmentImpl({
+      aws,
+      config,
+      resolveDns,
+      runPreflight: runAwsStagingPreflight,
+      runtimeArtifact,
+      templateArtifact,
+      now: () => 0
+    })).rejects.toThrow("post-preflight verify sentinel");
+    expect(aws.json).toHaveBeenCalledWith([
+      "cloudformation", "validate-template", "--template-body", templateBody
+    ]);
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "send-command")).toBe(false);
+  });
+
   it("re-attests runtime identity immediately before the SSM verification mutation", async () => {
     const trace = [];
     const aws = createAws(passingFixture(), trace);
@@ -1001,7 +1063,13 @@ describe("AWS Staging environment-only acceptance", () => {
 
     await verifyAwsStagingEnvironment({ aws, config, resolveDns, runPreflight, now: () => 0 });
     expect(runPreflight).toHaveBeenCalledTimes(1);
-    expect(runPreflight).toHaveBeenCalledWith({ aws, config, resolveDns, runtimeArtifact });
+    expect(runPreflight).toHaveBeenCalledWith({
+      aws,
+      config,
+      resolveDns,
+      runtimeArtifact,
+      templateArtifact
+    });
     expect(trace.slice(0, 3)).toEqual([
       "preflight", `dns:${config.hostname}`,
       `json:cloudformation describe-stacks --stack-name ${config.stackName}`
@@ -1012,6 +1080,8 @@ describe("AWS Staging environment-only acceptance", () => {
     [{ accountId: "999999999999" }, /account/i],
     [{ region: "us-east-1" }, /region/i],
     [{ hostname: "staging.other.life" }, /hostname/i],
+    [{ templateSha256: "0".repeat(64) }, /template/i],
+    [{ sourceRevision: "f".repeat(40) }, /template|revision/i],
     [{ stackState: "CREATE_IN_PROGRESS" }, /stack/i],
     [{ callerKind: "iam-user" }, /preflight/i]
   ])("rejects preflight binding mismatch %# before AWS descriptions", async (overrides, expected) => {
@@ -1581,6 +1651,10 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       ...runtimeArtifact,
       assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
     });
+    const guardedTemplateArtifact = Object.freeze({
+      ...templateArtifact,
+      assertCurrentState: vi.fn(async () => trace.push("template:assert"))
+    });
 
     const summary = await main(["--injected"], {
       captureRuntimeArtifactImpl: vi.fn(async () => {
@@ -1589,6 +1663,14 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       }),
       parseAwsStagingBoundArgsImpl: parseArgs,
       resolveAwsStagingConfigImpl: resolveConfig,
+      captureTemplateArtifactImpl: vi.fn(async (input) => {
+        trace.push("template:capture");
+        expect(input).toEqual({
+          templatePath: config.templatePath,
+          approvedRevision: runtimeSourceRevision
+        });
+        return guardedTemplateArtifact;
+      }),
       createAwsCliImpl: vi.fn(async (input) => {
         trace.push("credentials");
         expect(input.assertRuntimeCurrent).toBe(guardedRuntimeArtifact.assertCurrentState);
@@ -1604,9 +1686,16 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       aws,
       config,
       runPreflight: preflight,
-      runtimeArtifact: guardedRuntimeArtifact
+      runtimeArtifact: guardedRuntimeArtifact,
+      templateArtifact: guardedTemplateArtifact
     });
-    expect(trace).toEqual(["runtime:capture", "runtime:assert", "credentials"]);
+    expect(trace).toEqual([
+      "runtime:capture",
+      "template:capture",
+      "runtime:assert",
+      "template:assert",
+      "credentials"
+    ]);
     expect(writeEvidence).toHaveBeenCalledWith({ evidence });
     expect(aws.dispose).toHaveBeenCalledTimes(1);
     expect(summary).toEqual({
@@ -1630,6 +1719,22 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       }),
       createAwsCliImpl
     })).rejects.toThrow(/runtime closure.*dirty/i);
+    expect(createAwsCliImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses template capture failure before acceptance creates an AWS adapter", async () => {
+    const { main } = await import("./aws-staging-verify.mjs");
+    const createAwsCliImpl = vi.fn(async () => ({ dispose: vi.fn(async () => undefined) }));
+    await expect(main(["--source-revision", runtimeSourceRevision], {
+      captureRuntimeArtifactImpl: vi.fn(async () => runtimeArtifact),
+      parseAwsStagingBoundArgsImpl: vi.fn(() => ({ sourceRevision: runtimeSourceRevision })),
+      resolveAwsStagingConfigImpl: vi.fn(() => config),
+      captureTemplateArtifactImpl: vi.fn(async () => {
+        throw new Error("AWS Staging tracked template became dirty");
+      }),
+      createAwsCliImpl,
+      verifyAwsStagingEnvironmentImpl: vi.fn(async () => Object.freeze({ gate: "unexpected" }))
+    })).rejects.toThrow(/template.*dirty/i);
     expect(createAwsCliImpl).not.toHaveBeenCalled();
   });
 });

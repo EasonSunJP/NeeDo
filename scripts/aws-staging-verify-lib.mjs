@@ -18,6 +18,7 @@ import {
 } from "./aws-staging-attestation.mjs";
 import { requireAwsStagingStackId } from "./aws-staging-stack-contract.mjs";
 import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
+import { requireAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
@@ -233,7 +234,7 @@ async function resolveDnsA(resolveDns, hostname) {
   }
 }
 
-function requireFreshPreflight(preflight, config, runtimeArtifact) {
+function requireFreshPreflight(preflight, config, runtimeArtifact, templateArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
     throw new Error("AWS Staging acceptance requires a fresh immutable in-process preflight");
   }
@@ -244,6 +245,10 @@ function requireFreshPreflight(preflight, config, runtimeArtifact) {
     || preflight.runtimeManifestSha256 !== runtimeArtifact.runtimeManifestSha256
     || preflight.runtimeEntrypoint !== runtimeArtifact.runtimeEntrypoint) {
     throw new Error("Preflight runtime identity mismatch");
+  }
+  if (preflight.templateSha256 !== templateArtifact.templateSha256
+    || preflight.sourceRevision !== templateArtifact.sourceRevision) {
+    throw new Error("Preflight template identity mismatch");
   }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
@@ -1023,6 +1028,7 @@ export async function verifyAwsStagingEnvironment({
   resolveDns = resolve4,
   runPreflight,
   runtimeArtifact,
+  templateArtifact,
   now = Date.now
 }) {
   if (!aws || typeof aws.json !== "function" || typeof aws.text !== "function") {
@@ -1035,13 +1041,23 @@ export async function verifyAwsStagingEnvironment({
   }
 
   const approvedRuntime = requireAwsStagingRuntimeArtifact(runtimeArtifact);
+  const approvedTemplate = requireAwsStagingTemplateArtifact(
+    templateArtifact,
+    approvedRuntime.runtimeSourceRevision
+  );
   const preflight = await runPreflight({
     aws,
     config,
     resolveDns,
-    runtimeArtifact: approvedRuntime
+    runtimeArtifact: approvedRuntime,
+    templateArtifact: approvedTemplate
   });
-  const preflightDns = requireFreshPreflight(preflight, config, approvedRuntime);
+  const preflightDns = requireFreshPreflight(
+    preflight,
+    config,
+    approvedRuntime,
+    approvedTemplate
+  );
 
   const describedStack = await aws.json([
     "cloudformation", "describe-stacks", "--stack-name", config.stackName

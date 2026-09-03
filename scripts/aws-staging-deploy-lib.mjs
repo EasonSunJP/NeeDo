@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { resolve4 } from "node:dns/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
+import { requireAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 import {
   AWS_STAGING_EXPECTED_RESOURCES,
   awsStagingResourceIdentitySha256,
@@ -13,30 +13,6 @@ import {
 
 const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT"]);
 const CREATE_COMPLETE_ONLY = new Set(["CREATE_COMPLETE"]);
-const MAX_INLINE_TEMPLATE_BYTES = 51_200;
-
-function requireTemplateArtifact(templateArtifact) {
-  if (!templateArtifact
-    || typeof templateArtifact !== "object"
-    || !Object.isFrozen(templateArtifact)
-    || typeof templateArtifact.body !== "string"
-    || templateArtifact.body.length === 0
-    || Buffer.byteLength(templateArtifact.body, "utf8") > MAX_INLINE_TEMPLATE_BYTES
-    || typeof templateArtifact.templateSha256 !== "string"
-    || !/^[0-9a-f]{64}$/.test(templateArtifact.templateSha256)
-    || typeof templateArtifact.sourceRevision !== "string"
-    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(templateArtifact.sourceRevision)
-    || typeof templateArtifact.assertCurrentState !== "function") {
-    throw new Error("AWS Staging requires an immutable approved template artifact");
-  }
-  const actualSha256 = createHash("sha256")
-    .update(templateArtifact.body, "utf8")
-    .digest("hex");
-  if (actualSha256 !== templateArtifact.templateSha256) {
-    throw new Error("AWS Staging approved template digest does not match its immutable bytes");
-  }
-  return templateArtifact;
-}
 
 function requireInProcessPreflight(preflight, config, templateArtifact, runtimeArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
@@ -191,7 +167,7 @@ export async function deployAwsStagingInfrastructure({
   if (typeof now !== "function") {
     throw new Error("AWS Staging deployment dependencies are invalid");
   }
-  const artifact = requireTemplateArtifact(templateArtifact);
+  const artifact = requireAwsStagingTemplateArtifact(templateArtifact);
   const approvedRuntime = requireAwsStagingRuntimeArtifact(
     runtimeArtifact,
     artifact.sourceRevision

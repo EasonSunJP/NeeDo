@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { bootstrapAwsStagingHost } from "./aws-staging-bootstrap-host-lib.mjs";
+import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
 import { AWS_STAGING_EXPECTED_RESOURCES } from "./aws-staging-stack-contract.mjs";
 
 const config = Object.freeze({
@@ -37,6 +39,14 @@ const runtimeArtifact = Object.freeze({
   runtimeSourceRevision,
   runtimeManifestSha256,
   runtimeEntrypoint: "scripts/aws-staging-bootstrap-host.mjs",
+  assertCurrentState: vi.fn(async () => undefined)
+});
+const templateBody = "AWSTemplateFormatVersion: '2010-09-09'\nResources: {}\n";
+const templateSha256 = createHash("sha256").update(templateBody, "utf8").digest("hex");
+const templateArtifact = Object.freeze({
+  body: templateBody,
+  templateSha256,
+  sourceRevision: runtimeSourceRevision,
   assertCurrentState: vi.fn(async () => undefined)
 });
 const stackTags = Object.freeze([
@@ -75,6 +85,8 @@ function preflight(overrides = {}) {
     region: config.region,
     amiId: "ami-0123456789abcdef0",
     amiArchitecture: "arm64",
+    templateSha256,
+    sourceRevision: runtimeSourceRevision,
     templateValidation: "VALID",
     runtimeSourceRevision,
     runtimeManifestSha256,
@@ -261,7 +273,8 @@ async function bootstrap({
   clock = createClock(),
   preflightResult = preflight(),
   loadContracts = vi.fn(async () => attestationContracts),
-  approvedRuntime = runtimeArtifact
+  approvedRuntime = runtimeArtifact,
+  approvedTemplate = templateArtifact
 } = {}) {
   return bootstrapAwsStagingHost({
     aws,
@@ -270,11 +283,68 @@ async function bootstrap({
     sleep: clock.sleep,
     runPreflight: vi.fn(async () => preflightResult),
     runtimeArtifact: approvedRuntime,
+    templateArtifact: approvedTemplate,
     loadAttestationContracts: loadContracts
   });
 }
 
 describe("AWS Staging SSM host bootstrap", () => {
+  it("wires the same immutable template artifact into the real preflight", async () => {
+    let describeStackCalls = 0;
+    const aws = {
+      text: vi.fn(async (args) => {
+        if (args.join(" ") !== "configure list") {
+          throw new Error(`Unexpected AWS text call: ${args.join(" ")}`);
+        }
+        return [
+          "access_key                ****************ABCD      login",
+          "secret_key                ****************EFGH      login"
+        ].join("\n");
+      }),
+      json: vi.fn(async (args) => {
+        const operation = args.slice(0, 2).join(" ");
+        if (operation === "sts get-caller-identity") {
+          return {
+            Account: config.accountId,
+            Arn: `arn:aws:sts::${config.accountId}:assumed-role/NeedoDeployer/session`
+          };
+        }
+        if (operation === "ssm get-parameter") {
+          return { Parameter: { Value: "ami-0123456789abcdef0" } };
+        }
+        if (operation === "ec2 describe-images") {
+          return { Images: [{
+            ImageId: "ami-0123456789abcdef0",
+            Architecture: "arm64",
+            State: "available",
+            OwnerId: "137112412989"
+          }] };
+        }
+        if (operation === "cloudformation validate-template") return {};
+        if (operation === "cloudformation describe-stacks") {
+          describeStackCalls += 1;
+          if (describeStackCalls === 1) return stackResult();
+          throw new Error("post-preflight bootstrap sentinel");
+        }
+        throw new Error(`Unexpected AWS JSON call: ${args.join(" ")}`);
+      })
+    };
+
+    await expect(bootstrapAwsStagingHost({
+      aws,
+      config,
+      runPreflight: runAwsStagingPreflight,
+      runtimeArtifact,
+      templateArtifact,
+      resolveDns: vi.fn(async () => []),
+      loadAttestationContracts: vi.fn(async () => attestationContracts)
+    })).rejects.toThrow("post-preflight bootstrap sentinel");
+    expect(aws.json).toHaveBeenCalledWith([
+      "cloudformation", "validate-template", "--template-body", templateBody
+    ]);
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "send-command")).toBe(false);
+  });
+
   it("re-attests runtime identity immediately before the SSM bootstrap mutation", async () => {
     const aws = successfulAws();
     const driftedRuntime = Object.freeze({
@@ -371,7 +441,9 @@ describe("AWS Staging SSM host bootstrap", () => {
 
   it.each([
     [{ accountId: "999999999999" }, /account/i],
-    [{ region: "ap-southeast-2" }, /region/i]
+    [{ region: "ap-southeast-2" }, /region/i],
+    [{ templateSha256: "0".repeat(64) }, /template/i],
+    [{ sourceRevision: "f".repeat(40) }, /template|revision/i]
   ])("requires a fresh preflight identity before any waiter or command %#", async (overrides, expected) => {
     const aws = successfulAws();
 
@@ -797,6 +869,10 @@ describe("AWS Staging SSM host bootstrap", () => {
       ...runtimeArtifact,
       assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
     });
+    const guardedTemplateArtifact = Object.freeze({
+      ...templateArtifact,
+      assertCurrentState: vi.fn(async () => trace.push("template:assert"))
+    });
 
     await expect(main(["--injected"], {
       captureRuntimeArtifactImpl: vi.fn(async () => {
@@ -805,6 +881,14 @@ describe("AWS Staging SSM host bootstrap", () => {
       }),
       parseAwsStagingBoundArgsImpl: parseArgs,
       resolveAwsStagingConfigImpl: resolveConfig,
+      captureTemplateArtifactImpl: vi.fn(async (input) => {
+        trace.push("template:capture");
+        expect(input).toEqual({
+          templatePath: config.templatePath,
+          approvedRevision: runtimeSourceRevision
+        });
+        return guardedTemplateArtifact;
+      }),
       createAwsCliImpl: vi.fn(async (input) => {
         trace.push("credentials");
         expect(input.assertRuntimeCurrent).toBe(guardedRuntimeArtifact.assertCurrentState);
@@ -819,9 +903,16 @@ describe("AWS Staging SSM host bootstrap", () => {
       aws,
       config,
       runPreflight,
-      runtimeArtifact: guardedRuntimeArtifact
+      runtimeArtifact: guardedRuntimeArtifact,
+      templateArtifact: guardedTemplateArtifact
     });
-    expect(trace).toEqual(["runtime:capture", "runtime:assert", "credentials"]);
+    expect(trace).toEqual([
+      "runtime:capture",
+      "template:capture",
+      "runtime:assert",
+      "template:assert",
+      "credentials"
+    ]);
     expect(aws.dispose).toHaveBeenCalledTimes(1);
 
     const stdout = [];
@@ -848,6 +939,22 @@ describe("AWS Staging SSM host bootstrap", () => {
       }),
       createAwsCliImpl
     })).rejects.toThrow(/runtime closure.*dirty/i);
+    expect(createAwsCliImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses template capture failure before bootstrap creates an AWS adapter", async () => {
+    const { main } = await import("./aws-staging-bootstrap-host.mjs");
+    const createAwsCliImpl = vi.fn(async () => ({ dispose: vi.fn(async () => undefined) }));
+    await expect(main(["--source-revision", runtimeSourceRevision], {
+      captureRuntimeArtifactImpl: vi.fn(async () => runtimeArtifact),
+      parseAwsStagingBoundArgsImpl: vi.fn(() => ({ sourceRevision: runtimeSourceRevision })),
+      resolveAwsStagingConfigImpl: vi.fn(() => config),
+      captureTemplateArtifactImpl: vi.fn(async () => {
+        throw new Error("AWS Staging tracked template became dirty");
+      }),
+      createAwsCliImpl,
+      bootstrapAwsStagingHostImpl: vi.fn(async () => Object.freeze({ gate: "unexpected" }))
+    })).rejects.toThrow(/template.*dirty/i);
     expect(createAwsCliImpl).not.toHaveBeenCalled();
   });
 

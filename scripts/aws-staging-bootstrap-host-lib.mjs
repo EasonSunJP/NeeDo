@@ -1,5 +1,7 @@
+import { resolve4 } from "node:dns/promises";
 import { requireAwsStagingHostname, requireAwsStagingRegion } from "./aws-staging-config.mjs";
 import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
+import { requireAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 import {
   attestAwsStagingCloudWatchParameter,
   attestAwsStagingDocument,
@@ -32,7 +34,7 @@ function requireResolvedConfig(config) {
   }
 }
 
-function requireFreshPreflight(preflight, config, runtimeArtifact) {
+function requireFreshPreflight(preflight, config, runtimeArtifact, templateArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
     throw new Error("AWS Staging bootstrap requires a fresh immutable in-process preflight");
   }
@@ -45,6 +47,10 @@ function requireFreshPreflight(preflight, config, runtimeArtifact) {
     || preflight.runtimeManifestSha256 !== runtimeArtifact.runtimeManifestSha256
     || preflight.runtimeEntrypoint !== runtimeArtifact.runtimeEntrypoint) {
     throw new Error("Bootstrap preflight runtime identity mismatch");
+  }
+  if (preflight.templateSha256 !== templateArtifact.templateSha256
+    || preflight.sourceRevision !== templateArtifact.sourceRevision) {
+    throw new Error("Bootstrap preflight template identity mismatch");
   }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
@@ -197,6 +203,8 @@ export async function bootstrapAwsStagingHost({
   sleep = defaultSleep,
   runPreflight,
   runtimeArtifact,
+  templateArtifact,
+  resolveDns = resolve4,
   loadAttestationContracts = loadAwsStagingAttestationContracts
 }) {
   if (!aws || typeof aws.json !== "function" || typeof aws.text !== "function") {
@@ -206,14 +214,26 @@ export async function bootstrapAwsStagingHost({
   if (typeof now !== "function" || typeof sleep !== "function") {
     throw new Error("AWS Staging bootstrap requires clock and sleep boundaries");
   }
-  if (typeof runPreflight !== "function" || typeof loadAttestationContracts !== "function") {
+  if (typeof runPreflight !== "function"
+    || typeof resolveDns !== "function"
+    || typeof loadAttestationContracts !== "function") {
     throw new Error("AWS Staging bootstrap requires preflight and attestation boundaries");
   }
 
   const approvedRuntime = requireAwsStagingRuntimeArtifact(runtimeArtifact);
+  const approvedTemplate = requireAwsStagingTemplateArtifact(
+    templateArtifact,
+    approvedRuntime.runtimeSourceRevision
+  );
   const startedAtMilliseconds = readClock(now);
-  const preflight = await runPreflight({ aws, config, runtimeArtifact: approvedRuntime });
-  requireFreshPreflight(preflight, config, approvedRuntime);
+  const preflight = await runPreflight({
+    aws,
+    config,
+    resolveDns,
+    runtimeArtifact: approvedRuntime,
+    templateArtifact: approvedTemplate
+  });
+  requireFreshPreflight(preflight, config, approvedRuntime, approvedTemplate);
   const contracts = await loadAttestationContracts();
 
   const describedStack = await aws.json([

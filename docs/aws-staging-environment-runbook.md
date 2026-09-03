@@ -145,6 +145,8 @@ separately bound CloudFormation template. Static ESM code is already loaded
 before this in-process check, so this detects ordinary dirty/concurrent drift
 but is not a defense against a previously compromised same-user process.
 
+Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
+
 All five command invocations use the same eight environment/provenance flags.
 Deployment also requires the exact template SHA-256 emitted by the immediately
 preceding preflight. Substitute only the angle-bracketed

@@ -1,36 +1,13 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { resolve4 } from "node:dns/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
+import { requireAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 
 const AMI_PARAMETER_NAME = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64";
 const AMAZON_AMI_OWNER_ID = "137112412989";
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
 const TEMPORARY_CREDENTIAL_TYPES = new Set(["login"]);
-const MAX_INLINE_TEMPLATE_BYTES = 51_200;
-
-function requireTemplateArtifact(templateArtifact) {
-  if (!templateArtifact
-    || typeof templateArtifact !== "object"
-    || !Object.isFrozen(templateArtifact)
-    || typeof templateArtifact.body !== "string"
-    || templateArtifact.body.length === 0
-    || Buffer.byteLength(templateArtifact.body, "utf8") > MAX_INLINE_TEMPLATE_BYTES
-    || typeof templateArtifact.templateSha256 !== "string"
-    || !/^[0-9a-f]{64}$/.test(templateArtifact.templateSha256)
-    || typeof templateArtifact.sourceRevision !== "string"
-    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(templateArtifact.sourceRevision)) {
-    throw new Error("AWS Staging requires an immutable approved template artifact");
-  }
-  const actualSha256 = createHash("sha256")
-    .update(templateArtifact.body, "utf8")
-    .digest("hex");
-  if (actualSha256 !== templateArtifact.templateSha256) {
-    throw new Error("AWS Staging template artifact SHA-256 does not match its immutable bytes");
-  }
-  return templateArtifact;
-}
 
 function requireTemporaryCredentialSource(configureList) {
   const rows = [];
@@ -186,7 +163,7 @@ export async function runAwsStagingPreflight({
   resolveDns = resolve4
 }) {
   const hostname = requireAwsStagingHostname(config.hostname);
-  const artifact = requireTemplateArtifact(templateArtifact);
+  const artifact = requireAwsStagingTemplateArtifact(templateArtifact);
   const approvedRuntime = requireAwsStagingRuntimeArtifact(
     runtimeArtifact,
     artifact.sourceRevision

@@ -31,7 +31,8 @@ const runtimeManifestSha256 = "d".repeat(64);
 const templateArtifact = Object.freeze({
   body: templateBody,
   templateSha256,
-  sourceRevision: templateRevision
+  sourceRevision: templateRevision,
+  assertCurrentState: vi.fn(async () => undefined)
 });
 const defaultRuntimeArtifact = Object.freeze({
   runtimeSourceRevision: templateRevision,
