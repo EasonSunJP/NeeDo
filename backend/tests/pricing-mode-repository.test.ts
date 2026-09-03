@@ -9,6 +9,7 @@ const missingRateColumnError = {
 
 const serviceRecord = (id: number, shopId: number, deletedAt: Date | null = null) => ({
   id,
+  publicId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
   shopId,
   technicianId: 3,
   sourceShopServiceId: null,
@@ -31,7 +32,18 @@ const serviceRecord = (id: number, shopId: number, deletedAt: Date | null = null
   updatedBy: 8,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),
-  deletedAt
+  deletedAt,
+  shop: {
+    name: `Shop ${shopId}`,
+    address: `Address ${shopId}`,
+    publicIdentifier: {
+      publicId: `shop${String(shopId).padStart(10, "0")}`,
+      kind: "SHOP",
+      status: "ACTIVE",
+      deletedAt: null
+    }
+  },
+  _count: { bookingOrders: 7 }
 });
 
 const createInput = (shopId: number) => ({
@@ -203,7 +215,83 @@ describe("PricingModeRepository", () => {
         isActive: true,
         reviewStatus: "APPROVED"
       },
+      include: expect.objectContaining({
+        shop: expect.any(Object),
+        _count: {
+          select: {
+            bookingOrders: {
+              where: { status: "COMPLETED", deletedAt: null }
+            }
+          }
+        }
+      }),
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+    });
+  });
+
+  it("returns formal service utilization and active public shop metadata in one reusable include", async () => {
+    const findMany = jest.fn(async () => [serviceRecord(21, 9)]);
+    const repository = new PricingModeRepository({
+      technicianService: {
+        findMany,
+        count: jest.fn(async () => 1)
+      }
+    } as unknown as PrismaClient);
+
+    await expect(repository.listTechnicianServices({
+      shopId: 9,
+      technicianId: 3,
+      page: 1,
+      pageSize: 20
+    })).resolves.toMatchObject({
+      list: [{
+        id: 21,
+        publicId: "00000000-0000-4000-8000-000000000021",
+        usageCount: 7,
+        shop: {
+          publicId: "shop0000000009",
+          name: "Shop 9",
+          address: "Address 9"
+        }
+      }]
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: {
+        shop: {
+          select: expect.objectContaining({
+            name: true,
+            address: true,
+            publicIdentifier: expect.any(Object)
+          })
+        },
+        _count: {
+          select: {
+            bookingOrders: {
+              where: { status: "COMPLETED", deletedAt: null }
+            }
+          }
+        }
+      }
+    }));
+
+    findMany.mockResolvedValueOnce([{
+      ...serviceRecord(22, 9),
+      shop: {
+        ...serviceRecord(22, 9).shop,
+        publicIdentifier: {
+          ...serviceRecord(22, 9).shop.publicIdentifier,
+          status: "RETIRED"
+        }
+      }
+    }]);
+    await expect(repository.listTechnicianServices({
+      shopId: 9,
+      technicianId: 3,
+      page: 1,
+      pageSize: 20
+    })).resolves.toMatchObject({
+      list: [{ shop: { publicId: null } }]
     });
   });
 

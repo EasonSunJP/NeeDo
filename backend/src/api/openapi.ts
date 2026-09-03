@@ -4881,11 +4881,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           acceptanceRateBps: { type: "integer", minimum: 0, maximum: 10000 }
         }
       },
+      TechnicianServiceShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name", "address"],
+        properties: {
+          publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$" },
+          name: { type: "string" },
+          address: { type: "string" }
+        }
+      },
       TechnicianService: {
         type: "object",
         additionalProperties: false,
         required: [
           "id",
+          "publicId",
           "shopId",
           "technicianId",
           "sourceShopServiceId",
@@ -4895,10 +4906,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "priceAmount",
           "currency",
           "durationMinutes",
+          "usageCount",
           "taxIncluded",
           "coverImageUrl",
           "images",
           "tags",
+          "shop",
           "isActive",
           "isBookable",
           "isRecommended",
@@ -4910,6 +4923,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", format: "uuid" },
           shopId: { type: "integer", minimum: 1 },
           technicianId: { type: "integer", minimum: 1 },
           sourceShopServiceId: { type: ["integer", "null"], minimum: 1 },
@@ -4919,10 +4933,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           priceAmount: { type: "integer", minimum: 0 },
           currency: { type: "string", minLength: 3, maxLength: 3 },
           durationMinutes: { type: "integer", minimum: 1 },
+          usageCount: { type: "integer", minimum: 0 },
           taxIncluded: { type: "boolean", enum: [true] },
           coverImageUrl: { type: ["string", "null"] },
           images: { type: "array", items: { type: "string" } },
           tags: { type: "array", items: { type: "string" } },
+          shop: { $ref: "#/components/schemas/TechnicianServiceShop" },
           isActive: { type: "boolean" },
           isBookable: { type: "boolean" },
           isRecommended: { type: "boolean" },
@@ -7313,6 +7329,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "priceAmount",
           "currency",
           "durationMinutes",
+          "usageCount",
           "coverUrl",
           "reviewSummary"
         ],
@@ -7330,6 +7347,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           priceAmount: { type: "string", example: "8800.00" },
           currency: { type: "string", example: "JPY" },
           durationMinutes: { type: "integer" },
+          usageCount: { type: "integer", minimum: 0 },
           coverUrl: { type: ["string", "null"] },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" }
         }

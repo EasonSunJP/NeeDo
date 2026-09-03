@@ -1290,6 +1290,27 @@ describe("GET /api/v1/openapi.json", () => {
       );
     });
     expect(response.body.components.schemas).toHaveProperty("ServiceCard");
+    expect(response.body.components.schemas.ServiceCard.required).toContain("usageCount");
+    expect(response.body.components.schemas.ServiceCard.properties.usageCount).toEqual({
+      type: "integer",
+      minimum: 0
+    });
+    expect(response.body.components.schemas.TechnicianService.required).toEqual(
+      expect.arrayContaining(["publicId", "usageCount", "shop"])
+    );
+    expect(response.body.components.schemas.TechnicianService.properties).toMatchObject({
+      publicId: { type: "string", format: "uuid" },
+      usageCount: { type: "integer", minimum: 0 },
+      shop: { $ref: "#/components/schemas/TechnicianServiceShop" }
+    });
+    expect(response.body.components.schemas.TechnicianServiceShop).toMatchObject({
+      required: ["publicId", "name", "address"],
+      properties: {
+        publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$" },
+        name: { type: "string" },
+        address: { type: "string" }
+      }
+    });
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");
     expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toContain("shop");
     expect(response.body.components.schemas).toHaveProperty("CustomerProfile");
