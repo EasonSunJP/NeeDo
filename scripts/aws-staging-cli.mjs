@@ -16,11 +16,11 @@ function assertSafeArguments(args) {
   }
 
   const canonicalArguments = args.map((argument) => argument.toLowerCase().replace(/[-_]/g, ""));
-  const isAllowedConfigureList = canonicalArguments.length === 2
-    && canonicalArguments[0] === "configure"
-    && canonicalArguments[1] === "list";
+  const isAllowedConfigureList = args.length === 2
+    && args[0] === "configure"
+    && args[1] === "list";
   if (canonicalArguments.some((argument) => [...FORBIDDEN_ARGUMENTS].some((forbidden) => argument.includes(forbidden)))
-    || (canonicalArguments.includes("configure") && !isAllowedConfigureList)) {
+    || (canonicalArguments.some((argument) => argument.startsWith("configure")) && !isAllowedConfigureList)) {
     throw new Error("forbidden AWS CLI credential or secret surface");
   }
 }

@@ -56,6 +56,22 @@ describe("AWS CLI adapter", () => {
   });
 
   it.each([
+    ["uppercase configure/list", ["CONFIGURE", "list"]],
+    ["hyphenated configure", ["configure-list"]],
+    ["underscored configure", ["configure_list"]],
+    ["configure get", ["configure", "get"]],
+    ["configure import", ["configure", "import"]],
+    ["configure sso", ["configure", "sso"]],
+    ["configure list with an extra argument", ["configure", "list", "extra"]],
+    ["global-option-prefixed configure list", ["--profile", "x", "configure", "list"]]
+  ])("rejects raw non-exact configure form: %s", (_name, args) => {
+    const execFileImpl = vi.fn();
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+    expect(() => aws.text(args)).toThrow("forbidden");
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ["--secret-string", "value"],
     ["--secret-binary", "value"]
   ])("rejects %s before invoking the process runner", (flag, value) => {
