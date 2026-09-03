@@ -1,7 +1,7 @@
 # NeeDo AWS Staging Dual-Region Gate Design
 
-**Date:** 2026-09-04  
-**Status:** Approved design amendment  
+**Date:** 2026-09-04
+**Status:** Approved design amendment
 **Scope:** Deployment safety gate only; no AWS resource, application, database, TLS, or DNS mutation
 
 ## Context
