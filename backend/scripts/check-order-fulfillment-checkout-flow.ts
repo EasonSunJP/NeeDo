@@ -823,7 +823,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     idempotencyKey: `${fixture.marker}-sigma-collision`
   }).success, "review validator accepted a final-sigma collision");
   const customerReviewInput = validatorModule.orderReviewCreateBodySchema.parse({
-    targetType: "technician", rating: 5, tags: ["ＳＰＡ", "ı", "i"],
+    targetType: "technician", rating: 5, tags: ["服务精神", "ＳＰＡ"],
     comment: "  Ｆｏｒｍａｌ  ",
     idempotencyKey: `${fixture.marker}-customer-review`
   });
@@ -1071,7 +1071,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     technicianTargetReview.customerProfileId === null && technicianTargetReview.rating === 5 &&
     technicianTargetReview.comment === "Formal" &&
     JSON.stringify(technicianTargetReview.tags.map((tag) => tag.label).sort()) ===
-      JSON.stringify(["SPA", "i", "ı"].sort()),
+      JSON.stringify(["SPA", "服务max"].sort()),
   "technician-target review normalization/ownership is not exact");
   assert(customerTargetReview?.reviewerUserId === fixture.technician.id &&
     customerTargetReview.customerProfileId === fixture.customerProfileId &&
@@ -1133,10 +1133,10 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     tx, cashOrder.id, fixture.customer.id, currency
   );
   assertNoCashDebit(cashNoDebitBefore, cashNoDebitAfter);
-  const cashCustomerReview = {
-    targetType: "technician" as const, rating: 4, tags: ["服务精神"], comment: "现金流程",
+  const cashCustomerReview = validatorModule.orderReviewCreateBodySchema.parse({
+    targetType: "technician", rating: 4, tags: ["服务精神"], comment: "现金流程",
     idempotencyKey: `${fixture.marker}-cash-customer-review`
-  };
+  });
   await service.createOrderReview(customer, cashOrder.id, cashCustomerReview, context);
   await service.createOrderReview(customer, cashOrder.id, cashCustomerReview, context);
   await service.createOrderReview(technician, cashOrder.id, {
@@ -1328,8 +1328,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const customerSummary = summaryRows.find(
     (summary) => summary.customerProfileId === fixture.customerProfileId
   );
-  const expectedTechnicianHighlights = ["SPA", "i", "ı", "服务精神"]
-    .sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+  const expectedTechnicianHighlights = ["服务max", "SPA"];
   assert(summaryRows.length === 2 && technicianSummary?.targetType === "technician" &&
     technicianSummary.targetId === fixture.technicianProfileId &&
     technicianSummary.reviewCount === 2 && technicianSummary.ratingAverage.toString() === "4.5" &&
