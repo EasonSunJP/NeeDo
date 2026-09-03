@@ -23,7 +23,8 @@ type OrderServiceMiniCardProps = {
 };
 
 export function buildOrderServiceMiniCardData(order: Order): UnifiedServiceInfoCardData {
-  const durationMinutes = Number(order.itemName.match(/(\d+)\s*分钟/u)?.[1] ?? 0);
+  const durationMatch = order.itemName.match(/(\d+)\s*分钟/u)?.[1];
+  const durationMinutes = durationMatch ? Number(durationMatch) : null;
 
   return {
     id: order.id,

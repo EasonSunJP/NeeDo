@@ -17,6 +17,12 @@ function formatPrice(amount: number, currency: string) {
   return currency.toUpperCase() === "JPY" ? `￥${price}` : `${currency.toUpperCase()} ${price}`;
 }
 
+function formatDuration(durationMinutes: number | null) {
+  return durationMinutes !== null && Number.isFinite(durationMinutes) && durationMinutes > 0
+    ? `${durationMinutes}分钟`
+    : "时长未读取";
+}
+
 function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCardData; hasActions: boolean }) {
   const visibleTags = data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 8);
 
@@ -39,7 +45,7 @@ function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCard
       <div className={cn("min-w-0 px-4 py-3.5", hasActions ? "pr-[118px]" : "")}>
         <h3 className="text-[17px] font-black leading-6 text-[color:var(--client-text)]">{data.name}</h3>
         <strong className="mt-1 block text-[19px] font-black tracking-[-0.02em] text-[color:var(--client-primary)]">
-          {formatPrice(data.priceAmount, data.currency)}/{data.durationMinutes}分钟
+          {formatPrice(data.priceAmount, data.currency)}/{formatDuration(data.durationMinutes)}
         </strong>
 
         <div className="mt-2 space-y-1 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">

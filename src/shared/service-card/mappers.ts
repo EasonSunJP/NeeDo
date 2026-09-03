@@ -1,6 +1,6 @@
 import type { CoreServiceCard, CoreServiceDetail } from "../../features/core-read/api";
 import type { TechnicianServicePayload } from "../../features/pricing-mode/api";
-import type { ServiceItem, Store, Technician } from "../../types/domain";
+import type { ServiceItem, Store, StoreMenuConfig, Technician } from "../../types/domain";
 import type { UnifiedServiceInfoCardData } from "./model";
 
 function normalizeText(value: string | null | undefined) {
@@ -72,11 +72,30 @@ export function mapServiceItemToUnifiedData(service: ServiceItem, provider?: Sto
     name: service.name,
     priceAmount: normalizeAmount(service.priceFrom),
     currency: service.formal?.currency ?? "JPY",
-    durationMinutes: service.formal?.durationMinutes ?? service.packages[0]?.durationMinutes ?? 0,
+    durationMinutes: service.formal?.durationMinutes ?? service.packages[0]?.durationMinutes ?? null,
     usageCount: service.formal?.usageCount ?? null,
     shopPublicId: normalizeText(service.formal?.shopPublicId) ?? formalShopPublicId(provider),
     shopAddress: normalizeText(service.formal?.shopAddress) ?? (isStoreProvider(provider) ? normalizeText(provider.address) : null),
     description: normalizeText(service.summary),
     tags: uniqueStrings(service.tags).slice(0, 8)
+  };
+}
+
+export function mapStoreMenuConfigToUnifiedData(menu: StoreMenuConfig, store: Store): UnifiedServiceInfoCardData {
+  const priceMatch = menu.priceLabel.match(/\d[\d,]*/u)?.[0];
+  const durationMatch = menu.duration.match(/\d+/u)?.[0];
+
+  return {
+    id: normalizeText(menu.sourceServiceId) ?? menu.id,
+    coverUrl: normalizeText(menu.cover),
+    name: menu.name,
+    priceAmount: normalizeAmount(priceMatch?.replaceAll(",", "") ?? 0),
+    currency: "JPY",
+    durationMinutes: durationMatch ? Number(durationMatch) : null,
+    usageCount: null,
+    shopPublicId: formalShopPublicId(store),
+    shopAddress: normalizeText(store.address),
+    description: normalizeText(menu.subtitle),
+    tags: uniqueStrings(menu.tags).slice(0, 8)
   };
 }
