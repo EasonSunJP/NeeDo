@@ -8,16 +8,26 @@ const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
 const TEMPORARY_CREDENTIAL_TYPES = new Set(["login"]);
 
 function requireTemporaryCredentialSource(configureList) {
-  const rows = String(configureList)
-    .split(/\r?\n/)
-    .map((line) => line.trim().split(/\s{2,}/))
-    .filter((columns) => columns.length >= 3);
-  const accessRow = rows.find(([name]) => name === "access_key");
-  const secretRow = rows.find(([name]) => name === "secret_key");
-  const accessType = accessRow?.[2];
-  const secretType = secretRow?.[2];
+  const rows = [];
+  for (const line of String(configureList).split(/\r?\n/)) {
+    const colonRow = /^\s*(access_key|secret_key)\s*:\s*[^:\r\n]*\s*:\s*([a-z][a-z-]*)\s*:\s*[^:\r\n]*\s*$/.exec(line);
+    if (colonRow) {
+      rows.push({ name: colonRow[1], type: colonRow[2] });
+      continue;
+    }
+    const columns = line.trim().split(/\s{2,}/);
+    if (columns.length >= 3 && (columns[0] === "access_key" || columns[0] === "secret_key")) {
+      rows.push({ name: columns[0], type: columns[2] });
+    }
+  }
+  const accessRows = rows.filter(({ name }) => name === "access_key");
+  const secretRows = rows.filter(({ name }) => name === "secret_key");
+  const accessType = accessRows[0]?.type;
+  const secretType = secretRows[0]?.type;
 
-  if (!TEMPORARY_CREDENTIAL_TYPES.has(accessType)
+  if (accessRows.length !== 1
+    || secretRows.length !== 1
+    || !TEMPORARY_CREDENTIAL_TYPES.has(accessType)
     || !TEMPORARY_CREDENTIAL_TYPES.has(secretType)
     || accessType !== secretType) {
     throw new Error("AWS configure list credential TYPE must be login for this personal-stage gate");

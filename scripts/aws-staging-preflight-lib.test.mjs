@@ -161,6 +161,23 @@ describe("AWS Staging preflight", () => {
     }
   );
 
+  it("accepts the AWS CLI v2 colon-delimited configure-list login rows", async () => {
+    const aws = successfulAws({
+      configureOutput: [
+        "      Name                    Value             Type    Location",
+        "      ----                    -----             ----    --------",
+        "access_key : ****************ABCD     : login            :",
+        "secret_key : ****************WXYZ     : login            :"
+      ].join("\n")
+    });
+
+    await expect(runAwsStagingPreflight({
+      aws,
+      config,
+      resolveDns: async () => []
+    })).resolves.toMatchObject({ callerKind: "assumed-role" });
+  });
+
   it.each(["sso", "assume-role", "custom-process"])(
     "rejects deferred company-profile provider TYPE %s before identity or mutation",
     async (credentialType) => {
