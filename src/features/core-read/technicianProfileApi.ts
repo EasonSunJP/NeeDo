@@ -59,6 +59,11 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
   | "visibility"
 >> & { avatarDataUrl?: string };
 
+export type TechnicianPersonalCenterUpdate = Pick<
+  TechnicianSelfProfile,
+  "gender" | "age" | "heightCm" | "languages" | "bio" | "visibility"
+>;
+
 export const technicianProfileApi = {
   getMine() {
     return httpClient.request<TechnicianSelfProfile>("/technician-profile/me");
