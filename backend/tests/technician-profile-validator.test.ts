@@ -4,19 +4,19 @@ describe("technician profile self-edit validation", () => {
   it("accepts the complete public self-edit payload", () => {
     expect(technicianProfileUpdateBodySchema.parse({
       displayName: "田中 彩",
+      gender: "female",
       age: 28,
       heightCm: 164,
       languages: ["日本語", "中文"],
       bio: "肩颈护理与睡眠放松。",
       serviceAreas: ["銀座", "新宿"],
-      profileTags: ["肩颈调理", "深层舒缓"],
       canServeForeigners: true,
       bidBudgetMinJpy: 12_000,
       bidBudgetMaxJpy: 28_000,
       paymentMethods: ["platform", "offline", "cash", "paypay"],
       serviceBase: { latitude: 35.6762, longitude: 139.6503 },
       visibility: "network"
-    })).toMatchObject({ displayName: "田中 彩", visibility: "network" });
+    })).toMatchObject({ displayName: "田中 彩", gender: "female", visibility: "network" });
   });
 
   it("accepts a complete service-base coordinate pair or an explicit clear", () => {
@@ -34,12 +34,10 @@ describe("technician profile self-edit validation", () => {
     expect(technicianProfileUpdateBodySchema.parse({
       languages: [],
       serviceAreas: [],
-      profileTags: [],
       paymentMethods: []
     })).toEqual({
       languages: [],
       serviceAreas: [],
-      profileTags: [],
       paymentMethods: []
     });
   });
@@ -51,6 +49,8 @@ describe("technician profile self-edit validation", () => {
     { heightCm: 299 },
     { bidBudgetMinJpy: 20_000, bidBudgetMaxJpy: 10_000 },
     { paymentMethods: ["crypto"] },
+    { gender: "unknown" },
+    { profileTags: ["肩颈调理"] },
     { visibility: "friends" },
     { avatarDataUrl: "data:text/plain;base64,SGVsbG8=" },
     { serviceBase: { latitude: 35.6762 } },

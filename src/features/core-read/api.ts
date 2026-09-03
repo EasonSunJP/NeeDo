@@ -129,6 +129,9 @@ export type CoreTechnicianDetail = CoreTechnicianCard & {
   shop: CoreShopCard | null;
   bio: string | null;
   serviceArea: string | null;
+  gender: "female" | "male" | "private";
+  heightCm: number | null;
+  languages: string[];
   yearsExperience: number;
   reviewTagSummary: TechnicianReviewTagSummary;
   mediaAssets: CoreMediaAsset[];
@@ -531,7 +534,7 @@ export const coreReadApi = {
     return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false });
   },
 
-  getTechnicianDetail(id: number) {
+  getTechnicianDetail(id: number | string) {
     return httpClient.request<CoreTechnicianDetail>(`/technicians/${id}`, { auth: false });
   },
 

@@ -75,12 +75,12 @@ export class TechnicianProfileService {
   private mutation(input: TechnicianProfileUpdateBody): TechnicianProfileMutation {
     return {
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+      ...(input.gender !== undefined ? { gender: input.gender } : {}),
       ...(input.age !== undefined ? { age: input.age } : {}),
       ...(input.heightCm !== undefined ? { heightCm: input.heightCm } : {}),
       ...(input.languages !== undefined ? { languages: input.languages } : {}),
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
       ...(input.serviceAreas !== undefined ? { serviceAreas: input.serviceAreas } : {}),
-      ...(input.profileTags !== undefined ? { profileTags: input.profileTags } : {}),
       ...(input.canServeForeigners !== undefined
         ? { canServeForeigners: input.canServeForeigners }
         : {}),

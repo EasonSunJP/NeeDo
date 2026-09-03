@@ -13,6 +13,7 @@ const record = {
   serviceAreasJson: ["銀座"],
   baseLatitude: { toString: () => "35.6762000" },
   baseLongitude: { toString: () => "139.6503000" },
+  gender: "female",
   age: 28,
   heightCm: 164,
   languages: ["日本語"],
@@ -63,6 +64,7 @@ describe("TechnicianProfileRepository", () => {
     const repository = new TechnicianProfileRepository(client);
 
     await expect(repository.findMine(9, 31)).resolves.toMatchObject({
+      gender: "female",
       specialTags: [],
       profileTags: [],
       serviceBase: { latitude: 35.6762, longitude: 139.6503 },
@@ -112,6 +114,7 @@ describe("TechnicianProfileRepository", () => {
       19,
       {
         displayName: "彩",
+        gender: "female",
         serviceBase: { latitude: 35.6895, longitude: 139.6917 },
         avatar: { url: "/media/customer-avatars/avatar.png", mimeType: "image/png" }
       },
@@ -129,6 +132,7 @@ describe("TechnicianProfileRepository", () => {
     expect(transaction.technicianProfile.update).toHaveBeenCalledWith({
       where: { id: 31 },
       data: expect.objectContaining({
+        gender: "female",
         baseLatitude: 35.6895,
         baseLongitude: 139.6917
       })

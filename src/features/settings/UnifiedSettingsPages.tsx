@@ -2496,7 +2496,6 @@ function TechnicianProfileSettingsPage({
       languages: Array.from(new Set(draft.languages)),
       bio: draft.bio.trim() || null,
       serviceAreas: Array.from(new Set(draft.serviceAreas)),
-      profileTags: Array.from(new Set(draft.profileTags)),
       canServeForeigners: draft.canServeForeigners,
       bidBudgetMinJpy: draft.bidBudgetMin.trim() ? Number(draft.bidBudgetMin) : null,
       bidBudgetMaxJpy: draft.bidBudgetMax.trim() ? Number(draft.bidBudgetMax) : null,

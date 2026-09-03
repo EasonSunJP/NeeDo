@@ -601,6 +601,43 @@ describe("GET /api/v1/openapi.json", () => {
       ])
     );
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
+    expect(response.body.paths["/api/v1/technicians/{id}"].get.parameters[0].schema.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "integer", minimum: 1 }),
+        expect.objectContaining({ type: "string", pattern: "^s[0-9]{10}$" })
+      ])
+    );
+    expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toEqual(
+      expect.arrayContaining(["gender", "heightCm", "languages", "reviewTagSummary"])
+    );
+    expect(
+      response.body.components.schemas.TechnicianDetail.allOf[1].properties.reviewTagSummary
+    ).toEqual({ $ref: "#/components/schemas/TechnicianReviewTagSummary" });
+    expect(response.body.components.schemas.TechnicianSelfProfile.required).toEqual(
+      expect.arrayContaining(["gender", "reviewTagSummary"])
+    );
+    expect(response.body.components.schemas.TechnicianSelfProfileUpdate.properties.gender).toEqual({
+      type: "string",
+      enum: ["female", "male", "private"]
+    });
+    expect(
+      response.body.components.schemas.TechnicianSelfProfileUpdate.properties
+    ).not.toHaveProperty("profileTags");
+    expect(response.body.components.schemas.TechnicianReviewTagSummary).toMatchObject({
+      required: ["special", "custom"],
+      properties: {
+        special: {
+          type: "array",
+          minItems: 4,
+          maxItems: 4,
+          items: { $ref: "#/components/schemas/TechnicianReviewSpecialTagCount" }
+        },
+        custom: {
+          type: "array",
+          items: { $ref: "#/components/schemas/TechnicianReviewCustomTagCount" }
+        }
+      }
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/schedule/availability");
     expect(response.body.paths["/api/v1/schedule/availability"].get.description).toEqual(

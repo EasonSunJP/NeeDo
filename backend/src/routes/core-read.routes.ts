@@ -12,6 +12,7 @@ import {
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
+  coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
   serviceListQuerySchema
@@ -60,7 +61,7 @@ export const createCoreReadRoutes = (
   );
   router.get(
     "/technicians/:id",
-    validateRequest({ params: coreReadIdParamSchema }),
+    validateRequest({ params: coreReadTechnicianIdParamSchema }),
     controller.getTechnicianDetail
   );
   router.get(
