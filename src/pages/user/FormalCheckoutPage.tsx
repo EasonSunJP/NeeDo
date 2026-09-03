@@ -12,13 +12,12 @@ import {
 import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "../../features/booking/api";
 import {
   coreReadApi,
-  mapCoreServiceToServiceItem,
   type CoreServiceDetail,
   type CoreTechnicianCard
 } from "../../features/core-read/api";
-import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
 import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
+import { mapCoreServiceCardToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import type { FulfillmentMode } from "../../types/domain";
 import {
   CheckoutProgressNav,
@@ -253,13 +252,8 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     };
   }, [selectedTechnicianProfileId, service?.technician?.id]);
 
-  const displayService = useMemo(
-    () => (service ? mapCoreServiceToServiceItem(service) : null),
-    [service]
-  );
   const supportsBothModes = service?.serviceMode === "both";
   const people = searchParams.get("people") ?? "1名";
-  const packageDetail = displayService?.packages[0] ?? null;
   const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
   const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
   const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
@@ -431,53 +425,11 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
         </div>
       ) : null}
 
-      {loadStatus === "success" && service && displayService ? (
+      {loadStatus === "success" && service ? (
         <>
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[0] = node)}>
             <SectionTitle>套餐</SectionTitle>
-            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
-              <div className="relative h-[196px] w-full overflow-hidden rounded-[24px] bg-black">
-                <img
-                  alt={service.name}
-                  className="absolute inset-0 h-full w-full scale-[1.035] object-cover"
-                  src={getGeneratedImageThumbnailUrl(displayService.cover)}
-                />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {displayService.tags.slice(0, 2).map((tag) => (
-                  <span
-                    className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-muted)]"
-                    key={tag}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-              <h1 className="mt-3 text-[20px] font-black leading-tight tracking-[-0.03em] text-[color:var(--client-text)]">{service.name}</h1>
-              {service.description ? (
-                <p className="mt-1.5 text-sm leading-6 text-[color:var(--client-muted)]">{service.description}</p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <strong className="text-[25px] font-black tracking-[-0.04em] text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
-                <span className="text-sm font-semibold text-[color:var(--client-muted)]">{service.durationMinutes} 分钟</span>
-                <span className="text-sm font-semibold text-[color:var(--client-muted)]">{service.city}</span>
-              </div>
-              {packageDetail?.includes.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {packageDetail.includes.slice(0, 4).map((item) => (
-                    <span
-                      className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
-                      key={item}
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3">
-                <p className="text-xs font-semibold text-[color:var(--client-muted)]">{packageDetail?.name ?? service.category.name}</p>
-              </div>
-            </div>
+            <UnifiedServiceInfoCard data={mapCoreServiceCardToUnifiedData(service)} detailTo={`/services/${service.id}`} />
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[1] = node)}>

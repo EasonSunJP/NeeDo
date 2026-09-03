@@ -43,6 +43,8 @@ describe("UserOrderDetailPage header", () => {
 
   it("keeps the production order-detail information hierarchy", () => {
     expect(source).toContain("SocialProfileMiniCard");
+    expect(source).toContain("UnifiedServiceInfoCard");
+    expect(source).toContain("mapCoreServiceCardToUnifiedData");
     for (const title of ["服务", "店铺 / 服务方", "技师 / 担当", "预约情报", "订单追踪信息"]) {
       expect(source).toContain(`title=\"${title}\"`);
     }
@@ -51,6 +53,15 @@ describe("UserOrderDetailPage header", () => {
     expect(source).toContain("支付手段");
     expect(source).toContain("来源");
     expect(source).toContain("服务验证码");
+  });
+
+  it("uses honest snapshots when formal service metadata cannot be read", () => {
+    expect(source).toContain("buildBookingOrderSnapshotServiceData(order)");
+    expect(source).toContain("order.serviceDurationSnapshot ?? getPersistedBookingDurationMinutes(order)");
+    expect(source).toContain("usageCount: null");
+    expect(source).toContain("shopPublicId: null");
+    expect(source).toContain("shopAddress: null");
+    expect(source).toContain("buildOrderServiceMiniCardData(order)");
   });
 
   it("routes the order technician card to the formal user-scoped information page", () => {

@@ -60,7 +60,6 @@ type ServiceRecommendationCardData = {
   id: string;
   to: string;
   service: ServiceItem;
-  provider?: Store | Technician;
 };
 
 type StoreRecommendationCardData = {
@@ -125,47 +124,6 @@ function formatDateTimeLabel(date: Date) {
 
 function sortByLocation<T>(items: T[], getLocationValues: (item: T) => string[], location: HomeLocationOption) {
   return [...items].sort((left, right) => getLocationScore(getLocationValues(right), location) - getLocationScore(getLocationValues(left), location));
-}
-
-function getTextOverlapScore(values: string[], targets: string[]) {
-  const haystack = values.filter(Boolean).map(normalizeText).join("|");
-
-  if (!haystack) {
-    return 0;
-  }
-
-  return targets.filter(Boolean).map(normalizeText).reduce((total, token) => {
-    if (!token) {
-      return total;
-    }
-
-    return haystack.includes(token) || token.includes(haystack) ? total + 1 : total;
-  }, 0);
-}
-
-function getServiceProviderScore(values: string[], service: ServiceItem, location: HomeLocationOption) {
-  const serviceTerms = [service.name, service.summary, ...service.tags, ...service.serviceAreas];
-
-  return getLocationScore(values, location) * 4 + getTextOverlapScore(values, serviceTerms);
-}
-
-function resolveServiceProvider(service: ServiceItem, storeList: Store[], technicianList: Technician[], location: HomeLocationOption) {
-  const providers: Array<Store | Technician> = service.mode === "store" ? storeList : technicianList;
-  const scored = providers
-    .map((provider) => {
-      const values =
-        "address" in provider
-          ? [provider.name, provider.area, provider.address, provider.description, ...provider.tags]
-          : [provider.name, provider.nickname ?? "", provider.bio ?? "", ...provider.skills, ...provider.serviceAreas, ...provider.languages];
-
-      return {
-        provider,
-        score: getServiceProviderScore(values, service, location)
-      };
-    })
-    .sort((left, right) => right.score - left.score);
-
-  return scored[0]?.provider ?? storeList[0] ?? technicianList[0];
 }
 
 function getQuickActionTitleClassName(title: string) {
@@ -370,7 +328,7 @@ function RecommendationCard({ data }: { data: RecommendationCardData }) {
     return <SocialProfileMiniCard detailTo={data.to} showShareAction technician={data.technician} />;
   }
 
-  return <SocialProfileMiniCard data={buildServiceMiniCardData(data.service, data.provider)} detailTo={data.to} />;
+  return <SocialProfileMiniCard data={buildServiceMiniCardData(data.service)} detailTo={data.to} />;
 }
 
 function ReminderMiniCard({
@@ -855,11 +813,10 @@ export function HomePage() {
         kind: "service" as const,
         id: service.id,
         to: `/services/${service.id}`,
-        service,
-        provider: resolveServiceProvider(service, apiStores, apiTechnicians, selectedLocation)
+        service
       }))
     }),
-    [apiStores, apiTechnicians, recommendationServices, recommendationStores, recommendationTechnicians, selectedLocation]
+    [recommendationServices, recommendationStores, recommendationTechnicians]
   );
 
   const currentRecommendationList = recommendationCards[recommendationTab];
