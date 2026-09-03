@@ -1,5 +1,6 @@
 import {
   type BookingOrderStatus,
+  OrderServiceEventType,
   OrderPerformanceOutcome,
   OrderPerformanceRevisionAction,
   OrderPerformanceTreatment,
@@ -293,6 +294,21 @@ type OrderDetailRecord = OrderRecord & {
     publicReason: string | null;
     internalNote: string | null;
     createdAt: Date;
+  }>;
+  serviceEvents: Array<{
+    id: number;
+    eventType: OrderServiceEventType;
+    actorUserId: number | null;
+    reason: string | null;
+    occurredAt: Date;
+    orderAddOn: {
+      id: number;
+      serviceId: number;
+      serviceNameSnapshot: string;
+      priceAmountJpy: number;
+      currency: string;
+      durationMinutes: number;
+    } | null;
   }>;
 };
 
@@ -2307,6 +2323,36 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           internalNote: true,
           createdAt: true
         }
+      },
+      serviceEvents: {
+        where: {
+          deletedAt: null,
+          eventType: {
+            in: [
+              OrderServiceEventType.ADD_ON_PROPOSED,
+              OrderServiceEventType.ADD_ON_ACCEPTED,
+              OrderServiceEventType.ADD_ON_REJECTED
+            ]
+          }
+        },
+        orderBy: [{ occurredAt: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          eventType: true,
+          actorUserId: true,
+          reason: true,
+          occurredAt: true,
+          orderAddOn: {
+            select: {
+              id: true,
+              serviceId: true,
+              serviceNameSnapshot: true,
+              priceAmountJpy: true,
+              currency: true,
+              durationMinutes: true
+            }
+          }
+        }
       }
     } satisfies Prisma.BookingOrderInclude;
   }
@@ -2428,7 +2474,23 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         actorUserId: revision.actorUserId,
         publicReason: revision.publicReason,
         internalNote: revision.internalNote
-      }))
+      })),
+      ...order.serviceEvents.flatMap((event) => {
+        if (!event.orderAddOn) return [];
+        return [{
+          type: this.addOnTimelineType(event.eventType),
+          id: `service:${event.id}`,
+          createdAt: event.occurredAt.toISOString(),
+          actorUserId: event.actorUserId,
+          publicReason: event.reason,
+          addOnId: event.orderAddOn.id,
+          serviceId: event.orderAddOn.serviceId,
+          serviceName: event.orderAddOn.serviceNameSnapshot,
+          priceAmountJpy: event.orderAddOn.priceAmountJpy,
+          currency: "JPY" as const,
+          durationMinutes: event.orderAddOn.durationMinutes
+        }];
+      })
     ].sort(
       (left, right) =>
         Date.parse(left.createdAt) - Date.parse(right.createdAt) || left.id.localeCompare(right.id)
@@ -2459,9 +2521,27 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
+  private addOnTimelineType(
+    eventType: OrderServiceEventType
+  ): Extract<BackofficeOrderTimelineEventPayload, { addOnId: number }>["type"] {
+    switch (eventType) {
+      case OrderServiceEventType.ADD_ON_PROPOSED:
+        return "ADD_ON_PROPOSED";
+      case OrderServiceEventType.ADD_ON_ACCEPTED:
+        return "ADD_ON_ACCEPTED";
+      case OrderServiceEventType.ADD_ON_REJECTED:
+        return "ADD_ON_REJECTED";
+      default:
+        throw new Error(`Unsupported order add-on timeline event: ${eventType}`);
+    }
+  }
+
   private performanceTimelineType(
     action: OrderPerformanceRevisionAction
-  ): Exclude<BackofficeOrderTimelineEventPayload, { type: "ORDER_STATUS_CHANGED" }>["type"] {
+  ): Extract<
+    BackofficeOrderTimelineEventPayload,
+    { internalNote: string | null }
+  >["type"] {
     switch (action) {
       case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED:
         return "TECHNICIAN_CANCEL_CLASSIFIED";

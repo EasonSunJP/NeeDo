@@ -1548,9 +1548,37 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.components.schemas.OperationsOrderTimelinePerformanceEvent.properties
         .internalNote
     ).toMatchObject({ "x-visibility": "operations-only" });
+    expect(response.body.components.schemas.OperationsOrderTimelineAddOnEvent).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "type",
+        "id",
+        "createdAt",
+        "actorUserId",
+        "publicReason",
+        "addOnId",
+        "serviceId",
+        "serviceName",
+        "priceAmountJpy",
+        "currency",
+        "durationMinutes"
+      ]),
+      properties: {
+        type: { type: "string", enum: ["ADD_ON_PROPOSED", "ADD_ON_ACCEPTED", "ADD_ON_REJECTED"] },
+        id: { type: "string", pattern: "^service:[1-9][0-9]*$" },
+        addOnId: { type: "integer", minimum: 1 },
+        serviceId: { type: "integer", minimum: 1 },
+        serviceName: { type: "string", minLength: 1, maxLength: 160 },
+        priceAmountJpy: { type: "integer", minimum: 0 },
+        currency: { type: "string", const: "JPY" },
+        durationMinutes: { type: "integer", minimum: 1 }
+      }
+    });
     expect(response.body.components.schemas.OperationsOrderTimelineEvent.oneOf).toEqual([
       { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
-      { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+      { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" },
+      { $ref: "#/components/schemas/OperationsOrderTimelineAddOnEvent" }
     ]);
     expect(response.body.components.schemas.BackofficeOrderDetail.allOf[1]).toMatchObject({
       required: ["performanceAssessment", "timelineEvents"],

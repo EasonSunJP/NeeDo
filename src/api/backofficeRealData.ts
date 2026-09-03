@@ -303,6 +303,19 @@ export type BackofficeOrderTimelineEvent =
       actorUserId: number | null;
       publicReason: string | null;
       internalNote: string | null;
+    }
+  | {
+      type: "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+      addOnId: number;
+      serviceId: number;
+      serviceName: string;
+      priceAmountJpy: number;
+      currency: "JPY";
+      durationMinutes: number;
     };
 
 export interface BackofficeOrderDetailPayload extends BackofficeOrderPayload {

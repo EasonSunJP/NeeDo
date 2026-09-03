@@ -11,6 +11,7 @@ import {
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import { OrdersAdminPage } from "./OrdersAdminPage";
+import { translateText } from "../../i18n/translations";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -92,6 +93,32 @@ const detailOrder: BackofficeOrderDetailPayload = {
     updatedAt: "2026-05-25T04:00:00.000Z"
   },
   timelineEvents: [
+    {
+      id: "service:501",
+      type: "ADD_ON_PROPOSED",
+      createdAt: "2026-05-25T02:15:00.000Z",
+      actorUserId: 101,
+      publicReason: null,
+      addOnId: 44,
+      serviceId: 7,
+      serviceName: "Extended care 60 minutes",
+      priceAmountJpy: 8800,
+      currency: "JPY",
+      durationMinutes: 60
+    },
+    {
+      id: "service:502",
+      type: "ADD_ON_ACCEPTED",
+      createdAt: "2026-05-25T02:20:00.000Z",
+      actorUserId: 301,
+      publicReason: null,
+      addOnId: 44,
+      serviceId: 7,
+      serviceName: "Extended care 60 minutes",
+      priceAmountJpy: 8800,
+      currency: "JPY",
+      durationMinutes: 60
+    },
     {
       id: "performance:91",
       type: "TECHNICIAN_CANCEL_CLASSIFIED",
@@ -187,6 +214,23 @@ describe("OrdersAdminPage order performance controls", () => {
       container.textContent?.indexOf("设为特殊取消并排除计算") ?? 0
     );
     expect(document.querySelector('input[aria-label*="百分比"]')).toBeNull();
+  });
+
+  it("shows proposed and accepted overtime behavior from the formal order timeline", async () => {
+    await openDetail();
+
+    expect(container.textContent).toContain("提出加钟");
+    expect(container.textContent).toContain("加钟已确认");
+    expect(container.textContent).toContain("Extended care 60 minutes");
+    expect(container.textContent).toContain("60分钟");
+    expect(container.textContent).toContain("￥8,800");
+  });
+
+  it("provides localized labels for overtime timeline events", () => {
+    expect(translateText("提出加钟", "ja")).toBe("延長を提案");
+    expect(translateText("加钟已确认", "en")).toBe("Extension accepted");
+    expect(translateText("加钟已拒绝", "ko")).toBe("연장 거절");
+    expect(translateText("加钟已确认", "zh-Hant")).toBe("加鐘已確認");
   });
 
   it("requires a public reason and submits current revision without a percentage value", async () => {

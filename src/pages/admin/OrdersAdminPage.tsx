@@ -83,7 +83,12 @@ function performanceActionLabel(action: PerformanceAction) {
   return "设为特殊取消并排除计算";
 }
 
-function performanceEventCopy(type: BackofficeOrderTimelineEvent["type"]) {
+function performanceEventCopy(
+  type: Exclude<
+    BackofficeOrderTimelineEvent["type"],
+    "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED"
+  >
+) {
   if (type === "ORDER_STATUS_CHANGED") return "订单状态";
   if (type === "TECHNICIAN_CANCEL_CLASSIFIED") return "技师原因取消";
   if (type === "TECHNICIAN_UNCOMPLETED_CLASSIFIED") return "技师未完单";
@@ -94,29 +99,52 @@ function performanceEventCopy(type: BackofficeOrderTimelineEvent["type"]) {
 function mapOperationsTimeline(
   events: BackofficeOrderTimelineEvent[]
 ): ContactEventTimelineEntry[] {
-  return events.map((event) => ({
-    actorName: event.actorUserId ? `#${event.actorUserId}` : "系统",
-    actorRole: performanceEventCopy(event.type),
-    atLabel: formatOrderDateTime(event.createdAt),
-    id: event.id,
-    message:
-      event.publicReason ??
-      (event.type === "ORDER_STATUS_CHANGED"
-        ? `${event.fromStatus ?? "created"} → ${event.toStatus}`
-        : "无公开原因"),
-    reason:
-      event.type === "ORDER_STATUS_CHANGED" || !event.internalNote
-        ? undefined
-        : event.internalNote,
-    reasonLabel:
-      event.type === "ORDER_STATUS_CHANGED" ? undefined : "内部备注（仅运营可见）",
-    title: performanceEventCopy(event.type),
-    tone:
-      event.type === "SPECIAL_CANCELLATION_APPLIED" ||
-      (event.type === "ORDER_STATUS_CHANGED" && event.toStatus !== "cancelled")
-        ? "green"
-        : "red"
-  }));
+  return events.map((event) => {
+    const actorName = event.actorUserId ? `#${event.actorUserId}` : "系统";
+    if ("addOnId" in event) {
+      const copy = event.type === "ADD_ON_PROPOSED"
+        ? { label: "提出加钟", tone: "accent" as const }
+        : event.type === "ADD_ON_ACCEPTED"
+          ? { label: "加钟已确认", tone: "green" as const }
+          : { label: "加钟已拒绝", tone: "red" as const };
+      const addOnSummary = `${event.serviceName} · +${event.durationMinutes}分钟 · ${yen(event.priceAmountJpy)}`;
+      return {
+        actorName,
+        actorRole: copy.label,
+        atLabel: formatOrderDateTime(event.createdAt),
+        id: event.id,
+        message: event.publicReason
+          ? `${addOnSummary} · ${event.publicReason}`
+          : addOnSummary,
+        title: copy.label,
+        tone: copy.tone
+      };
+    }
+
+    if (event.type === "ORDER_STATUS_CHANGED") {
+      return {
+        actorName,
+        actorRole: performanceEventCopy(event.type),
+        atLabel: formatOrderDateTime(event.createdAt),
+        id: event.id,
+        message: event.publicReason ?? `${event.fromStatus ?? "created"} → ${event.toStatus}`,
+        title: performanceEventCopy(event.type),
+        tone: event.toStatus === "cancelled" ? "red" as const : "green" as const
+      };
+    }
+
+    return {
+      actorName,
+      actorRole: performanceEventCopy(event.type),
+      atLabel: formatOrderDateTime(event.createdAt),
+      id: event.id,
+      message: event.publicReason ?? "无公开原因",
+      reason: event.internalNote ?? undefined,
+      reasonLabel: "内部备注（仅运营可见）",
+      title: performanceEventCopy(event.type),
+      tone: event.type === "SPECIAL_CANCELLATION_APPLIED" ? "green" as const : "red" as const
+    };
+  });
 }
 
 function createPerformanceIdempotencyKey() {

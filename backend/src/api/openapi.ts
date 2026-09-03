@@ -8592,10 +8592,46 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      OperationsOrderTimelineAddOnEvent: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Authorized operations view of a persisted add-on proposal or decision using immutable service snapshots.",
+        required: [
+          "type",
+          "id",
+          "createdAt",
+          "actorUserId",
+          "publicReason",
+          "addOnId",
+          "serviceId",
+          "serviceName",
+          "priceAmountJpy",
+          "currency",
+          "durationMinutes"
+        ],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["ADD_ON_PROPOSED", "ADD_ON_ACCEPTED", "ADD_ON_REJECTED"]
+          },
+          id: { type: "string", pattern: "^service:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: ["integer", "null"] },
+          publicReason: { type: ["string", "null"], maxLength: 500 },
+          addOnId: { type: "integer", minimum: 1 },
+          serviceId: { type: "integer", minimum: 1 },
+          serviceName: { type: "string", minLength: 1, maxLength: 160 },
+          priceAmountJpy: { type: "integer", minimum: 0 },
+          currency: { type: "string", const: "JPY" },
+          durationMinutes: { type: "integer", minimum: 1 }
+        }
+      },
       OperationsOrderTimelineEvent: {
         oneOf: [
           { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
-          { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+          { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" },
+          { $ref: "#/components/schemas/OperationsOrderTimelineAddOnEvent" }
         ],
         discriminator: { propertyName: "type" }
       },
