@@ -157,6 +157,10 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).toContain("pricingModeApi.createTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.updateTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.deleteTechnicianService");
+    expect(servicesSource).toContain("pricingModeApi.uploadTechnicianServiceCover");
+    expect(servicesSource).toContain("pricingModeApi.removeTechnicianServiceCover");
+    expect(servicesSource).toContain("<TechnicianServiceCoverField");
+    expect(servicesSource).toContain("persistedAfterPartialSave");
     expect(servicesSource).toContain('setError("服务数量已达到 5 个上限")');
     expect(servicesSource).toContain("service.shopId");
     expect(servicesSource).toContain("当前没有已保存的正式技师服务");
