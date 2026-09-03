@@ -27,7 +27,9 @@ credentials, or Redis has no password.
 
 ## Staging
 
-For the approved AWS Tokyo single-EC2 environment-only gate, follow
+For the approved AWS dual-region single-EC2 environment-only gate—Sydney
+(`ap-southeast-2`) for the personal test and Tokyo (`ap-northeast-1`) for a
+later company-account deployment—follow
 [`docs/aws-staging-environment-runbook.md`](./aws-staging-environment-runbook.md).
 That gate creates and verifies infrastructure only; the Compose commands below
 are application deployment steps and must not run until the separate application

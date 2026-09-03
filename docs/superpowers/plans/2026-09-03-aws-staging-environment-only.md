@@ -8,6 +8,20 @@
 > `ap-southeast-2` or `ap-northeast-1`; Tokyo remains the later company-account
 > target. See the approved dual-region design and implementation plan.
 
+> **2026-09-04 final security amendment (`批准最终安全修订`):** This amendment is
+> authoritative wherever the historical Task 1–9 snippets conflict with it.
+> The hostname is exactly `staging.needo.life`; the CLI freezes one exported
+> temporary `login`/assumed-role credential session in memory and neutralizes
+> inherited/configured endpoints; CloudFormation receives both
+> `ExpectedRegion` and `ExpectedAccountId`; initial deployment uses atomic
+> `create-stack` and binds every later call to its returned full StackId, with
+> `AlreadyExists` as a stop condition. Before any bootstrap waiter or command,
+> a fresh preflight must prove account/region and the exact stack, tags,
+> resources, outputs, instance/data-volume attachment, SSM document content and
+> version, and CloudWatch Agent parameter content and version. Both S3 bucket
+> policies are retained with their buckets. No create-or-update behavior is
+> authorized by this environment-only plan.
+
 **Goal:** Provision and prove the approved AWS Tokyo Staging infrastructure for NeeDo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
@@ -18,8 +32,8 @@
 
 - Deploy only from the isolated branch based on `main@3cc5a978e8afec42baa41bee0077bb4166c47265`; do not include the original dirty worktree.
 - This plan is Microstep 1 only. Do not upload a NeeDo release, pull an application image, start application/MySQL/Redis/Nginx containers, run Prisma, seed/bootstrap users, retrieve secret values, issue TLS certificates, or modify DNS.
-- Use `ap-northeast-1` exactly and require an explicit 12-digit AWS account ID before any mutating command.
-- Require an explicit structurally valid lower-case Staging hostname on every command. The approved value is `staging.needo.life`; DNS remains external to AWS and untouched in this microstep.
+- Require explicit `ap-southeast-2` (personal test) or `ap-northeast-1` (later company account) plus an explicit 12-digit AWS account ID before any mutating command.
+- Require exact hostname `staging.needo.life` on every command; DNS remains external to AWS and untouched in this microstep.
 - Human access must use an SSO/assumed-role temporary session. Reject the root user and long-lived shared access-key profiles.
 - Keep port 22 absent. Public inbound security-group rules are TCP 80 and 443 only; 3000, 3306, and 6379 are never exposed.
 - Keep the application secret empty in this microstep. Verification may call `describe-secret` and `list-secret-version-ids`, but never `get-secret-value`.
@@ -237,7 +251,7 @@ npm test -- --run scripts/aws-staging-config.test.mjs
 
 Expected: PASS with all configuration contract tests and no external calls.
 
-The final contract must reject missing/duplicate/mixed-case hostnames, trailing dots, wildcards, IP/localhost forms, and non-registrable-looking suffixes before any AWS or DNS call. The hostname is operator-supplied and structural validation must not hardcode an operational domain.
+The final contract must reject every hostname other than the explicitly approved `staging.needo.life`, including missing/duplicate/mixed-case values, trailing dots, wildcards, IP/localhost forms, and otherwise-valid alternate `staging.*` domains, before any AWS or DNS call.
 
 - [ ] **Step 5: Commit the configuration contract**
 
@@ -984,22 +998,24 @@ git commit -m "feat: add AWS staging safety preflight"
 The fake AWS client must prove exact parameter/tag/capability boundaries:
 
 ```js
-expect(aws.text).toHaveBeenCalledWith([
-  "cloudformation", "deploy",
+expect(aws.json).toHaveBeenCalledWith([
+  "cloudformation", "create-stack",
   "--stack-name", "needo-staging-infrastructure",
-  "--template-file", config.templatePath,
-  "--parameter-overrides",
-  "AlertEmail=ops@example.com",
-  "BudgetAmount=20000",
-  "BudgetUnit=JPY",
-  "Owner=needo",
+  "--template-body", templateBody,
+  "--parameters",
+  "ParameterKey=ExpectedRegion,ParameterValue=ap-northeast-1",
+  "ParameterKey=ExpectedAccountId,ParameterValue=123456789012",
+  "ParameterKey=AlertEmail,ParameterValue=ops@example.com",
+  "ParameterKey=BudgetAmount,ParameterValue=20000",
+  "ParameterKey=BudgetUnit,ParameterValue=JPY",
+  "ParameterKey=Owner,ParameterValue=needo",
   "--capabilities", "CAPABILITY_NAMED_IAM",
-  "--no-fail-on-empty-changeset",
   "--tags",
-  "Project=needo",
-  "Environment=staging",
-  "Owner=needo",
-  "ManagedBy=cloudformation"
+  "Key=Project,Value=needo",
+  "Key=Environment,Value=staging",
+  "Key=Owner,Value=needo",
+  "Key=ManagedBy,Value=cloudformation",
+  "--on-failure", "DO_NOTHING"
 ]);
 ```
 
@@ -1010,7 +1026,8 @@ Also test that deployment refuses when:
 - preflight stack status is anything other than exactly `ABSENT`, including a
   stable `CREATE_COMPLETE` or `UPDATE_COMPLETE` stack, before any AWS mutation;
 - DNS result changes between preflight and the deploy call before stack mutation;
-- CloudFormation returns a final state other than `CREATE_COMPLETE` or `UPDATE_COMPLETE`;
+- `create-stack` returns `AlreadyExists` or a StackId outside the exact account, region, and stack name;
+- CloudFormation returns a final state other than `CREATE_COMPLETE`;
 - required output keys are missing.
 
 - [ ] **Step 2: Run the deployment test and verify RED**
@@ -1028,11 +1045,11 @@ Expected: FAIL because deployment support does not exist.
 1. require the preflight result created in the same process;
 2. require `preflight.hostname === config.hostname` and `preflight.stackState === "ABSENT"`; a stable existing same-name stack is diagnostic-only and requires a separate exact-identity update review/microstep;
 3. re-resolve only `config.hostname` immediately before the mutation and require the same sorted A-record array as preflight;
-4. invoke the exact `cloudformation deploy` argument array above;
-5. call `describe-stacks` and require stable success;
-6. turn `Outputs[]` into a key/value object and require the ten Task 2 output keys;
+4. read the template once, hash those exact bytes, and invoke the exact atomic `cloudformation create-stack` argument array above; propagate `AlreadyExists` without waiting, describing, updating, or deploying;
+5. validate the returned full StackId against the exact account, region, and stack name, then wait, `describe-stacks`, and `list-stack-resources` only by that StackId and require `CREATE_COMPLETE`;
+6. require the exact tags, resource types, ten outputs, and output-to-resource identity bindings;
 7. call `ec2 describe-instances` and record instance type/state, not user data;
-8. return evidence without the alert email or CloudFormation parameters.
+8. return timestamped evidence containing the full StackId, exact hostname/tags, template digest, and resource identity digest without the alert email, secret ARN, or CloudFormation parameters.
 
 The CLI wrapper must create `outputs/aws-staging/` with mode `0700` and write `environment-stack.json` with mode `0600` using an atomic temporary-file rename. Include:
 
@@ -1079,9 +1096,12 @@ git commit -m "feat: deploy AWS staging environment stack"
 
 Prove that the library:
 
-- obtains `InstanceId`, `DataVolumeId`, `HostBootstrapDocumentName`, and `CloudWatchAgentConfigParameterName` only from a fresh `describe-stacks` result;
+- runs a fresh in-process preflight and stops before every waiter or command on an account, region, hostname, credential, or stable-stack mismatch;
+- validates the full account/region-bound StackId, exact tags, resource types, outputs and output bindings, then uses that StackId for `list-stack-resources`;
+- validates that the exact stack data volume is attached to the exact stack instance at `/dev/sdf` before any waiter or command;
+- retrieves and attests the exact bootstrap document content and positive immutable version, plus the exact CloudWatch Agent parameter ARN/content/version;
 - waits for EC2 `instance-status-ok` and SSM `PingStatus=Online`;
-- sends exactly one command whose parameters contain only the data-volume ID and CloudWatch Agent parameter name;
+- sends exactly one command pinned to the attested document version; its parameters contain only the data-volume ID, CloudWatch Agent parameter name, and attested numeric parameter version;
 - waits for the command and requires `Status=Success`, `ResponseCode=0`;
 - never passes `ApplicationSecretArn`, `get-secret-value`, release bucket, Docker Compose, or Prisma arguments;
 - accepts a second successful invocation as an idempotency proof.
@@ -1092,9 +1112,10 @@ Expected command shape:
 [
   "ssm", "send-command",
   "--document-name", outputs.HostBootstrapDocumentName,
+  "--document-version", documentAttestation.version,
   "--instance-ids", outputs.InstanceId,
   "--parameters",
-  `DataVolumeId=${outputs.DataVolumeId},CloudWatchAgentConfigParameter=${outputs.CloudWatchAgentConfigParameterName}`,
+  `DataVolumeId=${outputs.DataVolumeId},CloudWatchAgentConfigParameter=${outputs.CloudWatchAgentConfigParameterName},CloudWatchAgentConfigParameterVersion=${parameterAttestation.version}`,
   "--comment", "NeeDo Staging environment-only host bootstrap"
 ]
 ```
@@ -1112,6 +1133,11 @@ Expected: FAIL because the bootstrap library does not exist.
 Use AWS waiters where available:
 
 ```text
+cloudformation list-stack-resources --stack-name <full-validated-StackId>
+ec2 describe-instances --instance-ids <InstanceId>
+ec2 describe-volumes --volume-ids <DataVolumeId>
+ssm get-document --name <HostBootstrapDocumentName> --document-version $LATEST --document-format JSON
+ssm get-parameter --name <CloudWatchAgentConfigParameterName>
 ec2 wait instance-status-ok --instance-ids <InstanceId>
 ssm describe-instance-information --filters Key=InstanceIds,Values=<InstanceId>
 ssm send-command ...
@@ -1119,7 +1145,7 @@ ssm wait command-executed --command-id <CommandId> --instance-id <InstanceId>
 ssm get-command-invocation --command-id <CommandId> --instance-id <InstanceId>
 ```
 
-Poll SSM registration for at most ten minutes with a ten-second interval. Record only command ID, status, response code, and timestamps; do not persist standard output or standard error because future document revisions could include sensitive diagnostics.
+All identity, attachment, document-content/version, and parameter-content/version checks occur before the first waiter or `send-command`; drift makes zero mutation calls. Poll SSM registration for at most ten minutes with a ten-second interval. Record only command ID, status, response code, attestation versions/digests, and timestamps; do not persist standard output or standard error because future document revisions could include sensitive diagnostics.
 
 - [ ] **Step 4: Run the bootstrap tests and verify GREEN**
 

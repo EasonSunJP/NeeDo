@@ -50,13 +50,22 @@ environment, and shared-credential-file callers are forbidden. AWS CLI v2
 `login` is accepted only when both the access-key and secret-key rows from
 `aws configure list --profile <named-temporary-profile>` report exactly
 `login`; STS must still pass the exact-account `assumed-role` check. The
-least-privilege deploy role must be authorized for the scoped CloudFormation
-stack and change-set operations; scoped EC2, VPC, EBS, and Elastic IP
+least-privilege deploy role must be authorized for scoped CloudFormation
+create/describe/list/wait operations (with no automatic update or delete); scoped EC2, VPC, EBS, and Elastic IP
 operations; IAM role, instance-profile, and policy operations plus
 `iam:PassRole` for the stack role; S3 bucket controls; Secrets Manager create,
 describe, and tag; SSM document, parameter, and command operations; Logs,
 CloudWatch, and SNS operations; and Budgets create, describe, and update
 operations.
+
+Each command resolves the named profile once with AWS CLI v2
+`configure export-credentials --format process`, keeps that one temporary
+credential tuple only in process memory, and uses it for preflight and every
+subsequent read or mutation in that invocation. Inherited credential, profile,
+config-file, metadata, and endpoint variables are neutralized, and configured
+service endpoints are ignored. The tuple is never logged, returned, or
+persisted. If it expires, restart the whole command and repeat preflight; do not
+mix credential sessions within an invocation.
 
 Do not use long-lived access keys, an SSH key, or secrets pasted into the CLI.
 The CLI profile must be named, temporary, and not `default`. If the preflight
@@ -88,6 +97,12 @@ stack may be reported by preflight for diagnostics, but it stops this deploy
 before any mutation. Updating an existing stack requires a separate
 exact-identity update review and microstep.
 
+Deployment submits the exact in-memory template bytes to atomic
+`cloudformation create-stack`, including server-side `ExpectedRegion` and
+`ExpectedAccountId` rules. `AlreadyExists` is a hard stop: the gate never falls
+back to update behavior. The returned full StackId is validated and is the only
+identifier used for the waiter, stack description, and resource listing.
+
 ```bash
 npm run aws:staging:deploy -- \
   --profile <named-temporary-profile> \
@@ -101,6 +116,11 @@ npm run aws:staging:deploy -- \
 
 Bootstrap the host twice. The second invocation is the required idempotency
 check; inspect its bounded SSM result rather than substituting SSH access.
+Before either invocation's first waiter or command, the gate repeats the fresh
+account/region preflight, validates the full StackId, tags, resource/output
+bindings, instance/data-volume attachment, exact SSM document content/version,
+and exact CloudWatch Agent parameter content/version. It passes those immutable
+versions to Run Command; any drift stops with zero waiter and zero command.
 
 ```bash
 npm run aws:staging:bootstrap-host -- \
@@ -146,15 +166,19 @@ artifact, TLS, and Onamae work in their separately approved follow-up steps.
 - **CloudFormation create failure before useful resources exist:** inspect and
   preserve stack-event evidence. Request explicit approval before deleting a
   failed stack; never turn deletion into an automatic cleanup action.
+- **`AlreadyExists`:** stop. Do not reuse this create-only gate to update the
+  existing stack, even if its name looks expected. A separately approved
+  exact-identity update microstep is required.
 - **Host bootstrap failure:** do not format another device. Inspect the SSM
   invocation and EBS volume attachment, fix the cause forward, then rerun the
   idempotent bootstrap command.
 - **Acceptance failure:** do not deploy the application and do not change DNS.
   Preserve the bounded evidence and repair the failed infrastructure condition
   within the approved scope.
-- **Stack rollback or removal:** retained buckets and the application secret
-  remain. Data-volume deletion creates a snapshot. Any material deletion needs
-  separate explicit user approval.
+- **Stack rollback or removal:** retained buckets, their retained TLS-only
+  bucket policies, and the application secret remain. Data-volume deletion
+  creates a snapshot. Any material deletion needs separate explicit user
+  approval.
 - **Budget or SNS email remains unconfirmed:** infrastructure can exist, but
   the environment gate is incomplete; do not represent alerting as active.
 

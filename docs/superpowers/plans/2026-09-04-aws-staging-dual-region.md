@@ -16,8 +16,13 @@
 - The caller must use a named temporary profile and an exact-account STS assumed-role session. Root, IAM-user, federated-user, environment, and shared-credential-file callers remain forbidden.
 - AWS CLI v2 `login` is accepted only when both credential rows report exactly `login` and the STS caller passes the existing assumed-role checks.
 - CloudFormation must receive `ExpectedRegion` and require it to equal `AWS::Region`.
+- CloudFormation must receive `ExpectedAccountId` and require it to equal `AWS::AccountId`.
 - Every ARN and evidence region must match the frozen current-run configuration; the other approved region remains a mismatch.
 - Keep the stack name `needo-staging-infrastructure` and hostname `staging.needo.life`.
+- Treat `staging.needo.life` as the only accepted hostname, not merely an example matching a structural pattern.
+- Resolve one temporary credential tuple in memory per command, neutralize inherited/configured AWS endpoints and credential sources, and never mix sessions after preflight.
+- Initial deployment is atomic `create-stack`; `AlreadyExists` is a hard stop and all later reads use the returned full StackId.
+- Before SSM execution, attest exact document and CloudWatch Agent parameter content and pin both returned versions.
 - Do not create or modify AWS resources while implementing this plan.
 - Do not deploy the application, run containers, run Prisma, seed/bootstrap data, issue TLS certificates, or modify DNS.
 - Preserve the approved three unrelated baseline-test waivers without fixing or representing them as passing.

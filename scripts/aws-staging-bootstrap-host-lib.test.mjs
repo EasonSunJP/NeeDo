@@ -387,15 +387,18 @@ describe("AWS Staging SSM host bootstrap", () => {
     expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
   });
 
-  it("rejects SSM document content drift with zero command execution", async () => {
-    const aws = successfulAws({
-      document: documentResult({ content: { ...bootstrapDocumentContent, description: "foreign" } })
-    });
+  it("rejects SSM document content or version drift with zero command execution", async () => {
+    for (const document of [
+      documentResult({ content: { ...bootstrapDocumentContent, description: "foreign" } }),
+      documentResult({ version: "$LATEST" })
+    ]) {
+      const aws = successfulAws({ document });
 
-    await expect(bootstrap({ aws })).rejects.toThrow(/document.*content|drift/i);
+      await expect(bootstrap({ aws })).rejects.toThrow(/document.*(?:content|version)|drift/i);
 
-    expect(aws.text).not.toHaveBeenCalled();
-    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+      expect(aws.text).not.toHaveBeenCalled();
+      expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+    }
   });
 
   it("rejects CloudWatch parameter content and version drift with zero command execution", async () => {

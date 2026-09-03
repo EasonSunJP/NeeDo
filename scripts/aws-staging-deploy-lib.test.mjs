@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -108,7 +109,7 @@ function evidenceFixture(overrides = {}) {
   };
 }
 
-function stackResult({ status = "CREATE_COMPLETE", outputs = outputValues } = {}) {
+function stackResult({ status = "CREATE_COMPLETE", outputs = outputValues, stackOverrides = {} } = {}) {
   return {
     Stacks: [{
       StackId: stackId,
@@ -118,7 +119,8 @@ function stackResult({ status = "CREATE_COMPLETE", outputs = outputValues } = {}
       Outputs: Object.entries(outputs).map(([OutputKey, OutputValue]) => ({
         OutputKey,
         OutputValue
-      }))
+      })),
+      ...stackOverrides
     }]
   };
 }
@@ -335,6 +337,61 @@ describe("AWS Staging CloudFormation deployment", () => {
     expect(aws.text).not.toHaveBeenCalled();
   });
 
+  it("rejects a described StackId that differs from the exact created StackId", async () => {
+    const foreignId = stackId.replace(
+      "00000000-0000-4000-8000-000000000000",
+      "11111111-1111-4111-8111-111111111111"
+    );
+    const aws = successfulAws({
+      describedStack: stackResult({ stackOverrides: { StackId: foreignId } })
+    });
+
+    await expect(deploy({ aws })).rejects.toThrow(/described StackId.*created StackId/i);
+
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "list-stack-resources")).toBe(false);
+  });
+
+  it.each([
+    ["cross-account", outputValues.ApplicationSecretArn.replace(config.accountId, "999999999999")],
+    ["cross-region", outputValues.ApplicationSecretArn.replace(config.region, "ap-southeast-2")]
+  ])("rejects a %s secret output before persisting evidence", async (_label, secretArn) => {
+    const aws = successfulAws({
+      describedStack: stackResult({
+        outputs: { ...outputValues, ApplicationSecretArn: secretArn }
+      })
+    });
+
+    await expect(deploy({ aws })).rejects.toThrow(/ApplicationSecretArn.*account|region/i);
+
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "list-stack-resources")).toBe(false);
+  });
+
+  it("rejects a foreign physical resource that contradicts its stack output", async () => {
+    const aws = successfulAws({
+      listedResources: stackResources({
+        ReleaseBucket: { PhysicalResourceId: "foreign-release-bucket" }
+      })
+    });
+
+    await expect(deploy({ aws })).rejects.toThrow(/ReleaseBucket.*output/i);
+
+    expect(aws.json.mock.calls.some(([args]) => args[0] === "ec2")).toBe(false);
+  });
+
+  it("hashes the exact in-memory template bytes submitted once to create-stack", async () => {
+    const readTemplate = vi.fn(async () => templateBody);
+    const aws = successfulAws();
+
+    const evidence = await deploy({ aws, readTemplate });
+
+    expect(readTemplate).toHaveBeenCalledOnce();
+    expect(readTemplate).toHaveBeenCalledWith(config.templatePath, "utf8");
+    expect(evidence.templateSha256).toBe(
+      createHash("sha256").update(templateBody, "utf8").digest("hex")
+    );
+    expect(aws.json.mock.calls[0][0]).toContain(templateBody);
+  });
+
   it.each([
     [{ accountId: "999999999999" }, "account"],
     [{ region: "us-east-1" }, "region"]
@@ -472,6 +529,28 @@ describe("AWS Staging CloudFormation deployment", () => {
 });
 
 describe("AWS Staging evidence writer", () => {
+  it.each([
+    ["cross-account StackId", {
+      stackId: stackId.replace(config.accountId, "999999999999")
+    }],
+    ["cross-region StackId", {
+      stackId: stackId.replace(config.region, "ap-southeast-2")
+    }],
+    ["alternate hostname", { hostname: "staging.example.com" }],
+    ["foreign tag set", {
+      stackTags: { ...evidenceFixture().stackTags, Owner: "foreign" }
+    }],
+    ["wrong resource count", { resourceCount: expectedResources.length - 1 }],
+    ["malformed template digest", { templateSha256: "a".repeat(63) }],
+    ["malformed resource digest", { resourceIdentitySha256: "B".repeat(64) }]
+  ])("rejects %s deployment evidence before filesystem mutation", async (_label, overrides) => {
+    await expect(writeAwsStagingEnvironmentEvidence({
+      evidence: evidenceFixture(overrides),
+      outputDirectory: "/must/not/be/reached",
+      trustedRoot: "/must"
+    })).rejects.toThrow(/stackId|hostname|stackTags|resourceCount|SHA-256/i);
+  });
+
   it("preserves the approved Sydney region in reconstructed evidence", async () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-sydney-"));
     const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
