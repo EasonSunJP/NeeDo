@@ -255,4 +255,29 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.textContent).not.toContain("接单率0%");
     expect(container.textContent).not.toContain("完成订单数0");
   });
+
+  it("retries a failed formal detail read and renders authoritative metrics after recovery", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
+    const detailRequest = vi.spyOn(coreReadApi, "getTechnicianDetail")
+      .mockRejectedValueOnce(new Error("formal technician detail unavailable"))
+      .mockResolvedValue(technician);
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("formal technician detail unavailable"));
+
+    expect(container.textContent).not.toContain("接单率0%");
+    expect(container.textContent).not.toContain("完成订单数0");
+    const retryButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("重新加载"));
+    expect(retryButton).toBeDefined();
+
+    await act(async () => retryButton?.click());
+    await flushUntil(() => expect(container.textContent).toContain("完成订单数1,281"));
+
+    expect(detailRequest).toHaveBeenCalledTimes(2);
+    expect(container.textContent).not.toContain("formal technician detail unavailable");
+    expect(container.textContent).toContain("接单率98%");
+    expect(container.textContent).toContain("评价4.8/5");
+    expect(container.textContent).toContain("完成订单数1,281");
+  });
 });
