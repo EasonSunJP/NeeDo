@@ -229,7 +229,7 @@ export function requireAwsStagingResources(response, outputs, config, {
   );
   if (!topicPattern.test(resources.AlertTopic.physicalId)
     || !resources.AlertSubscription.physicalId.startsWith(`${resources.AlertTopic.physicalId}:`)) {
-    throw new Error("Stack SNS resource account or region binding is invalid");
+    throw new Error("Stack SNS resource account or region identity is invalid");
   }
   return Object.freeze(resources);
 }

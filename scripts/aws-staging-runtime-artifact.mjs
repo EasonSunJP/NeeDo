@@ -5,29 +5,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import {
+  AWS_STAGING_LAUNCHER_RUNTIME_FILES,
+  createAwsStagingRuntimeManifestSha256,
+  requireAwsStagingStaticModuleClosure
+} from "./aws-staging-launcher.mjs";
 
 const execFileAsync = promisify(execFile);
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepositoryRoot = path.resolve(moduleDir, "..");
 const FULL_GIT_REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const LAUNCH_CONTEXT_NAME = ".needo-aws-staging-launch-context.json";
 
-export const AWS_STAGING_RUNTIME_FILES = Object.freeze([
-  "package.json",
-  "scripts/aws-staging-attestation.mjs",
-  "scripts/aws-staging-bootstrap-host-lib.mjs",
-  "scripts/aws-staging-bootstrap-host.mjs",
-  "scripts/aws-staging-cli.mjs",
-  "scripts/aws-staging-config.mjs",
-  "scripts/aws-staging-deploy-lib.mjs",
-  "scripts/aws-staging-deploy.mjs",
-  "scripts/aws-staging-preflight-lib.mjs",
-  "scripts/aws-staging-preflight.mjs",
-  "scripts/aws-staging-runtime-artifact.mjs",
-  "scripts/aws-staging-stack-contract.mjs",
-  "scripts/aws-staging-template-artifact.mjs",
-  "scripts/aws-staging-verify-lib.mjs",
-  "scripts/aws-staging-verify.mjs"
-]);
+export const AWS_STAGING_RUNTIME_FILES = AWS_STAGING_LAUNCHER_RUNTIME_FILES;
 
 const AWS_STAGING_ENTRYPOINTS = new Set([
   "scripts/aws-staging-bootstrap-host.mjs",
@@ -48,6 +38,7 @@ async function runSystemGit(args, { cwd }) {
     env: {
       GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_CONFIG_NOSYSTEM: "1",
+      GIT_NO_LAZY_FETCH: "1",
       GIT_NO_REPLACE_OBJECTS: "1",
       GIT_OPTIONAL_LOCKS: "0",
       LANG: "C",
@@ -103,8 +94,10 @@ function requireSafeOwnedNode(stat, label, expectedKind) {
   if (!kindMatches || stat.isSymbolicLink?.()) {
     throw new Error(`AWS Staging runtime ${label} must be a real ${expectedKind}`);
   }
-  if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
-    throw new Error(`AWS Staging runtime ${label} must be owned by the current OS user`);
+  if (typeof process.getuid === "function"
+    && stat.uid !== process.getuid()
+    && stat.uid !== 0) {
+    throw new Error(`AWS Staging runtime ${label} has an untrusted owner`);
   }
   if ((stat.mode & 0o022) !== 0) {
     throw new Error(`AWS Staging runtime ${label} must not be group- or world-writable`);
@@ -178,17 +171,6 @@ async function readStableFile(fileSystem, absolutePath, label) {
   }
 }
 
-function manifestDigest(sourceRevision, entries) {
-  const lines = [
-    "needo-aws-staging-runtime-manifest-v1",
-    sourceRevision,
-    ...entries.map(({ relativePath, gitMode, byteLength, digest }) => (
-      `${relativePath}\0${gitMode}\0${byteLength}\0${digest}`
-    ))
-  ];
-  return sha256(Buffer.from(lines.join("\n"), "utf8"));
-}
-
 function requireGitFileMode(value, relativePath, label) {
   const line = trimSingleLine(value, `${label} mode for ${relativePath}`);
   const match = /^(100644) (?:[a-z]+ )?[0-9a-f]{40,64}(?: 0)?\t(.+)$/.exec(line);
@@ -205,47 +187,109 @@ function requirePackageEntrypoints(bytes) {
   } catch {
     throw new Error("AWS Staging runtime package.json must be valid JSON");
   }
-  const expected = {
-    "aws:staging:bootstrap-host": "node scripts/aws-staging-bootstrap-host.mjs",
-    "aws:staging:deploy": "node scripts/aws-staging-deploy.mjs",
-    "aws:staging:preflight": "node scripts/aws-staging-preflight.mjs",
-    "aws:staging:verify": "node scripts/aws-staging-verify.mjs"
-  };
-  for (const [name, command] of Object.entries(expected)) {
-    if (parsed?.scripts?.[name] !== command
-      || parsed?.scripts?.[`pre${name}`] !== undefined
-      || parsed?.scripts?.[`post${name}`] !== undefined) {
-      throw new Error(`AWS Staging runtime package script ${name} is not the approved direct entrypoint`);
+  for (const command of ["bootstrap-host", "deploy", "preflight", "verify"]) {
+    const name = `aws:staging:${command}`;
+    if (Object.hasOwn(parsed?.scripts ?? {}, name)
+      || Object.hasOwn(parsed?.scripts ?? {}, `pre${name}`)
+      || Object.hasOwn(parsed?.scripts ?? {}, `post${name}`)) {
+      throw new Error("AWS Staging runtime must not expose live npm lifecycle entrypoints");
     }
   }
 }
 
-function requireStaticModuleClosure(records) {
-  const allowlist = new Set(AWS_STAGING_RUNTIME_FILES);
-  for (const record of records.filter(({ relativePath }) => relativePath.endsWith(".mjs"))) {
-    const source = decodeUtf8(record.committedBytes, `runtime module ${record.relativePath}`);
-    if (/\bimport\s*\(|\bcreateRequire\b|\bmodule\s*\.\s*register\b|\bregisterHooks\b|\bnew\s+Worker\b|\brequire\s*\(/.test(source)) {
-      throw new Error(`AWS Staging runtime module ${record.relativePath} uses an unapproved loader`);
-    }
-    for (const match of source.matchAll(
-      /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g
-    )) {
-      const specifier = match[1];
-      if (specifier.startsWith("node:")) continue;
-      if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
-        throw new Error(`AWS Staging runtime module ${record.relativePath} has a bare import`);
-      }
-      const dependency = path.posix.normalize(
-        path.posix.join(path.posix.dirname(record.relativePath), specifier)
-      );
-      if (!allowlist.has(dependency)) {
-        throw new Error(`AWS Staging runtime module ${record.relativePath} imports an unbound file`);
-      }
-    }
+async function captureLaunchContext(fileSystem, launchContextPath, canonicalRepositoryRoot) {
+  if (typeof launchContextPath !== "string" || !path.isAbsolute(launchContextPath)) {
+    throw new Error("AWS Staging runtime requires a sealed trusted-launcher context");
   }
+  if (launchContextPath !== path.join(canonicalRepositoryRoot, LAUNCH_CONTEXT_NAME)) {
+    throw new Error("AWS Staging runtime launch context is outside the sealed snapshot");
+  }
+  const current = await readStableFile(fileSystem, launchContextPath, "launch context");
+  if (current.identity.mode !== 0o400) {
+    throw new Error("AWS Staging runtime launch context must be sealed read-only");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(decodeUtf8(current.bytes, "launch context"));
+  } catch {
+    throw new Error("AWS Staging runtime launch context must be valid JSON");
+  }
+  const expectedKeys = [
+    "evidenceOutputDirectory",
+    "runtimeEntrypoint",
+    "runtimeManifestSha256",
+    "runtimeSourceRevision",
+    "snapshotRoot",
+    "sourceRepositoryIdentity",
+    "sourceRepositoryRoot",
+    "version"
+  ];
+  if (JSON.stringify(Object.keys(parsed).sort()) !== JSON.stringify(expectedKeys)
+    || parsed.version !== 1
+    || parsed.snapshotRoot !== canonicalRepositoryRoot
+    || typeof parsed.sourceRepositoryRoot !== "string"
+    || !path.isAbsolute(parsed.sourceRepositoryRoot)
+    || typeof parsed.evidenceOutputDirectory !== "string"
+    || parsed.evidenceOutputDirectory !== path.join(
+      parsed.sourceRepositoryRoot,
+      "outputs/aws-staging"
+    )
+    || !FULL_GIT_REVISION.test(parsed.runtimeSourceRevision)
+    || !/^[0-9a-f]{64}$/.test(parsed.runtimeManifestSha256)
+    || !AWS_STAGING_ENTRYPOINTS.has(parsed.runtimeEntrypoint)) {
+    throw new Error("AWS Staging runtime launch context is invalid");
+  }
+  const canonicalSourceRoot = await fileSystem.realpath(parsed.sourceRepositoryRoot);
+  if (canonicalSourceRoot !== parsed.sourceRepositoryRoot) {
+    throw new Error("AWS Staging runtime source root must be canonical");
+  }
+  const expectedIdentityKeys = [
+    "device", "group", "inode", "mode", "owner", "realPath"
+  ];
+  const sourceRepositoryIdentity = parsed.sourceRepositoryIdentity;
+  if (!sourceRepositoryIdentity
+    || typeof sourceRepositoryIdentity !== "object"
+    || JSON.stringify(Object.keys(sourceRepositoryIdentity).sort())
+      !== JSON.stringify(expectedIdentityKeys)
+    || sourceRepositoryIdentity.realPath !== canonicalSourceRoot
+    || !["device", "group", "inode", "owner"].every((key) => (
+      typeof sourceRepositoryIdentity[key] === "string"
+      && /^\d+$/.test(sourceRepositoryIdentity[key])
+    ))
+    || !Number.isInteger(sourceRepositoryIdentity.mode)
+    || sourceRepositoryIdentity.mode < 0
+    || sourceRepositoryIdentity.mode > 0o777) {
+    throw new Error("AWS Staging runtime source-root identity is invalid");
+  }
+  const frozenSourceIdentity = Object.freeze({ ...sourceRepositoryIdentity });
+  requireSameIdentity(
+    frozenSourceIdentity,
+    await captureDirectory(fileSystem, canonicalSourceRoot, "evidence source root"),
+    "evidence source root"
+  );
+  return Object.freeze({
+    bytes: current.bytes,
+    evidenceOutputDirectory: parsed.evidenceOutputDirectory,
+    identity: current.identity,
+    runtimeEntrypoint: parsed.runtimeEntrypoint,
+    runtimeManifestSha256: parsed.runtimeManifestSha256,
+    runtimeSourceRevision: parsed.runtimeSourceRevision,
+    sourceRepositoryIdentity: frozenSourceIdentity,
+    sourceRepositoryRoot: canonicalSourceRoot
+  });
 }
 
 export function requireAwsStagingRuntimeArtifact(runtimeArtifact, expectedSourceRevision) {
+  const evidenceBoundaryFields = [
+    runtimeArtifact?.evidenceOutputDirectory,
+    runtimeArtifact?.evidenceTrustedRoot,
+    runtimeArtifact?.evidenceTrustedRootIdentity
+  ];
+  const hasEvidenceBoundary = evidenceBoundaryFields.some((value) => value !== undefined);
+  const evidenceIdentity = runtimeArtifact?.evidenceTrustedRootIdentity;
+  const expectedEvidenceIdentityKeys = [
+    "device", "group", "inode", "mode", "owner", "realPath"
+  ];
   if (!runtimeArtifact
     || typeof runtimeArtifact !== "object"
     || !Object.isFrozen(runtimeArtifact)
@@ -255,7 +299,26 @@ export function requireAwsStagingRuntimeArtifact(runtimeArtifact, expectedSource
     || !/^[0-9a-f]{64}$/.test(runtimeArtifact.runtimeManifestSha256)
     || typeof runtimeArtifact.runtimeEntrypoint !== "string"
     || !AWS_STAGING_ENTRYPOINTS.has(runtimeArtifact.runtimeEntrypoint)
-    || typeof runtimeArtifact.assertCurrentState !== "function") {
+    || typeof runtimeArtifact.assertCurrentState !== "function"
+    || (hasEvidenceBoundary && (
+      typeof runtimeArtifact.evidenceOutputDirectory !== "string"
+      || !path.isAbsolute(runtimeArtifact.evidenceOutputDirectory)
+      || typeof runtimeArtifact.evidenceTrustedRoot !== "string"
+      || !path.isAbsolute(runtimeArtifact.evidenceTrustedRoot)
+      || !evidenceIdentity
+      || typeof evidenceIdentity !== "object"
+      || !Object.isFrozen(evidenceIdentity)
+      || JSON.stringify(Object.keys(evidenceIdentity).sort())
+        !== JSON.stringify(expectedEvidenceIdentityKeys)
+      || evidenceIdentity.realPath !== runtimeArtifact.evidenceTrustedRoot
+      || !["device", "group", "inode", "owner"].every((key) => (
+        typeof evidenceIdentity[key] === "string" && /^\d+$/.test(evidenceIdentity[key])
+      ))
+      || !Number.isInteger(evidenceIdentity.mode)
+      || evidenceIdentity.mode < 0
+      || evidenceIdentity.mode > 0o777
+      || (evidenceIdentity.mode & 0o022) !== 0
+    ))) {
     throw new Error("AWS Staging requires an immutable approved runtime artifact");
   }
   if (expectedSourceRevision !== undefined
@@ -270,7 +333,8 @@ export async function captureAwsStagingRuntimeArtifact({
   entrypointPath,
   repositoryRoot = defaultRepositoryRoot,
   runGit = runSystemGit,
-  fileSystem = fs
+  fileSystem = fs,
+  launchContextPath = process.env.NEEDO_AWS_STAGING_LAUNCH_CONTEXT
 }) {
   const approvedRevision = sourceRevisionFromArgv(argv);
   if (typeof repositoryRoot !== "string" || !path.isAbsolute(repositoryRoot)) {
@@ -284,6 +348,11 @@ export async function captureAwsStagingRuntimeArtifact({
   }
 
   const canonicalRepositoryRoot = await fileSystem.realpath(repositoryRoot);
+  const launchContext = await captureLaunchContext(
+    fileSystem,
+    launchContextPath,
+    canonicalRepositoryRoot
+  );
   const reportedRoot = trimSingleLine(
     await runGit(["rev-parse", "--show-toplevel"], { cwd: canonicalRepositoryRoot }),
     "runtime Git repository root"
@@ -296,7 +365,8 @@ export async function captureAwsStagingRuntimeArtifact({
   const relativeEntrypoint = path.relative(canonicalRepositoryRoot, canonicalEntrypoint)
     .split(path.sep).join("/");
   if (!AWS_STAGING_ENTRYPOINTS.has(relativeEntrypoint)
-    || canonicalEntrypoint !== path.join(canonicalRepositoryRoot, relativeEntrypoint)) {
+    || canonicalEntrypoint !== path.join(canonicalRepositoryRoot, relativeEntrypoint)
+    || relativeEntrypoint !== launchContext.runtimeEntrypoint) {
     throw new Error("AWS Staging runtime entrypoint is not an approved guarded command");
   }
 
@@ -306,19 +376,10 @@ export async function captureAwsStagingRuntimeArtifact({
     }),
     "runtime source revision"
   );
-  if (!FULL_GIT_REVISION.test(sourceRevision) || sourceRevision !== approvedRevision) {
+  if (!FULL_GIT_REVISION.test(sourceRevision)
+    || sourceRevision !== approvedRevision
+    || sourceRevision !== launchContext.runtimeSourceRevision) {
     throw new Error("AWS Staging runtime source revision does not match the action-time approval");
-  }
-
-  const statusArgs = [
-    "status", "--porcelain=v1", "--untracked-files=all", "--",
-    ...AWS_STAGING_RUNTIME_FILES
-  ];
-  if (decodeUtf8(
-    await runGit(statusArgs, { cwd: canonicalRepositoryRoot }),
-    "runtime status"
-  ) !== "") {
-    throw new Error("AWS Staging approved runtime closure must be clean without tracked or untracked drift");
   }
 
   const directoryRecords = [
@@ -377,10 +438,38 @@ export async function captureAwsStagingRuntimeArtifact({
   requirePackageEntrypoints(
     records.find(({ relativePath }) => relativePath === "package.json").committedBytes
   );
-  requireStaticModuleClosure(records);
-  const runtimeManifestSha256 = manifestDigest(sourceRevision, records);
+  requireAwsStagingStaticModuleClosure(records);
+  const runtimeManifestSha256 = createAwsStagingRuntimeManifestSha256(
+    sourceRevision,
+    records
+  );
+  if (runtimeManifestSha256 !== launchContext.runtimeManifestSha256) {
+    throw new Error("AWS Staging runtime manifest differs from the trusted launcher context");
+  }
 
   async function assertCurrentState() {
+    requireSameIdentity(
+      launchContext.sourceRepositoryIdentity,
+      await captureDirectory(
+        fileSystem,
+        launchContext.sourceRepositoryRoot,
+        "evidence source root"
+      ),
+      "evidence source root"
+    );
+    const currentLaunchContext = await readStableFile(
+      fileSystem,
+      launchContextPath,
+      "launch context"
+    );
+    requireSameIdentity(
+      launchContext.identity,
+      currentLaunchContext.identity,
+      "launch context"
+    );
+    if (!currentLaunchContext.bytes.equals(launchContext.bytes)) {
+      throw new Error("AWS Staging runtime launch context changed after approval");
+    }
     const currentRevision = trimSingleLine(
       await runGit(["rev-parse", "--verify", "HEAD^{commit}"], {
         cwd: canonicalRepositoryRoot
@@ -389,12 +478,6 @@ export async function captureAwsStagingRuntimeArtifact({
     );
     if (currentRevision !== sourceRevision) {
       throw new Error("AWS Staging runtime source revision changed after approval");
-    }
-    if (decodeUtf8(
-      await runGit(statusArgs, { cwd: canonicalRepositoryRoot }),
-      "runtime status"
-    ) !== "") {
-      throw new Error("AWS Staging approved runtime closure became dirty after approval");
     }
     for (const [label, expectedIdentity] of directoryRecords) {
       const currentIdentity = await captureDirectory(
@@ -432,6 +515,9 @@ export async function captureAwsStagingRuntimeArtifact({
   await assertCurrentState();
 
   return Object.freeze({
+    evidenceOutputDirectory: launchContext.evidenceOutputDirectory,
+    evidenceTrustedRoot: launchContext.sourceRepositoryRoot,
+    evidenceTrustedRootIdentity: launchContext.sourceRepositoryIdentity,
     runtimeSourceRevision: sourceRevision,
     runtimeManifestSha256,
     runtimeEntrypoint: relativeEntrypoint,

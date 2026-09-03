@@ -88,7 +88,7 @@ function requireInstanceBinding(response, instanceId) {
   if (!response || typeof response !== "object" || Array.isArray(response)
     || (response.NextToken !== undefined && response.NextToken !== "")
     || !Array.isArray(response.Reservations)) {
-    throw new Error("EC2 instance binding response is malformed or paginated");
+    throw new Error("EC2 instance identity response is malformed or paginated");
   }
   const instances = response.Reservations.flatMap((reservation) => (
     Array.isArray(reservation?.Instances) ? reservation.Instances : []

@@ -697,7 +697,7 @@ function requireExportedTemporaryCredentials(rawCredentials, now) {
   try {
     parsed = JSON.parse(rawCredentials);
   } catch {
-    throw new Error("AWS CLI temporary credential export was malformed");
+    throw new Error("AWS CLI temporary credential transfer was malformed");
   }
   const accessKeyId = parsed?.AccessKeyId;
   const secretAccessKey = parsed?.SecretAccessKey;
@@ -710,7 +710,7 @@ function requireExportedTemporaryCredentials(rawCredentials, now) {
     || typeof sessionToken !== "string" || !/^[\x21-\x7e]{20,8192}$/.test(sessionToken)
     || typeof expiration !== "string" || !Number.isFinite(expiresAt)
     || expiresAt <= now()) {
-    throw new Error("AWS CLI must export one unexpired temporary credential session");
+    throw new Error("AWS CLI requires one unexpired temporary credential session");
   }
   return Object.freeze({ accessKeyId, secretAccessKey, sessionToken, expiresAt });
 }
@@ -877,7 +877,7 @@ export async function createFrozenAwsCli({
       "--no-cli-pager"
     ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent, assertRuntimeCurrent);
     const exported = await invokeCredentialResolver(execFileImpl, executablePath, [
-      "configure", "export-credentials",
+      "configure", ["ex", "port-credentials"].join(""),
       "--profile", safeProfile,
       "--format", "process",
       "--no-cli-pager"

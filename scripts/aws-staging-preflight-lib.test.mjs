@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAwsStagingPreflightSummary,
@@ -40,6 +40,30 @@ const defaultRuntimeArtifact = Object.freeze({
   runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
   assertCurrentState: vi.fn(async () => undefined)
 });
+
+function runLocalGit(args, { cwd }) {
+  const result = spawnSync("/usr/bin/git", args, {
+    cwd,
+    encoding: null,
+    env: {
+      GIT_AUTHOR_EMAIL: "aws-staging-test@example.invalid",
+      GIT_AUTHOR_NAME: "AWS Staging Test",
+      GIT_COMMITTER_EMAIL: "aws-staging-test@example.invalid",
+      GIT_COMMITTER_NAME: "AWS Staging Test",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_NO_REPLACE_OBJECTS: "1",
+      GIT_OPTIONAL_LOCKS: "0",
+      LANG: "C",
+      LC_ALL: "C",
+      PATH: "/usr/bin:/bin"
+    }
+  });
+  if (result.status !== 0) {
+    throw new Error(`local Git fixture failed: ${String(result.stderr)}`);
+  }
+  return result.stdout;
+}
 
 function runAwsStagingPreflight(input) {
   return runAwsStagingPreflightImpl({
@@ -117,41 +141,86 @@ describe("AWS Staging preflight", () => {
   async function createRuntimeFixture({
     headRevision = "a".repeat(40),
     approvedRevision = headRevision,
-    status = "",
-    indexedOverrides = new Map()
+    indexedOverrides = new Map(),
+    committedOverrides = new Map(),
+    externalSourceRoot = false,
+    missingIndexPaths = new Set(),
+    workingOverrides = new Map()
   } = {}) {
     const {
       AWS_STAGING_RUNTIME_FILES,
       captureAwsStagingRuntimeArtifact
     } = await import("./aws-staging-runtime-artifact.mjs");
-    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-runtime-artifact-"));
+    const { createAwsStagingRuntimeManifestSha256 } = await import(
+      "./aws-staging-launcher.mjs"
+    );
+    const temporaryRoot = await fs.realpath(await fs.mkdtemp(
+      path.join(os.tmpdir(), "needo-runtime-artifact-")
+    ));
     const committed = new Map(AWS_STAGING_RUNTIME_FILES.map((relativePath) => [
       relativePath,
       Buffer.from(`approved runtime bytes for ${relativePath}\n`, "utf8")
     ]));
-    committed.set("package.json", Buffer.from(JSON.stringify({
-      scripts: {
-        "aws:staging:bootstrap-host": "node scripts/aws-staging-bootstrap-host.mjs",
-        "aws:staging:deploy": "node scripts/aws-staging-deploy.mjs",
-        "aws:staging:preflight": "node scripts/aws-staging-preflight.mjs",
-        "aws:staging:verify": "node scripts/aws-staging-verify.mjs"
-      }
-    }), "utf8"));
+    committed.set("package.json", Buffer.from(JSON.stringify({ scripts: {} }), "utf8"));
+    for (const [relativePath, bytes] of committedOverrides) {
+      committed.set(relativePath, bytes);
+    }
     for (const [relativePath, bytes] of committed) {
       const absolutePath = path.join(temporaryRoot, relativePath);
       await fs.mkdir(path.dirname(absolutePath), { recursive: true });
       await fs.writeFile(absolutePath, bytes, { mode: 0o600 });
     }
+    for (const [relativePath, bytes] of workingOverrides) {
+      await fs.writeFile(path.join(temporaryRoot, relativePath), bytes, { mode: 0o600 });
+    }
+    const runtimeManifestSha256 = createAwsStagingRuntimeManifestSha256(
+      headRevision,
+      AWS_STAGING_RUNTIME_FILES.map((relativePath) => {
+        const bytes = committed.get(relativePath);
+        return {
+          byteLength: bytes.length,
+          digest: createHash("sha256").update(bytes).digest("hex"),
+          gitMode: "100644",
+          relativePath
+        };
+      })
+    );
+    const launchContextPath = path.join(
+      temporaryRoot,
+      ".needo-aws-staging-launch-context.json"
+    );
+    const sourceRepositoryRoot = externalSourceRoot
+      ? path.join(temporaryRoot, "evidence-source")
+      : temporaryRoot;
+    if (externalSourceRoot) await fs.mkdir(sourceRepositoryRoot, { mode: 0o700 });
+    const sourceRootStat = await fs.lstat(sourceRepositoryRoot);
+    await fs.writeFile(launchContextPath, `${JSON.stringify({
+      evidenceOutputDirectory: path.join(sourceRepositoryRoot, "outputs/aws-staging"),
+      runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
+      runtimeManifestSha256,
+      runtimeSourceRevision: headRevision,
+      snapshotRoot: temporaryRoot,
+      sourceRepositoryIdentity: {
+        device: String(sourceRootStat.dev),
+        group: String(sourceRootStat.gid),
+        inode: String(sourceRootStat.ino),
+        mode: sourceRootStat.mode & 0o777,
+        owner: String(sourceRootStat.uid),
+        realPath: sourceRepositoryRoot
+      },
+      sourceRepositoryRoot,
+      version: 1
+    })}\n`, { mode: 0o400 });
     const runGit = vi.fn(async (args) => {
       if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
       if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${headRevision}\n`;
-      if (args[0] === "status") return status;
       if (args[0] === "ls-tree") {
         const relativePath = args.at(-1);
         return `100644 blob ${"1".repeat(40)}\t${relativePath}\n`;
       }
       if (args[0] === "ls-files") {
         const relativePath = args.at(-1);
+        if (missingIndexPaths.has(relativePath)) return "";
         return `100644 ${"1".repeat(40)} 0\t${relativePath}\n`;
       }
       if (args[0] === "show") {
@@ -169,10 +238,18 @@ describe("AWS Staging preflight", () => {
     const capture = () => captureAwsStagingRuntimeArtifact({
       argv: ["--source-revision", approvedRevision],
       entrypointPath,
+      launchContextPath,
       repositoryRoot: temporaryRoot,
       runGit
     });
-    return { capture, committed, entrypointPath, runGit, temporaryRoot };
+    return {
+      capture,
+      committed,
+      entrypointPath,
+      runGit,
+      sourceRepositoryRoot,
+      temporaryRoot
+    };
   }
 
   it("captures the exact clean runtime closure and records one stable manifest digest", async () => {
@@ -191,16 +268,24 @@ describe("AWS Staging preflight", () => {
   });
 
   it.each([
-    ["unstaged runtime drift", " M scripts/aws-staging-cli.mjs\n", new Map(), /clean|dirty|drift/i],
-    ["untracked runtime replacement", "?? scripts/aws-staging-preflight.mjs\n", new Map(), /clean|dirty|drift/i],
-    [
-      "staged runtime drift",
-      "",
-      new Map([["scripts/aws-staging-cli.mjs", Buffer.from("staged replacement\n")]]),
-      /index|approved revision/i
-    ]
-  ])("rejects %s before a credential adapter can be created", async (_label, status, indexedOverrides, expected) => {
-    const fixture = await createRuntimeFixture({ status, indexedOverrides });
+    ["unstaged runtime drift", {
+      workingOverrides: new Map([[
+        "scripts/aws-staging-cli.mjs", Buffer.from("unstaged replacement\n")
+      ]])
+    }, /bytes|approved revision/i],
+    ["untracked runtime replacement", {
+      missingIndexPaths: new Set(["scripts/aws-staging-preflight.mjs"]),
+      workingOverrides: new Map([[
+        "scripts/aws-staging-preflight.mjs", Buffer.from("untracked replacement\n")
+      ]])
+    }, /mode|index/i],
+    ["staged runtime drift", {
+      indexedOverrides: new Map([[
+        "scripts/aws-staging-cli.mjs", Buffer.from("staged replacement\n")
+      ]])
+    }, /index|approved revision/i]
+  ])("rejects %s before a credential adapter can be created", async (_label, fixtureOptions, expected) => {
+    const fixture = await createRuntimeFixture(fixtureOptions);
     try {
       await expect(fixture.capture()).rejects.toThrow(expected);
     } finally {
@@ -240,6 +325,18 @@ describe("AWS Staging preflight", () => {
     }
   });
 
+  it("rejects replacement of the original evidence source root after launch", async () => {
+    const fixture = await createRuntimeFixture({ externalSourceRoot: true });
+    try {
+      const artifact = await fixture.capture();
+      await fs.rename(fixture.sourceRepositoryRoot, `${fixture.sourceRepositoryRoot}.approved`);
+      await fs.mkdir(fixture.sourceRepositoryRoot, { mode: 0o700 });
+      await expect(artifact.assertCurrentState()).rejects.toThrow(/source.*identity|identity.*source/i);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps every production relative import inside the explicit runtime allowlist", async () => {
     const { AWS_STAGING_RUNTIME_FILES } = await import("./aws-staging-runtime-artifact.mjs");
     const allowlist = new Set(AWS_STAGING_RUNTIME_FILES);
@@ -250,6 +347,457 @@ describe("AWS Staging preflight", () => {
         expect(allowlist.has(dependency), `${relativePath} imports unbound ${dependency}`).toBe(true);
       }
       expect(source).not.toMatch(/\bimport\s*\(/);
+    }
+  });
+
+  it("keeps the pre-ESM launcher self-contained with only approved node built-ins", async () => {
+    const { requireAwsStagingStaticModuleClosure } = await import("./aws-staging-launcher.mjs");
+    expect(() => requireAwsStagingStaticModuleClosure([{
+      relativePath: "scripts/aws-staging-launcher.mjs",
+      committedBytes: Buffer.from(
+        'import { createFrozenAwsCli } from "./aws-staging-cli.mjs";\n',
+        "utf8"
+      )
+    }])).toThrow(/launcher.*self-contained/i);
+  });
+
+  it.each([
+    ["comment-obscured dynamic dependency", 'import/*comment*/("./unbound.mjs");\n'],
+    ["no-space named dependency", 'import{ value }from"./unbound.mjs";\n'],
+    ["comment-obscured named dependency", 'import/*comment*/{ value }from"./unbound.mjs";\n'],
+    ["side-effect dependency", 'import"./unbound.mjs";\n'],
+    ["template-expression dynamic dependency", 'const value = `${import/*comment*/("./unbound.mjs")}`;\n'],
+    ["no-space named re-export", 'export{ value }from"./unbound.mjs";\n'],
+    ["comment-obscured named re-export", 'export/*comment*/{ value }from"./unbound.mjs";\n'],
+    ["comment-obscured star re-export", 'export*/*comment*/from"./unbound.mjs";\n'],
+    ["namespace re-export", 'export*as namespace from"./unbound.mjs";\n'],
+    ["unapproved built-in loader", 'import { createRequire } from "node:module";\n'],
+    [
+      "astral text before a canonical declaration",
+      '"😀😀";\nimport path from "node:path";\nimport/*comment*/("./unbound.mjs");\n'
+    ],
+    [
+      "astral text before import.meta",
+      '"😀😀";import.meta;import/*comment*/("./unbound.mjs");\n'
+    ],
+    [
+      "comment-obscured eval loader",
+      'eval/*comment*/("im" + "port(\\"data:text/javascript,0\\")");\n'
+    ],
+    [
+      "comment-obscured Function loader",
+      'Function/*comment*/("return im" + "port(\\"data:text/javascript,0\\")")();\n'
+    ],
+    [
+      "comment-obscured CommonJS loader",
+      'require/*comment*/("./unbound.cjs");\n'
+    ],
+    [
+      "comment-obscured Worker loader",
+      'new/*comment*/Worker("data:text/javascript,0");\n'
+    ],
+    [
+      "template-literal fake declaration around a dynamic load",
+      'const source = "data:text/javascript,0";\nconst text = `\nimport { value } from "./${import(source)}/../aws-staging-cli.mjs";\n`;\n'
+    ],
+    [
+      "Unicode-escaped eval loader",
+      '\\u0065val("im" + "port(\\"data:text/javascript,0\\")");\n'
+    ],
+    [
+      "Unicode-escaped Function loader",
+      'Funct\\u0069on("return im" + "port(\\"data:text/javascript,0\\")")();\n'
+    ]
+  ])("rejects %s outside the canonical static module grammar", async (_label, source) => {
+    const fixture = await createRuntimeFixture({
+      committedOverrides: new Map([[
+        "scripts/aws-staging-preflight.mjs",
+        Buffer.from(source, "utf8")
+      ]])
+    });
+    try {
+      await expect(fixture.capture()).rejects.toThrow(/module syntax|loader|unbound|dependency/i);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("provides a separately trusted launcher before npm or guarded ESM can load", async () => {
+    const { AWS_STAGING_LAUNCHER_RUNTIME_FILES } = await import(
+      "./aws-staging-launcher.mjs"
+    );
+    const { AWS_STAGING_RUNTIME_FILES } = await import("./aws-staging-runtime-artifact.mjs");
+    expect(AWS_STAGING_LAUNCHER_RUNTIME_FILES).toEqual(AWS_STAGING_RUNTIME_FILES);
+    expect(AWS_STAGING_RUNTIME_FILES).toContain("scripts/aws-staging-launcher.mjs");
+  });
+
+  it("pins the trusted launcher to Node.js major 22", async () => {
+    const { assertAwsStagingNodeRuntime } = await import("./aws-staging-launcher.mjs");
+    expect(assertAwsStagingNodeRuntime).toBeTypeOf("function");
+    expect(() => assertAwsStagingNodeRuntime("node", "22.99.0")).not.toThrow();
+    expect(() => assertAwsStagingNodeRuntime("node", "23.0.0")).toThrow(/Node\.js 22/i);
+  });
+
+  async function createTrustedLauncherFixture() {
+    const launcher = await import("./aws-staging-launcher.mjs");
+    const temporaryRoot = await fs.realpath(await fs.mkdtemp(
+      path.join(os.tmpdir(), "needo-trusted-launcher-")
+    ));
+    const sourceRoot = path.join(temporaryRoot, "source");
+    await fs.mkdir(sourceRoot, { mode: 0o700 });
+    const paths = [
+      ...launcher.AWS_STAGING_LAUNCHER_RUNTIME_FILES,
+      "deploy/aws-staging/cloudformation.yml"
+    ];
+    for (const relativePath of paths) {
+      const destination = path.join(sourceRoot, relativePath);
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.copyFile(new URL(`../${relativePath}`, import.meta.url), destination);
+      await fs.chmod(destination, 0o600);
+    }
+    await runLocalGit(["init", "--quiet"], { cwd: sourceRoot });
+    await runLocalGit(["add", "--", ...paths], { cwd: sourceRoot });
+    await runLocalGit(["commit", "--quiet", "-m", "approved runtime fixture"], { cwd: sourceRoot });
+    const revision = String(await runLocalGit(
+      ["rev-parse", "--verify", "HEAD^{commit}"],
+      { cwd: sourceRoot }
+    )).trim();
+    const argv = [
+      "preflight",
+      "--profile", "needo-staging-test",
+      "--account-id", "123456789012",
+      "--region", "ap-southeast-2",
+      "--hostname", "staging.needo.life",
+      "--alert-email", "ops@example.invalid",
+      "--budget-amount", "10",
+      "--budget-unit", "USD",
+      "--source-revision", revision
+    ];
+    return { ...launcher, argv, paths, revision, sourceRoot, temporaryRoot };
+  }
+
+  it("materializes approved bytes into a private snapshot before executing the guarded entrypoint", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const runChild = vi.fn(async ({ args, cwd, environment, executablePath, snapshotRoot }) => {
+      expect(executablePath).toBe(await fs.realpath(process.execPath));
+      expect(cwd).toBe(snapshotRoot);
+      expect(args.slice(0, 5)).toEqual([
+        "--no-addons",
+        "--disallow-code-generation-from-strings",
+        "--disable-warning=ExperimentalWarning",
+        `--experimental-loader=${pathToFileURL(path.join(
+          snapshotRoot,
+          "scripts/aws-staging-module-loader.mjs"
+        )).href}`,
+        `--import=${pathToFileURL(path.join(
+          snapshotRoot,
+          "scripts/aws-staging-runtime-guard.mjs"
+        )).href}`
+      ]);
+      expect(args[5]).toBe(path.join(snapshotRoot, "scripts/aws-staging-preflight.mjs"));
+      expect(Object.keys(environment).sort()).toEqual([
+        "LANG", "LC_ALL", "NEEDO_AWS_STAGING_LAUNCH_CONTEXT"
+      ]);
+      const sourceBytes = await fs.readFile(path.join(
+        fixture.sourceRoot,
+        "scripts/aws-staging-preflight.mjs"
+      ));
+      expect(await fs.readFile(args[5])).toEqual(sourceBytes);
+      expect((await fs.stat(snapshotRoot)).mode & 0o777).toBe(0o500);
+      expect((await fs.stat(args[5])).mode & 0o777).toBe(0o400);
+      const sealedRuntime = await import(`${pathToFileURL(path.join(
+        snapshotRoot,
+        "scripts/aws-staging-runtime-artifact.mjs"
+      )).href}?fixture=${fixture.revision}`);
+      const artifact = await sealedRuntime.captureAwsStagingRuntimeArtifact({
+        argv: args.slice(6),
+        entrypointPath: args[5],
+        launchContextPath: environment.NEEDO_AWS_STAGING_LAUNCH_CONTEXT,
+        repositoryRoot: snapshotRoot
+      });
+      expect(artifact).toMatchObject({
+        evidenceOutputDirectory: path.join(fixture.sourceRoot, "outputs/aws-staging"),
+        evidenceTrustedRoot: fixture.sourceRoot,
+        runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
+        runtimeSourceRevision: fixture.revision
+      });
+      await expect(artifact.assertCurrentState()).resolves.toBeUndefined();
+      return 0;
+    });
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.toBe(0);
+      expect(runChild).toHaveBeenCalledOnce();
+      expect(await fs.readdir(fixture.temporaryRoot)).toEqual(["source"]);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not chmod a symlink target while removing a tampered sealed snapshot", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const victim = path.join(fixture.temporaryRoot, "cleanup-victim");
+    await fs.writeFile(victim, "must retain its mode\n", { mode: 0o644 });
+    await fs.chmod(victim, 0o644);
+    const runChild = vi.fn(async ({ args }) => {
+      const entrypointPath = args.find((value) => (
+        value.endsWith("/scripts/aws-staging-preflight.mjs")
+      ));
+      expect(entrypointPath).toBeTypeOf("string");
+      await fs.chmod(path.dirname(entrypointPath), 0o700);
+      await fs.rm(entrypointPath);
+      await fs.symlink(victim, entrypointPath);
+      return 0;
+    });
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.toBe(0);
+      expect(runChild).toHaveBeenCalledOnce();
+      expect((await fs.stat(victim)).mode & 0o777).toBe(0o644);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects every module resolution outside the sealed runtime allowlist", async () => {
+    const { resolve } = await import("./aws-staging-module-loader.mjs");
+    const allowedUrl = pathToFileURL(fileURLToPath(new URL(
+      "./aws-staging-preflight.mjs",
+      import.meta.url
+    ))).href;
+    await expect(resolve("node:path", {}, async (specifier) => ({
+      url: specifier
+    }))).resolves.toEqual({ url: "node:path" });
+    await expect(resolve(allowedUrl, {}, async (specifier) => ({
+      url: specifier
+    }))).resolves.toEqual({ url: allowedUrl });
+    await expect(resolve("data:text/javascript,0", {}, async (specifier) => ({
+      url: specifier
+    }))).rejects.toThrow(/module resolution/i);
+    await expect(resolve("file:///private/tmp/unbound-runtime.mjs", {}, async (specifier) => ({
+      url: specifier
+    }))).rejects.toThrow(/module resolution/i);
+    await expect(resolve("node:module", {}, async (specifier) => ({
+      url: specifier
+    }))).rejects.toThrow(/module resolution/i);
+  });
+
+  it("disables string code generation and computed process loader access before entrypoint code", () => {
+    const guardUrl = pathToFileURL(fileURLToPath(new URL(
+      "./aws-staging-runtime-guard.mjs",
+      import.meta.url
+    ))).href;
+    const probe = [
+      'if (process["get" + "Builtin" + "Module"] !== undefined) process.exit(71);',
+      'if (process["bind" + "ing"] !== undefined) process.exit(72);',
+      'if (process["dl" + "open"] !== undefined) process.exit(73);',
+      'try { globalThis.constructor.constructor("return 1")(); process.exit(74); }',
+      'catch (error) { if (error.name !== "EvalError") process.exit(75); }'
+    ].join("");
+    const result = spawnSync(process.execPath, [
+      "--no-addons",
+      "--disallow-code-generation-from-strings",
+      `--import=${guardUrl}`,
+      "-e",
+      probe
+    ], {
+      encoding: "utf8",
+      env: { LANG: "C", LC_ALL: "C" }
+    });
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it("enforces the combined guarded child argv without leaking its sealed path", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    let childResult;
+    const probeSource = [
+      'const fail = (message) => { throw new Error(message); };',
+      'for (const name of [["get", "Builtin", "Module"], ["bind", "ing"], ["dl", "open"]]) {',
+      '  if (process[name.join("")] !== undefined) fail(`unguarded process ${name.join("")}`);',
+      '}',
+      'for (const name of [["ev", "al"], ["Func", "tion"]]) {',
+      '  try { globalThis[name.join("")]("return 1"); fail(`code generation ${name.join("")}`); }',
+      '  catch (error) { if (error.name !== "EvalError") throw error; }',
+      '}',
+      'for (const specifier of [',
+      '  ["data:", "text/javascript,", "export default 1"].join(""),',
+      '  ["file:", "///private/tmp/unbound-aws-staging-probe.mjs"].join("")',
+      ']) {',
+      '  try { await import(specifier); fail(`module resolution ${specifier}`); }',
+      '  catch (error) { if (!/module resolution rejected/i.test(error.message)) throw error; }',
+      '}',
+      'process.stdout.write("{\\"status\\":\\"ok\\"}\\n");'
+    ].join("\n");
+    const runChild = vi.fn(async ({ args, cwd, environment, executablePath }) => {
+      const entrypointPath = args.find((value) => (
+        value.endsWith("/scripts/aws-staging-preflight.mjs")
+      ));
+      expect(entrypointPath).toBeTypeOf("string");
+      await fs.chmod(entrypointPath, 0o600);
+      await fs.writeFile(entrypointPath, probeSource);
+      await fs.chmod(entrypointPath, 0o400);
+      childResult = spawnSync(executablePath, args, {
+        cwd,
+        encoding: "utf8",
+        env: environment
+      });
+      return childResult.status ?? 1;
+    });
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.toBe(0);
+      expect(runChild).toHaveBeenCalledOnce();
+      expect(childResult.stdout).toBe('{"status":"ok"}\n');
+      expect(childResult.stderr).not.toContain("ExperimentalWarning");
+      expect(childResult.stderr).not.toContain(fixture.temporaryRoot);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("never executes mutable repository clean filters while binding approved source bytes", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const sentinel = path.join(fixture.temporaryRoot, "untrusted-filter-ran");
+    const target = path.join(fixture.sourceRoot, "scripts/aws-staging-cli.mjs");
+    const bytes = await fs.readFile(target);
+    await fs.writeFile(
+      path.join(fixture.sourceRoot, ".gitattributes"),
+      "scripts/aws-staging-cli.mjs filter=untrusted-probe\n"
+    );
+    await runLocalGit([
+      "config",
+      "filter.untrusted-probe.clean",
+      `/usr/bin/touch ${sentinel}; /bin/cat`
+    ], { cwd: fixture.sourceRoot });
+    await runLocalGit([
+      "config", "filter.untrusted-probe.required", "true"
+    ], { cwd: fixture.sourceRoot });
+    await fs.writeFile(target, bytes, { mode: 0o600 });
+
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild: vi.fn(async () => 0),
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.toBe(0);
+      await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["dirty package prehook", async (fixture) => {
+      const packagePath = path.join(fixture.sourceRoot, "package.json");
+      const packageJson = JSON.parse(await fs.readFile(packagePath, "utf8"));
+      packageJson.scripts["preaws:staging:preflight"] = "node ./untrusted-before-gate.mjs";
+      await fs.writeFile(packagePath, `${JSON.stringify(packageJson)}\n`, { mode: 0o600 });
+    }],
+    ["staged runtime replacement", async (fixture) => {
+      const target = path.join(fixture.sourceRoot, "scripts/aws-staging-cli.mjs");
+      await fs.appendFile(target, "\n// staged drift\n");
+      await runLocalGit(["add", "--", "scripts/aws-staging-cli.mjs"], {
+        cwd: fixture.sourceRoot
+      });
+    }]
+  ])("rejects %s before the guarded child can run", async (_label, mutate) => {
+    const fixture = await createTrustedLauncherFixture();
+    const runChild = vi.fn();
+    try {
+      await mutate(fixture);
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).rejects.toThrow(/clean|dirty|drift|approved|approval|differ|bytes|index/i);
+      expect(runChild).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an approved revision mismatch before the guarded child can run", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const runChild = vi.fn();
+    try {
+      const argv = fixture.argv.with(-1, "b".repeat(40));
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).rejects.toThrow(/revision/i);
+      expect(runChild).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a launcher Git-object revision that differs from the approved runtime revision", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const runChild = vi.fn();
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: "b".repeat(40),
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).rejects.toThrow(/launcher.*revision|revision.*launcher/i);
+      expect(runChild).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects same-byte source identity replacement during snapshot creation", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const runChild = vi.fn();
+    let targetIndexChecks = 0;
+    const runGit = async (args, options) => {
+      if (args[0] === "ls-files" && args.at(-1) === "scripts/aws-staging-cli.mjs") {
+        targetIndexChecks += 1;
+        if (targetIndexChecks === 2) {
+          const target = path.join(fixture.sourceRoot, "scripts/aws-staging-cli.mjs");
+          const bytes = await fs.readFile(target);
+          await fs.rename(target, `${target}.displaced`);
+          await fs.writeFile(target, bytes, { mode: 0o600 });
+        }
+      }
+      return runLocalGit(args, options);
+    };
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        runGit,
+        temporaryRoot: fixture.temporaryRoot
+      })).rejects.toThrow(/identity|changed/i);
+      expect(runChild).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
     }
   });
 

@@ -133,17 +133,41 @@ designed, tested, and approved.
 ## Operator command sequence
 
 Every guarded command requires the action-time-approved full source revision.
-Before any credential resolver or AWS adapter exists, the wrapper binds the
-explicit runtime closure (the four entrypoints, every static/transitive
-security module, and `package.json`) to that revision across Git HEAD, index,
-working bytes, modes, real paths, and file identities. It records
+Supported execution never uses an npm lifecycle script or loads a guarded
+worktree module first. A sanitized root-trusted `/usr/bin/git` reads
+`scripts/aws-staging-launcher.mjs` as an exact approved Git object; the
+outer procedure proves that the supplied full object ID is exactly a commit,
+the launcher is its exact `100644` blob, and every Git provenance read runs
+with `GIT_NO_LAZY_FETCH=1`. The launcher accepts one explicit absolute Node
+executable only when its major version is exactly 22, with inherited
+`NODE_OPTIONS` removed and the rest of the environment scrubbed. It rejects
+dirty/staged/untracked/symlink or identity drift in the runtime closure and
+template, checks the fail-closed canonical module grammar, then materializes
+the approved runtime and template bytes into a private `0700` snapshot whose
+code is sealed `0500`/`0400` before any guarded ESM or credential resolver is
+loaded. Only that snapshot executes. Its child disables string code generation
+and suppresses only Node's `ExperimentalWarning`. A custom ESM loader rejects
+any computed import resolution outside the sealed module URL allowlist and the
+approved `node:` builtins. A preloaded runtime guard makes computed
+`process.binding`, `process.dlopen`, and `process.getBuiltinModule` escape APIs
+unavailable and immutable. The launcher records
 `runtimeSourceRevision`, `runtimeManifestSha256`, and `runtimeEntrypoint`, then
 re-attests the closure before every AWS CLI process and immediately before
 `create-stack` or `ssm send-command`. This scoped assertion does not claim the
 entire repository or worktree is clean; it covers the runtime closure and the
-separately bound CloudFormation template. Static ESM code is already loaded
-before this in-process check, so this detects ordinary dirty/concurrent drift
-but is not a defense against a previously compromised same-user process.
+separately bound CloudFormation template.
+
+The sealed launch context also carries the source repository root's real path,
+owner, group, mode, device, and inode. Deploy and acceptance evidence writers
+receive that attested identity, exact-match it at writer entry, and revalidate
+those fields plus every output-directory component around every directory,
+open, permission, write, sync, rename, and final-stat operation. Any symlink,
+replacement, or group/world-writable component is a hard stop. The exact
+approved commit is the code trust decision: the scanner, loader, and guard
+enforce it but do not make arbitrary JavaScript safe. The local trusted shell,
+root-owned `/usr/bin/git`, and approved Node.js 22 installation are host trust
+anchors; this gate claims no defense against a compromised root or same-user
+host.
 
 Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
 
@@ -155,8 +179,124 @@ preceding preflight. Substitute only the angle-bracketed
 operator values. `staging.needo.life` is the approved staging hostname. The
 personal live run uses `--region ap-southeast-2`.
 
+From the canonical repository root, define this procedure in the current
+shell once. Replace the two angle-bracketed trust inputs on every call. The
+outer shell validates them before using the revision as a Git object selector.
+It requires an exact commit object and a `100644 blob` launcher entry, fully
+materializes that blob in a private directory, and verifies its Git object ID
+before Node can start. It captures the canonical source-root candidate before
+changing directory; the stdin Node process starts inside the sealed private
+launcher directory so a relative import cannot resolve from the worktree. The
+source root is carried separately in `NEEDO_AWS_STAGING_SOURCE_ROOT` for the
+launcher's canonical identity and exact-commit checks. The inner Node process
+receives no `PATH`, `HOME`, proxy, AWS, npm, `NODE_OPTIONS`, `NODE_PATH`, or
+other inherited setting.
+
 ```bash
-npm run aws:staging:preflight -- \
+needo_aws_staging() {
+  local command="$1"
+  local approved_revision="$2"
+  local approved_node="$3"
+  shift 3
+  /usr/bin/env -i \
+    GIT_CONFIG_GLOBAL=/dev/null \
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_NO_LAZY_FETCH=1 \
+    GIT_NO_REPLACE_OBJECTS=1 \
+    GIT_OPTIONAL_LOCKS=0 \
+    LANG=C LC_ALL=C \
+    /bin/zsh -df -c '
+      revision="$1"
+      node_path="$2"
+      source_root="$PWD"
+      shift 2
+      setopt PIPE_FAIL
+      [[ "$revision" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] || exit 64
+      case "$node_path" in
+        /usr/local/bin/node|/usr/bin/node|/opt/homebrew/bin/node) ;;
+        *) exit 64 ;;
+      esac
+      [[ -x "$node_path" && ! -L "$node_path" ]] || exit 64
+      resolved_revision="$(/usr/bin/git -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null rev-parse --verify \
+        "${revision}^{object}" 2>/dev/null)" || exit 64
+      [[ "$resolved_revision" == "$revision" ]] || exit 64
+      object_type="$(/usr/bin/git -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null cat-file -t "$revision" 2>/dev/null)" || exit 64
+      [[ "$object_type" == commit ]] || exit 64
+      launcher_entry="$(/usr/bin/git -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null ls-tree --full-tree "$revision" -- \
+        scripts/aws-staging-launcher.mjs 2>/dev/null)" || exit 64
+      launcher_mode="${launcher_entry%% *}"
+      launcher_rest="${launcher_entry#* }"
+      launcher_type="${launcher_rest%% *}"
+      launcher_rest="${launcher_rest#* }"
+      launcher_oid="${launcher_rest%%$'\''\t'\''*}"
+      launcher_tree_path="${launcher_rest#*$'\''\t'\''}"
+      [[ "$launcher_mode" == 100644 && "$launcher_type" == blob &&
+        "$launcher_tree_path" == scripts/aws-staging-launcher.mjs &&
+        "$launcher_oid" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] || exit 64
+      launcher_directory="$(/usr/bin/mktemp -d \
+        /private/tmp/needo-aws-launcher.XXXXXXXX)" || exit 64
+      launcher_path="$launcher_directory/launcher.mjs"
+      cleanup_launcher() {
+        /bin/chmod 0700 "$launcher_directory" 2>/dev/null
+        /bin/rm -f "$launcher_path"
+        /bin/rmdir "$launcher_directory"
+      }
+      trap cleanup_launcher EXIT
+      /bin/chmod 0700 "$launcher_directory" || exit 64
+      setopt NO_CLOBBER
+      /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null \
+        cat-file blob "$launcher_oid" > "$launcher_path" 2>/dev/null || exit 64
+      unsetopt NO_CLOBBER
+      /bin/chmod 0400 "$launcher_path" || exit 64
+      materialized_oid="$(/usr/bin/git -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null hash-object --no-filters \
+        "$launcher_path" 2>/dev/null)" || exit 64
+      [[ "$materialized_oid" == "$launcher_oid" ]] || exit 64
+      LC_ALL=C /usr/bin/tr -cd '\''\11\12\15\40-\176'\'' \
+        < "$launcher_path" | /usr/bin/cmp -s - "$launcher_path" || exit 64
+      /usr/bin/awk '\''
+        BEGIN { import_count = 0; in_prefix = 1 }
+        {
+          line = $0
+          if (in_prefix && line ~ /^import[[:space:]]+([[:alpha:]_$][[:alnum:]_$]*|[{][[:space:]]*[[:alpha:]_$][[:alnum:]_$]*([[:space:]]+as[[:space:]]+[[:alpha:]_$][[:alnum:]_$]*)?([[:space:]]*,[[:space:]]*[[:alpha:]_$][[:alnum:]_$]*([[:space:]]+as[[:space:]]+[[:alpha:]_$][[:alnum:]_$]*)?)*[[:space:]]*[}])[[:space:]]+from[[:space:]]+"node:[[:alnum:]_.\/-]+";[[:space:]]*$/) {
+            import_count += 1
+            next
+          }
+          in_prefix = 0
+          gsub(/import[.]meta/, "", line)
+          if (line ~ /(^|[^[:alnum:]_$])import([^[:alnum:]_$]|$)/) exit 1
+          if (line ~ /(^|[^[:alnum:]_$])export([^[:alnum:]_$]|$)/) {
+            if (line !~ /^export[[:space:]]+(const[[:space:]]+[[:alpha:]_$][[:alnum:]_$]*[[:space:]]*=|(async[[:space:]]+)?function[[:space:]]+[[:alpha:]_$][[:alnum:]_$]*[[:space:]]*[(])/) exit 1
+            sub(/^export[[:space:]]+/, "", line)
+            if (line ~ /(^|[^[:alnum:]_$])export([^[:alnum:]_$]|$)/) exit 1
+          }
+        }
+        END { if (import_count < 1) exit 1 }
+      '\'' "$launcher_path" >/dev/null 2>&1 || exit 64
+      /bin/chmod 0500 "$launcher_directory" || exit 64
+      (
+        cd "$launcher_directory" || exit 64
+        /usr/bin/env -i LANG=C LC_ALL=C \
+          NEEDO_AWS_STAGING_SOURCE_ROOT="$source_root" \
+          NEEDO_AWS_STAGING_TRUSTED_STDIN=1 \
+          NEEDO_AWS_STAGING_TRUSTED_SOURCE_REVISION="$revision" \
+          "$node_path" --no-addons --disallow-code-generation-from-strings \
+          --disable-warning=ExperimentalWarning --input-type=module - "$@" \
+          < "$launcher_path"
+      )
+    ' needo-aws-staging "$approved_revision" "$approved_node" \
+      "$command" "$@"
+}
+# Every call below also carries --source-revision <approved-full-source-revision>.
+```
+
+```bash
+needo_aws_staging preflight \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -197,7 +337,9 @@ deploy command only after human review. Do not use shell command
 substitution to turn preflight output into automatic approval.
 
 ```bash
-npm run aws:staging:deploy -- \
+needo_aws_staging deploy \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -219,7 +361,9 @@ versions to Run Command; any drift stops with zero waiter and zero
 `ssm send-command`.
 
 ```bash
-npm run aws:staging:bootstrap-host -- \
+needo_aws_staging bootstrap-host \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -229,7 +373,9 @@ npm run aws:staging:bootstrap-host -- \
   --budget-unit <three-letter-billing-currency> \
   --source-revision <approved-full-source-revision>
 
-npm run aws:staging:bootstrap-host -- \
+needo_aws_staging bootstrap-host \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -243,7 +389,9 @@ npm run aws:staging:bootstrap-host -- \
 Finally, run environment acceptance with the same values:
 
 ```bash
-npm run aws:staging:verify -- \
+needo_aws_staging verify \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \

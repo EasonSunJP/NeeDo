@@ -1,4 +1,8 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   maskEmail,
@@ -33,6 +37,32 @@ function containsRawAwsOperatorCommand(contents) {
 }
 
 describe("AWS Staging configuration", () => {
+  it("does not expose guarded live commands through mutable npm lifecycle hooks", async () => {
+    const packageJson = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url)));
+    for (const name of [
+      "aws:staging:preflight",
+      "aws:staging:deploy",
+      "aws:staging:bootstrap-host",
+      "aws:staging:verify"
+    ]) {
+      expect(packageJson.scripts[name]).toBeUndefined();
+      expect(packageJson.scripts[`pre${name}`]).toBeUndefined();
+      expect(packageJson.scripts[`post${name}`]).toBeUndefined();
+    }
+  });
+
+  it("disables Git lazy-fetch helpers at every runtime provenance boundary", async () => {
+    const sources = await Promise.all([
+      "docs/aws-staging-environment-runbook.md",
+      "scripts/aws-staging-launcher.mjs",
+      "scripts/aws-staging-runtime-artifact.mjs",
+      "scripts/aws-staging-template-artifact.mjs"
+    ].map((relativePath) => fs.readFile(new URL(`../${relativePath}`, import.meta.url), "utf8")));
+    for (const source of sources) {
+      expect(source).toContain("GIT_NO_LAZY_FETCH");
+    }
+  });
+
   it("documents digest-bound immutable template approval without mutable file validation", async () => {
     const authoritativePaths = [
       "docs/aws-staging-environment-runbook.md",
@@ -71,13 +101,150 @@ describe("AWS Staging configuration", () => {
       expect(contents, documentPath).toMatch(
         /does not (?:assert|claim)[\s\S]{0,80}(?:the )?entire(?:\s|>)+(?:repository|worktree)/i
       );
-      for (const block of contents.matchAll(
-        /npm run aws:staging:(?:preflight|deploy|bootstrap-host|verify) -- \\\n[\s\S]*?```/g
-      )) {
-        expect(block[0], `${documentPath} guarded command`).toContain(
-          "--source-revision <approved-full-source-revision>"
-        );
+      expect(contents, documentPath).not.toMatch(/npm run aws:staging:/);
+      expect(contents, documentPath).toMatch(/exact approved Git object.*private.*snapshot/is);
+      expect(contents, documentPath).toMatch(/NODE_OPTIONS.*(?:unset|scrub|empty|removed)/i);
+      expect(contents, `${documentPath} guarded command`).toMatch(
+        /--source-revision\s+<approved-full-source-revision>/
+      );
+    }
+    const runbook = documents.find(({ documentPath }) => (
+      documentPath === "docs/aws-staging-environment-runbook.md"
+    )).contents;
+    expect(runbook).toMatch(/cat-file -t "\$revision"/);
+    expect(runbook).toMatch(/rev-parse --verify[\s\\]*"\$\{revision\}\^\{object\}"/);
+    expect(runbook).toMatch(/ls-tree --full-tree "\$revision"[\s\S]*scripts\/aws-staging-launcher\.mjs/);
+    expect(runbook).toMatch(/"\$launcher_mode" == 100644[\s\S]*"\$launcher_type" == blob/);
+    expect(runbook).toMatch(/cat-file blob "\$launcher_oid" > "\$launcher_path"/);
+    expect(runbook).toMatch(/hash-object --no-filters/);
+    expect(runbook).toMatch(/NEEDO_AWS_STAGING_TRUSTED_SOURCE_REVISION="\$revision"/);
+  });
+
+  it.each([
+    ["partial launcher blob", "commit", "100644", 17, false, undefined],
+    ["tag-object source revision", "tag", "100644", 0, false, undefined],
+    ["executable launcher tree mode", "commit", "100755", 0, false, undefined],
+    ["SHA-256 commit prefix", "commit", "100644", 0, false, `${"a".repeat(40)}${"c".repeat(24)}`],
+    ["complete approved launcher blob", "commit", "100644", 0, true, undefined]
+  ])("gates Node on a %s", async (
+    _label,
+    objectType,
+    launcherMode,
+    blobStatus,
+    expectedToStart,
+    resolvedRevisionOverride
+  ) => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-launch-shell-"));
+    const sentinel = path.join(temporaryRoot, "node-started");
+    const fakeGitLog = path.join(temporaryRoot, "git-calls");
+    const fakeGit = path.join(temporaryRoot, "git");
+    const revision = "a".repeat(40);
+    const resolvedRevision = resolvedRevisionOverride ?? revision;
+    const launcherObject = "b".repeat(40);
+    const sideEffectSource = `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(sentinel)},"started");`;
+    const fakeGitSource = `#!/bin/zsh
+/usr/bin/printf '%s\\n' "$*" >> ${JSON.stringify(fakeGitLog)}
+case " $* " in
+  *" rev-parse --verify "*) /usr/bin/printf '%s\\n' ${JSON.stringify(resolvedRevision)} ;;
+  *" cat-file -t "*) /usr/bin/printf '%s\\n' ${JSON.stringify(objectType)} ;;
+  *" ls-tree "*) /usr/bin/printf '%b\\n' ${JSON.stringify(
+    `${launcherMode} blob ${launcherObject}\tscripts/aws-staging-launcher.mjs`
+  )} ;;
+  *" cat-file blob "*)
+    /usr/bin/printf '%b' ${JSON.stringify(sideEffectSource)}
+    exit ${blobStatus}
+    ;;
+  *" hash-object "*) /usr/bin/printf '%s\\n' ${JSON.stringify(launcherObject)} ;;
+  *) exit 70 ;;
+esac
+`;
+    try {
+      await fs.writeFile(fakeGit, fakeGitSource, { mode: 0o700 });
+      const runbook = await fs.readFile(
+        new URL("../docs/aws-staging-environment-runbook.md", import.meta.url),
+        "utf8"
+      );
+      const procedure = /needo_aws_staging\(\) \{[\s\S]*?^\}/m.exec(runbook)?.[0];
+      expect(procedure).toBeTruthy();
+      const injectedProcedure = procedure.split("/usr/bin/git").join(fakeGit);
+      const result = spawnSync("/bin/zsh", ["-df", "-c", `${injectedProcedure}\nneedo_aws_staging preflight ${revision} ${process.execPath} --source-revision ${revision}`], {
+        cwd: process.cwd(),
+        encoding: "utf8"
+      });
+      if (expectedToStart) {
+        const gitCalls = await fs.readFile(fakeGitLog, "utf8");
+        expect(result.status, `${result.stderr}\n${gitCalls}`).toBe(0);
+        await expect(fs.access(sentinel)).resolves.toBeUndefined();
+      } else {
+        await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
       }
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["relative import", () => 'import "./mutable-dependency.mjs";\n', false],
+    ["multiline named re-export", (dependencyPath) => (
+      `export {\n value\n}\nfrom ${JSON.stringify(pathToFileURL(dependencyPath).href)};\n`
+    ), false],
+    ["multiline star re-export", (dependencyPath) => (
+      `export *\nfrom ${JSON.stringify(pathToFileURL(dependencyPath).href)};\n`
+    ), false],
+    ["same-line appended re-export", (dependencyPath) => (
+      `export const safe = 1; export * from ${JSON.stringify(pathToFileURL(dependencyPath).href)};\n`
+    ), false],
+    ["NUL-obscured absolute import", (dependencyPath) => (
+      `/*__NUL__*/ import ${JSON.stringify(pathToFileURL(dependencyPath).href)};\n`
+    ), true]
+  ])("rejects a pre-body %s from the materialized stdin launcher", async (
+    _label,
+    dependencySource,
+    includesNul
+  ) => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-launch-module-"));
+    const sentinel = path.join(temporaryRoot, "mutable-dependency-ran");
+    const mutableDependency = path.join(temporaryRoot, "mutable-dependency.mjs");
+    const fakeGit = path.join(temporaryRoot, "git");
+    const revision = "a".repeat(40);
+    const launcherObject = "b".repeat(40);
+    const launcherSource = `import fs from "node:fs";\n${dependencySource(mutableDependency)}`;
+    const blobEmitter = includesNul
+      ? launcherSource.split("__NUL__").map((part, index) => (
+          `${index === 0 ? "" : "/usr/bin/printf '\\0'\n    "}/usr/bin/printf '%b' ${JSON.stringify(part)}`
+        )).join("\n    ")
+      : `/usr/bin/printf '%b' ${JSON.stringify(launcherSource)}`;
+    const mutableSource = `import fs from "node:fs";fs.writeFileSync(${JSON.stringify(sentinel)},"unsafe");export const value=1;`;
+    const fakeGitSource = `#!/bin/zsh
+case " $* " in
+  *" rev-parse --verify "*) /usr/bin/printf '%s\\n' ${JSON.stringify(revision)} ;;
+  *" cat-file -t "*) /usr/bin/printf '%s\\n' commit ;;
+  *" ls-tree "*) /usr/bin/printf '%b\\n' ${JSON.stringify(
+    `100644 blob ${launcherObject}\tscripts/aws-staging-launcher.mjs`
+  )} ;;
+  *" cat-file blob "*) ${blobEmitter} ;;
+  *" hash-object "*) /usr/bin/printf '%s\\n' ${JSON.stringify(launcherObject)} ;;
+  *) exit 70 ;;
+esac
+`;
+    try {
+      await fs.writeFile(fakeGit, fakeGitSource, { mode: 0o700 });
+      await fs.writeFile(mutableDependency, mutableSource, { mode: 0o600 });
+      const runbook = await fs.readFile(
+        new URL("../docs/aws-staging-environment-runbook.md", import.meta.url),
+        "utf8"
+      );
+      const procedure = /needo_aws_staging\(\) \{[\s\S]*?^\}/m.exec(runbook)?.[0];
+      expect(procedure).toBeTruthy();
+      const injectedProcedure = procedure.split("/usr/bin/git").join(fakeGit);
+      const result = spawnSync("/bin/zsh", ["-df", "-c", `${injectedProcedure}\nneedo_aws_staging preflight ${revision} ${process.execPath} --source-revision ${revision}`], {
+        cwd: temporaryRoot,
+        encoding: "utf8"
+      });
+      expect(result.status).not.toBe(0);
+      await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
     }
   });
 

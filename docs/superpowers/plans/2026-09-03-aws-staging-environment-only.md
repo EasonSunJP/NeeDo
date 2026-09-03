@@ -75,6 +75,35 @@
 > host; historical “same seven flags” and template-only provenance wording
 > below is superseded.
 
+> **2026-09-04 sealed-launch supersession (`批准最终安全修订`):** Supported live
+> execution does not use npm lifecycle scripts or load worktree JavaScript.
+> Root-trusted `/usr/bin/git` supplies `scripts/aws-staging-launcher.mjs` as an
+> exact approved Git object from the operator-approved full commit; every Git
+> provenance read disables lazy fetching with `GIT_NO_LAZY_FETCH=1`. With
+> inherited `NODE_OPTIONS` removed, the launcher accepts a fixed absolute Node
+> executable only when its major version is exactly 22, then materializes the
+> exact approved runtime closure and template into a private read-only snapshot
+> before guarded ESM or credentials load. The child disables string code
+> generation and suppresses only Node's `ExperimentalWarning`. Its custom ESM
+> loader rejects any computed import resolution outside the sealed module URL
+> allowlist and approved `node:` builtins, while the preloaded runtime guard
+> makes computed `process.binding`, `process.dlopen`, and
+> `process.getBuiltinModule` escape APIs unavailable and immutable.
+>
+> The launcher also carries the source repository root's real path, owner,
+> group, mode, device, and inode into the sealed launch context.
+> Deploy and acceptance evidence writers receive that attested identity and
+> exact-match it at
+> writer entry, and revalidate those fields plus every output-directory
+> component around each filesystem operation; a symlink, replacement, or
+> group/world-writable component stops the write. The exact approved commit is
+> the code trust decision: the scanner, loader, and guard enforce that decision
+> but do not turn arbitrary JavaScript into a sandbox. The local trusted shell,
+> root-owned `/usr/bin/git`, and approved Node.js 22 installation remain host
+> trust anchors, and no protection is claimed against a compromised root or
+> same-user host. Historical package-command and direct-entrypoint instructions
+> below are superseded by the runbook's `needo_aws_staging` procedure.
+
 Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
 
 Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
@@ -1373,20 +1402,12 @@ git commit -m "feat: verify AWS staging environment boundary"
 - Produces one documented sequence for preflight, deployment, SSM bootstrap, verification, and rollback.
 - Keeps application deployment explicitly deferred.
 
-- [ ] **Step 1: Add package scripts without embedding profile/account/email**
+- [ ] **Step 1: Keep live AWS entrypoints outside npm lifecycle execution**
 
-Add only static executable names:
-
-```json
-{
-  "aws:staging:preflight": "node scripts/aws-staging-preflight.mjs",
-  "aws:staging:deploy": "node scripts/aws-staging-deploy.mjs",
-  "aws:staging:bootstrap-host": "node scripts/aws-staging-bootstrap-host.mjs",
-  "aws:staging:verify": "node scripts/aws-staging-verify.mjs"
-}
-```
-
-Do not add `.env` loading or credential values to `package.json`.
+`package.json` must not expose the four guarded live commands or any matching
+pre/post lifecycle hooks. Use only the exact-object `needo_aws_staging`
+procedure defined in the runbook; never add `.env` loading or credential values
+to package metadata.
 
 - [ ] **Step 2: Write the runbook inputs and stop gates**
 
@@ -1403,7 +1424,9 @@ Do not add `.env` loading or credential values to `package.json`.
 Use this invocation form. Variable operator-supplied values remain in documentation angle brackets; the approved Staging hostname is shown concretely:
 
 ```bash
-npm run aws:staging:preflight -- \
+needo_aws_staging preflight \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -1414,9 +1437,9 @@ npm run aws:staging:preflight -- \
   --source-revision <approved-full-source-revision>
 ```
 
-Then `aws:staging:deploy` with the same eight environment/provenance flags plus
+Then `needo_aws_staging deploy` with the same eight environment/provenance flags plus
 `--template-sha256 <approved-template-sha256>`. Run
-`aws:staging:bootstrap-host` twice for idempotency and `aws:staging:verify` with
+`needo_aws_staging bootstrap-host` twice for idempotency and `needo_aws_staging verify` with
 the same eight flags, including the approved source revision, explicit region,
 and exact `--hostname staging.needo.life`.
 
@@ -1507,7 +1530,9 @@ Use the exact focused command from Task 8. Do not rerun or repair the waived ful
 Run preflight with all seven approved flag pairs:
 
 ```bash
-npm run aws:staging:preflight -- \
+needo_aws_staging preflight \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -1579,7 +1604,9 @@ mutation.
 - [ ] **Step 3: Run read-only preflight and preserve the summary**
 
 ```bash
-npm run aws:staging:preflight -- \
+needo_aws_staging preflight \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -1598,7 +1625,9 @@ preflight fails, no stack mutation occurs.
 - [ ] **Step 4: Deploy the CloudFormation environment**
 
 ```bash
-npm run aws:staging:deploy -- \
+needo_aws_staging deploy \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -1619,7 +1648,9 @@ not an update target for this gate. `environment-stack.json` states
 - [ ] **Step 5: Initialize the host through SSM, then prove idempotency**
 
 ```bash
-npm run aws:staging:bootstrap-host -- \
+needo_aws_staging bootstrap-host \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -1629,7 +1660,9 @@ npm run aws:staging:bootstrap-host -- \
   --budget-unit <three-letter-billing-currency> \
   --source-revision <approved-full-source-revision>
 
-npm run aws:staging:bootstrap-host -- \
+needo_aws_staging bootstrap-host \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \
@@ -1657,7 +1690,9 @@ Ask the alert-email owner to confirm the AWS SNS email subscription. This is a u
 - [ ] **Step 8: Run the live acceptance gate**
 
 ```bash
-npm run aws:staging:verify -- \
+needo_aws_staging verify \
+  <approved-full-source-revision> \
+  <approved-absolute-node-v22-path> \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
   --region <ap-southeast-2-or-ap-northeast-1> \

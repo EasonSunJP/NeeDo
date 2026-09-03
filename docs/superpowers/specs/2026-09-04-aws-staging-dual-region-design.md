@@ -13,6 +13,35 @@
 > repository or worktree is clean and does not defend an already-compromised
 > same-user host.
 
+> **2026-09-04 sealed-launch supersession (`批准最终安全修订`):** Supported live
+> execution never uses npm lifecycle scripts or loads worktree JavaScript.
+> Every invocation carries `--source-revision <approved-full-source-revision>`.
+> Root-trusted `/usr/bin/git` supplies `scripts/aws-staging-launcher.mjs` as an
+> exact approved Git object from the operator-approved full commit; every Git
+> provenance read disables lazy fetching with `GIT_NO_LAZY_FETCH=1`. With
+> inherited `NODE_OPTIONS` removed, the launcher accepts a fixed absolute Node
+> executable only when its major version is exactly 22, then materializes the
+> exact approved runtime closure and template into a private read-only snapshot
+> before guarded ESM or credentials load. The child disables string code
+> generation and suppresses only Node's `ExperimentalWarning`. Its custom ESM
+> loader rejects any computed import resolution outside the sealed module URL
+> allowlist and approved `node:` builtins, while the preloaded runtime guard
+> makes computed `process.binding`, `process.dlopen`, and
+> `process.getBuiltinModule` escape APIs unavailable and immutable.
+>
+> The launcher carries the source repository root's real path, owner, group,
+> mode, device, and inode into the sealed launch context.
+> Deploy and acceptance evidence writers receive that attested identity and
+> exact-match it at writer
+> entry, and revalidate those fields plus every output-directory component
+> around each filesystem operation; a symlink, replacement, or
+> group/world-writable component stops the write. The exact approved commit is
+> the code trust decision: the scanner, loader, and guard enforce that decision
+> but do not turn arbitrary JavaScript into a sandbox. The local trusted shell,
+> root-owned `/usr/bin/git`, and approved Node.js 22 installation remain host
+> trust anchors, and no protection is claimed against a compromised root or
+> same-user host.
+
 Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
 
 Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
