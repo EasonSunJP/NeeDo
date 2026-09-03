@@ -1,7 +1,7 @@
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
-  parseAwsStagingArgs,
+  parseAwsStagingBoundArgs,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import {
@@ -9,6 +9,12 @@ import {
   runAwsStagingPreflight
 } from "./aws-staging-preflight-lib.mjs";
 import { captureAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
+import {
+  captureAwsStagingRuntimeArtifact,
+  requireAwsStagingRuntimeArtifact
+} from "./aws-staging-runtime-artifact.mjs";
+
+const modulePath = fileURLToPath(import.meta.url);
 
 const failure = Object.freeze({ gate: "aws-staging-preflight", status: "failed" });
 const failureLine = "{\"gate\":\"aws-staging-preflight\",\"status\":\"failed\"}";
@@ -26,19 +32,35 @@ function setProcessExitCode(code) {
 }
 
 export async function main(argv = process.argv.slice(2), {
-  parseAwsStagingArgsImpl = parseAwsStagingArgs,
+  captureRuntimeArtifactImpl = captureAwsStagingRuntimeArtifact,
+  parseAwsStagingBoundArgsImpl = parseAwsStagingBoundArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
   captureTemplateArtifactImpl = captureAwsStagingTemplateArtifact,
   createAwsCliImpl = createFrozenAwsCli,
   runAwsStagingPreflightImpl = runAwsStagingPreflight
 } = {}) {
-  const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
+  const runtimeArtifact = await captureRuntimeArtifactImpl({ argv, entrypointPath: modulePath });
+  const parsed = parseAwsStagingBoundArgsImpl(argv);
+  requireAwsStagingRuntimeArtifact(runtimeArtifact, parsed.sourceRevision);
+  const config = resolveAwsStagingConfigImpl(parsed);
   const templateArtifact = await captureTemplateArtifactImpl({
-    templatePath: config.templatePath
+    templatePath: config.templatePath,
+    approvedRevision: parsed.sourceRevision
   });
-  const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
+  await runtimeArtifact.assertCurrentState();
+  await templateArtifact.assertCurrentState();
+  const aws = await createAwsCliImpl({
+    profile: config.profile,
+    region: config.region,
+    assertRuntimeCurrent: runtimeArtifact.assertCurrentState
+  });
   try {
-    const result = await runAwsStagingPreflightImpl({ aws, config, templateArtifact });
+    const result = await runAwsStagingPreflightImpl({
+      aws,
+      config,
+      runtimeArtifact,
+      templateArtifact
+    });
     return createAwsStagingPreflightSummary(result);
   } finally {
     await aws.dispose?.();

@@ -15,6 +15,10 @@ import { deployAwsStagingInfrastructure } from "./aws-staging-deploy-lib.mjs";
 import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
 import { captureAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 import {
+  captureAwsStagingRuntimeArtifact,
+  requireAwsStagingRuntimeArtifact
+} from "./aws-staging-runtime-artifact.mjs";
+import {
   AWS_STAGING_EXPECTED_RESOURCES,
   requireAwsStagingStackId
 } from "./aws-staging-stack-contract.mjs";
@@ -37,6 +41,9 @@ const topLevelEvidenceKeys = Object.freeze([
   "stackStatus",
   "templateSha256",
   "sourceRevision",
+  "runtimeSourceRevision",
+  "runtimeManifestSha256",
+  "runtimeEntrypoint",
   "resourceIdentitySha256",
   "resourceCount",
   "stackTags",
@@ -167,7 +174,7 @@ function reconstructRedactedEvidence(evidence) {
     || new Date(timestampMilliseconds).toISOString() !== evidence.timestamp) {
     throw new Error("AWS Staging evidence timestamp must be a canonical ISO 8601 instant");
   }
-  for (const key of ["templateSha256", "resourceIdentitySha256"]) {
+  for (const key of ["templateSha256", "runtimeManifestSha256", "resourceIdentitySha256"]) {
     if (typeof evidence[key] !== "string" || !/^[0-9a-f]{64}$/.test(evidence[key])) {
       throw new Error(`AWS Staging evidence ${key} must be a SHA-256 digest`);
     }
@@ -175,6 +182,12 @@ function reconstructRedactedEvidence(evidence) {
   if (typeof evidence.sourceRevision !== "string"
     || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(evidence.sourceRevision)) {
     throw new Error("AWS Staging evidence sourceRevision must be a full Git revision");
+  }
+  if (evidence.runtimeSourceRevision !== evidence.sourceRevision) {
+    throw new Error("AWS Staging evidence runtimeSourceRevision must match sourceRevision");
+  }
+  if (evidence.runtimeEntrypoint !== "scripts/aws-staging-deploy.mjs") {
+    throw new Error("AWS Staging evidence runtimeEntrypoint is not approved for deployment");
   }
   if (evidence.resourceCount !== AWS_STAGING_EXPECTED_RESOURCES.length) {
     throw new Error("AWS Staging evidence resourceCount does not match the exact stack contract");
@@ -222,6 +235,9 @@ function reconstructRedactedEvidence(evidence) {
     evidence.stackStatus,
     evidence.templateSha256,
     evidence.sourceRevision,
+    evidence.runtimeSourceRevision,
+    evidence.runtimeManifestSha256,
+    evidence.runtimeEntrypoint,
     evidence.resourceIdentitySha256,
     String(evidence.resourceCount),
     ...Object.values(evidence.stackTags),
@@ -284,6 +300,9 @@ function reconstructRedactedEvidence(evidence) {
     stackStatus: "CREATE_COMPLETE",
     templateSha256: evidence.templateSha256,
     sourceRevision: evidence.sourceRevision,
+    runtimeSourceRevision: evidence.runtimeSourceRevision,
+    runtimeManifestSha256: evidence.runtimeManifestSha256,
+    runtimeEntrypoint: evidence.runtimeEntrypoint,
     resourceIdentitySha256: evidence.resourceIdentitySha256,
     resourceCount: AWS_STAGING_EXPECTED_RESOURCES.length,
     stackTags: expectedStackTags,
@@ -528,6 +547,7 @@ export async function writeAwsStagingEnvironmentEvidence({
 }
 
 export async function runAwsStagingDeployCli(argv, {
+  captureRuntimeArtifactImpl = captureAwsStagingRuntimeArtifact,
   parseAwsStagingDeployArgsImpl = parseAwsStagingDeployArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
   captureTemplateArtifactImpl = captureAwsStagingTemplateArtifact,
@@ -535,18 +555,27 @@ export async function runAwsStagingDeployCli(argv, {
   deployInfrastructureImpl = deployAwsStagingInfrastructure,
   writeEvidenceImpl = writeAwsStagingEnvironmentEvidence
 } = {}) {
+  const runtimeArtifact = await captureRuntimeArtifactImpl({ argv, entrypointPath: modulePath });
   const parsed = parseAwsStagingDeployArgsImpl(argv);
+  requireAwsStagingRuntimeArtifact(runtimeArtifact, parsed.sourceRevision);
   const config = resolveAwsStagingConfigImpl(parsed);
   const templateArtifact = await captureTemplateArtifactImpl({
     templatePath: config.templatePath,
     approvedRevision: parsed.sourceRevision,
     approvedSha256: parsed.templateSha256
   });
-  const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
+  await runtimeArtifact.assertCurrentState();
+  await templateArtifact.assertCurrentState();
+  const aws = await createAwsCliImpl({
+    profile: config.profile,
+    region: config.region,
+    assertRuntimeCurrent: runtimeArtifact.assertCurrentState
+  });
   try {
     const evidence = await deployInfrastructureImpl({
       aws,
       config,
+      runtimeArtifact,
       templateArtifact,
       runPreflight: runAwsStagingPreflight
     });
@@ -557,6 +586,9 @@ export async function runAwsStagingDeployCli(argv, {
       stackStatus: evidence.stackStatus,
       templateSha256: evidence.templateSha256,
       sourceRevision: evidence.sourceRevision,
+      runtimeSourceRevision: evidence.runtimeSourceRevision,
+      runtimeManifestSha256: evidence.runtimeManifestSha256,
+      runtimeEntrypoint: evidence.runtimeEntrypoint,
       evidenceFile: path.relative(path.resolve(moduleDir, ".."), evidencePath),
       applicationDeployed: false,
       migrationRun: false,

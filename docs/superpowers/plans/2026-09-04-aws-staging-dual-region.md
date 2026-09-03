@@ -8,12 +8,12 @@
 > Tokyo profile requires a separate credential-resolver security microstep and
 > new evidence; it does not change the dual-region infrastructure contract.
 
-> **2026-09-04 immutable-template supersession (`批准最终安全修订`):** The deploy
-> command is the one exception to historical “same seven flags” wording. It
-> additionally requires `--template-sha256 <approved-template-sha256>` and
-> `--source-revision <approved-full-source-revision>` from the immediately
-> preceding clean preflight. One immutable byte snapshot is used for both
-> `validate-template` and `create-stack`.
+> **2026-09-04 immutable-template supersession (`批准最终安全修订`):** All four
+> guarded commands require the eight shared environment/provenance flags,
+> including `--source-revision <approved-full-source-revision>`. Deploy alone
+> additionally requires `--template-sha256 <approved-template-sha256>` from
+> the immediately preceding clean preflight. One immutable byte snapshot is
+> used for both `validate-template` and `create-stack`.
 
 > **2026-09-04 interactive-access supersession (`批准最终安全修订`):** No raw AWS
 > CLI/plugin version check or interactive Session Manager command is part of
@@ -24,6 +24,16 @@
 > chain and config/cache tree by owner, mode, real path, device, and inode, then
 > re-attests them immediately before each resolver spawn. This detects source
 > replacement but does not claim defense against an already compromised
+> same-user host.
+
+> **2026-09-04 runtime-provenance supersession (`批准最终安全修订`):** All four
+> guarded commands require the same approved full source revision. Before any
+> credential resolution they bind the explicit runtime closure plus
+> `package.json` to HEAD/index/worktree bytes, modes, and identities, record
+> `runtimeSourceRevision`, `runtimeManifestSha256`, and `runtimeEntrypoint`, and
+> re-attest before every AWS CLI process and mutation. The template remains a
+> separately bound immutable artifact. This does not claim the entire
+> repository or worktree is clean and does not defend an already-compromised
 > same-user host.
 
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
@@ -723,9 +733,9 @@ include this line immediately after the account ID:
   --region <ap-southeast-2-or-ap-northeast-1> \
 ```
 
-Keep the seven environment flags on every operator command. Add the two
-immutable-template approval flags only to deploy. State that the personal live
-run uses `--region ap-southeast-2`.
+Keep the eight environment/provenance flags on every operator command. Add the
+template-digest approval flag only to deploy. State that the personal live run
+uses `--region ap-southeast-2`.
 
 - [ ] **Step 3: Amend the original environment-only plan without rewriting history**
 

@@ -1,4 +1,5 @@
 import { requireAwsStagingHostname, requireAwsStagingRegion } from "./aws-staging-config.mjs";
+import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
 import {
   attestAwsStagingCloudWatchParameter,
   attestAwsStagingDocument,
@@ -31,7 +32,7 @@ function requireResolvedConfig(config) {
   }
 }
 
-function requireFreshPreflight(preflight, config) {
+function requireFreshPreflight(preflight, config, runtimeArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
     throw new Error("AWS Staging bootstrap requires a fresh immutable in-process preflight");
   }
@@ -39,6 +40,11 @@ function requireFreshPreflight(preflight, config) {
   if (preflight.region !== config.region) throw new Error("Bootstrap preflight region mismatch");
   if (preflight.hostname !== config.hostname) {
     throw new Error("Bootstrap preflight hostname mismatch");
+  }
+  if (preflight.runtimeSourceRevision !== runtimeArtifact.runtimeSourceRevision
+    || preflight.runtimeManifestSha256 !== runtimeArtifact.runtimeManifestSha256
+    || preflight.runtimeEntrypoint !== runtimeArtifact.runtimeEntrypoint) {
+    throw new Error("Bootstrap preflight runtime identity mismatch");
   }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
@@ -190,6 +196,7 @@ export async function bootstrapAwsStagingHost({
   now = Date.now,
   sleep = defaultSleep,
   runPreflight,
+  runtimeArtifact,
   loadAttestationContracts = loadAwsStagingAttestationContracts
 }) {
   if (!aws || typeof aws.json !== "function" || typeof aws.text !== "function") {
@@ -203,9 +210,10 @@ export async function bootstrapAwsStagingHost({
     throw new Error("AWS Staging bootstrap requires preflight and attestation boundaries");
   }
 
+  const approvedRuntime = requireAwsStagingRuntimeArtifact(runtimeArtifact);
   const startedAtMilliseconds = readClock(now);
-  const preflight = await runPreflight({ aws, config });
-  requireFreshPreflight(preflight, config);
+  const preflight = await runPreflight({ aws, config, runtimeArtifact: approvedRuntime });
+  requireFreshPreflight(preflight, config, approvedRuntime);
   const contracts = await loadAttestationContracts();
 
   const describedStack = await aws.json([
@@ -257,6 +265,7 @@ export async function bootstrapAwsStagingHost({
   ]);
   await waitForSsmOnline({ aws, instanceId: outputs.InstanceId, now, sleep });
 
+  await approvedRuntime.assertCurrentState();
   const commandResponse = await aws.json([
     "ssm", "send-command",
     "--document-name", outputs.HostBootstrapDocumentName,
@@ -291,6 +300,9 @@ export async function bootstrapAwsStagingHost({
     documentSha256: documentAttestation.sha256,
     agentParameterVersion: parameterAttestation.version,
     agentParameterSha256: parameterAttestation.sha256,
+    runtimeSourceRevision: approvedRuntime.runtimeSourceRevision,
+    runtimeManifestSha256: approvedRuntime.runtimeManifestSha256,
+    runtimeEntrypoint: approvedRuntime.runtimeEntrypoint,
     startedAt: toSafeTimestamp(startedAtMilliseconds),
     completedAt: toSafeTimestamp(readClock(now))
   });

@@ -31,6 +31,14 @@ const outputValues = Object.freeze({
   BudgetName: "needo-staging-infrastructure-monthly-cost"
 });
 const stackId = "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/needo-staging-infrastructure/00000000-0000-4000-8000-000000000000";
+const runtimeSourceRevision = "0123456789abcdef0123456789abcdef01234567";
+const runtimeManifestSha256 = "d".repeat(64);
+const runtimeArtifact = Object.freeze({
+  runtimeSourceRevision,
+  runtimeManifestSha256,
+  runtimeEntrypoint: "scripts/aws-staging-bootstrap-host.mjs",
+  assertCurrentState: vi.fn(async () => undefined)
+});
 const stackTags = Object.freeze([
   { Key: "Project", Value: "needo" },
   { Key: "Environment", Value: "staging" },
@@ -68,6 +76,9 @@ function preflight(overrides = {}) {
     amiId: "ami-0123456789abcdef0",
     amiArchitecture: "arm64",
     templateValidation: "VALID",
+    runtimeSourceRevision,
+    runtimeManifestSha256,
+    runtimeEntrypoint: "scripts/aws-staging-bootstrap-host.mjs",
     stackState: "CREATE_COMPLETE",
     dnsA: Object.freeze([]),
     ...overrides
@@ -249,7 +260,8 @@ async function bootstrap({
   resolvedConfig = config,
   clock = createClock(),
   preflightResult = preflight(),
-  loadContracts = vi.fn(async () => attestationContracts)
+  loadContracts = vi.fn(async () => attestationContracts),
+  approvedRuntime = runtimeArtifact
 } = {}) {
   return bootstrapAwsStagingHost({
     aws,
@@ -257,11 +269,27 @@ async function bootstrap({
     now: clock.now,
     sleep: clock.sleep,
     runPreflight: vi.fn(async () => preflightResult),
+    runtimeArtifact: approvedRuntime,
     loadAttestationContracts: loadContracts
   });
 }
 
 describe("AWS Staging SSM host bootstrap", () => {
+  it("re-attests runtime identity immediately before the SSM bootstrap mutation", async () => {
+    const aws = successfulAws();
+    const driftedRuntime = Object.freeze({
+      ...runtimeArtifact,
+      assertCurrentState: vi.fn(async () => {
+        throw new Error("AWS Staging runtime identity changed after approval");
+      })
+    });
+
+    await expect(bootstrap({ aws, approvedRuntime: driftedRuntime }))
+      .rejects.toThrow(/runtime identity changed/i);
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "get-document")).toBe(true);
+    expect(aws.json.mock.calls.some(([args]) => args[1] === "send-command")).toBe(false);
+  });
+
   it("uses only a fresh complete stack response and the exact approved AWS call sequence", async () => {
     const trace = [];
     const aws = successfulAws({ trace });
@@ -303,6 +331,9 @@ describe("AWS Staging SSM host bootstrap", () => {
       documentSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       agentParameterVersion: 11,
       agentParameterSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      runtimeSourceRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-bootstrap-host.mjs",
       startedAt: "2026-09-03T01:00:00.000Z",
       completedAt: "2026-09-03T01:00:00.000Z"
     });
@@ -720,6 +751,9 @@ describe("AWS Staging SSM host bootstrap", () => {
       "documentSha256",
       "agentParameterVersion",
       "agentParameterSha256",
+      "runtimeSourceRevision",
+      "runtimeManifestSha256",
+      "runtimeEntrypoint",
       "startedAt",
       "completedAt"
     ]);
@@ -749,7 +783,7 @@ describe("AWS Staging SSM host bootstrap", () => {
 
   it("keeps main injectable and prints only the successful allowlisted summary", async () => {
     const { main, runCli } = await import("./aws-staging-bootstrap-host.mjs");
-    const parsedArgs = Object.freeze({ parsed: true });
+    const parsedArgs = Object.freeze({ parsed: true, sourceRevision: runtimeSourceRevision });
     const aws = successfulAws();
     aws.dispose = vi.fn(async () => {});
     const summary = await bootstrap({ aws });
@@ -758,21 +792,36 @@ describe("AWS Staging SSM host bootstrap", () => {
     const createAws = vi.fn(() => aws);
     const runBootstrap = vi.fn(async () => summary);
     const runPreflight = vi.fn();
+    const trace = [];
+    const guardedRuntimeArtifact = Object.freeze({
+      ...runtimeArtifact,
+      assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
+    });
 
     await expect(main(["--injected"], {
-      parseAwsStagingArgsImpl: parseArgs,
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        trace.push("runtime:capture");
+        return guardedRuntimeArtifact;
+      }),
+      parseAwsStagingBoundArgsImpl: parseArgs,
       resolveAwsStagingConfigImpl: resolveConfig,
-      createAwsCliImpl: createAws,
+      createAwsCliImpl: vi.fn(async (input) => {
+        trace.push("credentials");
+        expect(input.assertRuntimeCurrent).toBe(guardedRuntimeArtifact.assertCurrentState);
+        return createAws();
+      }),
       bootstrapAwsStagingHostImpl: runBootstrap,
       runPreflightImpl: runPreflight
     })).resolves.toBe(summary);
     expect(parseArgs).toHaveBeenCalledWith(["--injected"]);
     expect(resolveConfig).toHaveBeenCalledWith(parsedArgs);
-    expect(createAws).toHaveBeenCalledWith({
-      profile: config.profile,
-      region: config.region
+    expect(runBootstrap).toHaveBeenCalledWith({
+      aws,
+      config,
+      runPreflight,
+      runtimeArtifact: guardedRuntimeArtifact
     });
-    expect(runBootstrap).toHaveBeenCalledWith({ aws, config, runPreflight });
+    expect(trace).toEqual(["runtime:capture", "runtime:assert", "credentials"]);
     expect(aws.dispose).toHaveBeenCalledTimes(1);
 
     const stdout = [];
@@ -788,6 +837,18 @@ describe("AWS Staging SSM host bootstrap", () => {
     expect(stdout).toEqual([JSON.stringify(summary)]);
     expect(stderr).toEqual([]);
     expect(exitCodes).toEqual([]);
+  });
+
+  it("refuses runtime attestation failure before bootstrap creates an AWS adapter", async () => {
+    const { main } = await import("./aws-staging-bootstrap-host.mjs");
+    const createAwsCliImpl = vi.fn();
+    await expect(main(["--source-revision", runtimeSourceRevision], {
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        throw new Error("AWS Staging approved runtime closure became dirty");
+      }),
+      createAwsCliImpl
+    })).rejects.toThrow(/runtime closure.*dirty/i);
+    expect(createAwsCliImpl).not.toHaveBeenCalled();
   });
 
   it("redacts every thrown failure field at the injectable CLI runner boundary", async () => {

@@ -4,6 +4,15 @@
 **Status:** Approved design amendment
 **Scope:** Deployment safety gate only; no AWS resource, application, database, TLS, or DNS mutation
 
+> **2026-09-04 runtime-provenance supersession (`批准最终安全修订`):** Every
+> guarded command requires one approved full source revision. Before credentials,
+> the gate binds the explicit runtime closure plus `package.json`, records
+> `runtimeSourceRevision`, `runtimeManifestSha256`, and `runtimeEntrypoint`, and
+> re-attests before every AWS CLI process and mutation. The template remains a
+> separately bound immutable artifact. This does not claim the entire
+> repository or worktree is clean and does not defend an already-compromised
+> same-user host.
+
 ## Context
 
 The approved AWS Staging gate was intentionally locked to Tokyo

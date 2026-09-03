@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { resolve4 } from "node:dns/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
+import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
 
 const AMI_PARAMETER_NAME = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64";
 const AMAZON_AMI_OWNER_ID = "137112412989";
@@ -169,6 +170,9 @@ export function createAwsStagingPreflightSummary(result) {
     amiArchitecture: result.amiArchitecture,
     templateSha256: result.templateSha256,
     sourceRevision: result.sourceRevision,
+    runtimeSourceRevision: result.runtimeSourceRevision,
+    runtimeManifestSha256: result.runtimeManifestSha256,
+    runtimeEntrypoint: result.runtimeEntrypoint,
     stackState: result.stackState,
     dnsA: result.dnsA
   });
@@ -177,10 +181,17 @@ export function createAwsStagingPreflightSummary(result) {
 export async function runAwsStagingPreflight({
   aws,
   config,
+  runtimeArtifact,
   templateArtifact,
   resolveDns = resolve4
 }) {
   const hostname = requireAwsStagingHostname(config.hostname);
+  const artifact = requireTemplateArtifact(templateArtifact);
+  const approvedRuntime = requireAwsStagingRuntimeArtifact(
+    runtimeArtifact,
+    artifact.sourceRevision
+  );
+  await approvedRuntime.assertCurrentState();
   const credentialSource = await aws.text(["configure", "list"]);
   requireTemporaryCredentialSource(credentialSource);
 
@@ -199,7 +210,6 @@ export async function runAwsStagingPreflight({
   if (!path.isAbsolute(config.templatePath)) {
     throw new Error("AWS Staging template path must be absolute");
   }
-  const artifact = requireTemplateArtifact(templateArtifact);
   await aws.json([
     "cloudformation", "validate-template",
     "--template-body", artifact.body
@@ -218,6 +228,9 @@ export async function runAwsStagingPreflight({
     amiArchitecture,
     templateSha256: artifact.templateSha256,
     sourceRevision: artifact.sourceRevision,
+    runtimeSourceRevision: approvedRuntime.runtimeSourceRevision,
+    runtimeManifestSha256: approvedRuntime.runtimeManifestSha256,
+    runtimeEntrypoint: approvedRuntime.runtimeEntrypoint,
     templateValidation: "VALID",
     stackState,
     dnsA

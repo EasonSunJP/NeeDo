@@ -17,6 +17,7 @@ import {
   attestAwsStagingDocument
 } from "./aws-staging-attestation.mjs";
 import { requireAwsStagingStackId } from "./aws-staging-stack-contract.mjs";
+import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
@@ -37,7 +38,8 @@ const hostKeys = Object.freeze([
   "mount", "filesystem", "directories", "services", "runningContainers", "activeRelease"
 ]);
 const topLevelEvidenceKeys = Object.freeze([
-  "timestamp", "accountId", "region", "hostname", "stack", "resourceIds", "elasticIp",
+  "timestamp", "accountId", "region", "hostname", "runtimeSourceRevision",
+  "runtimeManifestSha256", "runtimeEntrypoint", "stack", "resourceIds", "elasticIp",
   "tagCoverage", "ec2", "ingress", "volumes", "ssm", "host", "buckets",
   "secretVersionCount", "monitoring", "budget", "dns", "applicationDeployed",
   "migrationRun", "seedRun", "dnsModified", "businessDataMutation", "waivedBaselineFailures"
@@ -231,13 +233,18 @@ async function resolveDnsA(resolveDns, hostname) {
   }
 }
 
-function requireFreshPreflight(preflight, config) {
+function requireFreshPreflight(preflight, config, runtimeArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
     throw new Error("AWS Staging acceptance requires a fresh immutable in-process preflight");
   }
   if (preflight.accountId !== config.accountId) throw new Error("Preflight account mismatch");
   if (preflight.region !== config.region) throw new Error("Preflight region mismatch");
   if (preflight.hostname !== config.hostname) throw new Error("Preflight hostname mismatch");
+  if (preflight.runtimeSourceRevision !== runtimeArtifact.runtimeSourceRevision
+    || preflight.runtimeManifestSha256 !== runtimeArtifact.runtimeManifestSha256
+    || preflight.runtimeEntrypoint !== runtimeArtifact.runtimeEntrypoint) {
+    throw new Error("Preflight runtime identity mismatch");
+  }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
     || preflight.amiArchitecture !== "arm64") {
@@ -1015,6 +1022,7 @@ export async function verifyAwsStagingEnvironment({
   config,
   resolveDns = resolve4,
   runPreflight,
+  runtimeArtifact,
   now = Date.now
 }) {
   if (!aws || typeof aws.json !== "function" || typeof aws.text !== "function") {
@@ -1026,8 +1034,14 @@ export async function verifyAwsStagingEnvironment({
     throw new Error("AWS Staging acceptance requires DNS and in-process preflight boundaries");
   }
 
-  const preflight = await runPreflight({ aws, config, resolveDns });
-  const preflightDns = requireFreshPreflight(preflight, config);
+  const approvedRuntime = requireAwsStagingRuntimeArtifact(runtimeArtifact);
+  const preflight = await runPreflight({
+    aws,
+    config,
+    resolveDns,
+    runtimeArtifact: approvedRuntime
+  });
+  const preflightDns = requireFreshPreflight(preflight, config, approvedRuntime);
 
   const describedStack = await aws.json([
     "cloudformation", "describe-stacks", "--stack-name", config.stackName
@@ -1223,6 +1237,7 @@ export async function verifyAwsStagingEnvironment({
     resourceGroupTags, arnMappings, config.owner
   );
 
+  await approvedRuntime.assertCurrentState();
   const commandResponse = await aws.json([
     "ssm", "send-command", "--document-name", outputs.HostVerificationDocumentName,
     "--document-version", verificationDocumentAttestation.version,
@@ -1261,6 +1276,9 @@ export async function verifyAwsStagingEnvironment({
     accountId: config.accountId,
     region: config.region,
     hostname,
+    runtimeSourceRevision: approvedRuntime.runtimeSourceRevision,
+    runtimeManifestSha256: approvedRuntime.runtimeManifestSha256,
+    runtimeEntrypoint: approvedRuntime.runtimeEntrypoint,
     stack: { id: stackId, name: config.stackName, status: stack.StackStatus },
     resourceIds: {
       instanceId: outputs.InstanceId,
@@ -1347,6 +1365,23 @@ function reconstructAcceptanceEvidence(evidence) {
   if (!/^\d{12}$/.test(accountId)) throw new Error("Acceptance accountId is invalid");
   const region = requireAwsStagingRegion(evidence.region);
   const hostname = requireAwsStagingHostname(evidence.hostname);
+  const runtimeSourceRevision = nonEmptyString(
+    evidence.runtimeSourceRevision,
+    "Acceptance runtimeSourceRevision"
+  );
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(runtimeSourceRevision)) {
+    throw new Error("Acceptance runtimeSourceRevision is invalid");
+  }
+  const runtimeManifestSha256 = nonEmptyString(
+    evidence.runtimeManifestSha256,
+    "Acceptance runtimeManifestSha256"
+  );
+  if (!/^[0-9a-f]{64}$/.test(runtimeManifestSha256)) {
+    throw new Error("Acceptance runtimeManifestSha256 is invalid");
+  }
+  if (evidence.runtimeEntrypoint !== "scripts/aws-staging-verify.mjs") {
+    throw new Error("Acceptance runtimeEntrypoint is invalid");
+  }
 
   exactKeys(evidence.stack, ["id", "name", "status"], "Acceptance stack");
   if (evidence.stack.name !== "needo-staging-infrastructure"
@@ -1606,6 +1641,9 @@ function reconstructAcceptanceEvidence(evidence) {
     accountId,
     region,
     hostname,
+    runtimeSourceRevision,
+    runtimeManifestSha256,
+    runtimeEntrypoint: "scripts/aws-staging-verify.mjs",
     stack: { id: stackId, name: "needo-staging-infrastructure", status: evidence.stack.status },
     resourceIds: { ...evidence.resourceIds },
     elasticIp: evidence.elasticIp,

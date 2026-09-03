@@ -1,11 +1,17 @@
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
-  parseAwsStagingArgs,
+  parseAwsStagingBoundArgs,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import { bootstrapAwsStagingHost } from "./aws-staging-bootstrap-host-lib.mjs";
 import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
+import {
+  captureAwsStagingRuntimeArtifact,
+  requireAwsStagingRuntimeArtifact
+} from "./aws-staging-runtime-artifact.mjs";
+
+const modulePath = fileURLToPath(import.meta.url);
 
 const FAILURE = Object.freeze({
   gate: "aws-staging-host-bootstrap",
@@ -26,16 +32,30 @@ function setProcessExitCode(code) {
 }
 
 export async function main(argv = process.argv.slice(2), {
-  parseAwsStagingArgsImpl = parseAwsStagingArgs,
+  captureRuntimeArtifactImpl = captureAwsStagingRuntimeArtifact,
+  parseAwsStagingBoundArgsImpl = parseAwsStagingBoundArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
   createAwsCliImpl = createFrozenAwsCli,
   bootstrapAwsStagingHostImpl = bootstrapAwsStagingHost,
   runPreflightImpl = runAwsStagingPreflight
 } = {}) {
-  const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
-  const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
+  const runtimeArtifact = await captureRuntimeArtifactImpl({ argv, entrypointPath: modulePath });
+  const parsed = parseAwsStagingBoundArgsImpl(argv);
+  requireAwsStagingRuntimeArtifact(runtimeArtifact, parsed.sourceRevision);
+  const config = resolveAwsStagingConfigImpl(parsed);
+  await runtimeArtifact.assertCurrentState();
+  const aws = await createAwsCliImpl({
+    profile: config.profile,
+    region: config.region,
+    assertRuntimeCurrent: runtimeArtifact.assertCurrentState
+  });
   try {
-    return await bootstrapAwsStagingHostImpl({ aws, config, runPreflight: runPreflightImpl });
+    return await bootstrapAwsStagingHostImpl({
+      aws,
+      config,
+      runtimeArtifact,
+      runPreflight: runPreflightImpl
+    });
   } finally {
     await aws.dispose?.();
   }

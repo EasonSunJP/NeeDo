@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
-  verifyAwsStagingEnvironment,
+  verifyAwsStagingEnvironment as verifyAwsStagingEnvironmentImpl,
   writeAwsStagingAcceptanceEvidence
 } from "./aws-staging-verify-lib.mjs";
 import {
@@ -28,6 +28,18 @@ const config = Object.freeze({
   stackName: "needo-staging-infrastructure",
   templatePath: "/repo/deploy/aws-staging/cloudformation.yml"
 });
+const runtimeSourceRevision = "0123456789abcdef0123456789abcdef01234567";
+const runtimeManifestSha256 = "d".repeat(64);
+const runtimeArtifact = Object.freeze({
+  runtimeSourceRevision,
+  runtimeManifestSha256,
+  runtimeEntrypoint: "scripts/aws-staging-verify.mjs",
+  assertCurrentState: vi.fn(async () => undefined)
+});
+
+function verifyAwsStagingEnvironment(input) {
+  return verifyAwsStagingEnvironmentImpl({ runtimeArtifact, ...input });
+}
 
 const requiredTags = Object.freeze({
   Project: "needo",
@@ -498,6 +510,9 @@ function createPreflight(resolveDns, trace = [], overrides = {}, expectedConfig 
       amiId: ids.imageId,
       amiArchitecture: "arm64",
       templateValidation: "VALID",
+      runtimeSourceRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-verify.mjs",
       stackState: "CREATE_COMPLETE",
       dnsA,
       ...overrides
@@ -519,12 +534,36 @@ async function verify({ fixture = passingFixture(), resolvedConfig = config, pre
     config: resolvedConfig,
     resolveDns,
     runPreflight,
+    runtimeArtifact,
     now: now ?? (() => Date.parse("2026-09-03T04:05:06.000Z"))
   });
   return { evidence, aws, resolveDns, runPreflight, trace };
 }
 
 describe("AWS Staging environment-only acceptance", () => {
+  it("re-attests runtime identity immediately before the SSM verification mutation", async () => {
+    const trace = [];
+    const aws = createAws(passingFixture(), trace);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+    const driftedRuntime = Object.freeze({
+      ...runtimeArtifact,
+      assertCurrentState: vi.fn(async () => {
+        throw new Error("AWS Staging runtime identity changed after approval");
+      })
+    });
+
+    await expect(verifyAwsStagingEnvironment({
+      aws,
+      config,
+      resolveDns,
+      runPreflight: createPreflight(resolveDns),
+      runtimeArtifact: driftedRuntime,
+      now: () => Date.parse("2026-09-03T04:05:06.000Z")
+    })).rejects.toThrow(/runtime identity changed/i);
+    expect(trace.some((line) => line.includes("ssm get-document"))).toBe(true);
+    expect(trace.some((line) => line.includes("ssm send-command"))).toBe(false);
+  });
+
   it("requires the shared exact StackId UUID contract before resource or SSM reads", async () => {
     const fixture = passingFixture();
     fixture.stack.Stacks[0].StackId = [
@@ -616,7 +655,8 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(Object.isFrozen(evidence.stack)).toBe(true);
     expect(Object.isFrozen(evidence.tagCoverage.resources)).toBe(true);
     expect(Reflect.ownKeys(evidence)).toEqual([
-      "timestamp", "accountId", "region", "hostname", "stack", "resourceIds", "elasticIp",
+      "timestamp", "accountId", "region", "hostname", "runtimeSourceRevision",
+      "runtimeManifestSha256", "runtimeEntrypoint", "stack", "resourceIds", "elasticIp",
       "tagCoverage", "ec2", "ingress", "volumes", "ssm", "host", "buckets",
       "secretVersionCount", "monitoring", "budget", "dns", "applicationDeployed",
       "migrationRun", "seedRun", "dnsModified", "businessDataMutation", "waivedBaselineFailures"
@@ -961,7 +1001,7 @@ describe("AWS Staging environment-only acceptance", () => {
 
     await verifyAwsStagingEnvironment({ aws, config, resolveDns, runPreflight, now: () => 0 });
     expect(runPreflight).toHaveBeenCalledTimes(1);
-    expect(runPreflight).toHaveBeenCalledWith({ aws, config, resolveDns });
+    expect(runPreflight).toHaveBeenCalledWith({ aws, config, resolveDns, runtimeArtifact });
     expect(trace.slice(0, 3)).toEqual([
       "preflight", `dns:${config.hostname}`,
       `json:cloudformation describe-stacks --stack-name ${config.stackName}`
@@ -1524,7 +1564,7 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
   it("keeps the successful CLI path fully injectable and writes only the acceptance evidence", async () => {
     const { main } = await import("./aws-staging-verify.mjs");
     const { evidence } = await verify();
-    const parsed = Object.freeze({ parsed: true });
+    const parsed = Object.freeze({ parsed: true, sourceRevision: runtimeSourceRevision });
     const aws = createAws(passingFixture());
     aws.dispose = vi.fn(async () => {});
     const parseArgs = vi.fn(() => parsed);
@@ -1536,19 +1576,37 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     const writeEvidence = vi.fn(async () => path.join(
       testRepoRoot, "outputs", "aws-staging", "environment-acceptance.json"
     ));
+    const trace = [];
+    const guardedRuntimeArtifact = Object.freeze({
+      ...runtimeArtifact,
+      assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
+    });
 
     const summary = await main(["--injected"], {
-      parseAwsStagingArgsImpl: parseArgs,
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        trace.push("runtime:capture");
+        return guardedRuntimeArtifact;
+      }),
+      parseAwsStagingBoundArgsImpl: parseArgs,
       resolveAwsStagingConfigImpl: resolveConfig,
-      createAwsCliImpl: createAwsCliFake,
+      createAwsCliImpl: vi.fn(async (input) => {
+        trace.push("credentials");
+        expect(input.assertRuntimeCurrent).toBe(guardedRuntimeArtifact.assertCurrentState);
+        return createAwsCliFake();
+      }),
       runAwsStagingPreflightImpl: preflight,
       verifyAwsStagingEnvironmentImpl: verifyEnvironment,
       writeAwsStagingAcceptanceEvidenceImpl: writeEvidence
     });
     expect(parseArgs).toHaveBeenCalledWith(["--injected"]);
     expect(resolveConfig).toHaveBeenCalledWith(parsed);
-    expect(createAwsCliFake).toHaveBeenCalledWith({ profile: config.profile, region: config.region });
-    expect(verifyEnvironment).toHaveBeenCalledWith({ aws, config, runPreflight: preflight });
+    expect(verifyEnvironment).toHaveBeenCalledWith({
+      aws,
+      config,
+      runPreflight: preflight,
+      runtimeArtifact: guardedRuntimeArtifact
+    });
+    expect(trace).toEqual(["runtime:capture", "runtime:assert", "credentials"]);
     expect(writeEvidence).toHaveBeenCalledWith({ evidence });
     expect(aws.dispose).toHaveBeenCalledTimes(1);
     expect(summary).toEqual({
@@ -1561,5 +1619,17 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       dnsModified: false,
       businessDataMutation: false
     });
+  });
+
+  it("refuses runtime attestation failure before acceptance creates an AWS adapter", async () => {
+    const { main } = await import("./aws-staging-verify.mjs");
+    const createAwsCliImpl = vi.fn();
+    await expect(main(["--source-revision", runtimeSourceRevision], {
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        throw new Error("AWS Staging approved runtime closure became dirty");
+      }),
+      createAwsCliImpl
+    })).rejects.toThrow(/runtime closure.*dirty/i);
+    expect(createAwsCliImpl).not.toHaveBeenCalled();
   });
 });

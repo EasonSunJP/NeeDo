@@ -27,14 +27,25 @@ const absentStackError = new Error(
 const templateBody = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
 const templateSha256 = "c537cafbffa675a74a1711055c037be2e02db34a6d82654008013fa5c28f6604";
 const templateRevision = "0123456789abcdef0123456789abcdef01234567";
+const runtimeManifestSha256 = "d".repeat(64);
 const templateArtifact = Object.freeze({
   body: templateBody,
   templateSha256,
   sourceRevision: templateRevision
 });
+const defaultRuntimeArtifact = Object.freeze({
+  runtimeSourceRevision: templateRevision,
+  runtimeManifestSha256,
+  runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
+  assertCurrentState: vi.fn(async () => undefined)
+});
 
 function runAwsStagingPreflight(input) {
-  return runAwsStagingPreflightImpl({ templateArtifact, ...input });
+  return runAwsStagingPreflightImpl({
+    runtimeArtifact: defaultRuntimeArtifact,
+    templateArtifact,
+    ...input
+  });
 }
 
 function configureList({
@@ -84,29 +95,205 @@ function successfulAws({
 }
 
 describe("AWS Staging preflight", () => {
+  it("re-attests runtime bytes before the first AWS preflight operation", async () => {
+    const aws = successfulAws();
+    const driftedRuntime = Object.freeze({
+      ...defaultRuntimeArtifact,
+      assertCurrentState: vi.fn(async () => {
+        throw new Error("AWS Staging runtime bytes changed after approval");
+      })
+    });
+
+    await expect(runAwsStagingPreflight({
+      aws,
+      config,
+      runtimeArtifact: driftedRuntime
+    })).rejects.toThrow(/runtime bytes changed/i);
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json).not.toHaveBeenCalled();
+  });
+
+  async function createRuntimeFixture({
+    headRevision = "a".repeat(40),
+    approvedRevision = headRevision,
+    status = "",
+    indexedOverrides = new Map()
+  } = {}) {
+    const {
+      AWS_STAGING_RUNTIME_FILES,
+      captureAwsStagingRuntimeArtifact
+    } = await import("./aws-staging-runtime-artifact.mjs");
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-runtime-artifact-"));
+    const committed = new Map(AWS_STAGING_RUNTIME_FILES.map((relativePath) => [
+      relativePath,
+      Buffer.from(`approved runtime bytes for ${relativePath}\n`, "utf8")
+    ]));
+    committed.set("package.json", Buffer.from(JSON.stringify({
+      scripts: {
+        "aws:staging:bootstrap-host": "node scripts/aws-staging-bootstrap-host.mjs",
+        "aws:staging:deploy": "node scripts/aws-staging-deploy.mjs",
+        "aws:staging:preflight": "node scripts/aws-staging-preflight.mjs",
+        "aws:staging:verify": "node scripts/aws-staging-verify.mjs"
+      }
+    }), "utf8"));
+    for (const [relativePath, bytes] of committed) {
+      const absolutePath = path.join(temporaryRoot, relativePath);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(absolutePath, bytes, { mode: 0o600 });
+    }
+    const runGit = vi.fn(async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
+      if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${headRevision}\n`;
+      if (args[0] === "status") return status;
+      if (args[0] === "ls-tree") {
+        const relativePath = args.at(-1);
+        return `100644 blob ${"1".repeat(40)}\t${relativePath}\n`;
+      }
+      if (args[0] === "ls-files") {
+        const relativePath = args.at(-1);
+        return `100644 ${"1".repeat(40)} 0\t${relativePath}\n`;
+      }
+      if (args[0] === "show") {
+        const selector = args[1];
+        const relativePath = selector.startsWith(":")
+          ? selector.slice(1)
+          : selector.slice(selector.indexOf(":") + 1);
+        return selector.startsWith(":") && indexedOverrides.has(relativePath)
+          ? indexedOverrides.get(relativePath)
+          : committed.get(relativePath);
+      }
+      throw new Error(`Unexpected git call: ${args.join(" ")}`);
+    });
+    const entrypointPath = path.join(temporaryRoot, "scripts/aws-staging-preflight.mjs");
+    const capture = () => captureAwsStagingRuntimeArtifact({
+      argv: ["--source-revision", approvedRevision],
+      entrypointPath,
+      repositoryRoot: temporaryRoot,
+      runGit
+    });
+    return { capture, committed, entrypointPath, runGit, temporaryRoot };
+  }
+
+  it("captures the exact clean runtime closure and records one stable manifest digest", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const artifact = await fixture.capture();
+      expect(artifact).toMatchObject({
+        runtimeSourceRevision: "a".repeat(40),
+        runtimeManifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/)
+      });
+      expect(Object.isFrozen(artifact)).toBe(true);
+      await expect(artifact.assertCurrentState()).resolves.toBeUndefined();
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["unstaged runtime drift", " M scripts/aws-staging-cli.mjs\n", new Map(), /clean|dirty|drift/i],
+    ["untracked runtime replacement", "?? scripts/aws-staging-preflight.mjs\n", new Map(), /clean|dirty|drift/i],
+    [
+      "staged runtime drift",
+      "",
+      new Map([["scripts/aws-staging-cli.mjs", Buffer.from("staged replacement\n")]]),
+      /index|approved revision/i
+    ]
+  ])("rejects %s before a credential adapter can be created", async (_label, status, indexedOverrides, expected) => {
+    const fixture = await createRuntimeFixture({ status, indexedOverrides });
+    try {
+      await expect(fixture.capture()).rejects.toThrow(expected);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an approved runtime revision mismatch before any AWS call", async () => {
+    const fixture = await createRuntimeFixture({ approvedRevision: "b".repeat(40) });
+    const createAws = vi.fn();
+    try {
+      await expect(runAwsStagingPreflightCliMain([
+        "--source-revision", "b".repeat(40)
+      ], {
+        captureRuntimeArtifactImpl: fixture.capture,
+        createAwsCliImpl: createAws
+      })).rejects.toThrow(/revision/i);
+      expect(createAws).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("detects same-byte runtime file identity replacement after capture", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      const artifact = await fixture.capture();
+      const runtimePath = path.join(fixture.temporaryRoot, "scripts/aws-staging-cli.mjs");
+      const displacedPath = `${runtimePath}.old`;
+      await fs.rename(runtimePath, displacedPath);
+      await fs.writeFile(runtimePath, fixture.committed.get("scripts/aws-staging-cli.mjs"), {
+        mode: 0o600
+      });
+      await expect(artifact.assertCurrentState()).rejects.toThrow(/identity|changed/i);
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps every production relative import inside the explicit runtime allowlist", async () => {
+    const { AWS_STAGING_RUNTIME_FILES } = await import("./aws-staging-runtime-artifact.mjs");
+    const allowlist = new Set(AWS_STAGING_RUNTIME_FILES);
+    for (const relativePath of AWS_STAGING_RUNTIME_FILES.filter((item) => item.endsWith(".mjs"))) {
+      const source = await fs.readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
+      for (const match of source.matchAll(/(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["'](\.\.?\/[^"']+)["']/g)) {
+        const dependency = path.posix.normalize(path.posix.join(path.posix.dirname(relativePath), match[1]));
+        expect(allowlist.has(dependency), `${relativePath} imports unbound ${dependency}`).toBe(true);
+      }
+      expect(source).not.toMatch(/\bimport\s*\(/);
+    }
+  });
+
   it("captures the template artifact before credentials and reports its action-time identity", async () => {
     const trace = [];
     const aws = { dispose: vi.fn(async () => trace.push("dispose")) };
+    const runtimeArtifact = Object.freeze({
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
+      assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
+    });
     const artifact = Object.freeze({
       body: templateBody,
       templateSha256,
       sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
       assertCurrentState: vi.fn(async () => undefined)
     });
     const result = await runAwsStagingPreflightCliMain(["approved"], {
-      parseAwsStagingArgsImpl: vi.fn(() => ({ parsed: true })),
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        trace.push("runtime:capture");
+        return runtimeArtifact;
+      }),
+      parseAwsStagingBoundArgsImpl: vi.fn(() => ({ sourceRevision: templateRevision })),
       resolveAwsStagingConfigImpl: vi.fn(() => config),
       captureTemplateArtifactImpl: vi.fn(async () => {
-        trace.push("capture");
+        trace.push("template:capture");
         return artifact;
       }),
-      createAwsCliImpl: vi.fn(async () => {
+      createAwsCliImpl: vi.fn(async (input) => {
         trace.push("credentials");
+        expect(input.assertRuntimeCurrent).toBe(runtimeArtifact.assertCurrentState);
         return aws;
       }),
       runAwsStagingPreflightImpl: vi.fn(async (input) => {
         trace.push("preflight");
-        expect(input).toEqual({ aws, config, templateArtifact: artifact });
+        expect(input).toEqual({
+          aws,
+          config,
+          runtimeArtifact,
+          templateArtifact: artifact
+        });
         return {
           accountId: config.accountId,
           callerKind: "assumed-role",
@@ -115,14 +302,29 @@ describe("AWS Staging preflight", () => {
           amiArchitecture: "arm64",
           templateSha256,
           sourceRevision: templateRevision,
+          runtimeSourceRevision: templateRevision,
+          runtimeManifestSha256,
+          runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
           stackState: "ABSENT",
           dnsA: []
         };
       })
     });
 
-    expect(trace).toEqual(["capture", "credentials", "preflight", "dispose"]);
-    expect(result).toMatchObject({ templateSha256, sourceRevision: templateRevision });
+    expect(trace).toEqual([
+      "runtime:capture",
+      "template:capture",
+      "runtime:assert",
+      "credentials",
+      "preflight",
+      "dispose"
+    ]);
+    expect(result).toMatchObject({
+      templateSha256,
+      sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256
+    });
   });
 
   it("captures only the explicitly approved clean tracked template artifact", async () => {
@@ -328,6 +530,9 @@ describe("AWS Staging preflight", () => {
       amiId: "ami-0123",
       templateSha256,
       sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
       templateValidation: "VALID",
       stackState: "ABSENT",
       dnsA: []
@@ -342,6 +547,9 @@ describe("AWS Staging preflight", () => {
       amiArchitecture: "arm64",
       templateSha256,
       sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
       stackState: "ABSENT",
       dnsA: []
     });
@@ -422,6 +630,9 @@ describe("AWS Staging preflight", () => {
       amiArchitecture: "arm64",
       templateSha256,
       sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
       templateValidation: "VALID",
       stackState: "ABSENT",
       dnsA: ["203.0.113.2", "203.0.113.8"]

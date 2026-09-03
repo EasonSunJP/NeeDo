@@ -12,10 +12,8 @@ const requiredFlags = new Map([
   ["--budget-amount", "budgetAmount"],
   ["--budget-unit", "budgetUnit"]
 ]);
-const deploymentApprovalFlags = new Map([
-  ["--template-sha256", "templateSha256"],
-  ["--source-revision", "sourceRevision"]
-]);
+const sourceApprovalFlags = new Map([["--source-revision", "sourceRevision"]]);
+const deploymentApprovalFlags = new Map([["--template-sha256", "templateSha256"]]);
 
 export const AWS_STAGING_REGIONS = Object.freeze([
   "ap-northeast-1",
@@ -95,12 +93,12 @@ export function parseAwsStagingArgs(argv) {
   return { ...parsed, owner: "needo" };
 }
 
-export function parseAwsStagingDeployArgs(argv) {
+function parseApprovedArgs(argv, approvalFlags) {
   const baseArgs = [];
   const approvals = {};
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
-    const approvalKey = deploymentApprovalFlags.get(flag);
+    const approvalKey = approvalFlags.get(flag);
     if (!approvalKey) {
       baseArgs.push(flag, argv[index + 1]);
       continue;
@@ -114,15 +112,28 @@ export function parseAwsStagingDeployArgs(argv) {
   }
 
   const parsed = parseAwsStagingArgs(baseArgs);
-  if (!approvals.templateSha256) throw new Error("--template-sha256 is required");
-  if (!/^[0-9a-f]{64}$/.test(approvals.templateSha256)) {
-    throw new Error("--template-sha256 must be a lower-case SHA-256 digest");
-  }
   if (!approvals.sourceRevision) throw new Error("--source-revision is required");
   if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(approvals.sourceRevision)) {
     throw new Error("--source-revision must be a full lower-case Git revision");
   }
 
+  return { parsed, approvals };
+}
+
+export function parseAwsStagingBoundArgs(argv) {
+  const { parsed, approvals } = parseApprovedArgs(argv, sourceApprovalFlags);
+  return Object.freeze({ ...parsed, ...approvals });
+}
+
+export function parseAwsStagingDeployArgs(argv) {
+  const { parsed, approvals } = parseApprovedArgs(
+    argv,
+    new Map([...sourceApprovalFlags, ...deploymentApprovalFlags])
+  );
+  if (!approvals.templateSha256) throw new Error("--template-sha256 is required");
+  if (!/^[0-9a-f]{64}$/.test(approvals.templateSha256)) {
+    throw new Error("--template-sha256 must be a lower-case SHA-256 digest");
+  }
   return Object.freeze({ ...parsed, ...approvals });
 }
 

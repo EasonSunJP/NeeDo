@@ -619,7 +619,13 @@ async function verifyAwsCliExecutable(fingerprint) {
   }
 }
 
-async function attestAwsCliV2(execFileImpl, fingerprint, environment) {
+async function attestAwsCliV2(
+  execFileImpl,
+  fingerprint,
+  environment,
+  assertRuntimeCurrent
+) {
+  await assertRuntimeCurrent();
   await verifyAwsCliExecutable(fingerprint);
   const executablePath = fingerprint.path;
   return new Promise((resolve, reject) => {
@@ -650,7 +656,8 @@ function invoke(execFileImpl, executablePath, profile, region, args, output, {
   includeProfile = true,
   credentialExpiresAt,
   now = Date.now,
-  verifyExecutable
+  verifyExecutable,
+  assertRuntimeCurrent
 }) {
   assertSafeArguments(args);
   assertAllowedOperation(args);
@@ -666,6 +673,7 @@ function invoke(execFileImpl, executablePath, profile, region, args, output, {
   ];
 
   return Promise.resolve()
+    .then(() => assertRuntimeCurrent?.())
     .then(() => verifyExecutable?.())
     .then(() => new Promise((resolve, reject) => {
     execFileImpl(
@@ -719,8 +727,10 @@ async function invokeCredentialResolver(
   args,
   environment,
   verifyExecutable,
-  assertResolverSourceCurrent
+  assertResolverSourceCurrent,
+  assertRuntimeCurrent
 ) {
+  await assertRuntimeCurrent();
   await verifyExecutable();
   await assertResolverSourceCurrent();
   return new Promise((resolve, reject) => {
@@ -755,7 +765,8 @@ function createAwsCliInternal({
   now,
   dispose,
   isDisposed = () => false,
-  verifyExecutable
+  verifyExecutable,
+  assertRuntimeCurrent
 }) {
   function requireActive() {
     if (isDisposed()) throw new Error("The frozen AWS CLI adapter has been disposed");
@@ -768,7 +779,8 @@ function createAwsCliInternal({
         includeProfile,
         credentialExpiresAt,
         now,
-        verifyExecutable
+        verifyExecutable,
+        assertRuntimeCurrent
       }).then(({ stdout }) => JSON.parse(stdout));
     },
     text(args) {
@@ -779,14 +791,17 @@ function createAwsCliInternal({
         && args.length === 2
         && args[0] === "configure"
         && args[1] === "list") {
-        return Promise.resolve(configureListOutput.trim());
+        return Promise.resolve()
+          .then(() => assertRuntimeCurrent?.())
+          .then(() => configureListOutput.trim());
       }
       return invoke(execFileImpl, executablePath, profile, region, args, "text", {
         environment,
         includeProfile,
         credentialExpiresAt,
         now,
-        verifyExecutable
+        verifyExecutable,
+        assertRuntimeCurrent
       }).then(({ stdout }) => stdout.trim());
     }
   };
@@ -820,9 +835,14 @@ export async function createFrozenAwsCli({
   now = Date.now,
   temporaryRoot = "/tmp",
   userInfoImpl = systemUserInfo,
-  approvedExecutableCandidates
+  approvedExecutableCandidates,
+  assertRuntimeCurrent
 }) {
   requireEnvironment(environment);
+  if (typeof assertRuntimeCurrent !== "function") {
+    throw new Error("AWS CLI requires an approved runtime re-attestation boundary");
+  }
+  await assertRuntimeCurrent();
   const safeProfile = requireSafeProfile(profile);
   const safeRegion = requireSafeRegion(region);
   const user = userInfoImpl();
@@ -846,7 +866,8 @@ export async function createFrozenAwsCli({
     await attestAwsCliV2(
       execFileImpl,
       executable,
-      state.attestationEnvironment
+      state.attestationEnvironment,
+      assertRuntimeCurrent
     );
     const configureListOutput = await invokeCredentialResolver(execFileImpl, executablePath, [
       "configure", "list",
@@ -854,13 +875,13 @@ export async function createFrozenAwsCli({
       "--region", safeRegion,
       "--output", "text",
       "--no-cli-pager"
-    ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent);
+    ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent, assertRuntimeCurrent);
     const exported = await invokeCredentialResolver(execFileImpl, executablePath, [
       "configure", "export-credentials",
       "--profile", safeProfile,
       "--format", "process",
       "--no-cli-pager"
-    ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent);
+    ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent, assertRuntimeCurrent);
     const credentials = requireExportedTemporaryCredentials(exported, now);
     const lockedEnvironment = {
       ...state.frozenEnvironment,
@@ -889,7 +910,8 @@ export async function createFrozenAwsCli({
       now,
       dispose,
       isDisposed: () => disposed,
-      verifyExecutable
+      verifyExecutable,
+      assertRuntimeCurrent
     });
   } catch (error) {
     await state.dispose();

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   maskEmail,
   parseAwsStagingArgs,
+  parseAwsStagingBoundArgs,
   parseAwsStagingDeployArgs,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
@@ -49,6 +50,35 @@ describe("AWS Staging configuration", () => {
     expect(combined).toContain("--template-sha256 <approved-template-sha256>");
     expect(combined).toContain("--source-revision <approved-full-source-revision>");
     expect(combined).toMatch(/same immutable.*bytes.*validate-template.*create-stack/is);
+  });
+
+  it("documents approved runtime-closure provenance for every guarded command", async () => {
+    const authoritativePaths = [
+      "docs/aws-staging-environment-runbook.md",
+      "docs/superpowers/plans/2026-09-03-aws-staging-environment-only.md",
+      "docs/superpowers/plans/2026-09-04-aws-staging-dual-region.md",
+      "docs/superpowers/specs/2026-09-03-aws-staging-single-ec2-deployment-design.md",
+      "docs/superpowers/specs/2026-09-04-aws-staging-dual-region-design.md"
+    ];
+    const documents = await Promise.all(authoritativePaths.map(async (documentPath) => ({
+      documentPath,
+      contents: await fs.readFile(new URL(`../${documentPath}`, import.meta.url), "utf8")
+    })));
+
+    for (const { documentPath, contents } of documents) {
+      expect(contents, documentPath).toMatch(/runtime closure/i);
+      expect(contents, documentPath).toMatch(/runtimeManifestSha256/);
+      expect(contents, documentPath).toMatch(
+        /does not (?:assert|claim)[\s\S]{0,80}(?:the )?entire(?:\s|>)+(?:repository|worktree)/i
+      );
+      for (const block of contents.matchAll(
+        /npm run aws:staging:(?:preflight|deploy|bootstrap-host|verify) -- \\\n[\s\S]*?```/g
+      )) {
+        expect(block[0], `${documentPath} guarded command`).toContain(
+          "--source-revision <approved-full-source-revision>"
+        );
+      }
+    }
   });
 
   it("forbids raw AWS and Session Manager commands in authoritative operator documents", async () => {
@@ -164,6 +194,34 @@ describe("AWS Staging configuration", () => {
     expect(() => parseAwsStagingDeployArgs([
       "--template-sha256", "a".repeat(64)
     ])).toThrow(/source-revision|account-id/i);
+  });
+
+  it("requires an exact approved source revision for every guarded AWS command", () => {
+    const parsed = parseAwsStagingBoundArgs([
+      "--profile", "needo-staging-deployer",
+      "--account-id", "123456789012",
+      "--region", "ap-northeast-1",
+      "--hostname", "staging.needo.life",
+      "--alert-email", "ops@example.com",
+      "--budget-amount", "20000",
+      "--budget-unit", "JPY",
+      "--source-revision", "b".repeat(40)
+    ]);
+
+    expect(parsed).toMatchObject({
+      ...validInput,
+      sourceRevision: "b".repeat(40)
+    });
+    expect(Object.isFrozen(parsed)).toBe(true);
+    expect(() => parseAwsStagingBoundArgs([
+      "--profile", "needo-staging-deployer",
+      "--account-id", "123456789012",
+      "--region", "ap-northeast-1",
+      "--hostname", "staging.needo.life",
+      "--alert-email", "ops@example.com",
+      "--budget-amount", "20000",
+      "--budget-unit", "JPY"
+    ])).toThrow("--source-revision");
   });
 
   it.each([

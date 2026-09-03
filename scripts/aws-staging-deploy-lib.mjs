@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { resolve4 } from "node:dns/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
+import { requireAwsStagingRuntimeArtifact } from "./aws-staging-runtime-artifact.mjs";
 import {
   AWS_STAGING_EXPECTED_RESOURCES,
   awsStagingResourceIdentitySha256,
@@ -37,7 +38,7 @@ function requireTemplateArtifact(templateArtifact) {
   return templateArtifact;
 }
 
-function requireInProcessPreflight(preflight, config, templateArtifact) {
+function requireInProcessPreflight(preflight, config, templateArtifact, runtimeArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
     throw new Error("AWS Staging requires a fresh immutable in-process preflight result");
   }
@@ -53,6 +54,11 @@ function requireInProcessPreflight(preflight, config, templateArtifact) {
   if (preflight.templateSha256 !== templateArtifact.templateSha256
     || preflight.sourceRevision !== templateArtifact.sourceRevision) {
     throw new Error("AWS Staging preflight template identity does not match the approved artifact");
+  }
+  if (preflight.runtimeSourceRevision !== runtimeArtifact.runtimeSourceRevision
+    || preflight.runtimeManifestSha256 !== runtimeArtifact.runtimeManifestSha256
+    || preflight.runtimeEntrypoint !== runtimeArtifact.runtimeEntrypoint) {
+    throw new Error("AWS Staging preflight runtime identity does not match the approved artifact");
   }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
@@ -174,6 +180,7 @@ export async function deployAwsStagingInfrastructure({
   config,
   resolveDns = resolve4,
   runPreflight,
+  runtimeArtifact,
   templateArtifact,
   now = Date.now
 }) {
@@ -185,13 +192,24 @@ export async function deployAwsStagingInfrastructure({
     throw new Error("AWS Staging deployment dependencies are invalid");
   }
   const artifact = requireTemplateArtifact(templateArtifact);
+  const approvedRuntime = requireAwsStagingRuntimeArtifact(
+    runtimeArtifact,
+    artifact.sourceRevision
+  );
 
-  const preflight = await runPreflight({ aws, config, resolveDns, templateArtifact: artifact });
-  requireInProcessPreflight(preflight, config, artifact);
+  const preflight = await runPreflight({
+    aws,
+    config,
+    resolveDns,
+    runtimeArtifact: approvedRuntime,
+    templateArtifact: artifact
+  });
+  requireInProcessPreflight(preflight, config, artifact, approvedRuntime);
 
   const currentDns = await resolveDnsA(resolveDns, hostname);
   requireUnchangedDns(preflight.dnsA, currentDns);
 
+  await approvedRuntime.assertCurrentState();
   await artifact.assertCurrentState();
   const created = await aws.json(createArguments(config, artifact.body));
   const stackId = requireAwsStagingStackId(created?.StackId, config, "Created CloudFormation StackId");
@@ -242,6 +260,9 @@ export async function deployAwsStagingInfrastructure({
     stackStatus,
     templateSha256: artifact.templateSha256,
     sourceRevision: artifact.sourceRevision,
+    runtimeSourceRevision: approvedRuntime.runtimeSourceRevision,
+    runtimeManifestSha256: approvedRuntime.runtimeManifestSha256,
+    runtimeEntrypoint: approvedRuntime.runtimeEntrypoint,
     resourceIdentitySha256: awsStagingResourceIdentitySha256(resources),
     resourceCount: AWS_STAGING_EXPECTED_RESOURCES.length,
     stackTags,

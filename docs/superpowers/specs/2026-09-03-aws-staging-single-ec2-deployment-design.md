@@ -2,6 +2,15 @@
 
 > **后续方案取代说明：** 本文保留的是最初东京 / JPY 设计历史。若目标区域、凭证解析或预算控制与本文冲突，以后续批准的 [AWS Staging 双区域设计](./2026-09-04-aws-staging-dual-region-design.md) 和 [environment-only 最终安全修订](../plans/2026-09-03-aws-staging-environment-only.md) 为准：个人账号 live 目标为悉尼 `ap-southeast-2`，当前 gate 只接受 AWS CLI v2 `login`，未来公司账号的 SSO / assume-role 解析必须另做安全微步骤，目标区域仍为东京 `ap-northeast-1`，悉尼 live 预算使用操作员明确批准的金额和 `USD` 计费单位。
 
+> **2026-09-04 runtime-provenance supersession (`批准最终安全修订`):** Every
+> guarded command requires the approved full source revision and binds the
+> explicit runtime closure plus `package.json` before credentials. Evidence
+> records `runtimeSourceRevision`, `runtimeManifestSha256`, and
+> `runtimeEntrypoint`; the closure is re-attested before each AWS process and
+> mutation, while the template is bound separately. This does not claim the
+> entire repository or worktree is clean and does not defend an
+> already-compromised same-user host.
+
 ## 1. 文件状态
 
 - 日期：2026-09-03

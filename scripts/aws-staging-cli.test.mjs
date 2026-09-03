@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAwsCli as createAwsCliAdapter,
-  createFrozenAwsCli
+  createFrozenAwsCli as createFrozenAwsCliImpl
 } from "./aws-staging-cli.mjs";
 
 const TEST_AWS_EXECUTABLE = "/trusted/aws-cli-v2/aws";
@@ -13,6 +13,13 @@ const fixtureRoots = [];
 
 function createAwsCli(options) {
   return createAwsCliAdapter({ executablePath: TEST_AWS_EXECUTABLE, ...options });
+}
+
+function createFrozenAwsCli(options) {
+  return createFrozenAwsCliImpl({
+    assertRuntimeCurrent: vi.fn(async () => undefined),
+    ...options
+  });
 }
 
 async function createLoginFixture({ configText } = {}) {
@@ -117,6 +124,37 @@ const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
 ]);
 
 describe("AWS CLI adapter", () => {
+  it("re-attests the approved runtime immediately before every AWS CLI process", async () => {
+    const fixture = await createLoginFixture();
+    const trace = [];
+    const resolver = successfulLoginResolver();
+    const execFileImpl = vi.fn((file, args, options, callback) => {
+      trace.push(`exec:${args[0]} ${args[1] ?? ""}`.trim());
+      resolver(file, args, options, callback);
+    });
+    const assertRuntimeCurrent = vi.fn(async () => trace.push("runtime"));
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z"),
+      assertRuntimeCurrent
+    });
+    await aws.json(["sts", "get-caller-identity"]);
+    await aws.dispose();
+
+    expect(trace).toEqual([
+      "runtime",
+      "runtime", "exec:--version",
+      "runtime", "exec:configure list",
+      "runtime", "exec:configure export-credentials",
+      "runtime", "exec:sts get-caller-identity"
+    ]);
+  });
+
   it("accepts the STS assumed-role login_session emitted by AWS CLI login", async () => {
     const fixture = await createLoginFixture({
       configText: [

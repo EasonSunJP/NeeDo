@@ -44,6 +44,15 @@ const stackId = "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/needo-
 const templateBody = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
 const templateSha256 = createHash("sha256").update(templateBody, "utf8").digest("hex");
 const templateRevision = "0123456789abcdef0123456789abcdef01234567";
+const runtimeManifestSha256 = "d".repeat(64);
+function runtimeArtifactFor(sourceRevision = templateRevision) {
+  return Object.freeze({
+    runtimeSourceRevision: sourceRevision,
+    runtimeManifestSha256,
+    runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
+    assertCurrentState: vi.fn(async () => undefined)
+  });
+}
 const stackTags = Object.freeze([
   { Key: "Project", Value: "needo" },
   { Key: "Environment", Value: "staging" },
@@ -97,6 +106,9 @@ function evidenceFixture(overrides = {}) {
     stackStatus: "CREATE_COMPLETE",
     templateSha256: "a".repeat(64),
     sourceRevision: templateRevision,
+    runtimeSourceRevision: templateRevision,
+    runtimeManifestSha256,
+    runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
     resourceIdentitySha256: "b".repeat(64),
     resourceCount: expectedResources.length,
     stackTags: Object.fromEntries(stackTags.map(({ Key, Value }) => [Key, Value])),
@@ -156,6 +168,9 @@ function preflight(overrides = {}) {
     amiArchitecture: "arm64",
     templateSha256,
     sourceRevision: templateRevision,
+    runtimeSourceRevision: templateRevision,
+    runtimeManifestSha256,
+    runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
     templateValidation: "VALID",
     stackState: "ABSENT",
     dnsA: Object.freeze(["203.0.113.2", "203.0.113.8"]),
@@ -218,6 +233,12 @@ async function deploy({
     sourceRevision: templateRevision,
     assertCurrentState: vi.fn(async () => undefined)
   }),
+  runtimeArtifact = Object.freeze({
+    runtimeSourceRevision: templateRevision,
+    runtimeManifestSha256,
+    runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
+    assertCurrentState: vi.fn(async () => undefined)
+  }),
   readTemplate = vi.fn(async () => templateBody),
   now = () => Date.parse("2026-09-04T00:00:00.000Z")
 } = {}) {
@@ -226,6 +247,7 @@ async function deploy({
     config: resolvedConfig,
     resolveDns: resolveDns ?? vi.fn(async () => ["203.0.113.8", "203.0.113.2"]),
     runPreflight: vi.fn(async () => preflightResult),
+    runtimeArtifact,
     templateArtifact,
     readTemplate,
     now
@@ -233,25 +255,62 @@ async function deploy({
 }
 
 describe("AWS Staging CloudFormation deployment", () => {
+  it("re-attests runtime identity after preflight and refuses create-stack on drift", async () => {
+    const aws = successfulAws();
+    const driftedRuntime = Object.freeze({
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
+      assertCurrentState: vi.fn(async () => {
+        throw new Error("AWS Staging runtime identity changed after approval");
+      })
+    });
+
+    await expect(deploy({ aws, runtimeArtifact: driftedRuntime }))
+      .rejects.toThrow(/runtime identity changed/i);
+    expect(aws.json.mock.calls.some(([args]) => (
+      args[0] === "cloudformation" && args[1] === "create-stack"
+    ))).toBe(false);
+  });
+
   it("attests approved template bytes before creating credentials in the deployment CLI", async () => {
     const trace = [];
+    const runtimeArtifact = Object.freeze({
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
+      assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
+    });
     const artifact = Object.freeze({
       body: templateBody,
       templateSha256,
       sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
       assertCurrentState: vi.fn(async () => undefined)
     });
     const aws = { dispose: vi.fn(async () => trace.push("dispose")) };
-    const evidence = evidenceFixture({ templateSha256, sourceRevision: templateRevision });
+    const evidence = evidenceFixture({
+      templateSha256,
+      sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-deploy.mjs"
+    });
 
     const summary = await runAwsStagingDeployCli(["approved"], {
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        trace.push("runtime:capture");
+        return runtimeArtifact;
+      }),
       parseAwsStagingDeployArgsImpl: vi.fn(() => ({
         templateSha256,
         sourceRevision: templateRevision
       })),
       resolveAwsStagingConfigImpl: vi.fn(() => config),
       captureTemplateArtifactImpl: vi.fn(async (input) => {
-        trace.push("capture");
+        trace.push("template:capture");
         expect(input).toMatchObject({
           templatePath: config.templatePath,
           approvedSha256: templateSha256,
@@ -259,13 +318,14 @@ describe("AWS Staging CloudFormation deployment", () => {
         });
         return artifact;
       }),
-      createAwsCliImpl: vi.fn(async () => {
+      createAwsCliImpl: vi.fn(async (input) => {
         trace.push("credentials");
+        expect(input.assertRuntimeCurrent).toBe(runtimeArtifact.assertCurrentState);
         return aws;
       }),
       deployInfrastructureImpl: vi.fn(async (input) => {
         trace.push("deploy");
-        expect(input).toMatchObject({ aws, config, templateArtifact: artifact });
+        expect(input).toMatchObject({ aws, config, runtimeArtifact, templateArtifact: artifact });
         return evidence;
       }),
       writeEvidenceImpl: vi.fn(async () => {
@@ -274,13 +334,38 @@ describe("AWS Staging CloudFormation deployment", () => {
       })
     });
 
-    expect(trace).toEqual(["capture", "credentials", "deploy", "evidence", "dispose"]);
-    expect(summary).toMatchObject({ templateSha256, sourceRevision: templateRevision });
+    expect(trace).toEqual([
+      "runtime:capture",
+      "template:capture",
+      "runtime:assert",
+      "credentials",
+      "deploy",
+      "evidence",
+      "dispose"
+    ]);
+    expect(summary).toMatchObject({
+      templateSha256,
+      sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256
+    });
+  });
+
+  it("does not create credentials when deployment runtime attestation fails", async () => {
+    const createAwsCliImpl = vi.fn();
+    await expect(runAwsStagingDeployCli(["--source-revision", templateRevision], {
+      captureRuntimeArtifactImpl: vi.fn(async () => {
+        throw new Error("AWS Staging approved runtime closure became dirty");
+      }),
+      createAwsCliImpl
+    })).rejects.toThrow(/runtime closure.*dirty/i);
+    expect(createAwsCliImpl).not.toHaveBeenCalled();
   });
 
   it("does not create credentials when deployment template attestation fails", async () => {
     const createAwsCliImpl = vi.fn();
     await expect(runAwsStagingDeployCli(["approved"], {
+      captureRuntimeArtifactImpl: vi.fn(async () => runtimeArtifactFor()),
       parseAwsStagingDeployArgsImpl: vi.fn(() => ({
         templateSha256,
         sourceRevision: templateRevision
@@ -329,6 +414,9 @@ describe("AWS Staging CloudFormation deployment", () => {
       await fs.mkdir(path.dirname(templatePath), { recursive: true });
       await fs.writeFile(templatePath, templateBody, { encoding: "utf8", mode: 0o600 });
       await expect(runAwsStagingDeployCli(["approved"], {
+        captureRuntimeArtifactImpl: vi.fn(async () => runtimeArtifactFor(
+          approvals.sourceRevision
+        )),
         parseAwsStagingDeployArgsImpl: vi.fn(() => approvals),
         resolveAwsStagingConfigImpl: vi.fn(() => ({ ...config, templatePath })),
         captureTemplateArtifactImpl: (input) => captureAwsStagingTemplateArtifact({
@@ -406,15 +494,23 @@ describe("AWS Staging CloudFormation deployment", () => {
     });
     const runPreflight = vi.fn(async (input) => {
       trace.push("preflight");
-      expect(input).toEqual({ aws, config, resolveDns, templateArtifact });
+      expect(input).toEqual({
+        aws,
+        config,
+        resolveDns,
+        runtimeArtifact: expect.any(Object),
+        templateArtifact
+      });
       return preflight();
     });
+    const runtimeArtifact = runtimeArtifactFor();
 
     const evidence = await deployAwsStagingInfrastructure({
       aws,
       config,
       resolveDns,
       runPreflight,
+      runtimeArtifact,
       templateArtifact,
       readTemplate: vi.fn(async () => templateBody),
       now: () => Date.parse("2026-09-04T00:00:00.000Z")
@@ -469,6 +565,9 @@ describe("AWS Staging CloudFormation deployment", () => {
       stackStatus: "CREATE_COMPLETE",
       templateSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       sourceRevision: templateRevision,
+      runtimeSourceRevision: templateRevision,
+      runtimeManifestSha256,
+      runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
       resourceIdentitySha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       resourceCount: expectedResources.length,
       stackTags: {

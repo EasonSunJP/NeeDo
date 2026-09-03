@@ -63,6 +63,18 @@
 > stage; this environment-only gate uses repository wrappers and bounded Run
 > Command evidence only.
 
+> **2026-09-04 runtime-provenance supersession (`批准最终安全修订`):** Every
+> guarded command now requires `--source-revision
+> <approved-full-source-revision>` and, before credentials, binds one explicit
+> runtime closure (four entrypoints, all static/transitive security modules,
+> and `package.json`) to that exact HEAD/index/worktree state. The gate records
+> `runtimeSourceRevision`, `runtimeManifestSha256`, and `runtimeEntrypoint`,
+> re-attests before every AWS CLI process and mutation, and separately binds
+> the CloudFormation template. This does not claim the entire repository or
+> worktree is clean, and it does not defend an already-compromised same-user
+> host; historical “same seven flags” and template-only provenance wording
+> below is superseded.
+
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
@@ -1394,15 +1406,15 @@ npm run aws:staging:preflight -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
-Then `aws:staging:deploy` with the same seven environment flags plus
-`--template-sha256 <approved-template-sha256>` and
-`--source-revision <approved-full-source-revision>`. Run
+Then `aws:staging:deploy` with the same eight environment/provenance flags plus
+`--template-sha256 <approved-template-sha256>`. Run
 `aws:staging:bootstrap-host` twice for idempotency and `aws:staging:verify` with
-the original seven environment flags, including the explicit region and exact
-`--hostname staging.needo.life`.
+the same eight flags, including the approved source revision, explicit region,
+and exact `--hostname staging.needo.life`.
 
 - [ ] **Step 3: Document failure recovery without destructive shortcuts**
 
@@ -1498,7 +1510,8 @@ npm run aws:staging:preflight -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Expected:
@@ -1569,7 +1582,8 @@ npm run aws:staging:preflight -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Expected: gate passes and reports stack/DNS baseline. Only `stackState=ABSENT`
@@ -1608,7 +1622,8 @@ npm run aws:staging:bootstrap-host -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 
 npm run aws:staging:bootstrap-host -- \
   --profile <named-temporary-profile> \
@@ -1617,7 +1632,8 @@ npm run aws:staging:bootstrap-host -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Expected: both commands finish `Success`; the second does not format the volume again, duplicate `/etc/fstab`, or change resource identity.
@@ -1644,7 +1660,8 @@ npm run aws:staging:verify -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Expected: every Task 7 invariant passes and the redacted acceptance evidence is written.

@@ -132,9 +132,22 @@ designed, tested, and approved.
 
 ## Operator command sequence
 
-All five command invocations use the same seven environment flags. Deployment
-also requires the exact template SHA-256 and full source revision emitted by
-the immediately preceding preflight. Substitute only the angle-bracketed
+Every guarded command requires the action-time-approved full source revision.
+Before any credential resolver or AWS adapter exists, the wrapper binds the
+explicit runtime closure (the four entrypoints, every static/transitive
+security module, and `package.json`) to that revision across Git HEAD, index,
+working bytes, modes, real paths, and file identities. It records
+`runtimeSourceRevision`, `runtimeManifestSha256`, and `runtimeEntrypoint`, then
+re-attests the closure before every AWS CLI process and immediately before
+`create-stack` or `ssm send-command`. This scoped assertion does not claim the
+entire repository or worktree is clean; it covers the runtime closure and the
+separately bound CloudFormation template. Static ESM code is already loaded
+before this in-process check, so this detects ordinary dirty/concurrent drift
+but is not a defense against a previously compromised same-user process.
+
+All five command invocations use the same eight environment/provenance flags.
+Deployment also requires the exact template SHA-256 emitted by the immediately
+preceding preflight. Substitute only the angle-bracketed
 operator values. `staging.needo.life` is the approved staging hostname. The
 personal live run uses `--region ap-southeast-2`.
 
@@ -146,12 +159,15 @@ npm run aws:staging:preflight -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
-Preflight reports `templateSha256` and `sourceRevision` from one clean,
-tracked template byte snapshot. Only after a successful preflight and explicit
-action-time confirmation of those two exact values and all other stop gates may
+Preflight reports `templateSha256`, `sourceRevision`,
+`runtimeSourceRevision`, `runtimeManifestSha256`, and `runtimeEntrypoint` from
+the bound runtime closure and one clean tracked template byte snapshot. Only
+after a successful preflight and explicit action-time confirmation of those
+exact values and all other stop gates may
 the operator deploy the environment. This is an initial-creation gate: the
 fresh in-process preflight must report exactly `ABSENT`. A stable same-name
 stack may be reported by preflight for diagnostics, but it stops this deploy
@@ -170,9 +186,10 @@ Before deployment evidence is returned, `describe-addresses` must bind the
 stack's exact Elastic IP allocation and association to its exact instance and
 public-IP output.
 
-`sourceRevision` identifies the Git origin of this one tracked template; it is
-not a claim that unrelated worktree files are clean. Copy the two preflight
-values into the deploy command only after human review. Do not use shell command
+`sourceRevision` identifies the common approved Git origin of the runtime
+closure and tracked template. It does not assert that the entire repository or
+unrelated worktree files are clean. Copy the preflight approval values into the
+deploy command only after human review. Do not use shell command
 substitution to turn preflight output into automatic approval.
 
 ```bash
@@ -205,7 +222,8 @@ npm run aws:staging:bootstrap-host -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 
 npm run aws:staging:bootstrap-host -- \
   --profile <named-temporary-profile> \
@@ -214,7 +232,8 @@ npm run aws:staging:bootstrap-host -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Finally, run environment acceptance with the same values:
@@ -227,7 +246,8 @@ npm run aws:staging:verify -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Before the bounded host command, acceptance binds both retained

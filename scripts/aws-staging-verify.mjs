@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
-  parseAwsStagingArgs,
+  parseAwsStagingBoundArgs,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
@@ -10,6 +10,10 @@ import {
   verifyAwsStagingEnvironment,
   writeAwsStagingAcceptanceEvidence
 } from "./aws-staging-verify-lib.mjs";
+import {
+  captureAwsStagingRuntimeArtifact,
+  requireAwsStagingRuntimeArtifact
+} from "./aws-staging-runtime-artifact.mjs";
 
 const modulePath = fileURLToPath(import.meta.url);
 const moduleDir = path.dirname(modulePath);
@@ -33,19 +37,29 @@ function setProcessExitCode(code) {
 }
 
 export async function main(argv = process.argv.slice(2), {
-  parseAwsStagingArgsImpl = parseAwsStagingArgs,
+  captureRuntimeArtifactImpl = captureAwsStagingRuntimeArtifact,
+  parseAwsStagingBoundArgsImpl = parseAwsStagingBoundArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
   createAwsCliImpl = createFrozenAwsCli,
   runAwsStagingPreflightImpl = runAwsStagingPreflight,
   verifyAwsStagingEnvironmentImpl = verifyAwsStagingEnvironment,
   writeAwsStagingAcceptanceEvidenceImpl = writeAwsStagingAcceptanceEvidence
 } = {}) {
-  const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
-  const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
+  const runtimeArtifact = await captureRuntimeArtifactImpl({ argv, entrypointPath: modulePath });
+  const parsed = parseAwsStagingBoundArgsImpl(argv);
+  requireAwsStagingRuntimeArtifact(runtimeArtifact, parsed.sourceRevision);
+  const config = resolveAwsStagingConfigImpl(parsed);
+  await runtimeArtifact.assertCurrentState();
+  const aws = await createAwsCliImpl({
+    profile: config.profile,
+    region: config.region,
+    assertRuntimeCurrent: runtimeArtifact.assertCurrentState
+  });
   try {
     const evidence = await verifyAwsStagingEnvironmentImpl({
       aws,
       config,
+      runtimeArtifact,
       runPreflight: runAwsStagingPreflightImpl
     });
     const evidencePath = await writeAwsStagingAcceptanceEvidenceImpl({ evidence });
