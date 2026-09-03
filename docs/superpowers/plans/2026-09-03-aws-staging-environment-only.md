@@ -1432,7 +1432,8 @@ git commit -m "fix: harden AWS staging environment gate"
 - Do not modify committed application files during live execution.
 
 **Required user inputs at this gate:**
-- named SSO/assumed-role AWS CLI profile or an equivalent approved temporary role flow;
+- named temporary AWS CLI profile whose STS caller is an `assumed-role` session
+  in the exact expected account;
 - exact 12-digit AWS account ID;
 - exact approved region: `ap-southeast-2` for the personal-account live gate,
   or `ap-northeast-1` for a later company-account deployment;
@@ -1451,9 +1452,17 @@ session-manager-plugin --version
 
 Expected: AWS CLI v2 and a working Session Manager plugin. If either is absent, request permission for the official macOS installation; do not download or install it silently.
 
-- [ ] **Step 2: Establish the temporary session**
+- [ ] **Step 2: Establish and prove the temporary session**
 
-Use the user-approved SSO/assumed-role flow. Never ask the user to paste access key, secret key, or session token into chat, repository files, or shell history. Verify with the repository preflight, not an unscoped mutation.
+Use only the named temporary profile whose STS caller is an `assumed-role`
+session in the exact expected account. Root, IAM-user, federated-user,
+environment, and shared-credential-file callers are forbidden. AWS CLI v2
+`login` is accepted only when both the access-key and secret-key rows from
+`aws configure list --profile <named-temporary-profile>` report exactly
+`login`; STS must still pass the exact-account `assumed-role` check. Never ask
+the user to paste access key, secret key, or session token into chat, repository
+files, or shell history. Verify with the repository preflight, not an unscoped
+mutation.
 
 - [ ] **Step 3: Run read-only preflight and preserve the summary**
 

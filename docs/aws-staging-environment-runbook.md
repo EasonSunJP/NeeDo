@@ -33,29 +33,36 @@ are deliberately deferred until their separate microstep is approved.
   DNS-zone work. This gate must leave `staging`, apex `needo.life`, and
   `www.needo.life` untouched. In particular, do not use this runbook to make
   an Onamae change or an AWS DNS change.
-- A named SSO or assumed-role temporary AWS profile, the intended 12-digit
-  account ID, alert email, actual AWS billing currency, and an approved monthly
-  budget amount are required operator inputs. Stop if any is unknown,
-  unapproved, or inconsistent with the target account.
+- A named temporary AWS CLI profile, the intended 12-digit account ID, alert
+  email, actual AWS billing currency, and an approved monthly budget amount are
+  required operator inputs. Its STS caller must be an `assumed-role` session in
+  that exact expected account. Stop if any input or this identity check is
+  unknown, unapproved, or inconsistent with the target account.
 - The SNS subscription email must be confirmed before CloudWatch/SNS alerts are
   fully active. Until then, infrastructure may exist, but this environment gate
   remains incomplete.
 
 ## Access and safety prerequisites
 
-Use a least-privilege deploy role for the named temporary profile. It must be
-authorized for the scoped CloudFormation stack and change-set operations;
-scoped EC2, VPC, EBS, and Elastic IP operations; IAM role, instance-profile,
-and policy operations plus `iam:PassRole` for the stack role; S3 bucket
-controls; Secrets Manager create, describe, and tag; SSM document, parameter,
-and command operations; Logs, CloudWatch, and SNS operations; and Budgets
-create, describe, and update operations.
+Use only a named temporary profile whose STS caller is an `assumed-role`
+session in the exact expected account. Root, IAM-user, federated-user,
+environment, and shared-credential-file callers are forbidden. AWS CLI v2
+`login` is accepted only when both the access-key and secret-key rows from
+`aws configure list --profile <named-temporary-profile>` report exactly
+`login`; STS must still pass the exact-account `assumed-role` check. The
+least-privilege deploy role must be authorized for the scoped CloudFormation
+stack and change-set operations; scoped EC2, VPC, EBS, and Elastic IP
+operations; IAM role, instance-profile, and policy operations plus
+`iam:PassRole` for the stack role; S3 bucket controls; Secrets Manager create,
+describe, and tag; SSM document, parameter, and command operations; Logs,
+CloudWatch, and SNS operations; and Budgets create, describe, and update
+operations.
 
-Do not use the root user, long-lived access keys, an SSH key, or secrets pasted
-into the CLI. The CLI profile must be a named temporary profile, not `default`.
-If the preflight reveals missing authority, an unexpected account, unsupported
-AWS configuration, or a hostname/DNS conflict, stop and correct the approved
-configuration before retrying.
+Do not use long-lived access keys, an SSH key, or secrets pasted into the CLI.
+The CLI profile must be named, temporary, and not `default`. If the preflight
+reveals a forbidden caller/source, missing authority, an unexpected account,
+unsupported AWS configuration, or a hostname/DNS conflict, stop and correct
+the approved configuration before retrying.
 
 ## Operator command sequence
 
