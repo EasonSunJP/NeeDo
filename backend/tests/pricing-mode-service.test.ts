@@ -29,15 +29,18 @@ const technicianActor = {
   permissions: ["technician:services:write"]
 };
 
-const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
-  ({
-    findShopPricingMode: jest.fn(async () => ({
-      shopId: 1,
-      pricingMode: "merchant",
-      technicianPricingRatePercent: 100,
-      updatedAt: null,
-      updatedBy: null
-    })),
+const createRepository = (): jest.Mocked<PricingModeRepositoryPort> => {
+  const repository: jest.Mocked<PricingModeRepositoryPort> = {
+    findShopPricingMode: jest.fn(async (_shopId: number) => {
+      void _shopId;
+      return {
+        shopId: 1,
+        pricingMode: "merchant" as const,
+        technicianPricingRatePercent: 100,
+        updatedAt: null,
+        updatedBy: null
+      };
+    }),
     updateShopPricingMode: jest.fn(
       async (_shopId, pricingMode, technicianPricingRatePercent, actorUserId) => ({
         shopId: 1,
@@ -47,22 +50,29 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
         updatedBy: actorUserId
       })
     ),
-    findTechnicianShopScope: jest.fn(async () => ({ technicianId: 3, shopId: 1 })),
-    listTechnicianServices: jest.fn(async () => ({
-      list: [],
-      total: 0,
-      page: 1,
-      page_size: 20
-    })),
-    listTechnicianServicesByProfile: jest.fn(async () => ({
-      list: [],
-      total: 0,
-      page: 1,
-      page_size: 20
-    })),
-    findPrimaryTechnicianService: jest.fn(async () => null),
-    reorderTechnicianServices: jest.fn(async () => []),
-    createTechnicianService: jest.fn(async () => ({
+    findTechnicianShopScope: jest.fn(async (_technicianId: number) => {
+      void _technicianId;
+      return { technicianId: 3, shopId: 1 };
+    }),
+    listTechnicianServices: jest.fn(async (_input) => {
+      void _input;
+      return { list: [], total: 0, page: 1, page_size: 20 };
+    }),
+    listTechnicianServicesByProfile: jest.fn(async (_input) => {
+      void _input;
+      return { list: [], total: 0, page: 1, page_size: 20 };
+    }),
+    findPrimaryTechnicianService: jest.fn(async (_technicianId: number) => {
+      void _technicianId;
+      return null;
+    }),
+    reorderTechnicianServices: jest.fn(async (_input) => {
+      void _input;
+      return [];
+    }),
+    createTechnicianService: jest.fn(async (_input) => {
+      void _input;
+      return {
       id: 11,
       publicId: "00000000-0000-4000-8000-000000000011",
       shopId: 1,
@@ -75,6 +85,7 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       currency: "JPY",
       durationMinutes: 60,
       usageCount: 7,
+      taxIncluded: true as const,
       coverImageUrl: null,
       images: [],
       tags: ["推荐"],
@@ -87,22 +98,42 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       rejectionReason: null,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString()
-    })),
+      };
+    }),
     updateTechnicianService: jest.fn(),
     deleteTechnicianService: jest.fn(),
-    listBookingNavigationShopServices: jest.fn(async () => ({
-      list: [],
-      total: 0,
-      page: 1,
-      page_size: 20
-    })),
-    listBookingNavigationTechnicians: jest.fn(async () => ({
-      list: [{ id: 3, displayName: "Mika", city: "Tokyo", avatarUrl: null, reviewSummary: null }],
-      total: 1,
-      page: 1,
-      page_size: 20
-    })),
-    listPublicTechnicianServices: jest.fn(async () => ({
+    findTechnicianServiceCoverTarget: jest.fn(async (_input) => {
+      void _input;
+      return null;
+    }),
+    replaceTechnicianServiceCover: jest.fn(async (_input) => {
+      void _input;
+      return null;
+    }),
+    removeTechnicianServiceCover: jest.fn(async (_input) => {
+      void _input;
+      return null;
+    }),
+    hasActiveMediaUrl: jest.fn(async (_url: string) => {
+      void _url;
+      return false;
+    }),
+    listBookingNavigationShopServices: jest.fn(async (_input) => {
+      void _input;
+      return { list: [], total: 0, page: 1, page_size: 20 };
+    }),
+    listBookingNavigationTechnicians: jest.fn(async (_input) => {
+      void _input;
+      return {
+        list: [{ id: 3, displayName: "Mika", city: "Tokyo", avatarUrl: null, reviewSummary: null }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      };
+    }),
+    listPublicTechnicianServices: jest.fn(async (_input) => {
+      void _input;
+      return {
       list: [
         {
           id: 11,
@@ -117,6 +148,7 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
           currency: "JPY",
           durationMinutes: 60,
           usageCount: 7,
+          taxIncluded: true as const,
           coverImageUrl: null,
           images: [],
           tags: ["推荐"],
@@ -134,8 +166,12 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       total: 1,
       page: 1,
       page_size: 20
-    }))
-  }) as unknown as jest.Mocked<PricingModeRepositoryPort>;
+      };
+    })
+  };
+
+  return repository;
+};
 
 describe("PricingModeService", () => {
   it("updates a merchant scoped shop pricing mode and records an audit log", async () => {

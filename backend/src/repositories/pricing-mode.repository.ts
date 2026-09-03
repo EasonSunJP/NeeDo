@@ -8,6 +8,8 @@ import {
   type PricingModePayload,
   type PricingModeRepositoryPort,
   type ShopPricingModePayload,
+  type TechnicianServiceCoverTarget,
+  type TechnicianServiceCoverWriteInput,
   type TechnicianServiceCreateRepositoryInput,
   type TechnicianServicePayload,
   type TechnicianServiceReorderRepositoryInput,
@@ -202,6 +204,192 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     });
 
     return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async findTechnicianServiceCoverTarget(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+  }): Promise<TechnicianServiceCoverTarget | null> {
+    const service = await this.client.technicianService.findFirst({
+      where: {
+        id: input.serviceId,
+        shopId: input.shopId,
+        technicianId: input.technicianId,
+        deletedAt: null
+      },
+      include: technicianServiceCardInclude
+    });
+    if (!service) {
+      return null;
+    }
+
+    const cover = await this.client.mediaAsset.findFirst({
+      where: {
+        entityType: "technician_service",
+        entityId: input.serviceId,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true, checksumSha256: true, mimeType: true }
+    });
+
+    return {
+      service: this.mapTechnicianService(service),
+      activeMediaAssetId: cover?.id ?? null,
+      checksumSha256: cover?.checksumSha256 ?? null,
+      mimeType: cover?.mimeType ?? null
+    };
+  }
+
+  public async replaceTechnicianServiceCover(
+    input: TechnicianServiceCoverWriteInput
+  ): Promise<TechnicianServicePayload | null> {
+    const service = await this.client.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM technician_services
+          WHERE id = ${input.serviceId}
+            AND shop_id = ${input.shopId}
+            AND technician_id = ${input.technicianId}
+            AND deleted_at IS NULL
+          FOR UPDATE`
+      );
+      if (locked.length !== 1) {
+        return null;
+      }
+
+      await transaction.mediaAsset.updateMany({
+        where: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          usageType: "cover",
+          isActive: true,
+          deletedAt: null
+        },
+        data: { isActive: false, deletedAt: input.now }
+      });
+      await transaction.mediaAsset.create({
+        data: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          shopId: input.shopId,
+          technicianProfileId: input.technicianId,
+          ownerUserId: input.ownerUserId,
+          ownerIdentityId: input.ownerIdentityId,
+          url: input.url,
+          mimeType: input.mimeType,
+          usageType: "cover",
+          checksumSha256: input.checksumSha256,
+          isActive: true,
+          createdAt: input.now
+        }
+      });
+      const updated = await transaction.technicianService.update({
+        where: { id: input.serviceId },
+        data: { coverImageUrl: input.url, updatedBy: input.ownerUserId },
+        include: technicianServiceCardInclude
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          actorId: input.ownerUserId,
+          action: input.action,
+          targetType: "technician_service",
+          targetId: input.serviceId,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent,
+          metadata: {
+            shopId: input.shopId,
+            technicianId: input.technicianId,
+            ownerIdentityId: input.ownerIdentityId,
+            url: input.url,
+            fileKey: input.fileKey,
+            mimeType: input.mimeType,
+            checksumSha256: input.checksumSha256,
+            fileSize: input.fileSize
+          }
+        })
+      });
+
+      return updated;
+    });
+
+    return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async removeTechnicianServiceCover(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+    ownerUserId: number;
+    ownerIdentityId: number;
+    now: Date;
+    action: "technician.service.cover.removed";
+    context: { ip: string; userAgent?: string };
+  }): Promise<TechnicianServicePayload | null> {
+    const service = await this.client.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM technician_services
+          WHERE id = ${input.serviceId}
+            AND shop_id = ${input.shopId}
+            AND technician_id = ${input.technicianId}
+            AND deleted_at IS NULL
+          FOR UPDATE`
+      );
+      if (locked.length !== 1) {
+        return null;
+      }
+
+      await transaction.mediaAsset.updateMany({
+        where: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          usageType: "cover",
+          isActive: true,
+          deletedAt: null
+        },
+        data: { isActive: false, deletedAt: input.now }
+      });
+      const updated = await transaction.technicianService.update({
+        where: { id: input.serviceId },
+        data: { coverImageUrl: null, updatedBy: input.ownerUserId },
+        include: technicianServiceCardInclude
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          actorId: input.ownerUserId,
+          action: input.action,
+          targetType: "technician_service",
+          targetId: input.serviceId,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent,
+          metadata: {
+            shopId: input.shopId,
+            technicianId: input.technicianId,
+            ownerIdentityId: input.ownerIdentityId
+          }
+        })
+      });
+
+      return updated;
+    });
+
+    return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async hasActiveMediaUrl(url: string): Promise<boolean> {
+    const asset = await this.client.mediaAsset.findFirst({
+      where: {
+        url,
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true }
+    });
+
+    return asset !== null;
   }
 
   public async reorderTechnicianServices(

@@ -9,6 +9,7 @@ import type {
 } from "../validators/pricing-mode.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { ContentMediaMimeType } from "./content-media.storage";
 import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type PricingModePayload = "merchant" | "technician";
@@ -104,6 +105,29 @@ export interface TechnicianServiceReorderRepositoryInput {
   auditLog: AuditLogCreateInput;
 }
 
+export interface TechnicianServiceCoverTarget {
+  service: TechnicianServicePayload;
+  activeMediaAssetId: number | null;
+  checksumSha256: string | null;
+  mimeType: string | null;
+}
+
+export interface TechnicianServiceCoverWriteInput {
+  shopId: number;
+  technicianId: number;
+  serviceId: number;
+  ownerUserId: number;
+  ownerIdentityId: number;
+  url: string;
+  fileKey: string;
+  mimeType: ContentMediaMimeType;
+  checksumSha256: string;
+  fileSize: number;
+  now: Date;
+  action: "technician.service.cover.updated";
+  context: AuthRequestContext;
+}
+
 export interface PricingModeRepositoryPort {
   findShopPricingMode: (shopId: number) => Promise<ShopPricingModePayload | null>;
   updateShopPricingMode: (
@@ -137,6 +161,25 @@ export interface PricingModeRepositoryPort {
     serviceId: number;
     updatedBy: number;
   }) => Promise<boolean>;
+  findTechnicianServiceCoverTarget(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+  }): Promise<TechnicianServiceCoverTarget | null>;
+  replaceTechnicianServiceCover(
+    input: TechnicianServiceCoverWriteInput
+  ): Promise<TechnicianServicePayload | null>;
+  removeTechnicianServiceCover(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+    ownerUserId: number;
+    ownerIdentityId: number;
+    now: Date;
+    action: "technician.service.cover.removed";
+    context: AuthRequestContext;
+  }): Promise<TechnicianServicePayload | null>;
+  hasActiveMediaUrl(url: string): Promise<boolean>;
   listBookingNavigationShopServices: (
     input: PaginationInput & { shopId: number }
   ) => Promise<PaginatedResponse<BookingNavigationServicePayload>>;

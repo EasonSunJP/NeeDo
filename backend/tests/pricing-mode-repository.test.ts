@@ -359,4 +359,247 @@ describe("PricingModeRepository", () => {
     expect(transactionClient.technicianService.updateMany).toHaveBeenCalledTimes(3);
     expect(transactionClient.auditLog.create).toHaveBeenCalledTimes(1);
   });
+
+  it("finds the owned service with only its active cover media", async () => {
+    const service = {
+      ...serviceRecord(11, 1),
+      coverImageUrl: "/media/content/cover.jpg"
+    };
+    const technicianService = { findFirst: jest.fn(async () => service) };
+    const mediaAsset = {
+      findFirst: jest.fn(async () => ({
+        id: 101,
+        checksumSha256: "a".repeat(64),
+        mimeType: "image/jpeg"
+      }))
+    };
+    const repository = new PricingModeRepository({
+      technicianService,
+      mediaAsset
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.findTechnicianServiceCoverTarget({ shopId: 1, technicianId: 3, serviceId: 11 })
+    ).resolves.toMatchObject({
+      service: { id: 11, coverImageUrl: "/media/content/cover.jpg" },
+      activeMediaAssetId: 101,
+      checksumSha256: "a".repeat(64),
+      mimeType: "image/jpeg"
+    });
+    expect(technicianService.findFirst).toHaveBeenCalledWith({
+      where: { id: 11, shopId: 1, technicianId: 3, deletedAt: null },
+      include: expect.any(Object)
+    });
+    expect(mediaAsset.findFirst).toHaveBeenCalledWith({
+      where: {
+        entityType: "technician_service",
+        entityId: 11,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true, checksumSha256: true, mimeType: true }
+    });
+  });
+
+  it("replaces the owned service cover and audit in one transaction", async () => {
+    const now = new Date("2026-09-04T00:00:00.000Z");
+    const updated = {
+      ...serviceRecord(11, 1),
+      coverImageUrl: "/media/content/cover.jpg"
+    };
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 11 }]),
+      mediaAsset: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        create: jest.fn(async () => ({ id: 102 }))
+      },
+      technicianService: { update: jest.fn(async () => updated) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.replaceTechnicianServiceCover({
+        shopId: 1,
+        technicianId: 3,
+        serviceId: 11,
+        ownerUserId: 8,
+        ownerIdentityId: 18,
+        url: "/media/content/cover.jpg",
+        fileKey: "cover.jpg",
+        mimeType: "image/jpeg",
+        checksumSha256: "a".repeat(64),
+        fileSize: 4,
+        now,
+        action: "technician.service.cover.updated",
+        context: { ip: "127.0.0.1", userAgent: "jest" }
+      })
+    ).resolves.toMatchObject({ id: 11, coverImageUrl: "/media/content/cover.jpg" });
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.mediaAsset.updateMany).toHaveBeenCalledWith({
+      where: {
+        entityType: "technician_service",
+        entityId: 11,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null
+      },
+      data: { isActive: false, deletedAt: now }
+    });
+    expect(transaction.mediaAsset.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entityType: "technician_service",
+        entityId: 11,
+        shopId: 1,
+        technicianProfileId: 3,
+        ownerUserId: 8,
+        ownerIdentityId: 18,
+        usageType: "cover",
+        checksumSha256: "a".repeat(64),
+        isActive: true
+      })
+    });
+    expect(transaction.technicianService.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: { coverImageUrl: "/media/content/cover.jpg", updatedBy: 8 },
+      include: expect.any(Object)
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "technician.service.cover.updated",
+        targetType: "technician_service",
+        targetId: 11
+      })
+    });
+  });
+
+  it("removes active cover rows, clears the service cover, and audits atomically", async () => {
+    const now = new Date("2026-09-04T01:00:00.000Z");
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 11 }]),
+      mediaAsset: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      technicianService: {
+        update: jest.fn(async () => ({ ...serviceRecord(11, 1), coverImageUrl: null }))
+      },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.removeTechnicianServiceCover({
+        shopId: 1,
+        technicianId: 3,
+        serviceId: 11,
+        ownerUserId: 8,
+        ownerIdentityId: 18,
+        now,
+        action: "technician.service.cover.removed",
+        context: { ip: "127.0.0.1", userAgent: "jest" }
+      })
+    ).resolves.toMatchObject({ id: 11, coverImageUrl: null });
+    expect(transaction.mediaAsset.updateMany).toHaveBeenCalledWith({
+      where: {
+        entityType: "technician_service",
+        entityId: 11,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null
+      },
+      data: { isActive: false, deletedAt: now }
+    });
+    expect(transaction.technicianService.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: { coverImageUrl: null, updatedBy: 8 },
+      include: expect.any(Object)
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "technician.service.cover.removed",
+        targetType: "technician_service",
+        targetId: 11
+      })
+    });
+  });
+
+  it("returns null for cross-scope cover writes without media, service, or audit mutations", async () => {
+    const transaction = {
+      $queryRaw: jest.fn(async () => []),
+      mediaAsset: {
+        updateMany: jest.fn(),
+        create: jest.fn()
+      },
+      technicianService: { update: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback: (transactionClient: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+    await expect(
+      repository.replaceTechnicianServiceCover({
+        shopId: 2,
+        technicianId: 3,
+        serviceId: 11,
+        ownerUserId: 8,
+        ownerIdentityId: 18,
+        url: "/media/content/cover.jpg",
+        fileKey: "cover.jpg",
+        mimeType: "image/jpeg",
+        checksumSha256: "a".repeat(64),
+        fileSize: 4,
+        now: new Date("2026-09-04T00:00:00.000Z"),
+        action: "technician.service.cover.updated",
+        context: { ip: "127.0.0.1", userAgent: "jest" }
+      })
+    ).resolves.toBeNull();
+    await expect(
+      repository.removeTechnicianServiceCover({
+        shopId: 1,
+        technicianId: 4,
+        serviceId: 11,
+        ownerUserId: 8,
+        ownerIdentityId: 18,
+        now: new Date("2026-09-04T00:00:00.000Z"),
+        action: "technician.service.cover.removed",
+        context: { ip: "127.0.0.1", userAgent: "jest" }
+      })
+    ).resolves.toBeNull();
+    expect(transaction.mediaAsset.updateMany).not.toHaveBeenCalled();
+    expect(transaction.mediaAsset.create).not.toHaveBeenCalled();
+    expect(transaction.technicianService.update).not.toHaveBeenCalled();
+    expect(transaction.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("checks active non-deleted and non-purged media references by URL", async () => {
+    const findFirst = jest.fn(async () => ({ id: 101 }));
+    const repository = new PricingModeRepository({
+      mediaAsset: { findFirst }
+    } as unknown as PrismaClient);
+
+    await expect(repository.hasActiveMediaUrl("/media/content/cover.jpg")).resolves.toBe(true);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        url: "/media/content/cover.jpg",
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true }
+    });
+  });
 });
