@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -32,6 +33,30 @@ const outputValues = Object.freeze({
   CloudWatchAgentConfigParameterName: "/needo/staging/cloudwatch-agent",
   BudgetName: "needo-staging-monthly"
 });
+
+function evidenceFixture(overrides = {}) {
+  return {
+    scope: "environment-only",
+    accountId: config.accountId,
+    region: config.region,
+    stackName: config.stackName,
+    stackStatus: "CREATE_COMPLETE",
+    outputs: {
+      ...outputValues,
+      ApplicationSecretArn: "REDACTED"
+    },
+    instance: {
+      instanceId: outputValues.InstanceId,
+      instanceType: "t4g.large",
+      state: "running"
+    },
+    applicationDeployed: false,
+    migrationRun: false,
+    seedRun: false,
+    dnsModified: false,
+    ...overrides
+  };
+}
 
 function stackResult({ status = "CREATE_COMPLETE", outputs = outputValues } = {}) {
   return {
@@ -282,18 +307,13 @@ describe("AWS Staging evidence writer", () => {
   it("uses a private directory, atomic rename, and a private final file", async () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-"));
     const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
-    const evidence = {
-      scope: "environment-only",
-      applicationDeployed: false,
-      migrationRun: false,
-      seedRun: false,
-      dnsModified: false
-    };
+    const evidence = evidenceFixture();
 
     try {
       const resultPath = await writeAwsStagingEnvironmentEvidence({
         evidence,
-        outputDirectory
+        outputDirectory,
+        trustedRoot: temporaryRoot
       });
       const [directoryStat, fileStat, fileNames, contents] = await Promise.all([
         fs.stat(outputDirectory),
@@ -312,6 +332,95 @@ describe("AWS Staging evidence writer", () => {
     }
   });
 
+  it.each([
+    ["accessKeyId", { accessKeyId: "AKIA0000000000000000" }],
+    ["secretAccessKey", { secretAccessKey: "secret" }],
+    ["sessionToken", { sessionToken: "token" }],
+    ["parameterOverrides", { parameterOverrides: { Owner: "needo" } }],
+    ["cloudFormationParameters", { cloudFormationParameters: [] }],
+    ["callerArn", { callerArn: "REDACTED" }],
+    ["email", { email: "redacted" }],
+    ["userData", { userData: "redacted" }]
+  ])("rejects unexpected sensitive top-level field %s", async (_label, unexpected) => {
+    await expect(writeAwsStagingEnvironmentEvidence({
+      evidence: evidenceFixture(unexpected),
+      outputDirectory: "/must/not/be/reached",
+      trustedRoot: "/must"
+    })).rejects.toThrow("exact keys");
+  });
+
+  it.each([
+    ["top-level", { unexpected: true }],
+    ["outputs", { outputs: { ...evidenceFixture().outputs, unexpected: "value" } }],
+    ["instance", { instance: { ...evidenceFixture().instance, unexpected: "value" } }]
+  ])("rejects an unexpected %s key", async (_label, overrides) => {
+    await expect(writeAwsStagingEnvironmentEvidence({
+      evidence: evidenceFixture(overrides),
+      outputDirectory: "/must/not/be/reached",
+      trustedRoot: "/must"
+    })).rejects.toThrow("exact keys");
+  });
+
+  it.each([
+    ["scope", { scope: "application" }],
+    ["accountId", { accountId: "123" }],
+    ["accountId", { accountId: 123456789012 }],
+    ["region", { region: "us-east-1" }],
+    ["stackName", { stackName: "another-stack" }],
+    ["stackStatus", { stackStatus: "CREATE_IN_PROGRESS" }],
+    ["applicationDeployed", { applicationDeployed: true }],
+    ["migrationRun", { migrationRun: true }],
+    ["seedRun", { seedRun: true }],
+    ["dnsModified", { dnsModified: true }],
+    ["output value", { outputs: { ...evidenceFixture().outputs, BudgetName: "" } }],
+    ["instance value", { instance: { ...evidenceFixture().instance, state: "" } }]
+  ])("rejects invalid required schema field %s", async (label, overrides) => {
+    await expect(writeAwsStagingEnvironmentEvidence({
+      evidence: evidenceFixture(overrides),
+      outputDirectory: "/must/not/be/reached",
+      trustedRoot: "/must"
+    })).rejects.toThrow(new RegExp(label.split(" ")[0], "i"));
+  });
+
+  it.each([
+    ["full ARN", { outputs: { ...evidenceFixture().outputs, BudgetName: "arn:aws:budgets::123456789012:budget/name" } }],
+    ["email", { outputs: { ...evidenceFixture().outputs, BudgetName: "ops@example.com" } }],
+    ["unredacted secret ARN", { outputs: { ...evidenceFixture().outputs, ApplicationSecretArn: outputValues.ApplicationSecretArn } }]
+  ])("rejects a serialized %s in an otherwise approved field", async (_label, overrides) => {
+    await expect(writeAwsStagingEnvironmentEvidence({
+      evidence: evidenceFixture(overrides),
+      outputDirectory: "/must/not/be/reached",
+      trustedRoot: "/must"
+    })).rejects.toThrow(/forbidden|REDACTED/);
+  });
+
+  it("rejects relative and out-of-root output directories before filesystem mutation", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-root-"));
+    const noMutationFileSystem = {
+      ...fs,
+      mkdir: vi.fn(async () => {
+        throw new Error("filesystem mutation reached");
+      })
+    };
+    try {
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        outputDirectory: "outputs/aws-staging",
+        trustedRoot: temporaryRoot,
+        fileSystem: noMutationFileSystem
+      })).rejects.toThrow("absolute descendant");
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        outputDirectory: path.join(temporaryRoot, "..", "outside"),
+        trustedRoot: temporaryRoot,
+        fileSystem: noMutationFileSystem
+      })).rejects.toThrow("absolute descendant");
+      expect(noMutationFileSystem.mkdir).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("refuses an output-directory symlink instead of writing outside the evidence path", async () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-link-"));
     const outsideDirectory = path.join(temporaryRoot, "outside");
@@ -321,16 +430,116 @@ describe("AWS Staging evidence writer", () => {
 
     try {
       await expect(writeAwsStagingEnvironmentEvidence({
-        evidence: {
-          scope: "environment-only",
-          applicationDeployed: false,
-          migrationRun: false,
-          seedRun: false,
-          dnsModified: false
-        },
-        outputDirectory
-      })).rejects.toThrow("real directory");
+        evidence: evidenceFixture(),
+        outputDirectory,
+        trustedRoot: temporaryRoot
+      })).rejects.toThrow("symlink");
       await expect(fs.readdir(outsideDirectory)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a symlink in a parent component without writing through it", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-parent-link-"));
+    const trustedRoot = path.join(temporaryRoot, "trusted");
+    const outsideDirectory = path.join(temporaryRoot, "outside");
+    const linkedParent = path.join(trustedRoot, "outputs");
+    const outputDirectory = path.join(linkedParent, "aws-staging");
+    await fs.mkdir(trustedRoot);
+    await fs.mkdir(outsideDirectory);
+    await fs.symlink(outsideDirectory, linkedParent);
+
+    try {
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        outputDirectory,
+        trustedRoot
+      })).rejects.toThrow("symlink");
+      await expect(fs.readdir(outsideDirectory)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("detects an injected final-directory identity swap before writing or renaming", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-swap-"));
+    const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
+    const displacedDirectory = path.join(temporaryRoot, "displaced");
+    let swapped = false;
+    const fileSystem = {
+      ...fs,
+      async open(filePath, flags, mode) {
+        if (!swapped) {
+          swapped = true;
+          await fs.rename(outputDirectory, displacedDirectory);
+          await fs.mkdir(outputDirectory, { mode: 0o700 });
+        }
+        return fs.open(filePath, flags, mode);
+      }
+    };
+
+    try {
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        outputDirectory,
+        trustedRoot: temporaryRoot,
+        fileSystem
+      })).rejects.toThrow("identity changed");
+      await expect(fs.readdir(outputDirectory)).resolves.toEqual([]);
+      await expect(fs.readdir(displacedDirectory)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("opens the temporary evidence file with exclusive no-follow numeric flags", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-flags-"));
+    const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
+    let observedFlags;
+    const fileSystem = {
+      ...fs,
+      open(filePath, flags, mode) {
+        observedFlags = flags;
+        return fs.open(filePath, flags, mode);
+      }
+    };
+
+    try {
+      await writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        outputDirectory,
+        trustedRoot: temporaryRoot,
+        fileSystem
+      });
+      expect(typeof observedFlags).toBe("number");
+      expect(observedFlags & fsConstants.O_WRONLY).toBe(fsConstants.O_WRONLY);
+      expect(observedFlags & fsConstants.O_CREAT).toBe(fsConstants.O_CREAT);
+      expect(observedFlags & fsConstants.O_EXCL).toBe(fsConstants.O_EXCL);
+      expect(observedFlags & fsConstants.O_NOFOLLOW).toBe(fsConstants.O_NOFOLLOW);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("removes the temporary file when atomic rename fails", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-staging-cleanup-"));
+    const outputDirectory = path.join(temporaryRoot, "outputs", "aws-staging");
+    const fileSystem = {
+      ...fs,
+      rename: vi.fn(async () => {
+        throw new Error("injected rename failure");
+      })
+    };
+
+    try {
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        outputDirectory,
+        trustedRoot: temporaryRoot,
+        fileSystem
+      })).rejects.toThrow("injected rename failure");
+      await expect(fs.readdir(outputDirectory)).resolves.toEqual([]);
     } finally {
       await fs.rm(temporaryRoot, { recursive: true, force: true });
     }
