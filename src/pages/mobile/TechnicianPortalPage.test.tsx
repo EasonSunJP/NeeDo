@@ -10,7 +10,8 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain("() => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null");
     expect(source).not.toContain("formalTechnicianSelfProfileQuery.data?.shopId");
     expect(source).toContain("formalTechnicianProfileQuery.error");
-    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || !technician)");
+    expect(source).toContain('const publicDetailHidden = formalTechnicianProfileQuery.error === "error.technician.not_found"');
+    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden))");
     expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
     expect(source).toContain("technician: CoreTechnicianDetail | null");
     expect(source).toContain("当前没有可用的正式店铺，暂时无法新增服务");

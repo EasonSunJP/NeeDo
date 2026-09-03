@@ -243,6 +243,19 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.textContent).toContain("评价4.8/5");
   });
 
+  it("keeps the authenticated private self portal usable when the public detail is hidden", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockRejectedValue(new Error("error.technician.not_found"));
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("基础信息"));
+
+    expect(container.textContent).not.toContain("技师资料加载失败");
+    expect(container.textContent).toContain("接单率未读取");
+    expect(container.textContent).toContain("评价未读取");
+    expect(container.textContent).toContain("完成订单数未读取");
+  });
+
   it("shows an honest retry state when formal technician metrics fail to load", async () => {
     vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockRejectedValue(new Error("formal technician detail unavailable"));

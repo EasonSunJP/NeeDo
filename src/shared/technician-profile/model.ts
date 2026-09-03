@@ -12,10 +12,10 @@ export type TechnicianProfileInfoModel = {
   languages: string[];
   bio: string | null;
   yearsExperience: number;
-  acceptanceRatePercent: number;
+  acceptanceRatePercent: number | null;
   ratingAverage: number | null;
-  reviewCount: number;
-  completedOrderCount: number;
+  reviewCount: number | null;
+  completedOrderCount: number | null;
   reviewTagSummary: TechnicianReviewTagSummary;
   services: UnifiedServiceInfoCardData[];
 };

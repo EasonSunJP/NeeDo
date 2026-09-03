@@ -18,7 +18,7 @@ export function fromTechnicianSelfProfile(
   detail: CoreTechnicianDetail | null,
   services: TechnicianServicePayload[]
 ): TechnicianProfileInfoModel {
-  const reviewCount = detail?.reviewSummary.reviewCount ?? 0;
+  const reviewCount = detail?.reviewSummary.reviewCount ?? null;
 
   return {
     publicId: profile.publicId,
@@ -31,10 +31,10 @@ export function fromTechnicianSelfProfile(
     languages: profile.languages,
     bio: profile.bio,
     yearsExperience: profile.yearsExperience,
-    acceptanceRatePercent: detail?.acceptanceRatePercent ?? 0,
-    ratingAverage: detail ? parseRating(detail.reviewSummary.ratingAverage, reviewCount) : null,
+    acceptanceRatePercent: detail?.acceptanceRatePercent ?? null,
+    ratingAverage: detail ? parseRating(detail.reviewSummary.ratingAverage, detail.reviewSummary.reviewCount) : null,
     reviewCount,
-    completedOrderCount: detail?.completedOrderCount ?? 0,
+    completedOrderCount: detail?.completedOrderCount ?? null,
     reviewTagSummary: profile.reviewTagSummary,
     services: services.map(mapTechnicianServiceToUnifiedData)
   };

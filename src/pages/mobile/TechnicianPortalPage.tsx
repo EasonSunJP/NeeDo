@@ -149,9 +149,11 @@ function TechnicianPortalDataGate() {
   );
   const technician = formalTechnicianProfileQuery.data;
   const selfProfile = formalTechnicianSelfProfileQuery.data;
-  const error = formalTechnicianSelfProfileQuery.error ?? formalTechnicianProfileQuery.error;
+  const publicDetailHidden = formalTechnicianProfileQuery.error === "error.technician.not_found";
+  const error = formalTechnicianSelfProfileQuery.error
+    ?? (publicDetailHidden ? null : formalTechnicianProfileQuery.error);
 
-  if (!formalTechnicianProfileId || !selfProfile || !technician) {
+  if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden)) {
     return <ResourceState error={error} retry={() => setRevision((current) => current + 1)} />;
   }
 

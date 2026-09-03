@@ -109,12 +109,12 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
 
         <div className="mt-4 grid grid-cols-3 gap-2">
           <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>从业年数</p><strong className="mt-1 block truncate text-lg">{model.yearsExperience} 年</strong></div>
-          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>接单率</p><strong className="mt-1 block truncate text-lg">{model.acceptanceRatePercent}%</strong></div>
-          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>评价</p><strong className="mt-1 block truncate text-lg">{formatRating(model.ratingAverage)}</strong><span className={cn("mt-1 block truncate text-[10px] font-bold", mutedClassName)}>{model.reviewCount} 次</span></div>
+          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>接单率</p><strong className="mt-1 block truncate text-lg">{model.acceptanceRatePercent === null ? "未读取" : `${model.acceptanceRatePercent}%`}</strong></div>
+          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>评价</p><strong className="mt-1 block truncate text-lg">{formatRating(model.ratingAverage)}</strong><span className={cn("mt-1 block truncate text-[10px] font-bold", mutedClassName)}>{model.reviewCount === null ? "未读取" : `${model.reviewCount} 次`}</span></div>
         </div>
         <div className={cn(panelClassName, "mt-2 p-3")} data-testid="technician-profile-completed-orders">
           <p className={cn("text-[11px] font-bold", mutedClassName)}>完成订单数</p>
-          <strong className="mt-1 block text-xl">{model.completedOrderCount.toLocaleString("ja-JP")}</strong>
+          <strong className="mt-1 block text-xl">{model.completedOrderCount === null ? "未读取" : model.completedOrderCount.toLocaleString("ja-JP")}</strong>
         </div>
 
         <div className="my-4 h-px bg-[color:var(--client-line)]" />
