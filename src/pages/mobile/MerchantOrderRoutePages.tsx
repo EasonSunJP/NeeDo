@@ -596,7 +596,6 @@ function getCancellationPolicy(scenario: ReturnType<typeof getOrderScenario>) {
 }
 
 function buildOrderServiceCardData(order: Order, service: ServiceItem, matchedService?: ServiceItem): UnifiedServiceInfoCardData {
-  const scenario = getOrderScenario(order, matchedService ?? service);
   const formalData = matchedService?.formal ? mapServiceItemToUnifiedData(matchedService) : null;
   const snapshotData = buildOrderServiceMiniCardData(order);
 
@@ -605,7 +604,7 @@ function buildOrderServiceCardData(order: Order, service: ServiceItem, matchedSe
     id: order.id,
     name: order.itemName,
     priceAmount: order.amount,
-    durationMinutes: getDurationMinutes(order, service, scenario),
+    durationMinutes: snapshotData.durationMinutes ?? formalData?.durationMinutes ?? null,
     usageCount: formalData?.usageCount ?? null,
     shopPublicId: formalData?.shopPublicId ?? null,
     shopAddress: formalData?.shopAddress ?? null,

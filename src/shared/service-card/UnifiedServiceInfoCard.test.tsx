@@ -73,6 +73,7 @@ describe("UnifiedServiceInfoCard", () => {
             ...formalService,
             coverUrl: null,
             description: null,
+            durationMinutes: null,
             shopAddress: null,
             shopPublicId: null,
             tags: [],
@@ -84,6 +85,8 @@ describe("UnifiedServiceInfoCard", () => {
     const text = markup.replace(/<[^>]+>/g, "");
 
     expect(text).toContain("暂无公开图片");
+    expect(text).toContain("￥1,000/时长未读取");
+    expect(text).not.toContain("/0分钟");
     expect(text).toContain("利用回数：未读取");
     expect(text).toContain("店铺 ID：未读取");
     expect(text).toContain("店铺地址：未公开");

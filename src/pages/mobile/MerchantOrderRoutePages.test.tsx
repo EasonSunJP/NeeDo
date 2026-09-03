@@ -17,4 +17,16 @@ describe("MerchantOrderRoutePages service cards", () => {
     expect(source).not.toMatch(/usageCount\s*:\s*[^\n]*\.sales/u);
     expect(source).not.toContain("buildServiceMiniCardData");
   });
+
+  it("keeps persisted legacy duration ahead of current service metadata and never invents scenario duration", () => {
+    const start = source.indexOf("function buildOrderServiceCardData");
+    const end = source.indexOf("function buildUnassignedStaffCardData", start);
+    const cardBuilder = source.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(cardBuilder).toContain("snapshotData.durationMinutes ?? formalData?.durationMinutes");
+    expect(cardBuilder).not.toMatch(/scenario === "restaurant" \? 120 : 90/u);
+    expect(cardBuilder).not.toMatch(/scenario === "restaurant" \? "2 小时" : "90 分钟"/u);
+  });
 });

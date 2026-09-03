@@ -590,7 +590,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
                           onClick={() => void runOrderMutation(`addon-${service.id}`, (idempotencyKey) => bookingApi.createAddOn(orderId, { serviceId: service.id, idempotencyKey }))}
                           type="button"
                         >
-                          追加
+                          追加<span className="sr-only"> {service.name}</span>
                         </button>
                       )}
                       data={mapCoreServiceCardToUnifiedData(service)}
@@ -664,6 +664,7 @@ function LegacyUserOrderDetailPage() {
   return (
     <PageScaffold contentClassName="space-y-4 pb-8" navItems={[]}>
       <AppTopBar closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
+      <p className="text-xs font-black text-[color:var(--client-muted)]">历史只读预约</p>
       <UnifiedServiceInfoCard data={buildOrderServiceMiniCardData(order)} detailTo={order.serviceId ? `/services/${order.serviceId}` : undefined} />
       <p className="rounded-[20px] bg-[color:var(--client-elevated)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">此旧记录仅供查看，不支持开始、追加、结束、结算或评价操作。</p>
       {order.serviceId ? <Link className="text-center text-sm font-black text-[color:var(--client-primary)]" to={`/services/${order.serviceId}`}>查看服务</Link> : null}

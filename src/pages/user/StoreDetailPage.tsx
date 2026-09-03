@@ -65,6 +65,12 @@ import { shareContent } from "../../lib/share";
 import { TechnicianShowcaseCard } from "../../shared/profile-card";
 import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
 import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import {
+  mapCoreServiceCardToUnifiedData,
+  mapStoreMenuConfigToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
@@ -96,6 +102,7 @@ type StoreDetailExperienceProps = {
   technicianPricingRatePercent?: number;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
+  serviceCardsOverride?: UnifiedServiceInfoCardData[];
   store: Store;
   techniciansOverride?: Technician[];
   presentationOverride?: StorePresentationConfig;
@@ -133,7 +140,9 @@ type SeatCard = {
   cover: string;
 };
 
-type MenuCard = StoreMenuConfig;
+type MenuCard = StoreMenuConfig & {
+  serviceInfo?: UnifiedServiceInfoCardData;
+};
 
 type OfferCard = StoreOfferConfig;
 type StoreProfileConfig = StorePresentationConfig;
@@ -2545,9 +2554,18 @@ function CompactMenuCard({
   onReplaceImage?: (files: FileList | null) => void;
 }) {
   const solidTags = cardUi?.tagStyle === "实心";
+  const serviceData = item.serviceInfo;
   const updateField = <Key extends keyof MenuCard>(key: Key, value: MenuCard[Key]) => {
     onChange?.({ ...item, [key]: value });
   };
+
+  if (serviceData && !editing) {
+    const actionSlot = showSelectAction ? (
+      <StoreSelectionIconButton active={selected} activeIcon={activeIcon} inactiveIcon={inactiveIcon} label={selectLabel} onSelect={onSelect} />
+    ) : editor;
+
+    return <UnifiedServiceInfoCard actionSlot={actionSlot} data={serviceData} />;
+  }
 
   return (
     <FlatCard className="p-2.5" editor={editor}>
@@ -2677,6 +2695,7 @@ export function StoreDetailExperience({
   pricingMode = "store",
   privacyControl,
   scope = "user",
+  serviceCardsOverride,
   store,
   technicianPricingRatePercent,
   techniciansOverride,
@@ -2765,7 +2784,17 @@ export function StoreDetailExperience({
     () => (formalApiOnly ? [] : buildMenuCards(store, industry)),
     [formalApiOnly, industry, store]
   );
-  const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
+  const serviceInfoById = useMemo(
+    () => new Map((serviceCardsOverride ?? []).map((service) => [service.id, service])),
+    [serviceCardsOverride]
+  );
+  const menuCards = useMemo(
+    () => mergeMenuCardOverrides(baseMenuCards, config.menuCards).map((menuCard) => ({
+      ...menuCard,
+      serviceInfo: serviceInfoById.get(menuCard.sourceServiceId) ?? menuCard.serviceInfo ?? mapStoreMenuConfigToUnifiedData(menuCard, store)
+    })),
+    [baseMenuCards, config.menuCards, serviceInfoById, store]
+  );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
   const mapDetailCopy = storeMapDetailCopyByIndustry[industry];
@@ -4266,6 +4295,7 @@ function UnifiedFormalStoreDetail({
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
+      serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}
       store={store}
       techniciansOverride={technicians}
     />
