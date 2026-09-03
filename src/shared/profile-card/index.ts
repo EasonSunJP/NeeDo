@@ -6,7 +6,7 @@ export type { EntitySearchCardActionsProps } from "./EntitySearchCardActions";
 export { SocialProfileMiniCard, buildServiceMiniCardData, buildSocialProfileMiniCardData } from "./SocialProfileMiniCard";
 export { TechnicianShowcaseCard, getTechnicianDynamicPath } from "./TechnicianShowcaseCard";
 export type { TechnicianShowcaseFormalData } from "./TechnicianShowcaseCard";
-export { TechnicianPublicInfoCard, TechnicianPublicInfoCardModal, TechnicianReviewStampList } from "./TechnicianPublicInfoCard";
+export { TechnicianPublicInfoCard } from "./TechnicianPublicInfoCard";
 export { PlatformMembershipSimpleCard } from "./PlatformMembershipSimpleCard";
 export type { PlatformMembershipSimpleCardProps } from "./PlatformMembershipSimpleCard";
 export type { SocialProfileMiniActionLabel, SocialProfileMiniData } from "./SocialProfileMiniCard";

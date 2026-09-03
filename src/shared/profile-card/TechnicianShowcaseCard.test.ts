@@ -40,6 +40,14 @@ describe("TechnicianShowcaseCard photo source", () => {
 });
 
 describe("TechnicianShowcaseCard selectable behavior", () => {
+  it("opens every technician photo through the scoped detail link without a dialog", () => {
+    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
+
+    expect(cardSource).toContain("const photoTrigger = (");
+    expect(cardSource).toContain("to={detailHref}");
+    expect(cardSource).not.toContain(retiredModalName);
+  });
+
   it("keeps the card linked to the technician dynamic page while selection is handled by the corner icon", () => {
     expect(cardSource).toContain('const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";');
     expect(cardSource).toContain('const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);');

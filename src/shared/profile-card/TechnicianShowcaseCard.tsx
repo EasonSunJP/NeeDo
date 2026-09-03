@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AppIcon, IconMetricAction, type IconName } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
@@ -7,7 +7,6 @@ import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
-import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
 
 type TechnicianShowcaseCardProps = {
   "aria-label"?: string;
@@ -374,7 +373,6 @@ export function TechnicianShowcaseCard({
   technician
 }: TechnicianShowcaseCardProps) {
   const location = useLocation();
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
   const recommendedService = formalData ? null : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const formalPrimaryService = formalData?.primaryService ?? null;
   const copy = getTechnicianCardCopy(language);
@@ -514,14 +512,10 @@ export function TechnicianShowcaseCard({
       </div>
     </div>
   );
-  const photoTrigger = formalData ? (
+  const photoTrigger = (
     <Link aria-label={`查看${displayName}详情`} className="block w-full text-left active:scale-[0.99]" to={detailHref}>
       {photoContent}
     </Link>
-  ) : (
-    <button aria-label={`查看${displayName}信息卡`} className="block w-full text-left active:scale-[0.99]" onClick={() => setTechnicianInfoCardOpen(true)} type="button">
-      {photoContent}
-    </button>
   );
   const photoSection = (
     <div className="relative">
@@ -548,7 +542,6 @@ export function TechnicianShowcaseCard({
     </div>
   );
   return onSelect ? (
-    <>
     <div className={cardClassName}>
       <div className="relative">
         {photoSection}
@@ -580,33 +573,16 @@ export function TechnicianShowcaseCard({
           </button>
         ) : null}
       </div>
-      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+      <Link aria-label={`查看${displayName}详情`} className="block active:scale-[0.99]" to={detailHref}>
         {detailContent}
       </Link>
     </div>
-    {!formalData ? <TechnicianPublicInfoCardModal
-      dynamicTo={detailHref}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={currentScope}
-    /> : null}
-    </>
   ) : (
-    <>
     <div className={cardClassName}>
       {photoSection}
-      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+      <Link aria-label={`查看${displayName}详情`} className="block active:scale-[0.99]" to={detailHref}>
         {detailContent}
       </Link>
     </div>
-    {!formalData ? <TechnicianPublicInfoCardModal
-      dynamicTo={detailHref}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={currentScope}
-    /> : null}
-    </>
   );
 }
