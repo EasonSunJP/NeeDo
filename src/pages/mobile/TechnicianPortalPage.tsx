@@ -144,16 +144,14 @@ function TechnicianPortalDataGate() {
     [formalTechnicianProfileId, revision]
   );
   const formalTechnicianProfileQuery = useCoreReadQuery(
-    () => formalTechnicianProfileId && formalTechnicianSelfProfileQuery.data?.shopId
-      ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId)
-      : null,
-    [formalTechnicianProfileId, formalTechnicianSelfProfileQuery.data?.shopId, revision]
+    () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
+    [formalTechnicianProfileId, revision]
   );
   const technician = formalTechnicianProfileQuery.data;
   const selfProfile = formalTechnicianSelfProfileQuery.data;
-  const error = formalTechnicianSelfProfileQuery.error;
+  const error = formalTechnicianSelfProfileQuery.error ?? formalTechnicianProfileQuery.error;
 
-  if (!formalTechnicianProfileId || !selfProfile) {
+  if (!formalTechnicianProfileId || !selfProfile || !technician) {
     return <ResourceState error={error} retry={() => setRevision((current) => current + 1)} />;
   }
 

@@ -1,12 +1,48 @@
-import { createElement } from "react";
+// @vitest-environment jsdom
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
-import type { CoreTechnicianDetail } from "../../features/core-read/api";
-import type { TechnicianSelfProfile } from "../../features/core-read/technicianProfileApi";
-import type { TechnicianServicePayload } from "../../features/pricing-mode/api";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
+import { technicianProfileApi, type TechnicianSelfProfile } from "../../features/core-read/technicianProfileApi";
+import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { TechnicianProfileInfoView, fromTechnicianSelfProfile } from "../../shared/technician-profile";
+import { TechnicianPortalPage } from "./TechnicianPortalPage";
 import source from "./TechnicianPortalPage.tsx?raw";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const portalTestState = vi.hoisted(() => ({
+  session: {
+    portal: "technician",
+    loginMethod: "password",
+    currentIdentity: {
+      id: 181,
+      publicId: "s0000000081",
+      scopeId: 81,
+      scopeType: "technician_profile",
+      type: "technician"
+    }
+  }
+}));
+
+vi.mock("../../auth/AuthProvider", () => ({
+  useAuth: () => ({ session: portalTestState.session })
+}));
+
+vi.mock("../../theme/ClientThemeProvider", () => ({
+  getClientThemeClassName: () => "",
+  useClientTheme: () => ({ isNight: false, theme: "jade-light" })
+}));
+
+vi.mock("../../features/realtime/useRealtimeUnreadCounts", () => ({
+  useRealtimeUnreadCounts: () => ({ conversations: 0, friendRequests: 0, notifications: 0 })
+}));
+
+vi.mock("../../i18n/I18nProvider", () => ({
+  useI18n: () => ({ language: "zh" })
+}));
 
 const profile: TechnicianSelfProfile = {
   id: 81,
@@ -100,6 +136,40 @@ const technician: CoreTechnicianDetail = {
   updatedAt: "2026-09-03T00:00:00.000Z"
 };
 
+const independentProfile: TechnicianSelfProfile = {
+  ...profile,
+  shopId: null,
+  employmentType: "independent"
+};
+
+let container: HTMLDivElement;
+let root: Root | null;
+
+async function flushUntil(assertion: () => void) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+    }
+  }
+  throw lastError;
+}
+
+async function renderPortal() {
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(
+      <MemoryRouter initialEntries={["/technician/me?meTab=info"]}>
+        <Routes><Route element={<TechnicianPortalPage />} path="/technician/:view" /></Routes>
+      </MemoryRouter>
+    );
+  });
+}
+
 function renderProfile() {
   const model = fromTechnicianSelfProfile(profile, technician, [service]);
   return renderToStaticMarkup(
@@ -115,6 +185,19 @@ function renderProfile() {
 }
 
 describe("TechnicianPortalPage approved personal-center profile", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = null;
+    vi.spyOn(pricingModeApi, "listMyTechnicianServices").mockResolvedValue({ list: [], total: 0, page: 1, page_size: 5 });
+  });
+
+  afterEach(async () => {
+    if (root) await act(async () => root?.unmount());
+    container.remove();
+  });
+
   it("uses the shared formal profile composition", () => {
     expect(source).toContain("fromTechnicianSelfProfile(profile, technician, services)");
     expect(source).toContain("<TechnicianProfileInfoView");
@@ -146,5 +229,30 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
 
     expect(serviceSectionTag).not.toContain("border");
     expect(serviceCardTag).toContain("border");
+  });
+
+  it("requests and renders formal metrics for an independent technician without a shop", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
+    const detailRequest = vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technician);
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("完成订单数1,281"));
+
+    expect(detailRequest).toHaveBeenCalledWith(81);
+    expect(container.textContent).toContain("接单率98%");
+    expect(container.textContent).toContain("评价4.8/5");
+  });
+
+  it("shows an honest retry state when formal technician metrics fail to load", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockRejectedValue(new Error("formal technician detail unavailable"));
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("formal technician detail unavailable"));
+
+    expect(container.textContent).toContain("技师资料加载失败");
+    expect(container.textContent).toContain("重新加载");
+    expect(container.textContent).not.toContain("接单率0%");
+    expect(container.textContent).not.toContain("完成订单数0");
   });
 });
