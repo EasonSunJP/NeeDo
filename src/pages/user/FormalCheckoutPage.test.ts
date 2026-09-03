@@ -57,6 +57,12 @@ describe("formal customer checkout", () => {
     expect(formalSource).not.toContain("提交正式预约");
   });
 
+  it("renders the formal package through the unified service information card", () => {
+    expect(formalSource).toContain("UnifiedServiceInfoCard");
+    expect(formalSource).toContain("mapCoreServiceCardToUnifiedData(service)");
+    expect(formalSource).not.toContain("mapCoreServiceToServiceItem");
+  });
+
   it("renders the approved detailed body without reviving unsupported stores", () => {
     for (const copy of ["套餐", "服务方式", "预约时间", "地址", "技师", "特殊需求", "注意事项", "取消政策", "NDP（NeeDoPoint）"]) {
       expect(formalSource).toContain(copy);

@@ -160,6 +160,14 @@ describe("HomePage shared theme layout", () => {
     expect(homePageSource).toContain("floatingHeaderGlassPanelClassName");
     expect(homePageSource).toContain("<RecommendationCard");
   });
+
+  it("delegates service recommendations while keeping only image navigation tiles exempt", () => {
+    expect(homePageSource).toContain("<SocialProfileMiniCard data={buildServiceMiniCardData(data.service)}");
+    expect(homePageSource).toContain("function ServiceModule(");
+    expect(homePageSource).toContain("图像化入口，点击进入对应服务列表");
+    expect(homePageSource).not.toContain("ServicePreviewCard");
+    expect(homePageSource).not.toContain("resolveServiceProvider");
+  });
 });
 
 describe("HomePage formal user-home carousel contract", () => {

@@ -6,6 +6,7 @@ import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventT
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { buildOrderServiceMiniCardData } from "../../components/mobile/OrderServiceMiniCard";
 import { Button } from "../../components/ui/Button";
 import { emptyOrders as orders, emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
@@ -14,7 +15,12 @@ import { readNavigationReturnTarget } from "../../lib/navigationReturn";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
-import { SocialProfileMiniCard, buildServiceMiniCardData, type SocialProfileMiniData } from "../../shared/profile-card";
+import { SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
+import {
+  mapServiceItemToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { useEntityStore } from "../../state/entityStore";
 import { addSharedSchedules, removeSharedSchedule, useScheduleStore } from "../../state/scheduleStore";
 import type { Customer, Order, Schedule, ServiceItem, Store, Technician } from "../../types/domain";
@@ -408,16 +414,16 @@ function findServiceSelectionForDraft(order: Order, draft: MerchantOrderChangeDr
     selections[0];
 }
 
-function buildServiceSelectionCardData(selection: ServicePackageSelection, store: Store): SocialProfileMiniData {
-  const baseData = buildServiceMiniCardData(selection.service, store);
+function buildServiceSelectionCardData(selection: ServicePackageSelection): UnifiedServiceInfoCardData {
+  const baseData = mapServiceItemToUnifiedData(selection.service);
 
   return {
     ...baseData,
     id: `${selection.serviceId}-${selection.packageId}`,
-    displayName: selection.itemName,
-    headline: `${selection.packageName} · ${selection.durationMinutes} 分钟 · ${yen(selection.amount)}`,
-    serviceTags: [selection.packageName, yen(selection.amount), ...selection.service.tags].slice(0, 6),
-    detailPath: undefined
+    name: selection.itemName,
+    priceAmount: selection.amount,
+    durationMinutes: selection.durationMinutes,
+    tags: [selection.packageName, ...selection.service.tags].filter(Boolean).slice(0, 8)
   };
 }
 
@@ -566,27 +572,22 @@ function getCancellationPolicy(scenario: ReturnType<typeof getOrderScenario>) {
   return "预约开始前 2 小时内取消或变更，可能产生取消费；已支付金额按商户规则原路退回。";
 }
 
-function buildOrderServiceCardData(order: Order, service: ServiceItem, store: Store, matchedService?: ServiceItem): SocialProfileMiniData {
+function buildOrderServiceCardData(order: Order, service: ServiceItem, matchedService?: ServiceItem): UnifiedServiceInfoCardData {
   const scenario = getOrderScenario(order, matchedService ?? service);
-  const baseData = buildServiceMiniCardData(service, store);
-  const modeLabel = order.mode === "home" ? "上门服务" : scenario === "restaurant" ? "到店餐饮" : "到店预约";
-  const fallbackTags = scenario === "restaurant"
-    ? [modeLabel, "席位预约", order.area]
-    : [modeLabel, order.area, "平台确认"];
+  const formalData = matchedService?.formal ? mapServiceItemToUnifiedData(matchedService) : null;
+  const snapshotData = buildOrderServiceMiniCardData(order);
 
   return {
-    ...baseData,
+    ...(formalData ?? snapshotData),
     id: order.id,
-    displayName: order.itemName,
-    avatar: matchedService ? baseData.avatar : store.cover,
-    coverImage: matchedService ? baseData.coverImage : store.gallery[0] || store.cover,
-    headline: matchedService ? service.summary : `${order.storeName ?? store.name} 的预约项目`,
-    regionLabel: order.area,
-    addressLabel: order.area,
-    addressValue: order.mode === "home" ? `${order.city} · ${order.area}` : order.storeName ?? store.name,
-    serviceTags: (matchedService ? [modeLabel, ...service.tags] : fallbackTags).slice(0, 6),
-    usageCount: matchedService ? service.sales : undefined,
-    detailPath: undefined
+    name: order.itemName,
+    priceAmount: order.amount,
+    durationMinutes: getDurationMinutes(order, service, scenario),
+    usageCount: formalData?.usageCount ?? null,
+    shopPublicId: formalData?.shopPublicId ?? null,
+    shopAddress: formalData?.shopAddress ?? null,
+    description: formalData?.description ?? null,
+    tags: formalData?.tags ?? []
   };
 }
 
@@ -838,23 +839,12 @@ function DispatchStatusBadge({
   );
 }
 
-function DispatchOrderMiniCard({ order, store }: { order: Order; store: Store }) {
+function DispatchOrderMiniCard({ order }: { order: Order }) {
   const service = findServiceForOrder(order);
-  const modeLabel = order.mode === "home" ? "上门服务" : "到店预约";
-  const serviceCardData = {
-    ...buildServiceMiniCardData(service, store),
-    id: order.id,
-    displayName: order.itemName,
-    headline: `${order.bookedAt} · ${order.area} · ${yen(order.amount)}`,
-    regionLabel: order.area,
-    addressLabel: order.area,
-    addressValue: order.storeName ?? store.address,
-    serviceTags: [modeLabel, yen(order.amount), ...service.tags].slice(0, 4),
-    detailPath: `/merchant/orders/${order.id}`
-  };
+  const serviceCardData = buildOrderServiceCardData(order, service, findMatchedServiceForOrder(order));
 
   return (
-    <SocialProfileMiniCard
+    <UnifiedServiceInfoCard
       actionSlot={<DispatchStatusBadge label="待分配" />}
       data={serviceCardData}
       detailTo={`/merchant/orders/${order.id}`}
@@ -1019,7 +1009,7 @@ function MerchantOrderDetailContent() {
   const matchedService = selectedService ?? findMatchedServiceForOrder(order);
   const service = matchedService ?? findServiceForOrder(order);
   const scenario = getOrderScenario(order, service);
-  const serviceCardData = buildOrderServiceCardData(order, service, store, matchedService);
+  const serviceCardData = buildOrderServiceCardData(order, service, matchedService);
   const staffCardData = assignedTechnician ? undefined : buildUnassignedStaffCardData(order, store, scenario);
   const reservationInfoRows = getReservationInfoRows({ assignedTechnician, changeDraft: storedDraft, customer, order, service, store });
   const contactInfoEvents = getOrderContactInfoEvents({ assignedTechnician, changeDraft: storedDraft, customer, order, service, store });
@@ -1050,10 +1040,8 @@ function MerchantOrderDetailContent() {
 
         <section>
           <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">服务</h2>
-          <SocialProfileMiniCard
+          <UnifiedServiceInfoCard
             data={serviceCardData}
-            showAction={false}
-            topTags={[{ label: statusLabel(order.status), tone: "yellow" }]}
           />
           <div className="mt-2 grid grid-cols-3 gap-2">
             {paymentSummaryItems.map(([label, value]) => (
@@ -1163,8 +1151,8 @@ function MerchantOrderChangeContent() {
   const draftOrder = applyOrderChangeDraft(order, draft);
   const draftScenario = getOrderScenario(draftOrder, selectedServiceSelection?.service ?? service);
   const selectedServiceCardData = selectedServiceSelection
-    ? buildServiceSelectionCardData(selectedServiceSelection, store)
-    : buildOrderServiceCardData(draftOrder, service, store, findMatchedServiceForOrder(draftOrder));
+    ? buildServiceSelectionCardData(selectedServiceSelection)
+    : buildOrderServiceCardData(draftOrder, service, findMatchedServiceForOrder(draftOrder));
   const pendingChangeLogs = buildOrderChangeLogEntries({
     at: "保存时",
     next: draft,
@@ -1280,7 +1268,7 @@ function MerchantOrderChangeContent() {
               </Button>
             </div>
             <div className="mt-3">
-              <SocialProfileMiniCard data={selectedServiceCardData} showAction={false} />
+              <UnifiedServiceInfoCard data={selectedServiceCardData} />
             </div>
             {servicePickerOpen ? (
               <div className="mt-3 space-y-3">
@@ -1294,11 +1282,13 @@ function MerchantOrderChangeContent() {
                     )}
                     key={`${selection.serviceId}-${selection.packageId}`}
                   >
-                    <SocialProfileMiniCard
-                      data={buildServiceSelectionCardData(selection, store)}
-                      onOpenDetails={() => selectServicePackage(selection)}
-                      showAction={false}
-                      topTags={[{ label: selection.serviceId === draft.serviceId && selection.packageId === draft.packageId ? "已选择" : "可选择", tone: "purple" }]}
+                    <UnifiedServiceInfoCard
+                      actionSlot={(
+                        <Button onClick={() => selectServicePackage(selection)} size="sm">
+                          {selection.serviceId === draft.serviceId && selection.packageId === draft.packageId ? "已选择" : "选择"}
+                        </Button>
+                      )}
+                      data={buildServiceSelectionCardData(selection)}
                     />
                   </div>
                 ))}
@@ -1524,7 +1514,7 @@ function MerchantOrderDispatchContent() {
         title="手动派单"
       />
       <main className="scrollbar-none min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        <DispatchOrderMiniCard order={order} store={store} />
+        <DispatchOrderMiniCard order={order} />
         {dispatchCandidates.map(({ tech, available, distanceMinutes, hasConflict }, index) => (
           <DispatchTechnicianMiniCard
             available={available}
