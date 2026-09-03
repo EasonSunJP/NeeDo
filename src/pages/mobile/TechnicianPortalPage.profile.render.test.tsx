@@ -136,6 +136,23 @@ const technician: CoreTechnicianDetail = {
   updatedAt: "2026-09-03T00:00:00.000Z"
 };
 
+const employedTechnician: CoreTechnicianDetail = {
+  ...technician,
+  shop: {
+    id: 71,
+    publicId: "shop0000000071",
+    name: "港区店",
+    city: "東京都",
+    address: "東京都港区",
+    coverUrl: null,
+    reviewSummary: { ratingAverage: "4.90", reviewCount: 88, latestReviewAt: null, highlights: [] },
+    favoriteCount: 0,
+    shareCount: 0,
+    serviceCategories: [],
+    businessKeywords: []
+  }
+};
+
 const independentProfile: TechnicianSelfProfile = {
   ...profile,
   shopId: null,
@@ -229,6 +246,35 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
 
     expect(serviceSectionTag).not.toContain("border");
     expect(serviceCardTag).toContain("border");
+  });
+
+  it("renders formal technician services without requesting the merchant-scoped pricing endpoint", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.mocked(pricingModeApi.listMyTechnicianServices).mockResolvedValue({
+      list: [service],
+      total: 1,
+      page: 1,
+      page_size: 5
+    });
+    const merchantPricingRequest = vi
+      .spyOn(pricingModeApi, "getShopPricingMode")
+      .mockRejectedValue(new Error("error.identity.forbidden"));
+    const publicPricingRequest = vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+      shopId: 71,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 100,
+      entry: "service_menu",
+      services: { list: [], total: 0, page: 1, page_size: 1 }
+    });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+
+    expect(publicPricingRequest).toHaveBeenCalledWith(71, { page: 1, pageSize: 1 });
+    expect(merchantPricingRequest).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("店铺当前定价模式：店铺定价");
+    expect(container.textContent).not.toContain("error.identity.forbidden");
   });
 
   it("requests and renders formal metrics for an independent technician without a shop", async () => {
