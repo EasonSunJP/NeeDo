@@ -39,7 +39,12 @@ export const serviceReviewSpecialTags: Required<Pick<ServiceReviewTagOption, "la
   { label: "元气max", count: 0, kind: "stamp", tone: "energy" }
 ];
 
-export const serviceReviewSpecialLabelSet = new Set(serviceReviewSpecialTags.map((tag) => tag.label));
+const legacyServiceReviewSpecialLabels = ["魅力值MAX", "服务精神MAX", "情绪价值MAX", "元气MAX"];
+
+export const serviceReviewSpecialLabelSet = new Set([
+  ...serviceReviewSpecialTags.map((tag) => tag.label),
+  ...legacyServiceReviewSpecialLabels
+]);
 
 export function getServiceReviewStampVisual(tag: Pick<ServiceReviewTagOption, "tone">, index: number) {
   return serviceReviewStampVisuals.find((visual) => visual.tone === tag.tone) ?? serviceReviewStampVisuals[index % serviceReviewStampVisuals.length]!;
