@@ -375,6 +375,12 @@ function passingFixture() {
   };
 }
 
+function fixtureForRegion(region) {
+  return JSON.parse(
+    JSON.stringify(passingFixture()).replaceAll(config.region, region)
+  );
+}
+
 function argument(args, flag) {
   return args[args.indexOf(flag) + 1];
 }
@@ -427,19 +433,19 @@ function createAws(fixture, trace = []) {
   };
 }
 
-function createPreflight(resolveDns, trace = [], overrides = {}) {
+function createPreflight(resolveDns, trace = [], overrides = {}, expectedConfig = config) {
   return vi.fn(async (input) => {
     trace.push("preflight");
     expect(input.aws).toBeDefined();
-    expect(input.config).toBe(config);
+    expect(input.config).toBe(expectedConfig);
     expect(input.resolveDns).toBe(resolveDns);
-    const dnsA = Object.freeze([...(await resolveDns(config.hostname))].sort());
+    const dnsA = Object.freeze([...(await resolveDns(expectedConfig.hostname))].sort());
     return Object.freeze({
-      accountId: config.accountId,
-      callerArn: `arn:aws:sts::${config.accountId}:assumed-role/NeedoDeployer/session`,
+      accountId: expectedConfig.accountId,
+      callerArn: `arn:aws:sts::${expectedConfig.accountId}:assumed-role/NeedoDeployer/session`,
       callerKind: "assumed-role",
-      region: config.region,
-      hostname: config.hostname,
+      region: expectedConfig.region,
+      hostname: expectedConfig.hostname,
       amiId: ids.imageId,
       amiArchitecture: "arm64",
       templateValidation: "VALID",
@@ -557,6 +563,55 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(trace[0]).toBe("preflight");
     expect(trace[1]).toBe(`dns:${config.hostname}`);
     expect(trace.at(-1)).toBe(`dns:${config.hostname}`);
+  });
+
+  it("accepts Sydney only when every regional ARN matches Sydney", async () => {
+    const sydneyConfig = Object.freeze({ ...config, region: "ap-southeast-2" });
+    const fixture = fixtureForRegion(sydneyConfig.region);
+    const trace = [];
+    const aws = createAws(fixture, trace);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    const evidence = await verifyAwsStagingEnvironment({
+      aws,
+      config: sydneyConfig,
+      resolveDns,
+      runPreflight: createPreflight(
+        resolveDns,
+        trace,
+        { region: sydneyConfig.region },
+        sydneyConfig
+      ),
+      now: () => 0
+    });
+
+    expect(evidence.region).toBe("ap-southeast-2");
+    expect(evidence.stack.id).toContain(":ap-southeast-2:");
+    expect(evidence.monitoring.logGroups.every(
+      ({ arn }) => arn.includes(":ap-southeast-2:")
+    )).toBe(true);
+  });
+
+  it("rejects a Tokyo log ARN during a Sydney run", async () => {
+    const sydneyConfig = Object.freeze({ ...config, region: "ap-southeast-2" });
+    const fixture = fixtureForRegion(sydneyConfig.region);
+    fixture.logGroups.logGroups[0].logGroupArn =
+      "arn:aws:logs:ap-northeast-1:123456789012:log-group:/needo/staging/system";
+    const trace = [];
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    await expect(verifyAwsStagingEnvironment({
+      aws: createAws(fixture, trace),
+      config: sydneyConfig,
+      resolveDns,
+      runPreflight: createPreflight(
+        resolveDns,
+        trace,
+        { region: sydneyConfig.region },
+        sydneyConfig
+      ),
+      now: () => 0
+    })).rejects.toThrow(/log group|ARN/i);
   });
 
   it.each([
@@ -960,6 +1015,37 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       expect(fileStat.mode & 0o777).toBe(0o600);
       expect(files).toEqual(["environment-acceptance.json"]);
       expect(JSON.parse(contents)).toEqual(evidence);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves Sydney in reconstructed acceptance evidence", async () => {
+    const sydneyConfig = Object.freeze({ ...config, region: "ap-southeast-2" });
+    const fixture = fixtureForRegion(sydneyConfig.region);
+    const trace = [];
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+    const evidence = await verifyAwsStagingEnvironment({
+      aws: createAws(fixture, trace),
+      config: sydneyConfig,
+      resolveDns,
+      runPreflight: createPreflight(
+        resolveDns,
+        trace,
+        { region: sydneyConfig.region },
+        sydneyConfig
+      ),
+      now: () => 0
+    });
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-verify-sydney-"));
+    try {
+      const resultPath = await writeAwsStagingAcceptanceEvidence({
+        evidence,
+        trustedRoot: temporaryRoot,
+        outputDirectory: path.join(temporaryRoot, "outputs", "aws-staging")
+      });
+      expect(JSON.parse(await fs.readFile(resultPath, "utf8")).region)
+        .toBe("ap-southeast-2");
     } finally {
       await fs.rm(temporaryRoot, { recursive: true, force: true });
     }

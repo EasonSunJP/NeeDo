@@ -5,7 +5,11 @@ import { isIPv4 } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolve4 } from "node:dns/promises";
-import { maskEmail, requireAwsStagingHostname } from "./aws-staging-config.mjs";
+import {
+  maskEmail,
+  requireAwsStagingHostname,
+  requireAwsStagingRegion
+} from "./aws-staging-config.mjs";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
@@ -248,9 +252,8 @@ function requireResolvedConfig(config) {
     throw new Error("AWS Staging acceptance config must be a frozen resolved config");
   }
   if (!/^\d{12}$/.test(String(config.accountId ?? ""))) throw new Error("AWS Staging config accountId is invalid");
-  if (config.region !== "ap-northeast-1" || config.environment !== "staging") {
-    throw new Error("AWS Staging config region or environment is invalid");
-  }
+  requireAwsStagingRegion(config.region);
+  if (config.environment !== "staging") throw new Error("AWS Staging config environment is invalid");
   if (config.stackName !== "needo-staging-infrastructure") throw new Error("AWS Staging config stackName is unsafe");
   if (!/^[a-z0-9][a-z0-9-]{1,31}$/.test(String(config.owner ?? ""))) {
     throw new Error("AWS Staging config owner is invalid");
@@ -643,7 +646,7 @@ async function verifyBucket({ aws, name, kind, owner }) {
   return { name, encryption: "AES256", versioning: "Enabled", publicAccessBlocked: true, lifecycleRules };
 }
 
-function requireLogGroups(response, resources) {
+function requireLogGroups(response, resources, config) {
   noPagination(response, "CloudWatch Logs describe-log-groups");
   if (!Array.isArray(response.logGroups) || response.logGroups.length !== 2) {
     throw new Error("CloudWatch log group cardinality must be exactly two");
@@ -652,6 +655,9 @@ function requireLogGroups(response, resources) {
     ["SystemLogGroup", "/needo/staging/system"],
     ["DockerLogGroup", "/needo/staging/docker"]
   ];
+  const logArnPattern = new RegExp(
+    `^arn:aws:logs:${escapeRegExp(config.region)}:${config.accountId}:log-group:/needo/staging/(?:system|docker)$`
+  );
   return expected.map(([logicalId, name]) => {
     const group = response.logGroups.find((candidate) => candidate?.logGroupName === name);
     if (!group || resources[logicalId].physicalId !== name || group.retentionInDays !== 30) {
@@ -660,7 +666,7 @@ function requireLogGroups(response, resources) {
     const arn = safeArgument(
       group.logGroupArn,
       `CloudWatch log group ${name} ARN`,
-      /^arn:aws:logs:ap-northeast-1:\d{12}:log-group:\/needo\/staging\/(?:system|docker)$/
+      logArnPattern
     );
     return { name, arn, retentionDays: 30 };
   });
@@ -1032,7 +1038,7 @@ export async function verifyAwsStagingEnvironment({
   const describedLogGroups = await aws.json([
     "logs", "describe-log-groups", "--log-group-name-prefix", "/needo/staging/"
   ]);
-  const logs = requireLogGroups(describedLogGroups, resources);
+  const logs = requireLogGroups(describedLogGroups, resources, config);
   for (const log of logs) {
     const response = await aws.json([
       "logs", "list-tags-for-resource", "--resource-arn", log.arn
@@ -1173,7 +1179,7 @@ export async function verifyAwsStagingEnvironment({
     buckets: { release: releaseBucket, backup: backupBucket },
     secretVersionCount: 0,
     monitoring: {
-      logGroups: logs.map(({ name, retentionDays }) => ({ name, retentionDays })),
+      logGroups: logs.map(({ name, arn, retentionDays }) => ({ name, arn, retentionDays })),
       alarms: alarms.map(({ name, namespace, metricName, threshold }) => ({
         name, namespace, metricName, threshold
       })),
@@ -1211,14 +1217,14 @@ function reconstructAcceptanceEvidence(evidence) {
   if (new Date(timestamp).toISOString() !== timestamp) throw new Error("Acceptance timestamp is invalid");
   const accountId = nonEmptyString(evidence.accountId, "Acceptance accountId");
   if (!/^\d{12}$/.test(accountId)) throw new Error("Acceptance accountId is invalid");
-  if (evidence.region !== "ap-northeast-1") throw new Error("Acceptance region is invalid");
+  const region = requireAwsStagingRegion(evidence.region);
   const hostname = requireAwsStagingHostname(evidence.hostname);
 
   exactKeys(evidence.stack, ["id", "name", "status"], "Acceptance stack");
   if (evidence.stack.name !== "needo-staging-infrastructure"
     || !stableStackStates.has(evidence.stack.status)) throw new Error("Acceptance stack identity or status is invalid");
   const stackPattern = new RegExp(
-    `^arn:aws:cloudformation:ap-northeast-1:${accountId}:stack/needo-staging-infrastructure/[0-9a-f-]{36}$`
+    `^arn:aws:cloudformation:${escapeRegExp(region)}:${accountId}:stack/needo-staging-infrastructure/[0-9a-f-]{36}$`
   );
   if (!stackPattern.test(evidence.stack.id)) throw new Error("Acceptance stack ID is invalid");
 
@@ -1362,9 +1368,13 @@ function reconstructAcceptanceEvidence(evidence) {
   if (!Array.isArray(evidence.monitoring.logGroups) || evidence.monitoring.logGroups.length !== 2) {
     throw new Error("Acceptance log groups are invalid");
   }
+  const logArnPattern = new RegExp(
+    `^arn:aws:logs:${escapeRegExp(region)}:${accountId}:log-group:/needo/staging/(?:system|docker)$`
+  );
   const logGroupNames = evidence.monitoring.logGroups.map((group) => {
-    exactKeys(group, ["name", "retentionDays"], "Acceptance log group");
+    exactKeys(group, ["name", "arn", "retentionDays"], "Acceptance log group");
     if (group.retentionDays !== 30) throw new Error("Acceptance log group retention is invalid");
+    safeArgument(group.arn, `Acceptance log group ${String(group.name)} ARN`, logArnPattern);
     return group.name;
   }).sort();
   if (JSON.stringify(logGroupNames) !== JSON.stringify([
@@ -1442,7 +1452,7 @@ function reconstructAcceptanceEvidence(evidence) {
   const reconstructed = {
     timestamp,
     accountId,
-    region: "ap-northeast-1",
+    region,
     hostname,
     stack: { ...evidence.stack },
     resourceIds: { ...evidence.resourceIds },
