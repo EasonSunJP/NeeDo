@@ -1734,11 +1734,69 @@ function isMissing(error) {
   return error?.code === "ENOENT";
 }
 
-async function requireRealDirectory(fileSystem, directoryPath) {
+function requireDirectoryOwnerAndMode(stats, directoryPath, allowRootOwner = false) {
+  if (typeof process.getuid === "function") {
+    const currentUser = process.getuid();
+    if (stats.uid !== currentUser && !(allowRootOwner && stats.uid === 0)) {
+      throw new Error(`AWS Staging evidence path component has an untrusted owner: ${directoryPath}`);
+    }
+  }
+  if ((stats.mode & 0o022) !== 0) {
+    throw new Error(`AWS Staging evidence path component must not be group- or world-writable: ${directoryPath}`);
+  }
+}
+
+async function requireRealDirectory(fileSystem, directoryPath, { allowRootOwner = false } = {}) {
   const stats = await fileSystem.lstat(directoryPath);
   if (stats.isSymbolicLink()) throw new Error(`AWS Staging evidence path component must not be a symlink: ${directoryPath}`);
   if (!stats.isDirectory()) throw new Error(`AWS Staging evidence path component must be a real directory: ${directoryPath}`);
+  requireDirectoryOwnerAndMode(stats, directoryPath, allowRootOwner);
   return stats;
+}
+
+function directoryIdentity(stats, directoryPath, realPath, allowRootOwner) {
+  return {
+    path: directoryPath,
+    realPath,
+    dev: String(stats.dev),
+    ino: String(stats.ino),
+    owner: String(stats.uid),
+    group: String(stats.gid),
+    mode: stats.mode & 0o777,
+    allowRootOwner
+  };
+}
+
+function sameDirectoryIdentity(expected, actual) {
+  return ["realPath", "dev", "ino", "owner", "group", "mode"]
+    .every((key) => expected[key] === actual[key]);
+}
+
+function requireAttestedTrustedRoot(expected, actual) {
+  if (expected === undefined) return;
+  const expectedKeys = ["device", "group", "inode", "mode", "owner", "realPath"];
+  if (!expected
+    || typeof expected !== "object"
+    || !Object.isFrozen(expected)
+    || JSON.stringify(Object.keys(expected).sort()) !== JSON.stringify(expectedKeys)
+    || expected.realPath !== actual.realPath
+    || !["device", "group", "inode", "owner"].every((key) => (
+      typeof expected[key] === "string" && /^\d+$/.test(expected[key])
+    ))
+    || !Number.isInteger(expected.mode)
+    || expected.mode < 0
+    || expected.mode > 0o777
+    || (expected.mode & 0o022) !== 0
+    || !sameDirectoryIdentity({
+      realPath: expected.realPath,
+      dev: expected.device,
+      ino: expected.inode,
+      owner: expected.owner,
+      group: expected.group,
+      mode: expected.mode
+    }, actual)) {
+    throw new Error("AWS Staging evidence trusted root identity changed after runtime approval");
+  }
 }
 
 async function verifyDirectoryIdentities(fileSystem, identities) {
@@ -1746,31 +1804,44 @@ async function verifyDirectoryIdentities(fileSystem, identities) {
     let stats;
     let realPath;
     try {
-      stats = await requireRealDirectory(fileSystem, identity.path);
+      stats = await requireRealDirectory(fileSystem, identity.path, {
+        allowRootOwner: identity.allowRootOwner
+      });
       realPath = await fileSystem.realpath(identity.path);
     } catch (error) {
       throw new Error(`AWS Staging evidence directory identity changed: ${identity.path}`, { cause: error });
     }
-    if (stats.dev !== identity.dev || stats.ino !== identity.ino || realPath !== identity.realPath) {
+    const actual = directoryIdentity(
+      stats,
+      identity.path,
+      realPath,
+      identity.allowRootOwner
+    );
+    if (!sameDirectoryIdentity(identity, actual)) {
       throw new Error(`AWS Staging evidence directory identity changed: ${identity.path}`);
     }
   }
 }
 
-async function captureDirectoryIdentity(fileSystem, directoryPath) {
-  const stats = await requireRealDirectory(fileSystem, directoryPath);
-  const identity = Object.freeze({
-    path: directoryPath,
-    realPath: await fileSystem.realpath(directoryPath),
-    dev: stats.dev,
-    ino: stats.ino
-  });
+async function captureDirectoryIdentity(fileSystem, directoryPath, { allowRootOwner = false } = {}) {
+  const stats = await requireRealDirectory(fileSystem, directoryPath, { allowRootOwner });
+  const identity = directoryIdentity(
+    stats,
+    directoryPath,
+    await fileSystem.realpath(directoryPath),
+    allowRootOwner
+  );
   await verifyDirectoryIdentities(fileSystem, [identity]);
   return identity;
 }
 
-async function prepareDirectoryPath(fileSystem, boundary) {
-  const identities = [await captureDirectoryIdentity(fileSystem, boundary.normalizedRoot)];
+async function prepareDirectoryPath(fileSystem, boundary, trustedRootIdentity) {
+  const identities = [await captureDirectoryIdentity(
+    fileSystem,
+    boundary.normalizedRoot,
+    { allowRootOwner: true }
+  )];
+  requireAttestedTrustedRoot(trustedRootIdentity, identities[0]);
   let currentPath = boundary.normalizedRoot;
   for (const component of boundary.components) {
     currentPath = path.join(currentPath, component);
@@ -1792,11 +1863,16 @@ async function prepareDirectoryPath(fileSystem, boundary) {
     identities.push(identity);
     await verifyDirectoryIdentities(fileSystem, identities);
   }
-  return Object.freeze(identities);
+  return identities;
 }
 
 function requireSameDirectory(stats, identity) {
-  if (!stats.isDirectory() || stats.dev !== identity.dev || stats.ino !== identity.ino) {
+  if (!stats.isDirectory()
+    || String(stats.dev) !== identity.dev
+    || String(stats.ino) !== identity.ino
+    || String(stats.uid) !== identity.owner
+    || String(stats.gid) !== identity.group
+    || (stats.mode & 0o777) !== identity.mode) {
     throw new Error(`AWS Staging evidence directory handle identity changed: ${identity.path}`);
   }
 }
@@ -1809,6 +1885,7 @@ async function enforcePrivateDirectory(fileSystem, identities) {
     requireSameDirectory(await handle.stat(), finalIdentity);
     await handle.chmod(0o700);
     const stats = await handle.stat();
+    finalIdentity.mode = 0o700;
     requireSameDirectory(stats, finalIdentity);
     if ((stats.mode & 0o777) !== 0o700) throw new Error("AWS Staging evidence directory mode must be 0700");
   } finally {
@@ -1835,12 +1912,13 @@ export async function writeAwsStagingAcceptanceEvidence({
   evidence,
   outputDirectory = defaultOutputDirectory,
   trustedRoot = defaultTrustedRoot,
+  trustedRootIdentity,
   fileSystem = fs
 }) {
   const reconstructed = reconstructAcceptanceEvidence(evidence);
   const contents = `${JSON.stringify(reconstructed, null, 2)}\n`;
   const boundary = requireAbsoluteDescendant(trustedRoot, outputDirectory);
-  const identities = await prepareDirectoryPath(fileSystem, boundary);
+  const identities = await prepareDirectoryPath(fileSystem, boundary, trustedRootIdentity);
   await enforcePrivateDirectory(fileSystem, identities);
   const finalPath = path.join(boundary.normalizedOutput, evidenceFileName);
   const temporaryPath = path.join(

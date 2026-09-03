@@ -50,6 +50,18 @@ const expectedVerificationDocumentSha256 =
 const expectedAgentParameterSha256 =
   "e5bbe5b2ce3d775a521c8c830260b65e2c1e0675f4ace0f68582e1257196cd98";
 
+async function captureTrustedRootIdentity(root) {
+  const stats = await fs.lstat(root);
+  return Object.freeze({
+    realPath: await fs.realpath(root),
+    device: String(stats.dev),
+    inode: String(stats.ino),
+    owner: String(stats.uid),
+    group: String(stats.gid),
+    mode: stats.mode & 0o777
+  });
+}
+
 function verifyAwsStagingEnvironment(input) {
   return verifyAwsStagingEnvironmentImpl({ runtimeArtifact, templateArtifact, ...input });
 }
@@ -1401,6 +1413,65 @@ describe("AWS Staging environment-only acceptance", () => {
 });
 
 describe("AWS Staging acceptance evidence writer and CLI", () => {
+  it("rejects replacement of the attested trusted root at writer entry", async () => {
+    const { evidence } = await verify();
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-verify-writer-root-entry-"));
+    const trustedRoot = path.join(temporaryRoot, "trusted");
+    const displacedRoot = path.join(temporaryRoot, "displaced");
+    const replacementRoot = path.join(temporaryRoot, "replacement");
+    const outputDirectory = path.join(trustedRoot, "outputs", "aws-staging");
+    await fs.mkdir(trustedRoot, { mode: 0o700 });
+    await fs.mkdir(replacementRoot, { mode: 0o700 });
+    const trustedRootIdentity = await captureTrustedRootIdentity(trustedRoot);
+    let swapped = false;
+    const fileSystem = {
+      ...fs,
+      async lstat(targetPath) {
+        if (!swapped && targetPath === trustedRoot) {
+          swapped = true;
+          await fs.rename(trustedRoot, displacedRoot);
+          await fs.rename(replacementRoot, trustedRoot);
+        }
+        return fs.lstat(targetPath);
+      }
+    };
+
+    try {
+      await expect(writeAwsStagingAcceptanceEvidence({
+        evidence,
+        trustedRoot,
+        trustedRootIdentity,
+        outputDirectory,
+        fileSystem
+      })).rejects.toThrow(/trusted root.*identity changed/i);
+      await expect(fs.readdir(trustedRoot)).resolves.toEqual([]);
+      await expect(fs.readdir(displacedRoot)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a pre-existing group/world-writable evidence ancestor", async () => {
+    const { evidence } = await verify();
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-verify-writer-mode-"));
+    const outputsDirectory = path.join(temporaryRoot, "outputs");
+    const outputDirectory = path.join(outputsDirectory, "aws-staging");
+    await fs.mkdir(outputsDirectory, { mode: 0o777 });
+    await fs.chmod(outputsDirectory, 0o777);
+
+    try {
+      await expect(writeAwsStagingAcceptanceEvidence({
+        evidence,
+        trustedRoot: temporaryRoot,
+        trustedRootIdentity: await captureTrustedRootIdentity(temporaryRoot),
+        outputDirectory
+      })).rejects.toThrow(/group- or world-writable/i);
+      await expect(fs.readdir(outputsDirectory)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a permissive hyphen-only StackId before writing evidence", async () => {
     const { evidence } = await verify();
     const contaminated = structuredClone(evidence);
@@ -1653,13 +1724,23 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     const createAwsCliFake = vi.fn(() => aws);
     const preflight = vi.fn();
     const verifyEnvironment = vi.fn(async () => evidence);
-    const testRepoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const testRepoRoot = "/approved/source-root";
     const writeEvidence = vi.fn(async () => path.join(
       testRepoRoot, "outputs", "aws-staging", "environment-acceptance.json"
     ));
     const trace = [];
     const guardedRuntimeArtifact = Object.freeze({
       ...runtimeArtifact,
+      evidenceOutputDirectory: path.join(testRepoRoot, "outputs", "aws-staging"),
+      evidenceTrustedRoot: testRepoRoot,
+      evidenceTrustedRootIdentity: Object.freeze({
+        realPath: testRepoRoot,
+        device: "1",
+        inode: "2",
+        owner: "501",
+        group: "20",
+        mode: 0o755
+      }),
       assertCurrentState: vi.fn(async () => trace.push("runtime:assert"))
     });
     const guardedTemplateArtifact = Object.freeze({
@@ -1705,9 +1786,15 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       "template:capture",
       "runtime:assert",
       "template:assert",
-      "credentials"
+      "credentials",
+      "runtime:assert"
     ]);
-    expect(writeEvidence).toHaveBeenCalledWith({ evidence });
+    expect(writeEvidence).toHaveBeenCalledWith({
+      evidence,
+      outputDirectory: path.join(testRepoRoot, "outputs", "aws-staging"),
+      trustedRoot: testRepoRoot,
+      trustedRootIdentity: guardedRuntimeArtifact.evidenceTrustedRootIdentity
+    });
     expect(aws.dispose).toHaveBeenCalledTimes(1);
     expect(summary).toEqual({
       gate: "aws-staging-environment-acceptance",

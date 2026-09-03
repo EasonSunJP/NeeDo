@@ -70,11 +70,23 @@ export async function main(argv = process.argv.slice(2), {
       templateArtifact,
       runPreflight: runAwsStagingPreflightImpl
     });
-    const evidencePath = await writeAwsStagingAcceptanceEvidenceImpl({ evidence });
+    const evidenceBoundary = runtimeArtifact.evidenceTrustedRoot === undefined
+      && runtimeArtifact.evidenceOutputDirectory === undefined
+      ? {}
+      : {
+          outputDirectory: runtimeArtifact.evidenceOutputDirectory,
+          trustedRoot: runtimeArtifact.evidenceTrustedRoot,
+          trustedRootIdentity: runtimeArtifact.evidenceTrustedRootIdentity
+        };
+    await runtimeArtifact.assertCurrentState();
+    const evidencePath = await writeAwsStagingAcceptanceEvidenceImpl({
+      evidence,
+      ...evidenceBoundary
+    });
     return Object.freeze({
       gate: "aws-staging-environment-acceptance",
       status: "passed",
-      evidenceFile: path.relative(repoRoot, evidencePath),
+      evidenceFile: path.relative(runtimeArtifact.evidenceTrustedRoot ?? repoRoot, evidencePath),
       applicationDeployed: false,
       migrationRun: false,
       seedRun: false,

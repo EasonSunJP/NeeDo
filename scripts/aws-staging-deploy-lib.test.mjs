@@ -45,6 +45,27 @@ const templateBody = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
 const templateSha256 = createHash("sha256").update(templateBody, "utf8").digest("hex");
 const templateRevision = "0123456789abcdef0123456789abcdef01234567";
 const runtimeManifestSha256 = "d".repeat(64);
+const evidenceTrustedRootIdentity = Object.freeze({
+  realPath: "/repo",
+  device: "1",
+  inode: "2",
+  owner: "501",
+  group: "20",
+  mode: 0o755
+});
+
+async function captureTrustedRootIdentity(root) {
+  const stats = await fs.lstat(root);
+  return Object.freeze({
+    realPath: await fs.realpath(root),
+    device: String(stats.dev),
+    inode: String(stats.ino),
+    owner: String(stats.uid),
+    group: String(stats.gid),
+    mode: stats.mode & 0o777
+  });
+}
+
 function runtimeArtifactFor(sourceRevision = templateRevision) {
   return Object.freeze({
     runtimeSourceRevision: sourceRevision,
@@ -276,6 +297,9 @@ describe("AWS Staging CloudFormation deployment", () => {
   it("attests approved template bytes before creating credentials in the deployment CLI", async () => {
     const trace = [];
     const runtimeArtifact = Object.freeze({
+      evidenceOutputDirectory: "/repo/outputs/aws-staging",
+      evidenceTrustedRoot: "/repo",
+      evidenceTrustedRootIdentity,
       runtimeSourceRevision: templateRevision,
       runtimeManifestSha256,
       runtimeEntrypoint: "scripts/aws-staging-deploy.mjs",
@@ -328,8 +352,14 @@ describe("AWS Staging CloudFormation deployment", () => {
         expect(input).toMatchObject({ aws, config, runtimeArtifact, templateArtifact: artifact });
         return evidence;
       }),
-      writeEvidenceImpl: vi.fn(async () => {
+      writeEvidenceImpl: vi.fn(async (input) => {
         trace.push("evidence");
+        expect(input).toEqual({
+          evidence,
+          outputDirectory: "/repo/outputs/aws-staging",
+          trustedRoot: "/repo",
+          trustedRootIdentity: evidenceTrustedRootIdentity
+        });
         return "/repo/outputs/aws-staging/environment-stack.json";
       })
     });
@@ -340,6 +370,7 @@ describe("AWS Staging CloudFormation deployment", () => {
       "runtime:assert",
       "credentials",
       "deploy",
+      "runtime:assert",
       "evidence",
       "dispose"
     ]);
@@ -347,7 +378,8 @@ describe("AWS Staging CloudFormation deployment", () => {
       templateSha256,
       sourceRevision: templateRevision,
       runtimeSourceRevision: templateRevision,
-      runtimeManifestSha256
+      runtimeManifestSha256,
+      evidenceFile: "outputs/aws-staging/environment-stack.json"
     });
   });
 
@@ -902,6 +934,63 @@ describe("AWS Staging CloudFormation deployment", () => {
 });
 
 describe("AWS Staging evidence writer", () => {
+  it("rejects replacement of the attested trusted root at writer entry", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-writer-root-entry-"));
+    const trustedRoot = path.join(temporaryRoot, "trusted");
+    const displacedRoot = path.join(temporaryRoot, "displaced");
+    const replacementRoot = path.join(temporaryRoot, "replacement");
+    const outputDirectory = path.join(trustedRoot, "outputs", "aws-staging");
+    await fs.mkdir(trustedRoot, { mode: 0o700 });
+    await fs.mkdir(replacementRoot, { mode: 0o700 });
+    const trustedRootIdentity = await captureTrustedRootIdentity(trustedRoot);
+    let swapped = false;
+    const fileSystem = {
+      ...fs,
+      async lstat(targetPath) {
+        if (!swapped && targetPath === trustedRoot) {
+          swapped = true;
+          await fs.rename(trustedRoot, displacedRoot);
+          await fs.rename(replacementRoot, trustedRoot);
+        }
+        return fs.lstat(targetPath);
+      }
+    };
+
+    try {
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        trustedRoot,
+        trustedRootIdentity,
+        outputDirectory,
+        fileSystem
+      })).rejects.toThrow(/trusted root.*identity changed/i);
+      await expect(fs.readdir(trustedRoot)).resolves.toEqual([]);
+      await expect(fs.readdir(displacedRoot)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a pre-existing group/world-writable evidence ancestor", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-writer-mode-"));
+    const outputsDirectory = path.join(temporaryRoot, "outputs");
+    const outputDirectory = path.join(outputsDirectory, "aws-staging");
+    await fs.mkdir(outputsDirectory, { mode: 0o777 });
+    await fs.chmod(outputsDirectory, 0o777);
+
+    try {
+      await expect(writeAwsStagingEnvironmentEvidence({
+        evidence: evidenceFixture(),
+        trustedRoot: temporaryRoot,
+        trustedRootIdentity: await captureTrustedRootIdentity(temporaryRoot),
+        outputDirectory
+      })).rejects.toThrow(/group- or world-writable/i);
+      await expect(fs.readdir(outputsDirectory)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["cross-account StackId", {
       stackId: stackId.replace(config.accountId, "999999999999")
