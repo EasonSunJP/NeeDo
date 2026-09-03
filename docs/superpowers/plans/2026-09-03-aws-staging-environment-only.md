@@ -39,6 +39,14 @@
 > company-profile resolution is a separate blocked-until-profile microstep and
 > personal evidence is not reusable.
 
+> **2026-09-04 immutable-template follow-up (`批准最终安全修订`):** Historical
+> `file://` validation and later path reread steps are superseded. Preflight
+> captures one clean tracked template at a full Git revision, reports its
+> SHA-256 and revision, and validates that exact in-memory byte string.
+> Deployment requires both values as explicit action-time approvals, repeats
+> the clean revision/path/byte attestation immediately before creation, and
+> supplies the same immutable bytes to `validate-template` and `create-stack`.
+
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
@@ -958,7 +966,9 @@ Expected: FAIL because the library does not exist.
 2. `sts get-caller-identity`; require exact account ID and an STS `assumed-role` ARN; reject root and `iam::...:user/...`.
 3. `ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64`; obtain the live AMI ID.
 4. `ec2 describe-images --image-ids <id>`; require `Architecture=arm64`, `State=available`, and an Amazon owner.
-5. `cloudformation validate-template --template-body file://<absolute-template>`.
+5. capture one clean tracked template at the full current Git revision and run
+   `cloudformation validate-template --template-body <same-immutable-byte-string>`;
+   report its SHA-256 and revision for action-time approval.
 6. `cloudformation describe-stacks --stack-name needo-staging-infrastructure`; accept nonexistence only when AWS returns the specific CloudFormation `ValidationError` saying that this stack does not exist. Propagate `AccessDenied`, throttling, transport, and every other error. For an existing stack, accept a stable `CREATE_COMPLETE` or `UPDATE_COMPLETE` status and reject `*_IN_PROGRESS`, `*_FAILED`, rollback, and delete states.
 7. resolve only `config.hostname` using `node:dns/promises.resolve4`; convert `ENODATA`/`ENOTFOUND` to `[]` and preserve any real A records. On 2026-09-03, public lookup of the approved `staging.needo.life` target was `NXDOMAIN` because no `needo.life` delegation was observed; Onamae DNS remains external and untouched.
 
@@ -976,6 +986,8 @@ Return a frozen object. Do not include profile cache paths or credential source 
   "region": "ap-northeast-1",
   "hostname": "staging.needo.life",
   "amiArchitecture": "arm64",
+  "templateSha256": "<lower-case-sha256>",
+  "sourceRevision": "<full-git-revision>",
   "stackState": "ABSENT",
   "dnsA": []
 }
@@ -1062,7 +1074,11 @@ Expected: FAIL because deployment support does not exist.
 1. require the preflight result created in the same process;
 2. require `preflight.hostname === config.hostname` and `preflight.stackState === "ABSENT"`; a stable existing same-name stack is diagnostic-only and requires a separate exact-identity update review/microstep;
 3. re-resolve only `config.hostname` immediately before the mutation and require the same sorted A-record array as preflight;
-4. read the template once, hash those exact bytes, and invoke the exact atomic `cloudformation create-stack` argument array above; propagate `AlreadyExists` without waiting, describing, updating, or deploying;
+4. require the explicitly approved full source revision and template SHA-256,
+   re-attest the clean tracked path/identity/bytes, and invoke the exact atomic
+   `cloudformation create-stack` with the same immutable byte string used by
+   in-process validation; propagate `AlreadyExists` without waiting,
+   describing, updating, or deploying;
 5. validate the returned full StackId against the exact account, region, and stack name, then wait, `describe-stacks`, and `list-stack-resources` only by that StackId and require `CREATE_COMPLETE`;
 6. require the exact tags, resource types, ten outputs, and output-to-resource identity bindings;
 7. call `ec2 describe-instances` and record instance type/state, not user data;
@@ -1362,7 +1378,12 @@ npm run aws:staging:preflight -- \
   --budget-unit <three-letter-billing-currency>
 ```
 
-Then `aws:staging:deploy`, `aws:staging:bootstrap-host` twice for idempotency, and `aws:staging:verify` with the identical seven flags, including the explicit region and exact `--hostname staging.needo.life`.
+Then `aws:staging:deploy` with the same seven environment flags plus
+`--template-sha256 <approved-template-sha256>` and
+`--source-revision <approved-full-source-revision>`. Run
+`aws:staging:bootstrap-host` twice for idempotency and `aws:staging:verify` with
+the original seven environment flags, including the explicit region and exact
+`--hostname staging.needo.life`.
 
 - [ ] **Step 3: Document failure recovery without destructive shortcuts**
 
@@ -1550,7 +1571,9 @@ npm run aws:staging:deploy -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --template-sha256 <approved-template-sha256> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Expected: this initial creation reaches `CREATE_COMPLETE`; final verification

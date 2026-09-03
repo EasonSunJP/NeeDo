@@ -1,10 +1,15 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAwsStagingPreflightSummary,
-  runAwsStagingPreflight
+  runAwsStagingPreflight as runAwsStagingPreflightImpl
 } from "./aws-staging-preflight-lib.mjs";
+import { main as runAwsStagingPreflightCliMain } from "./aws-staging-preflight.mjs";
 
 const config = Object.freeze({
   accountId: "123456789012",
@@ -19,6 +24,18 @@ const callerArn = "arn:aws:sts::123456789012:assumed-role/NeedoDeployer/session"
 const absentStackError = new Error(
   "AWS CLI failed (254): An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist"
 );
+const templateBody = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
+const templateSha256 = "c537cafbffa675a74a1711055c037be2e02db34a6d82654008013fa5c28f6604";
+const templateRevision = "0123456789abcdef0123456789abcdef01234567";
+const templateArtifact = Object.freeze({
+  body: templateBody,
+  templateSha256,
+  sourceRevision: templateRevision
+});
+
+function runAwsStagingPreflight(input) {
+  return runAwsStagingPreflightImpl({ templateArtifact, ...input });
+}
 
 function configureList({
   accessType = "login",
@@ -67,6 +84,191 @@ function successfulAws({
 }
 
 describe("AWS Staging preflight", () => {
+  it("captures the template artifact before credentials and reports its action-time identity", async () => {
+    const trace = [];
+    const aws = { dispose: vi.fn(async () => trace.push("dispose")) };
+    const artifact = Object.freeze({
+      body: templateBody,
+      templateSha256,
+      sourceRevision: templateRevision,
+      assertCurrentState: vi.fn(async () => undefined)
+    });
+    const result = await runAwsStagingPreflightCliMain(["approved"], {
+      parseAwsStagingArgsImpl: vi.fn(() => ({ parsed: true })),
+      resolveAwsStagingConfigImpl: vi.fn(() => config),
+      captureTemplateArtifactImpl: vi.fn(async () => {
+        trace.push("capture");
+        return artifact;
+      }),
+      createAwsCliImpl: vi.fn(async () => {
+        trace.push("credentials");
+        return aws;
+      }),
+      runAwsStagingPreflightImpl: vi.fn(async (input) => {
+        trace.push("preflight");
+        expect(input).toEqual({ aws, config, templateArtifact: artifact });
+        return {
+          accountId: config.accountId,
+          callerKind: "assumed-role",
+          region: config.region,
+          hostname: config.hostname,
+          amiArchitecture: "arm64",
+          templateSha256,
+          sourceRevision: templateRevision,
+          stackState: "ABSENT",
+          dnsA: []
+        };
+      })
+    });
+
+    expect(trace).toEqual(["capture", "credentials", "preflight", "dispose"]);
+    expect(result).toMatchObject({ templateSha256, sourceRevision: templateRevision });
+  });
+
+  it("captures only the explicitly approved clean tracked template artifact", async () => {
+    const { captureAwsStagingTemplateArtifact } = await import(
+      "./aws-staging-template-artifact.mjs"
+    );
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-template-artifact-"));
+    const templatePath = path.join(temporaryRoot, "deploy/aws-staging/cloudformation.yml");
+    const revision = "a".repeat(40);
+    const body = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
+    const digest = "c537cafbffa675a74a1711055c037be2e02db34a6d82654008013fa5c28f6604";
+    const runGit = vi.fn(async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
+      if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${revision}\n`;
+      if (args[0] === "status") return "";
+      if (args[0] === "show") return Buffer.from(body, "utf8");
+      throw new Error(`Unexpected git call: ${args.join(" ")}`);
+    });
+
+    try {
+      await fs.mkdir(path.dirname(templatePath), { recursive: true });
+      await fs.writeFile(templatePath, body, { encoding: "utf8", mode: 0o600 });
+      const artifact = await captureAwsStagingTemplateArtifact({
+        templatePath,
+        repositoryRoot: temporaryRoot,
+        approvedRevision: revision,
+        approvedSha256: digest,
+        runGit
+      });
+
+      expect(artifact).toMatchObject({
+        body,
+        sourceRevision: revision,
+        templateSha256: digest
+      });
+      expect(Object.isFrozen(artifact)).toBe(true);
+      await expect(artifact.assertCurrentState()).resolves.toBeUndefined();
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a dirty tracked template before any AWS credential resolver is needed", async () => {
+    const { captureAwsStagingTemplateArtifact } = await import(
+      "./aws-staging-template-artifact.mjs"
+    );
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-template-dirty-"));
+    const templatePath = path.join(temporaryRoot, "deploy/aws-staging/cloudformation.yml");
+    const revision = "a".repeat(40);
+    const body = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
+    const runGit = vi.fn(async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
+      if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${revision}\n`;
+      if (args[0] === "status") return " M deploy/aws-staging/cloudformation.yml\n";
+      if (args[0] === "show") return Buffer.from(body, "utf8");
+      throw new Error(`Unexpected git call: ${args.join(" ")}`);
+    });
+
+    try {
+      await fs.mkdir(path.dirname(templatePath), { recursive: true });
+      await fs.writeFile(templatePath, body, { encoding: "utf8", mode: 0o600 });
+      await expect(captureAwsStagingTemplateArtifact({
+        templatePath,
+        repositoryRoot: temporaryRoot,
+        approvedRevision: revision,
+        approvedSha256: templateSha256,
+        runGit
+      })).rejects.toThrow(/clean|dirty/i);
+      expect(runGit.mock.calls.some(([args]) => args[0] === "show")).toBe(false);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("detects a same-byte template path replacement after artifact capture", async () => {
+    const { captureAwsStagingTemplateArtifact } = await import(
+      "./aws-staging-template-artifact.mjs"
+    );
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-template-swap-"));
+    const templatePath = path.join(temporaryRoot, "deploy/aws-staging/cloudformation.yml");
+    const displacedPath = `${templatePath}.old`;
+    const revision = "a".repeat(40);
+    const body = "AWSTemplateFormatVersion: \"2010-09-09\"\n";
+    const runGit = vi.fn(async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
+      if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${revision}\n`;
+      if (args[0] === "status") return "";
+      if (args[0] === "show") return Buffer.from(body, "utf8");
+      throw new Error(`Unexpected git call: ${args.join(" ")}`);
+    });
+
+    try {
+      await fs.mkdir(path.dirname(templatePath), { recursive: true });
+      await fs.writeFile(templatePath, body, { encoding: "utf8", mode: 0o600 });
+      const artifact = await captureAwsStagingTemplateArtifact({
+        templatePath,
+        repositoryRoot: temporaryRoot,
+        approvedRevision: revision,
+        approvedSha256: templateSha256,
+        runGit
+      });
+      await fs.rename(templatePath, displacedPath);
+      await fs.writeFile(templatePath, body, { encoding: "utf8", mode: 0o600 });
+
+      await expect(artifact.assertCurrentState()).rejects.toThrow(/identity changed/i);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["UTF-8 BOM", Buffer.from([0xef, 0xbb, 0xbf, 0x41]), 0o600, /UTF-8 byte|BOM/i],
+    ["NUL byte", Buffer.from([0x41, 0x00, 0x42]), 0o600, /NUL/i],
+    ["group-writable mode", Buffer.from("A", "utf8"), 0o660, /writable|mode/i]
+  ])("rejects unsafe template source bytes or mode: %s", async (_label, bytes, mode, expected) => {
+    const { captureAwsStagingTemplateArtifact } = await import(
+      "./aws-staging-template-artifact.mjs"
+    );
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-template-unsafe-"));
+    const templatePath = path.join(temporaryRoot, "deploy/aws-staging/cloudformation.yml");
+    const revision = "a".repeat(40);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const runGit = vi.fn(async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
+      if (args[0] === "rev-parse" && args.at(-1) === "HEAD^{commit}") return `${revision}\n`;
+      if (args[0] === "status") return "";
+      if (args[0] === "show") return bytes;
+      throw new Error(`Unexpected git call: ${args.join(" ")}`);
+    });
+
+    try {
+      await fs.mkdir(path.dirname(templatePath), { recursive: true });
+      await fs.writeFile(templatePath, bytes, { mode: 0o600 });
+      await fs.chmod(templatePath, mode);
+      await expect(captureAwsStagingTemplateArtifact({
+        templatePath,
+        repositoryRoot: temporaryRoot,
+        approvedRevision: revision,
+        approvedSha256: digest,
+        runGit
+      })).rejects.toThrow(expected);
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps the preflight CLI import-safe and redacts injectable and direct failures", () => {
     const cliUrl = new URL("./aws-staging-preflight.mjs", import.meta.url);
     const cliPath = fileURLToPath(cliUrl);
@@ -124,6 +326,8 @@ describe("AWS Staging preflight", () => {
       hostname: config.hostname,
       amiArchitecture: "arm64",
       amiId: "ami-0123",
+      templateSha256,
+      sourceRevision: templateRevision,
       templateValidation: "VALID",
       stackState: "ABSENT",
       dnsA: []
@@ -136,6 +340,8 @@ describe("AWS Staging preflight", () => {
       region: config.region,
       hostname: config.hostname,
       amiArchitecture: "arm64",
+      templateSha256,
+      sourceRevision: templateRevision,
       stackState: "ABSENT",
       dnsA: []
     });
@@ -214,6 +420,8 @@ describe("AWS Staging preflight", () => {
       hostname: config.hostname,
       amiId: "ami-0123",
       amiArchitecture: "arm64",
+      templateSha256,
+      sourceRevision: templateRevision,
       templateValidation: "VALID",
       stackState: "ABSENT",
       dnsA: ["203.0.113.2", "203.0.113.8"]
@@ -229,7 +437,7 @@ describe("AWS Staging preflight", () => {
       [["ec2", "describe-images", "--image-ids", "ami-0123"]],
       [[
         "cloudformation", "validate-template",
-        "--template-body", "file:///repo/deploy/aws-staging/cloudformation.yml"
+        "--template-body", templateBody
       ]],
       [["cloudformation", "describe-stacks", "--stack-name", config.stackName]]
     ]);

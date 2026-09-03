@@ -81,12 +81,39 @@ const CALLER_SUPPLIED_GLOBAL_OPTIONS = new Set([
   "--no-cli-auto-prompt"
 ]);
 
+function policyScannableArguments(args) {
+  const operation = `${args[0] ?? ""} ${args[1] ?? ""}`;
+  if (operation !== "cloudformation validate-template"
+    && operation !== "cloudformation create-stack") {
+    return args;
+  }
+  const templateBodyFlags = args
+    .map((argument, index) => (argument === "--template-body" ? index : -1))
+    .filter((index) => index >= 0);
+  const [flagIndex] = templateBodyFlags;
+  const hasExactValidateShape = operation !== "cloudformation validate-template"
+    || (args.length === 4 && flagIndex === 2);
+  if (templateBodyFlags.length !== 1
+    || flagIndex < 2
+    || typeof args[flagIndex + 1] !== "string"
+    || args[flagIndex + 1].length === 0
+    || !hasExactValidateShape) {
+    throw new Error("AWS CLI inline template operation shape is not allowed");
+  }
+  return args.filter((_argument, index) => index !== flagIndex + 1);
+}
+
 function assertSafeArguments(args) {
   if (!Array.isArray(args) || args.some((argument) => typeof argument !== "string")) {
     throw new TypeError("AWS CLI arguments must be an array of strings");
   }
+  if (args.some((argument) => argument.includes("\0"))) {
+    throw new Error("forbidden AWS CLI NUL argument");
+  }
 
-  const canonicalArguments = args.map((argument) => argument.toLowerCase().replace(/[-_]/g, ""));
+  const scannedArguments = policyScannableArguments(args);
+  const canonicalArguments = scannedArguments
+    .map((argument) => argument.toLowerCase().replace(/[-_]/g, ""));
   const isAllowedConfigureList = args.length === 2
     && args[0] === "configure"
     && args[1] === "list";
@@ -101,7 +128,7 @@ function assertAllowedOperation(args) {
   if (!ALLOWED_SERVICE_OPERATIONS.has(operation)) {
     throw new Error("AWS CLI service operation is not allowed");
   }
-  if (args.some((argument) => {
+  if (policyScannableArguments(args).some((argument) => {
     const normalized = argument.toLowerCase();
     return [...CALLER_SUPPLIED_GLOBAL_OPTIONS].some((option) => (
       normalized === option || normalized.startsWith(`${option}=`)

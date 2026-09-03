@@ -96,10 +96,13 @@ mismatch for the current run.
 
 The same-process invariants remain unchanged:
 
-1. preflight verifies identity, explicit region, ARM64 AMI, template, absent
-   stack, and DNS baseline;
-2. deploy requires that exact fresh preflight result and an unchanged DNS
-   baseline;
+1. preflight verifies identity, explicit region, ARM64 AMI, one clean tracked
+   immutable template snapshot, absent stack, and DNS baseline, and reports the
+   snapshot SHA-256/full source revision for action-time approval;
+2. deploy requires that exact fresh preflight result, both explicit approved
+   template values, and an unchanged DNS baseline, then re-attests the source
+   and supplies the same immutable bytes to `validate-template` and
+   `create-stack`;
 3. host bootstrap operates only on the exact stack outputs;
 4. verify requires the same account, region, hostname, and resource identity;
 5. an existing stack, SCP denial, output mismatch, or changed DNS baseline

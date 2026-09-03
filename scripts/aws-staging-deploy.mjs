@@ -6,13 +6,14 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
-  parseAwsStagingArgs,
+  parseAwsStagingDeployArgs,
   requireAwsStagingHostname,
   requireAwsStagingRegion,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import { deployAwsStagingInfrastructure } from "./aws-staging-deploy-lib.mjs";
 import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
+import { captureAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 import {
   AWS_STAGING_EXPECTED_RESOURCES,
   requireAwsStagingStackId
@@ -35,6 +36,7 @@ const topLevelEvidenceKeys = Object.freeze([
   "stackName",
   "stackStatus",
   "templateSha256",
+  "sourceRevision",
   "resourceIdentitySha256",
   "resourceCount",
   "stackTags",
@@ -170,6 +172,10 @@ function reconstructRedactedEvidence(evidence) {
       throw new Error(`AWS Staging evidence ${key} must be a SHA-256 digest`);
     }
   }
+  if (typeof evidence.sourceRevision !== "string"
+    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(evidence.sourceRevision)) {
+    throw new Error("AWS Staging evidence sourceRevision must be a full Git revision");
+  }
   if (evidence.resourceCount !== AWS_STAGING_EXPECTED_RESOURCES.length) {
     throw new Error("AWS Staging evidence resourceCount does not match the exact stack contract");
   }
@@ -215,6 +221,7 @@ function reconstructRedactedEvidence(evidence) {
     evidence.stackName,
     evidence.stackStatus,
     evidence.templateSha256,
+    evidence.sourceRevision,
     evidence.resourceIdentitySha256,
     String(evidence.resourceCount),
     ...Object.values(evidence.stackTags),
@@ -276,6 +283,7 @@ function reconstructRedactedEvidence(evidence) {
     stackName: "needo-staging-infrastructure",
     stackStatus: "CREATE_COMPLETE",
     templateSha256: evidence.templateSha256,
+    sourceRevision: evidence.sourceRevision,
     resourceIdentitySha256: evidence.resourceIdentitySha256,
     resourceCount: AWS_STAGING_EXPECTED_RESOURCES.length,
     stackTags: expectedStackTags,
@@ -519,20 +527,36 @@ export async function writeAwsStagingEnvironmentEvidence({
   }
 }
 
-export async function runAwsStagingDeployCli(argv) {
-  const config = resolveAwsStagingConfig(parseAwsStagingArgs(argv));
-  const aws = await createFrozenAwsCli({ profile: config.profile, region: config.region });
+export async function runAwsStagingDeployCli(argv, {
+  parseAwsStagingDeployArgsImpl = parseAwsStagingDeployArgs,
+  resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
+  captureTemplateArtifactImpl = captureAwsStagingTemplateArtifact,
+  createAwsCliImpl = createFrozenAwsCli,
+  deployInfrastructureImpl = deployAwsStagingInfrastructure,
+  writeEvidenceImpl = writeAwsStagingEnvironmentEvidence
+} = {}) {
+  const parsed = parseAwsStagingDeployArgsImpl(argv);
+  const config = resolveAwsStagingConfigImpl(parsed);
+  const templateArtifact = await captureTemplateArtifactImpl({
+    templatePath: config.templatePath,
+    approvedRevision: parsed.sourceRevision,
+    approvedSha256: parsed.templateSha256
+  });
+  const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
   try {
-    const evidence = await deployAwsStagingInfrastructure({
+    const evidence = await deployInfrastructureImpl({
       aws,
       config,
+      templateArtifact,
       runPreflight: runAwsStagingPreflight
     });
-    const evidencePath = await writeAwsStagingEnvironmentEvidence({ evidence });
+    const evidencePath = await writeEvidenceImpl({ evidence });
     return Object.freeze({
       gate: "aws-staging-deploy",
       scope: evidence.scope,
       stackStatus: evidence.stackStatus,
+      templateSha256: evidence.templateSha256,
+      sourceRevision: evidence.sourceRevision,
       evidenceFile: path.relative(path.resolve(moduleDir, ".."), evidencePath),
       applicationDeployed: false,
       migrationRun: false,

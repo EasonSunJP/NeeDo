@@ -115,9 +115,11 @@ the approved configuration before retrying.
 
 ## Operator command sequence
 
-All five command invocations use the same seven flags. Substitute only the
-angle-bracketed operator values. `staging.needo.life` is the approved staging
-hostname. The personal live run uses `--region ap-southeast-2`.
+All five command invocations use the same seven environment flags. Deployment
+also requires the exact template SHA-256 and full source revision emitted by
+the immediately preceding preflight. Substitute only the angle-bracketed
+operator values. `staging.needo.life` is the approved staging hostname. The
+personal live run uses `--region ap-southeast-2`.
 
 ```bash
 npm run aws:staging:preflight -- \
@@ -130,21 +132,31 @@ npm run aws:staging:preflight -- \
   --budget-unit <three-letter-billing-currency>
 ```
 
-Only after a successful preflight and explicit confirmation that the stop gates
-are satisfied, deploy the environment. This is an initial-creation gate: the
+Preflight reports `templateSha256` and `sourceRevision` from one clean,
+tracked template byte snapshot. Only after a successful preflight and explicit
+action-time confirmation of those two exact values and all other stop gates may
+the operator deploy the environment. This is an initial-creation gate: the
 fresh in-process preflight must report exactly `ABSENT`. A stable same-name
 stack may be reported by preflight for diagnostics, but it stops this deploy
 before any mutation. Updating an existing stack requires a separate
 exact-identity update review and microstep.
 
-Deployment submits the exact in-memory template bytes to atomic
-`cloudformation create-stack`, including server-side `ExpectedRegion` and
+Deployment rejects a source-revision or digest mismatch, a dirty tracked
+template, or a changed template path/identity before credentials or mutation.
+The same immutable in-memory byte string is supplied to both
+`validate-template` and atomic `create-stack`; the path is never reread to form
+the create request. The request includes server-side `ExpectedRegion` and
 `ExpectedAccountId` rules. `AlreadyExists` is a hard stop: the gate never falls
 back to update behavior. The returned full StackId is validated and is the only
 identifier used for the waiter, stack description, and resource listing.
 Before deployment evidence is returned, `describe-addresses` must bind the
 stack's exact Elastic IP allocation and association to its exact instance and
 public-IP output.
+
+`sourceRevision` identifies the Git origin of this one tracked template; it is
+not a claim that unrelated worktree files are clean. Copy the two preflight
+values into the deploy command only after human review. Do not use shell command
+substitution to turn preflight output into automatic approval.
 
 ```bash
 npm run aws:staging:deploy -- \
@@ -154,7 +166,9 @@ npm run aws:staging:deploy -- \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
-  --budget-unit <three-letter-billing-currency>
+  --budget-unit <three-letter-billing-currency> \
+  --template-sha256 <approved-template-sha256> \
+  --source-revision <approved-full-source-revision>
 ```
 
 Bootstrap the host twice. The second invocation is the required idempotency

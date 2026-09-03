@@ -829,6 +829,32 @@ describe("AWS CLI adapter", () => {
     expect(() => aws.text(["configure", "set", "aws_secret_access_key", "x"])).toThrow("forbidden");
   });
 
+  it("treats an inline template as opaque only for the two approved CloudFormation operations", async () => {
+    const templateBody = await fs.readFile(
+      new URL("../deploy/aws-staging/cloudformation.yml", import.meta.url),
+      "utf8"
+    );
+    const execFileImpl = vi.fn((_file, _args, _options, callback) => {
+      callback(null, "{}\n", "");
+    });
+    const aws = createAwsCli({
+      profile: "p",
+      region: "ap-northeast-1",
+      execFileImpl
+    });
+
+    await expect(aws.json([
+      "cloudformation", "validate-template", "--template-body", templateBody
+    ])).resolves.toEqual({});
+    await expect(aws.json([
+      "cloudformation", "create-stack", "--stack-name", "needo-staging-infrastructure",
+      "--template-body", templateBody
+    ])).resolves.toEqual({});
+    expect(() => aws.json(["secretsmanager", "get-secret-value"]))
+      .toThrow("forbidden");
+    expect(execFileImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects configure wherever it appears before invoking the process runner", () => {
     const execFileImpl = vi.fn();
     const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
@@ -857,8 +883,12 @@ describe("AWS CLI adapter", () => {
         callback(null, "{}", "");
       });
       const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+      const args = service === "cloudformation"
+        && (operation === "validate-template" || operation === "create-stack")
+        ? [service, operation, "--template-body", "{}"]
+        : [service, operation];
 
-      await expect(aws.json([service, operation])).resolves.toEqual({});
+      await expect(aws.json(args)).resolves.toEqual({});
       expect(execFileImpl).toHaveBeenCalledTimes(1);
       expect(execFileImpl.mock.calls[0][1].slice(0, 2)).toEqual([service, operation]);
     }

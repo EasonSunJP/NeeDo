@@ -164,6 +164,14 @@ Controlled four-role Staging fixtures are a later separate microstep and must be
 
 ## 9. Release and deployment flow
 
+For the environment-only CloudFormation creation, preflight captures one clean
+tracked template at a full Git revision and reports its SHA-256 and revision
+for explicit action-time approval. Deployment requires those exact values,
+re-attests the tracked path and bytes immediately before creation, and supplies
+the same immutable in-memory byte string to `validate-template` and
+`create-stack`. Mutable `file://` validation followed by a path reread is not
+an approved deployment flow.
+
 The application Release Candidate starts at `main@3cc5a978e8afec42baa41bee0077bb4166c47265`. Only the approved administrator bootstrap and AWS Staging deployment files may be added before the first release. Existing dirty worktree changes are excluded.
 
 The release process:

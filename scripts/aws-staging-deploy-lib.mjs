@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { resolve4 } from "node:dns/promises";
-import { readFile } from "node:fs/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 import {
   AWS_STAGING_EXPECTED_RESOURCES,
@@ -15,7 +14,30 @@ const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT"]);
 const CREATE_COMPLETE_ONLY = new Set(["CREATE_COMPLETE"]);
 const MAX_INLINE_TEMPLATE_BYTES = 51_200;
 
-function requireInProcessPreflight(preflight, config) {
+function requireTemplateArtifact(templateArtifact) {
+  if (!templateArtifact
+    || typeof templateArtifact !== "object"
+    || !Object.isFrozen(templateArtifact)
+    || typeof templateArtifact.body !== "string"
+    || templateArtifact.body.length === 0
+    || Buffer.byteLength(templateArtifact.body, "utf8") > MAX_INLINE_TEMPLATE_BYTES
+    || typeof templateArtifact.templateSha256 !== "string"
+    || !/^[0-9a-f]{64}$/.test(templateArtifact.templateSha256)
+    || typeof templateArtifact.sourceRevision !== "string"
+    || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(templateArtifact.sourceRevision)
+    || typeof templateArtifact.assertCurrentState !== "function") {
+    throw new Error("AWS Staging requires an immutable approved template artifact");
+  }
+  const actualSha256 = createHash("sha256")
+    .update(templateArtifact.body, "utf8")
+    .digest("hex");
+  if (actualSha256 !== templateArtifact.templateSha256) {
+    throw new Error("AWS Staging approved template digest does not match its immutable bytes");
+  }
+  return templateArtifact;
+}
+
+function requireInProcessPreflight(preflight, config, templateArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
     throw new Error("AWS Staging requires a fresh immutable in-process preflight result");
   }
@@ -27,6 +49,10 @@ function requireInProcessPreflight(preflight, config) {
   }
   if (preflight.hostname !== config.hostname) {
     throw new Error("AWS Staging preflight hostname does not match deployment configuration");
+  }
+  if (preflight.templateSha256 !== templateArtifact.templateSha256
+    || preflight.sourceRevision !== templateArtifact.sourceRevision) {
+    throw new Error("AWS Staging preflight template identity does not match the approved artifact");
   }
   if (preflight.callerKind !== "assumed-role"
     || preflight.templateValidation !== "VALID"
@@ -113,17 +139,6 @@ function requireElasticAddress(described, {
   }
 }
 
-function requireTemplateBody(value) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error("AWS Staging CloudFormation template must be non-empty UTF-8 text");
-  }
-  const bytes = Buffer.byteLength(value, "utf8");
-  if (bytes > MAX_INLINE_TEMPLATE_BYTES) {
-    throw new Error(`AWS Staging CloudFormation template exceeds ${MAX_INLINE_TEMPLATE_BYTES} bytes`);
-  }
-  return value;
-}
-
 function requireTimestamp(now) {
   const milliseconds = now();
   if (!Number.isFinite(milliseconds)) {
@@ -159,28 +174,26 @@ export async function deployAwsStagingInfrastructure({
   config,
   resolveDns = resolve4,
   runPreflight,
-  readTemplate = readFile,
+  templateArtifact,
   now = Date.now
 }) {
   const hostname = requireAwsStagingHostname(config.hostname);
   if (typeof runPreflight !== "function") {
     throw new Error("An in-process AWS Staging preflight runner is required");
   }
-  if (typeof readTemplate !== "function" || typeof now !== "function") {
+  if (typeof now !== "function") {
     throw new Error("AWS Staging deployment dependencies are invalid");
   }
+  const artifact = requireTemplateArtifact(templateArtifact);
 
-  const preflight = await runPreflight({ aws, config, resolveDns });
-  requireInProcessPreflight(preflight, config);
+  const preflight = await runPreflight({ aws, config, resolveDns, templateArtifact: artifact });
+  requireInProcessPreflight(preflight, config, artifact);
 
   const currentDns = await resolveDnsA(resolveDns, hostname);
   requireUnchangedDns(preflight.dnsA, currentDns);
 
-  // Read once and pass those exact bytes to create-stack. The recorded digest is
-  // therefore bound to the submitted template rather than a mutable path.
-  const templateBody = requireTemplateBody(await readTemplate(config.templatePath, "utf8"));
-  const templateSha256 = createHash("sha256").update(templateBody, "utf8").digest("hex");
-  const created = await aws.json(createArguments(config, templateBody));
+  await artifact.assertCurrentState();
+  const created = await aws.json(createArguments(config, artifact.body));
   const stackId = requireAwsStagingStackId(created?.StackId, config, "Created CloudFormation StackId");
 
   await aws.text([
@@ -227,7 +240,8 @@ export async function deployAwsStagingInfrastructure({
     stackId,
     stackName: config.stackName,
     stackStatus,
-    templateSha256,
+    templateSha256: artifact.templateSha256,
+    sourceRevision: artifact.sourceRevision,
     resourceIdentitySha256: awsStagingResourceIdentitySha256(resources),
     resourceCount: AWS_STAGING_EXPECTED_RESOURCES.length,
     stackTags,

@@ -1,7 +1,9 @@
+import fs from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   maskEmail,
   parseAwsStagingArgs,
+  parseAwsStagingDeployArgs,
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 
@@ -17,6 +19,25 @@ const validInput = {
 };
 
 describe("AWS Staging configuration", () => {
+  it("documents digest-bound immutable template approval without mutable file validation", async () => {
+    const authoritativePaths = [
+      "docs/aws-staging-environment-runbook.md",
+      "docs/superpowers/plans/2026-09-03-aws-staging-environment-only.md",
+      "docs/superpowers/plans/2026-09-04-aws-staging-dual-region.md",
+      "docs/superpowers/specs/2026-09-03-aws-staging-single-ec2-deployment-design.md",
+      "docs/superpowers/specs/2026-09-04-aws-staging-dual-region-design.md"
+    ];
+    const documents = await Promise.all(authoritativePaths.map((documentPath) => (
+      fs.readFile(new URL(`../${documentPath}`, import.meta.url), "utf8")
+    )));
+    const combined = documents.join("\n");
+
+    expect(combined).not.toMatch(/validate-template[^\n]*file:\/\//i);
+    expect(combined).toContain("--template-sha256 <approved-template-sha256>");
+    expect(combined).toContain("--source-revision <approved-full-source-revision>");
+    expect(combined).toMatch(/same immutable.*bytes.*validate-template.*create-stack/is);
+  });
+
   it("normalizes the approved environment without converting money", () => {
     expect(resolveAwsStagingConfig(validInput)).toEqual({
       alertEmail: "ops@example.com",
@@ -77,6 +98,52 @@ describe("AWS Staging configuration", () => {
       "--budget-amount", "20000",
       "--budget-unit", "JPY"
     ])).toThrow("--hostname");
+  });
+
+  it("requires an exact approved template digest and source revision for deployment", () => {
+    const parsed = parseAwsStagingDeployArgs([
+      "--profile", "needo-staging-deployer",
+      "--account-id", "123456789012",
+      "--region", "ap-northeast-1",
+      "--hostname", "staging.needo.life",
+      "--alert-email", "ops@example.com",
+      "--budget-amount", "20000",
+      "--budget-unit", "JPY",
+      "--template-sha256", "a".repeat(64),
+      "--source-revision", "b".repeat(40)
+    ]);
+
+    expect(parsed).toMatchObject({
+      ...validInput,
+      templateSha256: "a".repeat(64),
+      sourceRevision: "b".repeat(40)
+    });
+    expect(() => parseAwsStagingDeployArgs([
+      "--template-sha256", "a".repeat(64)
+    ])).toThrow(/source-revision|account-id/i);
+  });
+
+  it.each([
+    ["--template-sha256", "A".repeat(64), /SHA-256/i],
+    ["--template-sha256", "a".repeat(63), /SHA-256/i],
+    ["--source-revision", "B".repeat(40), /revision/i],
+    ["--source-revision", "b".repeat(39), /revision/i]
+  ])("rejects malformed deployment approval %s", (flag, value, expected) => {
+    const argv = [
+      "--profile", "needo-staging-deployer",
+      "--account-id", "123456789012",
+      "--region", "ap-northeast-1",
+      "--hostname", "staging.needo.life",
+      "--alert-email", "ops@example.com",
+      "--budget-amount", "20000",
+      "--budget-unit", "JPY",
+      "--template-sha256", "a".repeat(64),
+      "--source-revision", "b".repeat(40)
+    ];
+    const index = argv.indexOf(flag);
+    argv[index + 1] = value;
+
+    expect(() => parseAwsStagingDeployArgs(argv)).toThrow(expected);
   });
 
   it("accepts the approved Sydney personal-test region", () => {

@@ -8,6 +8,7 @@ import {
   createAwsStagingPreflightSummary,
   runAwsStagingPreflight
 } from "./aws-staging-preflight-lib.mjs";
+import { captureAwsStagingTemplateArtifact } from "./aws-staging-template-artifact.mjs";
 
 const failure = Object.freeze({ gate: "aws-staging-preflight", status: "failed" });
 const failureLine = "{\"gate\":\"aws-staging-preflight\",\"status\":\"failed\"}";
@@ -27,13 +28,17 @@ function setProcessExitCode(code) {
 export async function main(argv = process.argv.slice(2), {
   parseAwsStagingArgsImpl = parseAwsStagingArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
+  captureTemplateArtifactImpl = captureAwsStagingTemplateArtifact,
   createAwsCliImpl = createFrozenAwsCli,
   runAwsStagingPreflightImpl = runAwsStagingPreflight
 } = {}) {
   const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
+  const templateArtifact = await captureTemplateArtifactImpl({
+    templatePath: config.templatePath
+  });
   const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
   try {
-    const result = await runAwsStagingPreflightImpl({ aws, config });
+    const result = await runAwsStagingPreflightImpl({ aws, config, templateArtifact });
     return createAwsStagingPreflightSummary(result);
   } finally {
     await aws.dispose?.();

@@ -8,6 +8,13 @@
 > Tokyo profile requires a separate credential-resolver security microstep and
 > new evidence; it does not change the dual-region infrastructure contract.
 
+> **2026-09-04 immutable-template supersession (`批准最终安全修订`):** The deploy
+> command is the one exception to historical “same seven flags” wording. It
+> additionally requires `--template-sha256 <approved-template-sha256>` and
+> `--source-revision <approved-full-source-revision>` from the immediately
+> preceding clean preflight. One immutable byte snapshot is used for both
+> `validate-template` and `create-stack`.
+
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
 
 **Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is the only current credential provider; STS must still prove an exact-account assumed-role caller.
@@ -698,8 +705,9 @@ include this line immediately after the account ID:
   --region <ap-southeast-2-or-ap-northeast-1> \
 ```
 
-Keep every operator command at the same seven explicit flags. State that the
-personal live run uses `--region ap-southeast-2`.
+Keep the seven environment flags on every operator command. Add the two
+immutable-template approval flags only to deploy. State that the personal live
+run uses `--region ap-southeast-2`.
 
 - [ ] **Step 3: Amend the original environment-only plan without rewriting history**
 
@@ -777,5 +785,7 @@ git commit -m "docs: describe AWS staging region selection"
 
 Report the commits and test results. Obtain the exact alert email and explicit
 USD budget amount before running the Sydney preflight. If preflight passes, ask
-for action-time confirmation immediately before the first CloudFormation
-deployment command that creates AWS resources.
+for action-time confirmation of the reported template SHA-256 and full source
+revision immediately before the first CloudFormation deployment command that
+creates AWS resources. The deploy command must carry those exact approved
+values.

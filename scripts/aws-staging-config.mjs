@@ -12,6 +12,10 @@ const requiredFlags = new Map([
   ["--budget-amount", "budgetAmount"],
   ["--budget-unit", "budgetUnit"]
 ]);
+const deploymentApprovalFlags = new Map([
+  ["--template-sha256", "templateSha256"],
+  ["--source-revision", "sourceRevision"]
+]);
 
 export const AWS_STAGING_REGIONS = Object.freeze([
   "ap-northeast-1",
@@ -89,6 +93,37 @@ export function parseAwsStagingArgs(argv) {
     if (!parsed[key]) throw new Error(`${flag} is required`);
   }
   return { ...parsed, owner: "needo" };
+}
+
+export function parseAwsStagingDeployArgs(argv) {
+  const baseArgs = [];
+  const approvals = {};
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const approvalKey = deploymentApprovalFlags.get(flag);
+    if (!approvalKey) {
+      baseArgs.push(flag, argv[index + 1]);
+      continue;
+    }
+    if (approvals[approvalKey] !== undefined) {
+      throw new Error(`Duplicate AWS Staging flag: ${flag}`);
+    }
+    const value = argv[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+    approvals[approvalKey] = value;
+  }
+
+  const parsed = parseAwsStagingArgs(baseArgs);
+  if (!approvals.templateSha256) throw new Error("--template-sha256 is required");
+  if (!/^[0-9a-f]{64}$/.test(approvals.templateSha256)) {
+    throw new Error("--template-sha256 must be a lower-case SHA-256 digest");
+  }
+  if (!approvals.sourceRevision) throw new Error("--source-revision is required");
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(approvals.sourceRevision)) {
+    throw new Error("--source-revision must be a full lower-case Git revision");
+  }
+
+  return Object.freeze({ ...parsed, ...approvals });
 }
 
 export function resolveAwsStagingConfig(input) {
