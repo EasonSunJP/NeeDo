@@ -28,8 +28,8 @@
 - [x] Confirm `npm run prisma:generate && npm run build` passes without a source-code type workaround.
 - [x] Add a package lifecycle hook that runs `prisma generate` after backend dependency installation.
 - [x] Document that a backend install generates the Prisma client and does not apply migrations.
-- [ ] Re-run `npm ci`, backend build, focused technician tests, lint, and the complete backend test suite.
-- [ ] Commit the isolated fix without merging it.
+- [x] Re-run `npm ci`, backend build, focused technician tests, lint, and the complete backend test suite.
+- [x] Commit the isolated fix without merging it.
 
 The `postinstall` hook is generation-only: it reads `backend/prisma/schema.prisma`
 and writes the local generated client under `backend/node_modules`. It neither
@@ -43,10 +43,10 @@ connects to MySQL nor executes `prisma migrate`.
 - Inspect: files reported by `npm run format:check`
 - Create only if evidence is useful: `docs/verification/2026-09-04-backend-prettier-baseline.md`
 
-- [ ] Run the unchanged formatter check and record exact current failure count and file families.
-- [ ] Verify all files changed by this conversation pass Prettier independently.
-- [ ] Separate task-owned formatting failures from historical baseline failures.
-- [ ] Record the bounded next action; do not mass-format or alter the formatter gate.
+- [x] Run the unchanged formatter check and record exact current failure count and file families.
+- [x] Verify all files changed by this conversation pass Prettier independently.
+- [x] Separate task-owned formatting failures from historical baseline failures.
+- [x] Record the bounded next action; do not mass-format or alter the formatter gate.
 
 ## Task 3: Final pre-integration reconciliation
 
