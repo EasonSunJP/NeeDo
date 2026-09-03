@@ -93,6 +93,7 @@ export type CoreTechnicianCard = {
 
 export type CoreServiceCard = {
   id: number;
+  publicId: string;
   name: string;
   description: string | null;
   category: CoreCategory;
@@ -102,6 +103,7 @@ export type CoreServiceCard = {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
 };
@@ -354,7 +356,7 @@ export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServi
     mode: serviceModeToFulfillmentMode(service),
     priceFrom: price,
     rating: parseRating(service.reviewSummary),
-    sales: service.reviewSummary.reviewCount,
+    sales: service.usageCount,
     summary: description,
     tags: tags.length > 0 ? tags : [categoryName],
     fastestArrival: "可预约",
@@ -372,7 +374,15 @@ export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServi
       }
     ],
     notice: ["预约前请确认服务时间、地址与付款方式。"],
-    flow: ["选择服务", "确认时间", "到店/上门", "完成服务", "评价反馈"]
+    flow: ["选择服务", "确认时间", "到店/上门", "完成服务", "评价反馈"],
+    formal: {
+      publicId: service.publicId,
+      usageCount: service.usageCount,
+      currency: service.currency,
+      durationMinutes: service.durationMinutes,
+      shopPublicId: service.shop.publicId,
+      shopAddress: service.shop.address
+    }
   };
 }
 

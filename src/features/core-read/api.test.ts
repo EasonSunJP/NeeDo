@@ -30,6 +30,7 @@ const reviewSummary = {
 
 const coreService = {
   id: 7,
+  publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   name: "Shiatsu Recovery",
   description: "60 minute recovery session for shoulders, back, and legs.",
   category: {
@@ -84,6 +85,7 @@ const coreService = {
   priceAmount: "8800.00",
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 18,
   coverUrl: "/images/generated/service-shiatsu-recovery.jpg",
   reviewSummary,
   serviceMode: "store",
@@ -201,7 +203,15 @@ describe("core read API adapter", () => {
       name: "Shiatsu Recovery",
       priceFrom: 8800,
       rating: 4.8,
-      sales: 72,
+      sales: 18,
+      formal: {
+        publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        usageCount: 18,
+        currency: "JPY",
+        durationMinutes: 60,
+        shopPublicId: "shop5831047296",
+        shopAddress: "3-1 Kita Aoyama, Minato-ku"
+      },
       cover: "/images/generated/service-shiatsu-recovery.jpg"
     });
     expect(service.packages[0]).toMatchObject({

@@ -148,6 +148,7 @@ export interface ServiceCardPayload {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
 }
@@ -290,6 +291,7 @@ type ServiceRecordBase = Service & {
   technicianProfile: TechnicianCardRecord | null;
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  _count: { bookingOrders: number };
 };
 
 type ServiceCardRecord = ServiceRecordBase & {
@@ -656,7 +658,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         include: this.technicianCardInclude()
       },
       mediaAssets: activeMediaArgs,
-      reviewSummary: true
+      reviewSummary: true,
+      _count: {
+        select: {
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+        }
+      }
     };
   }
 
@@ -667,7 +674,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         include: this.technicianCardInclude()
       },
       mediaAssets: activeMediaArgs,
-      reviewSummary: true
+      reviewSummary: true,
+      _count: {
+        select: {
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+        }
+      }
     };
   }
 
@@ -1233,6 +1245,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       priceAmount: this.formatDecimal(service.priceAmount, 2),
       currency: service.currency,
       durationMinutes: service.durationMinutes,
+      usageCount: service._count.bookingOrders,
       coverUrl: this.findMediaUrl(service.mediaAssets, "cover"),
       reviewSummary: this.mapReviewSummary(service.reviewSummary)
     };

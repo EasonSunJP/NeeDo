@@ -167,6 +167,7 @@ const profile = {
 
 const service: TechnicianServicePayload = {
   id: 102,
+  publicId: "00000000-0000-4000-8000-000000000102",
   shopId: 11,
   technicianId: 31,
   sourceShopServiceId: null,
@@ -176,10 +177,12 @@ const service: TechnicianServicePayload = {
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: { publicId: "shop0000000011", name: "正式店铺", address: "东京都港区" },
   isActive: true,
   isBookable: true,
   isRecommended: false,

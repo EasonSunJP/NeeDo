@@ -328,6 +328,14 @@ export interface ServiceItem {
   packages: ServicePackage[];
   notice: string[];
   flow: string[];
+  formal?: {
+    publicId: string;
+    usageCount: number;
+    currency: string;
+    durationMinutes: number;
+    shopPublicId: string;
+    shopAddress: string;
+  };
 }
 
 export interface Schedule {

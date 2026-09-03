@@ -74,6 +74,7 @@ describe("Step 08 core read API", () => {
     priceAmount: "8800.00",
     currency: "JPY",
     durationMinutes: 60,
+    usageCount: 18,
     coverUrl: "https://cdn.example.test/services/shiatsu-cover.jpg",
     reviewSummary
   };

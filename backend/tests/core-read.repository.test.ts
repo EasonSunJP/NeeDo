@@ -355,11 +355,13 @@ describe("CoreReadRepository multi-entity search", () => {
       },
       technicianProfile: unpublishedTechnician,
       mediaAssets: [],
-      reviewSummary: null
+      reviewSummary: null,
+      _count: { bookingOrders: 18 }
     };
+    const findMany = jest.fn(async () => [service]);
     const repository = new CoreReadRepository({
       service: {
-        findMany: jest.fn(async () => [service]),
+        findMany,
         count: jest.fn(async () => 1)
       }
     } as never);
@@ -371,8 +373,19 @@ describe("CoreReadRepository multi-entity search", () => {
       page: 1,
       pageSize: 20
     })).resolves.toMatchObject({
-      list: [{ technician: null }]
+      list: [{ technician: null, usageCount: 18 }]
     });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        _count: {
+          select: {
+            bookingOrders: {
+              where: { status: "COMPLETED", deletedAt: null }
+            }
+          }
+        }
+      })
+    }));
   });
 
   it("combines keywords and category IDs as one OR group", async () => {

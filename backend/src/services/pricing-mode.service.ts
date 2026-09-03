@@ -29,6 +29,7 @@ export interface TechnicianShopScopePayload {
 
 export interface TechnicianServicePayload {
   id: number;
+  publicId: string;
   shopId: number;
   technicianId: number;
   sourceShopServiceId: number | null;
@@ -38,10 +39,12 @@ export interface TechnicianServicePayload {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
+  shop: { publicId: string | null; name: string; address: string };
   isActive: boolean;
   isBookable: boolean;
   isRecommended: boolean;

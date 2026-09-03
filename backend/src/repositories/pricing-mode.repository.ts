@@ -34,7 +34,26 @@ type ShopPricingModeRecord = {
 
 const legacyShopTechnicianPricingRatePercent = new Map<number, number>();
 
-type TechnicianServiceRecord = Prisma.TechnicianServiceGetPayload<Record<string, never>>;
+const technicianServiceCardInclude = {
+  shop: {
+    select: {
+      name: true,
+      address: true,
+      publicIdentifier: {
+        select: { publicId: true, kind: true, status: true, deletedAt: true }
+      }
+    }
+  },
+  _count: {
+    select: {
+      bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+    }
+  }
+} satisfies Prisma.TechnicianServiceInclude;
+
+type TechnicianServiceRecord = Prisma.TechnicianServiceGetPayload<{
+  include: typeof technicianServiceCardInclude;
+}>;
 
 type ShopServiceRecord = Prisma.ServiceGetPayload<{
   include: {
@@ -126,6 +145,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
         where,
+        include: technicianServiceCardInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
@@ -152,6 +172,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
         where,
+        include: technicianServiceCardInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
@@ -176,6 +197,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
         isActive: true,
         reviewStatus: "APPROVED"
       },
+      include: technicianServiceCardInclude,
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
     });
 
@@ -211,6 +233,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
 
         return transaction.technicianService.findMany({
           where: { technicianId: input.technicianId, deletedAt: null },
+          include: technicianServiceCardInclude,
           orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
         });
       }
@@ -237,6 +260,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
 
       const reordered = await transaction.technicianService.findMany({
         where: { technicianId: input.technicianId, deletedAt: null },
+        include: technicianServiceCardInclude,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
       });
       await transaction.auditLog.create({
@@ -291,7 +315,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           reviewStatus: "APPROVED",
           createdBy: input.createdBy,
           updatedBy: input.createdBy
-        }
+        },
+        include: technicianServiceCardInclude
       });
       await transaction.auditLog.create({
         data: toAuditLogCreateData({ ...input.auditLog, targetId: created.id })
@@ -337,7 +362,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     }
 
     const service = await this.client.technicianService.findFirst({
-      where: { id: input.serviceId, deletedAt: null }
+      where: { id: input.serviceId, deletedAt: null },
+      include: technicianServiceCardInclude
     });
 
     return service ? this.mapTechnicianService(service) : null;
@@ -439,6 +465,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
         where,
+        include: technicianServiceCardInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }]
@@ -456,6 +483,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   private mapTechnicianService(service: TechnicianServiceRecord): TechnicianServicePayload {
     return {
       id: service.id,
+      publicId: service.publicId,
       shopId: service.shopId,
       technicianId: service.technicianId,
       sourceShopServiceId: service.sourceShopServiceId,
@@ -465,10 +493,16 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       priceAmount: service.priceAmount,
       currency: service.currency,
       durationMinutes: service.durationMinutes,
+      usageCount: service._count.bookingOrders,
       taxIncluded: true,
       coverImageUrl: service.coverImageUrl,
       images: this.stringArrayFromJson(service.imagesJson),
       tags: this.stringArrayFromJson(service.tagsJson),
+      shop: {
+        publicId: this.activeShopPublicId(service.shop.publicIdentifier),
+        name: service.shop.name,
+        address: service.shop.address
+      },
       isActive: service.isActive,
       isBookable: service.isBookable,
       isRecommended: service.isRecommended,
@@ -622,6 +656,16 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
 
   private reviewStatusFromDb(value: string): string {
     return value.toLowerCase();
+  }
+
+  private activeShopPublicId(
+    identifier: TechnicianServiceRecord["shop"]["publicIdentifier"]
+  ): string | null {
+    return identifier?.kind === "SHOP" &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null
+      ? identifier.publicId
+      : null;
   }
 
   private stringArrayFromJson(value: unknown): string[] {

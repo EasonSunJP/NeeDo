@@ -19,6 +19,7 @@ export type PaginatedPricingData<TItem> = {
 
 export type TechnicianServicePayload = {
   id: number;
+  publicId: string;
   shopId: number;
   technicianId: number;
   sourceShopServiceId: number | null;
@@ -28,10 +29,12 @@ export type TechnicianServicePayload = {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
+  shop: { publicId: string | null; name: string; address: string };
   isActive: boolean;
   isBookable: boolean;
   isRecommended: boolean;

@@ -40,6 +40,7 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       paginated([
         {
           id: 11,
+          publicId: "00000000-0000-4000-8000-000000000011",
           shopId: 1,
           technicianId: 3,
           sourceShopServiceId: null,
@@ -49,9 +50,11 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
           priceAmount: 8800,
           currency: "JPY",
           durationMinutes: 60,
+          usageCount: 7,
           coverImageUrl: null,
           images: [],
           tags: [],
+          shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
           isActive: true,
           isBookable: true,
           isRecommended: false,
@@ -203,6 +206,7 @@ describe("pricing mode public API", () => {
 
 const serviceRecordForApi = (id: number, shopId: number) => ({
   id,
+  publicId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
   shopId,
   technicianId: 3,
   sourceShopServiceId: null,
@@ -212,10 +216,16 @@ const serviceRecordForApi = (id: number, shopId: number) => ({
   priceAmount: 8_800,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true as const,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: {
+    publicId: `shop${String(shopId).padStart(10, "0")}`,
+    name: `Shop ${shopId}`,
+    address: `Address ${shopId}`
+  },
   isActive: true,
   isBookable: true,
   isRecommended: false,
