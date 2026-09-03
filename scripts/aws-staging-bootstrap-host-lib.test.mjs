@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { bootstrapAwsStagingHost } from "./aws-staging-bootstrap-host-lib.mjs";
 
@@ -56,6 +58,9 @@ function createClock() {
   let current = Date.parse("2026-09-03T01:00:00.000Z");
   return {
     now: vi.fn(() => current),
+    advance(milliseconds) {
+      current += milliseconds;
+    },
     sleep: vi.fn(async (milliseconds) => {
       current += milliseconds;
     })
@@ -213,6 +218,21 @@ describe("AWS Staging SSM host bootstrap", () => {
     expect(aws.text).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["missing", undefined],
+    ["wrong", "another-stack"],
+    ["empty", ""],
+    ["non-string", 123]
+  ])("rejects a %s fresh stack identity before any waiter or command", async (_label, stackName) => {
+    const describedStack = stackResult();
+    describedStack.Stacks[0].StackName = stackName;
+    const aws = successfulAws({ describedStack });
+
+    await expect(bootstrap({ aws })).rejects.toThrow(/StackName|identity|named/i);
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a missing CloudFormation output", async () => {
     const entries = Object.entries(outputValues).filter(([key]) => key !== "DataVolumeId");
     const aws = successfulAws({ describedStack: stackResult({ entries }) });
@@ -323,6 +343,41 @@ describe("AWS Staging SSM host bootstrap", () => {
     expect(aws.json.mock.calls.filter(([args]) => (
       args[0] === "ssm" && args[1] === "describe-instance-information"
     ))).toHaveLength(61);
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("rejects Online when the AWS polling call itself returns after the deadline", async () => {
+    const clock = createClock();
+    const aws = successfulAws();
+    const originalJson = aws.json.getMockImplementation();
+    aws.json.mockImplementation(async (args) => {
+      if (args[0] === "ssm" && args[1] === "describe-instance-information") {
+        clock.advance(600_001);
+        return onlineRegistration();
+      }
+      return originalJson(args);
+    });
+
+    await expect(bootstrap({ aws, clock })).rejects.toThrow(/ten minutes|deadline|timed out/i);
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("does not start another poll when sleep crosses the deadline", async () => {
+    const clock = createClock();
+    clock.sleep.mockImplementation(async () => {
+      clock.advance(600_001);
+    });
+    const aws = successfulAws({
+      registrations: [
+        { InstanceInformationList: [] },
+        onlineRegistration()
+      ]
+    });
+
+    await expect(bootstrap({ aws, clock })).rejects.toThrow(/ten minutes|deadline|timed out/i);
+    expect(aws.json.mock.calls.filter(([args]) => (
+      args[0] === "ssm" && args[1] === "describe-instance-information"
+    ))).toHaveLength(1);
     expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
   });
 
@@ -449,13 +504,138 @@ describe("AWS Staging SSM host bootstrap", () => {
       .toHaveLength(1);
   });
 
-  it("does not execute the CLI when its module is imported", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      await import("./aws-staging-bootstrap-host.mjs");
-      expect(log).not.toHaveBeenCalled();
-    } finally {
-      log.mockRestore();
+  it("keeps main injectable and prints only the successful allowlisted summary", async () => {
+    const { main, runCli } = await import("./aws-staging-bootstrap-host.mjs");
+    const parsedArgs = Object.freeze({ parsed: true });
+    const aws = successfulAws();
+    const summary = await bootstrap({ aws });
+    const parseArgs = vi.fn(() => parsedArgs);
+    const resolveConfig = vi.fn(() => config);
+    const createAws = vi.fn(() => aws);
+    const runBootstrap = vi.fn(async () => summary);
+
+    await expect(main(["--injected"], {
+      parseAwsStagingArgsImpl: parseArgs,
+      resolveAwsStagingConfigImpl: resolveConfig,
+      createAwsCliImpl: createAws,
+      bootstrapAwsStagingHostImpl: runBootstrap
+    })).resolves.toBe(summary);
+    expect(parseArgs).toHaveBeenCalledWith(["--injected"]);
+    expect(resolveConfig).toHaveBeenCalledWith(parsedArgs);
+    expect(createAws).toHaveBeenCalledWith({
+      profile: config.profile,
+      region: config.region
+    });
+    expect(runBootstrap).toHaveBeenCalledWith({ aws, config });
+
+    const stdout = [];
+    const stderr = [];
+    const exitCodes = [];
+    await expect(runCli({
+      argv: ["--injected"],
+      execute: vi.fn(async () => summary),
+      writeStdout: (line) => stdout.push(line),
+      writeStderr: (line) => stderr.push(line),
+      setExitCode: (code) => exitCodes.push(code)
+    })).resolves.toEqual({ ok: true, summary });
+    expect(stdout).toEqual([JSON.stringify(summary)]);
+    expect(stderr).toEqual([]);
+    expect(exitCodes).toEqual([]);
+  });
+
+  it("redacts every thrown failure field at the injectable CLI runner boundary", async () => {
+    const { runCli } = await import("./aws-staging-bootstrap-host.mjs");
+    const sensitiveMarkers = [
+      "arn:aws:sts::123456789012:assumed-role/Unsafe/session",
+      "ops@example.com",
+      "AKIAIOSFODNN7EXAMPLE",
+      "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "FwoGZXIvYXdzEBYaDHVtbXktc3R5bGUtdG9rZW4",
+      "AWS-stdout-marker",
+      "AWS-stderr-marker",
+      "--custom-parameter=unsafe-marker"
+    ];
+    const unsafeError = Object.assign(
+      new Error(sensitiveMarkers.join(" ")),
+      {
+        stdout: sensitiveMarkers[5],
+        stderr: sensitiveMarkers[6],
+        args: [sensitiveMarkers[7]]
+      }
+    );
+    const stdout = [];
+    const stderr = [];
+    const exitCodes = [];
+
+    const result = await runCli({
+      argv: [sensitiveMarkers[7]],
+      execute: vi.fn(async () => {
+        throw unsafeError;
+      }),
+      writeStdout: (line) => stdout.push(line),
+      writeStderr: (line) => stderr.push(line),
+      setExitCode: (code) => exitCodes.push(code)
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      failure: {
+        gate: "aws-staging-host-bootstrap",
+        status: "failed"
+      }
+    });
+    expect(stdout).toEqual([]);
+    expect(stderr).toEqual([
+      "{\"gate\":\"aws-staging-host-bootstrap\",\"status\":\"failed\"}"
+    ]);
+    expect(exitCodes).toEqual([1]);
+    const emitted = [...stdout, ...stderr].join("\n");
+    for (const marker of sensitiveMarkers) {
+      expect(emitted).not.toContain(marker);
     }
+    expect(emitted).not.toMatch(/stdout|stderr|arn:|@|AKIA|credential|parameter/i);
+  });
+
+  it("redacts direct-execution failures and exits nonzero without process.exit", () => {
+    const cliUrl = new URL("./aws-staging-bootstrap-host.mjs", import.meta.url);
+    const sensitiveMarkers = [
+      "arn:aws:iam::123456789012:role/Unsafe",
+      "ops@example.com",
+      "AKIAIOSFODNN7EXAMPLE",
+      "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "FwoGZXIvYXdzEBYaDHVtbXktc3R5bGUtdG9rZW4",
+      "stdout-marker",
+      "stderr-marker",
+      "custom-parameter-marker"
+    ];
+    const execution = spawnSync(
+      process.execPath,
+      [fileURLToPath(cliUrl), "--unsafe-marker", sensitiveMarkers.join(" ")],
+      { encoding: "utf8", shell: false }
+    );
+
+    expect(execution.status).toBe(1);
+    expect(execution.signal).toBeNull();
+    expect(execution.stdout).toBe("");
+    expect(execution.stderr).toBe(
+      "{\"gate\":\"aws-staging-host-bootstrap\",\"status\":\"failed\"}\n"
+    );
+    const emitted = `${execution.stdout}${execution.stderr}`;
+    for (const marker of sensitiveMarkers) {
+      expect(emitted).not.toContain(marker);
+    }
+  });
+
+  it("does not execute the CLI when its module is imported", () => {
+    const cliUrl = new URL("./aws-staging-bootstrap-host.mjs", import.meta.url);
+    const imported = spawnSync(
+      process.execPath,
+      ["--input-type=module", "--eval", `await import(${JSON.stringify(cliUrl.href)})`],
+      { encoding: "utf8", shell: false }
+    );
+
+    expect(imported.status).toBe(0);
+    expect(imported.stdout).toBe("");
+    expect(imported.stderr).toBe("");
   });
 });

@@ -26,6 +26,12 @@ function requireSingleStableStack(described, stackName) {
   }
 
   const [stack] = stacks;
+  const returnedStackName = stack?.StackName;
+  if (typeof returnedStackName !== "string"
+    || !returnedStackName
+    || returnedStackName !== stackName) {
+    throw new Error(`CloudFormation StackName identity must exactly match ${stackName}`);
+  }
   const stackStatus = String(stack?.StackStatus ?? "");
   if (!STABLE_STACK_STATES.has(stackStatus)) {
     throw new Error(
@@ -126,17 +132,20 @@ async function waitForSsmOnline({ aws, instanceId, now, sleep }) {
   const deadline = readClock(now) + SSM_REGISTRATION_TIMEOUT_MS;
 
   for (let poll = 0; poll < MAX_SSM_REGISTRATION_POLLS; poll += 1) {
+    if (readClock(now) > deadline) break;
     const described = await aws.json([
       "ssm", "describe-instance-information",
       "--filters", `Key=InstanceIds,Values=${instanceId}`
     ]);
+    const currentTime = readClock(now);
+    if (currentTime > deadline) break;
     if (requireRegistrationState(described, instanceId)) return;
 
-    const currentTime = readClock(now);
     if (poll === MAX_SSM_REGISTRATION_POLLS - 1 || currentTime >= deadline) break;
     const delay = Math.min(SSM_REGISTRATION_POLL_MS, deadline - currentTime);
     if (delay <= 0) break;
     await sleep(delay);
+    if (readClock(now) > deadline) break;
   }
 
   throw new Error("SSM instance did not become Online within ten minutes");
