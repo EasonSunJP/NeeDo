@@ -2,7 +2,7 @@ import { resolve4 } from "node:dns/promises";
 import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
-const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT", ...STABLE_STACK_STATES]);
+const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT"]);
 const REQUIRED_OUTPUT_KEYS = Object.freeze([
   "InstanceId",
   "ElasticIp",

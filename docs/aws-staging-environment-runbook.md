@@ -64,7 +64,11 @@ npm run aws:staging:preflight -- \
 ```
 
 Only after a successful preflight and explicit confirmation that the stop gates
-are satisfied, deploy the environment:
+are satisfied, deploy the environment. This is an initial-creation gate: the
+fresh in-process preflight must report exactly `ABSENT`. A stable same-name
+stack may be reported by preflight for diagnostics, but it stops this deploy
+before any mutation. Updating an existing stack requires a separate
+exact-identity update review and microstep.
 
 ```bash
 npm run aws:staging:deploy -- \

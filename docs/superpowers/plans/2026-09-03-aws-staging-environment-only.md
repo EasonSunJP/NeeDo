@@ -1001,7 +1001,8 @@ Also test that deployment refuses when:
 
 - preflight account/region differs from configuration;
 - preflight hostname differs from configuration;
-- stack status is not absent or stable complete;
+- preflight stack status is anything other than exactly `ABSENT`, including a
+  stable `CREATE_COMPLETE` or `UPDATE_COMPLETE` stack, before any AWS mutation;
 - DNS result changes between preflight and the deploy call before stack mutation;
 - CloudFormation returns a final state other than `CREATE_COMPLETE` or `UPDATE_COMPLETE`;
 - required output keys are missing.
@@ -1019,12 +1020,13 @@ Expected: FAIL because deployment support does not exist.
 `deployAwsStagingInfrastructure` must:
 
 1. require the preflight result created in the same process;
-2. require `preflight.hostname === config.hostname`, then re-resolve only `config.hostname` immediately before the mutation and require the same sorted A-record array as preflight;
-3. invoke the exact `cloudformation deploy` argument array above;
-4. call `describe-stacks` and require stable success;
-5. turn `Outputs[]` into a key/value object and require the ten Task 2 output keys;
-6. call `ec2 describe-instances` and record instance type/state, not user data;
-7. return evidence without the alert email or CloudFormation parameters.
+2. require `preflight.hostname === config.hostname` and `preflight.stackState === "ABSENT"`; a stable existing same-name stack is diagnostic-only and requires a separate exact-identity update review/microstep;
+3. re-resolve only `config.hostname` immediately before the mutation and require the same sorted A-record array as preflight;
+4. invoke the exact `cloudformation deploy` argument array above;
+5. call `describe-stacks` and require stable success;
+6. turn `Outputs[]` into a key/value object and require the ten Task 2 output keys;
+7. call `ec2 describe-instances` and record instance type/state, not user data;
+8. return evidence without the alert email or CloudFormation parameters.
 
 The CLI wrapper must create `outputs/aws-staging/` with mode `0700` and write `environment-stack.json` with mode `0600` using an atomic temporary-file rename. Include:
 
@@ -1401,7 +1403,8 @@ Run `npm run aws:staging:preflight -- <the-other-five-approved-flag-pairs> --hos
 - assumed-role/SSO caller;
 - AL2023 ARM64 AMI available;
 - CloudFormation template validates;
-- stack absent or stable;
+- stack state is recorded as absent or stable for diagnostics; only exactly
+  `ABSENT` may continue to Task 10 initial deployment;
 - DNS baseline recorded without modification.
 
 Stop here if the user has not yet provided temporary AWS access, exact account ID, alert email, and billing-currency amount/unit.
@@ -1450,7 +1453,10 @@ Use the user-approved SSO/assumed-role flow. Never ask the user to paste access 
 npm run aws:staging:preflight -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
 ```
 
-Expected: gate passes and reports stack/DNS baseline. If it fails, no stack mutation occurs.
+Expected: gate passes and reports stack/DNS baseline. Only `stackState=ABSENT`
+may continue to the initial deploy; an existing stable stack stops here without
+mutation and requires a separate exact-identity update review/microstep. If
+preflight fails, no stack mutation occurs.
 
 - [ ] **Step 4: Deploy the CloudFormation environment**
 
@@ -1458,7 +1464,11 @@ Expected: gate passes and reports stack/DNS baseline. If it fails, no stack muta
 npm run aws:staging:deploy -- <the-other-five-approved-flag-pairs> --hostname staging.needo.life
 ```
 
-Expected: stack reaches `CREATE_COMPLETE` or `UPDATE_COMPLETE`; `environment-stack.json` states `applicationDeployed=false`, `migrationRun=false`, `seedRun=false`, and `dnsModified=false`.
+Expected: this initial creation reaches `CREATE_COMPLETE`; final verification
+still accepts only safe complete states. An existing stable same-name stack is
+not an update target for this gate. `environment-stack.json` states
+`applicationDeployed=false`, `migrationRun=false`, `seedRun=false`, and
+`dnsModified=false`.
 
 - [ ] **Step 5: Initialize the host through SSM, then prove idempotency**
 
@@ -1532,7 +1542,7 @@ Do not begin the formal Staging administrator bootstrap patch or application rel
 - [ ] ARM64 AMI lookup uses the official public SSM parameter and is verified live.
 - [ ] Data volume is independently snapshot-protected and the host bootstrap fails closed before child directories exist.
 - [ ] AWS CLI execution never uses a shell and rejects secret-value surfaces.
-- [ ] Wrong account, wrong region, root/IAM-user caller, long-lived credentials, unstable stack, changed DNS baseline, and missing output all stop before or immediately after their safe boundary.
+- [ ] Wrong account, wrong region, root/IAM-user caller, long-lived credentials, any preflight stack state other than `ABSENT`, changed DNS baseline, and missing output all stop before or immediately after their safe boundary. Stable existing stacks are diagnostic-only and require a separate exact-identity update review/microstep.
 - [ ] Budget thresholds preserve the approved 15k/18k/20k intent as 75%/90%/100%, while amount/unit remain explicit and account-currency correct.
 - [ ] Evidence is ignored, atomic, mode-restricted, redacted, and never contains secret values or credentials.
 - [ ] Known baseline failures are reported as waived, not fixed and not misrepresented as passing.

@@ -246,15 +246,18 @@ describe("AWS Staging CloudFormation deployment", () => {
   });
 
   it.each([
+    "CREATE_COMPLETE",
+    "UPDATE_COMPLETE",
     "CREATE_IN_PROGRESS",
     "UPDATE_FAILED",
     "UPDATE_ROLLBACK_COMPLETE",
     "DELETE_COMPLETE"
-  ])("refuses unsafe preflight stack state %s", async (stackState) => {
+  ])("refuses every non-ABSENT preflight stack state before AWS mutation: %s", async (stackState) => {
     const aws = successfulAws();
     await expect(deploy({ aws, preflightResult: preflight({ stackState }) }))
       .rejects.toThrow(stackState);
     expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json).not.toHaveBeenCalled();
   });
 
   it("refuses a DNS change before the first mutation", async () => {

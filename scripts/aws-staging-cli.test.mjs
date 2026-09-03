@@ -1,6 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAwsCli } from "./aws-staging-cli.mjs";
 
+const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
+  ["sts", "get-caller-identity"],
+  ["ssm", "get-parameter"],
+  ["ssm", "describe-instance-information"],
+  ["ssm", "send-command"],
+  ["ssm", "get-command-invocation"],
+  ["ssm", "list-tags-for-resource"],
+  ["ssm", "wait"],
+  ["ec2", "describe-images"],
+  ["ec2", "describe-instances"],
+  ["ec2", "describe-addresses"],
+  ["ec2", "describe-security-groups"],
+  ["ec2", "describe-volumes"],
+  ["ec2", "describe-tags"],
+  ["ec2", "wait"],
+  ["cloudformation", "validate-template"],
+  ["cloudformation", "describe-stacks"],
+  ["cloudformation", "deploy"],
+  ["cloudformation", "list-stack-resources"],
+  ["s3api", "get-public-access-block"],
+  ["s3api", "get-bucket-encryption"],
+  ["s3api", "get-bucket-versioning"],
+  ["s3api", "get-bucket-lifecycle-configuration"],
+  ["s3api", "get-bucket-tagging"],
+  ["iam", "list-role-tags"],
+  ["secretsmanager", "describe-secret"],
+  ["secretsmanager", "list-secret-version-ids"],
+  ["logs", "describe-log-groups"],
+  ["logs", "list-tags-for-resource"],
+  ["cloudwatch", "describe-alarms"],
+  ["cloudwatch", "list-tags-for-resource"],
+  ["sns", "list-tags-for-resource"],
+  ["sns", "list-subscriptions-by-topic"],
+  ["budgets", "describe-budget"],
+  ["budgets", "describe-notifications-for-budget"],
+  ["budgets", "describe-subscribers-for-notification"],
+  ["budgets", "list-tags-for-resource"],
+  ["resourcegroupstaggingapi", "get-resources"]
+]);
+
 describe("AWS CLI adapter", () => {
   it("adds the named profile/region and parses JSON without a shell", async () => {
     const execFileImpl = vi.fn((_file, _args, _options, callback) => {
@@ -53,6 +93,35 @@ describe("AWS CLI adapter", () => {
       expect.objectContaining({ shell: false }),
       expect.any(Function)
     );
+  });
+
+  it.each(STAGING_AWS_SERVICE_OPERATIONS)(
+    "allows the staging flow operation %s %s",
+    async (service, operation) => {
+      const execFileImpl = vi.fn((_file, _args, _options, callback) => {
+        callback(null, "{}", "");
+      });
+      const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+
+      await expect(aws.json([service, operation])).resolves.toEqual({});
+      expect(execFileImpl).toHaveBeenCalledTimes(1);
+      expect(execFileImpl.mock.calls[0][1].slice(0, 2)).toEqual([service, operation]);
+    }
+  );
+
+  it.each([
+    ["STS credential minting", ["sts", "assume-role"]],
+    ["STS session-token minting", ["sts", "get-session-token"]],
+    ["SSO role credential retrieval", ["sso", "get-role-credentials"]],
+    ["unknown service", ["lambda", "list-functions"]],
+    ["unknown service operation", ["cloudformation", "delete-stack"]],
+    ["global-option-prefixed staging operation", ["--profile", "other", "sts", "get-caller-identity"]]
+  ])("rejects %s synchronously before invoking the process runner", (_label, args) => {
+    const execFileImpl = vi.fn();
+    const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
+
+    expect(() => aws.json(args)).toThrow("not allowed");
+    expect(execFileImpl).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -9,6 +9,66 @@ const FORBIDDEN_ARGUMENTS = new Set([
   "secretbinary",
   "password"
 ]);
+const ALLOWED_SERVICE_OPERATIONS = new Set([
+  "configure list",
+  "sts get-caller-identity",
+  "ssm get-parameter",
+  "ssm describe-instance-information",
+  "ssm send-command",
+  "ssm get-command-invocation",
+  "ssm list-tags-for-resource",
+  "ssm wait",
+  "ec2 describe-images",
+  "ec2 describe-instances",
+  "ec2 describe-addresses",
+  "ec2 describe-security-groups",
+  "ec2 describe-volumes",
+  "ec2 describe-tags",
+  "ec2 wait",
+  "cloudformation validate-template",
+  "cloudformation describe-stacks",
+  "cloudformation deploy",
+  "cloudformation list-stack-resources",
+  "s3api get-public-access-block",
+  "s3api get-bucket-encryption",
+  "s3api get-bucket-versioning",
+  "s3api get-bucket-lifecycle-configuration",
+  "s3api get-bucket-tagging",
+  "iam list-role-tags",
+  "secretsmanager describe-secret",
+  "secretsmanager list-secret-version-ids",
+  "logs describe-log-groups",
+  "logs list-tags-for-resource",
+  "cloudwatch describe-alarms",
+  "cloudwatch list-tags-for-resource",
+  "sns list-tags-for-resource",
+  "sns list-subscriptions-by-topic",
+  "budgets describe-budget",
+  "budgets describe-notifications-for-budget",
+  "budgets describe-subscribers-for-notification",
+  "budgets list-tags-for-resource",
+  "resourcegroupstaggingapi get-resources"
+]);
+const CALLER_SUPPLIED_GLOBAL_OPTIONS = new Set([
+  "--debug",
+  "--endpoint-url",
+  "--no-verify-ssl",
+  "--no-paginate",
+  "--output",
+  "--query",
+  "--profile",
+  "--region",
+  "--version",
+  "--color",
+  "--no-sign-request",
+  "--ca-bundle",
+  "--cli-read-timeout",
+  "--cli-connect-timeout",
+  "--cli-binary-format",
+  "--no-cli-pager",
+  "--cli-auto-prompt",
+  "--no-cli-auto-prompt"
+]);
 
 function assertSafeArguments(args) {
   if (!Array.isArray(args) || args.some((argument) => typeof argument !== "string")) {
@@ -25,6 +85,21 @@ function assertSafeArguments(args) {
   }
 }
 
+function assertAllowedOperation(args) {
+  const operation = `${args[0] ?? ""} ${args[1] ?? ""}`;
+  if (!ALLOWED_SERVICE_OPERATIONS.has(operation)) {
+    throw new Error("AWS CLI service operation is not allowed");
+  }
+  if (args.some((argument) => {
+    const normalized = argument.toLowerCase();
+    return [...CALLER_SUPPLIED_GLOBAL_OPTIONS].some((option) => (
+      normalized === option || normalized.startsWith(`${option}=`)
+    ));
+  })) {
+    throw new Error("caller-supplied AWS CLI global flags are not allowed");
+  }
+}
+
 function finalStderrLine(stderr) {
   const lines = String(stderr ?? "")
     .split(/\r?\n/)
@@ -35,6 +110,7 @@ function finalStderrLine(stderr) {
 
 function invoke(execFileImpl, profile, region, args, output) {
   assertSafeArguments(args);
+  assertAllowedOperation(args);
   const fullArgs = [
     ...args,
     "--profile", profile,

@@ -559,6 +559,22 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(trace.at(-1)).toBe(`dns:${config.hostname}`);
   });
 
+  it.each([
+    ["equivalent trailing decimal zeros", "20000.00", true],
+    ["a genuinely different amount", "20000.01", false]
+  ])("compares %s without floating-point coercion", async (_label, amount, accepted) => {
+    const fixture = passingFixture();
+    fixture.budget.Budget.BudgetLimit.Amount = amount;
+
+    if (accepted) {
+      await expect(verify({ fixture })).resolves.toMatchObject({
+        evidence: { budget: { amount: config.budgetAmount } }
+      });
+    } else {
+      await expect(verify({ fixture })).rejects.toThrow(/budget.*amount/i);
+    }
+  });
+
   const matrix = [
     ["unstable stack", (f) => { f.stack.Stacks[0].StackStatus = "UPDATE_FAILED"; }, /stack.*status|stable/i],
     ["missing stack tag", (f) => { f.stack.Stacks[0].Tags.pop(); }, /tag/i],

@@ -149,6 +149,18 @@ function safeArgument(value, label, pattern = safeNamePattern) {
   return stringValue;
 }
 
+function canonicalBudgetAmount(value) {
+  if (typeof value !== "string") {
+    throw new Error("Budget amount must be a bounded plain decimal string");
+  }
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(value);
+  if (!match || !/[1-9]/.test(`${match[1]}${match[2] ?? ""}`)) {
+    throw new Error("Budget amount must be a positive bounded plain decimal string");
+  }
+  const fractional = (match[2] ?? "").replace(/0+$/, "");
+  return fractional ? `${match[1]}.${fractional}` : match[1];
+}
+
 function noPagination(response, label, keys = ["NextToken", "nextToken", "PaginationToken"]) {
   if (!response || typeof response !== "object" || Array.isArray(response)) {
     throw new Error(`${label} response is malformed`);
@@ -249,8 +261,12 @@ function requireResolvedConfig(config) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(config.alertEmail ?? ""))) {
     throw new Error("AWS Staging config alert email is invalid");
   }
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(String(config.budgetAmount ?? ""))
-    || Number(config.budgetAmount) <= 0 || !/^[A-Z]{3}$/.test(String(config.budgetUnit ?? ""))) {
+  if (!/^[A-Z]{3}$/.test(String(config.budgetUnit ?? ""))) {
+    throw new Error("AWS Staging config budget is invalid");
+  }
+  try {
+    canonicalBudgetAmount(config.budgetAmount);
+  } catch {
     throw new Error("AWS Staging config budget is invalid");
   }
   if (typeof config.templatePath !== "string" || !path.isAbsolute(config.templatePath)) {
@@ -695,7 +711,13 @@ function requireBudget(response, config, budgetName) {
   noPagination(response, "Budgets describe-budget");
   const budget = response.Budget;
   if (!budget || budget.BudgetName !== budgetName) throw new Error("Budget identity does not match");
-  if (String(budget.BudgetLimit?.Amount ?? "") !== config.budgetAmount) {
+  let returnedAmount;
+  try {
+    returnedAmount = canonicalBudgetAmount(budget.BudgetLimit?.Amount);
+  } catch {
+    throw new Error("Budget amount does not match configured amount");
+  }
+  if (returnedAmount !== canonicalBudgetAmount(config.budgetAmount)) {
     throw new Error("Budget amount does not match configured amount");
   }
   if (budget.BudgetLimit?.Unit !== config.budgetUnit) throw new Error("Budget unit does not match configured unit");
