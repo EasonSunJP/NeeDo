@@ -86,6 +86,28 @@ describe("AWS Staging configuration", () => {
     }).region).toBe("ap-southeast-2");
   });
 
+  it.each([
+    "staging.example.com",
+    "staging.needo.jp",
+    "staging.api.needo.life"
+  ])("rejects an otherwise valid but unapproved hostname %s", (hostname) => {
+    expect(() => resolveAwsStagingConfig({ ...validInput, hostname }))
+      .toThrow("staging.needo.life");
+  });
+
+  it("preserves the alert email local part and canonicalizes only its domain", () => {
+    expect(resolveAwsStagingConfig({
+      ...validInput,
+      alertEmail: "Ops+Staging@EXAMPLE.COM"
+    }).alertEmail).toBe("Ops+Staging@example.com");
+  });
+
+  it.each([" ops@example.com", "ops@example.com "])(
+    "rejects surrounding whitespace in the exact alert email input %j",
+    (alertEmail) => expect(() => resolveAwsStagingConfig({ ...validInput, alertEmail }))
+      .toThrow("email")
+  );
+
   it("requires the deployment region explicitly", () => {
     expect(() => parseAwsStagingArgs([
       "--profile", "needo-staging-deployer",

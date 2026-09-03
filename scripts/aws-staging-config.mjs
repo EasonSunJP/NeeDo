@@ -19,6 +19,7 @@ export const AWS_STAGING_REGIONS = Object.freeze([
 ]);
 
 const awsStagingRegionSet = new Set(AWS_STAGING_REGIONS);
+const APPROVED_AWS_STAGING_HOSTNAME = "staging.needo.life";
 
 export function requireAwsStagingRegion(value) {
   if (typeof value !== "string" || !awsStagingRegionSet.has(value)) {
@@ -47,8 +48,29 @@ export function requireAwsStagingHostname(value) {
   if (!validLabels || !/^[a-z]{2,63}$/.test(topLevelDomain)) {
     throw new Error("AWS Staging hostname must have a registrable-looking DNS suffix");
   }
+  if (value !== APPROVED_AWS_STAGING_HOSTNAME) {
+    throw new Error(`AWS Staging hostname must be exactly ${APPROVED_AWS_STAGING_HOSTNAME}`);
+  }
 
   return value;
+}
+
+function normalizeAlertEmail(value) {
+  const rawValue = String(value || "");
+  if (!rawValue || rawValue.trim() !== rawValue) {
+    throw new Error("A valid exact alert email is required");
+  }
+  const atIndex = rawValue.indexOf("@");
+  if (atIndex <= 0 || atIndex !== rawValue.lastIndexOf("@")) {
+    throw new Error("A valid alert email is required");
+  }
+  const localPart = rawValue.slice(0, atIndex);
+  const domain = rawValue.slice(atIndex + 1).toLowerCase();
+  const normalized = `${localPart}@${domain}`;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error("A valid alert email is required");
+  }
+  return normalized;
 }
 
 export function parseAwsStagingArgs(argv) {
@@ -75,7 +97,7 @@ export function resolveAwsStagingConfig(input) {
   const region = requireAwsStagingRegion(input.region);
   const owner = String(input.owner || "").trim();
   const hostname = requireAwsStagingHostname(input.hostname);
-  const alertEmail = String(input.alertEmail || "").trim().toLowerCase();
+  const alertEmail = normalizeAlertEmail(input.alertEmail);
   const budgetAmount = String(input.budgetAmount || "").trim();
   const budgetUnitInput = String(input.budgetUnit || "").trim();
   const budgetUnit = budgetUnitInput.toUpperCase();
