@@ -67,9 +67,13 @@ application behavior to the existing environment-only stack.
 ## Temporary Credential Contract
 
 AWS CLI v2 `aws login` reports both the access-key and secret-key provider type
-as `login`. The preflight may accept this provider type in addition to the
-already approved `sso`, `assume-role`, and `custom-process` types, but only when
-both credential rows report the same provider.
+as `login`. Under the final security amendment, the current personal-stage
+preflight accepts only `login`, and only when both credential rows report that
+exact provider. `sso`, `assume-role`, and `custom-process` are rejected before
+identity or mutation because securely closing their recursive config,
+credential-process, and refresh-cache dependencies requires the real later
+company profile. That support is a separate blocked-until-profile security
+microstep; dual-region infrastructure support remains unchanged.
 
 Provider type alone never grants approval. STS must still return:
 
@@ -78,8 +82,9 @@ Provider type alone never grants approval. STS must still return:
 
 Root callers, IAM users, federated-user ARNs, mismatched accounts, mixed
 credential providers, shared credential files, and environment credentials
-remain rejected. Credentials and complete caller ARNs remain absent from
-evidence files.
+remain rejected. Personal evidence cannot be reused for a later company
+profile. Credentials and complete caller ARNs remain absent from evidence
+files.
 
 ## Dynamic Evidence and Validation
 

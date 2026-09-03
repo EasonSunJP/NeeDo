@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAwsStagingPreflightSummary,
@@ -19,7 +21,7 @@ const absentStackError = new Error(
 );
 
 function configureList({
-  accessType = "sso",
+  accessType = "login",
   secretType = accessType,
   profile = config.profile
 } = {}) {
@@ -65,6 +67,53 @@ function successfulAws({
 }
 
 describe("AWS Staging preflight", () => {
+  it("keeps the preflight CLI import-safe and redacts injectable and direct failures", () => {
+    const cliUrl = new URL("./aws-staging-preflight.mjs", import.meta.url);
+    const cliPath = fileURLToPath(cliUrl);
+    const sensitive = "AKIAIOSFODNN7EXAMPLE provider-stdout provider-stderr --unsafe-secret";
+    const evaluateRunner = [
+      `const { runCli } = await import(${JSON.stringify(cliUrl.href)});`,
+      "const stdout = []; const stderr = []; const exitCodes = [];",
+      `const sensitive = ${JSON.stringify(sensitive)};`,
+      "const result = await runCli({",
+      "  argv: [sensitive],",
+      "  execute: async () => { throw Object.assign(new Error(sensitive), { stdout: sensitive, stderr: sensitive }); },",
+      "  writeStdout: (line) => stdout.push(line),",
+      "  writeStderr: (line) => stderr.push(line),",
+      "  setExitCode: (code) => exitCodes.push(code)",
+      "});",
+      "process.stdout.write(JSON.stringify({ result, stdout, stderr, exitCodes }));"
+    ].join("\n");
+    const environment = { PATH: "/path-with-no-aws", LANG: "C", LC_ALL: "C" };
+
+    const imported = spawnSync(process.execPath, [
+      "--input-type=module", "--eval", evaluateRunner
+    ], { encoding: "utf8", shell: false, env: environment });
+    expect(imported.status).toBe(0);
+    expect(imported.stderr).toBe("");
+    const result = JSON.parse(imported.stdout);
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        failure: { gate: "aws-staging-preflight", status: "failed" }
+      },
+      stdout: [],
+      stderr: ["{\"gate\":\"aws-staging-preflight\",\"status\":\"failed\"}"],
+      exitCodes: [1]
+    });
+    expect(imported.stdout).not.toContain(sensitive);
+
+    const direct = spawnSync(process.execPath, [cliPath, "--unsafe", sensitive], {
+      encoding: "utf8",
+      shell: false,
+      env: environment
+    });
+    expect(direct.status).toBe(1);
+    expect(direct.stdout).toBe("");
+    expect(direct.stderr).toBe("{\"gate\":\"aws-staging-preflight\",\"status\":\"failed\"}\n");
+    expect(`${direct.stdout}${direct.stderr}`).not.toContain(sensitive);
+  });
+
   it("creates only the compact redacted CLI summary", () => {
     const summary = createAwsStagingPreflightSummary({
       accountId: config.accountId,
@@ -95,7 +144,7 @@ describe("AWS Staging preflight", () => {
     expect(Object.isFrozen(summary)).toBe(true);
   });
 
-  it.each(["sso", "assume-role", "custom-process", "login"])(
+  it.each(["login"])(
     "accepts real configure-list credential rows with TYPE %s",
     async (credentialType) => {
       const aws = successfulAws({
@@ -109,6 +158,24 @@ describe("AWS Staging preflight", () => {
       })).resolves.toMatchObject({ callerKind: "assumed-role" });
 
       expect(aws.text).toHaveBeenCalledWith(["configure", "list"]);
+    }
+  );
+
+  it.each(["sso", "assume-role", "custom-process"])(
+    "rejects deferred company-profile provider TYPE %s before identity or mutation",
+    async (credentialType) => {
+      const aws = successfulAws({
+        configureOutput: configureList({ accessType: credentialType })
+      });
+
+      await expect(runAwsStagingPreflight({
+        aws,
+        config,
+        resolveDns: async () => []
+      })).rejects.toThrow(/login/i);
+
+      expect(aws.text).toHaveBeenCalledWith(["configure", "list"]);
+      expect(aws.json).not.toHaveBeenCalled();
     }
   );
 

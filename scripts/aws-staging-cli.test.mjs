@@ -1,8 +1,76 @@
-import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createAwsCli,
+  createAwsCli as createAwsCliAdapter,
   createFrozenAwsCli
 } from "./aws-staging-cli.mjs";
+
+const TEST_AWS_EXECUTABLE = "/trusted/aws-cli-v2/aws";
+const fixtureRoots = [];
+
+function createAwsCli(options) {
+  return createAwsCliAdapter({ executablePath: TEST_AWS_EXECUTABLE, ...options });
+}
+
+async function createLoginFixture({ configText } = {}) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "needo-aws-cli-test-"));
+  fixtureRoots.push(root);
+  const sourceHome = path.join(root, "source-home");
+  const loginCache = path.join(sourceHome, ".aws", "login", "cache");
+  const binDirectory = path.join(root, "bin");
+  const executablePath = path.join(sourceHome, ".local", "share", "aws-cli", "aws");
+  const pathExecutablePath = path.join(binDirectory, "aws");
+  await fs.mkdir(loginCache, { recursive: true });
+  await fs.mkdir(binDirectory, { recursive: true });
+  await fs.mkdir(path.dirname(executablePath), { recursive: true });
+  await fs.writeFile(path.join(sourceHome, ".aws", "config"), configText ?? [
+    "[profile needo-staging-deployer]",
+    "login_session = arn:aws:sts::123456789012:assumed-role/AccountFullAccessRole/eason-session",
+    "region = ap-northeast-1",
+    ""
+  ].join("\n"), { mode: 0o600 });
+  await fs.writeFile(executablePath, "#!/bin/sh\n", { mode: 0o700 });
+  await fs.writeFile(pathExecutablePath, "#!/bin/sh\n", { mode: 0o700 });
+  return {
+    root,
+    sourceHome,
+    loginCache,
+    executablePath,
+    pathExecutablePath,
+    environment: { PATH: binDirectory },
+    temporaryRoot: root,
+    userInfoImpl: () => ({ homedir: sourceHome, uid: process.getuid() })
+  };
+}
+
+function successfulLoginResolver() {
+  const temporaryCredentials = {
+    Version: 1,
+    AccessKeyId: ["AS", "IA", "A".repeat(16)].join(""),
+    SecretAccessKey: "s".repeat(40),
+    SessionToken: "t".repeat(80),
+    Expiration: "2030-01-01T00:00:00.000Z"
+  };
+  return vi.fn((_file, args, _options, callback) => {
+    if (args[0] === "--version") {
+      callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+      return;
+    }
+    if (args[0] === "configure" && args[1] === "list") {
+      callback(null, "access_key : ****************ABCD : login :\nsecret_key : ****************WXYZ : login :\n", "");
+      return;
+    }
+    callback(null, JSON.stringify(temporaryCredentials), "");
+  });
+}
+
+afterEach(async () => {
+  await Promise.all(fixtureRoots.splice(0).map((root) => (
+    fs.rm(root, { recursive: true, force: true })
+  )));
+});
 
 const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
   ["sts", "get-caller-identity"],
@@ -47,7 +115,433 @@ const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
 ]);
 
 describe("AWS CLI adapter", () => {
-  it("neutralizes inherited credential, profile, config, and endpoint overrides", async () => {
+  it("accepts the STS assumed-role login_session emitted by AWS CLI login", async () => {
+    const fixture = await createLoginFixture({
+      configText: [
+        "[profile needo-staging-deployer]",
+        "login_session = arn:aws:sts::123456789012:assumed-role/AccountFullAccessRole/eason-session",
+        "region = ap-northeast-1",
+        ""
+      ].join("\n")
+    });
+    const temporaryCredentials = {
+      Version: 1,
+      AccessKeyId: ["AS", "IA", "A".repeat(16)].join(""),
+      SecretAccessKey: "s".repeat(40),
+      SessionToken: "t".repeat(80),
+      Expiration: "2030-01-01T00:00:00.000Z"
+    };
+    const execFileImpl = vi.fn((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "list") {
+        callback(null, "access_key : ****************ABCD : login :\nsecret_key : ****************WXYZ : login :\n", "");
+        return;
+      }
+      callback(null, JSON.stringify(temporaryCredentials), "");
+    });
+
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    });
+
+    expect(execFileImpl.mock.calls.some(([, args]) => (
+      args[0] === "configure" && args[1] === "export-credentials"
+    ))).toBe(true);
+    await aws.dispose();
+  });
+
+  it("ignores a self-reported AWS CLI v2 executable placed only on caller PATH", async () => {
+    const fixture = await createLoginFixture();
+    const invokedFiles = [];
+    const temporaryCredentials = {
+      Version: 1,
+      AccessKeyId: ["AS", "IA", "A".repeat(16)].join(""),
+      SecretAccessKey: "s".repeat(40),
+      SessionToken: "t".repeat(80),
+      Expiration: "2030-01-01T00:00:00.000Z"
+    };
+    const execFileImpl = vi.fn((file, args, _options, callback) => {
+      invokedFiles.push(file);
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "list") {
+        callback(null, "access_key : ****************ABCD : login :\nsecret_key : ****************WXYZ : login :\n", "");
+        return;
+      }
+      callback(null, JSON.stringify(temporaryCredentials), "");
+    });
+
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    });
+
+    expect(new Set(invokedFiles)).toEqual(new Set([await fs.realpath(fixture.executablePath)]));
+    expect(invokedFiles).not.toContain(await fs.realpath(fixture.pathExecutablePath));
+    await aws.dispose();
+  });
+
+  it("rejects a group-readable source config before credential resolution", async () => {
+    const fixture = await createLoginFixture();
+    await fs.chmod(path.join(fixture.sourceHome, ".aws", "config"), 0o640);
+    const execFileImpl = successfulLoginResolver();
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    })).rejects.toThrow(/source config.*0600/i);
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a permissive or non-regular login cache entry before credential resolution", async () => {
+    const fixture = await createLoginFixture();
+    await fs.writeFile(path.join(fixture.loginCache, "session.json"), "{}", { mode: 0o640 });
+    const execFileImpl = successfulLoginResolver();
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    })).rejects.toThrow(/login cache entry.*0600/i);
+    expect(execFileImpl).not.toHaveBeenCalled();
+  });
+
+  it("revalidates the pinned executable trust chain before credential resolution", async () => {
+    const fixture = await createLoginFixture();
+    const execFileImpl = successfulLoginResolver();
+    execFileImpl.mockImplementation((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        fs.chmod(path.dirname(fixture.executablePath), 0o770).then(() => {
+          callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        });
+        return;
+      }
+      callback(null, "unexpected resolver invocation", "");
+    });
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    })).rejects.toThrow("Trusted AWS CLI executable changed after attestation");
+    expect(execFileImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-hashes the exact pinned executable before a frozen operation", async () => {
+    const fixture = await createLoginFixture();
+    const execFileImpl = successfulLoginResolver();
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    });
+    await fs.writeFile(fixture.executablePath, "#!/bin/zsh\n", { mode: 0o700 });
+
+    await expect(aws.json(["sts", "get-caller-identity"]))
+      .rejects.toThrow("Trusted AWS CLI executable changed after attestation");
+    expect(execFileImpl).toHaveBeenCalledTimes(3);
+    await aws.dispose();
+  });
+
+  it("pins one absolute attested AWS CLI v2 executable before resolving credentials", async () => {
+    const fixture = await createLoginFixture();
+    const invokedFiles = [];
+    const invokedArguments = [];
+    const temporaryCredentials = {
+      Version: 1,
+      AccessKeyId: ["AS", "IA", "A".repeat(16)].join(""),
+      SecretAccessKey: "s".repeat(40),
+      SessionToken: "t".repeat(80),
+      Expiration: "2030-01-01T00:00:00.000Z"
+    };
+    const execFileImpl = vi.fn((file, args, _options, callback) => {
+      invokedFiles.push(file);
+      invokedArguments.push(args);
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "list") {
+        callback(null, "access_key : ****************ABCD : login :\nsecret_key : ****************WXYZ : login :\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "export-credentials") {
+        callback(null, JSON.stringify(temporaryCredentials), "");
+        return;
+      }
+      callback(null, "{}", "");
+    });
+
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    });
+    fixture.environment.PATH = path.join(fixture.root, "hostile-bin");
+    await aws.json(["sts", "get-caller-identity"]);
+
+    const pinnedExecutablePath = await fs.realpath(fixture.executablePath);
+    expect(invokedFiles).toEqual(Array(invokedFiles.length).fill(pinnedExecutablePath));
+    expect(path.isAbsolute(invokedFiles[0])).toBe(true);
+    expect(invokedArguments[0]).toEqual(["--version"]);
+    expect(invokedArguments.findIndex((args) => args[0] === "configure")).toBeGreaterThan(0);
+  });
+
+  it("rejects an AWS CLI older than the login-capable v2 boundary before credential resolution", async () => {
+    const fixture = await createLoginFixture();
+    const execFileImpl = vi.fn((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.31.99 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      callback(null, "unexpected credential resolver output", "");
+    });
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl
+    })).rejects.toThrow(/AWS CLI v2\.32 or newer is required/);
+    expect(execFileImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates hostile models, HOME config, trust, proxies, and history in both CLI phases", async () => {
+    const loginSession = "arn:aws:sts::123456789012:assumed-role/AccountFullAccessRole/eason-session";
+    const fixture = await createLoginFixture({
+      configText: [
+        "[default]",
+        "cli_history = enabled",
+        "ca_bundle = /hostile/default-ca.pem",
+        "endpoint_url = https://default-endpoint.example.invalid",
+        "credential_process = /hostile/default-provider --emit-credentials",
+        "",
+        "[profile needo-staging-deployer]",
+        `login_session = ${loginSession}`,
+        "region = us-east-1",
+        "cli_history = enabled",
+        "ca_bundle = /hostile/profile-ca.pem",
+        "endpoint_url = https://profile-endpoint.example.invalid",
+        "credential_process = /hostile/profile-provider --emit-credentials",
+        ""
+      ].join("\n")
+    });
+    const hostileHome = path.join(fixture.root, "hostile-home");
+    await fs.mkdir(path.join(hostileHome, ".aws", "models"), { recursive: true });
+    await fs.mkdir(path.join(fixture.sourceHome, ".aws", "models"), { recursive: true });
+    const hostileEnvironment = {
+      ...fixture.environment,
+      HOME: hostileHome,
+      AWS_DATA_PATH: "/hostile/aws-data",
+      AWS_CONFIG_FILE: "/hostile/config",
+      AWS_SHARED_CREDENTIALS_FILE: "/hostile/credentials",
+      AWS_CLI_HISTORY_FILE: "/hostile/history.db",
+      AWS_CA_BUNDLE: "/hostile/aws-ca.pem",
+      REQUESTS_CA_BUNDLE: "/hostile/requests-ca.pem",
+      CURL_CA_BUNDLE: "/hostile/curl-ca.pem",
+      SSL_CERT_FILE: "/hostile/ssl-cert.pem",
+      SSL_CERT_DIR: "/hostile/ssl-certs",
+      HTTP_PROXY: "http://upper-http.example.invalid",
+      http_proxy: "http://lower-http.example.invalid",
+      HtTp_PrOxY: "http://mixed-http.example.invalid",
+      HTTPS_PROXY: "http://upper-https.example.invalid",
+      https_proxy: "http://lower-https.example.invalid",
+      HtTpS_PrOxY: "http://mixed-https.example.invalid",
+      ALL_PROXY: "socks5://upper-all.example.invalid",
+      all_proxy: "socks5://lower-all.example.invalid",
+      AlL_PrOxY: "socks5://mixed-all.example.invalid",
+      NO_PROXY: "169.254.169.254",
+      no_proxy: "localhost",
+      No_PrOxY: "example.invalid",
+      AWS_ACCESS_KEY_ID: "INHERITEDACCESSKEY",
+      AWS_SECRET_ACCESS_KEY: "inherited-secret-value",
+      AWS_SESSION_TOKEN: "inherited-session-token"
+    };
+    const temporaryCredentials = {
+      Version: 1,
+      AccessKeyId: ["AS", "IA", "A".repeat(16)].join(""),
+      SecretAccessKey: "s".repeat(40),
+      SessionToken: "t".repeat(80),
+      Expiration: "2030-01-01T00:00:00.000Z"
+    };
+    const calls = [];
+    const execFileImpl = vi.fn((file, args, options, callback) => {
+      calls.push({ file, args: [...args], environment: { ...options.env } });
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "list") {
+        callback(null, "access_key : ****************ABCD : login :\nsecret_key : ****************WXYZ : login :\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "export-credentials") {
+        callback(null, JSON.stringify(temporaryCredentials), "");
+        return;
+      }
+      callback(null, "{}", "");
+    });
+
+    const aws = await createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: hostileEnvironment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    });
+    await aws.json(["sts", "get-caller-identity"]);
+
+    const resolverCalls = calls.filter(({ args }) => args[0] === "configure");
+    const frozenCall = calls.find(({ args }) => args[0] === "sts");
+    const resolverAllowedKeys = [
+      "AWS_CLI_AUTO_PROMPT", "AWS_CLI_HISTORY_FILE", "AWS_CONFIG_FILE", "AWS_DATA_PATH",
+      "AWS_EC2_METADATA_DISABLED", "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS",
+      "AWS_LOGIN_CACHE_DIRECTORY", "AWS_PAGER", "AWS_SHARED_CREDENTIALS_FILE",
+      "HOME", "LANG", "LC_ALL"
+    ].sort();
+    const frozenAllowedKeys = [
+      "AWS_ACCESS_KEY_ID", "AWS_CLI_AUTO_PROMPT", "AWS_CLI_HISTORY_FILE", "AWS_CONFIG_FILE",
+      "AWS_DATA_PATH", "AWS_EC2_METADATA_DISABLED", "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS",
+      "AWS_PAGER", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+      "AWS_SHARED_CREDENTIALS_FILE", "HOME", "LANG", "LC_ALL"
+    ].sort();
+    expect(resolverCalls).toHaveLength(2);
+    for (const { environment: observed } of resolverCalls) {
+      expect(Object.keys(observed).sort()).toEqual(resolverAllowedKeys);
+      expect(observed.AWS_LOGIN_CACHE_DIRECTORY).toBe(await fs.realpath(fixture.loginCache));
+    }
+    expect(Object.keys(frozenCall.environment).sort()).toEqual(frozenAllowedKeys);
+    expect(frozenCall.environment).not.toHaveProperty("AWS_LOGIN_CACHE_DIRECTORY");
+    const hostileValues = new Set(Object.values(hostileEnvironment));
+    for (const { environment: observed } of calls) {
+      for (const value of Object.values(observed)) expect(hostileValues.has(value)).toBe(false);
+    }
+
+    const resolverConfig = await fs.readFile(resolverCalls[0].environment.AWS_CONFIG_FILE, "utf8");
+    const frozenConfig = await fs.readFile(frozenCall.environment.AWS_CONFIG_FILE, "utf8");
+    expect(resolverConfig).toBe([
+      "[profile needo-staging-deployer]",
+      `login_session = ${loginSession}`,
+      "region = ap-northeast-1",
+      "cli_history = disabled",
+      ""
+    ].join("\n"));
+    expect(frozenConfig).toBe([
+      "[default]",
+      "region = ap-northeast-1",
+      "cli_history = disabled",
+      ""
+    ].join("\n"));
+    expect(`${resolverConfig}\n${frozenConfig}`).not.toMatch(
+      /enabled|ca_bundle|endpoint_url|credential_process|hostile/i
+    );
+    expect(await fs.readFile(frozenCall.environment.AWS_SHARED_CREDENTIALS_FILE, "utf8")).toBe("");
+    expect(await fs.readdir(frozenCall.environment.AWS_DATA_PATH)).toEqual([]);
+    expect(await fs.stat(frozenCall.environment.HOME).then((value) => value.mode & 0o777)).toBe(0o700);
+    expect(await fs.stat(frozenCall.environment.AWS_CONFIG_FILE).then((value) => value.mode & 0o777)).toBe(0o600);
+    expect(await fs.stat(frozenCall.environment.AWS_SHARED_CREDENTIALS_FILE).then((value) => value.mode & 0o777)).toBe(0o600);
+
+    const privateRoot = path.dirname(frozenCall.environment.HOME);
+    await aws.dispose();
+    await aws.dispose();
+    await expect(fs.stat(privateRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(Promise.resolve().then(() => aws.json(["sts", "get-caller-identity"])))
+      .rejects.toThrow(/disposed/);
+  });
+
+  it("returns one fixed credential-resolver failure without provider output", async () => {
+    const fixture = await createLoginFixture();
+    const sensitive = [
+      "AKIAIOSFODNN7EXAMPLE",
+      "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "FwoGZXIvYXdzEBYaDHVtbXktc3R5bGUtdG9rZW4",
+      "provider-stdout-marker",
+      "provider-stderr-marker"
+    ];
+    const execFileImpl = vi.fn((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      const error = Object.assign(new Error(sensitive.join(" ")), {
+        code: 254,
+        stdout: sensitive[3],
+        stderr: sensitive[4]
+      });
+      callback(error, sensitive[3], sensitive.join(" "));
+    });
+
+    let failure;
+    try {
+      await createFrozenAwsCli({
+        profile: "needo-staging-deployer",
+        region: "ap-northeast-1",
+        execFileImpl,
+        environment: fixture.environment,
+        temporaryRoot: fixture.temporaryRoot,
+        userInfoImpl: fixture.userInfoImpl
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "AWS_CLI_CREDENTIAL_RESOLUTION_FAILED",
+      message: "AWS CLI credential resolution failed"
+    });
+    const serialized = JSON.stringify({
+      code: failure?.code,
+      message: failure?.message,
+      stack: failure?.stack,
+      stdout: failure?.stdout,
+      stderr: failure?.stderr
+    });
+    for (const marker of sensitive) expect(serialized).not.toContain(marker);
+    expect((await fs.readdir(fixture.root)).sort()).toEqual(["bin", "source-home"]);
+  });
+
+  it("uses an explicit uncredentialed environment allowlist instead of inheriting process state", async () => {
     let observedEnvironment;
     const execFileImpl = vi.fn((_file, _args, options, callback) => {
       observedEnvironment = options.env;
@@ -55,6 +549,9 @@ describe("AWS CLI adapter", () => {
     });
     const environment = {
       PATH: "/usr/bin",
+      HOME: "/tmp/hostile-home",
+      AWS_DATA_PATH: "/tmp/hostile-models",
+      AWS_CLI_HISTORY_FILE: "/tmp/hostile-history.db",
       AWS_ACCESS_KEY_ID: "inherited-access",
       AWS_SECRET_ACCESS_KEY: "inherited-secret",
       AWS_SESSION_TOKEN: "inherited-token",
@@ -72,6 +569,18 @@ describe("AWS CLI adapter", () => {
       AWS_ACCOUNT_ID_ENDPOINT_MODE: "required",
       AWS_METADATA_SERVICE_ENDPOINT: "http://127.0.0.1:9999",
       AWS_CA_BUNDLE: "/tmp/foreign-ca.pem",
+      REQUESTS_CA_BUNDLE: "/tmp/requests-ca.pem",
+      CURL_CA_BUNDLE: "/tmp/curl-ca.pem",
+      SSL_CERT_FILE: "/tmp/ssl-cert.pem",
+      SSL_CERT_DIR: "/tmp/ssl-certs",
+      HTTP_PROXY: "http://proxy.example.invalid",
+      http_proxy: "http://lower-proxy.example.invalid",
+      HTTPS_PROXY: "http://secure-proxy.example.invalid",
+      https_proxy: "http://lower-secure-proxy.example.invalid",
+      ALL_PROXY: "socks5://proxy.example.invalid",
+      all_proxy: "socks5://lower-proxy.example.invalid",
+      NO_PROXY: "169.254.169.254",
+      no_proxy: "localhost",
       aws_ignore_configured_endpoint_urls: "false"
     };
     const aws = createAwsCli({
@@ -83,26 +592,23 @@ describe("AWS CLI adapter", () => {
 
     await aws.text(["configure", "list"]);
 
-    expect(observedEnvironment.PATH).toBe("/usr/bin");
-    expect(observedEnvironment.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS).toBe("true");
-    expect(observedEnvironment.AWS_EC2_METADATA_DISABLED).toBe("true");
-    expect(Object.keys(observedEnvironment).filter((key) => (
-      key.toUpperCase() === "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"
-    ))).toEqual(["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"]);
-    expect(Object.keys(observedEnvironment).some((key) => (
-      (key.toUpperCase().startsWith("AWS_")
-        && key.toUpperCase().includes("ENDPOINT")
-        && key !== "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS")
-      || key.toUpperCase() === "AWS_CA_BUNDLE"
-      || [
-        "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-        "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_CONFIG_FILE",
-        "AWS_SHARED_CREDENTIALS_FILE", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_ARN"
-      ].includes(key)
-    ))).toBe(false);
+    expect(observedEnvironment).toEqual({
+      AWS_CLI_AUTO_PROMPT: "off",
+      AWS_CLI_HISTORY_FILE: "/dev/null",
+      AWS_CONFIG_FILE: "/dev/null",
+      AWS_DATA_PATH: "/nonexistent/needo-aws-cli-models",
+      AWS_EC2_METADATA_DISABLED: "true",
+      AWS_IGNORE_CONFIGURED_ENDPOINT_URLS: "true",
+      AWS_PAGER: "",
+      AWS_SHARED_CREDENTIALS_FILE: "/dev/null",
+      HOME: "/nonexistent/needo-aws-cli-home",
+      LANG: "C",
+      LC_ALL: "C"
+    });
   });
 
   it("freezes one exported temporary credential tuple for every operation", async () => {
+    const fixture = await createLoginFixture();
     const temporaryCredentials = {
       Version: 1,
       AccessKeyId: ["AS", "IA", "A".repeat(16)].join(""),
@@ -112,6 +618,10 @@ describe("AWS CLI adapter", () => {
     };
     const operationEnvironments = [];
     const execFileImpl = vi.fn((_file, args, options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
       if (args[0] === "configure" && args[1] === "list") {
         callback(null, [
           "NAME       : VALUE                    : TYPE             : LOCATION",
@@ -132,10 +642,12 @@ describe("AWS CLI adapter", () => {
       region: "ap-northeast-1",
       execFileImpl,
       environment: {
-        PATH: "/usr/bin",
+        ...fixture.environment,
         AWS_ENDPOINT_URL_STS: "https://sts.example.invalid",
         AWS_PROFILE: "foreign"
       },
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
       now: () => Date.parse("2029-01-01T00:00:00.000Z")
     });
 
@@ -143,7 +655,7 @@ describe("AWS CLI adapter", () => {
     await aws.json(["sts", "get-caller-identity"]);
     await aws.json(["ec2", "describe-images"]);
 
-    expect(execFileImpl).toHaveBeenCalledTimes(4);
+    expect(execFileImpl).toHaveBeenCalledTimes(5);
     expect(operationEnvironments).toHaveLength(2);
     expect(operationEnvironments.every((value) => (
       Boolean(value.AWS_ACCESS_KEY_ID)
@@ -159,9 +671,10 @@ describe("AWS CLI adapter", () => {
       value.AWS_SESSION_TOKEN
     ].join("\0"));
     expect(new Set(fingerprints).size).toBe(1);
-    expect(Reflect.ownKeys(aws).sort()).toEqual(["json", "text"]);
-    expect(execFileImpl.mock.calls.slice(2).every(([, args]) => !args.includes("--profile")))
+    expect(Reflect.ownKeys(aws).sort()).toEqual(["dispose", "json", "text"]);
+    expect(execFileImpl.mock.calls.slice(3).every(([, args]) => !args.includes("--profile")))
       .toBe(true);
+    await aws.dispose();
   });
 
   it("adds the named profile/region and parses JSON without a shell", async () => {
@@ -177,7 +690,7 @@ describe("AWS CLI adapter", () => {
       Account: "123456789012"
     });
     expect(execFileImpl).toHaveBeenCalledWith(
-      "aws",
+      TEST_AWS_EXECUTABLE,
       [
         "sts", "get-caller-identity",
         "--profile", "needo-staging-deployer",
@@ -210,7 +723,7 @@ describe("AWS CLI adapter", () => {
     const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
     await expect(aws.text(["configure", "list"])).resolves.toBe("profile p");
     expect(execFileImpl).toHaveBeenCalledWith(
-      "aws",
+      TEST_AWS_EXECUTABLE,
       ["configure", "list", "--profile", "p", "--region", "ap-northeast-1", "--output", "text", "--no-cli-pager"],
       expect.objectContaining({ shell: false }),
       expect.any(Function)
@@ -292,7 +805,7 @@ describe("AWS CLI adapter", () => {
     const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
     await expect(aws.text(["secretsmanager", "describe-secret", "--secret-id", "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:staging"])).resolves.toBe("Secret metadata");
     expect(execFileImpl).toHaveBeenCalledWith(
-      "aws",
+      TEST_AWS_EXECUTABLE,
       [
         "secretsmanager", "describe-secret", "--secret-id", "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:staging",
         "--profile", "p", "--region", "ap-northeast-1", "--output", "text", "--no-cli-pager"

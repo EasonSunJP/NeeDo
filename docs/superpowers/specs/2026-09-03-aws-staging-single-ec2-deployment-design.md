@@ -1,5 +1,7 @@
 # NeeDo AWS Staging 单 EC2 部署设计
 
+> **后续方案取代说明：** 本文保留的是最初东京 / JPY 设计历史。若目标区域、凭证解析或预算控制与本文冲突，以后续批准的 [AWS Staging 双区域设计](./2026-09-04-aws-staging-dual-region-design.md) 和 [environment-only 最终安全修订](../plans/2026-09-03-aws-staging-environment-only.md) 为准：个人账号 live 目标为悉尼 `ap-southeast-2`，当前 gate 只接受 AWS CLI v2 `login`，未来公司账号的 SSO / assume-role 解析必须另做安全微步骤，目标区域仍为东京 `ap-northeast-1`，悉尼 live 预算使用操作员明确批准的金额和 `USD` 计费单位。
+
 ## 1. 文件状态
 
 - 日期：2026-09-03
@@ -73,7 +75,11 @@ The instance uses an IAM instance profile and outbound HTTPS to reach Systems Ma
 
 ### 5.2 Access and IAM
 
-Human deployment access uses AWS CLI with IAM Identity Center/SSO or another approved short-lived credential flow. Root credentials and long-lived IAM access keys are forbidden for routine work.
+For the current personal-stage gate, human deployment access uses the approved
+AWS CLI v2 `login` profile only. IAM Identity Center/SSO or named assume-role
+support for a later company account requires the separate final-security
+follow-up described in the supersession banner. Root credentials and long-lived
+IAM access keys are forbidden for routine work.
 
 The EC2 instance role is least privilege and limited to:
 

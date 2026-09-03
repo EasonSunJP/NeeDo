@@ -23,6 +23,22 @@
 > policies are retained with their buckets. No create-or-update behavior is
 > authorized by this environment-only plan.
 
+> **2026-09-04 CLI isolation follow-up:** Before credentials are available, the
+> wrapper ignores `PATH`, searches only fixed canonical-user/system install
+> roots, resolves, validates, fingerprints (metadata plus SHA-256), and attests
+> one absolute AWS CLI v2 `2.32.0+` executable, then revalidates only that path
+> before every invocation. The named `login` profile is
+> reduced to its single non-secret `login_session` in a wrapper-owned private
+> resolver config; only that resolver can access the canonical login cache.
+> Resolver and frozen phases receive explicit environment allowlists, private
+> empty config/credential/model state, and `cli_history = disabled`; frozen
+> operations receive neither `PATH` nor login-cache, proxy, CA/trust, HOME,
+> model, history, profile, or default-config inheritance. Exported credentials
+> remain only in memory and the private state is disposed in `finally`.
+> The personal gate rejects `sso`, `assume-role`, and `custom-process`; later
+> company-profile resolution is a separate blocked-until-profile microstep and
+> personal evidence is not reusable.
+
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.

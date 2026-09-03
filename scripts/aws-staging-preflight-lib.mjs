@@ -5,12 +5,7 @@ import { requireAwsStagingHostname } from "./aws-staging-config.mjs";
 const AMI_PARAMETER_NAME = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64";
 const AMAZON_AMI_OWNER_ID = "137112412989";
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
-const TEMPORARY_CREDENTIAL_TYPES = new Set([
-  "sso",
-  "assume-role",
-  "custom-process",
-  "login"
-]);
+const TEMPORARY_CREDENTIAL_TYPES = new Set(["login"]);
 
 function requireTemporaryCredentialSource(configureList) {
   const rows = String(configureList)
@@ -25,7 +20,7 @@ function requireTemporaryCredentialSource(configureList) {
   if (!TEMPORARY_CREDENTIAL_TYPES.has(accessType)
     || !TEMPORARY_CREDENTIAL_TYPES.has(secretType)
     || accessType !== secretType) {
-    throw new Error("AWS configure list credential TYPE must be the same temporary provider");
+    throw new Error("AWS configure list credential TYPE must be login for this personal-stage gate");
   }
 }
 

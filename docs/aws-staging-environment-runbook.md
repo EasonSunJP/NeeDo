@@ -25,7 +25,10 @@ are deliberately deferred until their separate microstep is approved.
   succeed. Do not retry Tokyo or attempt to bypass that policy in the personal
   account.
 - A later company account needs a new exact account-ID/role preflight; this
-  personal-account evidence is not transferable proof.
+  personal-account evidence is not transferable proof. The current hardened
+  credential resolver is deliberately `login`-only; SSO and named assume-role
+  resolution for the later company profile is a separate blocked-until-profile
+  security microstep.
 - Public DNS was rechecked on 2026-09-04: both the `needo.life` NS query and
   the `staging.needo.life` A query returned `NXDOMAIN`. Public delegation and
   the eventual staging record are therefore not ready.
@@ -58,17 +61,54 @@ describe, and tag; SSM document, parameter, and command operations; Logs,
 CloudWatch, and SNS operations; and Budgets create, describe, and update
 operations.
 
-Each command resolves the named profile once with AWS CLI v2
-`configure export-credentials --format process`, keeps that one temporary
-credential tuple only in process memory, and uses it for preflight and every
-subsequent read or mutation in that invocation. Inherited credential, profile,
-config-file, metadata, endpoint-selection, and AWS CA-bundle overrides are
-neutralized, and configured service endpoints are ignored. The tuple is never
-logged, returned, or persisted. If it expires, restart the whole command and
-repeat preflight; do not mix credential sessions within an invocation.
+Before credential resolution, each command ignores operator `PATH` and checks
+only the canonical OS-user locations `~/.local/share/aws-cli/aws` and
+`~/.local/bin/aws`, followed by root-owned `/usr/local/bin/aws`, `/usr/bin/aws`,
+and `/opt/aws-cli/.../aws` locations. It resolves the selected executable to
+one absolute real path, requires trusted ownership plus a
+non-group/world-writable ancestor
+chain and executable regular file, captures its metadata and SHA-256 digest,
+and attests AWS CLI v2 `2.32.0` or newer. It re-stats and re-hashes that exact
+real path immediately before every resolver or frozen invocation. A changed
+path, owner, mode, parent trust boundary, metadata tuple, or digest is a hard
+stop. No machine-specific digest is embedded in the repository, and child
+processes never receive `PATH`.
+
+This check detects replacement after capture but cannot establish independent
+provenance on an already compromised same-user host. The operator remains
+responsible for installing AWS CLI v2 from the approved AWS distribution and
+for the integrity of the canonical current-user installation root.
+
+The wrapper reads the named profile only from the current OS account's
+canonical `~/.aws/config`, requires exactly one valid `login_session`, and
+copies only that non-secret pointer and the approved region into a private
+resolver config. Only the resolver receives the canonical AWS login-cache
+directory. The source config must be an owner-matched, non-symlink `0600`
+regular file; source login directories must be owner-matched, non-symlink, and
+not group/world-writable; every cache entry must be an owner-matched,
+non-symlink `0600` regular JSON file. (AWS CLI may create the cache directory as
+`0755`; credential contents remain protected by the required `0600` entry
+mode.) It runs `configure export-credentials --format process` once, keeps
+the resulting temporary credential tuple only in process memory, and uses it
+for preflight and every subsequent read or mutation in that invocation. It
+does not copy `credential_process`, SSO/role chains, endpoints, CA bundles, or
+any other source-profile/default setting.
+
+Resolver and frozen calls use wrapper-owned `0700` state with `0600` config
+and empty credential files, an empty model directory, explicit environment
+allowlists, configured endpoints ignored, IMDS disabled, and CLI history
+explicitly disabled. Inherited HOME/config/model/history paths, all proxy case
+forms, CA/trust variables, profile/default settings, and credential variables
+are absent. Frozen calls also lose access to the source login cache. The tuple
+is never logged, returned, or written to those files, and the private state is
+disposed on success or failure. If the tuple expires, restart the whole command
+and repeat preflight; do not mix credential sessions within an invocation.
 
 Do not use long-lived access keys, an SSH key, or secrets pasted into the CLI.
-The CLI profile must be named, temporary, and not `default`. If the preflight
+For this personal-stage gate, `sso`, `assume-role`, and `custom-process`
+configure-list provider types are rejected before identity or mutation; they
+must not reuse personal evidence. The CLI profile must be named, temporary, and
+not `default`. If the preflight
 reveals a forbidden caller/source, missing authority, an unexpected account,
 unsupported AWS configuration, or a hostname/DNS conflict, stop and correct
 the approved configuration before retrying.

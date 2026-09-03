@@ -1,29 +1,14 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { userInfo as systemUserInfo } from "node:os";
+import path from "node:path";
 
 const MAX_BUFFER = 4 * 1024 * 1024;
-const REMOVED_AWS_ENVIRONMENT_KEYS = new Set([
-  "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
-  "AWS_SESSION_TOKEN",
-  "AWS_SECURITY_TOKEN",
-  "AWS_CREDENTIAL_EXPIRATION",
-  "AWS_PROFILE",
-  "AWS_DEFAULT_PROFILE",
-  "AWS_CONFIG_FILE",
-  "AWS_SHARED_CREDENTIALS_FILE",
-  "AWS_WEB_IDENTITY_TOKEN_FILE",
-  "AWS_ROLE_ARN",
-  "AWS_ROLE_SESSION_NAME",
-  "AWS_CONTAINER_CREDENTIALS_FULL_URI",
-  "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
-  "AWS_CONTAINER_AUTHORIZATION_TOKEN",
-  "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
-  "AWS_LOGIN_CACHE_DIRECTORY",
-  "AWS_REGION",
-  "AWS_DEFAULT_REGION",
-  "AWS_SDK_LOAD_CONFIG",
-  "AWS_CA_BUNDLE"
-]);
+const MAX_AWS_CLI_EXECUTABLE_BYTES = 128 * 1024 * 1024;
+const PRIVATE_DIRECTORY_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
 const FORBIDDEN_ARGUMENTS = new Set([
   "getsecretvalue",
   "awssecretaccesskey",
@@ -134,30 +119,407 @@ function finalStderrLine(stderr) {
   return (lines.at(-1) ?? "unknown error").slice(0, 500);
 }
 
-function sanitizedEnvironment(environment) {
+function requireEnvironment(environment) {
   if (!environment || typeof environment !== "object" || Array.isArray(environment)) {
     throw new TypeError("AWS CLI environment must be an object");
   }
-  const sanitized = {};
-  for (const [key, value] of Object.entries(environment)) {
-    const upperKey = key.toUpperCase();
-    if (value === undefined
-      || REMOVED_AWS_ENVIRONMENT_KEYS.has(upperKey)
-      || (upperKey.startsWith("AWS_") && upperKey.includes("ENDPOINT"))) {
-      continue;
-    }
-    sanitized[key] = value;
-  }
-  sanitized.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS = "true";
-  sanitized.AWS_EC2_METADATA_DISABLED = "true";
-  return sanitized;
+  return environment;
 }
 
-function invoke(execFileImpl, profile, region, args, output, {
+function uncredentialedEnvironment() {
+  return {
+    AWS_CLI_AUTO_PROMPT: "off",
+    AWS_CLI_HISTORY_FILE: "/dev/null",
+    AWS_CONFIG_FILE: "/dev/null",
+    AWS_DATA_PATH: "/nonexistent/needo-aws-cli-models",
+    AWS_EC2_METADATA_DISABLED: "true",
+    AWS_IGNORE_CONFIGURED_ENDPOINT_URLS: "true",
+    AWS_PAGER: "",
+    AWS_SHARED_CREDENTIALS_FILE: "/dev/null",
+    HOME: "/nonexistent/needo-aws-cli-home",
+    LANG: "C",
+    LC_ALL: "C"
+  };
+}
+
+function requireSafeProfile(profile) {
+  if (typeof profile !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(profile)) {
+    throw new Error("AWS CLI profile name is invalid");
+  }
+  return profile;
+}
+
+function requireSafeRegion(region) {
+  if (typeof region !== "string" || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(region)) {
+    throw new Error("AWS CLI region is invalid");
+  }
+  return region;
+}
+
+function extractLoginSession(configText, profile) {
+  const targetSection = profile === "default" ? "default" : `profile ${profile}`;
+  let currentSection;
+  let targetSections = 0;
+  const loginSessions = [];
+
+  for (const rawLine of String(configText).split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
+    const section = /^\[([^\]\r\n]+)\]$/.exec(trimmed);
+    if (section) {
+      currentSection = section[1];
+      if (currentSection === targetSection) targetSections += 1;
+      continue;
+    }
+    if (currentSection !== targetSection) continue;
+    if (/^\s/.test(rawLine)) {
+      throw new Error("AWS CLI login profile contains an unsupported continuation");
+    }
+    const assignment = /^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(rawLine);
+    if (!assignment) throw new Error("AWS CLI login profile is malformed");
+    if (assignment[1].toLowerCase() === "login_session") {
+      loginSessions.push(assignment[2]);
+    }
+  }
+
+  if (targetSections !== 1 || loginSessions.length !== 1) {
+    throw new Error("AWS CLI profile must contain exactly one login_session");
+  }
+  const [loginSession] = loginSessions;
+  if (!/^arn:(?:aws|aws-us-gov|aws-cn):sts::\d{12}:assumed-role\/[A-Za-z0-9+=,.@_-]{1,64}\/[A-Za-z0-9+=,.@_-]{1,64}$/.test(loginSession)) {
+    throw new Error("AWS CLI login_session is invalid");
+  }
+  return loginSession;
+}
+
+async function requireOwnedSourcePath(candidate, expectedType, label, expectedUid, {
+  exactMode
+} = {}) {
+  const metadata = await fs.lstat(candidate);
+  const isExpectedType = expectedType === "file" ? metadata.isFile() : metadata.isDirectory();
+  const actualMode = metadata.mode & 0o777;
+  if (metadata.isSymbolicLink()
+    || !isExpectedType
+    || metadata.uid !== expectedUid
+    || (exactMode === undefined && (actualMode & 0o022) !== 0)
+    || (exactMode !== undefined && actualMode !== exactMode)) {
+    const modeRequirement = exactMode === undefined
+      ? "owner-controlled and not group/world-writable"
+      : `${exactMode.toString(8).padStart(4, "0")}`;
+    throw new Error(`${label} must be an owner-controlled ${expectedType} with mode ${modeRequirement}`);
+  }
+  return fs.realpath(candidate);
+}
+
+async function requirePrivateLoginCacheEntries(loginCache, expectedUid) {
+  const entries = await fs.readdir(loginCache);
+  for (const entry of entries) {
+    if (!/^[a-f0-9]{64}\.json$/.test(entry)) {
+      throw new Error("AWS CLI login cache entry must be a regular owner-controlled 0600 file");
+    }
+    await requireOwnedSourcePath(
+      path.join(loginCache, entry),
+      "file",
+      "AWS CLI login cache entry",
+      expectedUid,
+      { exactMode: PRIVATE_FILE_MODE }
+    );
+  }
+}
+
+async function createPrivateAwsCliState({
+  profile,
+  region,
+  temporaryRoot,
+  userInfoImpl
+}) {
+  const canonicalTemporaryRoot = await fs.realpath(temporaryRoot);
+  let root;
+  try {
+    root = await fs.mkdtemp(path.join(canonicalTemporaryRoot, "needo-aws-cli-"));
+    await fs.chmod(root, PRIVATE_DIRECTORY_MODE);
+    const home = path.join(root, "home");
+    const models = path.join(root, "models");
+    const credentialsFile = path.join(root, "credentials");
+    const resolverConfigFile = path.join(root, "resolver-config");
+    const frozenConfigFile = path.join(root, "frozen-config");
+    const historyFile = path.join(root, "history-disabled.db");
+    await Promise.all([
+      fs.mkdir(home, { mode: PRIVATE_DIRECTORY_MODE }),
+      fs.mkdir(models, { mode: PRIVATE_DIRECTORY_MODE })
+    ]);
+
+    const user = userInfoImpl();
+    const sourceHome = user?.homedir;
+    const expectedUid = user?.uid;
+    if (typeof sourceHome !== "string"
+      || !path.isAbsolute(sourceHome)
+      || !Number.isSafeInteger(expectedUid)
+      || expectedUid < 0) {
+      throw new Error("AWS CLI source home is invalid");
+    }
+    const canonicalSourceHome = await fs.realpath(sourceHome);
+    const sourceAwsDirectory = await requireOwnedSourcePath(
+      path.join(canonicalSourceHome, ".aws"),
+      "directory",
+      "AWS CLI source directory",
+      expectedUid
+    );
+    const sourceLoginDirectory = await requireOwnedSourcePath(
+      path.join(sourceAwsDirectory, "login"),
+      "directory",
+      "AWS CLI source login directory",
+      expectedUid
+    );
+    const sourceConfigFile = await requireOwnedSourcePath(
+      path.join(sourceAwsDirectory, "config"),
+      "file",
+      "AWS CLI source config",
+      expectedUid,
+      { exactMode: PRIVATE_FILE_MODE }
+    );
+    const sourceLoginCache = await requireOwnedSourcePath(
+      path.join(sourceLoginDirectory, "cache"),
+      "directory",
+      "AWS CLI login cache",
+      expectedUid
+    );
+    await requirePrivateLoginCacheEntries(sourceLoginCache, expectedUid);
+    const sourceConfig = await fs.readFile(sourceConfigFile, "utf8");
+    const loginSession = extractLoginSession(sourceConfig, profile);
+    const profileHeader = profile === "default" ? "default" : `profile ${profile}`;
+    const resolverConfig = [
+      `[${profileHeader}]`,
+      `login_session = ${loginSession}`,
+      `region = ${region}`,
+      "cli_history = disabled",
+      ""
+    ].join("\n");
+    const frozenConfig = [
+      "[default]",
+      `region = ${region}`,
+      "cli_history = disabled",
+      ""
+    ].join("\n");
+    await Promise.all([
+      fs.writeFile(credentialsFile, "", { mode: PRIVATE_FILE_MODE, flag: "wx" }),
+      fs.writeFile(resolverConfigFile, resolverConfig, { mode: PRIVATE_FILE_MODE, flag: "wx" }),
+      fs.writeFile(frozenConfigFile, frozenConfig, { mode: PRIVATE_FILE_MODE, flag: "wx" })
+    ]);
+    await Promise.all([
+      fs.chmod(home, PRIVATE_DIRECTORY_MODE),
+      fs.chmod(models, PRIVATE_DIRECTORY_MODE),
+      fs.chmod(credentialsFile, PRIVATE_FILE_MODE),
+      fs.chmod(resolverConfigFile, PRIVATE_FILE_MODE),
+      fs.chmod(frozenConfigFile, PRIVATE_FILE_MODE)
+    ]);
+
+    const commonEnvironment = {
+      ...uncredentialedEnvironment(),
+      HOME: home,
+      AWS_SHARED_CREDENTIALS_FILE: credentialsFile,
+      AWS_DATA_PATH: models,
+      AWS_CLI_HISTORY_FILE: historyFile
+    };
+    let disposePromise;
+    return {
+      root,
+      attestationEnvironment: {
+        ...commonEnvironment,
+        AWS_CONFIG_FILE: frozenConfigFile
+      },
+      resolverEnvironment: {
+        ...commonEnvironment,
+        AWS_CONFIG_FILE: resolverConfigFile,
+        AWS_LOGIN_CACHE_DIRECTORY: sourceLoginCache
+      },
+      frozenEnvironment: {
+        ...commonEnvironment,
+        AWS_CONFIG_FILE: frozenConfigFile
+      },
+      dispose() {
+        disposePromise ??= fs.rm(root, { recursive: true, force: true });
+        return disposePromise;
+      }
+    };
+  } catch (error) {
+    if (root) await fs.rm(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function requireAbsoluteExecutablePath(executablePath) {
+  if (typeof executablePath !== "string" || !path.isAbsolute(executablePath)) {
+    throw new Error("AWS CLI executable path must be absolute");
+  }
+  return executablePath;
+}
+
+function isPathWithin(candidate, root) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+}
+
+async function requireTrustedDirectoryChain(directory, trustRoot, expectedUid, systemOwned) {
+  let current = directory;
+  for (;;) {
+    const metadata = await fs.stat(current, { bigint: true });
+    const ownerIsTrusted = systemOwned
+      ? metadata.uid === 0n
+      : metadata.uid === BigInt(expectedUid) || metadata.uid === 0n;
+    if (!metadata.isDirectory() || !ownerIsTrusted || (metadata.mode & 0o022n) !== 0n) {
+      throw new Error("AWS CLI executable directory trust check failed");
+    }
+    if (current === trustRoot) return;
+    const parent = path.dirname(current);
+    if (parent === current || !isPathWithin(parent, trustRoot)) {
+      throw new Error("AWS CLI executable escaped its approved install root");
+    }
+    current = parent;
+  }
+}
+
+function sameExecutableMetadata(left, right) {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.mode === right.mode
+    && left.uid === right.uid
+    && left.gid === right.gid
+    && left.size === right.size
+    && left.mtimeNs === right.mtimeNs
+    && left.ctimeNs === right.ctimeNs;
+}
+
+async function readExecutableFingerprint(resolved, expectedUid, systemOwned) {
+  const before = await fs.stat(resolved, { bigint: true });
+  const ownerIsTrusted = systemOwned
+    ? before.uid === 0n
+    : before.uid === BigInt(expectedUid) || before.uid === 0n;
+  if (!before.isFile()
+    || !ownerIsTrusted
+    || (before.mode & 0o022n) !== 0n
+    || before.size <= 0n
+    || before.size > BigInt(MAX_AWS_CLI_EXECUTABLE_BYTES)) {
+    throw new Error("AWS CLI executable trust check failed");
+  }
+  await fs.access(resolved, fsConstants.X_OK);
+  const digest = createHash("sha256").update(await fs.readFile(resolved)).digest("hex");
+  const after = await fs.stat(resolved, { bigint: true });
+  if (!sameExecutableMetadata(before, after)) {
+    throw new Error("AWS CLI executable changed while it was inspected");
+  }
+  return Object.freeze({
+    path: resolved,
+    expectedUid,
+    systemOwned,
+    metadata: before,
+    digest
+  });
+}
+
+async function inspectApprovedAwsCliCandidate({ candidate, trustRoot, expectedUid, systemOwned }) {
+  const canonicalTrustRoot = await fs.realpath(trustRoot);
+  const resolved = await fs.realpath(candidate);
+  if (!isPathWithin(resolved, canonicalTrustRoot)) {
+    throw new Error("AWS CLI executable escaped its approved install root");
+  }
+  await requireTrustedDirectoryChain(
+    path.dirname(resolved),
+    canonicalTrustRoot,
+    expectedUid,
+    systemOwned
+  );
+  const fingerprint = await readExecutableFingerprint(resolved, expectedUid, systemOwned);
+  return Object.freeze({ ...fingerprint, trustRoot: canonicalTrustRoot });
+}
+
+async function resolveAwsCliExecutable({ homedir, uid }) {
+  const canonicalHome = await fs.realpath(homedir);
+  const candidates = [
+    {
+      candidate: path.join(canonicalHome, ".local", "share", "aws-cli", "aws"),
+      trustRoot: canonicalHome,
+      expectedUid: uid,
+      systemOwned: false
+    },
+    {
+      candidate: path.join(canonicalHome, ".local", "bin", "aws"),
+      trustRoot: canonicalHome,
+      expectedUid: uid,
+      systemOwned: false
+    },
+    { candidate: "/usr/local/bin/aws", trustRoot: "/usr/local", expectedUid: uid, systemOwned: true },
+    { candidate: "/usr/bin/aws", trustRoot: "/usr", expectedUid: uid, systemOwned: true },
+    { candidate: "/opt/aws-cli/bin/aws", trustRoot: "/opt/aws-cli", expectedUid: uid, systemOwned: true },
+    { candidate: "/opt/aws-cli/v2/current/bin/aws", trustRoot: "/opt/aws-cli", expectedUid: uid, systemOwned: true }
+  ];
+  for (const candidate of candidates) {
+    try {
+      return await inspectApprovedAwsCliCandidate(candidate);
+    } catch {
+      // Keep searching only the fixed approved installation roots.
+    }
+  }
+  throw new Error("Trusted AWS CLI v2 executable was not found in approved install roots");
+}
+
+async function verifyAwsCliExecutable(fingerprint) {
+  let current;
+  try {
+    if (await fs.realpath(fingerprint.path) !== fingerprint.path) throw new Error();
+    await requireTrustedDirectoryChain(
+      path.dirname(fingerprint.path),
+      fingerprint.trustRoot,
+      fingerprint.expectedUid,
+      fingerprint.systemOwned
+    );
+    current = await readExecutableFingerprint(
+      fingerprint.path,
+      fingerprint.expectedUid,
+      fingerprint.systemOwned
+    );
+  } catch {
+    throw new Error("Trusted AWS CLI executable changed after attestation");
+  }
+  if (!sameExecutableMetadata(fingerprint.metadata, current.metadata)
+    || fingerprint.digest !== current.digest) {
+    throw new Error("Trusted AWS CLI executable changed after attestation");
+  }
+}
+
+async function attestAwsCliV2(execFileImpl, fingerprint, environment) {
+  await verifyAwsCliExecutable(fingerprint);
+  const executablePath = fingerprint.path;
+  return new Promise((resolve, reject) => {
+    execFileImpl(
+      executablePath,
+      ["--version"],
+      { shell: false, maxBuffer: MAX_BUFFER, env: environment },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error("AWS CLI v2.32 or newer is required"));
+          return;
+        }
+        const version = /(?:^|\s)aws-cli\/(2)\.(\d+)\.(\d+)(?:\s|$)/.exec(
+          `${String(stdout ?? "")} ${String(stderr ?? "")}`
+        );
+        if (!version || Number(version[2]) < 32) {
+          reject(new Error("AWS CLI v2.32 or newer is required"));
+          return;
+        }
+        resolve();
+      }
+    );
+  });
+}
+
+function invoke(execFileImpl, executablePath, profile, region, args, output, {
   environment,
   includeProfile = true,
   credentialExpiresAt,
-  now = Date.now
+  now = Date.now,
+  verifyExecutable
 }) {
   assertSafeArguments(args);
   assertAllowedOperation(args);
@@ -172,9 +534,11 @@ function invoke(execFileImpl, profile, region, args, output, {
     "--no-cli-pager"
   ];
 
-  return new Promise((resolve, reject) => {
+  return Promise.resolve()
+    .then(() => verifyExecutable?.())
+    .then(() => new Promise((resolve, reject) => {
     execFileImpl(
-      "aws",
+      executablePath,
       fullArgs,
       { shell: false, maxBuffer: MAX_BUFFER, env: environment },
       (error, stdout, stderr) => {
@@ -186,7 +550,7 @@ function invoke(execFileImpl, profile, region, args, output, {
         resolve({ stdout: String(stdout ?? "") });
       }
     );
-  });
+    }));
 }
 
 function requireExportedTemporaryCredentials(rawCredentials, now) {
@@ -212,25 +576,42 @@ function requireExportedTemporaryCredentials(rawCredentials, now) {
   return Object.freeze({ accessKeyId, secretAccessKey, sessionToken, expiresAt });
 }
 
-function invokeCredentialResolver(execFileImpl, args, environment) {
+function credentialResolverFailure() {
+  const error = new Error("AWS CLI credential resolution failed");
+  error.code = "AWS_CLI_CREDENTIAL_RESOLUTION_FAILED";
+  return error;
+}
+
+async function invokeCredentialResolver(
+  execFileImpl,
+  executablePath,
+  args,
+  environment,
+  verifyExecutable
+) {
+  await verifyExecutable();
   return new Promise((resolve, reject) => {
-    execFileImpl(
-      "aws",
-      args,
-      { shell: false, maxBuffer: MAX_BUFFER, env: environment },
-      (error, stdout, stderr) => {
-        if (error) {
-          const code = error.code ?? "unknown";
-          reject(new Error(`AWS CLI credential resolution failed (${code}): ${finalStderrLine(stderr)}`));
-          return;
+    try {
+      execFileImpl(
+        executablePath,
+        args,
+        { shell: false, maxBuffer: MAX_BUFFER, env: environment },
+        (error, stdout) => {
+          if (error) {
+            reject(credentialResolverFailure());
+            return;
+          }
+          resolve(String(stdout ?? ""));
         }
-        resolve(String(stdout ?? ""));
-      }
-    );
+      );
+    } catch {
+      reject(credentialResolverFailure());
+    }
   });
 }
 
 function createAwsCliInternal({
+  executablePath,
   profile,
   region,
   execFileImpl,
@@ -238,18 +619,27 @@ function createAwsCliInternal({
   includeProfile,
   configureListOutput,
   credentialExpiresAt,
-  now
+  now,
+  dispose,
+  isDisposed = () => false,
+  verifyExecutable
 }) {
-  return Object.freeze({
+  function requireActive() {
+    if (isDisposed()) throw new Error("The frozen AWS CLI adapter has been disposed");
+  }
+  const adapter = {
     json(args) {
-      return invoke(execFileImpl, profile, region, args, "json", {
+      requireActive();
+      return invoke(execFileImpl, executablePath, profile, region, args, "json", {
         environment,
         includeProfile,
         credentialExpiresAt,
-        now
+        now,
+        verifyExecutable
       }).then(({ stdout }) => JSON.parse(stdout));
     },
     text(args) {
+      requireActive();
       assertSafeArguments(args);
       assertAllowedOperation(args);
       if (configureListOutput !== undefined
@@ -258,27 +648,33 @@ function createAwsCliInternal({
         && args[1] === "list") {
         return Promise.resolve(configureListOutput.trim());
       }
-      return invoke(execFileImpl, profile, region, args, "text", {
+      return invoke(execFileImpl, executablePath, profile, region, args, "text", {
         environment,
         includeProfile,
         credentialExpiresAt,
-        now
+        now,
+        verifyExecutable
       }).then(({ stdout }) => stdout.trim());
     }
-  });
+  };
+  if (dispose) adapter.dispose = dispose;
+  return Object.freeze(adapter);
 }
 
 export function createAwsCli({
   profile,
   region,
+  executablePath,
   execFileImpl = execFile,
   environment = process.env
 }) {
+  requireEnvironment(environment);
   return createAwsCliInternal({
-    profile,
-    region,
+    executablePath: requireAbsoluteExecutablePath(executablePath),
+    profile: requireSafeProfile(profile),
+    region: requireSafeRegion(region),
     execFileImpl,
-    environment: sanitizedEnvironment(environment),
+    environment: uncredentialedEnvironment(),
     includeProfile: true
   });
 }
@@ -288,37 +684,81 @@ export async function createFrozenAwsCli({
   region,
   execFileImpl = execFile,
   environment = process.env,
-  now = Date.now
+  now = Date.now,
+  temporaryRoot = "/tmp",
+  userInfoImpl = systemUserInfo
 }) {
-  const resolverEnvironment = sanitizedEnvironment(environment);
-  const configureListOutput = await invokeCredentialResolver(execFileImpl, [
-    "configure", "list",
-    "--profile", profile,
-    "--region", region,
-    "--output", "text",
-    "--no-cli-pager"
-  ], resolverEnvironment);
-  const exported = await invokeCredentialResolver(execFileImpl, [
-    "configure", "export-credentials",
-    "--profile", profile,
-    "--format", "process",
-    "--no-cli-pager"
-  ], resolverEnvironment);
-  const credentials = requireExportedTemporaryCredentials(exported, now);
-  const lockedEnvironment = {
-    ...resolverEnvironment,
-    AWS_ACCESS_KEY_ID: credentials.accessKeyId,
-    AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
-    AWS_SESSION_TOKEN: credentials.sessionToken
-  };
-  return createAwsCliInternal({
-    profile,
-    region,
-    execFileImpl,
-    environment: lockedEnvironment,
-    includeProfile: false,
-    configureListOutput,
-    credentialExpiresAt: credentials.expiresAt,
-    now
+  requireEnvironment(environment);
+  const safeProfile = requireSafeProfile(profile);
+  const safeRegion = requireSafeRegion(region);
+  const user = userInfoImpl();
+  if (!user
+    || typeof user.homedir !== "string"
+    || !path.isAbsolute(user.homedir)
+    || !Number.isSafeInteger(user.uid)
+    || user.uid < 0) {
+    throw new Error("AWS CLI OS user identity is invalid");
+  }
+  const executable = await resolveAwsCliExecutable(user);
+  const executablePath = executable.path;
+  const verifyExecutable = () => verifyAwsCliExecutable(executable);
+  const state = await createPrivateAwsCliState({
+    profile: safeProfile,
+    region: safeRegion,
+    temporaryRoot,
+    userInfoImpl: () => user
   });
+  try {
+    await attestAwsCliV2(
+      execFileImpl,
+      executable,
+      state.attestationEnvironment
+    );
+    const configureListOutput = await invokeCredentialResolver(execFileImpl, executablePath, [
+      "configure", "list",
+      "--profile", safeProfile,
+      "--region", safeRegion,
+      "--output", "text",
+      "--no-cli-pager"
+    ], state.resolverEnvironment, verifyExecutable);
+    const exported = await invokeCredentialResolver(execFileImpl, executablePath, [
+      "configure", "export-credentials",
+      "--profile", safeProfile,
+      "--format", "process",
+      "--no-cli-pager"
+    ], state.resolverEnvironment, verifyExecutable);
+    const credentials = requireExportedTemporaryCredentials(exported, now);
+    const lockedEnvironment = {
+      ...state.frozenEnvironment,
+      AWS_ACCESS_KEY_ID: credentials.accessKeyId,
+      AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
+      AWS_SESSION_TOKEN: credentials.sessionToken
+    };
+    let disposed = false;
+    const dispose = async () => {
+      if (disposed) return;
+      disposed = true;
+      delete lockedEnvironment.AWS_ACCESS_KEY_ID;
+      delete lockedEnvironment.AWS_SECRET_ACCESS_KEY;
+      delete lockedEnvironment.AWS_SESSION_TOKEN;
+      await state.dispose();
+    };
+    return createAwsCliInternal({
+      executablePath,
+      profile: safeProfile,
+      region: safeRegion,
+      execFileImpl,
+      environment: lockedEnvironment,
+      includeProfile: false,
+      configureListOutput,
+      credentialExpiresAt: credentials.expiresAt,
+      now,
+      dispose,
+      isDisposed: () => disposed,
+      verifyExecutable
+    });
+  } catch (error) {
+    await state.dispose();
+    throw error;
+  }
 }

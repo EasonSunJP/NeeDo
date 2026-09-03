@@ -2,9 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-09-04 final security supersession (`批准最终安全修订`):** The immediate
+> personal-account gate is `login`-only. Earlier steps below that accepted
+> `sso`, `assume-role`, or `custom-process` are superseded. A later company
+> Tokyo profile requires a separate credential-resolver security microstep and
+> new evidence; it does not change the dual-region infrastructure contract.
+
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
 
-**Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is accepted only as a credential provider; STS must still prove an exact-account assumed-role caller.
+**Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is the only current credential provider; STS must still prove an exact-account assumed-role caller.
 
 **Tech Stack:** Node.js 22 ESM, Vitest, AWS CLI v2, AWS CloudFormation YAML, AWS STS, EC2, SSM, CloudWatch, SNS, Secrets Manager
 
@@ -14,7 +20,7 @@
 - Every command must require `--region`; there is no default and no automatic region fallback.
 - The personal-account test uses `ap-southeast-2`; the later company-account deployment uses `ap-northeast-1`.
 - The caller must use a named temporary profile and an exact-account STS assumed-role session. Root, IAM-user, federated-user, environment, and shared-credential-file callers remain forbidden.
-- AWS CLI v2 `login` is accepted only when both credential rows report exactly `login` and the STS caller passes the existing assumed-role checks.
+- AWS CLI v2 `login` is accepted only when both credential rows report exactly `login` and the STS caller passes the existing assumed-role checks. `sso`, `assume-role`, and `custom-process` remain deferred to a later company-profile security microstep and are rejected by this gate.
 - CloudFormation must receive `ExpectedRegion` and require it to equal `AWS::Region`.
 - CloudFormation must receive `ExpectedAccountId` and require it to equal `AWS::AccountId`.
 - Every ARN and evidence region must match the frozen current-run configuration; the other approved region remains a mismatch.
@@ -29,7 +35,7 @@
 
 ---
 
-### Task 1: Require an explicit approved region and accept AWS CLI login sessions
+### Task 1: Require an explicit approved region and a login-only personal gate
 
 **Files:**
 - Modify: `scripts/aws-staging-config.test.mjs`
@@ -39,7 +45,7 @@
 
 **Interfaces:**
 - Consumes: CLI flag pairs and the text output of `aws configure list`.
-- Produces: `AWS_STAGING_REGIONS`, `requireAwsStagingRegion(value)`, a frozen config containing the explicit region, and a preflight that recognizes provider type `login` without weakening STS identity checks.
+- Produces: `AWS_STAGING_REGIONS`, `requireAwsStagingRegion(value)`, a frozen config containing the explicit region, and a preflight that accepts only provider type `login` without weakening STS identity checks.
 
 - [ ] **Step 1: Add failing configuration tests for the explicit dual-region contract**
 
@@ -143,12 +149,12 @@ npm test -- --run scripts/aws-staging-config.test.mjs
 
 Expected: PASS.
 
-- [ ] **Step 5: Add a failing preflight test for the official login provider**
+- [ ] **Step 5: Add failing preflight tests for the official login-only provider boundary**
 
-In `scripts/aws-staging-preflight-lib.test.mjs`, extend the accepted-provider table exactly:
+In `scripts/aws-staging-preflight-lib.test.mjs`, make the accepted-provider table exact and add zero-AWS rejection cases for deferred providers:
 
 ```js
-it.each(["sso", "assume-role", "custom-process", "login"])(
+it.each(["login"])(
   "accepts real configure-list credential rows with TYPE %s",
   async (credentialType) => {
     const aws = successfulAws({
@@ -160,6 +166,21 @@ it.each(["sso", "assume-role", "custom-process", "login"])(
       config,
       resolveDns: async () => []
     })).resolves.toMatchObject({ callerKind: "assumed-role" });
+  }
+);
+
+it.each(["sso", "assume-role", "custom-process"])(
+  "rejects deferred company-profile provider TYPE %s before identity or mutation",
+  async (credentialType) => {
+    const aws = successfulAws({
+      configureOutput: configureList({ accessType: credentialType })
+    });
+    await expect(runAwsStagingPreflight({
+      aws,
+      config,
+      resolveDns: async () => []
+    })).rejects.toThrow(/login/i);
+    expect(aws.json).not.toHaveBeenCalled();
   }
 );
 ```
@@ -174,19 +195,14 @@ Run:
 npm test -- --run scripts/aws-staging-preflight-lib.test.mjs
 ```
 
-Expected: FAIL only for provider type `login` with the credential TYPE error.
+Expected: FAIL for the deferred provider types because the old allowlist still accepts them.
 
-- [ ] **Step 7: Implement login-provider recognition**
+- [ ] **Step 7: Implement the login-only provider boundary**
 
-In `scripts/aws-staging-preflight-lib.mjs`, change only the provider allowlist:
+In `scripts/aws-staging-preflight-lib.mjs`, make the provider allowlist exact:
 
 ```js
-const TEMPORARY_CREDENTIAL_TYPES = new Set([
-  "sso",
-  "assume-role",
-  "custom-process",
-  "login"
-]);
+const TEMPORARY_CREDENTIAL_TYPES = new Set(["login"]);
 ```
 
 Do not change `requireAssumedRole` or its account/root/IAM-user checks.
