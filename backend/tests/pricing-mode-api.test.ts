@@ -175,6 +175,12 @@ describe("pricing mode public API", () => {
       total: 2,
       list: [{ id: 11, shopId: 1 }, { id: 12, shopId: 2 }]
     });
+    expect(pricingModeRepository.listTechnicianServicesByProfile).toHaveBeenCalledWith({
+      technicianId: 3,
+      page: 1,
+      pageSize: 20,
+      activeOnly: false
+    });
 
     const reorderResponse = await request(fixture.app)
       .put("/api/v1/technicians/me/services/order")
