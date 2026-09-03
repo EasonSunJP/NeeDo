@@ -1334,6 +1334,8 @@ export const translations: TranslationMap = {
   "店铺地址：": { "zh-Hant": "店鋪地址：", ja: "店舗住所：", en: "Shop address:", ko: "매장 주소:" },
   "店铺 ID：": { "zh-Hant": "店鋪 ID：", ja: "店舗 ID：", en: "Shop ID:", ko: "매장 ID:" },
   "未读取": { "zh-Hant": "未讀取", ja: "未取得", en: "Unavailable", ko: "불러오지 못함" },
+  "时长未读取": { "zh-Hant": "時長未讀取", ja: "所要時間未取得", en: "Duration unavailable", ko: "소요 시간 불러오지 못함" },
+  "历史只读预约": { "zh-Hant": "歷史唯讀預約", ja: "過去の閲覧専用予約", en: "Read-only booking history", ko: "읽기 전용 예약 내역" },
   "暂无公开图片": { "zh-Hant": "暫無公開圖片", ja: "公開画像はありません", en: "No public image", ko: "공개 이미지 없음" },
   "暂无简介": { "zh-Hant": "暫無簡介", ja: "紹介はありません", en: "No description", ko: "소개 없음" },
   "负责人邮箱": { "zh-Hant": "負責人信箱", ja: "責任者メール", en: "Owner email", ko: "책임자 이메일" },
