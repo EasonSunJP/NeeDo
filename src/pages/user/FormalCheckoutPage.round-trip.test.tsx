@@ -9,6 +9,7 @@ import {
   type CoreServiceDetail,
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
+import { pricingModeApi } from "../../features/pricing-mode/api";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { CheckoutPage } from "./CheckoutPage";
 import { ProfileDetailPage } from "./ProfileDetailPage";
@@ -24,6 +25,16 @@ const reviewSummary = {
   reviewCount: 8,
   latestReviewAt: null,
   highlights: ["服务精神"]
+};
+
+const reviewTagSummary = {
+  special: [
+    { code: "appeal_max" as const, label: "魅力max", count: 0 },
+    { code: "service_max" as const, label: "服务max", count: 1 },
+    { code: "emotion_max" as const, label: "情绪max", count: 0 },
+    { code: "energy_max" as const, label: "元气max", count: 0 }
+  ],
+  custom: []
 };
 
 const technicianCard = {
@@ -49,6 +60,7 @@ const technicianCard = {
 
 const service: CoreServiceDetail = {
   id: 31,
+  publicId: "svc0000000031",
   name: "肩颈调理",
   description: "正式服务",
   category: {
@@ -82,6 +94,7 @@ const service: CoreServiceDetail = {
   priceAmount: "8800.00",
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 12,
   coverUrl: null,
   reviewSummary,
   serviceMode: "store",
@@ -95,7 +108,11 @@ const technicianDetail: CoreTechnicianDetail = {
   shop: service.shop,
   bio: "专业肩颈护理。",
   serviceArea: "银座",
+  gender: "female",
+  heightCm: 165,
+  languages: ["日本語", "中文"],
   yearsExperience: 5,
+  reviewTagSummary,
   mediaAssets: [],
   services: [service],
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -237,6 +254,12 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  vi.spyOn(pricingModeApi, "listPublicTechnicianServices").mockResolvedValue({
+    list: [],
+    page: 1,
+    page_size: 20,
+    total: 0
+  });
 });
 
 afterEach(async () => {
@@ -249,6 +272,7 @@ afterEach(async () => {
 
 describe("formal checkout technician-card round trip", () => {
   it("keeps the exact second same-time formal slot and existing history state across the technician-card round trip", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
     vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
@@ -307,7 +331,7 @@ describe("formal checkout technician-card round trip", () => {
     const technicianLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/17?view=card"]')!;
     await click(technicianLink);
     await waitFor(() => expect(document.body.textContent).toContain("详细信息卡"));
-    await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回结算页"]')!);
+    await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回"]')!);
 
     await waitFor(() => expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("11:30"));
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')!);
@@ -327,6 +351,7 @@ describe("formal checkout technician-card round trip", () => {
   });
 
   it("loads the selected Haruka slot technician card instead of the service-default Misaki card", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
     const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail").mockImplementation(async (id) => (
       id === 16 ? harukaDetail : technicianDetail
@@ -382,7 +407,7 @@ describe("formal checkout technician-card round trip", () => {
       expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/profiles/technician/16?view=card");
       expect(document.body.textContent).toContain("Haruka");
     });
-    await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回结算页"]')!);
+    await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回"]')!);
     await waitFor(() => expect(container.textContent).toContain("Haruka"));
 
     const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))

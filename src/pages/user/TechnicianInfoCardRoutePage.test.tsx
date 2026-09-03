@@ -26,7 +26,19 @@ const detail: CoreTechnicianDetail = {
   shop: null,
   bio: "专业肩颈护理。",
   serviceArea: "银座",
+  gender: "female",
+  heightCm: 165,
+  languages: ["日本語", "中文"],
   yearsExperience: 5,
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 1 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   mediaAssets: [],
   services: [],
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -87,7 +99,7 @@ afterEach(async () => {
 });
 
 describe("TechnicianInfoCardRoutePage", () => {
-  it("loads formal public detail and renders shared back/close controls without neutral claims", async () => {
+  it("loads formal public detail and renders the unified information card", async () => {
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(detail);
     await renderPage();
 
@@ -97,14 +109,14 @@ describe("TechnicianInfoCardRoutePage", () => {
     expect(document.body.querySelector('button[aria-label="返回结算页"]')).not.toBeNull();
     expect(document.body.querySelector('button[aria-label="关闭详细信息卡"]')).not.toBeNull();
     expect(document.body.querySelector('[aria-label="打开技师设置"]')).toBeNull();
-    expect(document.body.querySelector('[aria-label="KYC 已验证"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="KYC 已验证"]')).not.toBeNull();
     expect(document.body.textContent).not.toContain("Test NDP");
     expect(document.body.textContent).not.toContain("隐私模式");
-    expect(document.body.textContent).not.toContain("身高（cm）");
-    expect(document.body.textContent).not.toContain("语言能力");
+    expect(document.body.textContent).toContain("身高");
+    expect(document.body.textContent).toContain("语言能力");
     expect(document.body.textContent).not.toContain("接单预算");
     expect(document.body.textContent).not.toContain("支持支付方式");
-    expect(document.body.textContent).not.toContain("特殊标签");
+    expect(document.body.textContent).toContain("特殊标签");
   });
 
   it("shows loading and falls back home when close has no browser history", async () => {
@@ -188,7 +200,7 @@ describe("TechnicianInfoCardRoutePage", () => {
     });
     expect(coreReadApi.getTechnicianDetail).toHaveBeenCalledWith(18);
     expect(document.body.textContent).not.toContain("Misaki");
-    expect(document.body.textContent).toContain("正在读取技师详细信息");
+    expect(document.body.textContent).toContain("正在从正式资料服务读取技师信息");
 
     await act(async () => resolveEighteen({
       ...detail,
