@@ -44,6 +44,10 @@ Bootstrap and verify each capture the tracked template artifact at the approved 
 
 Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
 
+The guarded child executes only the read-only private Node.js copy made from the already-open, stable, SHA-256-bound source handle; before the sealed loader is registered, the runtime guard requires actual Node.js major 22 and an exact executable identity and digest match.
+
+This is data-fork execution continuity, not independent vendor-signature provenance: the copy does not preserve quarantine, ACL, or other extended metadata. The outer launcher parent still starts from the explicitly approved absolute Node path, and the existing compromised-root/same-user-host non-goal remains unchanged.
+
 ## 1. 文件状态
 
 - 日期：2026-09-03

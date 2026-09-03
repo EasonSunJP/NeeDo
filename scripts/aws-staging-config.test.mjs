@@ -282,6 +282,24 @@ esac
     }
   });
 
+  it("documents the private copied-Node execution continuity boundary", async () => {
+    const authoritativePaths = [
+      "docs/aws-staging-environment-runbook.md",
+      "docs/superpowers/plans/2026-09-03-aws-staging-environment-only.md",
+      "docs/superpowers/plans/2026-09-04-aws-staging-dual-region.md",
+      "docs/superpowers/specs/2026-09-03-aws-staging-single-ec2-deployment-design.md",
+      "docs/superpowers/specs/2026-09-04-aws-staging-dual-region-design.md"
+    ];
+    const requiredStatement = "The guarded child executes only the read-only private Node.js "
+      + "copy made from the already-open, stable, SHA-256-bound source handle; before the "
+      + "sealed loader is registered, the runtime guard requires actual Node.js major 22 and "
+      + "an exact executable identity and digest match.";
+    for (const documentPath of authoritativePaths) {
+      const contents = await fs.readFile(new URL(`../${documentPath}`, import.meta.url), "utf8");
+      expect(contents, documentPath).toContain(requiredStatement);
+    }
+  });
+
   it("forbids raw AWS and Session Manager commands in authoritative operator documents", async () => {
     const authoritativePaths = [
       "docs/aws-staging-environment-runbook.md",

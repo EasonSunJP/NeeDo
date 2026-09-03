@@ -216,6 +216,7 @@ async function captureLaunchContext(fileSystem, launchContextPath, canonicalRepo
   }
   const expectedKeys = [
     "evidenceOutputDirectory",
+    "nodeExecutable",
     "runtimeEntrypoint",
     "runtimeManifestSha256",
     "runtimeSourceRevision",
@@ -225,7 +226,7 @@ async function captureLaunchContext(fileSystem, launchContextPath, canonicalRepo
     "version"
   ];
   if (JSON.stringify(Object.keys(parsed).sort()) !== JSON.stringify(expectedKeys)
-    || parsed.version !== 1
+    || parsed.version !== 2
     || parsed.snapshotRoot !== canonicalRepositoryRoot
     || typeof parsed.sourceRepositoryRoot !== "string"
     || !path.isAbsolute(parsed.sourceRepositoryRoot)
@@ -238,6 +239,39 @@ async function captureLaunchContext(fileSystem, launchContextPath, canonicalRepo
     || !/^[0-9a-f]{64}$/.test(parsed.runtimeManifestSha256)
     || !AWS_STAGING_ENTRYPOINTS.has(parsed.runtimeEntrypoint)) {
     throw new Error("AWS Staging runtime launch context is invalid");
+  }
+  const nodeExecutable = parsed.nodeExecutable;
+  const expectedNodeKeys = ["byteLength", "identity", "relativePath", "sha256"];
+  const expectedNodeIdentityKeys = [
+    "changedNanoseconds",
+    "device",
+    "group",
+    "inode",
+    "links",
+    "mode",
+    "modifiedNanoseconds",
+    "owner",
+    "size"
+  ];
+  if (!nodeExecutable
+    || typeof nodeExecutable !== "object"
+    || JSON.stringify(Object.keys(nodeExecutable).sort()) !== JSON.stringify(expectedNodeKeys)
+    || nodeExecutable.relativePath !== ".needo-node"
+    || !Number.isSafeInteger(nodeExecutable.byteLength)
+    || nodeExecutable.byteLength <= 0
+    || nodeExecutable.byteLength > 512 * 1024 * 1024
+    || !/^[0-9a-f]{64}$/.test(nodeExecutable.sha256)
+    || !nodeExecutable.identity
+    || typeof nodeExecutable.identity !== "object"
+    || JSON.stringify(Object.keys(nodeExecutable.identity).sort())
+      !== JSON.stringify(expectedNodeIdentityKeys)
+    || !["changedNanoseconds", "device", "group", "inode", "modifiedNanoseconds", "owner", "size"]
+      .every((key) => typeof nodeExecutable.identity[key] === "string"
+        && /^\d+$/.test(nodeExecutable.identity[key]))
+    || nodeExecutable.identity.links !== "1"
+    || nodeExecutable.identity.mode !== 0o500
+    || nodeExecutable.identity.size !== String(nodeExecutable.byteLength)) {
+    throw new Error("AWS Staging runtime sealed Node executable context is invalid");
   }
   const canonicalSourceRoot = await fileSystem.realpath(parsed.sourceRepositoryRoot);
   if (canonicalSourceRoot !== parsed.sourceRepositoryRoot) {
@@ -271,6 +305,10 @@ async function captureLaunchContext(fileSystem, launchContextPath, canonicalRepo
     bytes: current.bytes,
     evidenceOutputDirectory: parsed.evidenceOutputDirectory,
     identity: current.identity,
+    nodeExecutable: Object.freeze({
+      ...nodeExecutable,
+      identity: Object.freeze({ ...nodeExecutable.identity })
+    }),
     runtimeEntrypoint: parsed.runtimeEntrypoint,
     runtimeManifestSha256: parsed.runtimeManifestSha256,
     runtimeSourceRevision: parsed.runtimeSourceRevision,

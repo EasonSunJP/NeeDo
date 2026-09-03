@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const FULL_GIT_REVISION = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const TEMPLATE_REPOSITORY_PATH = "deploy/aws-staging/cloudformation.yml";
 const LAUNCH_CONTEXT_NAME = ".needo-aws-staging-launch-context.json";
+const PRIVATE_NODE_EXECUTABLE_NAME = ".needo-node";
 const MAX_NODE_EXECUTABLE_BYTES = 512 * 1024 * 1024;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const SEALED_DIRECTORY_MODE = 0o500;
@@ -210,25 +211,26 @@ export function requireAwsStagingStaticModuleClosure(records) {
   const moduleRegistration = ["reg", "ister"].join("");
   const processBindingLookup = ["bind", "ing"].join("");
   const nativeLibraryLookup = ["dl", "open"].join("");
-  const forbiddenLoaderNamePattern = new RegExp(`\\b(?:${[
-    evaluator,
-    functionConstructor,
-    commonJsLoader,
-    createCommonJsLoader,
-    builtinLookup,
-    workerConstructor,
-    moduleRegistration,
-    `${moduleRegistration}Hooks`,
-    processBindingLookup,
-    nativeLibraryLookup
-  ].join("|")})\\b`);
   for (const record of records.filter(({ relativePath }) => relativePath.endsWith(".mjs"))) {
     const source = decodeUtf8(record.committedBytes, `runtime module ${record.relativePath}`);
+    const isRuntimeGuard = record.relativePath === "scripts/aws-staging-runtime-guard.mjs";
+    const forbiddenLoaderNamePattern = new RegExp(`\\b(?:${[
+      evaluator,
+      functionConstructor,
+      commonJsLoader,
+      createCommonJsLoader,
+      builtinLookup,
+      workerConstructor,
+      ...(isRuntimeGuard ? [] : [moduleRegistration, `${moduleRegistration}Hooks`]),
+      processBindingLookup,
+      nativeLibraryLookup
+    ].join("|")})\\b`);
     if (source.includes(String.fromCharCode(92) + "u")
       || forbiddenLoaderNamePattern.test(source)) {
       throw new Error(`AWS Staging runtime module ${record.relativePath} uses an unapproved loader`);
     }
     for (const specifier of canonicalStaticDeclarations(source, record.relativePath)) {
+      if (specifier === "node:module" && isRuntimeGuard) continue;
       if (APPROVED_BUILTIN_SPECIFIERS.has(specifier)) continue;
       if (record.relativePath === "scripts/aws-staging-launcher.mjs") {
         throw new Error("AWS Staging pre-ESM launcher must remain self-contained");
@@ -354,9 +356,24 @@ function sameBigIntStat(left, right) {
     && left.mode === right.mode
     && left.uid === right.uid
     && left.gid === right.gid
+    && left.nlink === right.nlink
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs;
+}
+
+function executableIdentity(stat) {
+  return Object.freeze({
+    changedNanoseconds: String(stat.ctimeNs),
+    device: String(stat.dev),
+    group: String(stat.gid),
+    inode: String(stat.ino),
+    links: String(stat.nlink),
+    mode: Number(stat.mode & 0o777n),
+    modifiedNanoseconds: String(stat.mtimeNs),
+    owner: String(stat.uid),
+    size: String(stat.size)
+  });
 }
 
 async function hashOpenFile(handle, size) {
@@ -378,7 +395,10 @@ async function hashOpenFile(handle, size) {
   return hash.digest("hex");
 }
 
-async function fingerprintExecutable(fileSystem, executablePath) {
+async function openFingerprintedExecutable(fileSystem, executablePath, {
+  expectedMode,
+  requireSingleLink = false
+} = {}) {
   const handle = await fileSystem.open(
     executablePath,
     fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW
@@ -388,7 +408,9 @@ async function fingerprintExecutable(fileSystem, executablePath) {
     const uid = typeof process.getuid === "function" ? BigInt(process.getuid()) : before.uid;
     if (!before.isFile()
       || (before.uid !== 0n && before.uid !== uid)
-      || (before.mode & 0o022n) !== 0n) {
+      || (before.mode & 0o022n) !== 0n
+      || (expectedMode !== undefined && Number(before.mode & 0o777n) !== expectedMode)
+      || (requireSingleLink && before.nlink !== 1n)) {
       throw new Error("AWS Staging launcher Node executable trust check failed");
     }
     await fileSystem.access(executablePath, fsConstants.X_OK);
@@ -397,9 +419,26 @@ async function fingerprintExecutable(fileSystem, executablePath) {
     if (!sameBigIntStat(before, after)) {
       throw new Error("AWS Staging launcher Node executable changed while inspected");
     }
-    return Object.freeze({ digest, metadata: after });
-  } finally {
+    return Object.freeze({ digest, handle, metadata: after });
+  } catch (error) {
     await handle.close();
+    throw error;
+  }
+}
+
+async function fingerprintExecutable(fileSystem, executablePath, options) {
+  const fingerprint = await openFingerprintedExecutable(
+    fileSystem,
+    executablePath,
+    options
+  );
+  try {
+    return Object.freeze({
+      digest: fingerprint.digest,
+      metadata: fingerprint.metadata
+    });
+  } finally {
+    await fingerprint.handle.close();
   }
 }
 
@@ -428,8 +467,14 @@ export function assertAwsStagingNodeRuntime(releaseName, version) {
   }
 }
 
-async function captureTrustedNode(fileSystem, candidates) {
-  assertAwsStagingNodeRuntime(process.release?.name, process.versions?.node);
+function readCurrentNodeRuntime() {
+  return Object.freeze({
+    releaseName: process.release?.name,
+    version: process.versions?.node
+  });
+}
+
+async function captureTrustedNode(fileSystem, candidates, readNodeRuntime) {
   const runningPath = await fileSystem.realpath(process.execPath);
   for (const { candidate, trustRoot } of candidates) {
     try {
@@ -441,37 +486,24 @@ async function captureTrustedNode(fileSystem, candidates) {
         path.dirname(candidate),
         canonicalTrustRoot
       );
-      const fingerprint = await fingerprintExecutable(fileSystem, candidate);
-      return Object.freeze({
-        executablePath: candidate,
-        trustRoot: canonicalTrustRoot,
-        ...fingerprint
-      });
+      const fingerprint = await openFingerprintedExecutable(fileSystem, candidate);
+      try {
+        const runtime = await readNodeRuntime();
+        assertAwsStagingNodeRuntime(runtime?.releaseName, runtime?.version);
+        return Object.freeze({
+          sourceExecutablePath: candidate,
+          trustRoot: canonicalTrustRoot,
+          ...fingerprint
+        });
+      } catch (error) {
+        await fingerprint.handle.close();
+        throw error;
+      }
     } catch {
       // Continue only through the explicit system installation candidates.
     }
   }
   throw new Error("AWS Staging launcher did not start under an approved absolute Node.js 22 executable");
-}
-
-async function assertTrustedNodeCurrent(fileSystem, trustedNode) {
-  try {
-    if (await fileSystem.realpath(trustedNode.executablePath) !== trustedNode.executablePath) {
-      throw new Error();
-    }
-    await requireTrustedDirectoryChain(
-      fileSystem,
-      path.dirname(trustedNode.executablePath),
-      trustedNode.trustRoot
-    );
-    const current = await fingerprintExecutable(fileSystem, trustedNode.executablePath);
-    if (current.digest !== trustedNode.digest
-      || !sameBigIntStat(current.metadata, trustedNode.metadata)) {
-      throw new Error();
-    }
-  } catch {
-    throw new Error("AWS Staging launcher Node executable changed after attestation");
-  }
 }
 
 function parseLaunchArguments(argv) {
@@ -677,6 +709,78 @@ async function writeSnapshotFile(fileSystem, snapshotRoot, record) {
   });
 }
 
+async function copyTrustedNodeFromHandle({
+  destinationPath,
+  fileSystem,
+  trustedNode
+}) {
+  const before = await trustedNode.handle.stat({ bigint: true });
+  if (!sameBigIntStat(before, trustedNode.metadata)) {
+    throw new Error("AWS Staging launcher trusted Node handle changed before copying");
+  }
+  const destinationHandle = await fileSystem.open(
+    destinationPath,
+    fsConstants.O_WRONLY
+      | fsConstants.O_CREAT
+      | fsConstants.O_EXCL
+      | fsConstants.O_NOFOLLOW,
+    0o600
+  );
+  try {
+    const digest = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    let position = 0;
+    for (;;) {
+      const { bytesRead } = await trustedNode.handle.read(
+        buffer,
+        0,
+        buffer.length,
+        position
+      );
+      if (bytesRead === 0) break;
+      digest.update(buffer.subarray(0, bytesRead));
+      let offset = 0;
+      while (offset < bytesRead) {
+        const { bytesWritten } = await destinationHandle.write(
+          buffer,
+          offset,
+          bytesRead - offset,
+          position + offset
+        );
+        if (!Number.isInteger(bytesWritten) || bytesWritten <= 0) {
+          throw new Error("AWS Staging launcher trusted Node copy was incomplete");
+        }
+        offset += bytesWritten;
+      }
+      position += bytesRead;
+    }
+    const after = await trustedNode.handle.stat({ bigint: true });
+    const destination = await destinationHandle.stat({ bigint: true });
+    if (!sameBigIntStat(before, after)
+      || BigInt(position) !== before.size
+      || digest.digest("hex") !== trustedNode.digest
+      || !destination.isFile()
+      || destination.nlink !== 1n
+      || destination.size !== before.size
+      || (destination.dev === before.dev && destination.ino === before.ino)) {
+      throw new Error("AWS Staging launcher trusted Node copy verification failed");
+    }
+    await destinationHandle.chmod(0o500);
+    await destinationHandle.sync();
+  } finally {
+    await destinationHandle.close();
+  }
+  const copied = await fingerprintExecutable(fileSystem, destinationPath, {
+    expectedMode: 0o500,
+    requireSingleLink: true
+  });
+  if (copied.digest !== trustedNode.digest
+    || copied.metadata.size !== trustedNode.metadata.size) {
+    throw new Error("AWS Staging launcher trusted Node copy digest differs from approval");
+  }
+  return copied;
+}
+
 async function visitTree(fileSystem, root, visitor) {
   const stat = await fileSystem.lstat(root);
   if (stat.isSymbolicLink()) {
@@ -690,12 +794,16 @@ async function visitTree(fileSystem, root, visitor) {
   await visitor(root, stat);
 }
 
-async function sealSnapshot(fileSystem, snapshotRoot) {
+async function sealSnapshot(fileSystem, snapshotRoot, nodeExecutablePath) {
   await visitTree(fileSystem, snapshotRoot, async (candidate, stat) => {
-    await fileSystem.chmod(
-      candidate,
-      stat.isDirectory() ? SEALED_DIRECTORY_MODE : SEALED_FILE_MODE
-    );
+    const desiredMode = stat.isDirectory()
+      ? SEALED_DIRECTORY_MODE
+      : candidate === nodeExecutablePath
+        ? SEALED_DIRECTORY_MODE
+        : SEALED_FILE_MODE;
+    if ((stat.mode & 0o777) !== desiredMode) {
+      await fileSystem.chmod(candidate, desiredMode);
+    }
   });
 }
 
@@ -733,7 +841,8 @@ async function materializeSnapshot({
   runGit,
   runtimeEntrypoint,
   sourceRevision,
-  temporaryRoot
+  temporaryRoot,
+  trustedNode
 }) {
   const canonicalTemporaryRoot = await ensurePrivateTemporaryRoot(fileSystem, temporaryRoot);
   const snapshotRoot = await fileSystem.mkdtemp(path.join(
@@ -764,6 +873,19 @@ async function materializeSnapshot({
       await writeSnapshotFile(fileSystem, snapshotRoot, record);
     }
 
+    const nodeExecutablePath = path.join(snapshotRoot, PRIVATE_NODE_EXECUTABLE_NAME);
+    const copiedNode = await copyTrustedNodeFromHandle({
+      destinationPath: nodeExecutablePath,
+      fileSystem,
+      trustedNode
+    });
+    const nodeExecutable = Object.freeze({
+      byteLength: Number(trustedNode.metadata.size),
+      identity: executableIdentity(copiedNode.metadata),
+      relativePath: PRIVATE_NODE_EXECUTABLE_NAME,
+      sha256: trustedNode.digest
+    });
+
     const contextPath = path.join(snapshotRoot, LAUNCH_CONTEXT_NAME);
     const context = Object.freeze({
       evidenceOutputDirectory: path.join(
@@ -773,18 +895,32 @@ async function materializeSnapshot({
       runtimeEntrypoint,
       runtimeManifestSha256: approvedSource.manifestSha256,
       runtimeSourceRevision: sourceRevision,
+      nodeExecutable,
       snapshotRoot,
       sourceRepositoryIdentity: approvedSource.sourceRepositoryIdentity,
       sourceRepositoryRoot: approvedSource.canonicalRepositoryRoot,
-      version: 1
+      version: 2
     });
     await fileSystem.writeFile(contextPath, `${JSON.stringify(context)}\n`, {
       flag: "wx",
       mode: 0o600
     });
 
-    await sealSnapshot(fileSystem, snapshotRoot);
-    return Object.freeze({ contextPath, snapshotRoot });
+    await sealSnapshot(fileSystem, snapshotRoot, nodeExecutablePath);
+    const finalNode = await fingerprintExecutable(fileSystem, nodeExecutablePath, {
+      expectedMode: 0o500,
+      requireSingleLink: true
+    });
+    return Object.freeze({
+      contextPath,
+      nodeExecutable: Object.freeze({
+        ...nodeExecutable,
+        identity: executableIdentity(finalNode.metadata)
+      }),
+      nodeExecutableMetadata: finalNode.metadata,
+      nodeExecutablePath,
+      snapshotRoot
+    });
   } catch (error) {
     await makeSnapshotRemovable(fileSystem, snapshotRoot);
     await fileSystem.rm(snapshotRoot, { force: true, recursive: true });
@@ -796,6 +932,9 @@ async function assertSnapshotCurrent({
   approvedSource,
   contextPath,
   fileSystem,
+  nodeExecutable,
+  nodeExecutableMetadata,
+  nodeExecutablePath,
   snapshotRoot
 }) {
   if (((await fileSystem.lstat(snapshotRoot)).mode & 0o777) !== SEALED_DIRECTORY_MODE) {
@@ -815,6 +954,17 @@ async function assertSnapshotCurrent({
   const context = await readStableFile(fileSystem, contextPath, "launch context");
   if ((Number(context.identity.mode) & 0o777) !== SEALED_FILE_MODE) {
     throw new Error("AWS Staging launcher context is not sealed");
+  }
+  if (await fileSystem.realpath(nodeExecutablePath) !== nodeExecutablePath) {
+    throw new Error("AWS Staging launcher private Node executable is not canonical");
+  }
+  const currentNode = await fingerprintExecutable(fileSystem, nodeExecutablePath, {
+    expectedMode: 0o500,
+    requireSingleLink: true
+  });
+  if (currentNode.digest !== nodeExecutable.sha256
+    || !sameBigIntStat(currentNode.metadata, nodeExecutableMetadata)) {
+    throw new Error("AWS Staging launcher private Node executable changed after sealing");
   }
 }
 
@@ -842,12 +992,15 @@ export async function runAwsStagingTrustedLauncher({
   fileSystem = fs,
   launcherSourceRevision = process.env.NEEDO_AWS_STAGING_TRUSTED_SOURCE_REVISION,
   nodeCandidates = APPROVED_NODE_CANDIDATES,
+  readNodeRuntime = readCurrentNodeRuntime,
   repositoryRoot = process.env.NEEDO_AWS_STAGING_SOURCE_ROOT ?? process.cwd(),
   runChild = runSpawnedChild,
   runGit = runSystemGit,
   temporaryRoot = "/private/tmp"
 } = {}) {
-  if (typeof runChild !== "function" || typeof runGit !== "function") {
+  if (typeof readNodeRuntime !== "function"
+    || typeof runChild !== "function"
+    || typeof runGit !== "function") {
     throw new Error("AWS Staging launcher requires injected command boundaries");
   }
   const parsed = parseLaunchArguments(argv);
@@ -855,35 +1008,34 @@ export async function runAwsStagingTrustedLauncher({
     || launcherSourceRevision !== parsed.sourceRevision) {
     throw new Error("AWS Staging launcher Git-object revision does not match the approved runtime revision");
   }
-  const trustedNode = await captureTrustedNode(fileSystem, nodeCandidates);
-  const approvedSource = await captureApprovedSource({
-    fileSystem,
-    repositoryRoot,
-    runGit,
-    sourceRevision: parsed.sourceRevision
-  });
+  const trustedNode = await captureTrustedNode(fileSystem, nodeCandidates, readNodeRuntime);
+  let trustedNodeHandleOpen = true;
   let snapshot;
   try {
+    const approvedSource = await captureApprovedSource({
+      fileSystem,
+      repositoryRoot,
+      runGit,
+      sourceRevision: parsed.sourceRevision
+    });
     snapshot = await materializeSnapshot({
       approvedSource,
       fileSystem,
       runGit,
       runtimeEntrypoint: parsed.runtimeEntrypoint,
       sourceRevision: parsed.sourceRevision,
-      temporaryRoot
+      temporaryRoot,
+      trustedNode
     });
+    await trustedNode.handle.close();
+    trustedNodeHandleOpen = false;
     await approvedSource.assertCurrentState();
-    await assertTrustedNodeCurrent(fileSystem, trustedNode);
     await assertSnapshotCurrent({ approvedSource, fileSystem, ...snapshot });
     const environment = Object.freeze({
       LANG: "C",
       LC_ALL: "C",
       NEEDO_AWS_STAGING_LAUNCH_CONTEXT: snapshot.contextPath
     });
-    const loaderUrl = pathToFileURL(path.join(
-      snapshot.snapshotRoot,
-      "scripts/aws-staging-module-loader.mjs"
-    )).href;
     const guardUrl = pathToFileURL(path.join(
       snapshot.snapshotRoot,
       "scripts/aws-staging-runtime-guard.mjs"
@@ -893,17 +1045,19 @@ export async function runAwsStagingTrustedLauncher({
         "--no-addons",
         "--disallow-code-generation-from-strings",
         "--disable-warning=ExperimentalWarning",
-        `--experimental-loader=${loaderUrl}`,
         `--${LOAD_KEYWORD}=${guardUrl}`,
         path.join(snapshot.snapshotRoot, parsed.runtimeEntrypoint),
         ...parsed.commandArguments
       ],
       cwd: snapshot.snapshotRoot,
       environment,
-      executablePath: trustedNode.executablePath,
+      executablePath: snapshot.nodeExecutablePath,
       snapshotRoot: snapshot.snapshotRoot
     });
   } finally {
+    if (trustedNodeHandleOpen) {
+      await trustedNode.handle.close();
+    }
     if (snapshot?.snapshotRoot) {
       await makeSnapshotRemovable(fileSystem, snapshot.snapshotRoot);
       await fileSystem.rm(snapshot.snapshotRoot, { force: true, recursive: true });

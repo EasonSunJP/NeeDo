@@ -68,6 +68,10 @@ Bootstrap and verify each capture the tracked template artifact at the approved 
 
 Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
 
+The guarded child executes only the read-only private Node.js copy made from the already-open, stable, SHA-256-bound source handle; before the sealed loader is registered, the runtime guard requires actual Node.js major 22 and an exact executable identity and digest match.
+
+This is data-fork execution continuity, not independent vendor-signature provenance: the copy does not preserve quarantine, ACL, or other extended metadata. The outer launcher parent still starts from the explicitly approved absolute Node path, and the existing compromised-root/same-user-host non-goal remains unchanged.
+
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
 
 **Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is the only current credential provider; STS must still prove an exact-account assumed-role caller.

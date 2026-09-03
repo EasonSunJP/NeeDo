@@ -108,6 +108,10 @@ Bootstrap and verify each capture the tracked template artifact at the approved 
 
 Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
 
+The guarded child executes only the read-only private Node.js copy made from the already-open, stable, SHA-256-bound source handle; before the sealed loader is registered, the runtime guard requires actual Node.js major 22 and an exact executable identity and digest match.
+
+This is data-fork execution continuity, not independent vendor-signature provenance: the copy does not preserve quarantine, ACL, or other extended metadata. The outer launcher parent still starts from the explicitly approved absolute Node path, and the existing compromised-root/same-user-host non-goal remains unchanged.
+
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.

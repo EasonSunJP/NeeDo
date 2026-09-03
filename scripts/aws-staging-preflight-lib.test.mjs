@@ -196,6 +196,22 @@ describe("AWS Staging preflight", () => {
     const sourceRootStat = await fs.lstat(sourceRepositoryRoot);
     await fs.writeFile(launchContextPath, `${JSON.stringify({
       evidenceOutputDirectory: path.join(sourceRepositoryRoot, "outputs/aws-staging"),
+      nodeExecutable: {
+        byteLength: 1,
+        identity: {
+          changedNanoseconds: "1",
+          device: "1",
+          group: "1",
+          inode: "1",
+          links: "1",
+          mode: 0o500,
+          modifiedNanoseconds: "1",
+          owner: "1",
+          size: "1"
+        },
+        relativePath: ".needo-node",
+        sha256: "e".repeat(64)
+      },
       runtimeEntrypoint: "scripts/aws-staging-preflight.mjs",
       runtimeManifestSha256,
       runtimeSourceRevision: headRevision,
@@ -209,7 +225,7 @@ describe("AWS Staging preflight", () => {
         realPath: sourceRepositoryRoot
       },
       sourceRepositoryRoot,
-      version: 1
+      version: 2
     })}\n`, { mode: 0o400 });
     const runGit = vi.fn(async (args) => {
       if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return `${temporaryRoot}\n`;
@@ -476,25 +492,294 @@ describe("AWS Staging preflight", () => {
     return { ...launcher, argv, paths, revision, sourceRoot, temporaryRoot };
   }
 
+  async function createReplaceableNodeLauncherFixture() {
+    const fixture = await createTrustedLauncherFixture();
+    const trustRoot = path.join(fixture.temporaryRoot, "node-install");
+    const executableDirectory = path.join(trustRoot, "bin");
+    const executablePath = path.join(executableDirectory, "node");
+    await fs.mkdir(executableDirectory, { mode: 0o700, recursive: true });
+    await fs.copyFile(process.execPath, executablePath);
+    await fs.chmod(executablePath, 0o500);
+    const fileSystem = new Proxy(fs, {
+      get(target, property) {
+        if (property === "realpath") {
+          return async (candidate) => (
+            path.resolve(candidate) === path.resolve(process.execPath)
+              ? executablePath
+              : target.realpath(candidate)
+          );
+        }
+        const value = target[property];
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    return {
+      ...fixture,
+      executablePath,
+      fileSystem,
+      nodeCandidates: [{ candidate: executablePath, trustRoot }]
+    };
+  }
+
+  async function replaceNodePath(executablePath, sentinelPath) {
+    await fs.rename(executablePath, `${executablePath}.approved`);
+    await fs.writeFile(executablePath, [
+      "#!/bin/sh",
+      `/usr/bin/touch ${JSON.stringify(sentinelPath)}`,
+      "exit 0",
+      ""
+    ].join("\n"), { mode: 0o500 });
+    await fs.chmod(executablePath, 0o500);
+  }
+
+  async function sha256File(absolutePath) {
+    const handle = await fs.open(absolutePath, "r");
+    try {
+      const digest = createHash("sha256");
+      const buffer = Buffer.allocUnsafe(1024 * 1024);
+      let position = 0;
+      for (;;) {
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+        if (bytesRead === 0) break;
+        digest.update(buffer.subarray(0, bytesRead));
+        position += bytesRead;
+      }
+      return digest.digest("hex");
+    } finally {
+      await handle.close();
+    }
+  }
+
+  async function installGuardedProbe(args) {
+    const entrypointPath = args.find((value) => (
+      value.endsWith("/scripts/aws-staging-preflight.mjs")
+    ));
+    expect(entrypointPath).toBeTypeOf("string");
+    await fs.chmod(entrypointPath, 0o600);
+    await fs.writeFile(entrypointPath, [
+      "process.stdout.write(JSON.stringify({",
+      "  executablePath: process.execPath,",
+      "  nodeVersion: process.versions.node,",
+      "  status: 'ok'",
+      "}) + '\\n');"
+    ].join("\n"));
+    await fs.chmod(entrypointPath, 0o400);
+  }
+
+  async function expectPrivateNodeChild({
+    environment,
+    executablePath,
+    snapshotRoot,
+    sourceExecutablePath
+  }) {
+    expect(executablePath).toBe(path.join(snapshotRoot, ".needo-node"));
+    expect(executablePath).not.toBe(sourceExecutablePath);
+    const stat = await fs.lstat(executablePath);
+    expect(stat.mode & 0o777).toBe(0o500);
+    expect(stat.nlink).toBe(1);
+    const context = JSON.parse(await fs.readFile(
+      environment.NEEDO_AWS_STAGING_LAUNCH_CONTEXT,
+      "utf8"
+    ));
+    expect(context.nodeExecutable).toMatchObject({
+      byteLength: stat.size,
+      relativePath: ".needo-node",
+      sha256: await sha256File(executablePath)
+    });
+  }
+
+  it("fails closed when the original Node path is replaced after parent version inspection", async () => {
+    const fixture = await createReplaceableNodeLauncherFixture();
+    const sentinel = path.join(fixture.temporaryRoot, "replacement-node-ran");
+    let replacementInstalled = false;
+    const readNodeRuntime = vi.fn(async () => {
+      const runtime = {
+        releaseName: process.release.name,
+        version: process.versions.node
+      };
+      replacementInstalled = true;
+      await replaceNodePath(fixture.executablePath, sentinel);
+      return runtime;
+    });
+    const runChild = vi.fn();
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        fileSystem: fixture.fileSystem,
+        launcherSourceRevision: fixture.revision,
+        nodeCandidates: fixture.nodeCandidates,
+        readNodeRuntime,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).rejects.toThrow(/trusted Node handle changed|copy verification/i);
+      expect(replacementInstalled).toBe(true);
+      expect(readNodeRuntime).toHaveBeenCalledOnce();
+      expect(runChild).not.toHaveBeenCalled();
+      await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("never reopens the original Node path after final private-copy attestation", async () => {
+    const fixture = await createReplaceableNodeLauncherFixture();
+    const sentinel = path.join(fixture.temporaryRoot, "late-replacement-node-ran");
+    let childResult;
+    let privateExecutablePath;
+    const runChild = vi.fn(async ({
+      args,
+      cwd,
+      environment,
+      executablePath,
+      snapshotRoot
+    }) => {
+      await replaceNodePath(fixture.executablePath, sentinel);
+      await expectPrivateNodeChild({
+        environment,
+        executablePath,
+        snapshotRoot,
+        sourceExecutablePath: fixture.executablePath
+      });
+      privateExecutablePath = executablePath;
+      await installGuardedProbe(args);
+      childResult = spawnSync(executablePath, args, {
+        cwd,
+        encoding: "utf8",
+        env: environment
+      });
+      return childResult.status ?? 1;
+    });
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        fileSystem: fixture.fileSystem,
+        launcherSourceRevision: fixture.revision,
+        nodeCandidates: fixture.nodeCandidates,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.toBe(0);
+      expect(runChild).toHaveBeenCalledOnce();
+      expect(JSON.parse(childResult.stdout)).toMatchObject({
+        executablePath: privateExecutablePath,
+        nodeVersion: expect.stringMatching(/^22\./),
+        status: "ok"
+      });
+      await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("makes the earliest guarded child reject a mismatched sealed Node digest", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const sentinel = path.join(fixture.temporaryRoot, "digest-mismatch-entrypoint-ran");
+    let childResult;
+    const runChild = vi.fn(async ({ args, cwd, environment, executablePath }) => {
+      const entrypointPath = args.find((value) => (
+        value.endsWith("/scripts/aws-staging-preflight.mjs")
+      ));
+      const contextPath = environment.NEEDO_AWS_STAGING_LAUNCH_CONTEXT;
+      const context = JSON.parse(await fs.readFile(contextPath, "utf8"));
+      context.nodeExecutable.sha256 = "0".repeat(64);
+      await fs.chmod(contextPath, 0o600);
+      await fs.writeFile(contextPath, `${JSON.stringify(context)}\n`);
+      await fs.chmod(contextPath, 0o400);
+      await fs.chmod(entrypointPath, 0o600);
+      await fs.writeFile(
+        entrypointPath,
+        `import fs from "node:fs";fs.writeFileSync(${JSON.stringify(sentinel)}, "unsafe");\n`
+      );
+      await fs.chmod(entrypointPath, 0o400);
+      childResult = spawnSync(executablePath, args, {
+        cwd,
+        encoding: "utf8",
+        env: environment
+      });
+      return childResult.status ?? 1;
+    });
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.not.toBe(0);
+      expect(childResult.stdout).toBe("");
+      expect(childResult.stderr).not.toContain(fixture.temporaryRoot);
+      await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("makes the earliest guarded child reject an actual non-22 runtime version", async () => {
+    const fixture = await createTrustedLauncherFixture();
+    const sentinel = path.join(fixture.temporaryRoot, "wrong-node-major-entrypoint-ran");
+    const versionPatchPath = path.join(fixture.temporaryRoot, "force-node-23.mjs");
+    await fs.writeFile(versionPatchPath, [
+      "Object.defineProperty(process.versions, 'node', {",
+      "  configurable: true,",
+      "  value: '23.0.0'",
+      "});",
+      ""
+    ].join("\n"), { mode: 0o400 });
+    let childResult;
+    const runChild = vi.fn(async ({ args, cwd, environment, executablePath }) => {
+      const entrypointPath = args.find((value) => (
+        value.endsWith("/scripts/aws-staging-preflight.mjs")
+      ));
+      await fs.chmod(entrypointPath, 0o600);
+      await fs.writeFile(
+        entrypointPath,
+        `import fs from "node:fs";fs.writeFileSync(${JSON.stringify(sentinel)}, "unsafe");\n`
+      );
+      await fs.chmod(entrypointPath, 0o400);
+      const testArgs = [...args];
+      testArgs.splice(3, 0, `--import=${pathToFileURL(versionPatchPath).href}`);
+      childResult = spawnSync(executablePath, testArgs, {
+        cwd,
+        encoding: "utf8",
+        env: environment
+      });
+      return childResult.status ?? 1;
+    });
+    try {
+      await expect(fixture.runAwsStagingTrustedLauncher({
+        argv: fixture.argv,
+        launcherSourceRevision: fixture.revision,
+        repositoryRoot: fixture.sourceRoot,
+        runChild,
+        temporaryRoot: fixture.temporaryRoot
+      })).resolves.not.toBe(0);
+      expect(childResult.stdout).toBe("");
+      expect(childResult.stderr).toBe(
+        '{"gate":"aws-staging-runtime-guard","status":"failed"}\n'
+      );
+      await expect(fs.access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(fixture.temporaryRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it("materializes approved bytes into a private snapshot before executing the guarded entrypoint", async () => {
     const fixture = await createTrustedLauncherFixture();
     const runChild = vi.fn(async ({ args, cwd, environment, executablePath, snapshotRoot }) => {
-      expect(executablePath).toBe(await fs.realpath(process.execPath));
+      expect(executablePath).toBe(path.join(snapshotRoot, ".needo-node"));
+      expect(executablePath).not.toBe(await fs.realpath(process.execPath));
       expect(cwd).toBe(snapshotRoot);
-      expect(args.slice(0, 5)).toEqual([
+      expect(args.slice(0, 4)).toEqual([
         "--no-addons",
         "--disallow-code-generation-from-strings",
         "--disable-warning=ExperimentalWarning",
-        `--experimental-loader=${pathToFileURL(path.join(
-          snapshotRoot,
-          "scripts/aws-staging-module-loader.mjs"
-        )).href}`,
         `--import=${pathToFileURL(path.join(
           snapshotRoot,
           "scripts/aws-staging-runtime-guard.mjs"
         )).href}`
       ]);
-      expect(args[5]).toBe(path.join(snapshotRoot, "scripts/aws-staging-preflight.mjs"));
+      expect(args[4]).toBe(path.join(snapshotRoot, "scripts/aws-staging-preflight.mjs"));
       expect(Object.keys(environment).sort()).toEqual([
         "LANG", "LC_ALL", "NEEDO_AWS_STAGING_LAUNCH_CONTEXT"
       ]);
@@ -502,16 +787,17 @@ describe("AWS Staging preflight", () => {
         fixture.sourceRoot,
         "scripts/aws-staging-preflight.mjs"
       ));
-      expect(await fs.readFile(args[5])).toEqual(sourceBytes);
+      expect(await fs.readFile(args[4])).toEqual(sourceBytes);
       expect((await fs.stat(snapshotRoot)).mode & 0o777).toBe(0o500);
-      expect((await fs.stat(args[5])).mode & 0o777).toBe(0o400);
+      expect((await fs.stat(args[4])).mode & 0o777).toBe(0o400);
+      expect((await fs.stat(executablePath)).mode & 0o777).toBe(0o500);
       const sealedRuntime = await import(`${pathToFileURL(path.join(
         snapshotRoot,
         "scripts/aws-staging-runtime-artifact.mjs"
       )).href}?fixture=${fixture.revision}`);
       const artifact = await sealedRuntime.captureAwsStagingRuntimeArtifact({
-        argv: args.slice(6),
-        entrypointPath: args[5],
+        argv: args.slice(5),
+        entrypointPath: args[4],
         launchContextPath: environment.NEEDO_AWS_STAGING_LAUNCH_CONTEXT,
         repositoryRoot: snapshotRoot
       });
@@ -592,7 +878,7 @@ describe("AWS Staging preflight", () => {
     }))).rejects.toThrow(/module resolution/i);
   });
 
-  it("disables string code generation and computed process loader access before entrypoint code", () => {
+  it("fails closed before entrypoint code when the sealed Node context is absent", () => {
     const guardUrl = pathToFileURL(fileURLToPath(new URL(
       "./aws-staging-runtime-guard.mjs",
       import.meta.url
@@ -614,7 +900,9 @@ describe("AWS Staging preflight", () => {
       encoding: "utf8",
       env: { LANG: "C", LC_ALL: "C" }
     });
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe('{"gate":"aws-staging-runtime-guard","status":"failed"}\n');
   });
 
   it("enforces the combined guarded child argv without leaking its sealed path", async () => {
