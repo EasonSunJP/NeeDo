@@ -640,7 +640,9 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
     try {
       const [serviceResult, modeResult] = await Promise.all([
         pricingModeApi.listMyTechnicianServices({ page: 1, pageSize: 5, activeOnly: false }),
-        defaultShopId ? pricingModeApi.getShopPricingMode(defaultShopId) : Promise.resolve(null)
+        defaultShopId
+          ? pricingModeApi.getBookingNavigation(defaultShopId, { page: 1, pageSize: 1 })
+          : Promise.resolve(null)
       ]);
       setServices(serviceResult.list);
       setPricingMode(modeResult?.pricingMode ?? null);
