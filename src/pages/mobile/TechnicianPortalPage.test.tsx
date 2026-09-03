@@ -7,8 +7,10 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain("getFormalTechnicianProfileId(session)");
     expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");
     expect(source).toContain("technicianProfileApi.getMine()");
-    expect(source).toContain("formalTechnicianSelfProfileQuery.data?.shopId");
-    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile)");
+    expect(source).toContain("() => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null");
+    expect(source).not.toContain("formalTechnicianSelfProfileQuery.data?.shopId");
+    expect(source).toContain("formalTechnicianProfileQuery.error");
+    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || !technician)");
     expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
     expect(source).toContain("technician: CoreTechnicianDetail | null");
     expect(source).toContain("当前没有可用的正式店铺，暂时无法新增服务");
