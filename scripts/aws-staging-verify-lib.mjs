@@ -10,6 +10,12 @@ import {
   requireAwsStagingHostname,
   requireAwsStagingRegion
 } from "./aws-staging-config.mjs";
+import {
+  AWS_STAGING_CLOUDWATCH_AGENT_CONFIG,
+  AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT,
+  attestAwsStagingCloudWatchParameter,
+  attestAwsStagingDocument
+} from "./aws-staging-attestation.mjs";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
@@ -993,6 +999,32 @@ export async function verifyAwsStagingEnvironment({
   ]);
   requireSsmOnline(describedSsm, outputs.InstanceId);
 
+  const describedVerificationDocument = await aws.json([
+    "ssm", "get-document",
+    "--name", outputs.HostVerificationDocumentName,
+    "--document-version", "$LATEST",
+    "--document-format", "JSON"
+  ]);
+  const verificationDocumentAttestation = attestAwsStagingDocument(
+    describedVerificationDocument,
+    {
+      expectedName: outputs.HostVerificationDocumentName,
+      expectedContent: AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT,
+      label: "Host verification"
+    }
+  );
+  const describedAgentParameter = await aws.json([
+    "ssm", "get-parameter", "--name", outputs.CloudWatchAgentConfigParameterName
+  ]);
+  const agentParameterAttestation = attestAwsStagingCloudWatchParameter(
+    describedAgentParameter,
+    {
+      config,
+      expectedName: outputs.CloudWatchAgentConfigParameterName,
+      expectedContent: AWS_STAGING_CLOUDWATCH_AGENT_CONFIG
+    }
+  );
+
   for (const [resourceType, resourceId, logicalId] of [
     ["Parameter", outputs.CloudWatchAgentConfigParameterName, "CloudWatchAgentConfigParameter"],
     ["Document", outputs.HostBootstrapDocumentName, "HostBootstrapDocument"],
@@ -1107,6 +1139,7 @@ export async function verifyAwsStagingEnvironment({
 
   const commandResponse = await aws.json([
     "ssm", "send-command", "--document-name", outputs.HostVerificationDocumentName,
+    "--document-version", verificationDocumentAttestation.version,
     "--instance-ids", outputs.InstanceId,
     "--comment", "NeeDo Staging environment-only acceptance verification"
   ]);
@@ -1174,7 +1207,14 @@ export async function verifyAwsStagingEnvironment({
     },
     ingress,
     volumes,
-    ssm: { online: true, commandId, commandStatus: "Success", responseCode: 0 },
+    ssm: {
+      online: true,
+      documentVersion: verificationDocumentAttestation.version,
+      documentSha256: verificationDocumentAttestation.sha256,
+      commandId,
+      commandStatus: "Success",
+      responseCode: 0
+    },
     host,
     buckets: { release: releaseBucket, backup: backupBucket },
     secretVersionCount: 0,
@@ -1184,6 +1224,8 @@ export async function verifyAwsStagingEnvironment({
         name, namespace, metricName, threshold
       })),
       agentParameterName: outputs.CloudWatchAgentConfigParameterName,
+      agentParameterVersion: agentParameterAttestation.version,
+      agentParameterSha256: agentParameterAttestation.sha256,
       topicTagged: true,
       snsSubscriptionConfirmed
     },
@@ -1314,8 +1356,14 @@ function reconstructAcceptanceEvidence(evidence) {
     }
   }
 
-  exactKeys(evidence.ssm, ["online", "commandId", "commandStatus", "responseCode"], "Acceptance ssm");
+  exactKeys(evidence.ssm, [
+    "online", "documentVersion", "documentSha256", "commandId", "commandStatus", "responseCode"
+  ], "Acceptance ssm");
   requireBoolean(evidence.ssm.online, true, "Acceptance SSM online");
+  if (!/^[1-9][0-9]*$/.test(evidence.ssm.documentVersion)
+    || !/^[0-9a-f]{64}$/.test(evidence.ssm.documentSha256)) {
+    throw new Error("Acceptance SSM document attestation is invalid");
+  }
   safeArgument(evidence.ssm.commandId, "Acceptance SSM commandId", commandIdPattern);
   if (evidence.ssm.commandStatus !== "Success" || evidence.ssm.responseCode !== 0) {
     throw new Error("Acceptance SSM command result is invalid");
@@ -1363,7 +1411,8 @@ function reconstructAcceptanceEvidence(evidence) {
   if (evidence.secretVersionCount !== 0) throw new Error("Acceptance secret version count must be zero");
 
   exactKeys(evidence.monitoring, [
-    "logGroups", "alarms", "agentParameterName", "topicTagged", "snsSubscriptionConfirmed"
+    "logGroups", "alarms", "agentParameterName", "agentParameterVersion",
+    "agentParameterSha256", "topicTagged", "snsSubscriptionConfirmed"
   ], "Acceptance monitoring");
   if (!Array.isArray(evidence.monitoring.logGroups) || evidence.monitoring.logGroups.length !== 2) {
     throw new Error("Acceptance log groups are invalid");
@@ -1399,6 +1448,9 @@ function reconstructAcceptanceEvidence(evidence) {
     throw new Error("Acceptance alarm summaries are invalid");
   }
   if (evidence.monitoring.agentParameterName !== evidence.resourceIds.cloudWatchAgentParameterName
+    || !Number.isSafeInteger(evidence.monitoring.agentParameterVersion)
+    || evidence.monitoring.agentParameterVersion < 1
+    || !/^[0-9a-f]{64}$/.test(evidence.monitoring.agentParameterSha256)
     || evidence.monitoring.topicTagged !== true
     || evidence.monitoring.snsSubscriptionConfirmed !== true) {
     throw new Error("Acceptance monitoring parameter, topic, or SNS subscription is invalid");
@@ -1476,6 +1528,8 @@ function reconstructAcceptanceEvidence(evidence) {
       logGroups: evidence.monitoring.logGroups.map((group) => ({ ...group })),
       alarms: evidence.monitoring.alarms.map((alarm) => ({ ...alarm })),
       agentParameterName: evidence.monitoring.agentParameterName,
+      agentParameterVersion: evidence.monitoring.agentParameterVersion,
+      agentParameterSha256: evidence.monitoring.agentParameterSha256,
       topicTagged: true,
       snsSubscriptionConfirmed: true
     },

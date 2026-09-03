@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { bootstrapAwsStagingHost } from "./aws-staging-bootstrap-host-lib.mjs";
+import { AWS_STAGING_EXPECTED_RESOURCES } from "./aws-staging-stack-contract.mjs";
 
 const config = Object.freeze({
   accountId: "123456789012",
@@ -28,13 +29,83 @@ const outputValues = Object.freeze({
   CloudWatchAgentConfigParameterName: "/needo/staging/cloudwatch-agent",
   BudgetName: "needo-staging-infrastructure-monthly-cost"
 });
+const stackId = "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/needo-staging-infrastructure/00000000-0000-4000-8000-000000000000";
+const stackTags = Object.freeze([
+  { Key: "Project", Value: "needo" },
+  { Key: "Environment", Value: "staging" },
+  { Key: "Owner", Value: "needo" },
+  { Key: "ManagedBy", Value: "cloudformation" }
+]);
+const bootstrapDocumentContent = Object.freeze({
+  schemaVersion: "2.2",
+  description: "test bootstrap contract",
+  parameters: {},
+  mainSteps: []
+});
+const verificationDocumentContent = Object.freeze({
+  schemaVersion: "2.2",
+  description: "test verification contract",
+  mainSteps: []
+});
+const cloudWatchAgentConfig = Object.freeze({
+  agent: { metrics_collection_interval: 60 },
+  metrics: { namespace: "Needo/Staging" }
+});
+const attestationContracts = Object.freeze({
+  bootstrapDocumentContent,
+  verificationDocumentContent,
+  cloudWatchAgentConfig
+});
+
+function preflight(overrides = {}) {
+  return Object.freeze({
+    accountId: config.accountId,
+    callerArn: "arn:aws:sts::123456789012:assumed-role/NeedoDeployer/session",
+    callerKind: "assumed-role",
+    hostname: "staging.needo.life",
+    region: config.region,
+    amiId: "ami-0123456789abcdef0",
+    amiArchitecture: "arm64",
+    templateValidation: "VALID",
+    stackState: "CREATE_COMPLETE",
+    dnsA: Object.freeze([]),
+    ...overrides
+  });
+}
+
+function stackResources(overrides = {}) {
+  const boundPhysicalIds = {
+    Instance: outputValues.InstanceId,
+    DataVolume: outputValues.DataVolumeId,
+    ReleaseBucket: outputValues.ReleaseBucketName,
+    BackupBucket: outputValues.BackupBucketName,
+    ApplicationSecret: outputValues.ApplicationSecretArn,
+    HostBootstrapDocument: outputValues.HostBootstrapDocumentName,
+    HostVerificationDocument: outputValues.HostVerificationDocumentName,
+    CloudWatchAgentConfigParameter: outputValues.CloudWatchAgentConfigParameterName,
+    MonthlyBudget: outputValues.BudgetName,
+    AlertTopic: "arn:aws:sns:ap-northeast-1:123456789012:needo-staging-alert",
+    AlertSubscription: "arn:aws:sns:ap-northeast-1:123456789012:needo-staging-alert:00000000-0000-4000-8000-000000000000"
+  };
+  return {
+    StackResourceSummaries: AWS_STAGING_EXPECTED_RESOURCES.map(([LogicalResourceId, ResourceType]) => ({
+      LogicalResourceId,
+      ResourceType,
+      PhysicalResourceId: boundPhysicalIds[LogicalResourceId] ?? `${LogicalResourceId}-physical-id`,
+      ResourceStatus: "CREATE_COMPLETE",
+      ...overrides[LogicalResourceId]
+    }))
+  };
+}
 
 function stackResult({ status = "CREATE_COMPLETE", entries } = {}) {
   const outputEntries = entries ?? Object.entries(outputValues);
   return {
     Stacks: [{
+      StackId: stackId,
       StackName: config.stackName,
       StackStatus: status,
+      Tags: stackTags,
       Outputs: outputEntries.map(([OutputKey, OutputValue]) => ({
         OutputKey,
         OutputValue
@@ -49,6 +120,61 @@ function onlineRegistration(overrides = {}) {
       InstanceId: outputValues.InstanceId,
       PingStatus: "Online",
       PlatformType: "Linux",
+      ...overrides
+    }]
+  };
+}
+
+function documentResult({
+  content = bootstrapDocumentContent,
+  name = outputValues.HostBootstrapDocumentName,
+  version = "7"
+} = {}) {
+  return {
+    Name: name,
+    DocumentVersion: version,
+    Status: "Active",
+    Content: JSON.stringify(content),
+    DocumentType: "Command",
+    DocumentFormat: "JSON"
+  };
+}
+
+function parameterResult({ value = cloudWatchAgentConfig, version = 11 } = {}) {
+  return {
+    Parameter: {
+      Name: outputValues.CloudWatchAgentConfigParameterName,
+      Type: "String",
+      Value: JSON.stringify(value),
+      Version: version,
+      ARN: "arn:aws:ssm:ap-northeast-1:123456789012:parameter/needo/staging/cloudwatch-agent",
+      DataType: "text"
+    }
+  };
+}
+
+function describedInstance() {
+  return {
+    Reservations: [{
+      Instances: [{
+        InstanceId: outputValues.InstanceId,
+        InstanceType: "t4g.large",
+        State: { Name: "running" }
+      }]
+    }]
+  };
+}
+
+function describedDataVolume(overrides = {}) {
+  return {
+    Volumes: [{
+      VolumeId: outputValues.DataVolumeId,
+      State: "in-use",
+      Attachments: [{
+        InstanceId: outputValues.InstanceId,
+        Device: "/dev/sdf",
+        State: "attached"
+      }],
       ...overrides
     }]
   };
@@ -69,6 +195,11 @@ function createClock() {
 
 function successfulAws({
   describedStack = stackResult(),
+  listedResources = stackResources(),
+  instance = describedInstance(),
+  dataVolume = describedDataVolume(),
+  document = documentResult(),
+  parameter = parameterResult(),
   registrations = [onlineRegistration()],
   commandIds = ["command-0001"],
   invocation = {
@@ -84,7 +215,12 @@ function successfulAws({
   return {
     json: vi.fn(async (args) => {
       trace.push(`json:${args.join(" ")}`);
-      if (args[0] === "cloudformation") return describedStack;
+      if (args[0] === "cloudformation" && args[1] === "describe-stacks") return describedStack;
+      if (args[0] === "cloudformation" && args[1] === "list-stack-resources") return listedResources;
+      if (args[0] === "ec2" && args[1] === "describe-instances") return instance;
+      if (args[0] === "ec2" && args[1] === "describe-volumes") return dataVolume;
+      if (args[0] === "ssm" && args[1] === "get-document") return document;
+      if (args[0] === "ssm" && args[1] === "get-parameter") return parameter;
       if (args[0] === "ssm" && args[1] === "describe-instance-information") {
         return registrationQueue.length > 1
           ? registrationQueue.shift()
@@ -108,13 +244,17 @@ function successfulAws({
 async function bootstrap({
   aws = successfulAws(),
   resolvedConfig = config,
-  clock = createClock()
+  clock = createClock(),
+  preflightResult = preflight(),
+  loadContracts = vi.fn(async () => attestationContracts)
 } = {}) {
   return bootstrapAwsStagingHost({
     aws,
     config: resolvedConfig,
     now: clock.now,
-    sleep: clock.sleep
+    sleep: clock.sleep,
+    runPreflight: vi.fn(async () => preflightResult),
+    loadAttestationContracts: loadContracts
   });
 }
 
@@ -128,14 +268,20 @@ describe("AWS Staging SSM host bootstrap", () => {
 
     expect(trace).toEqual([
       `json:cloudformation describe-stacks --stack-name ${config.stackName}`,
+      `json:cloudformation list-stack-resources --stack-name ${stackId}`,
+      `json:ec2 describe-instances --instance-ids ${outputValues.InstanceId}`,
+      `json:ec2 describe-volumes --volume-ids ${outputValues.DataVolumeId}`,
+      `json:ssm get-document --name ${outputValues.HostBootstrapDocumentName} --document-version $LATEST --document-format JSON`,
+      `json:ssm get-parameter --name ${outputValues.CloudWatchAgentConfigParameterName}`,
       `text:ec2 wait instance-status-ok --instance-ids ${outputValues.InstanceId}`,
       `json:ssm describe-instance-information --filters Key=InstanceIds,Values=${outputValues.InstanceId}`,
       [
         "json:ssm send-command",
         `--document-name ${outputValues.HostBootstrapDocumentName}`,
+        "--document-version 7",
         `--instance-ids ${outputValues.InstanceId}`,
         "--parameters",
-        `DataVolumeId=${outputValues.DataVolumeId},CloudWatchAgentConfigParameter=${outputValues.CloudWatchAgentConfigParameterName}`,
+        `DataVolumeId=${outputValues.DataVolumeId},CloudWatchAgentConfigParameter=${outputValues.CloudWatchAgentConfigParameterName},CloudWatchAgentConfigParameterVersion=11`,
         "--comment NeeDo Staging environment-only host bootstrap"
       ].join(" "),
       "text:ssm wait command-executed --command-id command-0001 "
@@ -150,6 +296,10 @@ describe("AWS Staging SSM host bootstrap", () => {
       commandId: "command-0001",
       status: "Success",
       responseCode: 0,
+      documentVersion: "7",
+      documentSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      agentParameterVersion: 11,
+      agentParameterSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       startedAt: "2026-09-03T01:00:00.000Z",
       completedAt: "2026-09-03T01:00:00.000Z"
     });
@@ -159,19 +309,9 @@ describe("AWS Staging SSM host bootstrap", () => {
 
   it("runs a second full invocation as an idempotency proof with one command per invocation", async () => {
     const clock = createClock();
-    let commandNumber = 0;
-    const aws = successfulAws();
-    aws.json.mockImplementation(async (args) => {
-      if (args[0] === "cloudformation") return stackResult({ status: "UPDATE_COMPLETE" });
-      if (args[1] === "describe-instance-information") return onlineRegistration();
-      if (args[1] === "send-command") {
-        commandNumber += 1;
-        return { Command: { CommandId: `command-000${commandNumber}` } };
-      }
-      if (args[1] === "get-command-invocation") {
-        return { Status: "Success", ResponseCode: 0 };
-      }
-      throw new Error(`Unexpected AWS JSON call: ${args.join(" ")}`);
+    const aws = successfulAws({
+      describedStack: stackResult({ status: "UPDATE_COMPLETE" }),
+      commandIds: ["command-0001", "command-0002"]
     });
 
     await expect(bootstrap({ aws, clock })).resolves.toMatchObject({
@@ -186,10 +326,90 @@ describe("AWS Staging SSM host bootstrap", () => {
     const callsFor = (service, operation) => aws.json.mock.calls
       .filter(([args]) => args[0] === service && args[1] === operation);
     expect(callsFor("cloudformation", "describe-stacks")).toHaveLength(2);
+    expect(callsFor("cloudformation", "list-stack-resources")).toHaveLength(2);
+    expect(callsFor("ssm", "get-document")).toHaveLength(2);
+    expect(callsFor("ssm", "get-parameter")).toHaveLength(2);
     expect(callsFor("ssm", "send-command")).toHaveLength(2);
     expect(callsFor("ssm", "get-command-invocation")).toHaveLength(2);
     expect(aws.text.mock.calls.filter(([args]) => args[0] === "ec2")).toHaveLength(2);
     expect(aws.text.mock.calls.filter(([args]) => args[1] === "wait")).toHaveLength(4);
+  });
+
+  it.each([
+    [{ accountId: "999999999999" }, /account/i],
+    [{ region: "ap-southeast-2" }, /region/i]
+  ])("requires a fresh preflight identity before any waiter or command %#", async (overrides, expected) => {
+    const aws = successfulAws();
+
+    await expect(bootstrap({ aws, preflightResult: preflight(overrides) })).rejects.toThrow(expected);
+
+    expect(aws.json).not.toHaveBeenCalled();
+    expect(aws.text).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cross-account StackId before any waiter or command", async () => {
+    const describedStack = stackResult();
+    describedStack.Stacks[0].StackId = stackId.replace(config.accountId, "999999999999");
+    const aws = successfulAws({ describedStack });
+
+    await expect(bootstrap({ aws })).rejects.toThrow(/StackId|account/i);
+
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("rejects a foreign stack resource binding before any waiter or command", async () => {
+    const listedResources = stackResources({
+      DataVolume: { PhysicalResourceId: "vol-0fedcba9876543210" }
+    });
+    const aws = successfulAws({ listedResources });
+
+    await expect(bootstrap({ aws })).rejects.toThrow(/DataVolume.*output|identity/i);
+
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("rejects a data-volume attachment to a foreign instance before any waiter or command", async () => {
+    const aws = successfulAws({
+      dataVolume: describedDataVolume({
+        Attachments: [{
+          InstanceId: "i-0fedcba9876543210",
+          Device: "/dev/sdf",
+          State: "attached"
+        }]
+      })
+    });
+
+    await expect(bootstrap({ aws })).rejects.toThrow(/volume.*attachment|instance/i);
+
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("rejects SSM document content drift with zero command execution", async () => {
+    const aws = successfulAws({
+      document: documentResult({ content: { ...bootstrapDocumentContent, description: "foreign" } })
+    });
+
+    await expect(bootstrap({ aws })).rejects.toThrow(/document.*content|drift/i);
+
+    expect(aws.text).not.toHaveBeenCalled();
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("rejects CloudWatch parameter content and version drift with zero command execution", async () => {
+    for (const parameter of [
+      parameterResult({ value: { ...cloudWatchAgentConfig, unexpected: true } }),
+      parameterResult({ version: 0 })
+    ]) {
+      const aws = successfulAws({ parameter });
+
+      await expect(bootstrap({ aws })).rejects.toThrow(/parameter.*(?:content|version)|drift/i);
+
+      expect(aws.text).not.toHaveBeenCalled();
+      expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+    }
   });
 
   it.each([
@@ -200,7 +420,7 @@ describe("AWS Staging SSM host bootstrap", () => {
   ])("rejects %s before issuing a waiter or command", async (_label, describedStack) => {
     const aws = successfulAws({ describedStack });
 
-    await expect(bootstrap({ aws })).rejects.toThrow("exactly one");
+    await expect(bootstrap({ aws })).rejects.toThrow(/exactly one|malformed/);
     expect(aws.text).not.toHaveBeenCalled();
     expect(aws.json).toHaveBeenCalledTimes(1);
   });
@@ -214,7 +434,7 @@ describe("AWS Staging SSM host bootstrap", () => {
   ])("rejects unstable stack status %s", async (status) => {
     const aws = successfulAws({ describedStack: stackResult({ status }) });
 
-    await expect(bootstrap({ aws })).rejects.toThrow(/stable|UNKNOWN/);
+    await expect(bootstrap({ aws })).rejects.toThrow(/stable|safely complete|UNKNOWN/);
     expect(aws.text).not.toHaveBeenCalled();
   });
 
@@ -237,7 +457,7 @@ describe("AWS Staging SSM host bootstrap", () => {
     const entries = Object.entries(outputValues).filter(([key]) => key !== "DataVolumeId");
     const aws = successfulAws({ describedStack: stackResult({ entries }) });
 
-    await expect(bootstrap({ aws })).rejects.toThrow(/missing.*DataVolumeId/i);
+    await expect(bootstrap({ aws })).rejects.toThrow(/missing.*DataVolumeId|exactly 10/i);
     expect(aws.text).not.toHaveBeenCalled();
   });
 
@@ -282,7 +502,7 @@ describe("AWS Staging SSM host bootstrap", () => {
     aws.text.mockRejectedValueOnce(waiterError);
 
     await expect(bootstrap({ aws })).rejects.toBe(waiterError);
-    expect(aws.json).toHaveBeenCalledTimes(1);
+    expect(aws.json).toHaveBeenCalledTimes(6);
     expect(aws.text).toHaveBeenCalledTimes(1);
   });
 
@@ -477,6 +697,10 @@ describe("AWS Staging SSM host bootstrap", () => {
       "commandId",
       "status",
       "responseCode",
+      "documentVersion",
+      "documentSha256",
+      "agentParameterVersion",
+      "agentParameterSha256",
       "startedAt",
       "completedAt"
     ]);
@@ -513,12 +737,14 @@ describe("AWS Staging SSM host bootstrap", () => {
     const resolveConfig = vi.fn(() => config);
     const createAws = vi.fn(() => aws);
     const runBootstrap = vi.fn(async () => summary);
+    const runPreflight = vi.fn();
 
     await expect(main(["--injected"], {
       parseAwsStagingArgsImpl: parseArgs,
       resolveAwsStagingConfigImpl: resolveConfig,
       createAwsCliImpl: createAws,
-      bootstrapAwsStagingHostImpl: runBootstrap
+      bootstrapAwsStagingHostImpl: runBootstrap,
+      runPreflightImpl: runPreflight
     })).resolves.toBe(summary);
     expect(parseArgs).toHaveBeenCalledWith(["--injected"]);
     expect(resolveConfig).toHaveBeenCalledWith(parsedArgs);
@@ -526,7 +752,7 @@ describe("AWS Staging SSM host bootstrap", () => {
       profile: config.profile,
       region: config.region
     });
-    expect(runBootstrap).toHaveBeenCalledWith({ aws, config });
+    expect(runBootstrap).toHaveBeenCalledWith({ aws, config, runPreflight });
 
     const stdout = [];
     const stderr = [];

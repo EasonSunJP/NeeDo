@@ -7,6 +7,7 @@ import {
 const STAGING_AWS_SERVICE_OPERATIONS = Object.freeze([
   ["sts", "get-caller-identity"],
   ["ssm", "get-parameter"],
+  ["ssm", "get-document"],
   ["ssm", "describe-instance-information"],
   ["ssm", "send-command"],
   ["ssm", "get-command-invocation"],

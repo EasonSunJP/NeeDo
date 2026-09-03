@@ -2,6 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  AWS_STAGING_BOOTSTRAP_DOCUMENT_CONTENT,
+  AWS_STAGING_CLOUDWATCH_AGENT_CONFIG,
+  AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT
+} from "../../scripts/aws-staging-attestation.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, "cloudformation.yml"), "utf8");
@@ -64,6 +69,16 @@ function literalProperty(block, name, indent = 6) {
   const next = rest.search(new RegExp(`^ {${indent}}[A-Za-z][A-Za-z0-9]*:`, "m"));
   const literal = next < 0 ? rest : rest.slice(0, next);
   return literal.split("\n").map((line) => line.slice(indent + 2)).join("\n");
+}
+
+function documentRunCommand(block) {
+  const marker = "                - |\n";
+  const start = block.indexOf(marker);
+  if (start < 0) throw new Error("Missing document runCommand literal");
+  const rest = block.slice(start + marker.length);
+  const end = rest.indexOf("      Tags:\n");
+  if (end < 0) throw new Error("Missing document Tags boundary");
+  return rest.slice(0, end).split("\n").map((line) => line.slice(18)).join("\n");
 }
 
 const listTags = `      Tags:
@@ -245,6 +260,7 @@ describe("AWS Staging CloudFormation contract", () => {
 
   it("uses journald for AL2023 system logs without fabricated file sources", () => {
     const config = JSON.parse(literalProperty(resourceBlock("CloudWatchAgentConfigParameter"), "Value"));
+    expect(config).toEqual(AWS_STAGING_CLOUDWATCH_AGENT_CONFIG);
     expect(config.logs.logs_collected).toEqual({
       journald: {
         collect_list: [{
@@ -296,6 +312,21 @@ describe("AWS Staging CloudFormation contract", () => {
       expect(resourceBlock(name).match(/^      TargetType: \/AWS::EC2::Instance$/gm) ?? [], name).toHaveLength(1);
     }
     expect(resourceBlock("HostVerificationDocument")).not.toContain("        parameters:");
+  });
+
+  it("keeps the executable SSM content synchronized with the attestation contract", () => {
+    const bootstrap = resourceBlock("HostBootstrapDocument");
+    const verification = resourceBlock("HostVerificationDocument");
+    expect(documentRunCommand(bootstrap)).toBe(
+      AWS_STAGING_BOOTSTRAP_DOCUMENT_CONTENT.mainSteps[0].inputs.runCommand[0]
+    );
+    expect(documentRunCommand(verification)).toBe(
+      AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT.mainSteps[0].inputs.runCommand[0]
+    );
+    expect(bootstrap).toContain("          CloudWatchAgentConfigParameterVersion:");
+    expect(bootstrap).toContain('            allowedPattern: "^[1-9][0-9]*$"');
+    expect(bootstrap).toContain("cloudwatch_parameter_version='{{ CloudWatchAgentConfigParameterVersion }}'");
+    expect(bootstrap).toContain('-c "ssm:$cloudwatch_parameter:$cloudwatch_parameter_version"');
   });
 
   it("contains host bootstrap only and excludes application deployment", () => {

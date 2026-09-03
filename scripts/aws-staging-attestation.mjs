@@ -1,0 +1,285 @@
+import { createHash } from "node:crypto";
+
+const bootstrapScript = [
+  "set -euo pipefail",
+  "",
+  "data_volume_id='{{ DataVolumeId }}'",
+  "target_serial=\"${data_volume_id//-/}\"",
+  "cloudwatch_parameter='{{ CloudWatchAgentConfigParameter }}'",
+  "cloudwatch_parameter_version='{{ CloudWatchAgentConfigParameterVersion }}'",
+  "device=\"\"",
+  "",
+  "for _ in $(seq 1 60); do",
+  "  for serial_file in /sys/block/nvme*n1/device/serial; do",
+  "    test -e \"$serial_file\" || continue",
+  "    serial=\"$(tr -d '[:space:]-' < \"$serial_file\")\"",
+  "    if test \"$serial\" = \"$target_serial\"; then",
+  "      block_name=\"$(basename \"$(dirname \"$(dirname \"$serial_file\")\")\")\"",
+  "      device=\"/dev/$block_name\"",
+  "      break 2",
+  "    fi",
+  "  done",
+  "  sleep 5",
+  "done",
+  "",
+  "if test -z \"$device\" || test ! -b \"$device\"; then",
+  "  echo \"Expected data volume device did not appear within five minutes\" >&2",
+  "  exit 1",
+  "fi",
+  "",
+  "command -v mkfs.xfs >/dev/null",
+  "command -v wipefs >/dev/null",
+  "existing_fs=\"$(lsblk -n -o FSTYPE \"$device\" | tr -d '[:space:]')\"",
+  "if test -z \"$existing_fs\"; then",
+  "  if wipefs -n \"$device\" | grep -q .; then",
+  "    echo \"Refusing to format a device with an existing signature\" >&2",
+  "    exit 1",
+  "  fi",
+  "  mkfs.xfs \"$device\"",
+  "elif test \"$existing_fs\" != \"xfs\"; then",
+  "  echo \"Existing data filesystem is not XFS\" >&2",
+  "  exit 1",
+  "fi",
+  "",
+  "uuid=\"$(blkid -s UUID -o value \"$device\")\"",
+  "test -n \"$uuid\"",
+  "mountpoint=/srv/needo",
+  "install -d -m 0750 \"$mountpoint\"",
+  "",
+  "if grep -Eq '^[^#]+[[:space:]]+/srv/needo[[:space:]]+' /etc/fstab; then",
+  "  grep -Eq \"^UUID=$uuid[[:space:]]+/srv/needo[[:space:]]+xfs[[:space:]]\" /etc/fstab || {",
+  "    echo \"Existing /srv/needo fstab entry does not match the data volume\" >&2",
+  "    exit 1",
+  "  }",
+  "else",
+  "  printf 'UUID=%s /srv/needo xfs defaults,nofail 0 2\\n' \"$uuid\" >> /etc/fstab",
+  "fi",
+  "",
+  "if findmnt --mountpoint \"$mountpoint\" >/dev/null; then",
+  "  test \"$(findmnt -n -o UUID --mountpoint \"$mountpoint\")\" = \"$uuid\"",
+  "else",
+  "  mount \"$mountpoint\"",
+  "fi",
+  "",
+  "mountpoint=/srv/needo",
+  "findmnt --mountpoint \"$mountpoint\" >/dev/null",
+  "test \"$(findmnt -n -o FSTYPE --mountpoint \"$mountpoint\")\" = \"xfs\"",
+  "install -d -m 0750 \\",
+  "  \"$mountpoint/mysql\" \\",
+  "  \"$mountpoint/redis\" \\",
+  "  \"$mountpoint/media/customer-avatars\" \\",
+  "  \"$mountpoint/media/identity-applications\" \\",
+  "  \"$mountpoint/media/im-media\" \\",
+  "  \"$mountpoint/media/content-media\" \\",
+  "  \"$mountpoint/releases\"",
+  "test -d /srv/needo/media/customer-avatars",
+  "",
+  "dnf install -y docker amazon-cloudwatch-agent",
+  "systemctl enable --now docker",
+  "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \\",
+  "  -a fetch-config \\",
+  "  -m ec2 \\",
+  "  -s \\",
+  "  -c \"ssm:$cloudwatch_parameter:$cloudwatch_parameter_version\"",
+  "systemctl enable amazon-cloudwatch-agent",
+  "systemctl is-active --quiet docker",
+  "systemctl is-active --quiet amazon-cloudwatch-agent",
+  "",
+  "install -d -m 0755 /var/lib/needo",
+  "install -m 0644 /dev/null /var/lib/needo/environment-bootstrap-v1"
+].join("\n") + "\n";
+
+const verificationScript = [
+  "set -euo pipefail",
+  "findmnt --mountpoint /srv/needo >/dev/null",
+  "test \"$(findmnt -n -o FSTYPE --mountpoint /srv/needo)\" = \"xfs\"",
+  "for path in mysql redis media/customer-avatars media/identity-applications media/im-media media/content-media releases; do",
+  "  test -d \"/srv/needo/$path\"",
+  "done",
+  "systemctl is-active --quiet amazon-ssm-agent",
+  "systemctl is-active --quiet docker",
+  "systemctl is-active --quiet amazon-cloudwatch-agent",
+  "test -f /var/lib/needo/environment-bootstrap-v1",
+  "test -z \"$(docker ps -q)\"",
+  "test ! -e /srv/needo/releases/current",
+  "printf '{\"mount\":true,\"filesystem\":\"xfs\",\"directories\":true,\"services\":true,\"runningContainers\":0,\"activeRelease\":false}\\n'"
+].join("\n") + "\n";
+
+export const AWS_STAGING_CLOUDWATCH_AGENT_CONFIG = Object.freeze({
+  agent: Object.freeze({ metrics_collection_interval: 60 }),
+  metrics: Object.freeze({
+    namespace: "Needo/Staging",
+    append_dimensions: Object.freeze({ InstanceId: "${aws:InstanceId}" }),
+    metrics_collected: Object.freeze({
+      mem: Object.freeze({
+        measurement: Object.freeze(["mem_used_percent"]),
+        metrics_collection_interval: 60
+      }),
+      swap: Object.freeze({
+        measurement: Object.freeze(["swap_used_percent"]),
+        metrics_collection_interval: 60
+      }),
+      disk: Object.freeze({
+        measurement: Object.freeze(["disk_used_percent"]),
+        metrics_collection_interval: 60,
+        resources: Object.freeze(["/", "/srv/needo"]),
+        drop_device: true
+      })
+    })
+  }),
+  logs: Object.freeze({
+    logs_collected: Object.freeze({
+      journald: Object.freeze({
+        collect_list: Object.freeze([
+          Object.freeze({
+            log_group_name: "/needo/staging/system",
+            log_stream_name: "{instance_id}"
+          })
+        ])
+      })
+    })
+  })
+});
+
+export const AWS_STAGING_BOOTSTRAP_DOCUMENT_CONTENT = Object.freeze({
+  schemaVersion: "2.2",
+  description: "Prepare the NeeDo Staging host without deploying the application",
+  parameters: Object.freeze({
+    DataVolumeId: Object.freeze({
+      type: "String",
+      description: "Exact EBS data volume ID attached by this stack",
+      allowedPattern: "^vol-[0-9a-f]{8,17}$"
+    }),
+    CloudWatchAgentConfigParameter: Object.freeze({
+      type: "String",
+      description: "Exact SSM parameter containing the agent configuration",
+      default: "/needo/staging/cloudwatch-agent",
+      allowedPattern: "^/needo/staging/cloudwatch-agent$"
+    }),
+    CloudWatchAgentConfigParameterVersion: Object.freeze({
+      type: "String",
+      description: "Immutable numeric version of the CloudWatch Agent configuration",
+      allowedPattern: "^[1-9][0-9]*$"
+    })
+  }),
+  mainSteps: Object.freeze([
+    Object.freeze({
+      action: "aws:runShellScript",
+      name: "PrepareEnvironmentHost",
+      inputs: Object.freeze({
+        timeoutSeconds: "900",
+        runCommand: Object.freeze([bootstrapScript])
+      })
+    })
+  ])
+});
+
+export const AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT = Object.freeze({
+  schemaVersion: "2.2",
+  description: "Verify the environment-only host without reading secrets or application data",
+  mainSteps: Object.freeze([
+    Object.freeze({
+      action: "aws:runShellScript",
+      name: "VerifyEnvironmentHost",
+      inputs: Object.freeze({ runCommand: Object.freeze([verificationScript]) })
+    })
+  ])
+});
+
+const DEFAULT_CONTRACTS = Object.freeze({
+  bootstrapDocumentContent: AWS_STAGING_BOOTSTRAP_DOCUMENT_CONTENT,
+  verificationDocumentContent: AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT,
+  cloudWatchAgentConfig: AWS_STAGING_CLOUDWATCH_AGENT_CONFIG
+});
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalize(value[key])])
+    );
+  }
+  return value;
+}
+
+function canonicalJson(value) {
+  return JSON.stringify(canonicalize(value));
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function parseExactJson(value, label) {
+  if (typeof value !== "string" || !value) throw new Error(`${label} content is missing`);
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new Error(`${label} content is not valid JSON`);
+  }
+}
+
+function requirePositiveDocumentVersion(value, label) {
+  if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value)) {
+    throw new Error(`${label} version must be an immutable positive integer string`);
+  }
+  return value;
+}
+
+export function loadAwsStagingAttestationContracts() {
+  return DEFAULT_CONTRACTS;
+}
+
+export function attestAwsStagingDocument(response, {
+  expectedName,
+  expectedContent,
+  label
+}) {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new Error(`${label} document response is malformed`);
+  }
+  if (response.Name !== expectedName
+    || response.Status !== "Active"
+    || response.DocumentType !== "Command"
+    || response.DocumentFormat !== "JSON") {
+    throw new Error(`${label} document identity is not approved`);
+  }
+  const version = requirePositiveDocumentVersion(response.DocumentVersion, `${label} document`);
+  const actualCanonical = canonicalJson(parseExactJson(response.Content, `${label} document`));
+  const expectedCanonical = canonicalJson(expectedContent);
+  if (actualCanonical !== expectedCanonical) {
+    throw new Error(`${label} document content drift detected`);
+  }
+  return Object.freeze({ version, sha256: sha256(actualCanonical) });
+}
+
+export function attestAwsStagingCloudWatchParameter(response, {
+  config,
+  expectedName,
+  expectedContent
+}) {
+  const parameter = response?.Parameter;
+  const expectedArn = `arn:aws:ssm:${config.region}:${config.accountId}:parameter/needo/staging/cloudwatch-agent`;
+  if (!parameter || typeof parameter !== "object" || Array.isArray(parameter)
+    || parameter.Name !== expectedName
+    || parameter.Type !== "String"
+    || parameter.ARN !== expectedArn
+    || parameter.DataType !== "text") {
+    throw new Error("CloudWatch Agent parameter identity is not approved");
+  }
+  if (!Number.isSafeInteger(parameter.Version) || parameter.Version < 1) {
+    throw new Error("CloudWatch Agent parameter version must be a positive integer");
+  }
+  const actualCanonical = canonicalJson(
+    parseExactJson(parameter.Value, "CloudWatch Agent parameter")
+  );
+  const expectedCanonical = canonicalJson(expectedContent);
+  if (actualCanonical !== expectedCanonical) {
+    throw new Error("CloudWatch Agent parameter content drift detected");
+  }
+  return Object.freeze({
+    version: parameter.Version,
+    sha256: sha256(actualCanonical),
+    selector: `${expectedName}:${parameter.Version}`
+  });
+}

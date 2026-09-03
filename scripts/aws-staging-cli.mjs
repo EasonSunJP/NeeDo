@@ -36,6 +36,7 @@ const ALLOWED_SERVICE_OPERATIONS = new Set([
   "configure list",
   "sts get-caller-identity",
   "ssm get-parameter",
+  "ssm get-document",
   "ssm describe-instance-information",
   "ssm send-command",
   "ssm get-command-invocation",

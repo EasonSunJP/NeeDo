@@ -773,6 +773,10 @@ Resources:
             description: Exact SSM parameter containing the agent configuration
             default: /needo/staging/cloudwatch-agent
             allowedPattern: "^/needo/staging/cloudwatch-agent$"
+          CloudWatchAgentConfigParameterVersion:
+            type: String
+            description: Immutable numeric version of the CloudWatch Agent configuration
+            allowedPattern: "^[1-9][0-9]*$"
         mainSteps:
           - action: aws:runShellScript
             name: PrepareEnvironmentHost
@@ -785,6 +789,7 @@ Resources:
                   data_volume_id='{{ DataVolumeId }}'
                   target_serial="${data_volume_id//-/}"
                   cloudwatch_parameter='{{ CloudWatchAgentConfigParameter }}'
+                  cloudwatch_parameter_version='{{ CloudWatchAgentConfigParameterVersion }}'
                   device=""
 
                   for _ in $(seq 1 60); do
@@ -858,7 +863,7 @@ Resources:
                     -a fetch-config \
                     -m ec2 \
                     -s \
-                    -c "ssm:$cloudwatch_parameter"
+                    -c "ssm:$cloudwatch_parameter:$cloudwatch_parameter_version"
                   systemctl enable amazon-cloudwatch-agent
                   systemctl is-active --quiet docker
                   systemctl is-active --quiet amazon-cloudwatch-agent

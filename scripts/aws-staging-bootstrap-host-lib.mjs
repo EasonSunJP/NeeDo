@@ -1,91 +1,58 @@
+import { requireAwsStagingHostname, requireAwsStagingRegion } from "./aws-staging-config.mjs";
+import {
+  attestAwsStagingCloudWatchParameter,
+  attestAwsStagingDocument,
+  loadAwsStagingAttestationContracts
+} from "./aws-staging-attestation.mjs";
+import {
+  requireAwsStagingOutputs,
+  requireAwsStagingResources,
+  requireAwsStagingStack
+} from "./aws-staging-stack-contract.mjs";
+
 const STABLE_STACK_STATES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
-const REQUIRED_OUTPUT_KEYS = Object.freeze([
-  "InstanceId",
-  "ElasticIp",
-  "DataVolumeId",
-  "ReleaseBucketName",
-  "BackupBucketName",
-  "ApplicationSecretArn",
-  "HostBootstrapDocumentName",
-  "HostVerificationDocumentName",
-  "CloudWatchAgentConfigParameterName",
-  "BudgetName"
-]);
 const SSM_REGISTRATION_TIMEOUT_MS = 10 * 60 * 1000;
 const SSM_REGISTRATION_POLL_MS = 10 * 1000;
 const MAX_SSM_REGISTRATION_POLLS = 61;
-const INSTANCE_ID_PATTERN = /^i-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
-const VOLUME_ID_PATTERN = /^vol-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
-const SSM_DOCUMENT_NAME_PATTERN = /^[A-Za-z0-9_.-]{3,128}$/;
 const COMMAND_ID_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 
-function requireSingleStableStack(described, stackName) {
-  const stacks = described?.Stacks;
-  if (!Array.isArray(stacks) || stacks.length !== 1) {
-    throw new Error(`Expected exactly one CloudFormation stack named ${stackName}`);
+function requireResolvedConfig(config) {
+  if (!config || typeof config !== "object" || !Object.isFrozen(config)) {
+    throw new Error("A frozen resolved AWS Staging configuration is required");
   }
-
-  const [stack] = stacks;
-  const returnedStackName = stack?.StackName;
-  if (typeof returnedStackName !== "string"
-    || !returnedStackName
-    || returnedStackName !== stackName) {
-    throw new Error(`CloudFormation StackName identity must exactly match ${stackName}`);
+  if (!/^\d{12}$/.test(String(config.accountId ?? ""))) {
+    throw new Error("AWS Staging bootstrap account is invalid");
   }
-  const stackStatus = String(stack?.StackStatus ?? "");
-  if (!STABLE_STACK_STATES.has(stackStatus)) {
-    throw new Error(
-      `CloudFormation stack ${stackName} is not stable: ${stackStatus || "UNKNOWN"}`
-    );
+  requireAwsStagingRegion(config.region);
+  requireAwsStagingHostname(config.hostname ?? "staging.needo.life");
+  if (config.stackName !== "needo-staging-infrastructure"
+    || config.owner !== "needo") {
+    throw new Error("AWS Staging bootstrap stack configuration is not approved");
   }
-  return { stack, stackStatus };
 }
 
-function requireCompleteOutputs(stack) {
-  const rawOutputs = stack?.Outputs;
-  if (!Array.isArray(rawOutputs)) {
-    throw new Error("CloudFormation outputs must be an array");
+function requireFreshPreflight(preflight, config) {
+  if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
+    throw new Error("AWS Staging bootstrap requires a fresh immutable in-process preflight");
   }
-
-  const outputs = {};
-  for (const output of rawOutputs) {
-    const key = output?.OutputKey;
-    const value = output?.OutputValue;
-    if (typeof key !== "string" || !key.trim()
-      || typeof value !== "string" || !value.trim()) {
-      throw new Error("Every CloudFormation output must have a non-empty string key and value");
-    }
-    if (Object.hasOwn(outputs, key)) {
-      throw new Error(`CloudFormation output key is duplicate: ${key}`);
-    }
-    outputs[key] = value;
+  if (preflight.accountId !== config.accountId) throw new Error("Bootstrap preflight account mismatch");
+  if (preflight.region !== config.region) throw new Error("Bootstrap preflight region mismatch");
+  if (preflight.hostname !== (config.hostname ?? "staging.needo.life")) {
+    throw new Error("Bootstrap preflight hostname mismatch");
   }
-
-  for (const key of REQUIRED_OUTPUT_KEYS) {
-    if (!Object.hasOwn(outputs, key)) {
-      throw new Error(`CloudFormation output is missing required key: ${key}`);
-    }
+  if (preflight.callerKind !== "assumed-role"
+    || preflight.templateValidation !== "VALID"
+    || preflight.amiArchitecture !== "arm64"
+    || !STABLE_STACK_STATES.has(preflight.stackState)) {
+    throw new Error("Bootstrap preflight did not pass every required safety gate");
   }
-  if (rawOutputs.length !== REQUIRED_OUTPUT_KEYS.length) {
-    throw new Error(
-      `CloudFormation must return exactly ${REQUIRED_OUTPUT_KEYS.length} approved outputs`
-    );
+  if (!Array.isArray(preflight.dnsA) || !Object.isFrozen(preflight.dnsA)) {
+    throw new Error("Bootstrap preflight DNS evidence is invalid");
   }
-  return outputs;
-}
-
-function requireSafeConsumedOutputs(outputs) {
-  if (!INSTANCE_ID_PATTERN.test(outputs.InstanceId)) {
-    throw new Error("CloudFormation output InstanceId is invalid");
-  }
-  if (!VOLUME_ID_PATTERN.test(outputs.DataVolumeId)) {
-    throw new Error("CloudFormation output DataVolumeId is invalid");
-  }
-  if (!SSM_DOCUMENT_NAME_PATTERN.test(outputs.HostBootstrapDocumentName)) {
-    throw new Error("CloudFormation output HostBootstrapDocumentName is invalid");
-  }
-  if (outputs.CloudWatchAgentConfigParameterName !== "/needo/staging/cloudwatch-agent") {
-    throw new Error("CloudFormation output CloudWatchAgentConfigParameterName is invalid");
+  const canonicalDns = [...new Set(preflight.dnsA)].sort();
+  if (preflight.dnsA.some((address) => typeof address !== "string")
+    || JSON.stringify(canonicalDns) !== JSON.stringify(preflight.dnsA)) {
+    throw new Error("Bootstrap preflight DNS evidence must be sorted and unique");
   }
 }
 
@@ -103,6 +70,43 @@ function toSafeTimestamp(milliseconds) {
     throw new Error("AWS Staging bootstrap clock returned an invalid timestamp");
   }
   return timestamp.toISOString();
+}
+
+function requireInstanceBinding(response, instanceId) {
+  if (!response || typeof response !== "object" || Array.isArray(response)
+    || (response.NextToken !== undefined && response.NextToken !== "")
+    || !Array.isArray(response.Reservations)) {
+    throw new Error("EC2 instance binding response is malformed or paginated");
+  }
+  const instances = response.Reservations.flatMap((reservation) => (
+    Array.isArray(reservation?.Instances) ? reservation.Instances : []
+  ));
+  if (instances.length !== 1
+    || instances[0]?.InstanceId !== instanceId
+    || instances[0]?.InstanceType !== "t4g.large"
+    || !new Set(["pending", "running"]).has(instances[0]?.State?.Name)) {
+    throw new Error("EC2 instance identity does not match the approved stack instance");
+  }
+}
+
+function requireDataVolumeAttachment(response, instanceId, volumeId) {
+  if (!response || typeof response !== "object" || Array.isArray(response)
+    || (response.NextToken !== undefined && response.NextToken !== "")
+    || !Array.isArray(response.Volumes)
+    || response.Volumes.length !== 1) {
+    throw new Error("EC2 data volume attachment response is malformed or paginated");
+  }
+  const [volume] = response.Volumes;
+  if (volume?.VolumeId !== volumeId || volume?.State !== "in-use"
+    || !Array.isArray(volume.Attachments) || volume.Attachments.length !== 1) {
+    throw new Error("EC2 data volume identity or attachment is invalid");
+  }
+  const [attachment] = volume.Attachments;
+  if (attachment?.InstanceId !== instanceId
+    || attachment?.Device !== "/dev/sdf"
+    || attachment?.State !== "attached") {
+    throw new Error("EC2 data volume attachment does not match the approved stack instance");
+  }
 }
 
 function requireRegistrationState(described, instanceId) {
@@ -184,47 +188,82 @@ export async function bootstrapAwsStagingHost({
   aws,
   config,
   now = Date.now,
-  sleep = defaultSleep
+  sleep = defaultSleep,
+  runPreflight,
+  loadAttestationContracts = loadAwsStagingAttestationContracts
 }) {
   if (!aws || typeof aws.json !== "function" || typeof aws.text !== "function") {
     throw new Error("The guarded AWS CLI adapter is required");
   }
-  if (!config || typeof config.stackName !== "string" || !config.stackName) {
-    throw new Error("A resolved AWS Staging configuration is required");
-  }
+  requireResolvedConfig(config);
   if (typeof now !== "function" || typeof sleep !== "function") {
     throw new Error("AWS Staging bootstrap requires clock and sleep boundaries");
   }
+  if (typeof runPreflight !== "function" || typeof loadAttestationContracts !== "function") {
+    throw new Error("AWS Staging bootstrap requires preflight and attestation boundaries");
+  }
 
   const startedAtMilliseconds = readClock(now);
+  const preflight = await runPreflight({ aws, config });
+  requireFreshPreflight(preflight, config);
+  const contracts = await loadAttestationContracts();
+
   const describedStack = await aws.json([
-    "cloudformation", "describe-stacks",
-    "--stack-name", config.stackName
+    "cloudformation", "describe-stacks", "--stack-name", config.stackName
   ]);
-  const { stack, stackStatus } = requireSingleStableStack(
-    describedStack,
-    config.stackName
-  );
-  const outputs = requireCompleteOutputs(stack);
-  requireSafeConsumedOutputs(outputs);
+  const { stack, stackId, stackStatus } = requireAwsStagingStack(describedStack, config, {
+    allowedStatuses: STABLE_STACK_STATES
+  });
+  const outputs = requireAwsStagingOutputs(stack, config);
+  const listedResources = await aws.json([
+    "cloudformation", "list-stack-resources", "--stack-name", stackId
+  ]);
+  requireAwsStagingResources(listedResources, outputs, config, {
+    allowedStatuses: STABLE_STACK_STATES
+  });
+
+  const describedInstance = await aws.json([
+    "ec2", "describe-instances", "--instance-ids", outputs.InstanceId
+  ]);
+  requireInstanceBinding(describedInstance, outputs.InstanceId);
+  const describedVolume = await aws.json([
+    "ec2", "describe-volumes", "--volume-ids", outputs.DataVolumeId
+  ]);
+  requireDataVolumeAttachment(describedVolume, outputs.InstanceId, outputs.DataVolumeId);
+
+  const describedDocument = await aws.json([
+    "ssm", "get-document",
+    "--name", outputs.HostBootstrapDocumentName,
+    "--document-version", "$LATEST",
+    "--document-format", "JSON"
+  ]);
+  const documentAttestation = attestAwsStagingDocument(describedDocument, {
+    expectedName: outputs.HostBootstrapDocumentName,
+    expectedContent: contracts?.bootstrapDocumentContent,
+    label: "Host bootstrap"
+  });
+  const describedParameter = await aws.json([
+    "ssm", "get-parameter", "--name", outputs.CloudWatchAgentConfigParameterName
+  ]);
+  const parameterAttestation = attestAwsStagingCloudWatchParameter(describedParameter, {
+    config,
+    expectedName: outputs.CloudWatchAgentConfigParameterName,
+    expectedContent: contracts?.cloudWatchAgentConfig
+  });
 
   await aws.text([
     "ec2", "wait", "instance-status-ok",
     "--instance-ids", outputs.InstanceId
   ]);
-  await waitForSsmOnline({
-    aws,
-    instanceId: outputs.InstanceId,
-    now,
-    sleep
-  });
+  await waitForSsmOnline({ aws, instanceId: outputs.InstanceId, now, sleep });
 
   const commandResponse = await aws.json([
     "ssm", "send-command",
     "--document-name", outputs.HostBootstrapDocumentName,
+    "--document-version", documentAttestation.version,
     "--instance-ids", outputs.InstanceId,
     "--parameters",
-    `DataVolumeId=${outputs.DataVolumeId},CloudWatchAgentConfigParameter=${outputs.CloudWatchAgentConfigParameterName}`,
+    `DataVolumeId=${outputs.DataVolumeId},CloudWatchAgentConfigParameter=${outputs.CloudWatchAgentConfigParameterName},CloudWatchAgentConfigParameterVersion=${parameterAttestation.version}`,
     "--comment", "NeeDo Staging environment-only host bootstrap"
   ]);
   const commandId = requireCommandId(commandResponse);
@@ -248,6 +287,10 @@ export async function bootstrapAwsStagingHost({
     commandId,
     status,
     responseCode,
+    documentVersion: documentAttestation.version,
+    documentSha256: documentAttestation.sha256,
+    agentParameterVersion: parameterAttestation.version,
+    agentParameterSha256: parameterAttestation.sha256,
     startedAt: toSafeTimestamp(startedAtMilliseconds),
     completedAt: toSafeTimestamp(readClock(now))
   });

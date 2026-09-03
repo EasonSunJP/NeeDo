@@ -9,6 +9,10 @@ import {
   verifyAwsStagingEnvironment,
   writeAwsStagingAcceptanceEvidence
 } from "./aws-staging-verify-lib.mjs";
+import {
+  AWS_STAGING_CLOUDWATCH_AGENT_CONFIG,
+  AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT
+} from "./aws-staging-attestation.mjs";
 
 const config = Object.freeze({
   accountId: "123456789012",
@@ -310,6 +314,24 @@ function passingFixture() {
     },
     ec2Tags: { Tags: ec2TaggedIds.flatMap((ResourceId) => tags().map(({ Key, Value }) => ({ ResourceId, Key, Value }))) },
     ssmInstance: { InstanceInformationList: [{ InstanceId: ids.instance, PingStatus: "Online" }] },
+    verificationDocument: {
+      Name: ids.verificationDocument,
+      DocumentVersion: "9",
+      Status: "Active",
+      Content: JSON.stringify(AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT),
+      DocumentType: "Command",
+      DocumentFormat: "JSON"
+    },
+    agentParameter: {
+      Parameter: {
+        Name: ids.agentParameter,
+        Type: "String",
+        Value: JSON.stringify(AWS_STAGING_CLOUDWATCH_AGENT_CONFIG),
+        Version: 11,
+        ARN: parameterArn,
+        DataType: "text"
+      }
+    },
     ssmTags: Object.fromEntries([
       ids.agentParameter, ids.bootstrapDocument, ids.verificationDocument
     ].map((name) => [name, { TagList: tags() }])),
@@ -405,6 +427,8 @@ function createAws(fixture, trace = []) {
         case "ec2 describe-volumes": return fixture.volumes;
         case "ec2 describe-tags": return fixture.ec2Tags;
         case "ssm describe-instance-information": return fixture.ssmInstance;
+        case "ssm get-document": return fixture.verificationDocument;
+        case "ssm get-parameter": return fixture.agentParameter;
         case "ssm list-tags-for-resource": return fixture.ssmTags[argument(args, "--resource-id")];
         case "s3api get-public-access-block": return fixture[argument(args, "--bucket") === ids.releaseBucket ? "releaseBucket" : "backupBucket"].publicAccess;
         case "s3api get-bucket-encryption": return fixture[argument(args, "--bucket") === ids.releaseBucket ? "releaseBucket" : "backupBucket"].encryption;
@@ -520,7 +544,14 @@ describe("AWS Staging environment-only acceptance", () => {
         { protocol: "tcp", fromPort: 80, toPort: 80, cidrIpv4: "0.0.0.0/0" },
         { protocol: "tcp", fromPort: 443, toPort: 443, cidrIpv4: "0.0.0.0/0" }
       ],
-      ssm: { online: true, commandId: ids.commandId, commandStatus: "Success", responseCode: 0 },
+      ssm: {
+        online: true,
+        documentVersion: "9",
+        documentSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        commandId: ids.commandId,
+        commandStatus: "Success",
+        responseCode: 0
+      },
       host: { mount: true, filesystem: "xfs", directories: true, services: true, runningContainers: 0, activeRelease: false },
       secretVersionCount: 0,
       monitoring: { snsSubscriptionConfirmed: true },
@@ -546,6 +577,7 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(sendCalls).toEqual([[([
       "ssm", "send-command",
       "--document-name", ids.verificationDocument,
+      "--document-version", "9",
       "--instance-ids", ids.instance,
       "--comment", "NeeDo Staging environment-only acceptance verification"
     ])]]);
@@ -563,6 +595,50 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(trace[0]).toBe("preflight");
     expect(trace[1]).toBe(`dns:${config.hostname}`);
     expect(trace.at(-1)).toBe(`dns:${config.hostname}`);
+  });
+
+  it("rejects verification document content drift before SSM command execution", async () => {
+    const fixture = passingFixture();
+    fixture.verificationDocument.Content = JSON.stringify({
+      ...AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT,
+      description: "foreign verification document"
+    });
+    const trace = [];
+    const aws = createAws(fixture, trace);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+    await expect(verifyAwsStagingEnvironment({
+      aws,
+      config,
+      resolveDns,
+      runPreflight: createPreflight(resolveDns, trace),
+      now: () => 0
+    })).rejects.toThrow(/document.*content|drift/i);
+
+    expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+  });
+
+  it("rejects CloudWatch Agent parameter content or version drift before SSM command execution", async () => {
+    for (const mutate of [
+      (fixture) => { fixture.agentParameter.Parameter.Value = JSON.stringify({ unexpected: true }); },
+      (fixture) => { fixture.agentParameter.Parameter.Version = 0; }
+    ]) {
+      const fixture = passingFixture();
+      mutate(fixture);
+      const trace = [];
+      const aws = createAws(fixture, trace);
+      const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+
+      await expect(verifyAwsStagingEnvironment({
+        aws,
+        config,
+        resolveDns,
+        runPreflight: createPreflight(resolveDns, trace),
+        now: () => 0
+      })).rejects.toThrow(/parameter.*(?:content|version)|drift/i);
+
+      expect(aws.json.mock.calls.filter(([args]) => args[1] === "send-command")).toHaveLength(0);
+    }
   });
 
   it("accepts Sydney only when every regional ARN matches Sydney", async () => {
@@ -815,7 +891,8 @@ describe("AWS Staging environment-only acceptance", () => {
       "cloudformation describe-stacks", "cloudformation list-stack-resources",
       "ec2 describe-instances", "ec2 describe-addresses", "ec2 describe-images", "ec2 describe-security-groups",
       "ec2 describe-volumes", "ec2 describe-tags", "ssm describe-instance-information",
-      "ssm list-tags-for-resource", "s3api get-public-access-block", "s3api get-bucket-encryption",
+      "ssm get-document", "ssm get-parameter", "ssm list-tags-for-resource",
+      "s3api get-public-access-block", "s3api get-bucket-encryption",
       "s3api get-bucket-versioning", "s3api get-bucket-lifecycle-configuration", "s3api get-bucket-tagging",
       "iam list-role-tags", "secretsmanager describe-secret", "secretsmanager list-secret-version-ids",
       "logs list-tags-for-resource", "logs describe-log-groups", "cloudwatch describe-alarms",
@@ -828,6 +905,8 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(operations.every((operation) => allowed.has(operation))).toBe(true);
     expect(operations.filter((operation) => operation === "ssm send-command")).toHaveLength(1);
     expect(operations.filter((operation) => operation === "ssm get-command-invocation")).toHaveLength(1);
+    expect(operations.filter((operation) => operation === "ssm get-document")).toHaveLength(1);
+    expect(operations.filter((operation) => operation === "ssm get-parameter")).toHaveLength(1);
     expect(operations.filter((operation) => operation === "ssm list-tags-for-resource")).toHaveLength(3);
     expect(operations.filter((operation) => operation === "logs list-tags-for-resource")).toHaveLength(2);
     expect(operations.filter((operation) => operation === "cloudwatch list-tags-for-resource")).toHaveLength(4);

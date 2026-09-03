@@ -5,6 +5,7 @@ import {
   resolveAwsStagingConfig
 } from "./aws-staging-config.mjs";
 import { bootstrapAwsStagingHost } from "./aws-staging-bootstrap-host-lib.mjs";
+import { runAwsStagingPreflight } from "./aws-staging-preflight-lib.mjs";
 
 const FAILURE = Object.freeze({
   gate: "aws-staging-host-bootstrap",
@@ -28,11 +29,12 @@ export async function main(argv = process.argv.slice(2), {
   parseAwsStagingArgsImpl = parseAwsStagingArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
   createAwsCliImpl = createFrozenAwsCli,
-  bootstrapAwsStagingHostImpl = bootstrapAwsStagingHost
+  bootstrapAwsStagingHostImpl = bootstrapAwsStagingHost,
+  runPreflightImpl = runAwsStagingPreflight
 } = {}) {
   const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
   const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
-  return bootstrapAwsStagingHostImpl({ aws, config });
+  return bootstrapAwsStagingHostImpl({ aws, config, runPreflight: runPreflightImpl });
 }
 
 export async function runCli({
