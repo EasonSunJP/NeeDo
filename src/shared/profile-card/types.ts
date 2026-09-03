@@ -1,4 +1,5 @@
 import type { BaseInfoCardData, ShopInfoCardData, TechnicianInfoCardData, UserInfoCardData } from "../info-card";
+import type { TechnicianReviewTagSummary } from "../../features/core-read/api";
 
 export type BaseProfileCardData = BaseInfoCardData;
 export type UserProfileData = UserInfoCardData;
@@ -14,11 +15,18 @@ export type TechnicianFormalMetrics = {
 
 export type TechnicianFormalContactService = {
   id: number;
+  publicId?: string;
   shopId: number;
+  shopPublicId?: string | null;
+  shopAddress?: string | null;
   name: string;
+  description?: string | null;
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  usageCount?: number | null;
+  coverImageUrl?: string | null;
+  tags?: string[];
   taxIncluded: true;
   sortOrder: number;
 };
@@ -33,6 +41,9 @@ export type TechnicianFormalContactDetails = {
 };
 
 export type TechnicianFormalContactCardData = {
+  gender?: "female" | "male" | "private";
+  yearsExperience?: number;
   metrics: TechnicianFormalMetrics;
+  reviewTagSummary?: TechnicianReviewTagSummary;
   contactDetails?: TechnicianFormalContactDetails;
 };
