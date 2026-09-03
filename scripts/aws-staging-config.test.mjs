@@ -59,6 +59,29 @@ describe("AWS Staging configuration", () => {
     expect(() => parseAwsStagingArgs([])).toThrow("--account-id");
   });
 
+  it("rejects unknown flags", () => {
+    expect(() => parseAwsStagingArgs(["--unknown", "value"])).toThrow(
+      "Unknown AWS Staging flag"
+    );
+  });
+
+  it("rejects duplicate flags", () => {
+    expect(() => parseAwsStagingArgs([
+      "--profile", "needo-staging-deployer",
+      "--profile", "another-profile"
+    ])).toThrow("Duplicate AWS Staging flag: --profile");
+  });
+
+  it("rejects a required flag without a value", () => {
+    expect(() => parseAwsStagingArgs(["--account-id"])).toThrow(
+      "--account-id requires a value"
+    );
+  });
+
+  it("returns a frozen configuration", () => {
+    expect(Object.isFrozen(resolveAwsStagingConfig(validInput))).toBe(true);
+  });
+
   it("masks alert addresses in evidence", () => {
     expect(maskEmail("operations@example.com")).toBe("o***@example.com");
   });

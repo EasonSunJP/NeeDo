@@ -217,3 +217,22 @@ PASS: 1 suite, 7 tests (rerun with approved local port binding after sandbox EPE
 BUILD: npm --prefix backend run build
 PASS: tsc -p tsconfig.build.json
 ```
+
+## AWS Staging configuration contract review-finding fix
+
+Added focused contract tests for unknown flags, duplicate flags, missing required values, and `Object.isFrozen` on the resolved configuration. The configuration interface remains unchanged: no AWS credential-source or budget-resource fields were added; AWS identity verification and budget resources remain follow-up task scope.
+
+Validation command:
+
+```text
+npm test -- --run scripts/aws-staging-config.test.mjs && git diff --check
+```
+
+Result:
+
+```text
+Test Files  1 passed (1)
+Tests  15 passed (15)
+```
+
+`git diff --check` completed successfully.
