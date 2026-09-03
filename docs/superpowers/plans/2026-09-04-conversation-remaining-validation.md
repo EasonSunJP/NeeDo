@@ -50,7 +50,14 @@ connects to MySQL nor executes `prisma migrate`.
 
 ## Task 3: Final pre-integration reconciliation
 
-- [ ] Re-check `main`, list every conversation branch and its commits, and detect patch-equivalent commits.
-- [ ] Verify each remaining branch is clean and has fresh acceptance evidence.
-- [ ] Report the exact integration set and any external blockers.
-- [ ] Wait for explicit user authorization before merging anything into `main`.
+- [x] Re-check `main`, list every conversation branch and its commits, and detect patch-equivalent commits.
+- [x] Verify each remaining branch is clean and has fresh acceptance evidence.
+- [x] Report the exact integration set and any external blockers.
+- [x] Wait for explicit user authorization before merging anything into `main`.
+
+The add-on timeline patch is already present on `main` as `f7428967`. The final
+candidate adds only the Prisma post-install generation hook, the remaining
+membership expiry fixture correction, formatting limited to the two
+conversation-owned tests, and these plan/audit records. The user explicitly
+authorized merging after all conversation tasks pass acceptance; push and
+deployment remain outside that authorization.
