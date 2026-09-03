@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import type { BookingOrder, OrderCheckout } from "../../features/booking/api";
+import type { CoreServiceDetail } from "../../features/core-read/api";
 
 const mocks = vi.hoisted(() => ({
   getCheckout: vi.fn(),
@@ -127,6 +128,51 @@ const checkout: OrderCheckout = {
   updatedAt: "2026-09-02T18:39:00.000Z"
 };
 
+const service: CoreServiceDetail = {
+  id: 463,
+  publicId: "svc0000000463",
+  name: order.serviceName,
+  description: "正式服务说明",
+  category: {
+    id: 1,
+    code: "massage",
+    name: "按摩",
+    nameJa: "マッサージ",
+    nameEn: "Massage",
+    parentId: null,
+    iconUrl: null,
+    sortOrder: 1,
+    isActive: true,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt
+  },
+  shop: {
+    id: 16,
+    publicId: "shop0000000016",
+    name: order.shopName,
+    city: "东京都",
+    address: "东京都渋谷区",
+    coverUrl: null,
+    reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] },
+    favoriteCount: 0,
+    shareCount: 0,
+    serviceCategories: [],
+    businessKeywords: []
+  },
+  technician: null,
+  city: "东京都",
+  priceAmount: order.priceAmount,
+  currency: order.currency,
+  durationMinutes: 60,
+  usageCount: 1,
+  coverUrl: null,
+  reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] },
+  serviceMode: "store",
+  mediaAssets: [],
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt
+};
+
 describe("MerchantOrderDetailRoutePage formal order", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -144,7 +190,7 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
       page_size: 1
     });
     mocks.getCustomerProfile.mockResolvedValue({ id: 7, displayName: "LifeDance 管理员" });
-    mocks.getServiceDetail.mockResolvedValue({ id: 463, name: order.serviceName });
+    mocks.getServiceDetail.mockResolvedValue(service);
     mocks.getShopDetail.mockResolvedValue({ id: 16, name: order.shopName });
     mocks.getTechnicianDetail.mockResolvedValue({ id: 28, displayName: order.technicianName });
   });
