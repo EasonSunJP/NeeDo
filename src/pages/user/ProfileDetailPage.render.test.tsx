@@ -98,4 +98,30 @@ describe("ProfileDetailPage formal technician rendering", () => {
 
     expect(container.querySelector('a[href="/merchant/moments/users/186"]')).not.toBeNull();
   });
+
+  it("retries a failed formal technician read without a fallback profile", async () => {
+    apiMocks.getTechnicianDetail.mockRejectedValueOnce(new Error("temporary network failure")).mockResolvedValueOnce(technicianDetail);
+
+    await act(async () => {
+      root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/profiles/technician/s0000000186"]}><Routes><Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" /></Routes></MemoryRouter></ClientThemeProvider>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const retryButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "重新加载技师资料");
+    expect(container.textContent).toContain("技师资料读取失败");
+    expect(retryButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      (retryButton as HTMLButtonElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.getTechnicianDetail).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[data-testid="technician-profile-info-view"]')).not.toBeNull();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
 });

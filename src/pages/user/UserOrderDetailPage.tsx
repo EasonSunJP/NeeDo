@@ -30,6 +30,7 @@ import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicSt
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card/SocialProfileMiniCard";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useUserOrders } from "../../state/userOrderStore";
 
 function describeFormalOrderError(error: unknown) {
@@ -483,7 +484,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ProfileSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
-                detailTo={`/technicians/${displayTechnician.id}`}
+                detailTo={getScopedProfileDetailPath("user", "technician", displayTechnician.id)}
                 showAction={false}
                 technician={displayTechnician}
                 topTags={[{ label: "本次担当", tone: "green" }]}

@@ -48,4 +48,9 @@ describe("UserOrderDetailPage header", () => {
     expect(source).toContain("来源");
     expect(source).toContain("服务验证码");
   });
+
+  it("routes the order technician card to the formal user-scoped information page", () => {
+    expect(source).toContain('getScopedProfileDetailPath("user", "technician", displayTechnician.id)');
+    expect(source).not.toContain("detailTo={`/technicians/${displayTechnician.id}`}");
+  });
 });
