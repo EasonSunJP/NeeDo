@@ -1,4 +1,4 @@
-import { createAwsCli } from "./aws-staging-cli.mjs";
+import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
   parseAwsStagingArgs,
   resolveAwsStagingConfig
@@ -9,7 +9,7 @@ import {
 } from "./aws-staging-preflight-lib.mjs";
 
 const config = resolveAwsStagingConfig(parseAwsStagingArgs(process.argv.slice(2)));
-const aws = createAwsCli({ profile: config.profile, region: config.region });
+const aws = await createFrozenAwsCli({ profile: config.profile, region: config.region });
 const result = await runAwsStagingPreflight({ aws, config });
 
 console.log(JSON.stringify(createAwsStagingPreflightSummary(result)));

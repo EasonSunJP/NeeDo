@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createAwsCli } from "./aws-staging-cli.mjs";
+import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
   parseAwsStagingArgs,
   resolveAwsStagingConfig
@@ -35,13 +35,13 @@ function setProcessExitCode(code) {
 export async function main(argv = process.argv.slice(2), {
   parseAwsStagingArgsImpl = parseAwsStagingArgs,
   resolveAwsStagingConfigImpl = resolveAwsStagingConfig,
-  createAwsCliImpl = createAwsCli,
+  createAwsCliImpl = createFrozenAwsCli,
   runAwsStagingPreflightImpl = runAwsStagingPreflight,
   verifyAwsStagingEnvironmentImpl = verifyAwsStagingEnvironment,
   writeAwsStagingAcceptanceEvidenceImpl = writeAwsStagingAcceptanceEvidence
 } = {}) {
   const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
-  const aws = createAwsCliImpl({ profile: config.profile, region: config.region });
+  const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
   const evidence = await verifyAwsStagingEnvironmentImpl({
     aws,
     config,

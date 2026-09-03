@@ -1,6 +1,28 @@
 import { execFile } from "node:child_process";
 
 const MAX_BUFFER = 4 * 1024 * 1024;
+const REMOVED_AWS_ENVIRONMENT_KEYS = new Set([
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_SECURITY_TOKEN",
+  "AWS_CREDENTIAL_EXPIRATION",
+  "AWS_PROFILE",
+  "AWS_DEFAULT_PROFILE",
+  "AWS_CONFIG_FILE",
+  "AWS_SHARED_CREDENTIALS_FILE",
+  "AWS_WEB_IDENTITY_TOKEN_FILE",
+  "AWS_ROLE_ARN",
+  "AWS_ROLE_SESSION_NAME",
+  "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+  "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+  "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+  "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+  "AWS_LOGIN_CACHE_DIRECTORY",
+  "AWS_REGION",
+  "AWS_DEFAULT_REGION",
+  "AWS_SDK_LOAD_CONFIG"
+]);
 const FORBIDDEN_ARGUMENTS = new Set([
   "getsecretvalue",
   "awssecretaccesskey",
@@ -109,12 +131,39 @@ function finalStderrLine(stderr) {
   return (lines.at(-1) ?? "unknown error").slice(0, 500);
 }
 
-function invoke(execFileImpl, profile, region, args, output) {
+function sanitizedEnvironment(environment) {
+  if (!environment || typeof environment !== "object" || Array.isArray(environment)) {
+    throw new TypeError("AWS CLI environment must be an object");
+  }
+  const sanitized = {};
+  for (const [key, value] of Object.entries(environment)) {
+    const upperKey = key.toUpperCase();
+    if (value === undefined
+      || REMOVED_AWS_ENVIRONMENT_KEYS.has(upperKey)
+      || upperKey.startsWith("AWS_ENDPOINT_URL")) {
+      continue;
+    }
+    sanitized[key] = value;
+  }
+  sanitized.AWS_IGNORE_CONFIGURED_ENDPOINT_URLS = "true";
+  sanitized.AWS_EC2_METADATA_DISABLED = "true";
+  return sanitized;
+}
+
+function invoke(execFileImpl, profile, region, args, output, {
+  environment,
+  includeProfile = true,
+  credentialExpiresAt,
+  now = Date.now
+}) {
   assertSafeArguments(args);
   assertAllowedOperation(args);
+  if (credentialExpiresAt !== undefined && now() >= credentialExpiresAt) {
+    throw new Error("The frozen AWS CLI credential session has expired");
+  }
   const fullArgs = [
     ...args,
-    "--profile", profile,
+    ...(includeProfile ? ["--profile", profile] : []),
     "--region", region,
     "--output", output,
     "--no-cli-pager"
@@ -124,7 +173,7 @@ function invoke(execFileImpl, profile, region, args, output) {
     execFileImpl(
       "aws",
       fullArgs,
-      { shell: false, maxBuffer: MAX_BUFFER },
+      { shell: false, maxBuffer: MAX_BUFFER, env: environment },
       (error, stdout, stderr) => {
         if (error) {
           const code = error.code ?? "unknown";
@@ -137,13 +186,136 @@ function invoke(execFileImpl, profile, region, args, output) {
   });
 }
 
-export function createAwsCli({ profile, region, execFileImpl = execFile }) {
+function requireExportedTemporaryCredentials(rawCredentials, now) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawCredentials);
+  } catch {
+    throw new Error("AWS CLI temporary credential export was malformed");
+  }
+  const accessKeyId = parsed?.AccessKeyId;
+  const secretAccessKey = parsed?.SecretAccessKey;
+  const sessionToken = parsed?.SessionToken;
+  const expiration = parsed?.Expiration;
+  const expiresAt = Date.parse(expiration);
+  if (parsed?.Version !== 1
+    || typeof accessKeyId !== "string" || !/^[A-Z0-9]{16,128}$/.test(accessKeyId)
+    || typeof secretAccessKey !== "string" || !/^[\x21-\x7e]{20,256}$/.test(secretAccessKey)
+    || typeof sessionToken !== "string" || !/^[\x21-\x7e]{20,8192}$/.test(sessionToken)
+    || typeof expiration !== "string" || !Number.isFinite(expiresAt)
+    || expiresAt <= now()) {
+    throw new Error("AWS CLI must export one unexpired temporary credential session");
+  }
+  return Object.freeze({ accessKeyId, secretAccessKey, sessionToken, expiresAt });
+}
+
+function invokeCredentialResolver(execFileImpl, args, environment) {
+  return new Promise((resolve, reject) => {
+    execFileImpl(
+      "aws",
+      args,
+      { shell: false, maxBuffer: MAX_BUFFER, env: environment },
+      (error, stdout, stderr) => {
+        if (error) {
+          const code = error.code ?? "unknown";
+          reject(new Error(`AWS CLI credential resolution failed (${code}): ${finalStderrLine(stderr)}`));
+          return;
+        }
+        resolve(String(stdout ?? ""));
+      }
+    );
+  });
+}
+
+function createAwsCliInternal({
+  profile,
+  region,
+  execFileImpl,
+  environment,
+  includeProfile,
+  configureListOutput,
+  credentialExpiresAt,
+  now
+}) {
   return Object.freeze({
     json(args) {
-      return invoke(execFileImpl, profile, region, args, "json").then(({ stdout }) => JSON.parse(stdout));
+      return invoke(execFileImpl, profile, region, args, "json", {
+        environment,
+        includeProfile,
+        credentialExpiresAt,
+        now
+      }).then(({ stdout }) => JSON.parse(stdout));
     },
     text(args) {
-      return invoke(execFileImpl, profile, region, args, "text").then(({ stdout }) => stdout.trim());
+      assertSafeArguments(args);
+      assertAllowedOperation(args);
+      if (configureListOutput !== undefined
+        && args.length === 2
+        && args[0] === "configure"
+        && args[1] === "list") {
+        return Promise.resolve(configureListOutput.trim());
+      }
+      return invoke(execFileImpl, profile, region, args, "text", {
+        environment,
+        includeProfile,
+        credentialExpiresAt,
+        now
+      }).then(({ stdout }) => stdout.trim());
     }
+  });
+}
+
+export function createAwsCli({
+  profile,
+  region,
+  execFileImpl = execFile,
+  environment = process.env
+}) {
+  return createAwsCliInternal({
+    profile,
+    region,
+    execFileImpl,
+    environment: sanitizedEnvironment(environment),
+    includeProfile: true
+  });
+}
+
+export async function createFrozenAwsCli({
+  profile,
+  region,
+  execFileImpl = execFile,
+  environment = process.env,
+  now = Date.now
+}) {
+  const resolverEnvironment = sanitizedEnvironment(environment);
+  const configureListOutput = await invokeCredentialResolver(execFileImpl, [
+    "configure", "list",
+    "--profile", profile,
+    "--region", region,
+    "--output", "text",
+    "--no-cli-pager"
+  ], resolverEnvironment);
+  const exported = await invokeCredentialResolver(execFileImpl, [
+    "configure", "export-credentials",
+    "--profile", profile,
+    "--format", "process",
+    "--no-cli-pager"
+  ], resolverEnvironment);
+  const credentials = requireExportedTemporaryCredentials(exported, now);
+  const lockedEnvironment = {
+    ...resolverEnvironment,
+    AWS_ACCESS_KEY_ID: credentials.accessKeyId,
+    AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
+    AWS_SESSION_TOKEN: credentials.sessionToken
+  };
+  return createAwsCliInternal({
+    profile,
+    region,
+    execFileImpl,
+    environment: lockedEnvironment,
+    includeProfile: false,
+    configureListOutput,
+    credentialExpiresAt: credentials.expiresAt,
+    now
   });
 }

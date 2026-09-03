@@ -4,7 +4,7 @@ import { isIPv4 } from "node:net";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { createAwsCli } from "./aws-staging-cli.mjs";
+import { createFrozenAwsCli } from "./aws-staging-cli.mjs";
 import {
   parseAwsStagingArgs,
   requireAwsStagingRegion,
@@ -464,7 +464,7 @@ export async function writeAwsStagingEnvironmentEvidence({
 
 export async function runAwsStagingDeployCli(argv) {
   const config = resolveAwsStagingConfig(parseAwsStagingArgs(argv));
-  const aws = createAwsCli({ profile: config.profile, region: config.region });
+  const aws = await createFrozenAwsCli({ profile: config.profile, region: config.region });
   const evidence = await deployAwsStagingInfrastructure({
     aws,
     config,
