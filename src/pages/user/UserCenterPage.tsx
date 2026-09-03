@@ -907,6 +907,80 @@ function CompleteUserCenterPage({
       setIsSavingProfile(false);
     }
   };
+  const profilePrivacyControl = (
+    <div
+      className={isEditingProfile ? cn("relative z-30 rounded-[18px] border p-3", membershipSurface.panel) : "relative z-30 rounded-[18px] border p-3"}
+      data-testid="user-profile-privacy-control"
+      style={isEditingProfile ? undefined : { borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <button
+          aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined}
+          className="min-w-0 flex-1 text-left disabled:cursor-default"
+          disabled={!activeProfilePrivacy.enabled || isSavingProfile}
+          onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
+          type="button"
+        >
+          <p className={isEditingProfile ? cn("text-xs font-bold", membershipSurface.label) : "text-xs font-bold opacity-60"}>隐私模式</p>
+          <strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong>
+        </button>
+        <ToggleSwitch
+          ariaLabel="开启隐私模式"
+          checked={activeProfilePrivacy.enabled}
+          disabled={isSavingProfile}
+          onChange={updateProfilePrivacyEnabled}
+          size="md"
+        />
+      </div>
+      <PrivacyModeConfirmDialog
+        onCancel={() => setProfilePrivacyConfirmOpen(false)}
+        onConfirm={confirmProfilePrivacyEnabled}
+        open={profilePrivacyConfirmOpen}
+      />
+      {activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? (
+        <div
+          className={isEditingProfile ? cn("absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl", membershipSurface.shell) : "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl"}
+          data-testid="user-profile-privacy-options"
+          style={isEditingProfile ? undefined : { borderColor: formalData.membership.theme.detailOuterBorderColor, backgroundColor: formalData.membership.theme.detailSurfaceColor }}
+        >
+          {userProfilePrivacyOptions.map((option) => {
+            const checked = activeProfilePrivacy.visibility === option.value;
+
+            return (
+              <div
+                className={isEditingProfile ? cn("rounded-[18px] border px-3 py-3 text-left transition", checked ? membershipSurface.chip : membershipSurface.panel) : "rounded-[18px] border px-3 py-3"}
+                key={option.value}
+                style={isEditingProfile ? undefined : { borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}
+              >
+                <div className="flex items-center gap-3">
+                  <button
+                    aria-label={`选择${option.label}`}
+                    className={isEditingProfile ? cn("grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black", checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent") : "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black"}
+                    disabled={isSavingProfile}
+                    onClick={() => updateProfilePrivacyVisibility(option.value)}
+                    type="button"
+                  >
+                    {isEditingProfile || checked ? "✓" : ""}
+                  </button>
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <button
+                      className="min-w-0 truncate text-left text-sm font-black"
+                      disabled={isSavingProfile}
+                      onClick={() => updateProfilePrivacyVisibility(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                    <UserProfilePrivacyInfoButton content={option.description} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
@@ -946,7 +1020,7 @@ function CompleteUserCenterPage({
                 displayName={displayName}
                 ekycVerified={formalData.membership.ekycVerified}
                 entityKind="customer"
-                footerSlot={<div className="relative z-30 rounded-[18px] border p-3" data-testid="user-profile-privacy-control" style={{ borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}><div className="flex items-center justify-between gap-3"><button aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined} className="min-w-0 flex-1 text-left disabled:cursor-default" disabled={!activeProfilePrivacy.enabled || isSavingProfile} onClick={() => setProfilePrivacyMenuOpen((current) => !current)} type="button"><p className="text-xs font-bold opacity-60">隐私模式</p><strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong></button><ToggleSwitch ariaLabel="开启隐私模式" checked={activeProfilePrivacy.enabled} disabled={isSavingProfile} onChange={updateProfilePrivacyEnabled} size="md" /></div><PrivacyModeConfirmDialog onCancel={() => setProfilePrivacyConfirmOpen(false)} onConfirm={confirmProfilePrivacyEnabled} open={profilePrivacyConfirmOpen} />{activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? <div className="absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl" data-testid="user-profile-privacy-options" style={{ borderColor: formalData.membership.theme.detailOuterBorderColor, backgroundColor: formalData.membership.theme.detailSurfaceColor }}>{userProfilePrivacyOptions.map((option) => <div className="rounded-[18px] border px-3 py-3" key={option.value} style={{ borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}><div className="flex items-center gap-3"><button aria-label={`选择${option.label}`} className="grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black" disabled={isSavingProfile} onClick={() => updateProfilePrivacyVisibility(option.value)} type="button">{activeProfilePrivacy.visibility === option.value ? "✓" : ""}</button><div className="flex min-w-0 flex-1 items-center gap-1.5"><button className="min-w-0 truncate text-left text-sm font-black" disabled={isSavingProfile} onClick={() => updateProfilePrivacyVisibility(option.value)} type="button">{option.label}</button><UserProfilePrivacyInfoButton content={option.description} /></div></div></div>)}</div> : null}</div>}
+                afterDetailsSlot={profilePrivacyControl}
                 gender={visibleProfile.gender}
                 heightCm={formatUserHeightInput(visibleProfile.height) || null}
                 languages={visibleProfile.languages}
@@ -1046,81 +1120,6 @@ function CompleteUserCenterPage({
                     >
                       ID {currentCustomer.systemId}
                     </button>
-                    <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", membershipSurface.panel)} data-testid="user-profile-privacy-control">
-                      <div className="flex items-center justify-between gap-3">
-                        <button
-                          aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined}
-                          className="min-w-0 flex-1 text-left disabled:cursor-default"
-                          disabled={!activeProfilePrivacy.enabled || isSavingProfile}
-                          onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
-                          type="button"
-                        >
-                          <p className={cn("text-xs font-bold", membershipSurface.label)}>隐私模式</p>
-                          <strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong>
-                        </button>
-                        <ToggleSwitch
-                          ariaLabel="开启隐私模式"
-                          checked={activeProfilePrivacy.enabled}
-                          disabled={isSavingProfile}
-                          onChange={updateProfilePrivacyEnabled}
-                          size="md"
-                        />
-                      </div>
-                      <PrivacyModeConfirmDialog
-                        onCancel={() => setProfilePrivacyConfirmOpen(false)}
-                        onConfirm={confirmProfilePrivacyEnabled}
-                        open={profilePrivacyConfirmOpen}
-                      />
-                      {activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? (
-                        <div
-                          className={cn(
-                            "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
-                            membershipSurface.shell
-                          )}
-                          data-testid="user-profile-privacy-options"
-                        >
-                          {userProfilePrivacyOptions.map((option) => {
-                            const checked = activeProfilePrivacy.visibility === option.value;
-
-                            return (
-                              <div
-                                className={cn(
-                                  "rounded-[18px] border px-3 py-3 text-left transition",
-                                  checked ? membershipSurface.chip : membershipSurface.panel
-                                )}
-                                key={option.value}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <button
-                                    aria-label={`选择${option.label}`}
-                                    className={cn(
-                                      "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
-                                      checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
-                                    )}
-                                    disabled={isSavingProfile}
-                                    onClick={() => updateProfilePrivacyVisibility(option.value)}
-                                    type="button"
-                                  >
-                                    ✓
-                                  </button>
-                                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                    <button
-                                      className="min-w-0 truncate text-left text-sm font-black"
-                                      disabled={isSavingProfile}
-                                      onClick={() => updateProfilePrivacyVisibility(option.value)}
-                                      type="button"
-                                    >
-                                      {option.label}
-                                    </button>
-                                    <UserProfilePrivacyInfoButton content={option.description} />
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
                   </div>
                 </div>
 
@@ -1266,6 +1265,7 @@ function CompleteUserCenterPage({
                     </>
                   )}
                 </div>
+                <div className="mt-3">{profilePrivacyControl}</div>
               </div>
             </section>
             )}

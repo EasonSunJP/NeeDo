@@ -18,6 +18,21 @@ describe("shared platform membership cards", () => {
     expect(markup).toContain("eKYC verified");
   });
 
+  it("renders the customer privacy slot after the basic-information labels", () => {
+    const markup = renderToStaticMarkup(
+      <PlatformMembershipDetailCard
+        {...profile}
+        afterDetailsSlot={<div>隐私模式</div>}
+        theme={theme}
+      />
+    );
+    const labels = markup.indexOf("语言能力");
+    const privacy = markup.indexOf("隐私模式");
+
+    expect(labels).toBeGreaterThan(-1);
+    expect(privacy).toBeGreaterThan(labels);
+  });
+
   it("omits level for technician/shop cards and truncates the simple card", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipSimpleCard {...profile} bio={"long ".repeat(80)} entityKind="technician" simpleBottomColor={theme.simpleBottomColor} simpleTopColor={theme.simpleTopColor} />);
     expect(markup.toLowerCase()).toContain(theme.simpleTopColor.toLowerCase());
