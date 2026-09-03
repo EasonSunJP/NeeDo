@@ -1272,4 +1272,19 @@ describe("translations", () => {
     expect(translateText("帮助与反馈", "ko")).toBe("도움말 센터");
   });
 
+  it("localizes service-card unavailable duration and legacy-order labels", () => {
+    expect(translations["时长未读取"]).toMatchObject({
+      "zh-Hant": "時長未讀取",
+      ja: "所要時間未取得",
+      en: "Duration unavailable",
+      ko: "소요 시간 불러오지 못함"
+    });
+    expect(translations["历史只读预约"]).toMatchObject({
+      "zh-Hant": "歷史唯讀預約",
+      ja: "過去の閲覧専用予約",
+      en: "Read-only booking history",
+      ko: "읽기 전용 예약 내역"
+    });
+  });
+
 });
