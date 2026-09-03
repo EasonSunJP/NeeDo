@@ -1326,7 +1326,7 @@ Do not add `.env` loading or credential values to `package.json`.
 
 - prerequisite AWS CLI v2; current machine initially has no AWS CLI, so installation requires a separate approved system change;
 - required AWS CLI v2 plus the Session Manager plugin, named SSO/assumed-role profile, explicit account ID, alert email, actual AWS billing currency, and approved monthly amount;
-- required deploy-role action families: CloudFormation stack/change-set operations, scoped EC2/VPC/EBS/EIP, IAM role/profile/policy and PassRole for the stack role, S3 bucket controls, Secrets Manager create/describe/tag, SSM document/parameter/command, Logs/CloudWatch/SNS, and Budgets create/describe/update;
+- required deploy-role action families: scoped CloudFormation create/describe/list/wait operations without automatic update/delete, scoped EC2/VPC/EBS/EIP, IAM role/profile/policy and PassRole for the stack role, S3 bucket controls, Secrets Manager create/describe/tag, SSM document/parameter/command, Logs/CloudWatch/SNS, and Budgets create/describe/update;
 - no root, no long-lived keys, no SSH key, and no secrets pasted into the CLI;
 - current public DNS baseline (`needo.life` observed as `NXDOMAIN` with no delegation on 2026-09-03), Onamae's external registration/nameserver responsibility, and the rule that Staging/apex/`www` DNS remains untouched;
 - SNS email subscription confirmation is required before CloudWatch notifications are fully active;
@@ -1338,13 +1338,14 @@ Use this invocation form. Variable operator-supplied values remain in documentat
 npm run aws:staging:preflight -- \
   --profile <named-temporary-profile> \
   --account-id <12-digit-account-id> \
+  --region <ap-southeast-2-or-ap-northeast-1> \
   --hostname staging.needo.life \
   --alert-email <alert-email> \
   --budget-amount <amount-in-account-billing-currency> \
   --budget-unit <three-letter-billing-currency>
 ```
 
-Then `aws:staging:deploy`, `aws:staging:bootstrap-host` twice for idempotency, and `aws:staging:verify` with the identical six flags, including `--hostname staging.needo.life`.
+Then `aws:staging:deploy`, `aws:staging:bootstrap-host` twice for idempotency, and `aws:staging:verify` with the identical seven flags, including the explicit region and exact `--hostname staging.needo.life`.
 
 - [ ] **Step 3: Document failure recovery without destructive shortcuts**
 
@@ -1364,7 +1365,8 @@ Never recommend `aws cloudformation delete-stack`, EBS deletion, snapshot deleti
 At the top of the Staging section in `docs/deployment.md`, add a short environment distinction:
 
 ```md
-For the approved AWS Tokyo single-EC2 environment-only gate, follow
+For the approved dual-region single-EC2 environment-only gate, with Sydney for
+the personal test and Tokyo for a later company-account deployment, follow
 [`docs/aws-staging-environment-runbook.md`](./aws-staging-environment-runbook.md).
 That gate creates and verifies infrastructure only; the Compose commands below
 are application deployment steps and must not run until the separate application
