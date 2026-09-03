@@ -85,7 +85,7 @@ const testStore: Store = {
 
 const testTechnicians: Technician[] = [
   {
-    id: "tech-1",
+    id: "28",
     systemId: "tech-system-1",
     name: "技师甲",
     nickname: "甲",
@@ -104,7 +104,7 @@ const testTechnicians: Technician[] = [
     avatar: "/tech-1.jpg"
   },
   {
-    id: "tech-2",
+    id: "29",
     systemId: "tech-system-2",
     name: "技师乙",
     nickname: "乙",
@@ -125,7 +125,7 @@ const testTechnicians: Technician[] = [
 ];
 
 const formalTechnicians = testTechnicians.map((technician, index) => ({
-  id: index + 1,
+  id: index + 28,
   userId: index + 11,
   needoId: `s00000000${index + 1}`,
   displayName: technician.name,
@@ -238,6 +238,10 @@ describe("MerchantPortal formal employment data", () => {
     it("renders five role sections as direct siblings with inline counts and an independent form", async () => {
       await renderStaffPage();
 
+      expect(container.textContent).not.toContain("无法读取正式员工数据");
+      expect(container.querySelector('img[src="/tech-1.jpg"]')).not.toBeNull();
+      expect(container.querySelector('img[src="/tech-2.jpg"]')).not.toBeNull();
+
       const roleSections = ["技师", "总务", "财务", "司机", "厨师"].map((roleName) => {
         const heading = [...container.querySelectorAll("h2")].find((node) => node.textContent?.trim() === roleName);
         expect(heading).toBeDefined();
@@ -305,7 +309,7 @@ describe("MerchantPortal formal employment data", () => {
       await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "删除")?.click());
       expect(container.textContent).not.toContain("新增员工");
 
-      const detailLink = container.querySelector<HTMLAnchorElement>('a[href="/merchant/staff/tech-1"]');
+      const detailLink = container.querySelector<HTMLAnchorElement>('a[href="/merchant/staff/28"]');
       expect(detailLink).not.toBeNull();
     });
   });

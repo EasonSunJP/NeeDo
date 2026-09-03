@@ -152,7 +152,12 @@ function getMerchantStoreApiId(storeId: string | number | null | undefined) {
 }
 
 function getMerchantTechnicianApiId(technicianId: string) {
-  const match = /^tech-(\d+)$/.exec(technicianId.trim());
+  const normalized = technicianId.trim();
+  if (/^[1-9]\d*$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  const match = /^tech-(\d+)$/.exec(normalized);
   return match ? Number(match[1]) : null;
 }
 
