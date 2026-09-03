@@ -655,14 +655,14 @@ function requireLogGroups(response, resources, config) {
     ["SystemLogGroup", "/needo/staging/system"],
     ["DockerLogGroup", "/needo/staging/docker"]
   ];
-  const logArnPattern = new RegExp(
-    `^arn:aws:logs:${escapeRegExp(config.region)}:${config.accountId}:log-group:/needo/staging/(?:system|docker)$`
-  );
   return expected.map(([logicalId, name]) => {
     const group = response.logGroups.find((candidate) => candidate?.logGroupName === name);
     if (!group || resources[logicalId].physicalId !== name || group.retentionInDays !== 30) {
       throw new Error(`CloudWatch log group ${name} does not match stack identity or retention`);
     }
+    const logArnPattern = new RegExp(
+      `^arn:aws:logs:${escapeRegExp(config.region)}:${config.accountId}:log-group:${escapeRegExp(name)}$`
+    );
     const arn = safeArgument(
       group.logGroupArn,
       `CloudWatch log group ${name} ARN`,
@@ -1368,12 +1368,12 @@ function reconstructAcceptanceEvidence(evidence) {
   if (!Array.isArray(evidence.monitoring.logGroups) || evidence.monitoring.logGroups.length !== 2) {
     throw new Error("Acceptance log groups are invalid");
   }
-  const logArnPattern = new RegExp(
-    `^arn:aws:logs:${escapeRegExp(region)}:${accountId}:log-group:/needo/staging/(?:system|docker)$`
-  );
   const logGroupNames = evidence.monitoring.logGroups.map((group) => {
     exactKeys(group, ["name", "arn", "retentionDays"], "Acceptance log group");
     if (group.retentionDays !== 30) throw new Error("Acceptance log group retention is invalid");
+    const logArnPattern = new RegExp(
+      `^arn:aws:logs:${escapeRegExp(region)}:${accountId}:log-group:${escapeRegExp(String(group.name))}$`
+    );
     safeArgument(group.arn, `Acceptance log group ${String(group.name)} ARN`, logArnPattern);
     return group.name;
   }).sort();

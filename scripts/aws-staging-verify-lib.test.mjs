@@ -1062,6 +1062,13 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     ["unexpected lifecycle key", (e) => { e.buckets.release.lifecycleRules[0].unexpected = true; }],
     ["wrong alarm summary", (e) => { e.monitoring.alarms[0].threshold = 999; }],
     ["duplicate log summary", (e) => { e.monitoring.logGroups[1] = { ...e.monitoring.logGroups[0] }; }],
+    ["swapped log group ARNs", (e) => {
+      const [system, docker] = e.monitoring.logGroups;
+      [system.arn, docker.arn] = [docker.arn, system.arn];
+    }],
+    ["duplicate Docker ARN under the system name", (e) => {
+      e.monitoring.logGroups[0].arn = e.monitoring.logGroups[1].arn;
+    }],
     ["unconfirmed SNS", (e) => { e.monitoring.snsSubscriptionConfirmed = false; }],
     ["wrong Resource Groups set", (e) => {
       e.tagCoverage.resources.find((item) => item.logicalId === "Vpc").resourceGroupsTags = false;
