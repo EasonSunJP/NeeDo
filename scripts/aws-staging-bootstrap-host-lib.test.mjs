@@ -749,6 +749,7 @@ describe("AWS Staging SSM host bootstrap", () => {
     const { main, runCli } = await import("./aws-staging-bootstrap-host.mjs");
     const parsedArgs = Object.freeze({ parsed: true });
     const aws = successfulAws();
+    aws.dispose = vi.fn(async () => {});
     const summary = await bootstrap({ aws });
     const parseArgs = vi.fn(() => parsedArgs);
     const resolveConfig = vi.fn(() => config);
@@ -770,6 +771,7 @@ describe("AWS Staging SSM host bootstrap", () => {
       region: config.region
     });
     expect(runBootstrap).toHaveBeenCalledWith({ aws, config, runPreflight });
+    expect(aws.dispose).toHaveBeenCalledTimes(1);
 
     const stdout = [];
     const stderr = [];

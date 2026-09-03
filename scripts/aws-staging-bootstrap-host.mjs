@@ -34,7 +34,11 @@ export async function main(argv = process.argv.slice(2), {
 } = {}) {
   const config = resolveAwsStagingConfigImpl(parseAwsStagingArgsImpl(argv));
   const aws = await createAwsCliImpl({ profile: config.profile, region: config.region });
-  return bootstrapAwsStagingHostImpl({ aws, config, runPreflight: runPreflightImpl });
+  try {
+    return await bootstrapAwsStagingHostImpl({ aws, config, runPreflight: runPreflightImpl });
+  } finally {
+    await aws.dispose?.();
+  }
 }
 
 export async function runCli({

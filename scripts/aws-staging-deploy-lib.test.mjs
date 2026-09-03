@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   deployAwsStagingInfrastructure
@@ -216,6 +218,53 @@ async function deploy({
 }
 
 describe("AWS Staging CloudFormation deployment", () => {
+  it("keeps the deploy CLI import-safe and redacts injectable and direct failures", () => {
+    const cliUrl = new URL("./aws-staging-deploy.mjs", import.meta.url);
+    const cliPath = fileURLToPath(cliUrl);
+    const sensitive = "AKIAIOSFODNN7EXAMPLE provider-stdout provider-stderr --unsafe-secret";
+    const evaluateRunner = [
+      `const { runCli } = await import(${JSON.stringify(cliUrl.href)});`,
+      "const stdout = []; const stderr = []; const exitCodes = [];",
+      `const sensitive = ${JSON.stringify(sensitive)};`,
+      "const result = await runCli({",
+      "  argv: [sensitive],",
+      "  execute: async () => { throw Object.assign(new Error(sensitive), { stdout: sensitive, stderr: sensitive }); },",
+      "  writeStdout: (line) => stdout.push(line),",
+      "  writeStderr: (line) => stderr.push(line),",
+      "  setExitCode: (code) => exitCodes.push(code)",
+      "});",
+      "process.stdout.write(JSON.stringify({ result, stdout, stderr, exitCodes }));"
+    ].join("\n");
+    const environment = { PATH: "/path-with-no-aws", LANG: "C", LC_ALL: "C" };
+
+    const imported = spawnSync(process.execPath, [
+      "--input-type=module", "--eval", evaluateRunner
+    ], { encoding: "utf8", shell: false, env: environment });
+    expect(imported.status).toBe(0);
+    expect(imported.stderr).toBe("");
+    const result = JSON.parse(imported.stdout);
+    expect(result).toEqual({
+      result: {
+        ok: false,
+        failure: { gate: "aws-staging-deploy", status: "failed" }
+      },
+      stdout: [],
+      stderr: ["{\"gate\":\"aws-staging-deploy\",\"status\":\"failed\"}"],
+      exitCodes: [1]
+    });
+    expect(imported.stdout).not.toContain(sensitive);
+
+    const direct = spawnSync(process.execPath, [cliPath, "--unsafe", sensitive], {
+      encoding: "utf8",
+      shell: false,
+      env: environment
+    });
+    expect(direct.status).toBe(1);
+    expect(direct.stdout).toBe("");
+    expect(direct.stderr).toBe("{\"gate\":\"aws-staging-deploy\",\"status\":\"failed\"}\n");
+    expect(`${direct.stdout}${direct.stderr}`).not.toContain(sensitive);
+  });
+
   it("runs preflight in-process and invokes only the exact approved deployment boundary", async () => {
     const trace = [];
     const aws = successfulAws({ trace });

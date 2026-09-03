@@ -23,6 +23,8 @@ const moduleDir = path.dirname(modulePath);
 const defaultTrustedRoot = path.resolve(moduleDir, "..");
 const defaultOutputDirectory = path.join(defaultTrustedRoot, "outputs", "aws-staging");
 const evidenceFileName = "environment-stack.json";
+const failure = Object.freeze({ gate: "aws-staging-deploy", status: "failed" });
+const failureLine = "{\"gate\":\"aws-staging-deploy\",\"status\":\"failed\"}";
 const topLevelEvidenceKeys = Object.freeze([
   "scope",
   "timestamp",
@@ -520,25 +522,66 @@ export async function writeAwsStagingEnvironmentEvidence({
 export async function runAwsStagingDeployCli(argv) {
   const config = resolveAwsStagingConfig(parseAwsStagingArgs(argv));
   const aws = await createFrozenAwsCli({ profile: config.profile, region: config.region });
-  const evidence = await deployAwsStagingInfrastructure({
-    aws,
-    config,
-    runPreflight: runAwsStagingPreflight
-  });
-  const evidencePath = await writeAwsStagingEnvironmentEvidence({ evidence });
-  return Object.freeze({
-    gate: "aws-staging-deploy",
-    scope: evidence.scope,
-    stackStatus: evidence.stackStatus,
-    evidenceFile: path.relative(path.resolve(moduleDir, ".."), evidencePath),
-    applicationDeployed: false,
-    migrationRun: false,
-    seedRun: false,
-    dnsModified: false
-  });
+  try {
+    const evidence = await deployAwsStagingInfrastructure({
+      aws,
+      config,
+      runPreflight: runAwsStagingPreflight
+    });
+    const evidencePath = await writeAwsStagingEnvironmentEvidence({ evidence });
+    return Object.freeze({
+      gate: "aws-staging-deploy",
+      scope: evidence.scope,
+      stackStatus: evidence.stackStatus,
+      evidenceFile: path.relative(path.resolve(moduleDir, ".."), evidencePath),
+      applicationDeployed: false,
+      migrationRun: false,
+      seedRun: false,
+      dnsModified: false
+    });
+  } finally {
+    await aws.dispose?.();
+  }
+}
+
+function writeStdoutLine(line) {
+  process.stdout.write(`${line}\n`);
+}
+
+function writeStderrLine(line) {
+  process.stderr.write(`${line}\n`);
+}
+
+function setProcessExitCode(code) {
+  process.exitCode = code;
+}
+
+export async function runCli({
+  argv = process.argv.slice(2),
+  execute = runAwsStagingDeployCli,
+  writeStdout = writeStdoutLine,
+  writeStderr = writeStderrLine,
+  setExitCode = setProcessExitCode
+} = {}) {
+  try {
+    const summary = await execute(argv);
+    writeStdout(JSON.stringify(summary));
+    return { ok: true, summary };
+  } catch {
+    try {
+      writeStderr(failureLine);
+    } catch {
+      // Diagnostic failures must never reveal the original exception.
+    }
+    try {
+      setExitCode(1);
+    } catch {
+      process.exitCode = 1;
+    }
+    return { ok: false, failure };
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === modulePath) {
-  const summary = await runAwsStagingDeployCli(process.argv.slice(2));
-  console.log(JSON.stringify(summary));
+  await runCli();
 }
