@@ -215,6 +215,99 @@ describe("AWS CLI adapter", () => {
     expect(execFileImpl).not.toHaveBeenCalled();
   });
 
+  it("rejects a writable canonical source HOME even with an independent system CLI", async () => {
+    const fixture = await createLoginFixture();
+    await fs.chmod(fixture.sourceHome, 0o770);
+    const execFileImpl = successfulLoginResolver();
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      approvedExecutableCandidates: [{
+        candidate: "/bin/sh",
+        trustRoot: "/",
+        expectedUid: process.getuid(),
+        systemOwned: true
+      }],
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    })).rejects.toThrow(/source HOME.*group\/world-writable|source HOME.*trust/i);
+    expect(execFileImpl).not.toHaveBeenCalled();
+    expect((await fs.readdir(fixture.root)).filter((entry) => (
+      entry.startsWith("needo-aws-cli-")
+    ))).toEqual([]);
+  });
+
+  it("re-attests source identities after CLI attestation and before the first resolver", async () => {
+    const fixture = await createLoginFixture();
+    const configPath = path.join(fixture.sourceHome, ".aws", "config");
+    const displacedPath = `${configPath}.old`;
+    const configText = await fs.readFile(configPath, "utf8");
+    const execFileImpl = successfulLoginResolver();
+    execFileImpl.mockImplementation((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        void (async () => {
+          await fs.rename(configPath, displacedPath);
+          await fs.writeFile(configPath, configText, { mode: 0o600 });
+          callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        })();
+        return;
+      }
+      callback(null, "unexpected resolver invocation", "");
+    });
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    })).rejects.toThrow(/source.*changed after attestation/i);
+    expect(execFileImpl).toHaveBeenCalledTimes(1);
+    expect((await fs.readdir(fixture.root)).filter((entry) => (
+      entry.startsWith("needo-aws-cli-")
+    ))).toEqual([]);
+  });
+
+  it("re-attests login-cache identities immediately before the second resolver", async () => {
+    const fixture = await createLoginFixture();
+    const cachePath = path.join(fixture.loginCache, VALID_LOGIN_CACHE_FILE);
+    const displacedPath = `${cachePath}.old`;
+    await fs.writeFile(cachePath, "{}", { mode: 0o600 });
+    const execFileImpl = successfulLoginResolver();
+    execFileImpl.mockImplementation((_file, args, _options, callback) => {
+      if (args[0] === "--version") {
+        callback(null, "aws-cli/2.36.38 Python/3.13 Darwin/25 exe/arm64\n", "");
+        return;
+      }
+      if (args[0] === "configure" && args[1] === "list") {
+        void (async () => {
+          await fs.rename(cachePath, displacedPath);
+          await fs.writeFile(cachePath, "{}", { mode: 0o600 });
+          callback(null, "access_key : ****************ABCD : login :\nsecret_key : ****************WXYZ : login :\n", "");
+        })();
+        return;
+      }
+      callback(null, "unexpected resolver invocation", "");
+    });
+
+    await expect(createFrozenAwsCli({
+      profile: "needo-staging-deployer",
+      region: "ap-northeast-1",
+      execFileImpl,
+      environment: fixture.environment,
+      temporaryRoot: fixture.temporaryRoot,
+      userInfoImpl: fixture.userInfoImpl,
+      now: () => Date.parse("2029-01-01T00:00:00.000Z")
+    })).rejects.toThrow(/source.*changed after attestation/i);
+    expect(execFileImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("accepts owner-only 0600 credential entries in the owner-controlled login cache", async () => {
     const fixture = await createLoginFixture();
     await fs.writeFile(

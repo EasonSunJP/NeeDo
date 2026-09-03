@@ -79,18 +79,28 @@ processes never receive `PATH`.
 This check detects replacement after capture but cannot establish independent
 provenance on an already compromised same-user host. The operator remains
 responsible for installing AWS CLI v2 from the approved AWS distribution and
-for the integrity of the canonical current-user installation root.
+for the integrity of the canonical current-user installation root and private
+login-cache contents. The checks detect source replacement and unsafe sharing;
+they do not claim protection from an already compromised current-user process
+that can rewrite a private file in place.
 
 The wrapper reads the named profile only from the current OS account's
 canonical `~/.aws/config`, requires exactly one valid `login_session`, and
 copies only that non-secret pointer and the approved region into a private
 resolver config. Only the resolver receives the canonical AWS login-cache
-directory. The source config must be an owner-matched, non-symlink `0600`
+directory. Before any resolver spawn, the wrapper captures the canonical HOME
+and every ancestor to the filesystem root, requires each directory to be owned
+by the current user or root as applicable and not group/world-writable, and
+binds every source directory/file to its owner, mode, real path, device, and
+inode. The source config must be an owner-matched, non-symlink `0600`
 regular file; source login directories must be owner-matched, non-symlink, and
 not group/world-writable; every cache entry must be an owner-matched,
 non-symlink `0600` regular JSON file. (AWS CLI may create the cache directory as
 `0755`; credential contents remain protected by the required `0600` entry
-mode.) It runs `configure export-credentials --format process` once, keeps
+mode.) The full source identity and exact cache-entry set are re-attested
+immediately before each of the two resolver spawns; replacement or permission
+drift is a hard stop and disposes wrapper state. It runs
+`configure export-credentials --format process` once, keeps
 the resulting temporary credential tuple only in process memory, and uses it
 for preflight and every subsequent read or mutation in that invocation. It
 does not copy `credential_process`, SSO/role chains, endpoints, CA bundles, or

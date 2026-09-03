@@ -38,6 +38,10 @@
 > The personal gate rejects `sso`, `assume-role`, and `custom-process`; later
 > company-profile resolution is a separate blocked-until-profile microstep and
 > personal evidence is not reusable.
+> The canonical source HOME-to-root chain and every login config/cache source
+> path are owner/mode/realpath/device/inode-attested before credentials exist
+> and immediately before each resolver spawn. Unsafe ancestors or any identity
+> replacement stop and dispose private wrapper state.
 
 > **2026-09-04 immutable-template follow-up (`批准最终安全修订`):** Historical
 > `file://` validation and later path reread steps are superseded. Preflight

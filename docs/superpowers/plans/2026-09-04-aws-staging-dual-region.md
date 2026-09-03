@@ -20,6 +20,12 @@
 > this gate. Interactive proof is deferred to a dedicated hardened Session
 > Manager microstep for the later company/application stage.
 
+> The login-only resolver additionally binds the canonical source HOME ancestor
+> chain and config/cache tree by owner, mode, real path, device, and inode, then
+> re-attests them immediately before each resolver spawn. This detects source
+> replacement but does not claim defense against an already compromised
+> same-user host.
+
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
 
 **Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is the only current credential provider; STS must still prove an exact-account assumed-role caller.

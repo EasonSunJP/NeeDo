@@ -220,15 +220,28 @@ function extractLoginSession(configText, profile) {
   return loginSession;
 }
 
+function sourcePathIdentity(metadata, realPath, label) {
+  return Object.freeze({
+    label,
+    realPath,
+    device: String(metadata.dev),
+    inode: String(metadata.ino),
+    owner: String(metadata.uid),
+    group: String(metadata.gid),
+    mode: String(metadata.mode & 0o777n),
+    type: metadata.isFile() ? "file" : metadata.isDirectory() ? "directory" : "other"
+  });
+}
+
 async function requireOwnedSourcePath(candidate, expectedType, label, expectedUid, {
   exactMode
 } = {}) {
-  const metadata = await fs.lstat(candidate);
+  const metadata = await fs.lstat(candidate, { bigint: true });
   const isExpectedType = expectedType === "file" ? metadata.isFile() : metadata.isDirectory();
-  const actualMode = metadata.mode & 0o777;
+  const actualMode = Number(metadata.mode & 0o777n);
   if (metadata.isSymbolicLink()
     || !isExpectedType
-    || metadata.uid !== expectedUid
+    || metadata.uid !== BigInt(expectedUid)
     || (exactMode === undefined && (actualMode & 0o022) !== 0)
     || (exactMode !== undefined && actualMode !== exactMode)) {
     const modeRequirement = exactMode === undefined
@@ -236,22 +249,66 @@ async function requireOwnedSourcePath(candidate, expectedType, label, expectedUi
       : `${exactMode.toString(8).padStart(4, "0")}`;
     throw new Error(`${label} must be an owner-controlled ${expectedType} with mode ${modeRequirement}`);
   }
-  return fs.realpath(candidate);
+  const realPath = await fs.realpath(candidate);
+  return sourcePathIdentity(metadata, realPath, label);
 }
 
 async function requirePrivateLoginCacheEntries(loginCache, expectedUid) {
-  const entries = await fs.readdir(loginCache);
+  const entries = (await fs.readdir(loginCache)).sort();
+  const identities = [];
   for (const entry of entries) {
     if (!/^[a-f0-9]{64}\.json$/.test(entry)) {
       throw new Error("AWS CLI login cache entry must be a regular owner-controlled 0600 file");
     }
-    await requireOwnedSourcePath(
+    identities.push(await requireOwnedSourcePath(
       path.join(loginCache, entry),
       "file",
       "AWS CLI login cache entry",
       expectedUid,
       { exactMode: PRIVATE_FILE_MODE }
-    );
+    ));
+  }
+  return Object.freeze({ entries: Object.freeze(entries), identities: Object.freeze(identities) });
+}
+
+async function requireTrustedSourceHomeChain(canonicalHome, expectedUid) {
+  const identities = [];
+  let current = canonicalHome;
+  for (;;) {
+    const metadata = await fs.lstat(current, { bigint: true });
+    const ownerIsTrusted = current === canonicalHome
+      ? metadata.uid === BigInt(expectedUid)
+      : metadata.uid === BigInt(expectedUid) || metadata.uid === 0n;
+    if (metadata.isSymbolicLink()
+      || !metadata.isDirectory()
+      || !ownerIsTrusted
+      || (metadata.mode & 0o022n) !== 0n) {
+      throw new Error("AWS CLI source HOME trust chain must be owner-controlled and not group/world-writable");
+    }
+    const realPath = await fs.realpath(current);
+    if (realPath !== current) {
+      throw new Error("AWS CLI source HOME trust chain must use canonical non-symlink paths");
+    }
+    identities.push(sourcePathIdentity(metadata, realPath, "AWS CLI source HOME trust chain"));
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return Object.freeze(identities);
+}
+
+async function requireUnchangedResolverSource({ identities, loginCache, cacheEntries }) {
+  try {
+    const currentEntries = (await fs.readdir(loginCache)).sort();
+    if (JSON.stringify(currentEntries) !== JSON.stringify(cacheEntries)) throw new Error();
+    for (const expected of identities) {
+      const metadata = await fs.lstat(expected.realPath, { bigint: true });
+      const realPath = await fs.realpath(expected.realPath);
+      const current = sourcePathIdentity(metadata, realPath, expected.label);
+      if (Object.keys(expected).some((key) => expected[key] !== current[key])) throw new Error();
+    }
+  } catch {
+    throw new Error("AWS CLI resolver source changed after attestation");
   }
 }
 
@@ -287,32 +344,48 @@ async function createPrivateAwsCliState({
       throw new Error("AWS CLI source home is invalid");
     }
     const canonicalSourceHome = await fs.realpath(sourceHome);
-    const sourceAwsDirectory = await requireOwnedSourcePath(
+    const sourceHomeIdentities = await requireTrustedSourceHomeChain(
+      canonicalSourceHome,
+      expectedUid
+    );
+    const sourceAwsDirectoryIdentity = await requireOwnedSourcePath(
       path.join(canonicalSourceHome, ".aws"),
       "directory",
       "AWS CLI source directory",
       expectedUid
     );
-    const sourceLoginDirectory = await requireOwnedSourcePath(
+    const sourceAwsDirectory = sourceAwsDirectoryIdentity.realPath;
+    const sourceLoginDirectoryIdentity = await requireOwnedSourcePath(
       path.join(sourceAwsDirectory, "login"),
       "directory",
       "AWS CLI source login directory",
       expectedUid
     );
-    const sourceConfigFile = await requireOwnedSourcePath(
+    const sourceLoginDirectory = sourceLoginDirectoryIdentity.realPath;
+    const sourceConfigFileIdentity = await requireOwnedSourcePath(
       path.join(sourceAwsDirectory, "config"),
       "file",
       "AWS CLI source config",
       expectedUid,
       { exactMode: PRIVATE_FILE_MODE }
     );
-    const sourceLoginCache = await requireOwnedSourcePath(
+    const sourceConfigFile = sourceConfigFileIdentity.realPath;
+    const sourceLoginCacheIdentity = await requireOwnedSourcePath(
       path.join(sourceLoginDirectory, "cache"),
       "directory",
       "AWS CLI login cache",
       expectedUid
     );
-    await requirePrivateLoginCacheEntries(sourceLoginCache, expectedUid);
+    const sourceLoginCache = sourceLoginCacheIdentity.realPath;
+    const cache = await requirePrivateLoginCacheEntries(sourceLoginCache, expectedUid);
+    const sourceIdentities = Object.freeze([
+      ...sourceHomeIdentities,
+      sourceAwsDirectoryIdentity,
+      sourceLoginDirectoryIdentity,
+      sourceConfigFileIdentity,
+      sourceLoginCacheIdentity,
+      ...cache.identities
+    ]);
     const sourceConfig = await fs.readFile(sourceConfigFile, "utf8");
     const loginSession = extractLoginSession(sourceConfig, profile);
     const profileHeader = profile === "default" ? "default" : `profile ${profile}`;
@@ -364,6 +437,13 @@ async function createPrivateAwsCliState({
       frozenEnvironment: {
         ...commonEnvironment,
         AWS_CONFIG_FILE: frozenConfigFile
+      },
+      assertResolverSourceCurrent() {
+        return requireUnchangedResolverSource({
+          identities: sourceIdentities,
+          loginCache: sourceLoginCache,
+          cacheEntries: cache.entries
+        });
       },
       dispose() {
         disposePromise ??= fs.rm(root, { recursive: true, force: true });
@@ -461,9 +541,9 @@ async function inspectApprovedAwsCliCandidate({ candidate, trustRoot, expectedUi
   return Object.freeze({ ...fingerprint, trustRoot: canonicalTrustRoot });
 }
 
-async function resolveAwsCliExecutable({ homedir, uid }) {
+async function resolveAwsCliExecutable({ homedir, uid }, approvedCandidates) {
   const canonicalHome = await fs.realpath(homedir);
-  const candidates = [
+  const defaultCandidates = [
     {
       candidate: path.join(canonicalHome, ".local", "share", "aws-cli", "aws"),
       trustRoot: canonicalHome,
@@ -481,6 +561,13 @@ async function resolveAwsCliExecutable({ homedir, uid }) {
     { candidate: "/opt/aws-cli/bin/aws", trustRoot: "/opt/aws-cli", expectedUid: uid, systemOwned: true },
     { candidate: "/opt/aws-cli/v2/current/bin/aws", trustRoot: "/opt/aws-cli", expectedUid: uid, systemOwned: true }
   ];
+  if (approvedCandidates !== undefined
+    && (!Array.isArray(approvedCandidates) || approvedCandidates.length === 0)) {
+    throw new Error("Approved AWS CLI executable candidates are invalid");
+  }
+  const candidates = approvedCandidates === undefined
+    ? defaultCandidates
+    : approvedCandidates.map((candidate) => ({ ...candidate, expectedUid: uid }));
   for (const candidate of candidates) {
     try {
       return await inspectApprovedAwsCliCandidate(candidate);
@@ -614,9 +701,11 @@ async function invokeCredentialResolver(
   executablePath,
   args,
   environment,
-  verifyExecutable
+  verifyExecutable,
+  assertResolverSourceCurrent
 ) {
   await verifyExecutable();
+  await assertResolverSourceCurrent();
   return new Promise((resolve, reject) => {
     try {
       execFileImpl(
@@ -713,7 +802,8 @@ export async function createFrozenAwsCli({
   environment = process.env,
   now = Date.now,
   temporaryRoot = "/tmp",
-  userInfoImpl = systemUserInfo
+  userInfoImpl = systemUserInfo,
+  approvedExecutableCandidates
 }) {
   requireEnvironment(environment);
   const safeProfile = requireSafeProfile(profile);
@@ -726,7 +816,7 @@ export async function createFrozenAwsCli({
     || user.uid < 0) {
     throw new Error("AWS CLI OS user identity is invalid");
   }
-  const executable = await resolveAwsCliExecutable(user);
+  const executable = await resolveAwsCliExecutable(user, approvedExecutableCandidates);
   const executablePath = executable.path;
   const verifyExecutable = () => verifyAwsCliExecutable(executable);
   const state = await createPrivateAwsCliState({
@@ -747,13 +837,13 @@ export async function createFrozenAwsCli({
       "--region", safeRegion,
       "--output", "text",
       "--no-cli-pager"
-    ], state.resolverEnvironment, verifyExecutable);
+    ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent);
     const exported = await invokeCredentialResolver(execFileImpl, executablePath, [
       "configure", "export-credentials",
       "--profile", safeProfile,
       "--format", "process",
       "--no-cli-pager"
-    ], state.resolverEnvironment, verifyExecutable);
+    ], state.resolverEnvironment, verifyExecutable, state.assertResolverSourceCurrent);
     const credentials = requireExportedTemporaryCredentials(exported, now);
     const lockedEnvironment = {
       ...state.frozenEnvironment,

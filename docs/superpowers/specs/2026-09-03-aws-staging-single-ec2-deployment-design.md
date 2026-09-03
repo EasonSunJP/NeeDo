@@ -178,6 +178,13 @@ Only bounded repository-owned SSM document/Run Command evidence is accepted.
 Interactive access is deferred to a dedicated hardened Session Manager
 microstep in the later company/application stage.
 
+The login-only credential resolver also treats the current user's canonical
+HOME ancestry and AWS config/login/cache tree as an explicit source trust
+boundary. It captures owner, mode, real path, device, and inode before
+credential resolution and re-attests them immediately before each resolver
+spawn; unsafe ancestry or replacement fails closed and leaves no credential
+artifact.
+
 The application Release Candidate starts at `main@3cc5a978e8afec42baa41bee0077bb4166c47265`. Only the approved administrator bootstrap and AWS Staging deployment files may be added before the first release. Existing dirty worktree changes are excluded.
 
 The release process:

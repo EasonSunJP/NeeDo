@@ -112,6 +112,12 @@ Raw AWS CLI/plugin version probes and interactive Session Manager commands are
 outside this reviewed path. Interactive access requires a future dedicated
 hardened Session Manager microstep for the company/application stage.
 
+The personal login resolver must validate the canonical source HOME-to-root
+ancestor chain and the exact config/login/cache source tree, bind owner, mode,
+real path, device, and inode, and re-attest that identity immediately before
+each resolver spawn. Group/world-writable ancestors and post-attestation
+replacement fail closed without credential persistence.
+
 ## Testing and Acceptance
 
 Implementation follows test-driven development:
