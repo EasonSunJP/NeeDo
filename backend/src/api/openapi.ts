@@ -7415,6 +7415,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      TechnicianReviewSpecialTagCount: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "label", "count"],
+        properties: {
+          code: {
+            type: "string",
+            enum: ["appeal_max", "service_max", "emotion_max", "energy_max"]
+          },
+          label: {
+            type: "string",
+            enum: ["魅力max", "服务max", "情绪max", "元气max"]
+          },
+          count: { type: "integer", minimum: 0 }
+        }
+      },
+      TechnicianReviewCustomTagCount: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "count"],
+        properties: {
+          label: { type: "string", minLength: 1, maxLength: 50 },
+          count: { type: "integer", minimum: 1 }
+        }
+      },
+      TechnicianReviewTagSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["special", "custom"],
+        properties: {
+          special: {
+            type: "array",
+            minItems: 4,
+            maxItems: 4,
+            items: { $ref: "#/components/schemas/TechnicianReviewSpecialTagCount" }
+          },
+          custom: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/TechnicianReviewCustomTagCount" }
+          }
+        }
+      },
       TechnicianDetail: {
         allOf: [
           { $ref: "#/components/schemas/TechnicianCard" },
@@ -7424,7 +7467,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "shop",
               "bio",
               "serviceArea",
+              "gender",
+              "heightCm",
+              "languages",
               "yearsExperience",
+              "reviewTagSummary",
               "mediaAssets",
               "services",
               "createdAt",
@@ -7436,7 +7483,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               },
               bio: { type: ["string", "null"] },
               serviceArea: { type: ["string", "null"] },
+              gender: { type: "string", enum: ["female", "male", "private"] },
+              heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+              languages: { type: "array", items: { type: "string" } },
               yearsExperience: { type: "integer" },
+              reviewTagSummary: { $ref: "#/components/schemas/TechnicianReviewTagSummary" },
               mediaAssets: { type: "array", items: { $ref: "#/components/schemas/MediaAsset" } },
               services: { type: "array", items: { $ref: "#/components/schemas/ServiceCard" } },
               createdAt: { type: "string", format: "date-time" },
@@ -7553,12 +7604,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "avatarUrl",
           "bio",
           "city",
+          "gender",
           "age",
           "heightCm",
           "languages",
           "serviceAreas",
           "specialTags",
           "profileTags",
+          "reviewTagSummary",
           "canServeForeigners",
           "bidBudgetMinJpy",
           "bidBudgetMaxJpy",
@@ -7578,6 +7631,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           avatarUrl: { type: ["string", "null"] },
           bio: { type: ["string", "null"], maxLength: 2000 },
           city: { type: "string" },
+          gender: { type: "string", enum: ["female", "male", "private"] },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
           languages: { type: "array", items: { type: "string" } },
@@ -7585,10 +7639,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           specialTags: {
             type: "array",
             readOnly: true,
-            description: "Active, non-expired operations-assigned technician tags.",
+            description: "Deprecated compatibility field. Fixed review labels are returned by reviewTagSummary.",
             items: { type: "string" }
           },
-          profileTags: { type: "array", items: { type: "string" } },
+          profileTags: {
+            type: "array",
+            readOnly: true,
+            description: "Deprecated compatibility field. Review-derived labels are returned by reviewTagSummary.",
+            items: { type: "string" }
+          },
+          reviewTagSummary: { $ref: "#/components/schemas/TechnicianReviewTagSummary" },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
@@ -7626,6 +7686,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxLength: 900000,
             pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
           },
+          gender: { type: "string", enum: ["female", "male", "private"] },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
           languages: {
@@ -7641,7 +7702,6 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxItems: 20,
             items: { type: "string", maxLength: 80 }
           },
-          profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
@@ -16349,9 +16409,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public technician detail",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        parameters: [{
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {
+            oneOf: [
+              { type: "integer", minimum: 1 },
+              { type: "string", pattern: "^s[0-9]{10}$" }
+            ]
+          }
+        }],
         responses: {
-          "200": { description: "Technician detail" },
+          "200": jsonDataResponse("Technician detail", {
+            $ref: "#/components/schemas/TechnicianDetail"
+          }),
           "404": { description: "Technician not found" }
         }
       }

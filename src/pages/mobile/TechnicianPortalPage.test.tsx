@@ -116,7 +116,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
   it("persists every profile and privacy edit through the technician self API", () => {
     expect(source).toContain("technicianProfileApi.updateMine(input)");
     expect(source).toContain("serviceAreas: splitList(draft.serviceAreasText)");
-    expect(source).toContain("profileTags: splitList(draft.profileTagsText)");
+    expect(source).not.toContain("profileTags: splitList(draft.profileTagsText)");
     expect(source).toContain("paymentMethods: draft.paymentMethods");
     expect(source).toContain('persistVisibility("public")');
     expect(source).toContain('persistVisibility("privateAll", true)');

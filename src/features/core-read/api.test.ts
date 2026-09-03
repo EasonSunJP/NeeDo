@@ -245,6 +245,9 @@ describe("core read API adapter", () => {
       shop: coreService.shop,
       bio: "Certified body care technician.",
       serviceArea: "Minato, Shibuya",
+      gender: "female",
+      heightCm: 164,
+      languages: ["日本語", "English"],
       yearsExperience: 8,
       reviewTagSummary: {
         special: [

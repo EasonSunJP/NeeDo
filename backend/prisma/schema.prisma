@@ -1906,6 +1906,7 @@ model TechnicianProfile {
   serviceAreasJson    Json?                    @map("service_areas")
   baseLatitude        Decimal?                 @map("base_latitude") @db.Decimal(10, 7)
   baseLongitude       Decimal?                 @map("base_longitude") @db.Decimal(10, 7)
+  gender              String                   @default("private") @db.VarChar(20)
   age                 Int?
   heightCm            Decimal?                 @map("height_cm") @db.Decimal(5, 2)
   languages           Json?

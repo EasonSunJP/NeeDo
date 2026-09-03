@@ -567,7 +567,6 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, onSaved
       languages: draft.languages,
       bio: draft.bio.trim() || null,
       serviceAreas: splitList(draft.serviceAreasText),
-      profileTags: splitList(draft.profileTagsText),
       canServeForeigners: draft.canServeForeigners,
       bidBudgetMinJpy: parseNullableNumber(draft.bidBudgetMinJpy),
       bidBudgetMaxJpy: parseNullableNumber(draft.bidBudgetMaxJpy),

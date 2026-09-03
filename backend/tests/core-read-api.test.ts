@@ -44,8 +44,14 @@ describe("Step 08 core read API", () => {
     publicId: "s5831047296",
     displayName: "Mika Tanaka",
     city: "Tokyo",
+    age: 28,
     avatarUrl: "https://cdn.example.test/technicians/mika.jpg",
-    reviewSummary
+    reviewSummary,
+    favoriteCount: 12,
+    shareCount: 3,
+    completedOrderCount: 128,
+    acceptanceRatePercent: 98,
+    primaryService: null
   };
   const reviewTagSummary = {
     special: [
@@ -146,6 +152,9 @@ describe("Step 08 core read API", () => {
         shop: shopCard,
         bio: "Certified body care technician.",
         serviceArea: "Minato, Shibuya",
+        gender: "female",
+        heightCm: 164,
+        languages: ["日本語", "English"],
         yearsExperience: 8,
         reviewTagSummary,
         mediaAssets: [],
@@ -347,7 +356,13 @@ describe("Step 08 core read API", () => {
       publicId: "s5831047296",
       displayName: "Mika Tanaka",
       shop: shopCard,
+      gender: "female",
+      age: 28,
+      heightCm: 164,
+      languages: ["日本語", "English"],
       yearsExperience: 8,
+      completedOrderCount: 128,
+      acceptanceRatePercent: 98,
       reviewTagSummary,
       services: [serviceCard]
     });
@@ -398,6 +413,40 @@ describe("Step 08 core read API", () => {
     expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(
       shopCard.publicId
     );
+  });
+
+  it("resolves formal technician identifiers to the same complete public detail", async () => {
+    const fixture = createFixture();
+
+    const numericResponse = await request(fixture.app).get("/api/v1/technicians/1").expect(200);
+    const publicResponse = await request(fixture.app)
+      .get(`/api/v1/technicians/${technicianCard.publicId}`)
+      .expect(200);
+
+    expect(publicResponse.body.data).toEqual(numericResponse.body.data);
+    expect(publicResponse.body.data).toMatchObject({
+      gender: "female",
+      age: 28,
+      heightCm: 164,
+      languages: ["日本語", "English"],
+      yearsExperience: 8,
+      completedOrderCount: 128,
+      acceptanceRatePercent: 98,
+      reviewTagSummary
+    });
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(1, 1);
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(
+      2,
+      technicianCard.publicId
+    );
+  });
+
+  it("rejects malformed formal technician identifiers", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/technicians/s123").expect(400);
+    await request(fixture.app).get("/api/v1/technicians/not-a-technician").expect(400);
+    expect(fixture.coreReadRepository.findTechnicianDetail).not.toHaveBeenCalled();
   });
 
   it("rejects malformed public Shop identifiers", async () => {

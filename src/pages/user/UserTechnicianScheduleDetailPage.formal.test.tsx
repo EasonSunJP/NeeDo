@@ -91,6 +91,9 @@ const technicianDetailFixture = {
   shop: null,
   bio: null,
   serviceArea: "東京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 3,
   reviewTagSummary: {
     special: [

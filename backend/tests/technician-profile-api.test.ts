@@ -88,6 +88,7 @@ const makeProfile = (): TechnicianProfilePayload => ({
   avatarUrl: null,
   bio: "肩颈护理",
   city: "Tokyo",
+  gender: "female",
   age: 28,
   heightCm: 164,
   serviceBase: { latitude: 35.6762, longitude: 139.6503 },
@@ -215,6 +216,7 @@ const createFixture = async () => {
       profile = {
         ...profile,
         ...(mutation.displayName === undefined ? {} : { displayName: mutation.displayName }),
+        ...(mutation.gender === undefined ? {} : { gender: mutation.gender }),
         ...(mutation.languages === undefined ? {} : { languages: mutation.languages }),
         ...(mutation.serviceBase === undefined ? {} : { serviceBase: mutation.serviceBase }),
         ...(mutation.paymentMethods === undefined ? {} : { paymentMethods: mutation.paymentMethods }),
@@ -300,6 +302,7 @@ describe("technician profile current-identity API", () => {
       .expect(({ body }) => expect(body.data).toMatchObject({
         id: 31,
         displayName: "田中 彩",
+        gender: "female",
         serviceBase: { latitude: 35.6762, longitude: 139.6503 }
       }));
 
@@ -308,6 +311,7 @@ describe("technician profile current-identity API", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({
         displayName: "彩",
+        gender: "female",
         languages: ["日本語", "中文"],
         paymentMethods: ["platform", "cash", "paypay"],
         serviceBase: { latitude: 35.6895, longitude: 139.6917 },
@@ -316,6 +320,7 @@ describe("technician profile current-identity API", () => {
       .expect(200)
       .expect(({ body }) => expect(body.data).toMatchObject({
         displayName: "彩",
+        gender: "female",
         paymentMethods: ["platform", "cash", "paypay"],
         serviceBase: { latitude: 35.6895, longitude: 139.6917 },
         visibility: "network"
@@ -327,6 +332,7 @@ describe("technician profile current-identity API", () => {
       109,
       expect.objectContaining({
         displayName: "彩",
+        gender: "female",
         paymentMethods: ["platform", "cash", "paypay"],
         serviceBase: { latitude: 35.6895, longitude: 139.6917 },
         visibility: "network"
@@ -336,6 +342,7 @@ describe("technician profile current-identity API", () => {
         metadata: {
           changedFields: [
             "displayName",
+            "gender",
             "languages",
             "paymentMethods",
             "serviceBase",
@@ -353,7 +360,7 @@ describe("technician profile current-identity API", () => {
     await request(fixture.app)
       .patch("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${token}`)
-      .send({ languages: [], serviceAreas: [], profileTags: [], paymentMethods: [] })
+      .send({ languages: [], serviceAreas: [], paymentMethods: [] })
       .expect(200)
       .expect(({ body }) => expect(body.data).toMatchObject({
         languages: [],
@@ -367,13 +374,12 @@ describe("technician profile current-identity API", () => {
       expect.objectContaining({
         languages: [],
         serviceAreas: [],
-        profileTags: [],
         paymentMethods: []
       }),
       expect.objectContaining({
         action: "technician_profile.self_update",
         metadata: {
-          changedFields: ["languages", "paymentMethods", "profileTags", "serviceAreas"]
+          changedFields: ["languages", "paymentMethods", "serviceAreas"]
         }
       })
     );
@@ -408,6 +414,16 @@ describe("technician profile current-identity API", () => {
       .patch("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${technicianToken}`)
       .send({ serviceBase: { latitude: 35.6762 } })
+      .expect(400);
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .send({ gender: "unknown" })
+      .expect(400);
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .send({ profileTags: ["肩颈调理"] })
       .expect(400);
   });
 });

@@ -141,7 +141,7 @@ export class CoreReadService {
     return shop;
   }
 
-  public async getTechnicianDetail(id: number): Promise<TechnicianDetailPayload> {
+  public async getTechnicianDetail(id: number | string): Promise<TechnicianDetailPayload> {
     const technician = await this.repository.findTechnicianDetail(id);
 
     if (!technician) {

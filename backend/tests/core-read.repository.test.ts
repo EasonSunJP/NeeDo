@@ -73,7 +73,11 @@ const publishedTechnicianWithoutServices = {
   id: 41,
   displayName: "橘 ひかり",
   city: "Tokyo",
+  visibility: "public",
+  gender: "female",
   age: 25,
+  heightCm: { toString: () => "164.00" },
+  languages: ["日本語", "中文"],
   baseLatitude: { toString: () => "35.6762000" },
   baseLongitude: { toString: () => "139.6503000" },
   mediaAssets: [],
@@ -538,8 +542,9 @@ describe("CoreReadRepository multi-entity search", () => {
       createdAt: now,
       updatedAt: now
     };
+    const findFirst = jest.fn(async () => technician);
     const client = {
-      technicianProfile: { findFirst: jest.fn(async () => technician) },
+      technicianProfile: { findFirst },
       orderReviewTag: {
         groupBy: jest.fn(async () => [
           { label: "服务精神", _count: { _all: 4 }, _min: { createdAt: now } },
@@ -551,6 +556,12 @@ describe("CoreReadRepository multi-entity search", () => {
 
     await expect(repository.findTechnicianDetail(41)).resolves.toMatchObject({
       id: 41,
+      gender: "female",
+      heightCm: 164,
+      languages: ["日本語", "中文"],
+      yearsExperience: 8,
+      completedOrderCount: 1280,
+      acceptanceRatePercent: 98,
       reviewTagSummary: {
         special: [
           { code: "appeal_max", label: "魅力max", count: 0 },
@@ -561,5 +572,36 @@ describe("CoreReadRepository multi-entity search", () => {
         custom: [{ label: "手法细致", count: 2 }]
       }
     });
+
+    expect(findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({
+        id: 41,
+        visibility: "public"
+      })
+    }));
+
+    await expect(repository.findTechnicianDetail("s5831047296")).resolves.toMatchObject({
+      id: 41,
+      publicId: "s5831047296"
+    });
+    expect(findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({
+        visibility: "public",
+        user: {
+          identities: {
+            some: expect.objectContaining({
+              publicIdentifier: {
+                is: expect.objectContaining({
+                  publicId: "s5831047296",
+                  kind: "S",
+                  status: "ACTIVE",
+                  deletedAt: null
+                })
+              }
+            })
+          }
+        }
+      })
+    }));
   });
 });

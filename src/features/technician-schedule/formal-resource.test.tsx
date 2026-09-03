@@ -92,6 +92,9 @@ const profile = {
   },
   bio: null,
   serviceArea: "東京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 4,
   reviewTagSummary: {
     special: [
@@ -117,6 +120,7 @@ const selfProfile = {
   avatarUrl: null,
   bio: null,
   city: "東京",
+  gender: "private",
   age: null,
   heightCm: null,
   languages: ["日本語"],

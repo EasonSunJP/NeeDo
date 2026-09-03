@@ -2,6 +2,7 @@ import { httpClient } from "../../api/httpClient";
 import type { TechnicianReviewTagSummary } from "./api";
 
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
+export type TechnicianProfileGender = "female" | "male" | "private";
 export type TechnicianProfilePaymentMethod =
   | "platform"
   | "offline"
@@ -21,6 +22,7 @@ export type TechnicianSelfProfile = {
   avatarUrl: string | null;
   bio: string | null;
   city: string;
+  gender: TechnicianProfileGender;
   age: number | null;
   heightCm: number | null;
   languages: string[];
@@ -43,12 +45,12 @@ export type TechnicianSelfProfile = {
 export type TechnicianSelfProfileUpdate = Partial<Pick<
   TechnicianSelfProfile,
   | "displayName"
+  | "gender"
   | "age"
   | "heightCm"
   | "languages"
   | "bio"
   | "serviceAreas"
-  | "profileTags"
   | "canServeForeigners"
   | "bidBudgetMinJpy"
   | "bidBudgetMaxJpy"

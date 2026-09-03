@@ -15,6 +15,7 @@ describe("technicianProfileApi", () => {
     await technicianProfileApi.getMine();
     await technicianProfileApi.updateMine({
       displayName: "彩",
+      gender: "female",
       serviceBase: { latitude: 35.6762, longitude: 139.6503 },
       visibility: "network"
     });
@@ -24,6 +25,7 @@ describe("technicianProfileApi", () => {
       method: "PATCH",
       body: {
         displayName: "彩",
+        gender: "female",
         serviceBase: { latitude: 35.6762, longitude: 139.6503 },
         visibility: "network"
       }

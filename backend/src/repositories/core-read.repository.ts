@@ -175,6 +175,9 @@ export interface TechnicianDetailPayload extends TechnicianCardPayload {
   shop: ShopCardPayload | null;
   bio: string | null;
   serviceArea: string | null;
+  gender: "female" | "male" | "private";
+  heightCm: number | null;
+  languages: string[];
   yearsExperience: number;
   reviewTagSummary: TechnicianReviewTagSummaryPayload;
   mediaAssets: MediaAssetPayload[];
@@ -228,7 +231,7 @@ export interface CoreReadRepositoryPort {
     ids: number[]
   ) => Promise<Map<number, TechnicianCardPayload>>;
   findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
-  findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
+  findTechnicianDetail: (id: number | string) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
 }
 
@@ -601,29 +604,29 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return shop ? this.mapShopDetail(shop) : null;
   }
 
-  public async findTechnicianDetail(id: number): Promise<TechnicianDetailPayload | null> {
-    const [technician, reviewTagSummary] = await Promise.all([
-      this.client.technicianProfile.findFirst({
-        where: {
-          id,
-          ...this.publishedTechnicianProfileWhere()
+  public async findTechnicianDetail(id: number | string): Promise<TechnicianDetailPayload | null> {
+    const technician = await this.client.technicianProfile.findFirst({
+      where: {
+        ...(typeof id === "number" ? { id } : {}),
+        ...this.publishedTechnicianProfileWhere(typeof id === "string" ? id : undefined)
+      },
+      include: {
+        ...this.technicianCardInclude(),
+        shop: {
+          include: this.shopCardInclude()
         },
-        include: {
-          ...this.technicianCardInclude(),
-          shop: {
-            include: this.shopCardInclude()
-          },
-          services: {
-            where: { deletedAt: null, status: PUBLISHED_STATUS },
-            include: this.serviceCardInclude(),
-            orderBy: this.buildServiceOrderBy("recommended")
-          }
+        services: {
+          where: { deletedAt: null, status: PUBLISHED_STATUS },
+          include: this.serviceCardInclude(),
+          orderBy: this.buildServiceOrderBy("recommended")
         }
-      }),
-      loadTechnicianReviewTagSummary(this.client, id)
-    ]);
+      }
+    });
 
-    return technician ? this.mapTechnicianDetail(technician, reviewTagSummary) : null;
+    if (!technician) return null;
+    const reviewTagSummary = await loadTechnicianReviewTagSummary(this.client, technician.id);
+
+    return this.mapTechnicianDetail(technician, reviewTagSummary);
   }
 
   public async findCustomerProfile(id: number): Promise<CustomerProfilePayload | null> {
@@ -863,12 +866,13 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private publishedTechnicianProfileWhere(): Prisma.TechnicianProfileWhereInput {
+  private publishedTechnicianProfileWhere(publicId?: string): Prisma.TechnicianProfileWhereInput {
     return {
       deletedAt: null,
       status: PUBLISHED_STATUS,
+      visibility: "public",
       user: {
-        identities: { some: this.activeTechnicianIdentityWhere() }
+        identities: { some: this.activeTechnicianIdentityWhere(publicId) }
       }
     };
   }
@@ -1334,6 +1338,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return (
       technician.deletedAt === null &&
       technician.status === PUBLISHED_STATUS &&
+      technician.visibility === "public" &&
       technician.user.identities.some((identity) =>
         this.isActivePublicIdentifier(identity.publicIdentifier, "S")
       )
@@ -1361,6 +1366,11 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       shop: technician.shop ? this.mapShopCard(technician.shop) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,
+      gender: technician.gender === "female" || technician.gender === "male"
+        ? technician.gender
+        : "private",
+      heightCm: technician.heightCm === null ? null : Number(technician.heightCm),
+      languages: this.normalizeStringArray(technician.languages),
       yearsExperience: technician.yearsExperience,
       reviewTagSummary,
       mediaAssets: technician.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
@@ -1440,6 +1450,11 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       return [];
     }
 
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  private normalizeStringArray(value: Prisma.JsonValue | null): string[] {
+    if (!Array.isArray(value)) return [];
     return value.filter((item): item is string => typeof item === "string");
   }
 

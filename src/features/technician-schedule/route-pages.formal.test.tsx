@@ -145,6 +145,9 @@ const profile = {
   },
   bio: null,
   serviceArea: "东京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 4,
   reviewTagSummary: {
     special: [
