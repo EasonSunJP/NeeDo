@@ -47,6 +47,14 @@
 > the clean revision/path/byte attestation immediately before creation, and
 > supplies the same immutable bytes to `validate-template` and `create-stack`.
 
+> **2026-09-04 interactive-access supersession (`批准最终安全修订`):** Historical
+> raw AWS CLI version checks and the raw Session Manager shell command in Task
+> 10 are not authorized acceptance steps. The current wrappers do not expose a
+> hardened interactive launcher. Interactive shell proof is deferred to a
+> dedicated hardened Session Manager microstep for the later company/application
+> stage; this environment-only gate uses repository wrappers and bounded Run
+> Command evidence only.
+
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
@@ -1520,16 +1528,13 @@ git commit -m "fix: harden AWS staging environment gate"
 - alert email address;
 - actual AWS billing currency and explicitly approved monthly amount corresponding to the approximately 20,000 JPY ceiling.
 
-- [ ] **Step 1: Install AWS CLI v2 and the Session Manager plugin only with separate approval if still absent**
+- [ ] **Step 1: Use only the repository's hardened executable attestation**
 
-Verify first:
-
-```bash
-aws --version
-session-manager-plugin --version
-```
-
-Expected: AWS CLI v2 and a working Session Manager plugin. If either is absent, request permission for the official macOS installation; do not download or install it silently.
+Do not select an executable through `PATH` or run raw AWS CLI/plugin version
+checks. Each repository wrapper resolves and attests its approved absolute AWS
+CLI v2 executable before credential resolution. Installing or upgrading AWS CLI
+or the Session Manager plugin remains a separate explicitly approved system
+change.
 
 - [ ] **Step 2: Establish and prove the temporary session**
 
@@ -1606,18 +1611,13 @@ npm run aws:staging:bootstrap-host -- \
 
 Expected: both commands finish `Success`; the second does not format the volume again, duplicate `/etc/fstab`, or change resource identity.
 
-- [ ] **Step 6: Prove an actual portless Session Manager shell opens**
+- [ ] **Step 6: Defer interactive Session Manager shell proof**
 
-Resolve the instance ID from the fresh stack outputs, then run:
-
-```bash
-aws ssm start-session \
-  --target <stack-output-instance-id> \
-  --profile <named-temporary-profile> \
-  --region <ap-southeast-2-or-ap-northeast-1>
-```
-
-Expected: an SSM shell prompt opens without a key pair, inbound port 22, bastion, or public SSH. Run only `exit`; do not inspect application secrets or environment variables. Record the start/close timestamp and success boolean, not terminal content.
+No raw interactive command is authorized in this stage. The environment-only
+acceptance relies on the hardened wrapper's bounded SSM document/Run Command
+evidence and the absence of SSH ingress. A future company/application stage
+must first implement and review a dedicated hardened Session Manager microstep;
+until then, interactive shell proof remains explicitly deferred.
 
 - [ ] **Step 7: Confirm the SNS subscription**
 

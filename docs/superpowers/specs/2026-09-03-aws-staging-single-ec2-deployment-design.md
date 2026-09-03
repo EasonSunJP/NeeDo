@@ -172,6 +172,12 @@ the same immutable in-memory byte string to `validate-template` and
 `create-stack`. Mutable `file://` validation followed by a path reread is not
 an approved deployment flow.
 
+Interactive Session Manager shell proof is not part of this environment-only
+gate because the reviewed wrapper exposes no hardened interactive launcher.
+Only bounded repository-owned SSM document/Run Command evidence is accepted.
+Interactive access is deferred to a dedicated hardened Session Manager
+microstep in the later company/application stage.
+
 The application Release Candidate starts at `main@3cc5a978e8afec42baa41bee0077bb4166c47265`. Only the approved administrator bootstrap and AWS Staging deployment files may be added before the first release. Existing dirty worktree changes are excluded.
 
 The release process:

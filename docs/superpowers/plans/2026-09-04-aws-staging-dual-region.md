@@ -15,6 +15,11 @@
 > preceding clean preflight. One immutable byte snapshot is used for both
 > `validate-template` and `create-stack`.
 
+> **2026-09-04 interactive-access supersession (`批准最终安全修订`):** No raw AWS
+> CLI/plugin version check or interactive Session Manager command is part of
+> this gate. Interactive proof is deferred to a dedicated hardened Session
+> Manager microstep for the later company/application stage.
+
 **Goal:** Make the reviewed NeeDo environment-only deployment gate support the approved personal Sydney test and a later company Tokyo deployment without weakening account, credential, evidence, or rollback controls.
 
 **Architecture:** The operator must provide one of two exact regions on every command. A shared region validator feeds the frozen configuration, CloudFormation receives the same value as a server-side `ExpectedRegion` lock, and every persisted ARN/evidence check derives from that frozen region. AWS CLI v2 `login` is the only current credential provider; STS must still prove an exact-account assumed-role caller.

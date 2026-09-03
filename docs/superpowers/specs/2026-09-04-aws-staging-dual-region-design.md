@@ -108,6 +108,10 @@ The same-process invariants remain unchanged:
 5. an existing stack, SCP denial, output mismatch, or changed DNS baseline
    stops without switching targets.
 
+Raw AWS CLI/plugin version probes and interactive Session Manager commands are
+outside this reviewed path. Interactive access requires a future dedicated
+hardened Session Manager microstep for the company/application stage.
+
 ## Testing and Acceptance
 
 Implementation follows test-driven development:

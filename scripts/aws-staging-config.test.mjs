@@ -38,6 +38,24 @@ describe("AWS Staging configuration", () => {
     expect(combined).toMatch(/same immutable.*bytes.*validate-template.*create-stack/is);
   });
 
+  it("forbids raw AWS and Session Manager commands in authoritative operator documents", async () => {
+    const authoritativePaths = [
+      "docs/aws-staging-environment-runbook.md",
+      "docs/superpowers/plans/2026-09-03-aws-staging-environment-only.md",
+      "docs/superpowers/plans/2026-09-04-aws-staging-dual-region.md",
+      "docs/superpowers/specs/2026-09-03-aws-staging-single-ec2-deployment-design.md",
+      "docs/superpowers/specs/2026-09-04-aws-staging-dual-region-design.md"
+    ];
+    const documents = await Promise.all(authoritativePaths.map((documentPath) => (
+      fs.readFile(new URL(`../${documentPath}`, import.meta.url), "utf8")
+    )));
+    const combined = documents.join("\n");
+
+    expect(combined).not.toMatch(/^\s*(?:aws|session-manager-plugin)(?:\s|$)/m);
+    expect(combined).not.toMatch(/^\s*(?:command -v|which)\s+(?:aws|session-manager-plugin)(?:\s|$)/m);
+    expect(combined).toMatch(/dedicated hardened Session Manager microstep/i);
+  });
+
   it("normalizes the approved environment without converting money", () => {
     expect(resolveAwsStagingConfig(validInput)).toEqual({
       alertEmail: "ops@example.com",

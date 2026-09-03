@@ -16,7 +16,9 @@ are deliberately deferred until their separate microstep is approved.
   was absent describe the initial state and are superseded by this fact.
 - The AWS Session Manager plugin is verified as version `1.2.835.0` on
   `arm64`, installed from the AWS signed and Apple-notarized macOS package.
-  Its executable resolves through `/usr/local/bin/session-manager-plugin`.
+  This environment-only gate does not invoke it or accept a raw interactive
+  shell command; that needs a dedicated hardened Session Manager microstep in
+  the later company/application stage.
 - AWS CLI v2 `aws login` created the named temporary profile
   `needo-staging-bootstrap`; STS identified account `430611185505` and an
   assumed `AccountFullAccessRole` session.
@@ -112,6 +114,11 @@ not `default`. If the preflight
 reveals a forbidden caller/source, missing authority, an unexpected account,
 unsupported AWS configuration, or a hostname/DNS conflict, stop and correct
 the approved configuration before retrying.
+
+Do not run raw AWS CLI or Session Manager plugin commands from this runbook.
+Executable/version checks occur inside the hardened repository wrapper, and
+interactive Session Manager proof is deferred until a dedicated launcher is
+designed, tested, and approved.
 
 ## Operator command sequence
 
