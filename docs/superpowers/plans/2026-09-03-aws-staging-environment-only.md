@@ -24,6 +24,8 @@
 > to the bucket outputs and verifies each live exact TLS-only deny policy with
 > the expected bucket owner before any host command. No create-or-update behavior is
 > authorized by this environment-only plan.
+> All four CloudWatch alarms declare `ActionsEnabled: true`; live acceptance
+> requires that exact boolean and preserves it in reconstructed evidence.
 
 > **2026-09-04 CLI isolation follow-up:** Before credentials are available, the
 > wrapper ignores `PATH`, searches only fixed canonical-user/system install
@@ -1238,7 +1240,7 @@ Build one fully passing fixture and mutate one invariant at a time. Required fai
 | Containers | any running container exists in environment-only stage |
 | S3 | either bucket lacks encryption/versioning/public block/lifecycle retention, or its retained policy differs from the exact deny-only `aws:SecureTransport="false"` policy for the bucket and object ARNs |
 | Secret | secret has any version ID |
-| Monitoring | required alarms/log groups/agent parameter absent |
+| Monitoring | required alarms/log groups/agent parameter absent, or any alarm does not return exact boolean `ActionsEnabled: true` |
 | Budget | amount/unit differs or thresholds/types/subscriber differ |
 | DNS | current A records differ from the recorded preflight set |
 
@@ -1321,7 +1323,8 @@ Do not run `docker inspect`, list environment variables, read `/proc/*/environ`,
 - bucket controls/lifecycle summaries plus only the reconstructed
   `tlsOnly: true` and canonical exact-policy SHA-256 attestations;
 - `secretVersionCount: 0` without secret values;
-- alarm/log/budget threshold summaries;
+- alarm/log/budget threshold summaries, including exact reconstructed
+  `actionsEnabled: true` for every alarm;
 - preflight and post-verification DNS A-record arrays;
 - explicit false flags for app, migration, seed, DNS mutation, and business-data mutation;
 - a `waivedBaselineFailures` array naming only the three previously approved failures.

@@ -580,6 +580,7 @@ Resources:
   StatusCheckFailedAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
+      ActionsEnabled: true
       Namespace: AWS/EC2
       MetricName: StatusCheckFailed
       Statistic: Maximum
@@ -607,6 +608,7 @@ Resources:
   HighMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
+      ActionsEnabled: true
       Namespace: Needo/Staging
       MetricName: mem_used_percent
       Statistic: Average
@@ -634,6 +636,7 @@ Resources:
   RootDiskHighAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
+      ActionsEnabled: true
       Namespace: Needo/Staging
       MetricName: disk_used_percent
       Statistic: Average
@@ -665,6 +668,7 @@ Resources:
   DataDiskHighAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
+      ActionsEnabled: true
       Namespace: Needo/Staging
       MetricName: disk_used_percent
       Statistic: Average

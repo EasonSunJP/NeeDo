@@ -102,6 +102,11 @@ bucket ARN and object ARN. Evidence persists only `tlsOnly: true` and a
 canonical expected-policy SHA-256, which reconstruction binds back to the
 captured bucket name.
 
+All four CloudWatch metric alarms explicitly set `ActionsEnabled: true`.
+Acceptance requires the live API to return that exact boolean for every alarm
+and reconstruction preserves and revalidates it; a missing, false, or
+string-valued field fails before host execution.
+
 The same-process invariants remain unchanged:
 
 1. preflight verifies identity, explicit region, ARM64 AMI, one clean tracked

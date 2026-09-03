@@ -240,6 +240,9 @@ AWS Budgets sends threshold notifications at 15,000, 18,000 and 20,000 JPY of fo
 - S3 public access is blocked, versioning/encryption/lifecycle are verified,
   and each retained bucket policy is live-read with the expected owner and
   matched to the exact deny-only TLS policy for that bucket and its objects.
+- Every required CloudWatch alarm explicitly enables actions, and live
+  acceptance/reconstructed evidence require exact boolean
+  `ActionsEnabled: true`.
 - The Secrets Manager resource exists but no secret is printed.
 - CloudWatch log groups/alarms and AWS Budget thresholds exist.
 - No application, migration, seed, DNS or business-data mutation has occurred.

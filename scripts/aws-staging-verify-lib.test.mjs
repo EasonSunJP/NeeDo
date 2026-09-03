@@ -268,6 +268,7 @@ function passingFixture() {
     Period: 300,
     TreatMissingData,
     Dimensions: structuredClone(Dimensions),
+    ActionsEnabled: true,
     AlarmActions: [ids.topicArn]
   }));
   const ec2TaggedIds = [
@@ -675,6 +676,8 @@ describe("AWS Staging environment-only acceptance", () => {
       "shop membership card adjustment API > strictly rejects client scope and creates a safe pending request > remainingSeconds assertion"
     ]);
     expect(evidence.budget.maskedSubscriber).toBe("o***@example.com");
+    expect(evidence.monitoring.alarms).toHaveLength(4);
+    expect(evidence.monitoring.alarms.every((alarm) => alarm.actionsEnabled === true)).toBe(true);
     expect(JSON.stringify(evidence)).not.toContain(config.alertEmail);
     expect(JSON.stringify(evidence)).not.toContain(ids.secretArn);
     expect(JSON.stringify(evidence)).not.toContain("must-never-enter-evidence");
@@ -851,6 +854,23 @@ describe("AWS Staging environment-only acceptance", () => {
     const fixture = passingFixture();
     mutate(fixture);
     await expect(verify({ fixture })).rejects.toThrow(expected);
+  });
+
+  it.each([
+    ["false", (f) => { f.alarms.MetricAlarms[0].ActionsEnabled = false; }],
+    ["missing", (f) => { delete f.alarms.MetricAlarms[1].ActionsEnabled; }],
+    ["non-boolean", (f) => { f.alarms.MetricAlarms[2].ActionsEnabled = "true"; }]
+  ])("rejects CloudWatch ActionsEnabled when %s before host execution", async (_label, mutate) => {
+    const fixture = passingFixture();
+    mutate(fixture);
+    const aws = createAws(fixture);
+    const resolveDns = vi.fn(async () => ["203.0.113.2"]);
+    await expect(verifyAwsStagingEnvironment({
+      aws, config, resolveDns, runPreflight: createPreflight(resolveDns), now: () => 0
+    })).rejects.toThrow(/CloudWatch alarm.*actions enabled|ActionsEnabled/i);
+    expect(aws.json.mock.calls.some(([args]) => (
+      args[0] === "ssm" && args[1] === "send-command"
+    ))).toBe(false);
   });
 
   it.each([
@@ -1345,6 +1365,7 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     ["weakened retained policy flag", (e) => { e.buckets.release.tlsOnly = false; }],
     ["mismatched retained policy hash", (e) => { e.buckets.backup.policySha256 = "0".repeat(64); }],
     ["wrong alarm summary", (e) => { e.monitoring.alarms[0].threshold = 999; }],
+    ["disabled alarm actions", (e) => { e.monitoring.alarms[0].actionsEnabled = false; }],
     ["duplicate log summary", (e) => { e.monitoring.logGroups[1] = { ...e.monitoring.logGroups[0] }; }],
     ["swapped log group ARNs", (e) => {
       const [system, docker] = e.monitoring.logGroups;
@@ -1368,7 +1389,7 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       evidence: contaminated,
       trustedRoot: "/must",
       outputDirectory: "/must/not-be-reached"
-    })).rejects.toThrow(/exact|email|secret|credential|home|unsafe|false|waived|invalid/i);
+    })).rejects.toThrow(/exact|email|secret|credential|home|unsafe|false|true|waived|invalid/i);
   });
 
   it("rejects relative, out-of-root, and ancestor symlink paths without leakage", async () => {

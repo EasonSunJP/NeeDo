@@ -180,6 +180,14 @@ describe("AWS Staging CloudFormation contract", () => {
     }
   });
 
+  it("keeps every CloudWatch alarm action explicitly enabled", () => {
+    for (const name of [
+      "StatusCheckFailedAlarm", "HighMemoryAlarm", "RootDiskHighAlarm", "DataDiskHighAlarm"
+    ]) {
+      expect(resourceBlock(name), name).toContain("      ActionsEnabled: true");
+    }
+  });
+
   it("creates an empty secret and never embeds a value", () => {
     const secret = resourceBlock("ApplicationSecret");
     expect(secret).toContain("    Type: AWS::SecretsManager::Secret");

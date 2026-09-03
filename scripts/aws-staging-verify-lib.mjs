@@ -786,11 +786,20 @@ function requireAlarms(response, resources, instanceId, topicArn, accountId, reg
       [alarm?.Period === 300, "period"],
       [alarm?.TreatMissingData === missing, "missing-data policy"],
       [JSON.stringify(alarm?.Dimensions) === JSON.stringify(dimensions), "dimensions"],
+      [alarm?.ActionsEnabled === true, "actions enabled"],
       [JSON.stringify(alarm?.AlarmActions) === JSON.stringify([topicArn]), "actions"]
     ];
     const failed = checks.find(([passed]) => !passed);
     if (failed) throw new Error(`CloudWatch alarm ${logicalId} ${failed[1]} does not match`);
-    return { logicalId, name, arn: alarm.AlarmArn, namespace, metricName, threshold };
+    return {
+      logicalId,
+      name,
+      arn: alarm.AlarmArn,
+      namespace,
+      metricName,
+      threshold,
+      actionsEnabled: true
+    };
   });
 }
 
@@ -1297,8 +1306,8 @@ export async function verifyAwsStagingEnvironment({
     secretVersionCount: 0,
     monitoring: {
       logGroups: logs.map(({ name, arn, retentionDays }) => ({ name, arn, retentionDays })),
-      alarms: alarms.map(({ name, namespace, metricName, threshold }) => ({
-        name, namespace, metricName, threshold
+      alarms: alarms.map(({ name, namespace, metricName, threshold, actionsEnabled }) => ({
+        name, namespace, metricName, threshold, actionsEnabled
       })),
       agentParameterName: outputs.CloudWatchAgentConfigParameterName,
       agentParameterVersion: agentParameterAttestation.version,
@@ -1518,8 +1527,15 @@ function reconstructAcceptanceEvidence(evidence) {
   }
   const alarmSummaries = [];
   for (const alarm of evidence.monitoring.alarms) {
-    exactKeys(alarm, ["name", "namespace", "metricName", "threshold"], "Acceptance alarm");
+    exactKeys(
+      alarm,
+      ["name", "namespace", "metricName", "threshold", "actionsEnabled"],
+      "Acceptance alarm"
+    );
     safeArgument(alarm.name, "Acceptance alarm name", /^[A-Za-z0-9_.-]+$/);
+    if (alarm.actionsEnabled !== true) {
+      throw new Error("Acceptance alarm ActionsEnabled must be true");
+    }
     alarmSummaries.push(`${alarm.namespace}:${alarm.metricName}:${alarm.threshold}`);
   }
   const expectedAlarmSummaries = [

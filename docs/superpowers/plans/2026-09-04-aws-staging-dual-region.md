@@ -51,6 +51,9 @@
   bucket outputs and verify the exact deny-only TLS policy using
   `get-bucket-policy --expected-bucket-owner <approved-account-id>`; evidence
   stores only the true attestation and canonical expected-policy SHA-256.
+- Declare and verify exact boolean `ActionsEnabled: true` on all four
+  CloudWatch alarms, and preserve that value in reconstructed acceptance
+  evidence.
 - Do not create or modify AWS resources while implementing this plan.
 - Do not deploy the application, run containers, run Prisma, seed/bootstrap data, issue TLS certificates, or modify DNS.
 - Preserve the approved three unrelated baseline-test waivers without fixing or representing them as passing.

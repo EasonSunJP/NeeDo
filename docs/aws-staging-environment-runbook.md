@@ -237,6 +237,9 @@ JSON-string policy must be the single deny-only `s3:*` statement for
 `aws:SecureTransport = "false"` and the exact bucket/object ARNs. Evidence keeps
 only `tlsOnly: true` and the canonical policy SHA-256, and reconstructs both
 values from the captured bucket identity.
+Every described CloudWatch metric alarm must also return the exact boolean
+`ActionsEnabled: true`; the boolean is retained and revalidated in acceptance
+evidence so configured SNS actions cannot be silently disabled.
 
 A successful environment-only acceptance is not permission to deploy the
 application or to change DNS. Keep Compose, Prisma migration, seed, release
