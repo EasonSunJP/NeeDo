@@ -49,13 +49,13 @@ const model: TechnicianProfileInfoModel = {
   ]
 };
 
-function renderView() {
+function renderView(viewModel = model) {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
       null,
       createElement(TechnicianProfileInfoView, {
-        model,
+        model: viewModel,
         privacySlot: createElement("div", null, "隐私模式"),
         serviceAction: () => createElement("button", { type: "button" }, "编辑服务")
       })
@@ -101,6 +101,30 @@ describe("TechnicianProfileInfoView", () => {
     expect(text).toContain("手法细致");
     expect(text).not.toContain("手法细致 ×1");
     expect(text).toContain("沟通耐心 ×2");
+  });
+
+  it("uses canonical fixed stamp labels instead of DTO labels", () => {
+    const markup = renderView({
+      ...model,
+      reviewTagSummary: {
+        ...model.reviewTagSummary,
+        special: [
+          { code: "appeal_max", label: "错误魅力", count: 4 },
+          { code: "service_max", label: "错误服务", count: 3 },
+          { code: "emotion_max", label: "错误情绪", count: 2 },
+          { code: "energy_max", label: "错误元气", count: 1 }
+        ]
+      }
+    });
+
+    expect(markup).toContain('aria-label="魅力max ×4"');
+    expect(markup).toContain('aria-label="服务max ×3"');
+    expect(markup).toContain('aria-label="情绪max ×2"');
+    expect(markup).toContain('aria-label="元气max ×1"');
+    expect(markup).not.toContain("错误魅力");
+    expect(markup).not.toContain("错误服务");
+    expect(markup).not.toContain("错误情绪");
+    expect(markup).not.toContain("错误元气");
   });
 
   it("injects service actions without adding an outer service frame", () => {
