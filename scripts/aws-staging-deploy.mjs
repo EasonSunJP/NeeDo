@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { isIPv4 } from "node:net";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -47,6 +48,15 @@ const temporaryOpenFlags = fsConstants.O_WRONLY
   | fsConstants.O_CREAT
   | fsConstants.O_EXCL
   | fsConstants.O_NOFOLLOW;
+const directoryOpenFlags = fsConstants.O_RDONLY
+  | fsConstants.O_DIRECTORY
+  | fsConstants.O_NOFOLLOW;
+const instanceIdPattern = /^i-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
+const volumeIdPattern = /^vol-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
+const ssmDocumentNamePattern = /^[A-Za-z0-9_.-]{3,128}$/;
+const accessKeyIdPattern = /^(?:AKIA|ASIA)[A-Z0-9]{16}$/;
+const secretAccessKeyPattern = /^(?=.{40}$)(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[+/])[A-Za-z0-9+/=]+$/;
+const sessionTokenPattern = /^(?:FwoGZXIvYXdz|IQoJb3JpZ2luX2Vj)[A-Za-z0-9+/=]{20,}$/;
 
 function requireExactKeys(value, expectedKeys, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -65,6 +75,46 @@ function requireExactKeys(value, expectedKeys, label) {
 function requireNonEmptyString(value, label) {
   if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
     throw new Error(`${label} must be a non-empty trimmed string`);
+  }
+  return value;
+}
+
+function requireSafeResourceValue(value, label) {
+  if (accessKeyIdPattern.test(value)
+    || secretAccessKeyPattern.test(value)
+    || sessionTokenPattern.test(value)
+    || /^[A-Za-z][A-Za-z0-9_.-]*=/.test(value)
+    || /(?:\$\(|`|;|&&|\|\||[<>]|\r|\n|^#!|cloud-config|user[-_ ]?data)/i.test(value)) {
+    throw new Error(`${label} contains an unsafe credential, assignment, shell, or user-data value`);
+  }
+  return value;
+}
+
+function requirePattern(value, pattern, label) {
+  if (!pattern.test(value)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value;
+}
+
+function requireBucketName(value, label) {
+  const validCharacters = value.length >= 3
+    && value.length <= 63
+    && value.split(".").every((labelPart) => (
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(labelPart)
+    ));
+  const forbiddenShape = value.includes("..")
+    || isIPv4(value)
+    || value.startsWith("xn--")
+    || value.startsWith("sthree-")
+    || value.startsWith("amzn-s3-demo-")
+    || value.endsWith("-s3alias")
+    || value.endsWith("--ol-s3")
+    || value.endsWith(".mrap")
+    || value.endsWith("--x-s3")
+    || value.endsWith("--table-s3");
+  if (!validCharacters || forbiddenShape) {
+    throw new Error(`${label} bucket name is invalid`);
   }
   return value;
 }
@@ -97,15 +147,75 @@ function reconstructRedactedEvidence(evidence) {
 
   const outputs = Object.fromEntries(outputKeys.map((key) => [
     key,
-    requireNonEmptyString(evidence.outputs[key], `AWS Staging evidence outputs.${key}`)
+    requireSafeResourceValue(
+      requireNonEmptyString(evidence.outputs[key], `AWS Staging evidence outputs.${key}`),
+      `AWS Staging evidence outputs.${key}`
+    )
   ]));
   if (outputs.ApplicationSecretArn !== "REDACTED") {
     throw new Error("AWS Staging evidence ApplicationSecretArn must be exactly REDACTED");
   }
   const instance = Object.fromEntries(instanceKeys.map((key) => [
     key,
-    requireNonEmptyString(evidence.instance[key], `AWS Staging evidence instance.${key}`)
+    requireSafeResourceValue(
+      requireNonEmptyString(evidence.instance[key], `AWS Staging evidence instance.${key}`),
+      `AWS Staging evidence instance.${key}`
+    )
   ]));
+
+  const serializedValues = [
+    evidence.scope,
+    evidence.accountId,
+    evidence.region,
+    evidence.stackName,
+    evidence.stackStatus,
+    ...Object.values(outputs),
+    ...Object.values(instance)
+  ].join("\n");
+  if (/arn:[a-z0-9-]+:/i.test(serializedValues)
+    || /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(serializedValues)
+    || /access.?key|secret.?access.?key|session.?token|credential|parameter.?overrides|cloud.?formation.?parameters|caller.?arn|user.?data/i.test(serializedValues)) {
+    throw new Error("AWS Staging evidence contains a forbidden ARN, email, credential, parameter, or userData surface");
+  }
+
+  requirePattern(outputs.InstanceId, instanceIdPattern, "AWS Staging evidence outputs.InstanceId");
+  if (!isIPv4(outputs.ElasticIp)) {
+    throw new Error("AWS Staging evidence outputs.ElasticIp is invalid");
+  }
+  requirePattern(outputs.DataVolumeId, volumeIdPattern, "AWS Staging evidence outputs.DataVolumeId");
+  requireBucketName(outputs.ReleaseBucketName, "AWS Staging evidence outputs.ReleaseBucketName");
+  requireBucketName(outputs.BackupBucketName, "AWS Staging evidence outputs.BackupBucketName");
+  if (outputs.ReleaseBucketName === outputs.BackupBucketName) {
+    throw new Error("AWS Staging evidence bucket names must be distinct");
+  }
+  requirePattern(
+    outputs.HostBootstrapDocumentName,
+    ssmDocumentNamePattern,
+    "AWS Staging evidence outputs.HostBootstrapDocumentName"
+  );
+  requirePattern(
+    outputs.HostVerificationDocumentName,
+    ssmDocumentNamePattern,
+    "AWS Staging evidence outputs.HostVerificationDocumentName"
+  );
+  if (outputs.HostBootstrapDocumentName === outputs.HostVerificationDocumentName) {
+    throw new Error("AWS Staging evidence document names must be distinct");
+  }
+  if (outputs.CloudWatchAgentConfigParameterName !== "/needo/staging/cloudwatch-agent") {
+    throw new Error("AWS Staging evidence outputs.CloudWatchAgentConfigParameterName is invalid");
+  }
+  if (outputs.BudgetName !== "needo-staging-infrastructure-monthly-cost") {
+    throw new Error("AWS Staging evidence outputs.BudgetName is invalid");
+  }
+  if (instance.instanceId !== outputs.InstanceId) {
+    throw new Error("AWS Staging evidence instance identity does not match outputs.InstanceId");
+  }
+  if (instance.instanceType !== "t4g.large") {
+    throw new Error("AWS Staging evidence instanceType must be t4g.large");
+  }
+  if (instance.state !== "running") {
+    throw new Error("AWS Staging evidence instance state must be running");
+  }
 
   const reconstructed = {
     scope: "environment-only",
@@ -121,20 +231,6 @@ function reconstructRedactedEvidence(evidence) {
     dnsModified: false
   };
 
-  const serializedValues = [
-    reconstructed.scope,
-    reconstructed.accountId,
-    reconstructed.region,
-    reconstructed.stackName,
-    reconstructed.stackStatus,
-    ...Object.values(outputs),
-    ...Object.values(instance)
-  ].join("\n");
-  if (/arn:[a-z0-9-]+:/i.test(serializedValues)
-    || /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(serializedValues)
-    || /access.?key|secret.?access.?key|session.?token|credential|parameter.?overrides|cloud.?formation.?parameters|caller.?arn|user.?data/i.test(serializedValues)) {
-    throw new Error("AWS Staging evidence contains a forbidden ARN, email, credential, parameter, or userData surface");
-  }
   return reconstructed;
 }
 
@@ -173,43 +269,46 @@ async function requireRealDirectory(fileSystem, directoryPath) {
   return stats;
 }
 
+async function captureDirectoryIdentity(fileSystem, directoryPath) {
+  const stats = await requireRealDirectory(fileSystem, directoryPath);
+  const identity = Object.freeze({
+    path: directoryPath,
+    realPath: await fileSystem.realpath(directoryPath),
+    dev: stats.dev,
+    ino: stats.ino
+  });
+  await verifyDirectoryIdentities(fileSystem, [identity]);
+  return identity;
+}
+
 async function prepareDirectoryPath(fileSystem, pathBoundary) {
-  await requireRealDirectory(fileSystem, pathBoundary.normalizedRoot);
-  const paths = [pathBoundary.normalizedRoot];
+  const identities = [
+    await captureDirectoryIdentity(fileSystem, pathBoundary.normalizedRoot)
+  ];
   let currentPath = pathBoundary.normalizedRoot;
 
   for (const component of pathBoundary.components) {
     currentPath = path.join(currentPath, component);
+    await verifyDirectoryIdentities(fileSystem, identities);
     try {
       await requireRealDirectory(fileSystem, currentPath);
     } catch (error) {
       if (!isMissing(error)) throw error;
+      await verifyDirectoryIdentities(fileSystem, identities);
       try {
         await fileSystem.mkdir(currentPath, { mode: 0o700 });
       } catch (mkdirError) {
         if (mkdirError?.code !== "EEXIST") throw mkdirError;
       }
-      await requireRealDirectory(fileSystem, currentPath);
+      await verifyDirectoryIdentities(fileSystem, identities);
     }
-    paths.push(currentPath);
+    await verifyDirectoryIdentities(fileSystem, identities);
+    const componentIdentity = await captureDirectoryIdentity(fileSystem, currentPath);
+    await verifyDirectoryIdentities(fileSystem, identities);
+    identities.push(componentIdentity);
+    await verifyDirectoryIdentities(fileSystem, identities);
   }
 
-  await fileSystem.chmod(pathBoundary.normalizedOutput, 0o700);
-  return paths;
-}
-
-async function captureDirectoryIdentities(fileSystem, directoryPaths) {
-  const identities = [];
-  for (const [index, directoryPath] of directoryPaths.entries()) {
-    const stats = await requireRealDirectory(fileSystem, directoryPath);
-    identities.push(Object.freeze({
-      path: directoryPath,
-      realPath: await fileSystem.realpath(directoryPath),
-      dev: stats.dev,
-      ino: stats.ino,
-      requiredMode: index === directoryPaths.length - 1 ? 0o700 : undefined
-    }));
-  }
   return Object.freeze(identities);
 }
 
@@ -225,10 +324,40 @@ async function verifyDirectoryIdentities(fileSystem, identities) {
     }
     if (stats.dev !== identity.dev
       || stats.ino !== identity.ino
-      || realPath !== identity.realPath
-      || (identity.requiredMode !== undefined && (stats.mode & 0o777) !== identity.requiredMode)) {
+      || realPath !== identity.realPath) {
       throw new Error(`AWS Staging evidence directory identity changed: ${identity.path}`);
     }
+  }
+}
+
+function requireSameDirectory(stats, expectedIdentity) {
+  if (!stats.isDirectory()
+    || stats.dev !== expectedIdentity.dev
+    || stats.ino !== expectedIdentity.ino) {
+    throw new Error(`AWS Staging evidence directory handle identity changed: ${expectedIdentity.path}`);
+  }
+}
+
+async function enforcePrivateEvidenceDirectory(fileSystem, identities) {
+  const finalIdentity = identities.at(-1);
+  await verifyDirectoryIdentities(fileSystem, identities);
+  const directoryHandle = await fileSystem.open(finalIdentity.path, directoryOpenFlags);
+  try {
+    requireSameDirectory(await directoryHandle.stat(), finalIdentity);
+    await directoryHandle.chmod(0o700);
+    const privateStats = await directoryHandle.stat();
+    requireSameDirectory(privateStats, finalIdentity);
+    if ((privateStats.mode & 0o777) !== 0o700) {
+      throw new Error("AWS Staging evidence directory mode must be 0700");
+    }
+  } finally {
+    await directoryHandle.close();
+  }
+  await verifyDirectoryIdentities(fileSystem, identities);
+  const finalPathStats = await requireRealDirectory(fileSystem, finalIdentity.path);
+  requireSameDirectory(finalPathStats, finalIdentity);
+  if ((finalPathStats.mode & 0o777) !== 0o700) {
+    throw new Error("AWS Staging evidence directory mode must be 0700");
   }
 }
 
@@ -258,8 +387,8 @@ export async function writeAwsStagingEnvironmentEvidence({
   const reconstructed = reconstructRedactedEvidence(evidence);
   const contents = `${JSON.stringify(reconstructed, null, 2)}\n`;
   const pathBoundary = requireAbsoluteDescendant(trustedRoot, outputDirectory);
-  const directoryPaths = await prepareDirectoryPath(fileSystem, pathBoundary);
-  const directoryIdentities = await captureDirectoryIdentities(fileSystem, directoryPaths);
+  const directoryIdentities = await prepareDirectoryPath(fileSystem, pathBoundary);
+  await enforcePrivateEvidenceDirectory(fileSystem, directoryIdentities);
 
   const finalPath = path.join(pathBoundary.normalizedOutput, evidenceFileName);
   const temporaryPath = path.join(
@@ -294,7 +423,6 @@ export async function writeAwsStagingEnvironmentEvidence({
       requireSameRegularFile(temporaryStats, temporaryIdentity, "temporary file");
       await fileSystem.rename(temporaryPath, finalPath);
       temporaryCreated = false;
-      await fileSystem.chmod(finalPath, 0o600);
       await verifyDirectoryIdentities(fileSystem, directoryIdentities);
       const finalStats = await fileSystem.lstat(finalPath);
       requireSameRegularFile(finalStats, temporaryIdentity, "final file");
