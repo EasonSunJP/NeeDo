@@ -210,6 +210,10 @@ function sha256(value) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+export function awsStagingCanonicalJsonSha256(value) {
+  return sha256(canonicalJson(value));
+}
+
 function parseExactJson(value, label) {
   if (typeof value !== "string" || !value) throw new Error(`${label} content is missing`);
   try {
@@ -245,12 +249,16 @@ export function attestAwsStagingDocument(response, {
     throw new Error(`${label} document identity is not approved`);
   }
   const version = requirePositiveDocumentVersion(response.DocumentVersion, `${label} document`);
-  const actualCanonical = canonicalJson(parseExactJson(response.Content, `${label} document`));
+  const actualContent = parseExactJson(response.Content, `${label} document`);
+  const actualCanonical = canonicalJson(actualContent);
   const expectedCanonical = canonicalJson(expectedContent);
   if (actualCanonical !== expectedCanonical) {
     throw new Error(`${label} document content drift detected`);
   }
-  return Object.freeze({ version, sha256: sha256(actualCanonical) });
+  return Object.freeze({
+    version,
+    sha256: awsStagingCanonicalJsonSha256(actualContent)
+  });
 }
 
 export function attestAwsStagingCloudWatchParameter(response, {
@@ -270,16 +278,15 @@ export function attestAwsStagingCloudWatchParameter(response, {
   if (!Number.isSafeInteger(parameter.Version) || parameter.Version < 1) {
     throw new Error("CloudWatch Agent parameter version must be a positive integer");
   }
-  const actualCanonical = canonicalJson(
-    parseExactJson(parameter.Value, "CloudWatch Agent parameter")
-  );
+  const actualContent = parseExactJson(parameter.Value, "CloudWatch Agent parameter");
+  const actualCanonical = canonicalJson(actualContent);
   const expectedCanonical = canonicalJson(expectedContent);
   if (actualCanonical !== expectedCanonical) {
     throw new Error("CloudWatch Agent parameter content drift detected");
   }
   return Object.freeze({
     version: parameter.Version,
-    sha256: sha256(actualCanonical),
+    sha256: awsStagingCanonicalJsonSha256(actualContent),
     selector: `${expectedName}:${parameter.Version}`
   });
 }

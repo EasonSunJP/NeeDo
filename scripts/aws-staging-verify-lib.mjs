@@ -13,6 +13,7 @@ import {
 import {
   AWS_STAGING_CLOUDWATCH_AGENT_CONFIG,
   AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT,
+  awsStagingCanonicalJsonSha256,
   attestAwsStagingCloudWatchParameter,
   attestAwsStagingDocument
 } from "./aws-staging-attestation.mjs";
@@ -25,6 +26,12 @@ const defaultTrustedRoot = path.resolve(moduleDir, "..");
 const defaultOutputDirectory = path.join(defaultTrustedRoot, "outputs", "aws-staging");
 const evidenceFileName = "environment-acceptance.json";
 const stableStackStates = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
+const EXPECTED_VERIFICATION_DOCUMENT_SHA256 = awsStagingCanonicalJsonSha256(
+  AWS_STAGING_VERIFICATION_DOCUMENT_CONTENT
+);
+const EXPECTED_AGENT_PARAMETER_SHA256 = awsStagingCanonicalJsonSha256(
+  AWS_STAGING_CLOUDWATCH_AGENT_CONFIG
+);
 const outputKeys = Object.freeze([
   "InstanceId", "ElasticIp", "DataVolumeId", "ReleaseBucketName", "BackupBucketName",
   "ApplicationSecretArn", "HostBootstrapDocumentName", "HostVerificationDocumentName",
@@ -1499,7 +1506,8 @@ function reconstructAcceptanceEvidence(evidence) {
   ], "Acceptance ssm");
   requireBoolean(evidence.ssm.online, true, "Acceptance SSM online");
   if (!/^[1-9][0-9]*$/.test(evidence.ssm.documentVersion)
-    || !/^[0-9a-f]{64}$/.test(evidence.ssm.documentSha256)) {
+    || !/^[0-9a-f]{64}$/.test(evidence.ssm.documentSha256)
+    || evidence.ssm.documentSha256 !== EXPECTED_VERIFICATION_DOCUMENT_SHA256) {
     throw new Error("Acceptance SSM document attestation is invalid");
   }
   safeArgument(evidence.ssm.commandId, "Acceptance SSM commandId", commandIdPattern);
@@ -1602,6 +1610,7 @@ function reconstructAcceptanceEvidence(evidence) {
     || !Number.isSafeInteger(evidence.monitoring.agentParameterVersion)
     || evidence.monitoring.agentParameterVersion < 1
     || !/^[0-9a-f]{64}$/.test(evidence.monitoring.agentParameterSha256)
+    || evidence.monitoring.agentParameterSha256 !== EXPECTED_AGENT_PARAMETER_SHA256
     || evidence.monitoring.topicTagged !== true
     || evidence.monitoring.snsSubscriptionConfirmed !== true) {
     throw new Error("Acceptance monitoring parameter, topic, or SNS subscription is invalid");

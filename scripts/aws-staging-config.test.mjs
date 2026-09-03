@@ -98,6 +98,23 @@ describe("AWS Staging configuration", () => {
     }
   });
 
+  it("documents exact canonical SSM evidence hash reconstruction", async () => {
+    const authoritativePaths = [
+      "docs/aws-staging-environment-runbook.md",
+      "docs/superpowers/plans/2026-09-03-aws-staging-environment-only.md",
+      "docs/superpowers/plans/2026-09-04-aws-staging-dual-region.md",
+      "docs/superpowers/specs/2026-09-03-aws-staging-single-ec2-deployment-design.md",
+      "docs/superpowers/specs/2026-09-04-aws-staging-dual-region-design.md"
+    ];
+    const requiredStatement = "Acceptance reconstruction requires documentSha256 and "
+      + "agentParameterSha256 to equal the canonical SHA-256 of the approved repository "
+      + "constants; format-only values are rejected.";
+    for (const documentPath of authoritativePaths) {
+      const contents = await fs.readFile(new URL(`../${documentPath}`, import.meta.url), "utf8");
+      expect(contents, documentPath).toContain(requiredStatement);
+    }
+  });
+
   it("forbids raw AWS and Session Manager commands in authoritative operator documents", async () => {
     const authoritativePaths = [
       "docs/aws-staging-environment-runbook.md",

@@ -15,6 +15,8 @@
 
 Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
 
+Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
+
 ## Context
 
 The approved AWS Staging gate was intentionally locked to Tokyo

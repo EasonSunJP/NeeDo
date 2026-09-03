@@ -77,6 +77,8 @@
 
 Bootstrap and verify each capture the tracked template artifact at the approved revision before credential resolution and pass that same object into the real in-process preflight.
 
+Acceptance reconstruction requires documentSha256 and agentParameterSha256 to equal the canonical SHA-256 of the approved repository constants; format-only values are rejected.
+
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
 **Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.

@@ -45,6 +45,10 @@ const templateArtifact = Object.freeze({
   sourceRevision: runtimeSourceRevision,
   assertCurrentState: vi.fn(async () => undefined)
 });
+const expectedVerificationDocumentSha256 =
+  "ccf0ceb4c22628f1ef7ddc698f36cf3074043804894f3540cd624119be51b0ae";
+const expectedAgentParameterSha256 =
+  "e5bbe5b2ce3d775a521c8c830260b65e2c1e0675f4ace0f68582e1257196cd98";
 
 function verifyAwsStagingEnvironment(input) {
   return verifyAwsStagingEnvironmentImpl({ runtimeArtifact, templateArtifact, ...input });
@@ -756,14 +760,17 @@ describe("AWS Staging environment-only acceptance", () => {
       ssm: {
         online: true,
         documentVersion: "9",
-        documentSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        documentSha256: expectedVerificationDocumentSha256,
         commandId: ids.commandId,
         commandStatus: "Success",
         responseCode: 0
       },
       host: { mount: true, filesystem: "xfs", directories: true, services: true, runningContainers: 0, activeRelease: false },
       secretVersionCount: 0,
-      monitoring: { snsSubscriptionConfirmed: true },
+      monitoring: {
+        agentParameterSha256: expectedAgentParameterSha256,
+        snsSubscriptionConfirmed: true
+      },
       dns: { preflightA: ["203.0.113.2"], postVerificationA: ["203.0.113.2"] },
       applicationDeployed: false,
       migrationRun: false,
@@ -1471,6 +1478,7 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
     ["credential", (e) => { e.resourceIds.budgetName = "AKIAIOSFODNN7EXAMPLE"; }],
     ["home path", (e) => { e.resourceIds.budgetName = "/Users/eason/secret"; }],
     ["raw output", (e) => { e.ssm.stdout = "unsafe"; }],
+    ["wrong verification document hash", (e) => { e.ssm.documentSha256 = "0".repeat(64); }],
     ["unexpected lifecycle key", (e) => { e.buckets.release.lifecycleRules[0].unexpected = true; }],
     ["weakened retained policy flag", (e) => { e.buckets.release.tlsOnly = false; }],
     ["mismatched retained policy hash", (e) => { e.buckets.backup.policySha256 = "0".repeat(64); }],
@@ -1485,6 +1493,9 @@ describe("AWS Staging acceptance evidence writer and CLI", () => {
       e.monitoring.logGroups[0].arn = e.monitoring.logGroups[1].arn;
     }],
     ["unconfirmed SNS", (e) => { e.monitoring.snsSubscriptionConfirmed = false; }],
+    ["wrong agent parameter hash", (e) => {
+      e.monitoring.agentParameterSha256 = "0".repeat(64);
+    }],
     ["wrong Resource Groups set", (e) => {
       e.tagCoverage.resources.find((item) => item.logicalId === "Vpc").resourceGroupsTags = false;
       e.tagCoverage.resources.find((item) => item.logicalId === "InstanceRole").resourceGroupsTags = true;
