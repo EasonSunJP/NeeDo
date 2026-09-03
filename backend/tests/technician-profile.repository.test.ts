@@ -50,15 +50,31 @@ const record = {
 };
 
 describe("TechnicianProfileRepository", () => {
-  it("returns the private service base only through the self-profile repository", async () => {
+  it("returns the private service base and formal review tag summary through the self-profile repository", async () => {
     const client = {
-      technicianProfile: { findFirst: jest.fn(async () => record) }
+      technicianProfile: { findFirst: jest.fn(async () => record) },
+      orderReviewTag: {
+        groupBy: jest.fn(async () => [
+          { label: "魅力max", _count: { _all: 3 }, _min: { createdAt: now } },
+          { label: "手法细致", _count: { _all: 2 }, _min: { createdAt: now } }
+        ])
+      }
     } as unknown as PrismaClient;
     const repository = new TechnicianProfileRepository(client);
 
     await expect(repository.findMine(9, 31)).resolves.toMatchObject({
-      specialTags: ["准时"],
-      serviceBase: { latitude: 35.6762, longitude: 139.6503 }
+      specialTags: [],
+      profileTags: [],
+      serviceBase: { latitude: 35.6762, longitude: 139.6503 },
+      reviewTagSummary: {
+        special: [
+          { code: "appeal_max", label: "魅力max", count: 3 },
+          { code: "service_max", label: "服务max", count: 0 },
+          { code: "emotion_max", label: "情绪max", count: 0 },
+          { code: "energy_max", label: "元气max", count: 0 }
+        ],
+        custom: [{ label: "手法细致", count: 2 }]
+      }
     });
   });
 
@@ -85,7 +101,8 @@ describe("TechnicianProfileRepository", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: 1 }) }
     };
     const client = {
-      $transaction: jest.fn(async (callback) => callback(transaction))
+      $transaction: jest.fn(async (callback) => callback(transaction)),
+      orderReviewTag: { groupBy: jest.fn(async () => []) }
     } as unknown as PrismaClient;
     const repository = new TechnicianProfileRepository(client);
 
@@ -143,7 +160,8 @@ describe("TechnicianProfileRepository", () => {
       auditLog: { create: jest.fn() }
     };
     const client = {
-      $transaction: jest.fn(async (callback) => callback(transaction))
+      $transaction: jest.fn(async (callback) => callback(transaction)),
+      orderReviewTag: { groupBy: jest.fn(async () => []) }
     } as unknown as PrismaClient;
     const repository = new TechnicianProfileRepository(client);
 

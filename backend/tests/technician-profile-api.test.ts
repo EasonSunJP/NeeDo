@@ -93,8 +93,17 @@ const makeProfile = (): TechnicianProfilePayload => ({
   serviceBase: { latitude: 35.6762, longitude: 139.6503 },
   languages: ["日本語"],
   serviceAreas: ["銀座"],
-  specialTags: ["准时"],
-  profileTags: ["肩颈调理"],
+  specialTags: [],
+  profileTags: [],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 3 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: [{ label: "手法细致", count: 2 }]
+  },
   canServeForeigners: true,
   bidBudgetMinJpy: 12_000,
   bidBudgetMaxJpy: 28_000,

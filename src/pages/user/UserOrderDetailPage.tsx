@@ -412,6 +412,14 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     () => (orderTechnician ? mapCoreTechnicianToTechnician(orderTechnician) : null),
     [orderTechnician]
   );
+  const technicianReviewTagOptions = useMemo(() => [
+    ...serviceReviewSpecialTags,
+    ...(orderTechnician?.reviewTagSummary.custom ?? []).map((tag) => ({
+      label: tag.label,
+      count: tag.count,
+      kind: "chip" as const
+    }))
+  ], [orderTechnician]);
   const canChoosePayment =
     order?.status === "awaitingCheckout" &&
     checkoutStatus === "success" &&
@@ -590,7 +598,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           onSubmit={(submission) => void submitReview(submission)}
           pending={reviewPending}
           showTagCounts={false}
-          tagOptions={serviceReviewSpecialTags}
+          tagOptions={technicianReviewTagOptions}
           title="评价技师"
         />
       ) : null}

@@ -1,4 +1,5 @@
 import { httpClient } from "../../api/httpClient";
+import type { TechnicianReviewTagSummary } from "./api";
 
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
 export type TechnicianProfilePaymentMethod =
@@ -26,6 +27,7 @@ export type TechnicianSelfProfile = {
   serviceAreas: string[];
   specialTags: string[];
   profileTags: string[];
+  reviewTagSummary: TechnicianReviewTagSummary;
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;

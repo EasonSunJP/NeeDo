@@ -93,6 +93,15 @@ const profile = {
   bio: null,
   serviceArea: "東京",
   yearsExperience: 4,
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   mediaAssets: [],
   services: [],
   createdAt: "2026-08-01T00:00:00.000Z",
@@ -114,6 +123,15 @@ const selfProfile = {
   serviceAreas: ["東京"],
   specialTags: [],
   profileTags: [],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   canServeForeigners: false,
   bidBudgetMinJpy: null,
   bidBudgetMaxJpy: null,
