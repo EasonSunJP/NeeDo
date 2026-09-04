@@ -32,9 +32,6 @@ import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
 import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
 import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";
-import { AgentsPage } from "./pages/admin/AgentsPage";
-import { OperatingCostsPage } from "./pages/admin/OperatingCostsPage";
-import { ServiceSearchAnalyticsPage } from "./pages/admin/ServiceSearchAnalyticsPage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
 import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
@@ -224,6 +221,9 @@ const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-manag
 const MembershipTiersPage = lazy(() => import("./features/platform-user-management/MembershipTiersPage").then((module) => ({ default: module.MembershipTiersPage })));
 const MembershipBenefitsPage = lazy(() => import("./features/platform-user-management/MembershipBenefitsPage").then((module) => ({ default: module.MembershipBenefitsPage })));
 const AccountCompliancePage = lazy(() => import("./features/auth/AccountCompliancePage").then((module) => ({ default: module.AccountCompliancePage })));
+const AgentsPage = lazy(() => import("./pages/admin/AgentsPage").then((module) => ({ default: module.AgentsPage })));
+const OperatingCostsPage = lazy(() => import("./pages/admin/OperatingCostsPage").then((module) => ({ default: module.OperatingCostsPage })));
+const ServiceSearchAnalyticsPage = lazy(() => import("./pages/admin/ServiceSearchAnalyticsPage").then((module) => ({ default: module.ServiceSearchAnalyticsPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -1433,11 +1433,11 @@ export default function App() {
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
               <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
-              <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <OperatingCostsPage />)} />
+              <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
-              <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)} />
-              <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)} />
+              <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
+              <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
               <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />
               <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
@@ -1445,7 +1445,7 @@ export default function App() {
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
               <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
-              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <ServiceSearchAnalyticsPage />)} />
+              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>

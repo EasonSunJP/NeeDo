@@ -9,6 +9,7 @@ const identityApplicationTranslationsPath = path.join(workspaceRoot, "src", "fea
 const affiliateProfileTranslationsPath = path.join(workspaceRoot, "src", "features", "affiliate-profile", "i18n.ts");
 const affiliateMarketplaceTranslationsPath = path.join(workspaceRoot, "src", "features", "affiliate-marketplace", "i18n.ts");
 const dashboardTranslationsPath = path.join(workspaceRoot, "src", "features", "dashboard", "dashboardTranslations.ts");
+const serviceSearchTranslationsPath = path.join(workspaceRoot, "src", "features", "service-search", "i18n.ts");
 const platformUserManagementTranslationsPath = path.join(workspaceRoot, "src", "features", "platform-user-management", "i18n.ts");
 const orderPerformanceTranslationsPath = path.join(workspaceRoot, "src", "features", "order-performance", "i18n.ts");
 const outputDir = path.join(workspaceRoot, "exports", "i18n");
@@ -118,6 +119,7 @@ async function loadTranslations() {
   const affiliateProfileSource = await fs.readFile(affiliateProfileTranslationsPath, "utf8");
   const affiliateMarketplaceSource = await fs.readFile(affiliateMarketplaceTranslationsPath, "utf8");
   const dashboardSource = await fs.readFile(dashboardTranslationsPath, "utf8");
+  const serviceSearchSource = await fs.readFile(serviceSearchTranslationsPath, "utf8");
   const platformUserManagementSource = await fs.readFile(platformUserManagementTranslationsPath, "utf8");
   const orderPerformanceSource = await fs.readFile(orderPerformanceTranslationsPath, "utf8");
   const compilerOptions = {
@@ -136,6 +138,9 @@ async function loadTranslations() {
   const transpiledDashboardTranslations = ts.transpileModule(dashboardSource, {
     compilerOptions
   }).outputText;
+  const transpiledServiceSearchTranslations = ts.transpileModule(serviceSearchSource, {
+    compilerOptions
+  }).outputText;
   const transpiledPlatformUserManagementTranslations = ts.transpileModule(platformUserManagementSource, {
     compilerOptions
   }).outputText;
@@ -147,6 +152,7 @@ async function loadTranslations() {
   const affiliateProfileTempFileName = `affiliate-profile-translations-quality-${tempToken}.mjs`;
   const affiliateMarketplaceTempFileName = `affiliate-marketplace-translations-quality-${tempToken}.mjs`;
   const dashboardTempFileName = `dashboard-translations-quality-${tempToken}.mjs`;
+  const serviceSearchTempFileName = `service-search-translations-quality-${tempToken}.mjs`;
   const platformUserManagementTempFileName = `platform-user-management-translations-quality-${tempToken}.mjs`;
   const orderPerformanceTempFileName = `order-performance-translations-quality-${tempToken}.mjs`;
   const transpiled = ts.transpileModule(source, {
@@ -158,6 +164,7 @@ async function loadTranslations() {
     .replace("../features/affiliate-profile/i18n", `./${affiliateProfileTempFileName}`)
     .replace("../features/affiliate-marketplace/i18n", `./${affiliateMarketplaceTempFileName}`)
     .replace("../features/dashboard/dashboardTranslations", `./${dashboardTempFileName}`)
+    .replace("../features/service-search/i18n", `./${serviceSearchTempFileName}`)
     .replace("../features/platform-user-management/i18n", `./${platformUserManagementTempFileName}`)
     .replace("../features/order-performance/i18n", `./${orderPerformanceTempFileName}`);
   const tempFile = path.join(outputDir, `translations-quality-${tempToken}.mjs`);
@@ -165,6 +172,7 @@ async function loadTranslations() {
   const affiliateProfileTempFile = path.join(outputDir, affiliateProfileTempFileName);
   const affiliateMarketplaceTempFile = path.join(outputDir, affiliateMarketplaceTempFileName);
   const dashboardTempFile = path.join(outputDir, dashboardTempFileName);
+  const serviceSearchTempFile = path.join(outputDir, serviceSearchTempFileName);
   const platformUserManagementTempFile = path.join(outputDir, platformUserManagementTempFileName);
   const orderPerformanceTempFile = path.join(outputDir, orderPerformanceTempFileName);
 
@@ -173,6 +181,7 @@ async function loadTranslations() {
   await fs.writeFile(affiliateProfileTempFile, transpiledAffiliateProfileTranslations, "utf8");
   await fs.writeFile(affiliateMarketplaceTempFile, transpiledAffiliateMarketplaceTranslations, "utf8");
   await fs.writeFile(dashboardTempFile, transpiledDashboardTranslations, "utf8");
+  await fs.writeFile(serviceSearchTempFile, transpiledServiceSearchTranslations, "utf8");
   await fs.writeFile(platformUserManagementTempFile, transpiledPlatformUserManagementTranslations, "utf8");
   await fs.writeFile(orderPerformanceTempFile, transpiledOrderPerformanceTranslations, "utf8");
   await fs.writeFile(tempFile, transpiled, "utf8");
@@ -192,6 +201,7 @@ async function loadTranslations() {
     await fs.unlink(affiliateProfileTempFile).catch(() => {});
     await fs.unlink(affiliateMarketplaceTempFile).catch(() => {});
     await fs.unlink(dashboardTempFile).catch(() => {});
+    await fs.unlink(serviceSearchTempFile).catch(() => {});
     await fs.unlink(platformUserManagementTempFile).catch(() => {});
     await fs.unlink(orderPerformanceTempFile).catch(() => {});
   }

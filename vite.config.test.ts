@@ -87,6 +87,12 @@ describe("Needo production chunks", () => {
       .toBe("identity-applications-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
   });
+
+  it("keeps service-search translations outside the base i18n budget", () => {
+    expect(resolveNeedoManualChunk("/workspace/src/features/service-search/i18n.ts"))
+      .toBe("service-search-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
+  });
 });
 
 describe("NeeDo portal entry fallback", () => {

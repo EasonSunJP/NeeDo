@@ -173,6 +173,27 @@ describe("production route chunk boundaries", () => {
     ).toHaveLength(2);
   });
 
+  it("loads operations administration pages only after entering their protected routes", () => {
+    for (const page of ["AgentsPage", "OperatingCostsPage", "ServiceSearchAnalyticsPage"]) {
+      expect(appSource).not.toContain(
+        `import { ${page} } from "./pages/admin/${page}";`,
+      );
+      expect(appSource).toContain(
+        `lazy(() => import("./pages/admin/${page}")`,
+      );
+    }
+
+    expect(
+      appSource.match(/<Suspense fallback=\{null\}><AgentsPage \/><\/Suspense>/g),
+    ).toHaveLength(2);
+    expect(
+      appSource.match(/<Suspense fallback=\{null\}><OperatingCostsPage \/><\/Suspense>/g),
+    ).toHaveLength(1);
+    expect(
+      appSource.match(/<Suspense fallback=\{null\}><ServiceSearchAnalyticsPage \/><\/Suspense>/g),
+    ).toHaveLength(1);
+  });
+
   it("routes the accepted technician schedule index directly to the formal-only page", () => {
     expect(appSource).toContain(
       'path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)}'

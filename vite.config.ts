@@ -249,6 +249,10 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "dashboard-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/service-search/i18n.ts")) {
+    return "service-search-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
     return "order-performance-i18n";
   }
