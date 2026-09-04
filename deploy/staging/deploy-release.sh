@@ -34,7 +34,8 @@ expected_release_dir="/srv/needo/releases/${revision}-${archive_sha256:0:16}"
 [[ "$release_dir" == "$expected_release_dir" ]]
 
 install -d -m 0750 /srv/needo/config /srv/needo/mysql /srv/needo/redis
-install -d -m 0750 /srv/needo/certbot/conf /srv/needo/certbot/www
+install -d -m 0750 /srv/needo/certbot/conf
+install -d -m 0755 /srv/needo/certbot/www
 install -d -o 1000 -g 1000 -m 0750 /srv/needo/media
 exec 9>/srv/needo/deploy.lock
 flock -n 9

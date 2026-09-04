@@ -66,3 +66,14 @@ test("immutable staging packaging explicitly disables Google auth in the fronten
   assert.match(packager, /VITE_AUTH_GOOGLE_ENABLED:\s*"false"/);
   assert.match(packager, /"backend\/prisma\.config\.ts"/);
 });
+
+test("release provisioning keeps the ACME webroot public while certificate state stays private", () => {
+  const releaseScript = read("./deploy-release.sh");
+
+  assert.match(releaseScript, /install -d -m 0755 \/srv\/needo\/certbot\/www/);
+  assert.match(releaseScript, /install -d -m 0750 \/srv\/needo\/certbot\/conf/);
+  assert.doesNotMatch(
+    releaseScript,
+    /install -d -m 0750 \/srv\/needo\/certbot\/conf \/srv\/needo\/certbot\/www/,
+  );
+});
