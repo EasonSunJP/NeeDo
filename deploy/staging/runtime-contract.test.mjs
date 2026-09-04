@@ -56,6 +56,8 @@ test("runtime Dockerfiles consume only locked dependencies and prebuilt outputs"
   assert.doesNotMatch(backend, /Verify-Peer|--allow-unauthenticated/);
   assert.match(frontend, /FROM nginx:1\.27-alpine/);
   assert.match(frontend, /COPY dist\/ \/usr\/share\/nginx\/html\//);
+  assert.match(frontend, /find \/usr\/share\/nginx\/html -type d -exec chmod 0755 \{\} \\;/);
+  assert.match(frontend, /find \/usr\/share\/nginx\/html -type f -exec chmod 0644 \{\} \\;/);
 });
 
 test("immutable staging packaging explicitly disables Google auth in the frontend build", () => {
