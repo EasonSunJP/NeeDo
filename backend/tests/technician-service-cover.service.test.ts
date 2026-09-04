@@ -179,6 +179,11 @@ describe("TechnicianServiceCoverService", () => {
     const repository = createRepository();
     const storage = createStorage();
     const service = new TechnicianServiceCoverService(repository, storage, createChecksumLock());
+    const strictStorageInput = {
+      bytes: jpeg,
+      mimeType: "image/jpeg" as const,
+      validationProfile: "decoded-single-frame" as const
+    };
 
     await expect(
       service.uploadCover(actor, context, 1, 11, {
@@ -198,11 +203,48 @@ describe("TechnicianServiceCoverService", () => {
         action: "technician.service.cover.updated"
       })
     );
-    expect(storage.prepare).toHaveBeenCalledWith({
+    expect(storage.prepare).toHaveBeenCalledWith(strictStorageInput);
+    expect(storage.save).toHaveBeenCalledWith(strictStorageInput);
+  });
+
+  it("does not mutate persistence when injected storage rejects strict validation during save", async () => {
+    const repository = createRepository();
+    const storage = createStorage();
+    storage.save.mockImplementationOnce(async (input) => {
+      if (input.validationProfile === "decoded-single-frame") {
+        throw new AppError({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.content.media_invalid",
+          statusCode: 400
+        });
+      }
+      return {
+        checksumSha256,
+        fileKey,
+        mimeType: "image/jpeg",
+        created: true
+      };
+    });
+    const service = new TechnicianServiceCoverService(repository, storage, createChecksumLock());
+
+    await expect(
+      service.uploadCover(actor, context, 1, 11, {
+        bytes: jpeg,
+        mimeType: "image/jpeg",
+        now
+      })
+    ).rejects.toMatchObject({
+      message: "error.technician_service.cover_invalid",
+      statusCode: 400
+    });
+    expect(storage.save).toHaveBeenCalledWith({
       bytes: jpeg,
       mimeType: "image/jpeg",
       validationProfile: "decoded-single-frame"
     });
+    expect(repository.replaceTechnicianServiceCover).not.toHaveBeenCalled();
+    expect(repository.hasActiveMediaUrl).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("rejects APNG and valid images above the decoded-pixel limit before persistence", async () => {

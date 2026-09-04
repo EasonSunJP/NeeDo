@@ -29,13 +29,14 @@ export class TechnicianServiceCoverService {
     input: { bytes: Buffer; mimeType: ContentMediaMimeType; now: Date }
   ): Promise<TechnicianServicePayload> {
     const { technicianId } = await this.getOwnedTarget(actor, shopId, serviceId);
+    const storageInput = {
+      bytes: input.bytes,
+      mimeType: input.mimeType,
+      validationProfile: CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame
+    } as const;
     let prepared: Awaited<ReturnType<ContentMediaStoragePort["prepare"]>>;
     try {
-      prepared = await this.storage.prepare({
-        bytes: input.bytes,
-        mimeType: input.mimeType,
-        validationProfile: CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame
-      });
+      prepared = await this.storage.prepare(storageInput);
     } catch (error) {
       throw this.normalizeStorageError(error);
     }
@@ -60,7 +61,7 @@ export class TechnicianServiceCoverService {
 
       let stored: Awaited<ReturnType<ContentMediaStoragePort["save"]>>;
       try {
-        stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
+        stored = await this.storage.save(storageInput);
       } catch (error) {
         throw this.normalizeStorageError(error);
       }

@@ -79,7 +79,7 @@ Permission: technician:services:write
 - Controller 只解析请求和响应；作用域、文件持久化、事务和审计均位于 Service/Repository。
 - OpenAPI 必须描述二进制 request body、三种 MIME、成功响应和全部稳定错误。
 
-封面 Service 在每次 `prepare` 时显式请求严格校验 profile，包括路由注入共享存储的情况。文件字节数与声明 MIME 先进行低成本校验。PNG 通过有明确条目上限的 chunk-header walk 拒绝 `acTL`、`fcTL`、`fdAT`；JPEG 通过有明确条目和 marker-padding 上限的 marker walk 拒绝 APP2 `MPF`。这些容器检查不计算 CRC、不解码像素，扫描预算耗尽时 fail closed。随后由维护中的 `sharp`/libvips 读取容器元数据，拒绝其他报告多个 frame/page 的输入，并在主 JavaScript 事件循环之外异步完整解码被接受的单帧。能够完整解码为声明的 JPEG、PNG 或 WebP 且不超过 25,000,000 像素的单帧图片才进入 checksum、存储和数据库事务阶段。
+封面 Service 向每次 `prepare` 和 `save` 传递同一个严格校验 profile，包括路由注入共享存储的情况；即使存储实现在 `save` 内部重新准备文件，也不能回退到默认校验。文件字节数与声明 MIME 先进行低成本校验。PNG 通过有明确条目上限的 chunk-header walk 拒绝 `acTL`、`fcTL`、`fdAT`；JPEG 通过有明确条目和 marker-padding 上限的 marker walk 拒绝 APP2 `MPF`。这些容器检查不计算 CRC、不解码像素，扫描预算耗尽时 fail closed。随后由维护中的 `sharp`/libvips 读取容器元数据，拒绝其他报告多个 frame/page 的输入，并在主 JavaScript 事件循环之外异步完整解码被接受的单帧。能够完整解码为声明的 JPEG、PNG 或 WebP 且不超过 25,000,000 像素的单帧图片才进入 checksum、存储和数据库事务阶段。
 
 ## 5. 身份、作用域与权限
 
