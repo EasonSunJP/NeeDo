@@ -41,29 +41,34 @@ const refreshBundleIntegrity = (bundle: SelectiveAccountSyncBundle): SelectiveAc
 
 const fullGraphBundle = (): SelectiveAccountSyncBundle => {
   const bundle = validBundle();
-  for (const user of bundle.tables.users) user.values = { ...user.values, username: `user-${user.sourceId}`, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" };
-  bundle.tables.shops.push({ sourceId: 1, values: { shop_no: "S000000001", owner_user_id: 1, name: "shop", city: "Tokyo", address: "address", pricing_mode: "merchant", pricing_mode_updated_by: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
-  bundle.tables.merchant_accounts.push({ sourceId: 1, values: { code: "merchant", owner_no: "M000000001", owner_user_id: 1, settlement_bank_account_id: null, name: "merchant", status: "active", payment_responsibility: "group_consolidated", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
-  bundle.tables.customer_profiles.push({ sourceId: 1, values: { user_id: 1, display_name: "customer", membership_grant_mode: "self_service", membership_granted_by_id: 1, languages: "[\"ja\"]", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
-  bundle.tables.technician_profiles.push({ sourceId: 1, values: { user_id: 1, shop_id: 1, display_name: "tech", city: "Tokyo", service_areas: "[\"Tokyo\"]", languages: "[\"ja\"]", employment_type: "INDEPENDENT", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  const timestamp = "2026-09-05 00:00:00";
+  for (const user of bundle.tables.users) user.values = { needo_id: String(user.values.needo_id), account_no: null, primary_identity_type: null, email: String(user.values.email), phone: null, email_verified_at: null, password_hash: null, username: `user-${user.sourceId}`, avatar_url: null, avatar_bootstrap_url: null, avatar_bootstrapped_at: null, is_active: 1, is_test_account: 1, session_generation: 0, last_login_at: null, created_at: timestamp, updated_at: timestamp, deleted_at: null };
+  bundle.tables.shops.push({ sourceId: 1, values: { shop_no: "S000000001", owner_user_id: 1, name: "shop", description: null, city: "Tokyo", address: "address", latitude: null, longitude: null, phone: null, status: "published", is_recommended: 0, pricing_mode: "merchant", technician_pricing_rate_percent: 100, pricing_mode_updated_at: null, pricing_mode_updated_by: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } });
+  bundle.tables.merchant_accounts.push({ sourceId: 1, values: { code: "merchant", owner_no: "M000000001", owner_user_id: 1, settlement_bank_account_id: null, name: "merchant", status: "active", payment_responsibility: "group_consolidated", created_at: timestamp, updated_at: timestamp, deleted_at: null } });
+  bundle.tables.customer_profiles.push({ sourceId: 1, values: { user_id: 1, display_name: "customer", bio: null, city: null, membership_level: "standard", membership_grant_mode: "self_service", membership_duration_unit: null, membership_duration_value: null, membership_starts_at: null, membership_expires_at: null, membership_granted_by_id: 1, platform_membership_lock_version: 1, is_public: 1, gender: "private", age: null, height_cm: null, languages: "[\"ja\"]", visibility: "public", created_at: timestamp, updated_at: timestamp, deleted_at: null } });
+  bundle.tables.technician_profiles.push({ sourceId: 1, values: { user_id: 1, shop_id: 1, display_name: "tech", bio: null, city: "Tokyo", service_area: null, service_areas: "[\"Tokyo\"]", base_latitude: null, base_longitude: null, gender: "private", age: null, height_cm: null, languages: "[\"ja\"]", profile_tags: null, can_serve_foreigners: 0, bid_budget_min_jpy: null, bid_budget_max_jpy: null, payment_methods: null, visibility: "public", years_experience: 0, employment_type: "INDEPENDENT", employment_started_at: null, status: "published", is_recommended: 0, verified_at: null, created_at: timestamp, updated_at: timestamp, deleted_at: null } });
   bundle.tables.user_identities.push(
-    { sourceId: 1, values: { user_id: 1, type: "customer", active_key: "identity-key", scope_type: "customer_profile", scope_id: 1, is_default: 1, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 2, values: { user_id: 1, type: "shop", active_key: "shop-identity-key", scope_type: "shop", scope_id: 1, is_default: 0, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 3, values: { user_id: 1, type: "merchant", active_key: "merchant-identity-key", scope_type: "merchant_account", scope_id: 1, is_default: 0, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 4, values: { user_id: 1, type: "technician", active_key: "tech-identity-key", scope_type: "technician_profile", scope_id: 1, is_default: 0, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } }
+    { sourceId: 1, values: { user_id: 1, type: "customer", active_key: "identity-key", scope_type: "customer_profile", scope_id: 1, display_name: null, is_default: 1, is_active: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 2, values: { user_id: 1, type: "shop", active_key: "shop-identity-key", scope_type: "shop", scope_id: 1, display_name: null, is_default: 0, is_active: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 3, values: { user_id: 1, type: "merchant", active_key: "merchant-identity-key", scope_type: "merchant_account", scope_id: 1, display_name: null, is_default: 0, is_active: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 4, values: { user_id: 1, type: "technician", active_key: "tech-identity-key", scope_type: "technician_profile", scope_id: 1, display_name: null, is_default: 0, is_active: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 5, values: { user_id: 1, type: "platform", active_key: "platform-identity-key", scope_type: "platform", scope_id: null, display_name: null, is_default: 0, is_active: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } }
   );
-  bundle.tables.merchant_identity_profiles.push({ sourceId: 1, values: { identity_id: 3, user_id: 1, display_name: "merchant identity", languages: "[\"ja\"]", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.merchant_identity_profiles.push({ sourceId: 1, values: { identity_id: 3, user_id: 1, display_name: "merchant identity", gender: "private", age: null, height_cm: null, languages: "[\"ja\"]", bio: null, visibility: "public", created_at: timestamp, updated_at: timestamp, deleted_at: null } });
   bundle.tables.user_roles = [
-    { sourceId: 1, values: { user_id: 1, role_code: "admin", scope_type: "merchant_account", scope_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 2, values: { user_id: 1, role_code: "admin", scope_type: "shop", scope_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 3, values: { user_id: 1, role_code: "admin", scope_type: "technician_profile", scope_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } }
+    { sourceId: 1, values: { user_id: 1, role_code: "admin", scope_type: "merchant_account", scope_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 2, values: { user_id: 1, role_code: "admin", scope_type: "shop", scope_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 3, values: { user_id: 1, role_code: "admin", scope_type: "technician_profile", scope_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 4, values: { user_id: 1, role_code: "admin", scope_type: "customer_profile", scope_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 5, values: { user_id: 1, role_code: "admin", scope_type: "merchant", scope_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 6, values: { user_id: 1, role_code: "admin", scope_type: "platform", scope_id: null, created_at: timestamp, updated_at: timestamp, deleted_at: null } }
   ];
-  bundle.tables.merchant_shop_memberships.push({ sourceId: 1, values: { merchant_account_id: 1, shop_id: 1, active_key: "membership-key", starts_at: "2026-09-05 00:00:00", created_by_id: 1, removed_by_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
-  bundle.tables.technician_shop_affiliations.push({ sourceId: 1, values: { technician_profile_id: 1, shop_id: 1, relationship_type: "exclusive", work_status: "active", active_key: "affiliation-key", created_by_id: 1, updated_by_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.merchant_shop_memberships.push({ sourceId: 1, values: { merchant_account_id: 1, shop_id: 1, active_key: "membership-key", starts_at: timestamp, ends_at: null, removed_reason: null, created_by_id: 1, removed_by_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } });
+  bundle.tables.technician_shop_affiliations.push({ sourceId: 1, values: { technician_profile_id: 1, shop_id: 1, relationship_type: "exclusive", work_status: "active", starts_at: timestamp, ends_at: null, active_key: "affiliation-key", created_by_id: 1, updated_by_id: 1, created_at: timestamp, updated_at: timestamp, deleted_at: null } });
   bundle.tables.public_identifiers.push(
-    { sourceId: 1, values: { public_id: "PUBLIC0001", number_part: "0000000001", kind: "u", user_identity_id: 1, shop_id: null, merchant_account_id: null, customer_support_account_id: null, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 2, values: { public_id: "PUBLIC0002", number_part: "0000000002", kind: "s", user_identity_id: null, shop_id: 1, merchant_account_id: null, customer_support_account_id: null, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
-    { sourceId: 3, values: { public_id: "PUBLIC0003", number_part: "0000000003", kind: "b", user_identity_id: null, shop_id: null, merchant_account_id: 1, customer_support_account_id: null, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } }
+    { sourceId: 1, values: { public_id: "PUBLIC0001", number_part: "0000000001", kind: "u", user_identity_id: 1, shop_id: null, merchant_account_id: null, customer_support_account_id: null, login_allowed: 0, searchable: 0, status: "active", created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 2, values: { public_id: "PUBLIC0002", number_part: "0000000002", kind: "s", user_identity_id: null, shop_id: 1, merchant_account_id: null, customer_support_account_id: null, login_allowed: 0, searchable: 0, status: "active", created_at: timestamp, updated_at: timestamp, deleted_at: null } },
+    { sourceId: 3, values: { public_id: "PUBLIC0003", number_part: "0000000003", kind: "b", user_identity_id: null, shop_id: null, merchant_account_id: 1, customer_support_account_id: null, login_allowed: 0, searchable: 0, status: "active", created_at: timestamp, updated_at: timestamp, deleted_at: null } }
   );
   return refreshBundleIntegrity(bundle);
 };
@@ -163,6 +168,12 @@ describe("selective staging account importer", () => {
     expect(failing.committedRows("users")).toEqual([administrator]);
   });
 
+  it("rejects a merchant settlement-bank reference before any graph insert", async () => {
+    const bundle = validBundle();
+    bundle.tables.merchant_accounts.push({ sourceId: 1, values: { code: "merchant", name: "merchant", settlement_bank_account_id: 99 } });
+    await expect(importSelectiveAccounts(createImportHarness(), refreshBundleIntegrity(bundle))).rejects.toThrow("ACCOUNT_SYNC_BANK_REFERENCE_INVALID");
+  });
+
   it("maps source IDs, marks only the administrator, and returns verified target counts", async () => {
     const result = await importSelectiveAccounts(createImportHarness(), validBundle());
     expect(result.userCount).toBe(262);
@@ -222,18 +233,18 @@ describe("selective staging account importer", () => {
     let committed = false;
     let rolledBack = false;
     let ended = false;
-    const requiredColumns: Record<string, readonly string[]> = {
-      users: ["needo_id", "email", "username", "is_test_account"],
-      shops: ["name", "city", "address", "pricing_mode"],
-      merchant_accounts: ["code", "name", "settlement_bank_account_id"],
-      customer_profiles: ["user_id", "display_name", "membership_grant_mode", "membership_granted_by_id"],
-      technician_profiles: ["user_id", "shop_id", "display_name", "city", "employment_type"],
-      user_identities: ["user_id", "type", "scope_type", "scope_id", "is_default", "is_active"],
-      merchant_identity_profiles: ["identity_id", "user_id", "display_name"],
-      user_roles: ["user_id", "role_id", "scope_type", "scope_id"],
-      merchant_shop_memberships: ["merchant_account_id", "shop_id", "starts_at", "created_by_id", "removed_by_id"],
-      technician_shop_affiliations: ["technician_profile_id", "shop_id", "relationship_type", "work_status", "created_by_id", "updated_by_id"],
-      public_identifiers: ["public_id", "number_part", "kind", "user_identity_id", "shop_id", "merchant_account_id", "customer_support_account_id"]
+    const physicalColumns: Record<string, readonly string[]> = {
+      users: ["needo_id", "account_no", "primary_identity_type", "email", "phone", "email_verified_at", "password_hash", "username", "avatar_url", "avatar_bootstrap_url", "avatar_bootstrapped_at", "is_active", "is_test_account", "session_generation", "last_login_at", "created_at", "updated_at", "deleted_at"],
+      shops: ["shop_no", "owner_user_id", "name", "description", "city", "address", "latitude", "longitude", "phone", "status", "is_recommended", "pricing_mode", "technician_pricing_rate_percent", "pricing_mode_updated_at", "pricing_mode_updated_by", "created_at", "updated_at", "deleted_at"],
+      merchant_accounts: ["code", "owner_no", "owner_user_id", "settlement_bank_account_id", "name", "status", "payment_responsibility", "created_at", "updated_at", "deleted_at"],
+      customer_profiles: ["user_id", "display_name", "bio", "city", "membership_level", "membership_grant_mode", "membership_duration_unit", "membership_duration_value", "membership_starts_at", "membership_expires_at", "membership_granted_by_id", "platform_membership_lock_version", "is_public", "gender", "age", "height_cm", "languages", "visibility", "created_at", "updated_at", "deleted_at"],
+      technician_profiles: ["user_id", "shop_id", "display_name", "bio", "city", "service_area", "service_areas", "base_latitude", "base_longitude", "gender", "age", "height_cm", "languages", "profile_tags", "can_serve_foreigners", "bid_budget_min_jpy", "bid_budget_max_jpy", "payment_methods", "visibility", "years_experience", "employment_type", "employment_started_at", "status", "is_recommended", "verified_at", "created_at", "updated_at", "deleted_at"],
+      user_identities: ["user_id", "type", "active_key", "scope_type", "scope_id", "display_name", "is_default", "is_active", "created_at", "updated_at", "deleted_at"],
+      merchant_identity_profiles: ["identity_id", "user_id", "display_name", "gender", "age", "height_cm", "languages", "bio", "visibility", "created_at", "updated_at", "deleted_at"],
+      user_roles: ["user_id", "role_id", "scope_type", "scope_id", "created_at", "updated_at", "deleted_at"],
+      merchant_shop_memberships: ["merchant_account_id", "shop_id", "active_key", "starts_at", "ends_at", "removed_reason", "created_by_id", "removed_by_id", "created_at", "updated_at", "deleted_at"],
+      technician_shop_affiliations: ["technician_profile_id", "shop_id", "relationship_type", "work_status", "starts_at", "ends_at", "active_key", "created_by_id", "updated_by_id", "created_at", "updated_at", "deleted_at"],
+      public_identifiers: ["public_id", "number_part", "kind", "user_identity_id", "shop_id", "merchant_account_id", "customer_support_account_id", "login_allowed", "searchable", "status", "created_at", "updated_at", "deleted_at"]
     };
     const connection = {
       beginTransaction: async () => undefined,
@@ -254,10 +265,10 @@ describe("selective staging account importer", () => {
           const columns = [...sql.matchAll(/`([^`]+)`/gu)].map((match) => match[1]);
           if (!table) throw new Error("test insert table missing");
           const values = Object.fromEntries(columns.map((column, index) => [column, parameters[index]]));
-          if (requiredColumns[table]?.some((column) => !(column in values))) throw new Error(`TEST_REQUIRED_COLUMN_MISSING:${table}`);
+          if (JSON.stringify(Object.keys(values).sort()) !== JSON.stringify([...(physicalColumns[table] ?? [])].sort())) throw new Error(`TEST_PHYSICAL_COLUMN_SET_INVALID:${table}`);
           if (table === "users" && (typeof values.email !== "string" || typeof values.needo_id !== "string" || typeof values.username !== "string" || values.is_test_account !== 1)) throw new Error("TEST_TYPE_INVALID:users");
           if (table === "customer_profiles" && (typeof values.user_id !== "number" || typeof values.membership_granted_by_id !== "number")) throw new Error("TEST_TYPE_INVALID:customer_profiles");
-          if (table === "user_identities" && (typeof values.user_id !== "number" || typeof values.scope_id !== "number" || ![0, 1].includes(Number(values.is_default)) || ![0, 1].includes(Number(values.is_active)))) throw new Error("TEST_TYPE_INVALID:user_identities");
+          if (table === "user_identities" && (typeof values.user_id !== "number" || !(typeof values.scope_id === "number" || ((values.scope_type === "platform" || values.scope_type === "global") && values.scope_id === null)) || ![0, 1].includes(Number(values.is_default)) || ![0, 1].includes(Number(values.is_active)))) throw new Error("TEST_TYPE_INVALID:user_identities");
           if (["merchant_shop_memberships", "technician_shop_affiliations"].includes(table) && ["created_by_id", "removed_by_id", "updated_by_id"].some((column) => column in values && typeof values[column] !== "number")) throw new Error(`TEST_TYPE_INVALID:${table}`);
           if (table === "shops" && values.pricing_mode !== "merchant") throw new Error("TEST_ENUM_INVALID:shops");
           if (table === "customer_profiles" && values.membership_grant_mode !== "self_service") throw new Error("TEST_ENUM_INVALID:customer_profiles");
@@ -301,10 +312,10 @@ describe("selective staging account importer", () => {
     expect(inserted.merchant_shop_memberships[0]).toMatchObject({ created_by_id: targetUserId, removed_by_id: targetUserId });
     expect(inserted.technician_shop_affiliations[0]).toMatchObject({ created_by_id: targetUserId, updated_by_id: targetUserId });
     expect(inserted.user_identities.map((row) => [row.scope_type, row.scope_id])).toEqual(expect.arrayContaining([
-      ["customer_profile", targetCustomerProfileId], ["shop", targetShopId], ["merchant_account", targetMerchantId], ["technician_profile", targetTechnicianProfileId]
+      ["customer_profile", targetCustomerProfileId], ["shop", targetShopId], ["merchant_account", targetMerchantId], ["technician_profile", targetTechnicianProfileId], ["platform", null]
     ]));
     expect(inserted.user_roles.map((row) => [row.scope_type, row.scope_id])).toEqual(expect.arrayContaining([
-      ["merchant_account", targetMerchantId], ["shop", targetShopId], ["technician_profile", targetTechnicianProfileId]
+      ["merchant_account", targetMerchantId], ["merchant", targetMerchantId], ["shop", targetShopId], ["technician_profile", targetTechnicianProfileId], ["customer_profile", targetCustomerProfileId], ["platform", null]
     ]));
     expect(inserted.public_identifiers.map((row) => [row.user_identity_id, row.shop_id, row.merchant_account_id])).toEqual(expect.arrayContaining([
       [inserted.user_identities[0]?.id, null, null], [null, targetShopId, null], [null, null, targetMerchantId]
