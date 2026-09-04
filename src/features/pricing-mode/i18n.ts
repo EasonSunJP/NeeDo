@@ -1,0 +1,42 @@
+import type { TranslationEntry } from "../../i18n/translations";
+
+const fourLanguageTranslation = (
+  zhHant: string,
+  ja: string,
+  en: string,
+  ko: string,
+): TranslationEntry => ({ "zh-Hant": zhHant, ja, en, ko });
+
+export const pricingModeTranslations: Record<string, TranslationEntry> = {
+  "切换为店铺定价": fourLanguageTranslation("切換為店鋪定價", "店舗価格に切り替え", "Switch to store pricing", "매장 가격으로 전환"),
+  "切换为技师定价": fourLanguageTranslation("切換為技師定價", "スタッフ価格に切り替え", "Switch to technician pricing", "스태프 가격으로 전환"),
+  "定价模式": fourLanguageTranslation("定價模式", "価格モード", "Pricing mode", "가격 모드"),
+  "店铺定价": fourLanguageTranslation("店鋪定價", "店舗価格", "Store pricing", "매장 가격"),
+  "技师定价": fourLanguageTranslation("技師定價", "スタッフ価格", "Technician pricing", "스태프 가격"),
+  "保存": fourLanguageTranslation("儲存", "保存", "Save", "저장"),
+  "编辑": fourLanguageTranslation("編輯", "編集", "Edit", "편집"),
+  "服务名称": fourLanguageTranslation("服務名稱", "サービス名", "Service Name", "서비스 이름"),
+  "服务信息": fourLanguageTranslation("服務資訊", "サービス情報", "Service Information", "서비스 정보"),
+  "价格": fourLanguageTranslation("價格", "価格", "Price", "가격"),
+  "取消": fourLanguageTranslation("取消", "キャンセル", "Cancel", "취소"),
+  "上移": fourLanguageTranslation("上移", "上へ進む", "Move up", "위로 이동"),
+  "下移": fourLanguageTranslation("下移", "下へ移動", "Move down", "아래로 이동"),
+  "添加服务": fourLanguageTranslation("添加服務", "追加サービス", "AddService", "추가서비스"),
+  "未读取": fourLanguageTranslation("未讀取", "未取得", "Unavailable", "불러오지 못함"),
+  "再次点击确认删除": fourLanguageTranslation("再次點擊確認刪除", "もう一度押して削除を確定", "Click again to confirm deletion", "삭제하려면 다시 누르세요"),
+  "更换图片": fourLanguageTranslation("更換圖片", "画像を変更", "Change image", "이미지 변경"),
+  "移除图片": fourLanguageTranslation("移除圖片", "画像を削除", "Remove image", "이미지 삭제"),
+  "服务封面": fourLanguageTranslation("服務封面", "サービスカバー", "Service cover", "서비스 커버"),
+  "上传服务封面": fourLanguageTranslation("上傳服務封面", "サービスカバーをアップロード", "Upload service cover", "서비스 커버 업로드"),
+  "恢复当前封面": fourLanguageTranslation("恢復目前封面", "現在のカバーを復元", "Restore current cover", "현재 커버 복원"),
+  "JPEG / PNG / WebP，最大 8 MiB": fourLanguageTranslation("JPEG / PNG / WebP，最大 8 MiB", "JPEG / PNG / WebP、最大 8 MiB", "JPEG / PNG / WebP, up to 8 MiB", "JPEG / PNG / WebP, 최대 8 MiB"),
+  "仅支持 JPEG、PNG 或 WebP 图片": fourLanguageTranslation("僅支援 JPEG、PNG 或 WebP 圖片", "JPEG、PNG、WebP 画像のみ対応しています", "Only JPEG, PNG, or WebP images are supported", "JPEG, PNG 또는 WebP 이미지만 지원합니다"),
+  "图片不能超过 8 MiB": fourLanguageTranslation("圖片不能超過 8 MiB", "画像は 8 MiB 以下にしてください", "The image must not exceed 8 MiB", "이미지는 8 MiB를 초과할 수 없습니다"),
+  "服务已保存，封面上传失败，请重试": fourLanguageTranslation("服務已儲存，封面上傳失敗，請重試", "サービスは保存されましたが、カバーのアップロードに失敗しました。再試行してください", "Service saved, but the cover upload failed. Please retry", "서비스는 저장되었지만 커버 업로드에 실패했습니다. 다시 시도해 주세요"),
+  "封面上传失败，请重试": fourLanguageTranslation("封面上傳失敗，請重試", "カバーのアップロードに失敗しました。再試行してください", "Cover upload failed. Please retry", "커버 업로드에 실패했습니다. 다시 시도해 주세요"),
+  "重试上传封面": fourLanguageTranslation("重試上傳封面", "カバーのアップロードを再試行", "Retry cover upload", "커버 업로드 다시 시도"),
+  "服务已保存，封面移除失败，请重试": fourLanguageTranslation("服務已儲存，封面移除失敗，請重試", "サービスは保存されましたが、カバーの削除に失敗しました。再試行してください", "Service saved, but cover removal failed. Please retry", "서비스는 저장되었지만 커버 삭제에 실패했습니다. 다시 시도해 주세요"),
+  "封面移除失败，请重试": fourLanguageTranslation("封面移除失敗，請重試", "カバーの削除に失敗しました。再試行してください", "Cover removal failed. Please retry", "커버 삭제에 실패했습니다. 다시 시도해 주세요"),
+  "重试移除封面": fourLanguageTranslation("重試移除封面", "カバーの削除を再試行", "Retry cover removal", "커버 삭제 다시 시도"),
+  "完成并关闭": fourLanguageTranslation("完成並關閉", "完了して閉じる", "Finish and close", "완료 후 닫기"),
+};

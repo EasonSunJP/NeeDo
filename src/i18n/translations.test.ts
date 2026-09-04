@@ -3,9 +3,19 @@ import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { translateImUiText } from "../features/im/ui-copy";
+import { pricingModeTranslations } from "../features/pricing-mode/i18n";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("resolves every pricing-mode feature translation through the global lookup", () => {
+    for (const [source, entry] of Object.entries(pricingModeTranslations)) {
+      expect(translations[source]).toEqual(entry);
+      for (const { code } of languages) {
+        expect(translateText(source, code)).toBe(code === "zh" ? source : entry[code]);
+      }
+    }
+  });
+
   it("localizes the technician service cover editor in all five App languages", () => {
     const expected = {
       "服务封面": { "zh-Hant": "服務封面", ja: "サービスカバー", en: "Service cover", ko: "서비스 커버" },

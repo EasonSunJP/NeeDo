@@ -25,6 +25,14 @@ const dashboardTranslationsPath = path.join(
   workspaceRoot,
   "src/features/dashboard/dashboardTranslations.ts",
 );
+const serviceSearchTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/service-search/i18n.ts",
+);
+const pricingModeTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/pricing-mode/i18n.ts",
+);
 const orderPerformanceTranslationsPath = path.join(
   workspaceRoot,
   "src/features/order-performance/i18n.ts",
@@ -135,6 +143,8 @@ let identityTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
 let dashboardTranslationsPromise;
+let serviceSearchTranslationsPromise;
+let pricingModeTranslationsPromise;
 let orderPerformanceTranslationsPromise;
 let platformUserManagementTranslationsPromise;
 
@@ -209,6 +219,40 @@ async function loadDashboardTranslations() {
   return dashboardTranslationsPromise;
 }
 
+async function loadServiceSearchTranslations() {
+  serviceSearchTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(serviceSearchTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.serviceSearchTranslations ?? {};
+  })();
+
+  return serviceSearchTranslationsPromise;
+}
+
+async function loadPricingModeTranslations() {
+  pricingModeTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(pricingModeTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.pricingModeTranslations ?? {};
+  })();
+
+  return pricingModeTranslationsPromise;
+}
+
 async function loadOrderPerformanceTranslations() {
   orderPerformanceTranslationsPromise ??= (async () => {
     const source = await fs.readFile(orderPerformanceTranslationsPath, "utf8");
@@ -249,6 +293,8 @@ async function loadTranslationsFromSource(sourceCode) {
   const affiliateMarketplaceTranslations =
     await loadAffiliateMarketplaceTranslations();
   const dashboardTranslations = await loadDashboardTranslations();
+  const serviceSearchTranslations = await loadServiceSearchTranslations();
+  const pricingModeTranslations = await loadPricingModeTranslations();
   const orderPerformanceTranslations = await loadOrderPerformanceTranslations();
   const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
   const standaloneSource = sourceCode.replace(
@@ -263,6 +309,12 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*dashboardTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const dashboardTranslations = ${JSON.stringify(dashboardTranslations)};`,
+  ).replace(
+    /import\s+\{\s*serviceSearchTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const serviceSearchTranslations = ${JSON.stringify(serviceSearchTranslations)};`,
+  ).replace(
+    /import\s+\{\s*pricingModeTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const pricingModeTranslations = ${JSON.stringify(pricingModeTranslations)};`,
   ).replace(
     /import\s+\{\s*orderPerformanceTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const orderPerformanceTranslations = ${JSON.stringify(orderPerformanceTranslations)};`,
