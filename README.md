@@ -210,6 +210,8 @@ Local formal-browser acceptance used the isolated `3100/3101/3102/5181` runtime 
 
 Exchange-linked orders cannot use the generic cancel endpoint; bilateral cancellation and publication-fee handling remain later microsteps. Service payment, wallet settlement, reconciliation, and external payment are not part of this conversion.
 
+The verified conversion is now merged into local `main`. See [the 2026-09-05 main acceptance record](docs/verification/2026-09-05-exchange-booking-main-acceptance.md) for complete regression counts, owner/provider/unauthorized browser checks, and the `5180` runtime proof.
+
 ### Exchange Test NDP Foundation
 
 Exchange fee work now has a single-wallet Test NDP foundation. Migration `20260830210000_exchange_test_ndp_foundation` adds server-authoritative account classification and an explicit `NDP | TEST_NDP` currency to the existing Wallet/Ledger, reconciliation, hold, and order-financial records; it does not create a second wallet or ledger system. `NDP` remains formally settleable. `TEST_NDP` is local/test value and is blocked from top-up, withdrawal, payout, external payment, and formal settlement/export paths.
