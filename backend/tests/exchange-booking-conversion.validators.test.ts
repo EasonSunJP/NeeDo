@@ -29,6 +29,7 @@ describe("Exchange matched-result booking conversion contracts", () => {
       response.status(200).json({ key: response.locals.exchangeIdempotencyKey });
     });
     app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+      void _next;
       const appError = error as { code?: number; statusCode?: number };
       response.status(appError.statusCode ?? 500).json({ code: appError.code });
     });
