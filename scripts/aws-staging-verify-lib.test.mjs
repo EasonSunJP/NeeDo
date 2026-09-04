@@ -435,8 +435,7 @@ function passingFixture() {
       Notifications: notificationDefinitions.map(([NotificationType, Threshold]) => ({
         NotificationType,
         ComparisonOperator: "GREATER_THAN",
-        Threshold,
-        ThresholdType: "PERCENTAGE"
+        Threshold
       }))
     },
     subscribers: { Subscribers: [{ SubscriptionType: "EMAIL", Address: config.alertEmail }] },
@@ -965,6 +964,7 @@ describe("AWS Staging environment-only acceptance", () => {
     ["wrong budget amount", (f) => { f.budget.Budget.BudgetLimit.Amount = "19999"; }, /budget.*amount/i],
     ["wrong budget unit", (f) => { f.budget.Budget.BudgetLimit.Unit = "USD"; }, /budget.*unit/i],
     ["missing budget notification", (f) => { f.notifications.Notifications.pop(); }, /notification/i],
+    ["absolute-value budget notification", (f) => { f.notifications.Notifications[0].ThresholdType = "ABSOLUTE_VALUE"; }, /notification/i],
     ["wrong subscriber", (f) => { f.subscribers.Subscribers[0].Address = "other@example.com"; }, /subscriber/i],
     ["pending SNS subscription", (f) => { f.topicSubscriptions.Subscriptions[0].SubscriptionArn = "PendingConfirmation"; }, /subscription|confirm/i],
     ["missing service tag", (f) => { f.iamTags.Tags.pop(); }, /tag/i],
@@ -1276,6 +1276,18 @@ describe("AWS Staging environment-only acceptance", () => {
       args[0] === "budgets" && args[1] === "list-tags-for-resource"
     ))).toEqual([[
       "budgets", "list-tags-for-resource", "--resource-arn", budgetArn
+    ]]);
+    expect(aws.json.mock.calls.find(([args]) => (
+      args[0] === "resourcegroupstaggingapi" && args[1] === "get-resources"
+    ))).toEqual([[
+      "resourcegroupstaggingapi", "get-resources", "--tag-filters",
+      "Key=Project,Values=needo", "Key=Environment,Values=staging",
+      `Key=Owner,Values=${config.owner}`, "Key=ManagedBy,Values=cloudformation",
+      `Key=aws:cloudformation:stack-id,Values=${ids.stackId}`,
+      "--resource-type-filters",
+      "cloudwatch:alarm", "ec2:elastic-ip", "ec2:instance", "ec2:internet-gateway",
+      "ec2:route-table", "ec2:security-group", "ec2:subnet", "ec2:volume",
+      "ec2:vpc", "logs:log-group", "s3:bucket", "secretsmanager:secret", "sns:topic"
     ]]);
   });
 

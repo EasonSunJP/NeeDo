@@ -853,7 +853,8 @@ function requireNotifications(response) {
   }
   const normalized = response.Notifications.map((notification) => {
     if (notification?.ComparisonOperator !== "GREATER_THAN"
-      || notification?.ThresholdType !== "PERCENTAGE"
+      || (notification?.ThresholdType !== undefined
+        && notification.ThresholdType !== "PERCENTAGE")
       || !notificationDefinitions.some(([type, threshold]) => (
         notification.NotificationType === type && notification.Threshold === threshold
       ))) throw new Error("Budget notification definition does not match");
@@ -1267,7 +1268,12 @@ export async function verifyAwsStagingEnvironment({
   const resourceGroupTags = await aws.json([
     "resourcegroupstaggingapi", "get-resources", "--tag-filters",
     "Key=Project,Values=needo", "Key=Environment,Values=staging",
-    `Key=Owner,Values=${config.owner}`, "Key=ManagedBy,Values=cloudformation"
+    `Key=Owner,Values=${config.owner}`, "Key=ManagedBy,Values=cloudformation",
+    `Key=aws:cloudformation:stack-id,Values=${stackId}`,
+    "--resource-type-filters",
+    "cloudwatch:alarm", "ec2:elastic-ip", "ec2:instance", "ec2:internet-gateway",
+    "ec2:route-table", "ec2:security-group", "ec2:subnet", "ec2:volume",
+    "ec2:vpc", "logs:log-group", "s3:bucket", "secretsmanager:secret", "sns:topic"
   ]);
   const resourceGroupLogicalIds = requireResourceGroupTags(
     resourceGroupTags, arnMappings, config.owner
