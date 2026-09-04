@@ -77,3 +77,16 @@ test("release provisioning keeps the ACME webroot public while certificate state
     /install -d -m 0750 \/srv\/needo\/certbot\/conf \/srv\/needo\/certbot\/www/,
   );
 });
+
+test("web healthcheck probes the local HTTPS virtual host after TLS activation", () => {
+  const compose = read("./docker-compose.yml");
+
+  assert.match(
+    compose,
+    /wget -q --spider --no-check-certificate --header='Host: staging\.needo\.life' https:\/\/127\.0\.0\.1\/api\/v1\/health/,
+  );
+  assert.doesNotMatch(
+    compose,
+    /wget -q --spider http:\/\/127\.0\.0\.1\/api\/v1\/health/,
+  );
+});
