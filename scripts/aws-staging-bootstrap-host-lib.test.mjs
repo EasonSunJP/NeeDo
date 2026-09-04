@@ -184,7 +184,7 @@ function describedInstance() {
     Reservations: [{
       Instances: [{
         InstanceId: outputValues.InstanceId,
-        InstanceType: "t4g.large",
+        InstanceType: "t4g.small",
         State: { Name: "running" }
       }]
     }]

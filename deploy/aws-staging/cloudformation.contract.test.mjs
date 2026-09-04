@@ -132,11 +132,11 @@ describe("AWS Staging CloudFormation contract", () => {
     ]);
   });
 
-  it("pins the ARM environment and propagates tags to the root volume", () => {
+  it("pins the free-plan ARM staging environment and propagates tags to the root volume", () => {
     const instance = resourceBlock("Instance");
     const dataVolume = resourceBlock("DataVolume");
     expect(source).toContain("al2023-ami-kernel-default-arm64");
-    expect(instance).toContain("      InstanceType: t4g.large");
+    expect(instance).toContain("      InstanceType: t4g.small");
     expect(instance).toContain("            VolumeSize: 30");
     expect(instance).toContain("      PropagateTagsToVolumeOnCreation: true");
     expect(dataVolume).toContain("      Size: 70");

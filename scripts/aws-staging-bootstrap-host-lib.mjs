@@ -95,7 +95,7 @@ function requireInstanceBinding(response, instanceId) {
   ));
   if (instances.length !== 1
     || instances[0]?.InstanceId !== instanceId
-    || instances[0]?.InstanceType !== "t4g.large"
+    || instances[0]?.InstanceType !== "t4g.small"
     || !new Set(["pending", "running"]).has(instances[0]?.State?.Name)) {
     throw new Error("EC2 instance identity does not match the approved stack instance");
   }

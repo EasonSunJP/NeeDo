@@ -82,7 +82,9 @@ This is data-fork execution continuity, not independent vendor-signature provena
 
 ## 4. 方案比较与选择
 
-评估过三种方案：单台 ARM EC2、单台 x86 EC2、应用与数据库分离的双 EC2。用户批准单台 `t4g.large`：它在成本、8 GiB 内存和 Staging 运维复杂度之间最合适。`t3.large` 的 x86 兼容性更宽但成本更高；双 EC2 增加运维面和费用，仍不构成数据库高可用。
+评估过三种方案：单台 ARM EC2、单台 x86 EC2、应用与数据库分离的双 EC2。用户最初批准单台 `t4g.large`：它在成本、8 GiB 内存和 Staging 运维复杂度之间最合适。`t3.large` 的 x86 兼容性更宽但成本更高；双 EC2 增加运维面和费用，仍不构成数据库高可用。
+
+2026-09-04 个人测试账号实施修订：AWS 免费计划在 `ap-southeast-2` 拒绝 `t4g.large`，但实时返回 `t4g.small` 为 Free Tier eligible。个人低并发 Staging 改用 ARM64 `t4g.small`（2 vCPU、2 GiB）；公司正式 AWS 部署不得沿用该容量假设，需重新批准实例规格。
 
 选择单台 EC2 意味着接受明确的单点故障：实例或可用区故障期间 Staging 可以中断，恢复方式是从 EBS 快照、S3 数据库备份和不可变 Release 重建。
 
@@ -96,7 +98,7 @@ Internet
 Elastic IP
    |
    v
-EC2 t4g.large, Amazon Linux 2023 ARM64
+EC2 t4g.small, Amazon Linux 2023 ARM64
    |-- Nginx: TLS, static frontend, /api/v1 reverse proxy
    |-- NeeDo backend: Node.js 22 container
    |-- MySQL 8 container
@@ -279,7 +281,7 @@ AWS Budgets sends threshold notifications at 15,000, 18,000 and 20,000 JPY of fo
 
 - CloudFormation stack reaches a stable successful state.
 - The exact region is `ap-northeast-1` and all resources carry Staging/environment/owner tags.
-- EC2 is `t4g.large`, the Elastic IP is recorded and both EBS volumes are encrypted.
+- EC2 is `t4g.small`, the Elastic IP is recorded and both EBS volumes are encrypted.
 - Session Manager opens without port 22 or an SSH key.
 - The 70 GiB volume is mounted at `/srv/needo` and mount-failure behavior is proven.
 - Security group exposes only 80/443; 22/3000/3306/6379 are not public.

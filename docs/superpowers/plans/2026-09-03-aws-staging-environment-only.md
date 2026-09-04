@@ -114,9 +114,11 @@ This is data-fork execution continuity, not independent vendor-signature provena
 
 **Goal:** Provision and prove the approved AWS Staging infrastructure in personal-account Sydney or later company-account Tokyo without deploying application code, running Prisma migrations or seeds, changing DNS, or writing business data.
 
-**Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.large` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
+**Architecture:** A single CloudFormation stack creates a dedicated public VPC/subnet, one ARM64 `t4g.small` EC2 instance with encrypted 30 GiB root and independently retained 70 GiB data volumes, an Elastic IP, no-SSH SSM access, private release/backup S3 buckets, one empty Secrets Manager resource, CloudWatch host monitoring, and a monthly AWS Budget. A repository-owned SSM document performs idempotent host initialization only after CloudFormation attaches the data volume. Local Node.js orchestration validates account/region/temporary-credential boundaries, deploys the stack, runs the SSM bootstrap, and writes redacted acceptance evidence under ignored `outputs/`.
 
-**Tech Stack:** AWS CloudFormation, Amazon EC2 `t4g.large`, Amazon Linux 2023 ARM64, EBS gp3, IAM, Systems Manager Session Manager/Run Command, S3, Secrets Manager, CloudWatch Agent/alarms/log groups, SNS email notifications, AWS Budgets, AWS CLI v2, Node.js 22 ESM, Vitest
+**Tech Stack:** AWS CloudFormation, Amazon EC2 `t4g.small`, Amazon Linux 2023 ARM64, EBS gp3, IAM, Systems Manager Session Manager/Run Command, S3, Secrets Manager, CloudWatch Agent/alarms/log groups, SNS email notifications, AWS Budgets, AWS CLI v2, Node.js 22 ESM, Vitest
+
+**2026-09-04 personal-account amendment:** Live EC2 validation in `ap-southeast-2` rejected the originally approved `t4g.large` because the AWS project is on the free plan. The personal low-concurrency staging contract therefore pins the Free Tier eligible ARM64 `t4g.small` (2 vCPU, 2 GiB). A later company-account deployment must reassess and separately approve capacity instead of inheriting this test-only size.
 
 ## Global Constraints
 
@@ -377,7 +379,7 @@ const source = fs.readFileSync(path.join(here, "cloudformation.yml"), "utf8");
 describe("AWS Staging CloudFormation contract", () => {
   it("pins the approved region-compatible ARM environment", () => {
     expect(source).toContain("al2023-ami-kernel-default-arm64");
-    expect(source).toContain("InstanceType: t4g.large");
+    expect(source).toContain("InstanceType: t4g.small");
     expect(source).toContain("VolumeSize: 30");
     expect(source).toContain("Size: 70");
     expect(source.match(/Encrypted: true/g)?.length).toBeGreaterThanOrEqual(2);
@@ -676,7 +678,7 @@ Create `Instance` with:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref LatestAmiId
-      InstanceType: t4g.large
+      InstanceType: t4g.small
       IamInstanceProfile:
         Name: !Ref InstanceProfile
       SubnetId: !Ref PublicSubnet
@@ -1280,7 +1282,7 @@ Build one fully passing fixture and mutate one invariant at a time. Required fai
 |---|---|
 | Stack | status is not `CREATE_COMPLETE`/`UPDATE_COMPLETE` |
 | Tags | any taggable stack resource lacks `Project=needo`, `Environment=staging`, `Owner=<approved owner>`, or `ManagedBy=cloudformation` |
-| EC2 | not `t4g.large`, not `arm64`, key name exists, IMDSv2 optional, or detailed monitoring disabled |
+| EC2 | not `t4g.small`, not `arm64`, key name exists, IMDSv2 optional, or detailed monitoring disabled |
 | Network | ingress differs from exact `{80/tcp,443/tcp}` |
 | EBS | root not 30 GiB encrypted gp3 or data not 70 GiB encrypted gp3 |
 | SSM | managed instance is not `Online` |
@@ -1713,7 +1715,7 @@ Expected: every Task 7 invariant passes and the redacted acceptance evidence is 
 
 Confirm from the evidence and AWS descriptions:
 
-- EC2 is `t4g.large` ARM64, with no key name and IMDSv2 required;
+- EC2 is `t4g.small` ARM64, with no key name and IMDSv2 required;
 - ingress is only 80/443 and SSM is online;
 - EBS is 30+70 GiB encrypted gp3 and `/srv/needo` is the exact XFS data mount;
 - no container/application/release symlink exists;

@@ -139,7 +139,7 @@ function evidenceFixture(overrides = {}) {
     },
     instance: {
       instanceId: outputValues.InstanceId,
-      instanceType: "t4g.large",
+      instanceType: "t4g.small",
       state: "running"
     },
     applicationDeployed: false,
@@ -220,7 +220,7 @@ function successfulAws({
     Reservations: [{
       Instances: [{
         InstanceId: outputValues.InstanceId,
-        InstanceType: "t4g.large",
+        InstanceType: "t4g.small",
         State: { Name: "running" },
         UserData: "must-not-be-recorded"
       }]
@@ -614,7 +614,7 @@ describe("AWS Staging CloudFormation deployment", () => {
       },
       instance: {
         instanceId: outputValues.InstanceId,
-        instanceType: "t4g.large",
+        instanceType: "t4g.small",
         state: "running"
       },
       applicationDeployed: false,

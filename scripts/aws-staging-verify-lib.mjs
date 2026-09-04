@@ -406,7 +406,7 @@ function requireInstance(response, outputs, resources, config) {
   if (instance.InstanceId !== outputs.InstanceId || instance.InstanceId !== resources.Instance.physicalId) {
     throw new Error("EC2 instance identity does not match stack output and resources");
   }
-  if (instance.InstanceType !== "t4g.large") throw new Error("EC2 instance type must be t4g.large");
+  if (instance.InstanceType !== "t4g.small") throw new Error("EC2 instance type must be t4g.small");
   if (instance.Architecture !== "arm64") throw new Error("EC2 instance architecture must be arm64");
   if (instance.State?.Name !== "running") throw new Error("EC2 instance must be running");
   safeArgument(instance.ImageId, "EC2 image ID", amiIdPattern);
@@ -1325,7 +1325,7 @@ export async function verifyAwsStagingEnvironment({
       resourceGroupsResultCount: resourceGroupLogicalIds.size
     },
     ec2: {
-      instanceType: "t4g.large",
+      instanceType: "t4g.small",
       architecture: "arm64",
       imageId: instance.ImageId,
       keyNamePresent: false,
@@ -1478,7 +1478,7 @@ function reconstructAcceptanceEvidence(evidence) {
   exactKeys(evidence.ec2, [
     "instanceType", "architecture", "imageId", "keyNamePresent", "imdsV2Required", "detailedMonitoring"
   ], "Acceptance ec2");
-  if (evidence.ec2.instanceType !== "t4g.large" || evidence.ec2.architecture !== "arm64"
+  if (evidence.ec2.instanceType !== "t4g.small" || evidence.ec2.architecture !== "arm64"
     || !amiIdPattern.test(evidence.ec2.imageId)) throw new Error("Acceptance EC2 identity is invalid");
   requireBoolean(evidence.ec2.keyNamePresent, false, "Acceptance keyNamePresent");
   requireBoolean(evidence.ec2.imdsV2Required, true, "Acceptance imdsV2Required");

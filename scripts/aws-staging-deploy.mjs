@@ -282,8 +282,8 @@ function reconstructRedactedEvidence(evidence) {
   if (instance.instanceId !== outputs.InstanceId) {
     throw new Error("AWS Staging evidence instance identity does not match outputs.InstanceId");
   }
-  if (instance.instanceType !== "t4g.large") {
-    throw new Error("AWS Staging evidence instanceType must be t4g.large");
+  if (instance.instanceType !== "t4g.small") {
+    throw new Error("AWS Staging evidence instanceType must be t4g.small");
   }
   if (instance.state !== "running") {
     throw new Error("AWS Staging evidence instance state must be running");

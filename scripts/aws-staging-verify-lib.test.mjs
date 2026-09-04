@@ -318,7 +318,7 @@ function passingFixture() {
     instance: {
       Reservations: [{ Instances: [{
         InstanceId: ids.instance,
-        InstanceType: "t4g.large",
+        InstanceType: "t4g.small",
         ImageId: ids.imageId,
         Architecture: "arm64",
         State: { Name: "running" },
@@ -762,7 +762,7 @@ describe("AWS Staging environment-only acceptance", () => {
       },
       elasticIp: ids.elasticIp,
       ec2: {
-        instanceType: "t4g.large", architecture: "arm64", imageId: ids.imageId,
+        instanceType: "t4g.small", architecture: "arm64", imageId: ids.imageId,
         keyNamePresent: false, imdsV2Required: true, detailedMonitoring: true
       },
       ingress: [
@@ -939,7 +939,7 @@ describe("AWS Staging environment-only acceptance", () => {
   const matrix = [
     ["unstable stack", (f) => { f.stack.Stacks[0].StackStatus = "UPDATE_FAILED"; }, /stack.*status|stable/i],
     ["missing stack tag", (f) => { f.stack.Stacks[0].Tags.pop(); }, /tag/i],
-    ["wrong instance type", (f) => { f.instance.Reservations[0].Instances[0].InstanceType = "t3.large"; }, /t4g.large/i],
+    ["wrong instance type", (f) => { f.instance.Reservations[0].Instances[0].InstanceType = "t3.large"; }, /t4g.small/i],
     ["wrong architecture", (f) => { f.instance.Reservations[0].Instances[0].Architecture = "x86_64"; }, /arm64/i],
     ["SSH key", (f) => { f.instance.Reservations[0].Instances[0].KeyName = "unsafe"; }, /key/i],
     ["optional IMDSv2", (f) => { f.instance.Reservations[0].Instances[0].MetadataOptions.HttpTokens = "optional"; }, /IMDS|HttpTokens/i],
