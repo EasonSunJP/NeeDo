@@ -8,6 +8,7 @@ import {
   sha256Hex,
   writeRedactedEvidenceAtomic
 } from "./aws-staging-account-sync-lib.mjs";
+import { requireAcceptedEnvironment } from "./aws-staging-application-lib.mjs";
 
 const execFileAsync = promisify(execFile);
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +20,7 @@ const accountSyncEvidencePath = path.join(outputDirectory, "account-sync.json");
 
 const fail = (message) => { throw new Error(message); };
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const allowed = new Set(["--profile", "--account-id", "--region", "--bundle", "--sha256", "--source-revision"]);
   const parsed = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -41,15 +42,16 @@ function parseArgs(argv) {
   };
 }
 
-function createAws({ executable, profile, region }) {
+export function createAws({ executable, profile, region, execute = execFileAsync }) {
   if (!path.isAbsolute(executable ?? "")) fail("NEEDO_AWS_CLI must be an absolute AWS CLI v2 path");
-  const json = async (args) => {
+  const json = async (args, { allowInvocationDelay = false } = {}) => {
     try {
-      const result = await execFileAsync(executable, [...args, "--profile", profile, "--region", region, "--output", "json", "--no-cli-pager"], {
+      const result = await execute(executable, [...args, "--profile", profile, "--region", region, "--output", "json", "--no-cli-pager"], {
         env: { ...process.env, AWS_CLI_AUTO_PROMPT: "off", AWS_PAGER: "" }, maxBuffer: 4 * 1024 * 1024
       });
       return result.stdout.trim() ? JSON.parse(result.stdout) : {};
-    } catch {
+    } catch (error) {
+      if (allowInvocationDelay && String(error?.stderr ?? "").includes("InvocationDoesNotExist")) return null;
       fail(`AWS operation failed: ${args[0]} ${args[1]}`);
     }
   };
@@ -67,7 +69,7 @@ function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolv
 
 async function waitForReadonlyCommand(aws, commandId, instanceId) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const invocation = await aws.json(["ssm", "get-command-invocation", "--command-id", commandId, "--instance-id", instanceId]);
+    const invocation = await aws.json(["ssm", "get-command-invocation", "--command-id", commandId, "--instance-id", instanceId], { allowInvocationDelay: true });
     if (invocation?.Status === "Success" && invocation?.ResponseCode === 0) {
       try {
         const result = JSON.parse(String(invocation.StandardOutputContent ?? "").trim());
@@ -105,12 +107,19 @@ async function verifyRegistrationDisabled(hostname) {
   return 40313;
 }
 
+export function requireAcceptedDeployment(deployment, target, accepted) {
+  const deploymentKeys = ["gate", "status", "timestamp", "accountId", "region", "hostname", "sourceRevision", "archiveSha256", "releaseObjectKey", "objectVersionId", "snapshotId", "instanceId", "commandId", "secretVersionCount", "applicationDeployed", "migrationRun", "seedRun", "dnsModified", "businessDataMutation"];
+  if (!deployment || typeof deployment !== "object" || Array.isArray(deployment) || JSON.stringify(Object.keys(deployment).sort()) !== JSON.stringify(deploymentKeys.sort())
+    || deployment.gate !== "aws-staging-application-deployment" || deployment.status !== "passed" || deployment.accountId !== target.accountId || deployment.region !== target.region || deployment.hostname !== accepted.hostname || deployment.sourceRevision !== target.sourceRevision || deployment.instanceId !== accepted.instanceId || deployment.applicationDeployed !== true || deployment.migrationRun !== true || deployment.seedRun !== false || deployment.dnsModified !== false || deployment.businessDataMutation !== true || deployment.secretVersionCount !== 1 || !/^[a-f0-9]{64}$/.test(deployment.archiveSha256 ?? "") || !/^[A-Za-z0-9._-]{1,1024}$/.test(deployment.objectVersionId ?? "") || !/^snap-[0-9a-f]{17}$/.test(deployment.snapshotId ?? "") || !/^[0-9a-f-]{36}$/.test(deployment.commandId ?? "")) fail("Application deployment evidence is not accepted for this revision");
+  if (deployment.releaseObjectKey !== `staging/releases/${deployment.sourceRevision}/${deployment.archiveSha256}.tar.gz`) fail("Application deployment evidence is not accepted for this revision");
+  return Object.freeze({ ...deployment });
+}
+
 async function collectLiveEnvironment(aws, target, environment, deployment) {
-  const resourceIds = environment?.resourceIds;
-  if (environment?.accountId !== target.accountId || environment?.region !== target.region || environment?.stack?.name !== "needo-staging-infrastructure" || typeof environment?.hostname !== "string" || !resourceIds) fail("Environment evidence is not an accepted staging target");
-  if (deployment?.gate !== "aws-staging-application-deployment" || deployment?.status !== "passed" || deployment?.sourceRevision !== target.sourceRevision || deployment?.applicationDeployed !== true) fail("Application deployment evidence is not accepted for this revision");
+  const accepted = requireAcceptedEnvironment(environment);
+  const approvedDeployment = requireAcceptedDeployment(deployment, target, accepted);
   const caller = await aws.json(["sts", "get-caller-identity"]);
-  const stack = await aws.json(["cloudformation", "describe-stacks", "--stack-name", environment.stack.name]);
+  const stack = await aws.json(["cloudformation", "describe-stacks", "--stack-name", accepted.stackName]);
   const instanceId = stackOutput(stack, "InstanceId");
   const volumeId = stackOutput(stack, "DataVolumeId");
   const releaseBucket = stackOutput(stack, "ReleaseBucketName");
@@ -118,12 +127,13 @@ async function collectLiveEnvironment(aws, target, environment, deployment) {
   const registered = await aws.json(["ssm", "describe-instance-information", "--filters", `Key=InstanceIds,Values=${instanceId}`]);
   const registrations = registered?.InstanceInformationList;
   const ssmOnline = Array.isArray(registrations) && registrations.length === 1 && registrations[0]?.InstanceId === instanceId && registrations[0]?.PingStatus === "Online";
+  if (instanceId !== accepted.instanceId || volumeId !== accepted.dataVolumeId || releaseBucket !== accepted.releaseBucketName || backupBucket !== accepted.backupBucketName) fail("Live stack outputs changed after environment acceptance");
   const activeReleaseRevision = await readActiveReleaseRevision(aws, instanceId);
-  const registrationCode = await verifyRegistrationDisabled(environment.hostname);
+  const registrationCode = await verifyRegistrationDisabled(accepted.hostname);
   return {
     accountId: caller?.Account, region: target.region, callerKind: String(caller?.Arn ?? "").includes(":assumed-role/") ? "assumed-role" : "other",
-    stackName: environment.stack.name, stackStatus: stack?.Stacks?.[0]?.StackStatus, instanceId, volumeId, releaseBucket, backupBucket,
-    releaseRevision: activeReleaseRevision, ssmOnline, registrationCode, applicationDeployment: { sourceRevision: deployment.sourceRevision, status: deployment.status }
+    stackName: accepted.stackName, stackStatus: stack?.Stacks?.[0]?.StackStatus, instanceId, volumeId, releaseBucket, backupBucket,
+    releaseRevision: activeReleaseRevision, ssmOnline, registrationCode, applicationDeployment: { sourceRevision: approvedDeployment.sourceRevision, status: approvedDeployment.status }
   };
 }
 
@@ -133,18 +143,21 @@ async function main() {
   if (sha256Hex(bundle) !== target.bundleSha256) fail("Bundle SHA-256 does not match the approved argument");
   const environment = JSON.parse(environmentBytes.toString("utf8"));
   const deployment = JSON.parse(deploymentBytes.toString("utf8"));
+  const accepted = requireAcceptedEnvironment(environment);
   const aws = createAws({ executable: process.env.NEEDO_AWS_CLI, profile: target.profile, region: target.region });
   const live = await collectLiveEnvironment(aws, target, environment, deployment);
   const evidence = await orchestrateStagingAccountSync({
     aws,
-    input: { ...target, bundleBytes: bundle.length, instanceId: environment.resourceIds.instanceId, volumeId: environment.resourceIds.dataVolumeId, releaseBucket: environment.resourceIds.releaseBucketName, backupBucket: environment.resourceIds.backupBucketName },
+    input: { ...target, bundleBytes: bundle.length, instanceId: accepted.instanceId, volumeId: accepted.dataVolumeId, releaseBucket: accepted.releaseBucketName, backupBucket: accepted.backupBucketName },
     localSha256: sha256Hex(bundle), live, timestamp: new Date().toISOString(),
     writeEvidence: (value) => writeRedactedEvidenceAtomic(accountSyncEvidencePath, value)
   });
   process.stdout.write(`${JSON.stringify({ gate: evidence.gate, status: evidence.status, sourceRevision: evidence.sourceRevision, evidenceFile: path.relative(repositoryRoot, accountSyncEvidencePath) })}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${JSON.stringify({ gate: "aws-staging-account-sync", status: "failed", reason: String(error?.message ?? "unknown error").slice(0, 240) })}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch(() => {
+    process.stderr.write(`${JSON.stringify({ gate: "aws-staging-account-sync", status: "failed" })}\n`);
+    process.exitCode = 1;
+  });
+}

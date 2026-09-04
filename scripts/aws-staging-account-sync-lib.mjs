@@ -71,18 +71,17 @@ export const buildHostCommand = ({ region, transferBucket, transferKey, transfer
   requireBucket(transferBucket); requireBucket(backupBucket);
   if (region !== APPROVED.region || !FULL_REVISION.test(sourceRevision ?? "") || !SHA256.test(bundleSha256 ?? "") || !VERSION_ID.test(transferVersionId ?? "") || transferKey !== transferObjectKey(sourceRevision, bundleSha256) || !new RegExp(`^staging/pre-account-sync/${sourceRevision}/[0-9]+-${bundleSha256}\\.sql\\.gz$`).test(backupKey ?? "")) fail("ACCOUNT_SYNC_COMMAND_VALUE_REJECTED");
   return [
-    "set -euo pipefail", "umask 077", "exec 9>/srv/needo/account-sync.lock", "flock -n 9",
-    "bundle_path=''", "backup_path=''", "transfer_deleted=0", `cleanup() { status=$?; trap - EXIT; rm -f -- \"$bundle_path\" \"$backup_path\"; if [ \"$transfer_deleted\" -ne 1 ]; then aws s3api delete-object --region ${shellQuote(region)} --bucket ${shellQuote(transferBucket)} --key ${shellQuote(transferKey)} --version-id ${shellQuote(transferVersionId)} --only-show-errors >/dev/null || true; fi; exit \"$status\"; }`, "trap cleanup EXIT",
+    "set -euo pipefail", "umask 077", "bundle_path=''", "backup_path=''", "transfer_deleted=0", `cleanup() { status=$?; trap - EXIT; rm -f -- \"$bundle_path\" \"$backup_path\"; if [ \"$transfer_deleted\" -ne 1 ]; then aws s3api delete-object --region ${shellQuote(region)} --bucket ${shellQuote(transferBucket)} --key ${shellQuote(transferKey)} --version-id ${shellQuote(transferVersionId)} --only-show-errors >/dev/null || true; fi; exit \"$status\"; }`, "trap cleanup EXIT", "exec 9>/srv/needo/account-sync.lock", "flock -n 9",
     "current_release=$(readlink -f /srv/needo/current)", "test -d \"$current_release\"", "manifest_path=\"$current_release/application-deployment.json\"", "test -f \"$manifest_path\"",
     `test "$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(x.sourceRevision||"")' "$manifest_path")" = ${shellQuote(sourceRevision)}`,
     "install -d -m 0700 /srv/needo/tmp", "bundle_path=$(mktemp /srv/needo/account-sync.XXXXXX.json.gz)",
-    `aws s3api get-object --region ${shellQuote(region)} --bucket ${shellQuote(transferBucket)} --key ${shellQuote(transferKey)} --version-id ${shellQuote(transferVersionId)} \"$bundle_path\" --only-show-errors`,
-    `printf '%s  %s\\n' ${shellQuote(bundleSha256)} \"$bundle_path\" | sha256sum --check`,
+    `aws s3api get-object --region ${shellQuote(region)} --bucket ${shellQuote(transferBucket)} --key ${shellQuote(transferKey)} --version-id ${shellQuote(transferVersionId)} \"$bundle_path\" --only-show-errors >/dev/null`,
+    `printf '%s  %s\\n' ${shellQuote(bundleSha256)} \"$bundle_path\" | sha256sum --check >/dev/null`,
     `backup_path=/srv/needo/tmp/pre-account-sync-$(date +%s)-${bundleSha256}.sql.gz`,
-    "docker compose --env-file /srv/needo/config/staging.env --project-name needo-staging --file \"$current_release/deploy/staging/docker-compose.yml\" exec -T mysql mysqldump --single-transaction --routines --triggers needo_staging | gzip -c > \"$backup_path\"",
+    "docker compose --env-file /srv/needo/config/staging.env --project-name needo-staging --file \"$current_release/deploy/staging/docker-compose.yml\" exec -T mysql sh -c 'MYSQL_PWD=\"$MYSQL_PASSWORD\" mysqldump --single-transaction --routines --triggers -u\"$MYSQL_USER\" \"$MYSQL_DATABASE\"' | gzip -c > \"$backup_path\"",
     "backup_sha256=$(sha256sum \"$backup_path\" | awk '{print $1}')",
-    `aws s3api put-object --region ${shellQuote(region)} --bucket ${shellQuote(backupBucket)} --key ${shellQuote(backupKey)} --body \"$backup_path\" --metadata sha256=\"$backup_sha256\" --only-show-errors >/dev/null`,
-    `import_summary=$(docker compose --env-file /srv/needo/config/staging.env --project-name needo-staging --file \"$current_release/deploy/staging/docker-compose.yml\" run --rm --no-deps --volume \"$bundle_path:/run/needo/account-sync.json.gz:ro\" backend npm run import:staging-test-accounts -- --input /run/needo/account-sync.json.gz --sha256 ${shellQuote(bundleSha256)})`,
+    `backup_version_id=$(aws s3api put-object --region ${shellQuote(region)} --bucket ${shellQuote(backupBucket)} --key ${shellQuote(backupKey)} --body \"$backup_path\" --metadata sha256=\"$backup_sha256\" --query VersionId --output text --only-show-errors)`, "test \"$backup_version_id\" != None", `aws s3api head-object --region ${shellQuote(region)} --bucket ${shellQuote(backupBucket)} --key ${shellQuote(backupKey)} --version-id \"$backup_version_id\" --query 'Metadata.sha256' --output text --only-show-errors | grep -Fx \"$backup_sha256\" >/dev/null`,
+    `import_summary=$(docker compose --env-file /srv/needo/config/staging.env --project-name needo-staging --file \"$current_release/deploy/staging/docker-compose.yml\" run --rm --no-deps --volume \"$bundle_path:/run/needo/account-sync.json.gz:ro\" backend node dist/staging/selective-account-import.cli.js --input /run/needo/account-sync.json.gz --sha256 ${shellQuote(bundleSha256)})`, "test \"$(printf '%s\\n' \"$import_summary\" | wc -l | tr -d ' ')\" = 1",
     `aws s3api delete-object --region ${shellQuote(region)} --bucket ${shellQuote(transferBucket)} --key ${shellQuote(transferKey)} --version-id ${shellQuote(transferVersionId)} --only-show-errors >/dev/null`, "transfer_deleted=1",
     "rm -f -- \"$bundle_path\" \"$backup_path\"", "bundle_path=''", "backup_path=''", "trap - EXIT", "printf '%s\\n' \"$import_summary\""
   ].join("\n");
@@ -121,9 +120,9 @@ export const waitForSnapshot = async (aws, snapshotId, volumeId, attempts = 80, 
   fail("ACCOUNT_SYNC_SNAPSHOT_STATE_REJECTED");
 };
 
-export const waitForCommand = async (aws, commandId, instanceId, attempts = 120, wait = delay) => {
+export const waitForCommand = async (aws, commandId, instanceId, attempts = 361, wait = delay) => {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const invocation = await aws.json(["ssm", "get-command-invocation", "--command-id", commandId, "--instance-id", instanceId]);
+    const invocation = await aws.json(["ssm", "get-command-invocation", "--command-id", commandId, "--instance-id", instanceId], { allowInvocationDelay: true });
     if (invocation?.Status === "Success" && invocation.ResponseCode === 0) return parseImportSummary(invocation.StandardOutputContent);
     if (invocation?.Status === "Success") fail("ACCOUNT_SYNC_SSM_STATUS_REJECTED");
     if (["Cancelled", "Cancelling", "Failed", "TimedOut", "Undeliverable", "Terminated"].includes(invocation?.Status)) fail("ACCOUNT_SYNC_SSM_STATUS_REJECTED");
@@ -140,9 +139,13 @@ export const orchestrateStagingAccountSync = async ({ aws, input, localSha256, l
   const operationTime = new Date(timestamp);
   if (operationTime.toISOString() !== timestamp) fail("ACCOUNT_SYNC_EVIDENCE_REJECTED");
   const transferKey = transferObjectKey(approvedInput.sourceRevision, approvedInput.bundleSha256);
-  const uploaded = await aws.json(["s3", "put-object", "--bucket", environment.releaseBucket, "--key", transferKey, "--body", `file://${approvedInput.bundlePath}`, "--metadata", `sha256=${approvedInput.bundleSha256},source-revision=${approvedInput.sourceRevision}`]);
+  const uploaded = await aws.json(["s3api", "put-object", "--bucket", environment.releaseBucket, "--key", transferKey, "--body", approvedInput.bundlePath, "--metadata", `sha256=${approvedInput.bundleSha256},source-revision=${approvedInput.sourceRevision}`]);
   if (!VERSION_ID.test(uploaded?.VersionId ?? "")) fail("ACCOUNT_SYNC_TRANSFER_REJECTED");
-  const transfer = validateUpload(await aws.json(["s3", "head-object", "--bucket", environment.releaseBucket, "--key", transferKey, "--version-id", uploaded.VersionId]), { ...approvedInput, bundleBytes, transferKey, versionId: uploaded.VersionId });
+  const deleteTransfer = async () => {
+    try { await aws.json(["s3api", "delete-object", "--bucket", environment.releaseBucket, "--key", transferKey, "--version-id", uploaded.VersionId]); } catch { /* best-effort compensating cleanup */ }
+  };
+  try {
+  const transfer = validateUpload(await aws.json(["s3api", "head-object", "--bucket", environment.releaseBucket, "--key", transferKey, "--version-id", uploaded.VersionId]), { ...approvedInput, bundleBytes, transferKey, versionId: uploaded.VersionId });
   const createdSnapshot = await aws.json(["ec2", "create-snapshot", "--volume-id", environment.volumeId, "--description", `NeeDo pre-account-sync ${approvedInput.sourceRevision}`, "--tag-specifications", `ResourceType=snapshot,Tags=[{Key=Project,Value=needo},{Key=Environment,Value=staging},{Key=Purpose,Value=pre-account-sync},{Key=SourceRevision,Value=${approvedInput.sourceRevision}]`]);
   if (createdSnapshot?.VolumeId !== environment.volumeId || !SNAPSHOT_ID.test(createdSnapshot?.SnapshotId ?? "")) fail("ACCOUNT_SYNC_SNAPSHOT_IDENTITY_REJECTED");
   const snapshot = await waitForSnapshot(aws, createdSnapshot.SnapshotId, environment.volumeId);
@@ -152,9 +155,12 @@ export const orchestrateStagingAccountSync = async ({ aws, input, localSha256, l
   const commandId = sent?.Command?.CommandId;
   if (!COMMAND_ID.test(commandId ?? "")) fail("ACCOUNT_SYNC_SSM_STATUS_REJECTED");
   const summary = await waitForCommand(aws, commandId, environment.instanceId);
-  const backup = await aws.json(["s3", "head-object", "--bucket", environment.backupBucket, "--key", backupKey]);
+  const backup = await aws.json(["s3api", "head-object", "--bucket", environment.backupBucket, "--key", backupKey]);
   if (!VERSION_ID.test(backup?.VersionId ?? "") || !SHA256.test(backup?.Metadata?.sha256 ?? "")) fail("ACCOUNT_SYNC_BACKUP_REJECTED");
   const evidence = createRedactedSyncEvidence({ timestamp, accountId: approvedInput.accountId, region: approvedInput.region, instanceId: environment.instanceId, dataVolumeId: environment.volumeId, sourceRevision: approvedInput.sourceRevision, bundleSha256: approvedInput.bundleSha256, bundleBytes, transferBucket: environment.releaseBucket, transferKey, transferVersionId: transfer.versionId, snapshotId: snapshot.snapshotId, backupBucket: environment.backupBucket, backupKey, backupVersionId: backup.VersionId, backupSha256: backup.Metadata.sha256, commandId, summary });
   await writeEvidence(evidence);
   return evidence;
+  } finally {
+    await deleteTransfer();
+  }
 };
