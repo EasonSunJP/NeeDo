@@ -295,6 +295,8 @@ describe("AWS Staging CloudFormation contract", () => {
     expect(bootstrap).toContain("https://amazoncloudwatch-agent.s3.amazonaws.com/assets/amazon-cloudwatch-agent.gpg");
     expect(bootstrap).toContain(`test \"$cloudwatch_agent_fingerprint\" = \"${fingerprint}\"`);
     expect(bootstrap).toContain('gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --verify');
+    expect(bootstrap).toContain("dnf install -y docker amazon-cloudwatch-agent curl-minimal gnupg2-minimal");
+    expect(bootstrap).not.toContain("dnf install -y docker amazon-cloudwatch-agent curl gnupg2");
     expect(bootstrap).toContain('dnf remove -y amazon-cloudwatch-agent');
     expect(verification).toContain(`cloudwatch_agent_minimum_version=${minimumVersion}`);
     expect(verification).toContain("sort -V");

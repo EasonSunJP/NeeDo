@@ -79,7 +79,7 @@ const bootstrapScript = [
   "cloudwatch_agent_minimum_version=1.300070.0",
   "cloudwatch_agent_distribution=https://amazoncloudwatch-agent-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/amazon_linux/arm64/latest",
   "cloudwatch_agent_key_url=https://amazoncloudwatch-agent.s3.amazonaws.com/assets/amazon-cloudwatch-agent.gpg",
-  "dnf install -y docker amazon-cloudwatch-agent curl gnupg2",
+  "dnf install -y docker amazon-cloudwatch-agent curl-minimal gnupg2-minimal",
   "cloudwatch_agent_version=\"$(rpm -q --qf '%{VERSION}' amazon-cloudwatch-agent)\"",
   "if test \"$(printf '%s\\n%s\\n' \"$cloudwatch_agent_minimum_version\" \"$cloudwatch_agent_version\" | sort -V | head -n 1)\" != \"$cloudwatch_agent_minimum_version\"; then",
   "  cloudwatch_agent_tmpdir=\"$(mktemp -d /var/tmp/needo-cloudwatch-agent.XXXXXX)\"",
