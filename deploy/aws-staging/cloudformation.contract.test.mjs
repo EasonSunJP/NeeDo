@@ -337,6 +337,7 @@ describe("AWS Staging CloudFormation contract", () => {
   it("targets both SSM documents only at EC2 instances", () => {
     for (const name of ["HostBootstrapDocument", "HostVerificationDocument"]) {
       expect(resourceBlock(name).match(/^      TargetType: \/AWS::EC2::Instance$/gm) ?? [], name).toHaveLength(1);
+      expect(resourceBlock(name).match(/^      UpdateMethod: NewVersion$/gm) ?? [], name).toHaveLength(1);
     }
     expect(resourceBlock("HostVerificationDocument")).not.toContain("        parameters:");
   });

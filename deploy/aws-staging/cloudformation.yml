@@ -763,6 +763,7 @@ Resources:
       DocumentFormat: YAML
       DocumentType: Command
       TargetType: /AWS::EC2::Instance
+      UpdateMethod: NewVersion
       Content:
         schemaVersion: "2.2"
         description: Prepare the NeeDo Staging host without deploying the application
@@ -924,6 +925,7 @@ Resources:
       DocumentFormat: YAML
       DocumentType: Command
       TargetType: /AWS::EC2::Instance
+      UpdateMethod: NewVersion
       Content:
         schemaVersion: "2.2"
         description: Verify the environment-only host without reading secrets or application data
