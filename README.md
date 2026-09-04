@@ -189,6 +189,21 @@ Migration `20260901232000_exchange_selective_exact_matching` is additive and bac
 
 This microstep does not implement quick-mode auto matching, manual close or half-fee settlement, bilateral cancellation after matching, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful adjusted match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep.
 
+### Exchange matched booking conversion
+
+`POST /api/v1/exchange/posts/:id/matching/bookings` converts every persisted matched participant into one independent `PENDING` Request order in one idempotent transaction. The command uses the matched quote, service and time snapshots, transfers each temporary participant reservation into formal slot capacity, replaces only ordinary unprotected pending orders for non-Black customers, and creates no service payment or Exchange publication-fee settlement.
+
+Run the rollback-contained local proof with:
+
+```bash
+cd backend
+ENV_FILE=.env.dev npm run check:exchange-booking-conversion-flow
+```
+
+Migration `20260903100000_exchange_matched_booking_conversion` is applied on the accepted local `needo_dev` database. The physical columns, unique and non-unique booking-order indexes, Restrict foreign key, participant booking-state check, Prisma migration record, and `exchange:matching:book-own` grants for `admin`, `customer`, and `merchant_owner` were reconciled directly. The rollback checker and two-connection concurrency proof both completed with zero marker users, posts, or audit rows left behind.
+
+Exchange-linked orders cannot use the generic cancel endpoint; bilateral cancellation and publication-fee handling remain later microsteps. Service payment, wallet settlement, reconciliation, and external payment are not part of this conversion.
+
 ### Exchange Test NDP Foundation
 
 Exchange fee work now has a single-wallet Test NDP foundation. Migration `20260830210000_exchange_test_ndp_foundation` adds server-authoritative account classification and an explicit `NDP | TEST_NDP` currency to the existing Wallet/Ledger, reconciliation, hold, and order-financial records; it does not create a second wallet or ledger system. `NDP` remains formally settleable. `TEST_NDP` is local/test value and is blocked from top-up, withdrawal, payout, external payment, and formal settlement/export paths.
