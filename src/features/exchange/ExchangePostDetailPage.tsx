@@ -471,7 +471,9 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("paymentInformation")}</h2>
-              <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{t("bookingPaymentDeferred")}</p>
+              <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">
+                {t(post.status === "matched" ? "matchedBookingAvailablePaymentDeferred" : "bookingPaymentDeferred")}
+              </p>
             </div>
             <Badge tone="green">{t("notEnabled")}</Badge>
           </div>

@@ -592,7 +592,7 @@ export function ExchangeReceivedClaims({
                     <a
                       aria-label={t("bookingViewOrder")}
                       className="focus-ring mt-1 inline-flex min-h-8 items-center rounded-full border border-[color:var(--client-line)] px-2.5 text-[10px] font-black text-[color:var(--client-text)]"
-                      href={getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}
+                      href={`#${getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}`}
                     >
                       {t("bookingViewOrder")}
                     </a>

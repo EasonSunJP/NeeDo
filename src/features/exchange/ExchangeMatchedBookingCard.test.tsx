@@ -55,7 +55,7 @@ describe("ExchangeMatchedBookingCard", () => {
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
 
     expect(document.body.textContent).toContain("ND501");
-    expect(document.body.querySelector<HTMLAnchorElement>('a[aria-label="查看订单"]')?.getAttribute("href")).toBe("/technician/orders/501");
+    expect(document.body.querySelector<HTMLAnchorElement>('a[aria-label="查看订单"]')?.getAttribute("href")).toBe("#/technician/orders/501");
     expect(document.body.textContent).not.toContain("ND502");
     expect(document.body.textContent).not.toContain("其他入选者");
   });

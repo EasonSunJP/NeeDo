@@ -508,7 +508,7 @@ describe("ExchangeReceivedClaims", () => {
     expect(createExchangeMatchingBookings).toHaveBeenCalledWith("41", { expectedVersion: 7 }, "exchange-match-select-0001");
     expect(getExchangeMatching).toHaveBeenCalledTimes(2);
     expect(document.body.querySelector('[data-action="create-exchange-bookings"]')).toBeNull();
-    expect(document.body.querySelector<HTMLAnchorElement>('a[aria-label="查看订单"]')?.getAttribute("href")).toBe("/orders/501");
+    expect(document.body.querySelector<HTMLAnchorElement>('a[aria-label="查看订单"]')?.getAttribute("href")).toBe("#/orders/501");
   });
 
   it("refreshes persisted matching state after a stale booking version without reporting a generic creation failure", async () => {
