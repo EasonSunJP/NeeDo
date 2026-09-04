@@ -29,8 +29,26 @@ describe("affiliate service completion reward acceptance script", () => {
     expect(source).toContain("error.wallet.insufficient_frozen");
     expect(source).toContain("commissionFrozenNdp: input.totalBudgetNdp");
     expect(source).toContain("platformFeeFrozenNdp: 0");
+    expect(source).toContain("booking.startService(");
+    expect(source).toContain("booking.endService(");
+    expect(source).toContain("booking.confirmCheckoutReceipt(");
+    expect(source).not.toContain(
+      'booking.transitionOrder(actor(customerUserId), bookingOrderId, "start")'
+    );
+    expect(source).not.toMatch(/booking\.transitionOrder\([^;]+"complete"\)/s);
     expect(source).toContain("completion rollback did not preserve order state");
     expect(source).toContain("marker cleanup left reward settlement rows behind");
+
+    for (const cleanup of [
+      "transaction.orderServiceEvent.deleteMany(",
+      "transaction.orderCheckout.deleteMany(",
+      "transaction.orderServiceSession.deleteMany(",
+      "transaction.technicianShopAffiliation.deleteMany(",
+      "transaction.technicianPerformanceSummary.deleteMany(",
+      "transaction.technicianProfile.deleteMany("
+    ]) {
+      expect(source).toContain(cleanup);
+    }
 
     const cleanupFoundations = source.lastIndexOf("deleteFormalTestUserFoundations(");
     const deleteShop = source.lastIndexOf("transaction.shop.deleteMany(");
