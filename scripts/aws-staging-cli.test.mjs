@@ -987,6 +987,16 @@ describe("AWS CLI adapter", () => {
     expect(execFileImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("passes the EC2 instance profile as the required scalar name", async () => {
+    const templateBody = await fs.readFile(
+      new URL("../deploy/aws-staging/cloudformation.yml", import.meta.url),
+      "utf8"
+    );
+
+    expect(templateBody).toMatch(/^      IamInstanceProfile: !Ref InstanceProfile$/m);
+    expect(templateBody).not.toMatch(/^      IamInstanceProfile:\r?\n        Name:/m);
+  });
+
   it("rejects configure wherever it appears before invoking the process runner", () => {
     const execFileImpl = vi.fn();
     const aws = createAwsCli({ profile: "p", region: "ap-northeast-1", execFileImpl });
