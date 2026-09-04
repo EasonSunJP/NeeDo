@@ -123,6 +123,46 @@ Never claim a database rollback from an application symlink switch. If a schema
 rollback is required, stop and use the pre-migration EBS snapshot and logical
 backup through a separately approved restore procedure.
 
+## Selective staging-account synchronization
+
+This is a separately approved, one-way staging operation. It accepts only a
+locally SHA-256-verified gzip bundle and an exact deployed revision. It first
+checks the accepted environment and application-deployment evidence, the live
+assumed role, CloudFormation resource identities, online SSM registration,
+active release manifest, and both disabled-registration endpoints. It then
+creates an EBS snapshot and a versioned logical backup before starting the
+importer.
+
+Run only from a clean release checkout, with an absolute AWS CLI v2 path in
+`NEEDO_AWS_CLI`:
+
+```sh
+node scripts/aws-staging-sync-test-accounts.mjs \
+  --profile needo-staging-bootstrap \
+  --account-id 430611185505 \
+  --region ap-southeast-2 \
+  --bundle /absolute/path/to/account-sync.json.gz \
+  --sha256 BUNDLE_SHA256 \
+  --source-revision FULL_GIT_REVISION
+```
+
+The host takes `/srv/needo/account-sync.lock`, confirms that the current
+release manifest is the requested revision, reads the exact versioned transfer
+object through a read-only bind mount, and emits only the import summary. The
+transfer object and host-local files are cleaned up; the versioned logical
+backup, completed snapshot, and redacted mode-`0600`
+`outputs/aws-staging/account-sync.json` evidence remain for recovery.
+
+### Account-sync recovery
+
+Recovery is a separately approved outage procedure, not a release rollback.
+Stop application writes and preserve the account-sync evidence first. Restore
+the matching pre-import logical backup, then verify the importer counts, keyed
+digests, orphan checks, registration-disabled responses, and readiness before
+allowing writes again. Use the EBS snapshot only if the logical restore cannot
+be validated; snapshot restoration has a broader outage and must not be
+combined with an unreviewed application or schema change.
+
 ## Evidence boundary
 
 `application-package.json`, `application-deployment.json`, and the final
