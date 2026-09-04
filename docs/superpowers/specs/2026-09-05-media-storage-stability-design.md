@@ -1,7 +1,7 @@
 # NeeDo 媒体存储稳定性与失败状态设计
 
 **Date:** 2026-09-05  
-**Status:** Approved direction; implementation pending design review  
+**Status:** Implemented on `codex/media-storage-stability`; authenticated page acceptance and main integration pending
 **Scope:** Step 13 IM/Social 媒体交付的一个可回滚微步骤。只处理跨 worktree 的稳定磁盘路径、现有文件恢复和前端失败状态；不在本步骤合并完整 IM 生命周期分支。
 
 ## 1. 目标
@@ -134,4 +134,3 @@ Social 在当前正式契约中没有媒体过期语义，因此只显示图片/
 - 本步骤没有数据库 migration、文件移动或文件删除；
 - 原媒体目录内容保持不变，因此回滚不会造成数据丢失；
 - 若共享目录配置异常，启动器必须在服务启动前失败，不得静默创建另一套权威目录。
-
