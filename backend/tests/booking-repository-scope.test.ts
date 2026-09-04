@@ -117,6 +117,245 @@ const createCancellationTransaction = () => {
   };
 };
 
+type PendingReplacementOrder = {
+  id: number;
+  customerUserId: number;
+  scheduleSlotId: number;
+  status: string;
+  deletedAt: null;
+  exchangeMatchParticipant: { id: number } | null;
+  cancelReason: string | null;
+  [key: string]: unknown;
+};
+type PendingReplacementSlot = ReturnType<typeof makeReplacementSlot>;
+type PendingReplacementHistory = Record<string, unknown>;
+
+type PendingReplacementHarnessState = {
+  orders: PendingReplacementOrder[];
+  slots: PendingReplacementSlot[];
+  statusHistory: PendingReplacementHistory[];
+  nextOrderId: number;
+};
+
+type SlotUpdateArgs = {
+  where: {
+    id: number;
+    bookedCount?: { gte?: number; lt?: number };
+    status?: PendingReplacementSlot["status"];
+  };
+  data: {
+    bookedCount?: { decrement?: number; increment?: number };
+    status?: PendingReplacementSlot["status"];
+  };
+};
+
+type BookingWhere = {
+  customerUserId?: number;
+  status?: string;
+  deletedAt?: null;
+  exchangeMatchParticipant?: { is: null };
+  id?: { in: number[] };
+};
+
+type BookingUpdateArgs = {
+  where: Required<Pick<BookingWhere, "customerUserId" | "status" | "deletedAt" | "id">> &
+    Pick<BookingWhere, "exchangeMatchParticipant">;
+  data: { status: string; cancelReason: string };
+};
+
+type BookingCreateArgs = {
+  data: {
+    scheduleSlotId: number;
+    statusHistory: { create: Record<string, unknown> };
+    [key: string]: unknown;
+  };
+};
+
+const clonePendingReplacementState = (state: PendingReplacementHarnessState) =>
+  structuredClone(state);
+
+const makePendingReplacementOrder = (
+  id: number,
+  scheduleSlotId: number,
+  exchangeMatchParticipant: { id: number } | null
+) => ({
+  ...makeTransitionOrderRecord("PENDING"),
+  id,
+  scheduleSlotId,
+  exchangeMatchParticipant,
+  deletedAt: null,
+  shop: { name: "LifeDance", ownerUserId: 202 },
+  fulfillmentAddressSnapshot: null
+});
+
+const makeReplacementSlot = (id: number, bookedCount: number, status: "AVAILABLE" | "BOOKED") => ({
+  id,
+  serviceId: 11,
+  technicianServiceId: null,
+  shopId: 16,
+  technicianProfileId: null,
+  startsAt: new Date("2026-10-01T06:00:00.000Z"),
+  endsAt: new Date("2026-10-01T07:00:00.000Z"),
+  capacity: 2,
+  bookedCount,
+  status,
+  deletedAt: null,
+  service: {
+    id: 11,
+    publicId: "svc-replacement-11",
+    categoryId: 7,
+    name: "肩颈调理",
+    description: "正式服务",
+    priceAmount: 8800,
+    currency: "JPY",
+    durationMinutes: 60,
+    createdAt: new Date("2026-09-01T00:00:00.000Z")
+  },
+  technicianService: null,
+  shop: { id: 16, name: "LifeDance", ownerUserId: 202, pricingMode: "MERCHANT" },
+  technicianProfile: null
+});
+
+const relationIsNull = (order: PendingReplacementOrder) => order.exchangeMatchParticipant == null;
+
+const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean } = {}) => {
+  let committed: PendingReplacementHarnessState = {
+    orders: [
+      makePendingReplacementOrder(501, 601, null),
+      makePendingReplacementOrder(502, 602, { id: 81 })
+    ],
+    slots: [
+      makeReplacementSlot(601, 1, "BOOKED"),
+      makeReplacementSlot(602, 1, "BOOKED"),
+      makeReplacementSlot(603, 0, "AVAILABLE")
+    ],
+    statusHistory: [],
+    nextOrderId: 701
+  };
+  let concurrentLinkApplied = false;
+
+  const transactionClient = (working: PendingReplacementHarnessState) => ({
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+    customerProfile: {
+      findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
+    },
+    shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
+    scheduleSlot: {
+      findFirst: jest.fn(
+        async ({ where }: { where: { id: number } }) =>
+          working.slots.find((slot) => slot.id === where.id) ?? null
+      ),
+      updateMany: jest.fn(async ({ where, data }: SlotUpdateArgs) => {
+        const slot = working.slots.find((candidate) => candidate.id === where.id);
+        if (!slot || slot.deletedAt !== null) return { count: 0 };
+        if (where.bookedCount?.gte !== undefined && slot.bookedCount < where.bookedCount.gte) {
+          return { count: 0 };
+        }
+        if (where.bookedCount?.lt !== undefined && slot.bookedCount >= where.bookedCount.lt) {
+          return { count: 0 };
+        }
+        if (where.status && slot.status !== where.status) return { count: 0 };
+        if (data.bookedCount?.decrement) slot.bookedCount -= data.bookedCount.decrement;
+        if (data.bookedCount?.increment) slot.bookedCount += data.bookedCount.increment;
+        if (data.status) slot.status = data.status;
+        return { count: 1 };
+      })
+    },
+    bookingOrder: {
+      findMany: jest.fn(async ({ where }: { where: BookingWhere }) => {
+        if (where.customerUserId !== undefined) {
+          const selected = working.orders
+            .filter(
+              (order) =>
+                order.customerUserId === where.customerUserId &&
+                order.status === where.status &&
+                order.deletedAt === where.deletedAt &&
+                (!where.exchangeMatchParticipant || relationIsNull(order))
+            )
+            .map((order) => structuredClone(order));
+          if (options.linkAfterSelection && !concurrentLinkApplied && selected.length > 0) {
+            concurrentLinkApplied = true;
+            const targetId = selected[0].id;
+            const committedTarget = committed.orders.find((order) => order.id === targetId)!;
+            const workingTarget = working.orders.find((order) => order.id === targetId)!;
+            committedTarget.exchangeMatchParticipant = { id: 82 };
+            workingTarget.exchangeMatchParticipant = { id: 82 };
+          }
+          return selected;
+        }
+        const ids = where.id?.in;
+        if (ids) {
+          return working.orders
+            .filter((order) => ids.includes(order.id) && order.deletedAt === null)
+            .map((order) => structuredClone(order));
+        }
+        return [];
+      }),
+      findFirst: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn(async ({ where, data }: BookingUpdateArgs) => {
+        const matched = working.orders.filter(
+          (order) =>
+            where.id.in.includes(order.id) &&
+            order.customerUserId === where.customerUserId &&
+            order.status === where.status &&
+            order.deletedAt === where.deletedAt &&
+            (!where.exchangeMatchParticipant || relationIsNull(order))
+        );
+        for (const order of matched) {
+          order.status = data.status;
+          order.cancelReason = data.cancelReason;
+        }
+        return { count: matched.length };
+      }),
+      create: jest.fn(async ({ data }: BookingCreateArgs) => {
+        const slot = working.slots.find((candidate) => candidate.id === data.scheduleSlotId)!;
+        const order = {
+          ...makePendingReplacementOrder(working.nextOrderId++, data.scheduleSlotId, null),
+          ...data,
+          id: working.nextOrderId - 1,
+          service: slot.service,
+          technicianService: null,
+          shop: slot.shop,
+          technicianProfile: null,
+          statusHistory: [
+            {
+              id: 1,
+              bookingOrderId: working.nextOrderId - 1,
+              ...data.statusHistory.create,
+              reason: null,
+              createdAt: new Date("2026-09-03T00:00:00.000Z")
+            }
+          ]
+        };
+        working.orders.push(order);
+        return structuredClone(order);
+      })
+    },
+    orderStatusHistory: {
+      createMany: jest.fn(async ({ data }: { data: PendingReplacementHistory[] }) => {
+        working.statusHistory.push(...structuredClone(data));
+        return { count: data.length };
+      })
+    }
+  });
+
+  const client = {
+    $transaction: jest.fn(
+      async (callback: (tx: ReturnType<typeof transactionClient>) => unknown) => {
+        const working = clonePendingReplacementState(committed);
+        const result = await callback(transactionClient(working));
+        committed = working;
+        return result;
+      }
+    )
+  };
+
+  return {
+    client,
+    state: () => clonePendingReplacementState(committed)
+  };
+};
+
 describe("BookingRepository order list scope", () => {
   it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
@@ -388,6 +627,103 @@ describe("BookingRepository order list scope", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("replaces only the ordinary pending order while retaining the Exchange-linked pending order", async () => {
+    const harness = createPendingReplacementHarness();
+    const repository = new BookingRepository(harness.client as never);
+    const invalidateSupersededAffiliate = jest.fn().mockResolvedValue(undefined);
+
+    const result = await repository.createBooking(
+      {
+        customerUserId: 101,
+        serviceId: 11,
+        scheduleSlotId: 603,
+        fulfillmentMode: "store"
+      },
+      { invalidateSupersededAffiliate }
+    );
+
+    expect(result).toMatchObject({
+      order: { id: 701, status: "pending", scheduleSlotId: 603 },
+      supersededOrders: [{ order: { id: 501, status: "cancelled" } }]
+    });
+    expect(harness.state()).toMatchObject({
+      orders: expect.arrayContaining([
+        expect.objectContaining({ id: 501, status: "CANCELLED" }),
+        expect.objectContaining({
+          id: 502,
+          status: "PENDING",
+          exchangeMatchParticipant: { id: 81 }
+        }),
+        expect.objectContaining({ id: 701, status: "PENDING", scheduleSlotId: 603 })
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({ id: 601, bookedCount: 0, status: "AVAILABLE" }),
+        expect.objectContaining({ id: 602, bookedCount: 1, status: "BOOKED" }),
+        expect.objectContaining({ id: 603, bookedCount: 1, status: "AVAILABLE" })
+      ]),
+      statusHistory: [
+        expect.objectContaining({
+          bookingOrderId: 501,
+          fromStatus: "PENDING",
+          toStatus: "CANCELLED",
+          reason: "superseded_by_new_pending_order"
+        })
+      ]
+    });
+    expect(invalidateSupersededAffiliate).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingOrderId: 501, actorUserId: 101 })
+    );
+  });
+
+  it("rolls back all local replacement writes when a selected pending order gains an Exchange link", async () => {
+    const harness = createPendingReplacementHarness({ linkAfterSelection: true });
+    const repository = new BookingRepository(harness.client as never);
+    const invalidateSupersededAffiliate = jest.fn().mockResolvedValue(undefined);
+    const prepareAffiliate = jest.fn();
+    const persistAffiliate = jest.fn();
+
+    await expect(
+      repository.createBooking(
+        {
+          customerUserId: 101,
+          serviceId: 11,
+          scheduleSlotId: 603,
+          fulfillmentMode: "store"
+        },
+        {
+          invalidateSupersededAffiliate,
+          prepareAffiliate,
+          persistAffiliate
+        }
+      )
+    ).rejects.toThrow("error.booking.pending_replacement_conflict");
+
+    expect(harness.state()).toMatchObject({
+      orders: expect.arrayContaining([
+        expect.objectContaining({
+          id: 501,
+          status: "PENDING",
+          exchangeMatchParticipant: { id: 82 }
+        }),
+        expect.objectContaining({
+          id: 502,
+          status: "PENDING",
+          exchangeMatchParticipant: { id: 81 }
+        })
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({ id: 601, bookedCount: 1, status: "BOOKED" }),
+        expect.objectContaining({ id: 602, bookedCount: 1, status: "BOOKED" }),
+        expect.objectContaining({ id: 603, bookedCount: 0, status: "AVAILABLE" })
+      ]),
+      statusHistory: []
+    });
+    expect(harness.state().orders).toHaveLength(2);
+    expect(invalidateSupersededAffiliate).not.toHaveBeenCalled();
+    expect(prepareAffiliate).not.toHaveBeenCalled();
+    expect(persistAffiliate).not.toHaveBeenCalled();
   });
 
   it("applies customer, shop, and technician identity filters to Prisma", async () => {
@@ -687,12 +1023,48 @@ describe("BookingRepository order list scope", () => {
         technicianProfileId: 47,
         estimatedStartsAt: { lt: current.endsAt },
         estimatedEndsAt: { gt: current.startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }
     });
     expect(updateMany).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("rejects generic cancellation of an Exchange-linked order before all writes", async () => {
+    const current = {
+      ...makeTransitionOrderRecord("PENDING"),
+      exchangeMatchParticipant: { id: 71 }
+    };
+    const orderUpdate = jest.fn();
+    const slotUpdate = jest.fn();
+    const historyCreate = jest.fn();
+    const tx = {
+      bookingOrder: {
+        findFirst: jest.fn().mockResolvedValue(current),
+        updateMany: orderUpdate
+      },
+      scheduleSlot: { updateMany: slotUpdate },
+      orderStatusHistory: { create: historyCreate }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrderWithScheduleGuard({
+        id: 701,
+        actorUserId: 101,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        reason: "changed mind"
+      })
+    ).resolves.toEqual({ outcome: "exchange_cancellation_required" });
+
+    expect(orderUpdate).not.toHaveBeenCalled();
+    expect(slotUpdate).not.toHaveBeenCalled();
+    expect(historyCreate).not.toHaveBeenCalled();
   });
 
   it("merges public performance revisions into a stable timeline without exposing internal notes", async () => {
@@ -794,5 +1166,49 @@ describe("BookingRepository order list scope", () => {
         })
       })
     );
+  });
+
+  it("projects only a structurally valid fulfillment address snapshot", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("PENDING"),
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: 99,
+        privateNote: "do not expose"
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(order) }
+    } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    });
+  });
+
+  it("omits fulfillment addresses from non-detail order list projections", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("PENDING"),
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{ fulfillmentAddressSnapshot: null }]
+    });
   });
 });

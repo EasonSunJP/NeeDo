@@ -139,6 +139,7 @@ export const EXCHANGE_PERMISSIONS = {
   claimWithdrawOwn: "exchange:claims:withdraw-own",
   matchingReadOwn: "exchange:matching:read-own",
   matchingSelectOwn: "exchange:matching:select-own",
+  matchingBookOwn: "exchange:matching:book-own",
   commentList: "exchange:comments:list",
   commentCreate: "exchange:comments:create",
   likeWrite: "exchange:likes:write",
@@ -1807,6 +1808,13 @@ export const SYSTEM_PERMISSIONS = [
     "为本人发布的选配需求选择准确人数的有效抢单"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.matchingBookOwn,
+    "创建匹配预约",
+    "api",
+    "exchange",
+    "将本人已匹配的需求原子转换为正式待接单预约"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.commentList,
     "需求情报评论列表",
     "api",
@@ -1882,10 +1890,15 @@ const EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimWithdrawOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
+const EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES = [
+  EXCHANGE_PERMISSIONS.matchingReadOwn
+] as const satisfies readonly SystemPermissionCode[];
+
 const EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimListOwnedRequest,
-  EXCHANGE_PERMISSIONS.matchingReadOwn,
-  EXCHANGE_PERMISSIONS.matchingSelectOwn
+  ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
+  EXCHANGE_PERMISSIONS.matchingSelectOwn,
+  EXCHANGE_PERMISSIONS.matchingBookOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [
@@ -2328,6 +2341,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
@@ -2350,6 +2364,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",

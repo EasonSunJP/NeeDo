@@ -83,6 +83,7 @@
     "check:formal-exchange-test": "tsx scripts/check-formal-exchange-test.ts",
     "check:exchange-selective-claim-flow": "tsx scripts/check-exchange-selective-claim-flow.ts",
     "check:exchange-selective-matching-flow": "tsx scripts/check-exchange-selective-matching-flow.ts",
+    "check:exchange-booking-conversion-flow": "tsx scripts/check-exchange-booking-conversion-flow.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",

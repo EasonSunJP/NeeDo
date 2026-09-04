@@ -49,6 +49,7 @@ const order = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
   serviceNameSnapshot: "Aroma 60",
   servicePriceSnapshot: "10000.00",
   serviceDurationSnapshot: 60,
+  fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
   shopName: "Aoyama Studio",
   technicianName: "Mika",

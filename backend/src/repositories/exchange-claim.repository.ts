@@ -216,6 +216,7 @@ export class ExchangeClaimRepository {
         WHERE matched_participant.\`technician_profile_id\` = slot.\`technician_profile_id\`
           AND matched_participant.\`estimated_starts_at\` < slot.\`ends_at\`
           AND matched_participant.\`estimated_ends_at\` > slot.\`starts_at\`
+          AND matched_participant.\`active_reservation_key\` IS NOT NULL
           AND matched_participant.\`deleted_at\` IS NULL
       )`,
       Prisma.sql`NOT EXISTS (
@@ -662,6 +663,7 @@ export class ExchangeClaimRepository {
         technicianProfileId,
         estimatedStartsAt: { lt: endsAt },
         estimatedEndsAt: { gt: startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }

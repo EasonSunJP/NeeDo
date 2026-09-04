@@ -1049,7 +1049,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           ownerView &&
           status !== "withdrawn" &&
           status !== "expired" &&
-          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE
+          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
+        canViewMatching: ownerView || matchedParticipantView
       },
       ...(priority ? { priority } : {}),
       demand,

@@ -2,6 +2,43 @@ import { ConversationAccessPolicy } from "@prisma/client";
 import { logger } from "../src/config/logger";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 import { RealtimeService } from "../src/services/realtime.service";
+import type { ExchangeCommittedNotification } from "../src/types/exchange-booking-conversion.types";
+
+describe("RealtimeService committed Exchange notifications", () => {
+  it("publishes already-committed notification rows without inserting them again", async () => {
+    const repository = { createOrderStatusNotifications: jest.fn() };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+    const createdAt = new Date("2026-09-03T01:02:03.000Z");
+    const notifications: ExchangeCommittedNotification[] = [
+      {
+        id: 701,
+        recipientUserId: 51,
+        recipientIdentityId: 510,
+        actorUserId: 41,
+        actorIdentityId: 410,
+        type: "orderStatus",
+        title: "exchange.booking.created",
+        body: "ND501",
+        payload: { orderId: 501 },
+        readAt: null,
+        createdAt
+      }
+    ];
+
+    await service.publishCommittedNotifications(notifications);
+
+    expect(repository.createOrderStatusNotifications).not.toHaveBeenCalled();
+    expect(eventGateway.publish).toHaveBeenCalledWith({
+      id: expect.any(String),
+      type: "notification.created",
+      recipientUserId: 51,
+      recipientIdentityId: 510,
+      payload: notifications[0],
+      createdAt: createdAt.toISOString()
+    });
+  });
+});
 
 describe("RealtimeRepository message-send eligibility", () => {
   const createFixture = ({

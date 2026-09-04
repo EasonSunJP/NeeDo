@@ -193,6 +193,25 @@ Migration `20260901232000_exchange_selective_exact_matching` is additive and bac
 
 This microstep does not implement quick-mode auto matching, manual close or half-fee settlement, bilateral cancellation after matching, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful adjusted match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep.
 
+### Exchange matched booking conversion
+
+`POST /api/v1/exchange/posts/:id/matching/bookings` converts every persisted matched participant into one independent `PENDING` Request order in one idempotent transaction. The command uses the matched quote, service and time snapshots, transfers each temporary participant reservation into formal slot capacity, replaces only ordinary unprotected pending orders for non-Black customers, and creates no service payment or Exchange publication-fee settlement.
+
+Run the rollback-contained local proof with:
+
+```bash
+cd backend
+ENV_FILE=.env.dev npm run check:exchange-booking-conversion-flow
+```
+
+Migration `20260903100000_exchange_matched_booking_conversion` is applied on the accepted local `needo_dev` database. The physical columns, unique and non-unique booking-order indexes, Restrict foreign key, participant booking-state check, Prisma migration record, and `exchange:matching:book-own` grants for `admin`, `customer`, and `merchant_owner` were reconciled directly. The rollback checker and two-connection concurrency proof both completed with zero marker users, posts, or audit rows left behind.
+
+Local formal-browser acceptance used the isolated `3100/3101/3102/5181` runtime and the persisted Admin2 Demand `62`. After the fixture was moved to a conflict-free future slot, the owner created Request order `ND202609042208537783` through the UI, reloaded the post and order-detail pages, and replayed the exact persisted idempotency key without creating a duplicate. Database reconciliation confirmed one `PENDING` order, one initial status-history row, transferred slot capacity, the participant booking link, one provider notification, and no `OrderFinancial` row. The generic cancellation endpoint remained blocked, while the matched provider could read only its own participant result. Native order links now use `#/orders/:id` and `#/technician/orders/:id`, keeping navigation inside the existing HashRouter. Mobile acceptance at 440 px and 320 px found no horizontal overflow or console errors. This evidence is local only; no production migration, deployment, or push was performed.
+
+Exchange-linked orders cannot use the generic cancel endpoint; bilateral cancellation and publication-fee handling remain later microsteps. Service payment, wallet settlement, reconciliation, and external payment are not part of this conversion.
+
+The verified conversion is now merged into local `main`. See [the 2026-09-05 main acceptance record](docs/verification/2026-09-05-exchange-booking-main-acceptance.md) for complete regression counts, owner/provider/unauthorized browser checks, and the `5180` runtime proof.
+
 ### Exchange Test NDP Foundation
 
 Exchange fee work now has a single-wallet Test NDP foundation. Migration `20260830210000_exchange_test_ndp_foundation` adds server-authoritative account classification and an explicit `NDP | TEST_NDP` currency to the existing Wallet/Ledger, reconciliation, hold, and order-financial records; it does not create a second wallet or ledger system. `NDP` remains formally settleable. `TEST_NDP` is local/test value and is blocked from top-up, withdrawal, payout, external payment, and formal settlement/export paths.

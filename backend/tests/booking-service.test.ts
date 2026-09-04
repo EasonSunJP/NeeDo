@@ -108,6 +108,7 @@ const makeOrder = (
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
   serviceSnapshot: null,
+  fulfillmentAddressSnapshot: null,
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
   priceAmount: "8800.00",
@@ -259,6 +260,30 @@ describe("BookingService state machine", () => {
       statusCode: 409
     });
     expect(repository.transitionOrder).not.toHaveBeenCalled();
+  });
+
+  it("requires the Exchange cancellation protocol before any fallback transition or settlement", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrderWithScheduleGuard = jest
+      .fn()
+      .mockResolvedValue({ outcome: "exchange_cancellation_required" });
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn(),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const service = new BookingService(repository, ledgerService);
+
+    await expect(service.transitionOrder(actor, 1, "cancel", "changed mind")).rejects.toMatchObject(
+      {
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      }
+    );
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+    expect(ledgerService.releaseBookingHold).not.toHaveBeenCalled();
   });
 
   it("derives technician scope for a single schedule slot", async () => {
@@ -655,6 +680,36 @@ describe("BookingService state machine", () => {
         { ip: "127.0.0.1" }
       )
     ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+  });
+
+  it("returns the sanitized home address only to authorized owner and provider actors", async () => {
+    const order = {
+      ...makeOrder("pending"),
+      fulfillmentMode: "home" as const,
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    };
+    const service = new BookingService(createRepository(order));
+    const providerActor = {
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop" as const,
+      currentIdentityScopeId: 1
+    };
+
+    await expect(service.getOrder(actor, 1)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
+    });
+    await expect(service.getOrder(providerActor, 1)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
+    });
+    await expect(service.getOrder({ userId: 99, roles: ["customer"] }, 1)).rejects.toMatchObject({
+      statusCode: 404
+    });
   });
 
   it("hides other customers' orders from customer actors", async () => {
