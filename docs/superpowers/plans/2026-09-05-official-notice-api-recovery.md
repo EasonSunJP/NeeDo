@@ -51,8 +51,10 @@ Implementation commit `db914697` was combined with local main `0d3e8fd3` by merg
 backend lint/build. Formatting was reconciled with main without changing unrelated
 behavior. The local MySQL checker also passed concurrent notice/inbox reads with
 one shared timestamp and one audit after the primary-key lock correction.
-No pending DB migration was applied by this task. Local-main fast-forward is the
-remaining Git integration operation after this evidence commit, not a release.
+No pending DB migration was applied by this task. Local main was fast-forwarded
+to `e39e014d`. The main checkout then passed the post-merge transaction/runtime/
+route-ownership smoke gate: 3 suites / 16 tests. This is a local integration, not
+a GitHub push, runtime/browser acceptance or online release.
 
 No frontend, merchant issuer migration, live runtime restart, GitHub push or online
 deployment is included in this recovery slice. Remaining product work is listed
