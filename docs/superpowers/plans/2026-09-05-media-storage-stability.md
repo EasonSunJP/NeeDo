@@ -8,7 +8,11 @@
 
 **Tech Stack:** Node.js 22, TypeScript, React 19, Vite, Vitest, Jest, Express.
 
-## Execution record (2026-09-05)
+## Current result
+
+The media-delivery repair is integrated into local main and active on the standard ports. Authenticated original-chat and Social-post acceptance passed, including mobile layout, image viewers, voice playback, and a real failed-then-restored media retry. See [local main acceptance](../../verification/2026-09-05-media-storage-main-acceptance.md). Remote publication and the separate expiry/cache lifecycle work are not included.
+
+## Initial isolated verification (2026-09-05, historical)
 
 - Implementation: `ac3c11c7` on `codex/media-storage-stability`. Tasks 1-4 were committed together as one reversible media-delivery microstep, rather than the suggested per-task commits below.
 - RED/GREEN observed for the missing resolver, production relative-path rejection, and IM/Social failure/retry rendering. Focused tests were added in `components.media.test.tsx` and `media-failure.test.tsx` rather than enlarging the pre-existing test files suggested below.
@@ -22,7 +26,7 @@
 - Main integration, standard-port activation, remote push and deployment were NOT performed. Another task restarted standard-port services during verification; their running state is not proof of this branch's fix.
 - Important contract boundary: current formal API has no authoritative ordinary-media-expiry projection. Sender-supplied `ext.mediaState` is explicitly stripped. The expired renderer is compatibility groundwork only; mapping authoritative expiry and encrypted opened-media caching remain the separately approved lifecycle follow-up. HTTP 404, network errors and age never synthesize expiry.
 
-The remaining unchecked browser acceptance step must be completed with the user's authenticated session before claiming full acceptance.
+The initial pending authenticated acceptance was subsequently completed on local main; see the current result above. Expired rendering is covered by component tests, not a new authoritative expiry API.
 
 ### Integration preflight (2026-09-05)
 
@@ -460,9 +464,9 @@ Start this branch on free nonstandard ports only for pre-integration verificatio
 
 Read the previously identified IM image, 15-second voice, and two Social image URLs from the formal database without mutating rows. Request each through the isolated backend and frontend proxy; expect HTTP 200 and the stored MIME type. Request an unknown valid hash; expect HTTP 404.
 
-- [ ] **Step 4: Perform browser acceptance**
+- [x] **Step 4: Perform browser acceptance for the current delivery contract**
 
-Open the original conversation and Social post using the formal authenticated session. Confirm the existing images render, the voice keeps the 15-second duration and plays, the generic failure fixture offers retry, and an explicit `mediaState=expired` fixture displays the expired placeholder. Inspect console errors and mobile overflow.
+Open the original conversation and Social post using the formal authenticated session. Confirm the existing images render, the voice keeps the 15-second label and plays, and failed media offers retry. Inspect console errors and mobile overflow. Acceptance used the existing older 10-second voice failure: its verified original bytes were copied into shared storage without moving the source, then the existing retry button recovered playback without a page refresh. Explicit `mediaState=expired` rendering remains component-tested because the current formal API has no authoritative ordinary-media-expiry projection; no fake expired record/API was added.
 
 - [x] **Step 5: Review diff and commit any verification-only correction**
 
