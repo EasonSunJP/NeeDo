@@ -865,6 +865,22 @@ Resources:
                   cloudwatch_agent_distribution=https://amazoncloudwatch-agent-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/amazon_linux/arm64/latest
                   cloudwatch_agent_key_url=https://amazoncloudwatch-agent.s3.amazonaws.com/assets/amazon-cloudwatch-agent.gpg
                   dnf install -y docker amazon-cloudwatch-agent curl-minimal gnupg2-minimal
+                  compose_version=5.5.1
+                  compose_sha256=732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7
+                  compose_url=https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-aarch64
+                  compose_plugin=/usr/local/lib/docker/cli-plugins/docker-compose
+                  compose_installed_version="$(docker compose version --short 2>/dev/null || true)"
+                  if test "$compose_installed_version" != "$compose_version"; then
+                    compose_tmp="$(mktemp /var/tmp/needo-docker-compose.XXXXXX)"
+                    trap 'rm -f "$compose_tmp"' EXIT
+                    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location "$compose_url" --output "$compose_tmp"
+                    printf '%s  %s\n' "$compose_sha256" "$compose_tmp" | sha256sum -c -
+                    install -d -m 0755 "$(dirname "$compose_plugin")"
+                    install -m 0755 "$compose_tmp" "$compose_plugin"
+                    rm -f "$compose_tmp"
+                    trap - EXIT
+                  fi
+                  test "$(docker compose version --short)" = "$compose_version"
                   cloudwatch_agent_version="$(rpm -q --qf '%{VERSION}' amazon-cloudwatch-agent)"
                   if test "$(printf '%s\n%s\n' "$cloudwatch_agent_minimum_version" "$cloudwatch_agent_version" | sort -V | head -n 1)" != "$cloudwatch_agent_minimum_version"; then
                     cloudwatch_agent_tmpdir="$(mktemp -d /var/tmp/needo-cloudwatch-agent.XXXXXX)"
@@ -944,6 +960,8 @@ Resources:
                   systemctl is-active --quiet amazon-ssm-agent
                   systemctl is-active --quiet docker
                   systemctl is-active --quiet amazon-cloudwatch-agent
+                  compose_version=5.5.1
+                  test "$(docker compose version --short)" = "$compose_version"
                   cloudwatch_agent_minimum_version=1.300070.0
                   cloudwatch_agent_version="$(rpm -q --qf '%{VERSION}' amazon-cloudwatch-agent)"
                   test "$(printf '%s\n%s\n' "$cloudwatch_agent_minimum_version" "$cloudwatch_agent_version" | sort -V | head -n 1)" = "$cloudwatch_agent_minimum_version"

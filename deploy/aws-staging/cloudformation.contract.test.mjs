@@ -303,6 +303,25 @@ describe("AWS Staging CloudFormation contract", () => {
     expect(verification).toContain("sort -V");
   });
 
+  it("installs the pinned ARM64 Docker Compose plugin with its release digest", () => {
+    const bootstrap = resourceBlock("HostBootstrapDocument");
+    const verification = resourceBlock("HostVerificationDocument");
+    const composeVersion = "5.5.1";
+    const composeSha256 = "732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7";
+    const composeUrl = `https://github.com/docker/compose/releases/download/v${composeVersion}/docker-compose-linux-aarch64`;
+
+    expect(bootstrap).toContain(`compose_version=${composeVersion}`);
+    expect(bootstrap).toContain(`compose_sha256=${composeSha256}`);
+    expect(bootstrap).toContain(`compose_url=${composeUrl}`);
+    expect(bootstrap).toContain("compose_plugin=/usr/local/lib/docker/cli-plugins/docker-compose");
+    expect(bootstrap).toContain("sha256sum -c -");
+    expect(bootstrap).toContain('install -m 0755 "$compose_tmp" "$compose_plugin"');
+    expect(bootstrap).toContain('test "$(docker compose version --short)" = "$compose_version"');
+    expect(bootstrap).not.toMatch(/docker\/compose\/releases\/latest/);
+    expect(verification).toContain(`compose_version=${composeVersion}`);
+    expect(verification).toContain('test "$(docker compose version --short)" = "$compose_version"');
+  });
+
   it("defines the exact alarm metrics, thresholds, dimensions, and SNS actions", () => {
     const alarms = {
       StatusCheckFailedAlarm: ["AWS/EC2", "StatusCheckFailed", "Maximum", "1", "missing", ["- Name: InstanceId", "Value: !Ref Instance"]],
@@ -364,7 +383,7 @@ describe("AWS Staging CloudFormation contract", () => {
     expect([...resources.matchAll(/^    Type: AWS::SSM::Document$/gm)]).toHaveLength(2);
     expect(resourceBlock("HostBootstrapDocument")).toContain("/srv/needo/media/customer-avatars");
     expect(resourceBlock("HostBootstrapDocument")).toContain("findmnt");
-    expect(source).not.toMatch(/docker compose|prisma|seed|migrate deploy|certbot|nginx|Route53|AWS::Route53/i);
+    expect(source).not.toMatch(/docker compose (?:build|run|up|down)|prisma|seed|migrate deploy|certbot|nginx|Route53|AWS::Route53/i);
   });
 
   it("contains no forbidden infrastructure resource types", () => {
