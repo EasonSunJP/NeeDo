@@ -54,9 +54,7 @@ export const serviceIncomeReportBodySchema = z
       return;
     }
     if (
-      input.baseServiceAmountJpy! +
-        input.extensionAmountJpy! +
-        input.nominationChargeAmountJpy! !==
+      input.baseServiceAmountJpy! + input.extensionAmountJpy! + input.nominationChargeAmountJpy! !==
       input.serviceAmountJpy
     ) {
       context.addIssue({

@@ -95,9 +95,7 @@ export class RealtimeController {
   public sendContactCard = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
     const body = contactCardSendBodySchema.parse(request.body);
-    const idempotencyKey = contactCardIdempotencyKeySchema.parse(
-      request.get("Idempotency-Key")
-    );
+    const idempotencyKey = contactCardIdempotencyKeySchema.parse(request.get("Idempotency-Key"));
     return this.service.sendContactCard(
       getAuthenticatedAccess(response),
       params.conversationId,
@@ -209,10 +207,7 @@ export class RealtimeController {
 
   public hideConversation = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
-    return this.service.hideConversation(
-      getAuthenticatedAccess(response),
-      params.conversationId
-    );
+    return this.service.hideConversation(getAuthenticatedAccess(response), params.conversationId);
   });
 
   public clearConversationMessages = this.createHandler((request, response) => {
@@ -244,11 +239,7 @@ export class RealtimeController {
 
   public blockContact = this.createHandler((request, response) => {
     const params = contactIdParamSchema.parse(request.params);
-    return this.service.setContactBlocked(
-      getAuthenticatedAccess(response),
-      params.contactId,
-      true
-    );
+    return this.service.setContactBlocked(getAuthenticatedAccess(response), params.contactId, true);
   });
 
   public unblockContact = this.createHandler((request, response) => {
@@ -399,10 +390,7 @@ export class RealtimeController {
   public getSocialActivityStatus = this.createHandler((request, response) => {
     const params = socialUserIdParamSchema.parse(request.params);
 
-    return this.service.getSocialActivityStatus(
-      getAuthenticatedAccess(response),
-      params.userId
-    );
+    return this.service.getSocialActivityStatus(getAuthenticatedAccess(response), params.userId);
   });
 
   public createFollow = this.createHandler(

@@ -26,16 +26,18 @@ export class AgentCommissionRuleController {
 
   public publish = this.handle(async (request, response) => {
     const { agentPublicId } = agentParamSchema.parse(request.params);
-    response.status(201).json(
-      successResponse(
-        await this.service.publishRule(
-          getAuthenticatedAccess(response),
-          agentPublicId,
-          agentCommissionRulePublishBodySchema.parse(request.body),
-          getRequestContext(request)
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.publishRule(
+            getAuthenticatedAccess(response),
+            agentPublicId,
+            agentCommissionRulePublishBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
   });
 
   private handle(

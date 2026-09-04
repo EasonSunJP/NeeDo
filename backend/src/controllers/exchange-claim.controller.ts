@@ -20,9 +20,7 @@ export class ExchangeClaimController {
     response
       .status(200)
       .json(
-        successResponse(
-          await this.service.listOptions(getAuthenticatedAccess(response), id, query)
-        )
+        successResponse(await this.service.listOptions(getAuthenticatedAccess(response), id, query))
       );
   });
 
@@ -57,13 +55,11 @@ export class ExchangeClaimController {
 
   public getMine = this.handle(async (request, response) => {
     const { id } = exchangeClaimPostIdParamSchema.parse(request.params);
-    response
-      .status(200)
-      .json(
-        successResponse({
-          claim: await this.service.getMine(getAuthenticatedAccess(response), id)
-        } satisfies ExchangeClaimMinePayload)
-      );
+    response.status(200).json(
+      successResponse({
+        claim: await this.service.getMine(getAuthenticatedAccess(response), id)
+      } satisfies ExchangeClaimMinePayload)
+    );
   });
 
   public withdraw = this.handle(async (request, response) => {

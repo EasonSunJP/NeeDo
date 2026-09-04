@@ -1,12 +1,6 @@
-export const PLATFORM_MEMBERSHIP_TIER_CODES = [
-  "free",
-  "silver",
-  "gold",
-  "black_diamond"
-] as const;
+export const PLATFORM_MEMBERSHIP_TIER_CODES = ["free", "silver", "gold", "black_diamond"] as const;
 
-export type PlatformMembershipTierCodeValue =
-  (typeof PLATFORM_MEMBERSHIP_TIER_CODES)[number];
+export type PlatformMembershipTierCodeValue = (typeof PLATFORM_MEMBERSHIP_TIER_CODES)[number];
 
 export const PLATFORM_MEMBERSHIP_BENEFIT_CODES = [
   "ndp_experience",
@@ -18,8 +12,7 @@ export const PLATFORM_MEMBERSHIP_BENEFIT_CODES = [
   "birthday_gift"
 ] as const;
 
-export type PlatformMembershipBenefitCodeValue =
-  (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number];
+export type PlatformMembershipBenefitCodeValue = (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number];
 
 export interface PlatformMembershipTheme {
   detailAccentColor: string;

@@ -18,7 +18,9 @@ export const createIdentityApplicationMediaRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const controller = new IdentityApplicationMediaController(
     createIdentityApplicationMediaServiceForRoutes(config, dependencies)
   );

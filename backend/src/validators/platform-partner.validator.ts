@@ -32,9 +32,7 @@ export const agentListQuerySchema = z
   })
   .strict();
 
-export const agentParamSchema = z
-  .object({ agentPublicId: z.string().uuid() })
-  .strict();
+export const agentParamSchema = z.object({ agentPublicId: z.string().uuid() }).strict();
 
 export const agentShopReferralListQuerySchema = z
   .object({

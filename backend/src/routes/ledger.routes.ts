@@ -51,26 +51,31 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
         new AffiliateWithdrawalEligibilityRepository()
     );
   const ledgerRepository = dependencies.ledgerRepository ?? new LedgerRepository();
-  const redemptionRepository = dependencies.shopMembershipCardRedemptionRepository
-    ?? new ShopMembershipCardRedemptionRepository();
+  const redemptionRepository =
+    dependencies.shopMembershipCardRedemptionRepository ??
+    new ShopMembershipCardRedemptionRepository();
   const rewardSettlementService = dependencies.ledgerService ?? new LedgerService(ledgerRepository);
-  const rewardDebtRepository = redemptionRepository as Partial<ShopMembershipRewardDebtRepositoryPort>;
-  const rewardDebtAllocator = rewardDebtRepository.listPendingRewardIds
-    && rewardDebtRepository.lockPendingReward
-    && rewardDebtRepository.markPendingRewardPaid
-    ? new ShopMembershipRewardDebtAllocator(
-        rewardDebtRepository as ShopMembershipRewardDebtRepositoryPort,
-        rewardSettlementService
-      )
-    : undefined;
-  const ledgerService = dependencies.ledgerService ?? new LedgerService(
-    ledgerRepository,
-    undefined,
-    affiliateWithdrawalEligibility,
-    undefined,
-    undefined,
-    rewardDebtAllocator
-  );
+  const rewardDebtRepository =
+    redemptionRepository as Partial<ShopMembershipRewardDebtRepositoryPort>;
+  const rewardDebtAllocator =
+    rewardDebtRepository.listPendingRewardIds &&
+    rewardDebtRepository.lockPendingReward &&
+    rewardDebtRepository.markPendingRewardPaid
+      ? new ShopMembershipRewardDebtAllocator(
+          rewardDebtRepository as ShopMembershipRewardDebtRepositoryPort,
+          rewardSettlementService
+        )
+      : undefined;
+  const ledgerService =
+    dependencies.ledgerService ??
+    new LedgerService(
+      ledgerRepository,
+      undefined,
+      affiliateWithdrawalEligibility,
+      undefined,
+      undefined,
+      rewardDebtAllocator
+    );
   const controller = new LedgerController(ledgerService);
 
   router.get(

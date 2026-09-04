@@ -23,7 +23,9 @@ export const createMerchantProfileRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new MerchantProfileService(
     dependencies.merchantProfileRepository ?? new MerchantProfileRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository()),

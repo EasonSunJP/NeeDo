@@ -10,11 +10,7 @@ import {
   imVoiceMessageQuerySchema
 } from "../validators/im-voice-message.validator";
 
-const supportedMimeTypes = new Set<ImVoiceMimeType>([
-  "audio/webm",
-  "audio/mp4",
-  "audio/ogg"
-]);
+const supportedMimeTypes = new Set<ImVoiceMimeType>(["audio/webm", "audio/mp4", "audio/ogg"]);
 
 export class ImVoiceMessageController {
   public constructor(private readonly service: ImVoiceMessageService) {}

@@ -221,9 +221,7 @@ export const calculateFinalExperienceUnits = (input: {
   membershipMultiplierBps: number;
   extraUnits: bigint;
 }): bigint =>
-  (input.baseUnits *
-    BigInt(input.campaignFactorBps) *
-    BigInt(input.membershipMultiplierBps)) /
+  (input.baseUnits * BigInt(input.campaignFactorBps) * BigInt(input.membershipMultiplierBps)) /
     (BPS_SCALE * BPS_SCALE) +
   input.extraUnits;
 
@@ -287,10 +285,7 @@ export const calculateNdpExperienceReversal = (input: {
   ) {
     throw new RangeError("NDP experience reversal input is invalid");
   }
-  const appliedNdp = Math.min(
-    input.requestedNdp,
-    original.ndpAmount - previous.reversedNdp
-  );
+  const appliedNdp = Math.min(input.requestedNdp, original.ndpAmount - previous.reversedNdp);
   if (appliedNdp === 0) return null;
   const cumulativeReversedNdp = previous.reversedNdp + appliedNdp;
   const denominator = BigInt(original.ndpAmount);

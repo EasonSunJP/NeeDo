@@ -50,11 +50,13 @@ export class IdentityApplicationController {
 
   public createTechnicianDraft = this.handle(async (request, response) => {
     const body = createTechnicianApplicationBodySchema.parse(request.body);
-    response.status(201).json(
-      successResponse(
-        await this.service.createTechnicianDraft({ userId: this.userId(response), ...body })
-      )
-    );
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.createTechnicianDraft({ userId: this.userId(response), ...body })
+        )
+      );
   });
 
   public updateTechnicianDraft = this.handle(async (request, response) => {
@@ -76,8 +78,7 @@ export class IdentityApplicationController {
             yearsExperience: body.yearsExperience,
             bio: body.bio,
             gender: body.gender,
-            birthDate:
-              body.birthDate === null ? null : new Date(`${body.birthDate}T00:00:00.000Z`)
+            birthDate: body.birthDate === null ? null : new Date(`${body.birthDate}T00:00:00.000Z`)
           }
         })
       )

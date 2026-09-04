@@ -9,15 +9,17 @@ export class ShopEmployeeDirectoryController {
 
   public list = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.service.listCurrentShopEmployees(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            shopEmployeeDirectoryQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listCurrentShopEmployees(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              shopEmployeeDirectoryQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

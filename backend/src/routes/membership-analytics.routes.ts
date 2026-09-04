@@ -28,7 +28,9 @@ export const createMembershipAnalyticsRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new MembershipAnalyticsService(
     dependencies.membershipAnalyticsRepository ?? new MembershipAnalyticsRepository(prisma),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())

@@ -57,15 +57,11 @@ export function compareAnalyticsMetric(
     return { comparisonPercent: 0, comparisonDirection: "flat" };
   }
 
-  const unroundedPercent = previous === 0
-    ? current > 0 ? 100 : -100
-    : ((current - previous) / Math.abs(previous)) * 100;
+  const unroundedPercent =
+    previous === 0 ? (current > 0 ? 100 : -100) : ((current - previous) / Math.abs(previous)) * 100;
   const comparisonPercent = roundComparisonPercent(unroundedPercent);
-  const comparisonDirection: AnalyticsComparisonDirection = comparisonPercent > 0
-    ? "up"
-    : comparisonPercent < 0
-      ? "down"
-      : "flat";
+  const comparisonDirection: AnalyticsComparisonDirection =
+    comparisonPercent > 0 ? "up" : comparisonPercent < 0 ? "down" : "flat";
 
   return { comparisonPercent, comparisonDirection };
 }

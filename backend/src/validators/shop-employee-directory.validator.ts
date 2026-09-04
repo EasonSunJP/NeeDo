@@ -10,6 +10,4 @@ export const shopEmployeeDirectoryQuerySchema = z
   })
   .strict();
 
-export type ParsedShopEmployeeDirectoryQuery = z.output<
-  typeof shopEmployeeDirectoryQuerySchema
->;
+export type ParsedShopEmployeeDirectoryQuery = z.output<typeof shopEmployeeDirectoryQuerySchema>;

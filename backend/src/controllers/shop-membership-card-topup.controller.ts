@@ -23,17 +23,29 @@ export class ShopMembershipCardTopUpController {
   });
 
   public merchantList = this.handle(async (request, response) => {
-    response.status(200).json(successResponse(await this.service.listMerchant(
-      getAuthenticatedAccess(response),
-      shopMembershipCardTopUpListQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listMerchant(
+            getAuthenticatedAccess(response),
+            shopMembershipCardTopUpListQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   public customerList = this.handle(async (request, response) => {
-    response.status(200).json(successResponse(await this.service.listCustomer(
-      getAuthenticatedAccess(response),
-      shopMembershipCardTopUpListQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listCustomer(
+            getAuthenticatedAccess(response),
+            shopMembershipCardTopUpListQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   private handle(handler: (request: Request, response: Response) => Promise<void>) {
