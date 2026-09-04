@@ -46,7 +46,7 @@ const templateArtifact = Object.freeze({
   assertCurrentState: vi.fn(async () => undefined)
 });
 const expectedVerificationDocumentSha256 =
-  "ccf0ceb4c22628f1ef7ddc698f36cf3074043804894f3540cd624119be51b0ae";
+  "df18c10cea9030800d38e7b329a5477fe33730f21320ae5924f4323412efeac0";
 const expectedAgentParameterSha256 =
   "e5bbe5b2ce3d775a521c8c830260b65e2c1e0675f4ace0f68582e1257196cd98";
 

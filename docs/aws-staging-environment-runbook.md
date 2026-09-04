@@ -364,6 +364,14 @@ and exact CloudWatch Agent parameter content/version. It passes those immutable
 versions to Run Command; any drift stops with zero waiter and zero
 `ssm send-command`.
 
+Amazon Linux 2023 repositories can temporarily lag the CloudWatch Agent release
+that first supports `journald`. Bootstrap therefore requires Agent version
+`1.300070.0` or newer. When the repository version is older, it downloads the
+official AWS ARM64 RPM, detached signature, and public key over TLS, verifies
+the documented AWS key fingerprint and package signature, then performs the
+supported uninstall/reinstall update. A host already at or above the minimum
+version skips that download and reinstall path.
+
 ```bash
 needo_aws_staging bootstrap-host \
   <approved-full-source-revision> \

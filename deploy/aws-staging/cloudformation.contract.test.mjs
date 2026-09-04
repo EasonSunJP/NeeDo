@@ -281,6 +281,25 @@ describe("AWS Staging CloudFormation contract", () => {
     expect(source).not.toContain("/var/log/messages");
   });
 
+  it("upgrades old ARM64 CloudWatch Agent packages through the signed AWS distribution", () => {
+    const bootstrap = resourceBlock("HostBootstrapDocument");
+    const verification = resourceBlock("HostVerificationDocument");
+    const minimumVersion = "1.300070.0";
+    const fingerprint = "937616F3450B7D806CBD9725D58167303B789C72";
+    const distribution = "https://amazoncloudwatch-agent-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/amazon_linux/arm64/latest";
+
+    expect(bootstrap).toContain(`cloudwatch_agent_minimum_version=${minimumVersion}`);
+    expect(bootstrap).toContain(`cloudwatch_agent_distribution=${distribution}`);
+    expect(bootstrap).toContain('"$cloudwatch_agent_distribution/amazon-cloudwatch-agent.rpm"');
+    expect(bootstrap).toContain('"$cloudwatch_agent_distribution/amazon-cloudwatch-agent.rpm.sig"');
+    expect(bootstrap).toContain("https://amazoncloudwatch-agent.s3.amazonaws.com/assets/amazon-cloudwatch-agent.gpg");
+    expect(bootstrap).toContain(`test \"$cloudwatch_agent_fingerprint\" = \"${fingerprint}\"`);
+    expect(bootstrap).toContain('gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --verify');
+    expect(bootstrap).toContain('dnf remove -y amazon-cloudwatch-agent');
+    expect(verification).toContain(`cloudwatch_agent_minimum_version=${minimumVersion}`);
+    expect(verification).toContain("sort -V");
+  });
+
   it("defines the exact alarm metrics, thresholds, dimensions, and SNS actions", () => {
     const alarms = {
       StatusCheckFailedAlarm: ["AWS/EC2", "StatusCheckFailed", "Maximum", "1", "missing", ["- Name: InstanceId", "Value: !Ref Instance"]],
