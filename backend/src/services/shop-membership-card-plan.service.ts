@@ -93,7 +93,12 @@ export class ShopMembershipCardPlanService {
         context,
         action: "merchant.shop_membership_card_plan.draft_update",
         targetType: "ShopMembershipCardPlan",
-        metadata: { planPublicId, expectedLockVersion: draft.expectedLockVersion, name: draft.name, cardType: draft.cardType }
+        metadata: {
+          planPublicId,
+          expectedLockVersion: draft.expectedLockVersion,
+          name: draft.name,
+          cardType: draft.cardType
+        }
       })
     });
     return this.toPublicPlan(this.unwrapPlanMutation(result));
@@ -108,9 +113,10 @@ export class ShopMembershipCardPlanService {
     if (!plan) throw this.notFound();
     const version = plan.draftVersion ?? plan.currentVersion;
     if (!version) throw this.invalidState();
-    const feeRateBps = version.status === "published" && version.platformFeeRateBps !== null
-      ? version.platformFeeRateBps
-      : (await this.requireEffectiveFeePolicy()).feeRateBps;
+    const feeRateBps =
+      version.status === "published" && version.platformFeeRateBps !== null
+        ? version.platformFeeRateBps
+        : (await this.requireEffectiveFeePolicy()).feeRateBps;
     try {
       const rules = version.rules.map((rule) => {
         const persistedRule: Record<string, unknown> = { ...rule };
@@ -119,9 +125,15 @@ export class ShopMembershipCardPlanService {
         delete persistedRule.sortOrder;
         return membershipRewardRuleSchema.parse(persistedRule);
       });
-      return evaluateMembershipRewardRules({ rules, caps: version.caps, facts, platformFeeRateBps: feeRateBps });
+      return evaluateMembershipRewardRules({
+        rules,
+        caps: version.caps,
+        facts,
+        platformFeeRateBps: feeRateBps
+      });
     } catch (error) {
-      if (error instanceof z.ZodError || error instanceof RangeError) throw this.validationError(error);
+      if (error instanceof z.ZodError || error instanceof RangeError)
+        throw this.validationError(error);
       throw error;
     }
   }
@@ -153,7 +165,11 @@ export class ShopMembershipCardPlanService {
     return this.toPublicPlan(this.unwrapPlanMutation(result));
   }
 
-  public async retirePlan(actor: AuthenticatedAccessContext, context: AuthRequestContext, planPublicId: string) {
+  public async retirePlan(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    planPublicId: string
+  ) {
     const shopId = this.requireMerchantShop(actor);
     const result = await this.repository.retirePlanWithAudit({
       actorId: actor.userId,
@@ -186,9 +202,16 @@ export class ShopMembershipCardPlanService {
     input: MembershipRewardFeePolicyCreateInput
   ) {
     this.assertOperationsIdentity(actor);
-    if (!Number.isInteger(input.feeRateBps) || input.feeRateBps < 0 || input.feeRateBps > 10_000) throw this.validationError();
-    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw this.validationError();
-    if (!(input.effectiveFrom instanceof Date) || Number.isNaN(input.effectiveFrom.getTime()) || input.effectiveFrom < this.now()) throw this.validationError();
+    if (!Number.isInteger(input.feeRateBps) || input.feeRateBps < 0 || input.feeRateBps > 10_000)
+      throw this.validationError();
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0)
+      throw this.validationError();
+    if (
+      !(input.effectiveFrom instanceof Date) ||
+      Number.isNaN(input.effectiveFrom.getTime()) ||
+      input.effectiveFrom < this.now()
+    )
+      throw this.validationError();
     const reason = input.reason.trim();
     if (!reason || reason.length > 500) throw this.validationError();
     const result = await this.repository.createFeePolicyVersionWithAudit({
@@ -202,19 +225,35 @@ export class ShopMembershipCardPlanService {
         context,
         action: "platform.membership_reward_fee.publish",
         targetType: "MembershipRewardFeePolicyVersion",
-        metadata: { feeRateBps: input.feeRateBps, expectedVersion: input.expectedVersion, effectiveFrom: input.effectiveFrom.toISOString(), reason }
+        metadata: {
+          feeRateBps: input.feeRateBps,
+          expectedVersion: input.expectedVersion,
+          effectiveFrom: input.effectiveFrom.toISOString(),
+          reason
+        }
       })
     });
     if (result.kind === "created") return result.value;
     if (result.kind === "version_conflict") {
-      throw new AppError({ code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_VERSION_CONFLICT, message: "error.membership_reward_fee.version_conflict", statusCode: 409 });
+      throw new AppError({
+        code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_VERSION_CONFLICT,
+        message: "error.membership_reward_fee.version_conflict",
+        statusCode: 409
+      });
     }
-    throw new AppError({ code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_POLICY_CONFLICT, message: "error.membership_reward_fee.policy_conflict", statusCode: 409 });
+    throw new AppError({
+      code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_POLICY_CONFLICT,
+      message: "error.membership_reward_fee.policy_conflict",
+      statusCode: 409
+    });
   }
 
-  private normalizeDraft(input: ShopMembershipCardPlanDraftInput): ShopMembershipCardPlanDraftPersistenceInput {
+  private normalizeDraft(
+    input: ShopMembershipCardPlanDraftInput
+  ): ShopMembershipCardPlanDraftPersistenceInput {
     try {
-      if (!Number.isInteger(input.expectedLockVersion) || input.expectedLockVersion < 0) throw new Error("lock");
+      if (!Number.isInteger(input.expectedLockVersion) || input.expectedLockVersion < 0)
+        throw new Error("lock");
       const name = input.name.trim();
       const description = input.description?.trim() || null;
       if (!name || name.length > 120 || (description?.length ?? 0) > 500) throw new Error("copy");
@@ -222,9 +261,18 @@ export class ShopMembershipCardPlanService {
       const rules = membershipRewardRuleListSchema.parse(input.rules);
       this.assertValidity(input.validity);
       const issuance = this.normalizeIssuance(input.issuance);
-      if (input.cardType === "stored_value" && (issuance.minInitialUses !== null || issuance.maxInitialUses !== null)) throw this.invalidCardFields();
-      if (input.cardType === "count" && (issuance.minInitialPrincipalJpy !== null || issuance.maxInitialPrincipalJpy !== null)) throw this.invalidCardFields();
-      if (input.cardType === "benefit" && Object.values(issuance).some((value) => value !== null)) throw this.invalidCardFields();
+      if (
+        input.cardType === "stored_value" &&
+        (issuance.minInitialUses !== null || issuance.maxInitialUses !== null)
+      )
+        throw this.invalidCardFields();
+      if (
+        input.cardType === "count" &&
+        (issuance.minInitialPrincipalJpy !== null || issuance.maxInitialPrincipalJpy !== null)
+      )
+        throw this.invalidCardFields();
+      if (input.cardType === "benefit" && Object.values(issuance).some((value) => value !== null))
+        throw this.invalidCardFields();
       return { ...input, name, description, issuance, caps, rules };
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -234,37 +282,89 @@ export class ShopMembershipCardPlanService {
 
   private normalizeIssuance(input: ShopMembershipCardPlanDraftInput["issuance"]) {
     const values = Object.values(input);
-    if (values.some((value) => value !== null && (!Number.isSafeInteger(value) || value < 0))) throw this.invalidCardFields();
-    if (input.minInitialPrincipalJpy !== null && input.maxInitialPrincipalJpy !== null && input.minInitialPrincipalJpy > input.maxInitialPrincipalJpy) throw this.invalidCardFields();
-    if (input.minInitialUses !== null && input.maxInitialUses !== null && input.minInitialUses > input.maxInitialUses) throw this.invalidCardFields();
+    if (values.some((value) => value !== null && (!Number.isSafeInteger(value) || value < 0)))
+      throw this.invalidCardFields();
+    if (
+      input.minInitialPrincipalJpy !== null &&
+      input.maxInitialPrincipalJpy !== null &&
+      input.minInitialPrincipalJpy > input.maxInitialPrincipalJpy
+    )
+      throw this.invalidCardFields();
+    if (
+      input.minInitialUses !== null &&
+      input.maxInitialUses !== null &&
+      input.minInitialUses > input.maxInitialUses
+    )
+      throw this.invalidCardFields();
     return { ...input };
   }
 
   private assertValidity(validity: ShopMembershipCardPlanDraftInput["validity"]): void {
     if (validity.mode === "never") return;
-    if (validity.mode === "fixed_days" && Number.isInteger(validity.days) && validity.days > 0 && validity.days <= 3650) return;
-    if (validity.mode === "fixed_date" && validity.expiresAt instanceof Date && validity.expiresAt > this.now()) return;
+    if (
+      validity.mode === "fixed_days" &&
+      Number.isInteger(validity.days) &&
+      validity.days > 0 &&
+      validity.days <= 3650
+    )
+      return;
+    if (
+      validity.mode === "fixed_date" &&
+      validity.expiresAt instanceof Date &&
+      validity.expiresAt > this.now()
+    )
+      return;
     throw this.validationError();
   }
 
-  private async assertRuleReferences(shopId: number, rules: MembershipRewardRuleInput[]): Promise<void> {
-    const servicePublicIds = [...new Set(rules.flatMap((rule) => [...rule.scope.servicePublicIds, ...rule.scope.excludedServicePublicIds]))];
-    const categoryCodes = [...new Set(rules.flatMap((rule) => [...rule.scope.categoryCodes, ...rule.scope.excludedCategoryCodes]))];
-    if (await this.repository.validateShopRuleReferences(shopId, servicePublicIds, categoryCodes)) return;
-    throw new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_RULE_REFERENCE_NOT_FOUND, message: "error.shop_membership_card_plan.rule_reference_not_found", statusCode: 404 });
+  private async assertRuleReferences(
+    shopId: number,
+    rules: MembershipRewardRuleInput[]
+  ): Promise<void> {
+    const servicePublicIds = [
+      ...new Set(
+        rules.flatMap((rule) => [
+          ...rule.scope.servicePublicIds,
+          ...rule.scope.excludedServicePublicIds
+        ])
+      )
+    ];
+    const categoryCodes = [
+      ...new Set(
+        rules.flatMap((rule) => [...rule.scope.categoryCodes, ...rule.scope.excludedCategoryCodes])
+      )
+    ];
+    if (await this.repository.validateShopRuleReferences(shopId, servicePublicIds, categoryCodes))
+      return;
+    throw new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_RULE_REFERENCE_NOT_FOUND,
+      message: "error.shop_membership_card_plan.rule_reference_not_found",
+      statusCode: 404
+    });
   }
 
   private async requireEffectiveFeePolicy(): Promise<MembershipRewardFeePolicyPayload> {
     const policy = await this.repository.getEffectiveFeePolicy(this.now());
     if (policy) return policy;
-    throw new AppError({ code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_POLICY_CONFLICT, message: "error.membership_reward_fee.policy_conflict", statusCode: 409 });
+    throw new AppError({
+      code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_POLICY_CONFLICT,
+      message: "error.membership_reward_fee.policy_conflict",
+      statusCode: 409
+    });
   }
 
-  private unwrapPlanMutation(result: Awaited<ReturnType<ShopMembershipCardPlanRepositoryPort["publishDraftWithAudit"]>>): ShopMembershipCardPlanPayload {
+  private unwrapPlanMutation(
+    result: Awaited<ReturnType<ShopMembershipCardPlanRepositoryPort["publishDraftWithAudit"]>>
+  ): ShopMembershipCardPlanPayload {
     if ("value" in result) return result.value;
     if (result.kind === "not_found") throw this.notFound();
     if (result.kind === "version_conflict") throw this.versionConflict();
-    if (result.kind === "fee_policy_conflict") throw new AppError({ code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_POLICY_CONFLICT, message: "error.membership_reward_fee.policy_conflict", statusCode: 409 });
+    if (result.kind === "fee_policy_conflict")
+      throw new AppError({
+        code: ERROR_CODES.MEMBERSHIP_REWARD_FEE_POLICY_CONFLICT,
+        message: "error.membership_reward_fee.policy_conflict",
+        statusCode: 409
+      });
     throw this.invalidState();
   }
 
@@ -277,39 +377,80 @@ export class ShopMembershipCardPlanService {
     };
     const { internalId: _internalId, currentVersion, draftVersion, ...publicPlan } = plan;
     void _internalId;
-    return { ...publicPlan, currentVersion: stripVersion(currentVersion), draftVersion: stripVersion(draftVersion) };
+    return {
+      ...publicPlan,
+      currentVersion: stripVersion(currentVersion),
+      draftVersion: stripVersion(draftVersion)
+    };
   }
 
   private requireMerchantShop(actor: AuthenticatedAccessContext): number {
-    if (!actor.currentIdentityType || !merchantIdentityTypes.has(actor.currentIdentityType) || actor.currentIdentityScopeType !== "shop" || !actor.currentIdentityScopeId) {
-      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.identity.forbidden", statusCode: 403 });
+    if (
+      !actor.currentIdentityType ||
+      !merchantIdentityTypes.has(actor.currentIdentityType) ||
+      actor.currentIdentityScopeType !== "shop" ||
+      !actor.currentIdentityScopeId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
     }
     return actor.currentIdentityScopeId;
   }
 
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType !== "global" && actor.currentIdentityScopeType !== "platform") {
-      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.identity.forbidden", statusCode: 403 });
+    if (
+      actor.currentIdentityScopeType !== "global" &&
+      actor.currentIdentityScopeType !== "platform"
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
     }
   }
 
   private notFound(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_NOT_FOUND, message: "error.shop_membership_card_plan.not_found", statusCode: 404 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_NOT_FOUND,
+      message: "error.shop_membership_card_plan.not_found",
+      statusCode: 404
+    });
   }
 
   private versionConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_VERSION_CONFLICT, message: "error.shop_membership_card_plan.version_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_VERSION_CONFLICT,
+      message: "error.shop_membership_card_plan.version_conflict",
+      statusCode: 409
+    });
   }
 
   private invalidState(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_INVALID_STATE, message: "error.shop_membership_card_plan.invalid_state", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_PLAN_INVALID_STATE,
+      message: "error.shop_membership_card_plan.invalid_state",
+      statusCode: 409
+    });
   }
 
   private invalidCardFields(): AppError {
-    return new AppError({ code: ERROR_CODES.VALIDATION, message: "error.shop_membership_card_plan.invalid_card_fields", statusCode: 400 });
+    return new AppError({
+      code: ERROR_CODES.VALIDATION,
+      message: "error.shop_membership_card_plan.invalid_card_fields",
+      statusCode: 400
+    });
   }
 
   private validationError(cause?: unknown): AppError {
-    return new AppError({ code: ERROR_CODES.VALIDATION, message: "error.validation", statusCode: 400, cause });
+    return new AppError({
+      code: ERROR_CODES.VALIDATION,
+      message: "error.validation",
+      statusCode: 400,
+      cause
+    });
   }
 }

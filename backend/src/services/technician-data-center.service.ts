@@ -2,10 +2,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
-import {
-  CompensationEngine,
-  type CompensationRuleSet
-} from "./compensation-engine.service";
+import { CompensationEngine, type CompensationRuleSet } from "./compensation-engine.service";
 
 export type TechnicianDataCenterPeriod = "last7days" | "last30days" | "week" | "month" | "year";
 export type TechnicianDataCenterBucketUnit = "day" | "five_days" | "week" | "month";
@@ -191,12 +188,8 @@ export const resolveTechnicianDataCenterPeriod = (
       bucketUnit: period === "last7days" ? "day" : "five_days",
       startsAt,
       endsAt,
-      buckets: buildBuckets(
-        startsAt,
-        endsAt,
-        step,
-        (start, end) =>
-          step === 1 ? dayLabel(start) : `${dayLabel(start)}–${dayLabel(addDays(end, -1))}`
+      buckets: buildBuckets(startsAt, endsAt, step, (start, end) =>
+        step === 1 ? dayLabel(start) : `${dayLabel(start)}–${dayLabel(addDays(end, -1))}`
       ),
       timeZone: "Asia/Tokyo",
       referenceAt: now
@@ -224,8 +217,11 @@ export const resolveTechnicianDataCenterPeriod = (
       bucketUnit: "week",
       startsAt,
       endsAt,
-      buckets: buildBuckets(startsAt, endsAt, 7, (start, end) =>
-        `${dayLabel(start)}–${dayLabel(addDays(end, -1))}`
+      buckets: buildBuckets(
+        startsAt,
+        endsAt,
+        7,
+        (start, end) => `${dayLabel(start)}–${dayLabel(addDays(end, -1))}`
       ),
       timeZone: "Asia/Tokyo",
       referenceAt: now
@@ -364,15 +360,17 @@ export class TechnicianDataCenterService {
         endsAt: order.endsAt,
         recognizedIncomeJpy: this.recognizedIncome(source, order)
       })),
-      nextOrder: source.nextOrder ? {
-        id: source.nextOrder.id,
-        orderNo: source.nextOrder.orderNo,
-        serviceName: source.nextOrder.serviceName,
-        shopName: source.nextOrder.shopName,
-        status: source.nextOrder.status,
-        startsAt: source.nextOrder.startsAt,
-        endsAt: source.nextOrder.endsAt
-      } : null
+      nextOrder: source.nextOrder
+        ? {
+            id: source.nextOrder.id,
+            orderNo: source.nextOrder.orderNo,
+            serviceName: source.nextOrder.serviceName,
+            shopName: source.nextOrder.shopName,
+            status: source.nextOrder.status,
+            startsAt: source.nextOrder.startsAt,
+            endsAt: source.nextOrder.endsAt
+          }
+        : null
     };
   }
 
@@ -404,7 +402,8 @@ export class TechnicianDataCenterService {
       financial.extensionAmountJpy === null ||
       financial.nominationChargeAmountJpy === null ||
       !financial.compensationBasisVersion
-    ) return null;
+    )
+      return null;
     const rule = source.compensationRulesByBasis[financial.compensationBasisVersion];
     if (!rule) return null;
     return this.compensationEngine.calculate(rule, {
@@ -418,8 +417,9 @@ export class TechnicianDataCenterService {
   }
 
   private workedMinutes(order: TechnicianDataCenterOrderSource): number {
-    return Math.max(0, Math.round(
-      (new Date(order.endsAt).getTime() - new Date(order.startsAt).getTime()) / 60_000
-    ));
+    return Math.max(
+      0,
+      Math.round((new Date(order.endsAt).getTime() - new Date(order.startsAt).getTime()) / 60_000)
+    );
   }
 }

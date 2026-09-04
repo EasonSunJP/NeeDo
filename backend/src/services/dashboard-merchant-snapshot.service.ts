@@ -1,7 +1,4 @@
-import type {
-  DashboardMerchantFacts,
-  DashboardMerchantSnapshot
-} from "../domain/dashboard";
+import type { DashboardMerchantFacts, DashboardMerchantSnapshot } from "../domain/dashboard";
 import { SaasBillingPolicyService } from "./saas-billing-policy.service";
 
 export class DashboardMerchantSnapshotService {
@@ -17,7 +14,7 @@ export class DashboardMerchantSnapshotService {
       ? {
           cadence: this.billingPolicy.classifyShop(facts.activeTechnicianCount).billable
             ? facts.billing.cadence
-            : "free" as const,
+            : ("free" as const),
           state: this.billingPolicy.resolveState(
             {
               subjectType: "shop",

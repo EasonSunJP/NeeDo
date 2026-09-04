@@ -39,9 +39,7 @@ export interface IdentityApplicationMediaStoragePort {
   delete: (fileKey: string) => Promise<void>;
 }
 
-export class IdentityApplicationMediaFileStorage
-  implements IdentityApplicationMediaStoragePort
-{
+export class IdentityApplicationMediaFileStorage implements IdentityApplicationMediaStoragePort {
   public constructor(
     private readonly directory: string,
     private readonly maxBytes: number = DEFAULT_MAX_BYTES

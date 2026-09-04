@@ -173,11 +173,21 @@ export interface ShopMembershipCardRedemptionRepositoryPort {
   listMerchant: (
     shopId: number,
     input: ShopMembershipCardRedemptionListInput
-  ) => Promise<{ list: ShopMembershipCardRedemptionRecord[]; total: number; page: number; page_size: number }>;
+  ) => Promise<{
+    list: ShopMembershipCardRedemptionRecord[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
   listCustomer: (
     customerUserId: number,
     input: ShopMembershipCardRedemptionListInput
-  ) => Promise<{ list: ShopMembershipCardRedemptionRecord[]; total: number; page: number; page_size: number }>;
+  ) => Promise<{
+    list: ShopMembershipCardRedemptionRecord[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
 }
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
@@ -235,12 +245,13 @@ export class ShopMembershipCardRedemptionService {
         requestFingerprint,
         audit
       },
-      (context) => evaluateMembershipRewardRules({
-        rules: context.rules,
-        caps: context.caps,
-        facts: context.facts,
-        platformFeeRateBps: context.platformFeeRateBps
-      }),
+      (context) =>
+        evaluateMembershipRewardRules({
+          rules: context.rules,
+          caps: context.caps,
+          facts: context.facts,
+          platformFeeRateBps: context.platformFeeRateBps
+        }),
       (settlementInput, transactionClient) =>
         this.settlement.settleShopMembershipReward(settlementInput, { transactionClient })
     );
@@ -387,7 +398,12 @@ export class ShopMembershipCardRedemptionService {
     return actor.userId;
   }
 
-  private throwMutationError(kind: Exclude<ShopMembershipCardRedemptionMutationResult, { kind: "created" | "replayed" }>["kind"]): never {
+  private throwMutationError(
+    kind: Exclude<
+      ShopMembershipCardRedemptionMutationResult,
+      { kind: "created" | "replayed" }
+    >["kind"]
+  ): never {
     if (kind === "not_found") throw this.notFound();
     if (kind === "invalid_state") throw this.invalidState();
     if (kind === "pending_conflict") throw this.pendingConflict();
@@ -407,34 +423,66 @@ export class ShopMembershipCardRedemptionService {
   }
 
   private notFound(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_NOT_FOUND, message: "error.shop_membership_card_redemption.not_found", statusCode: 404 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_NOT_FOUND,
+      message: "error.shop_membership_card_redemption.not_found",
+      statusCode: 404
+    });
   }
 
   private invalidValue(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INVALID_VALUE, message: "error.shop_membership_card_redemption.invalid_value", statusCode: 400 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INVALID_VALUE,
+      message: "error.shop_membership_card_redemption.invalid_value",
+      statusCode: 400
+    });
   }
 
   private invalidState(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INVALID_STATE, message: "error.shop_membership_card_redemption.invalid_state", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INVALID_STATE,
+      message: "error.shop_membership_card_redemption.invalid_state",
+      statusCode: 409
+    });
   }
 
   private pendingConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_PENDING_CONFLICT, message: "error.shop_membership_card_redemption.pending_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_PENDING_CONFLICT,
+      message: "error.shop_membership_card_redemption.pending_conflict",
+      statusCode: 409
+    });
   }
 
   private orderNotEligible(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_ORDER_NOT_ELIGIBLE, message: "error.shop_membership_card_redemption.order_not_eligible", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_ORDER_NOT_ELIGIBLE,
+      message: "error.shop_membership_card_redemption.order_not_eligible",
+      statusCode: 409
+    });
   }
 
   private insufficientCardValue(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INSUFFICIENT_CARD_VALUE, message: "error.shop_membership_card_redemption.insufficient_card_value", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INSUFFICIENT_CARD_VALUE,
+      message: "error.shop_membership_card_redemption.insufficient_card_value",
+      statusCode: 409
+    });
   }
 
   private concurrencyConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_CONCURRENCY_CONFLICT, message: "error.shop_membership_card_redemption.concurrency_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_CONCURRENCY_CONFLICT,
+      message: "error.shop_membership_card_redemption.concurrency_conflict",
+      statusCode: 409
+    });
   }
 
   private idempotencyConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_IDEMPOTENCY_CONFLICT, message: "error.shop_membership_card_redemption.idempotency_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_IDEMPOTENCY_CONFLICT,
+      message: "error.shop_membership_card_redemption.idempotency_conflict",
+      statusCode: 409
+    });
   }
 }

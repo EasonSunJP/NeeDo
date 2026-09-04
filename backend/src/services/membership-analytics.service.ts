@@ -36,7 +36,14 @@ export class MembershipAnalyticsService {
     query: BackofficeMembershipTrendQuery
   ): Promise<MembershipTrendPayload> {
     this.assertPlatformIdentity(actor);
-    return this.trend(actor, context, query, { kind: "platform" }, query.city ?? null, "backoffice");
+    return this.trend(
+      actor,
+      context,
+      query,
+      { kind: "platform" },
+      query.city ?? null,
+      "backoffice"
+    );
   }
 
   public async getMerchantTrend(
@@ -99,12 +106,12 @@ export class MembershipAnalyticsService {
   private async list(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    query: (DashboardPeriodQuery & {
+    query: DashboardPeriodQuery & {
       needoId?: string;
       nickname?: string;
       page: number;
       pageSize: number;
-    }),
+    },
     scope: MembershipAnalyticsRepositoryInput["scope"],
     city: string | null,
     auditScope: "backoffice" | "merchant"

@@ -41,9 +41,7 @@ const CORPORATE_TYPES = [
 const hiraganaToKatakana = (value: string): string =>
   Array.from(value, (character) => {
     const code = character.charCodeAt(0);
-    return code >= 0x3041 && code <= 0x3096
-      ? String.fromCharCode(code + 0x60)
-      : character;
+    return code >= 0x3041 && code <= 0x3096 ? String.fromCharCode(code + 0x60) : character;
   }).join("");
 
 export class BankAccountHolderService {
@@ -66,9 +64,7 @@ export class BankAccountHolderService {
         return false;
       }
 
-      return (
-        bankHolder === this.normalizeForMatch("corporate", input.corporateLegalNameKana)
-      );
+      return bankHolder === this.normalizeForMatch("corporate", input.corporateLegalNameKana);
     }
 
     if (!input.eKycNameKana?.trim()) {

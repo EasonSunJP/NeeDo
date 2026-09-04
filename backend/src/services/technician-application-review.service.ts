@@ -189,9 +189,7 @@ export class TechnicianApplicationReviewService {
     });
   }
 
-  public async reject(
-    input: RejectTechnicianApplicationInput
-  ): Promise<TechnicianRejectionResult> {
+  public async reject(input: RejectTechnicianApplicationInput): Promise<TechnicianRejectionResult> {
     const rejectionReason = input.rejectionReason.trim();
     if (!rejectionReason) {
       throw new AppError({

@@ -106,7 +106,10 @@ export type ShopMembershipCardAdjustmentCreateResult =
   | { kind: "not_found" | "invalid_state" | "pending_conflict" | "idempotency_conflict" };
 
 export type ShopMembershipCardAdjustmentDecisionResult =
-  | { kind: "approved" | "rejected" | "expired" | "invalidated" | "replayed"; value: ShopMembershipCardAdjustmentRecord }
+  | {
+      kind: "approved" | "rejected" | "expired" | "invalidated" | "replayed";
+      value: ShopMembershipCardAdjustmentRecord;
+    }
   | { kind: "not_found" | "invalid_state" | "idempotency_conflict" };
 
 export type ShopMembershipCardAdjustmentCancelResult =
@@ -119,19 +122,50 @@ export interface ShopMembershipCardAdjustmentListInput extends PaginationInput {
 }
 
 export interface ShopMembershipCardAdjustmentRepositoryPort {
-  findByRequestIdempotencyKey: (shopId: number, idempotencyKey: string) => Promise<ShopMembershipCardAdjustmentRecord | null>;
-  getMerchantCardContext: (shopId: number, cardPublicId: string) => Promise<ShopMembershipCardAdjustmentContextResult>;
-  createRequestWithAuditAndNotification: (input: CreateShopMembershipCardAdjustmentRepositoryInput) => Promise<ShopMembershipCardAdjustmentCreateResult>;
-  findByDecisionIdempotencyKey: (customerUserId: number, idempotencyKey: string) => Promise<ShopMembershipCardAdjustmentRecord | null>;
-  decideRequestWithAuditAndNotification: (input: DecideShopMembershipCardAdjustmentRepositoryInput) => Promise<ShopMembershipCardAdjustmentDecisionResult>;
-  cancelRequestWithAuditAndNotification: (input: CancelShopMembershipCardAdjustmentRepositoryInput) => Promise<ShopMembershipCardAdjustmentCancelResult>;
+  findByRequestIdempotencyKey: (
+    shopId: number,
+    idempotencyKey: string
+  ) => Promise<ShopMembershipCardAdjustmentRecord | null>;
+  getMerchantCardContext: (
+    shopId: number,
+    cardPublicId: string
+  ) => Promise<ShopMembershipCardAdjustmentContextResult>;
+  createRequestWithAuditAndNotification: (
+    input: CreateShopMembershipCardAdjustmentRepositoryInput
+  ) => Promise<ShopMembershipCardAdjustmentCreateResult>;
+  findByDecisionIdempotencyKey: (
+    customerUserId: number,
+    idempotencyKey: string
+  ) => Promise<ShopMembershipCardAdjustmentRecord | null>;
+  decideRequestWithAuditAndNotification: (
+    input: DecideShopMembershipCardAdjustmentRepositoryInput
+  ) => Promise<ShopMembershipCardAdjustmentDecisionResult>;
+  cancelRequestWithAuditAndNotification: (
+    input: CancelShopMembershipCardAdjustmentRepositoryInput
+  ) => Promise<ShopMembershipCardAdjustmentCancelResult>;
   expireDue?: (input: {
     batchSize: number;
     shopId?: number;
     customerUserId?: number;
   }) => Promise<{ scanned: number; expired: number; failed: number }>;
-  listMerchantRequests?: (shopId: number, input: ShopMembershipCardAdjustmentListInput) => Promise<{ list: ShopMembershipCardAdjustmentRecord[]; total: number; page: number; page_size: number }>;
-  listCustomerRequests?: (customerUserId: number, input: ShopMembershipCardAdjustmentListInput) => Promise<{ list: ShopMembershipCardAdjustmentRecord[]; total: number; page: number; page_size: number }>;
+  listMerchantRequests?: (
+    shopId: number,
+    input: ShopMembershipCardAdjustmentListInput
+  ) => Promise<{
+    list: ShopMembershipCardAdjustmentRecord[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
+  listCustomerRequests?: (
+    customerUserId: number,
+    input: ShopMembershipCardAdjustmentListInput
+  ) => Promise<{
+    list: ShopMembershipCardAdjustmentRecord[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
 }
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
@@ -152,8 +186,15 @@ export class ShopMembershipCardAdjustmentService {
     const shopId = requireMerchantShopId(actor);
     const input = this.normalizeCreateInput(rawInput);
     const normalizedCardPublicId = cardPublicId.trim();
-    const requestFingerprint = this.fingerprint({ cardPublicId: normalizedCardPublicId, ...input, idempotencyKey: undefined });
-    const existing = await this.repository.findByRequestIdempotencyKey(shopId, input.idempotencyKey);
+    const requestFingerprint = this.fingerprint({
+      cardPublicId: normalizedCardPublicId,
+      ...input,
+      idempotencyKey: undefined
+    });
+    const existing = await this.repository.findByRequestIdempotencyKey(
+      shopId,
+      input.idempotencyKey
+    );
     if (existing) {
       if (existing.requestFingerprint !== requestFingerprint) throw this.idempotencyConflict();
       return this.toPublic(existing, true);
@@ -170,7 +211,8 @@ export class ShopMembershipCardAdjustmentService {
       targetType: "ShopMembershipCardAdjustmentRequest",
       metadata: {
         cardPublicId: normalizedCardPublicId,
-        dimension: values.beforePrincipalBalanceJpy === null ? "remaining_uses" : "principal_balance",
+        dimension:
+          values.beforePrincipalBalanceJpy === null ? "remaining_uses" : "principal_balance",
         beforeValue: values.beforePrincipalBalanceJpy ?? values.beforeRemainingUses,
         targetValue: values.targetPrincipalBalanceJpy ?? values.targetRemainingUses,
         reason: input.reason,
@@ -207,8 +249,14 @@ export class ShopMembershipCardAdjustmentService {
     const customerUserId = this.requireCustomer(actor);
     const input = this.normalizeDecisionInput(rawInput);
     const normalizedPublicId = requestPublicId.trim();
-    const decisionFingerprint = this.fingerprint({ requestPublicId: normalizedPublicId, decision: input.decision });
-    const existing = await this.repository.findByDecisionIdempotencyKey(customerUserId, input.idempotencyKey);
+    const decisionFingerprint = this.fingerprint({
+      requestPublicId: normalizedPublicId,
+      decision: input.decision
+    });
+    const existing = await this.repository.findByDecisionIdempotencyKey(
+      customerUserId,
+      input.idempotencyKey
+    );
     if (existing) {
       if (existing.decisionFingerprint !== decisionFingerprint) throw this.idempotencyConflict();
       return this.replayDecision(existing);
@@ -268,13 +316,17 @@ export class ShopMembershipCardAdjustmentService {
       requestPublicId: normalizedPublicId,
       audit
     });
-    if (result.kind === "cancelled" || result.kind === "replayed") return this.toPublic(result.value, result.kind === "replayed");
+    if (result.kind === "cancelled" || result.kind === "replayed")
+      return this.toPublic(result.value, result.kind === "replayed");
     if (result.kind === "expired") throw this.expired();
     if (result.kind === "not_found") throw this.notFound();
     throw this.invalidState();
   }
 
-  public async listMerchant(actor: AuthenticatedAccessContext, input: ShopMembershipCardAdjustmentListInput) {
+  public async listMerchant(
+    actor: AuthenticatedAccessContext,
+    input: ShopMembershipCardAdjustmentListInput
+  ) {
     if (!this.repository.listMerchantRequests) throw this.invalidState();
     const shopId = requireMerchantShopId(actor);
     await this.repository.expireDue?.({ batchSize: 100, shopId });
@@ -282,7 +334,10 @@ export class ShopMembershipCardAdjustmentService {
     return { ...page, list: page.list.map((item) => this.toPublic(item, false)) };
   }
 
-  public async listCustomer(actor: AuthenticatedAccessContext, input: ShopMembershipCardAdjustmentListInput) {
+  public async listCustomer(
+    actor: AuthenticatedAccessContext,
+    input: ShopMembershipCardAdjustmentListInput
+  ) {
     if (!this.repository.listCustomerRequests) throw this.invalidState();
     const customerUserId = this.requireCustomer(actor);
     await this.repository.expireDue?.({ batchSize: 100, customerUserId });
@@ -290,26 +345,56 @@ export class ShopMembershipCardAdjustmentService {
     return { ...page, list: page.list.map((item) => this.toPublic(item, false)) };
   }
 
-  private normalizeCreateInput(input: ShopMembershipCardAdjustmentCreateInput): ShopMembershipCardAdjustmentCreateInput {
+  private normalizeCreateInput(
+    input: ShopMembershipCardAdjustmentCreateInput
+  ): ShopMembershipCardAdjustmentCreateInput {
     const reason = input.reason?.trim();
     const idempotencyKey = input.idempotencyKey?.trim();
-    if (!reason || reason.length > 500 || !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160) throw this.invalidValue();
+    if (
+      !reason ||
+      reason.length > 500 ||
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 160
+    )
+      throw this.invalidValue();
     this.assertOptionalDatabaseInt(input.targetPrincipalBalanceJpy);
     this.assertOptionalDatabaseInt(input.targetRemainingUses);
-    if (Number(input.targetPrincipalBalanceJpy !== null) + Number(input.targetRemainingUses !== null) !== 1) throw this.invalidValue();
+    if (
+      Number(input.targetPrincipalBalanceJpy !== null) +
+        Number(input.targetRemainingUses !== null) !==
+      1
+    )
+      throw this.invalidValue();
     return { ...input, reason, idempotencyKey };
   }
 
-  private normalizeDecisionInput(input: ShopMembershipCardAdjustmentDecisionInput): ShopMembershipCardAdjustmentDecisionInput {
+  private normalizeDecisionInput(
+    input: ShopMembershipCardAdjustmentDecisionInput
+  ): ShopMembershipCardAdjustmentDecisionInput {
     const idempotencyKey = input.idempotencyKey?.trim();
-    if ((input.decision !== "approve" && input.decision !== "reject") || !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160) throw this.invalidValue();
+    if (
+      (input.decision !== "approve" && input.decision !== "reject") ||
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 160
+    )
+      throw this.invalidValue();
     return { ...input, idempotencyKey };
   }
 
-  private resolveValues(card: ShopMembershipCardAdjustmentCardContext, input: ShopMembershipCardAdjustmentCreateInput) {
+  private resolveValues(
+    card: ShopMembershipCardAdjustmentCardContext,
+    input: ShopMembershipCardAdjustmentCreateInput
+  ) {
     if (card.status !== "active") throw this.invalidState();
     if (card.type === "stored_value") {
-      if (card.principalBalanceJpy === null || input.targetPrincipalBalanceJpy === null || input.targetRemainingUses !== null) throw this.invalidValue();
+      if (
+        card.principalBalanceJpy === null ||
+        input.targetPrincipalBalanceJpy === null ||
+        input.targetRemainingUses !== null
+      )
+        throw this.invalidValue();
       if (card.principalBalanceJpy === input.targetPrincipalBalanceJpy) throw this.invalidValue();
       return {
         beforePrincipalBalanceJpy: card.principalBalanceJpy,
@@ -319,10 +404,21 @@ export class ShopMembershipCardAdjustmentService {
       };
     }
     if (card.type === "count") {
-      if (card.remainingUses === null || card.totalUses === null || input.targetRemainingUses === null || input.targetPrincipalBalanceJpy !== null) throw this.invalidValue();
+      if (
+        card.remainingUses === null ||
+        card.totalUses === null ||
+        input.targetRemainingUses === null ||
+        input.targetPrincipalBalanceJpy !== null
+      )
+        throw this.invalidValue();
       if (card.remainingUses === input.targetRemainingUses) throw this.invalidValue();
       const targetTotalUses = card.totalUses + input.targetRemainingUses - card.remainingUses;
-      if (!Number.isSafeInteger(targetTotalUses) || targetTotalUses < card.totalUses - card.remainingUses || targetTotalUses > 2_147_483_647) throw this.invalidValue();
+      if (
+        !Number.isSafeInteger(targetTotalUses) ||
+        targetTotalUses < card.totalUses - card.remainingUses ||
+        targetTotalUses > 2_147_483_647
+      )
+        throw this.invalidValue();
       return {
         beforePrincipalBalanceJpy: null,
         targetPrincipalBalanceJpy: null,
@@ -342,12 +438,17 @@ export class ShopMembershipCardAdjustmentService {
       publicId: record.publicId,
       status: record.status,
       reason: record.reason,
-      dimension: (principal ? "principal_balance" : "remaining_uses") as ShopMembershipCardAdjustmentDimension,
+      dimension: (principal
+        ? "principal_balance"
+        : "remaining_uses") as ShopMembershipCardAdjustmentDimension,
       beforeValue,
       targetValue,
       difference: targetValue - beforeValue,
       expiresAt: record.expiresAt,
-      remainingSeconds: Math.max(0, Math.floor((record.expiresAt.getTime() - this.now().getTime()) / 1000)),
+      remainingSeconds: Math.max(
+        0,
+        Math.floor((record.expiresAt.getTime() - this.now().getTime()) / 1000)
+      ),
       decidedAt: record.decidedAt,
       cancelledAt: record.cancelledAt,
       invalidatedAt: record.invalidatedAt,
@@ -371,14 +472,23 @@ export class ShopMembershipCardAdjustmentService {
   }
 
   private requireCustomer(actor: AuthenticatedAccessContext): number {
-    if (actor.currentIdentityType !== "customer" || actor.currentIdentityScopeType !== "customer_profile" || !actor.currentIdentityScopeId) {
-      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.identity.forbidden", statusCode: 403 });
+    if (
+      actor.currentIdentityType !== "customer" ||
+      actor.currentIdentityScopeType !== "customer_profile" ||
+      !actor.currentIdentityScopeId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
     }
     return actor.userId;
   }
 
   private assertOptionalDatabaseInt(value: number | null): void {
-    if (value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647)) throw this.invalidValue();
+    if (value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647))
+      throw this.invalidValue();
   }
 
   private fingerprint(value: unknown): string {
@@ -391,30 +501,58 @@ export class ShopMembershipCardAdjustmentService {
   }
 
   private notFound(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_NOT_FOUND, message: "error.shop_membership_card_adjustment.not_found", statusCode: 404 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_NOT_FOUND,
+      message: "error.shop_membership_card_adjustment.not_found",
+      statusCode: 404
+    });
   }
 
   private invalidValue(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_INVALID_VALUE, message: "error.shop_membership_card_adjustment.invalid_value", statusCode: 400 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_INVALID_VALUE,
+      message: "error.shop_membership_card_adjustment.invalid_value",
+      statusCode: 400
+    });
   }
 
   private invalidState(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_INVALID_STATE, message: "error.shop_membership_card_adjustment.invalid_state", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_INVALID_STATE,
+      message: "error.shop_membership_card_adjustment.invalid_state",
+      statusCode: 409
+    });
   }
 
   private pendingConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_PENDING_CONFLICT, message: "error.shop_membership_card_adjustment.pending_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_PENDING_CONFLICT,
+      message: "error.shop_membership_card_adjustment.pending_conflict",
+      statusCode: 409
+    });
   }
 
   private expired(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRED, message: "error.shop_membership_card_adjustment.expired", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRED,
+      message: "error.shop_membership_card_adjustment.expired",
+      statusCode: 409
+    });
   }
 
   private snapshotConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_SNAPSHOT_CONFLICT, message: "error.shop_membership_card_adjustment.snapshot_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_SNAPSHOT_CONFLICT,
+      message: "error.shop_membership_card_adjustment.snapshot_conflict",
+      statusCode: 409
+    });
   }
 
   private idempotencyConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_IDEMPOTENCY_CONFLICT, message: "error.shop_membership_card_adjustment.idempotency_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_IDEMPOTENCY_CONFLICT,
+      message: "error.shop_membership_card_adjustment.idempotency_conflict",
+      statusCode: 409
+    });
   }
 }

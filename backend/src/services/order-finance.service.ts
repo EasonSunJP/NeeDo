@@ -209,12 +209,11 @@ export class OrderFinanceService {
     const nominationChargeAmountJpy = hasComponentBreakdown
       ? input.nominationChargeAmountJpy!
       : null;
-    const wasTechnicianNominated = hasComponentBreakdown
-      ? input.wasTechnicianNominated!
-      : null;
-    const compensationBasisVersion = hasComponentBreakdown && record.activeCompensationRule
-      ? `${record.activeCompensationRule.sourceType}:${record.activeCompensationRule.id}`
-      : "legacy_aggregate";
+    const wasTechnicianNominated = hasComponentBreakdown ? input.wasTechnicianNominated! : null;
+    const compensationBasisVersion =
+      hasComponentBreakdown && record.activeCompensationRule
+        ? `${record.activeCompensationRule.sourceType}:${record.activeCompensationRule.id}`
+        : "legacy_aggregate";
     const occurredAt = new Date().toISOString();
     const baseTimeline = this.sanitizeTimeline(record.financial?.moneyTimeline ?? []);
     const reportEvent: MoneyTimelineEvent = {

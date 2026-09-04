@@ -43,7 +43,11 @@ export class TechnicianProfileService {
       action: "technician_profile.self_update",
       targetType: "TechnicianProfile",
       targetId: profileId,
-      metadata: { changedFields: Object.keys(input).map((field) => field === "avatarDataUrl" ? "avatar" : field).sort() }
+      metadata: {
+        changedFields: Object.keys(input)
+          .map((field) => (field === "avatarDataUrl" ? "avatar" : field))
+          .sort()
+      }
     });
     return this.repository.updateMine(userId, profileId, identityId, mutation, auditLog);
   }

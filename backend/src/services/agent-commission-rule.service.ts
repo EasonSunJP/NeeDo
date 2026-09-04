@@ -26,10 +26,7 @@ export interface AgentCommissionRuleListRequest {
   at: Date;
 }
 
-export type AgentCommissionRulePayload = Omit<
-  AgentCommissionRuleRecord,
-  "id" | "agentProfileId"
->;
+export type AgentCommissionRulePayload = Omit<AgentCommissionRuleRecord, "id" | "agentProfileId">;
 
 export interface AgentCommissionRuleOverviewPayload {
   current: AgentCommissionRulePayload | null;

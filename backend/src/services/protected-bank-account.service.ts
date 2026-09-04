@@ -86,7 +86,10 @@ export class ProtectedBankAccountService {
   public async bindMerchantAccount(
     input: BindMerchantBankAccountInput
   ): Promise<ProtectedBankAccountProjection> {
-    const context = await this.repository.findMerchantBindingContext(input.applicationId, input.now);
+    const context = await this.repository.findMerchantBindingContext(
+      input.applicationId,
+      input.now
+    );
     if (!context || context.userId !== input.userId) {
       throw new AppError({
         code: ERROR_CODES.NOT_FOUND,

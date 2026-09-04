@@ -42,8 +42,10 @@ function isClientAuthoredContactCard(metadata: unknown): boolean {
     return false;
   }
   const record = metadata as Record<string, unknown>;
-  return record.needoMessageType === "contact-card" ||
-    (record.snapshotVersion === 2 && record.type === "contact-card");
+  return (
+    record.needoMessageType === "contact-card" ||
+    (record.snapshotVersion === 2 && record.type === "contact-card")
+  );
 }
 
 export interface OrderStatusNotificationInput {
@@ -204,9 +206,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
     const { result } = outcome;
 
-    const eventRecipients = recipients.length > 0
-      ? recipients
-      : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
+    const eventRecipients =
+      recipients.length > 0
+        ? recipients
+        : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
     for (const recipient of eventRecipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
@@ -221,10 +224,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return result;
   }
 
-  public async dissolveConversation(
-    auth: AuthenticatedAccessContext,
-    conversationId: number
-  ) {
+  public async dissolveConversation(auth: AuthenticatedAccessContext, conversationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const recipients = this.repository.listConversationRecipients
       ? await this.repository.listConversationRecipients(conversationId)
@@ -239,9 +239,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
       throw this.notFoundError("error.realtime.group_conversation_not_found");
     }
 
-    const eventRecipients = recipients.length > 0
-      ? recipients
-      : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
+    const eventRecipients =
+      recipients.length > 0
+        ? recipients
+        : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
     for (const recipient of eventRecipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
@@ -261,10 +262,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.listConversations(scope.identityId, input);
   }
 
-  public async assertMessageSendAllowed(
-    auth: AuthenticatedAccessContext,
-    conversationId: number
-  ) {
+  public async assertMessageSendAllowed(auth: AuthenticatedAccessContext, conversationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const eligibility = await this.repository.checkMessageSendEligibility({
       conversationId,
@@ -691,10 +689,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return conversation;
   }
 
-  public async clearConversationMessages(
-    auth: AuthenticatedAccessContext,
-    conversationId: number
-  ) {
+  public async clearConversationMessages(auth: AuthenticatedAccessContext, conversationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.clearConversationMessages({
       conversationId,
@@ -729,9 +724,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async getDirectoryProfile(auth: AuthenticatedAccessContext, targetUserId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = auth.userId === targetUserId
-      ? scope.identityId
-      : await this.requireCanonicalTargetIdentity(targetUserId);
+    const targetIdentityId =
+      auth.userId === targetUserId
+        ? scope.identityId
+        : await this.requireCanonicalTargetIdentity(targetUserId);
     const profile = await this.repository.getDirectoryProfile(
       auth.userId,
       scope.identityId,
@@ -1012,9 +1008,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     const scope = await this.resolvePersonalIdentityScope(auth);
     return this.repository.listSocialPosts(
       scope.identityId,
-      input.authorUserId === auth.userId
-        ? { ...input, authorIdentityId: scope.identityId }
-        : input,
+      input.authorUserId === auth.userId ? { ...input, authorIdentityId: scope.identityId } : input,
       auth.userId
     );
   }
@@ -1174,9 +1168,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
     now: Date = new Date()
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = targetUserId === auth.userId
-      ? scope.identityId
-      : await this.repository.findCanonicalIdentityIdForUser(targetUserId);
+    const targetIdentityId =
+      targetUserId === auth.userId
+        ? scope.identityId
+        : await this.repository.findCanonicalIdentityIdForUser(targetUserId);
     if (!targetIdentityId) {
       throw this.notFoundError("error.realtime.social_profile_not_found");
     }
@@ -1237,7 +1232,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async markNotificationRead(auth: AuthenticatedAccessContext, notificationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const notification = await this.repository.markNotificationRead(scope.identityId, notificationId);
+    const notification = await this.repository.markNotificationRead(
+      scope.identityId,
+      notificationId
+    );
 
     if (!notification) {
       throw this.notFoundError("error.realtime.notification_not_found");
@@ -1361,14 +1359,16 @@ export class RealtimeService implements OrderStatusNotificationPort {
   ): Promise<void> {
     const recipients = this.repository.listConversationRecipients
       ? await this.repository.listConversationRecipients(conversationId)
-      : (await this.repository.getConversationForUser(
-          conversationId,
-          senderIdentityId,
-          senderUserId
-        ))?.participants.map((participant) => ({
+      : ((
+          await this.repository.getConversationForUser(
+            conversationId,
+            senderIdentityId,
+            senderUserId
+          )
+        )?.participants.map((participant) => ({
           userId: participant.userId,
           identityId: participant.userId
-        })) ?? [];
+        })) ?? []);
 
     for (const participant of recipients) {
       this.eventGateway.publish({

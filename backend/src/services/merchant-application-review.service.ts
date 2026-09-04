@@ -296,7 +296,8 @@ export class MerchantApplicationReviewService {
     }
 
     const bank = application.bankAccount;
-    const expectedSource = application.applicantKind === "corporate" ? "corporate_registration" : "ekyc";
+    const expectedSource =
+      application.applicantKind === "corporate" ? "corporate_registration" : "ekyc";
     if (
       !bank ||
       bank.verificationStatus !== "verified" ||
