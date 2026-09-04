@@ -10,6 +10,7 @@ x-api-service: &api-service
   environment: &api-environment
     NODE_ENV: production
     DEPLOY_ENV: staging
+    AUTH_REGISTRATION_ENABLED: "false"
     PORT: "3000"
     API_PREFIX: /api/v1
     DATABASE_URL: mysql://needo:${MYSQL_PASSWORD}@mysql:3306/needo_staging

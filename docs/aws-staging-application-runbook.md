@@ -41,6 +41,26 @@ flags to `true`, rebuild an immutable release, deploy it, and verify login,
 link, and unlink. Do not put the client ID in Git. EC2, EBS, MySQL, Redis, the
 Elastic IP, DNS, and the TLS certificate do not need to be recreated.
 
+## Registration capability
+
+The current immutable Staging release disables public self-registration at both
+edges:
+
+```text
+AUTH_REGISTRATION_ENABLED=false
+VITE_AUTH_REGISTRATION_ENABLED=false
+```
+
+Both public registration endpoints return HTTP `403` with
+`{ "code": 40313, "message": "error.auth.registration_disabled", "data": null }`
+before request validation, OTP delivery, challenge creation, or database writes.
+The frontend bundle does not render registration entry or verification panels.
+
+To re-enable registration for one later release, change both immutable values to
+`true`, build a new clean revision, deploy that revision, and rerun the
+registration flow. EC2, EBS, MySQL, Redis, DNS, and TLS are reused; do not add a
+Secrets Manager version for either flag.
+
 ## Release sequence
 
 1. Confirm `outputs/aws-staging/environment-acceptance.json` still passes the

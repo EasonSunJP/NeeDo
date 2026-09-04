@@ -67,6 +67,14 @@ test("immutable staging packaging explicitly disables Google auth in the fronten
   assert.match(packager, /"backend\/prisma\.config\.ts"/);
 });
 
+test("immutable staging release disables self-registration at both edges", () => {
+  const compose = read("./docker-compose.yml");
+  const packager = read("../../scripts/aws-staging-package-application.mjs");
+
+  assert.match(compose, /AUTH_REGISTRATION_ENABLED:\s*"false"/);
+  assert.match(packager, /VITE_AUTH_REGISTRATION_ENABLED:\s*"false"/);
+});
+
 test("release provisioning keeps the ACME webroot public while certificate state stays private", () => {
   const releaseScript = read("./deploy-release.sh");
 

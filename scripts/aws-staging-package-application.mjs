@@ -48,7 +48,8 @@ async function run(file, args, cwd = repositoryRoot) {
       ...process.env,
       CI: "1",
       NEEDO_BUILD_TARGET: "production",
-      VITE_AUTH_GOOGLE_ENABLED: "false"
+      VITE_AUTH_GOOGLE_ENABLED: "false",
+      VITE_AUTH_REGISTRATION_ENABLED: "false"
     },
     maxBuffer: 16 * 1024 * 1024
   });
