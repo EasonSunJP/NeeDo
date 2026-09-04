@@ -8,17 +8,18 @@ import { ACCOUNT_SYNC_TABLES, collectionDigest, parseSelectiveAccountSyncBundle,
 
 const LOCK_NAME = "needo-staging-selective-account-sync";
 type DatabaseRow = Record<string, unknown>;
+type StagingConnectionConfig = ConnectionConfig & { jsonStrings: true };
 
 export const parseSelectiveAccountImportCliArgs = (args: readonly string[]) => {
   if (args.length !== 4 || args[0] !== "--input" || args[2] !== "--sha256" || !path.isAbsolute(args[1] ?? "") || !/^[a-f0-9]{64}$/u.test(args[3] ?? "")) throw new Error("ACCOUNT_SYNC_CLI_ARGUMENT_INVALID");
   return { inputPath: args[1], sha256: args[3] };
 };
 
-export const createStagingImportConnectionConfig = (databaseUrl: string): ConnectionConfig => {
+export const createStagingImportConnectionConfig = (databaseUrl: string): StagingConnectionConfig => {
   try {
     const url = new URL(databaseUrl);
     if (url.protocol !== "mysql:" || url.hostname !== "mysql" || url.pathname.replace(/^\/+/, "") !== "needo_staging") throw new Error();
-    return { host: "mysql", port: url.port ? Number(url.port) : 3306, user: decodeURIComponent(url.username), password: decodeURIComponent(url.password), database: "needo_staging", dateStrings: true };
+    return { host: "mysql", port: url.port ? Number(url.port) : 3306, user: decodeURIComponent(url.username), password: decodeURIComponent(url.password), database: "needo_staging", dateStrings: true, jsonStrings: true };
   } catch { throw new Error("ACCOUNT_SYNC_TARGET_BOUNDARY_REJECTED"); }
 };
 
@@ -39,16 +40,18 @@ const placeholders = (values: readonly unknown[]): string => values.map(() => "?
 const ids = (values: Iterable<number>): number[] => [...values];
 
 const collisionStatements: Record<CollisionField, readonly string[]> = {
-  email: ["SELECT email FROM users WHERE deleted_at IS NULL AND email IN (%s)"],
-  needo_id: ["SELECT needo_id FROM users WHERE deleted_at IS NULL AND needo_id IN (%s)"],
-  account_no: ["SELECT account_no FROM users WHERE deleted_at IS NULL AND account_no IN (%s)"],
-  phone: ["SELECT phone FROM users WHERE deleted_at IS NULL AND phone IN (%s)"],
-  shop_no: ["SELECT shop_no FROM shops WHERE deleted_at IS NULL AND shop_no IN (%s)"],
-  code: ["SELECT code FROM merchant_accounts WHERE deleted_at IS NULL AND code IN (%s)"],
-  owner_no: ["SELECT owner_no FROM merchant_accounts WHERE deleted_at IS NULL AND owner_no IN (%s)"],
-  active_key: ["SELECT active_key FROM user_identities WHERE deleted_at IS NULL AND active_key IN (%s)", "SELECT active_key FROM merchant_shop_memberships WHERE deleted_at IS NULL AND active_key IN (%s)", "SELECT active_key FROM technician_shop_affiliations WHERE deleted_at IS NULL AND active_key IN (%s)"],
-  public_id: ["SELECT public_id FROM public_identifiers WHERE deleted_at IS NULL AND public_id IN (%s)"],
-  kind_number_part: ["SELECT kind, number_part FROM public_identifiers WHERE deleted_at IS NULL AND CONCAT(kind, ':', number_part) IN (%s)"]
+  email: ["SELECT email FROM users WHERE email IN (%s)"],
+  needo_id: ["SELECT needo_id FROM users WHERE needo_id IN (%s)"],
+  account_no: ["SELECT account_no FROM users WHERE account_no IN (%s)"],
+  phone: ["SELECT phone FROM users WHERE phone IN (%s)"],
+  shop_no: ["SELECT shop_no FROM shops WHERE shop_no IN (%s)"],
+  code: ["SELECT code FROM merchant_accounts WHERE code IN (%s)"],
+  owner_no: ["SELECT owner_no FROM merchant_accounts WHERE owner_no IN (%s)"],
+  user_identity_active_key: ["SELECT active_key FROM user_identities WHERE active_key IN (%s)"],
+  merchant_shop_membership_active_key: ["SELECT active_key FROM merchant_shop_memberships WHERE active_key IN (%s)"],
+  technician_shop_affiliation_active_key: ["SELECT active_key FROM technician_shop_affiliations WHERE active_key IN (%s)"],
+  public_id: ["SELECT public_id FROM public_identifiers WHERE public_id IN (%s)"],
+  kind_number_part: ["SELECT kind, number_part FROM public_identifiers WHERE CONCAT(kind, ':', number_part) IN (%s)"]
 };
 
 const importableColumns: Record<(typeof ACCOUNT_SYNC_TABLES)[number], ReadonlySet<string>> = {
@@ -115,7 +118,7 @@ const makeImportPort = (connection: Connection, env: NodeJS.ProcessEnv): Selecti
     const administratorId = users.length === 1 ? Number(users[0].id) : -1;
     const [roles, migrations, identities, administratorRoles] = await Promise.all([
       connection.query("SELECT id, code, deleted_at FROM roles WHERE deleted_at IS NULL"), connection.query("SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at ASC"),
-      connection.query("SELECT COUNT(*) AS count FROM user_identities WHERE user_id = ? AND deleted_at IS NULL AND is_active = 1 AND scope_type = 'platform'", [administratorId]),
+      connection.query("SELECT COUNT(*) AS count FROM user_identities WHERE user_id = ? AND deleted_at IS NULL AND is_active = 1 AND type = 'platform' AND scope_type = 'global' AND scope_id IS NULL", [administratorId]),
       connection.query("SELECT COUNT(*) AS count FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.deleted_at IS NULL AND r.deleted_at IS NULL AND r.code = 'admin'", [administratorId])
     ]);
     return { users, roles: rows(roles), migrations: rows(migrations), activePlatformIdentities: count(identities), administratorRoleCount: count(administratorRoles) };

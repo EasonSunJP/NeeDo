@@ -6,19 +6,21 @@ import {
 } from "./selective-account-sync-contract";
 
 type TargetRow = { id?: number; [key: string]: unknown };
-export type CollisionField = "email" | "needo_id" | "account_no" | "phone" | "shop_no" | "code" | "owner_no" | "active_key" | "public_id" | "kind_number_part";
+export type CollisionField = "email" | "needo_id" | "account_no" | "phone" | "shop_no" | "code" | "owner_no" | "user_identity_active_key" | "merchant_shop_membership_active_key" | "technician_shop_affiliation_active_key" | "public_id" | "kind_number_part";
 
 const collisionQueries: Record<CollisionField, string> = {
-  email: "SELECT email FROM users WHERE deleted_at IS NULL AND email IN (?)",
-  needo_id: "SELECT needo_id FROM users WHERE deleted_at IS NULL AND needo_id IN (?)",
-  account_no: "SELECT account_no FROM users WHERE deleted_at IS NULL AND account_no IN (?)",
-  phone: "SELECT phone FROM users WHERE deleted_at IS NULL AND phone IN (?)",
-  shop_no: "SELECT shop_no FROM shops WHERE deleted_at IS NULL AND shop_no IN (?)",
-  code: "SELECT code FROM merchant_accounts WHERE deleted_at IS NULL AND code IN (?)",
-  owner_no: "SELECT owner_no FROM merchant_accounts WHERE deleted_at IS NULL AND owner_no IN (?)",
-  active_key: "SELECT active_key FROM user_identities WHERE deleted_at IS NULL AND active_key IN (?) UNION ALL SELECT active_key FROM merchant_shop_memberships WHERE deleted_at IS NULL AND active_key IN (?) UNION ALL SELECT active_key FROM technician_shop_affiliations WHERE deleted_at IS NULL AND active_key IN (?)",
-  public_id: "SELECT public_id FROM public_identifiers WHERE deleted_at IS NULL AND public_id IN (?)",
-  kind_number_part: "SELECT kind, number_part FROM public_identifiers WHERE deleted_at IS NULL AND CONCAT(kind, ':', number_part) IN (?)"
+  email: "SELECT email FROM users WHERE email IN (?)",
+  needo_id: "SELECT needo_id FROM users WHERE needo_id IN (?)",
+  account_no: "SELECT account_no FROM users WHERE account_no IN (?)",
+  phone: "SELECT phone FROM users WHERE phone IN (?)",
+  shop_no: "SELECT shop_no FROM shops WHERE shop_no IN (?)",
+  code: "SELECT code FROM merchant_accounts WHERE code IN (?)",
+  owner_no: "SELECT owner_no FROM merchant_accounts WHERE owner_no IN (?)",
+  user_identity_active_key: "SELECT active_key FROM user_identities WHERE active_key IN (?)",
+  merchant_shop_membership_active_key: "SELECT active_key FROM merchant_shop_memberships WHERE active_key IN (?)",
+  technician_shop_affiliation_active_key: "SELECT active_key FROM technician_shop_affiliations WHERE active_key IN (?)",
+  public_id: "SELECT public_id FROM public_identifiers WHERE public_id IN (?)",
+  kind_number_part: "SELECT kind, number_part FROM public_identifiers WHERE CONCAT(kind, ':', number_part) IN (?)"
 };
 
 export const collisionQueryFor = Object.assign((field: CollisionField): string => {
@@ -69,13 +71,17 @@ export const parseSelectiveAccountImportConfig = (env: NodeJS.ProcessEnv) => {
   }
 };
 
+const isDatabaseTrue = (value: unknown): boolean => Number(value) === 1;
+
 const roleScopeMap = (values: Record<string, unknown>, maps: Record<string, Map<number, number>>): void => {
   const scopeType = values.scope_type;
   const scopeId = values.scope_id;
+  if ((scopeType === null || scopeType === undefined) && (scopeId === null || scopeId === undefined)) return;
   if (scopeType === "global" || scopeType === "platform") {
     if (scopeId !== null && scopeId !== undefined) throw new Error("ACCOUNT_SYNC_SCOPE_INVALID");
     return;
   }
+  if (scopeType === null || scopeType === undefined || scopeId === null || scopeId === undefined) throw new Error("ACCOUNT_SYNC_SCOPE_INVALID");
   const table = scopeType === "merchant" ? "merchant_accounts" : scopeType === "customer_profile" ? "customer_profiles" : scopeType === "technician_profile" ? "technician_profiles" : scopeType === "shop" ? "shops" : scopeType === "merchant_account" ? "merchant_accounts" : undefined;
   if (!table || typeof scopeId !== "number" || !maps[table].has(scopeId)) throw new Error("ACCOUNT_SYNC_SCOPE_INVALID");
   values.scope_id = maps[table].get(scopeId);
@@ -121,7 +127,7 @@ export const importSelectiveAccounts = async (port: SelectiveAccountImportPort, 
     await port.begin(); started = true;
     const baseline = await port.baseline();
     const administrator = baseline.users.filter((user) => user.deleted_at === null || user.deleted_at === undefined);
-    if (administrator.length !== 1 || String(administrator[0].email).trim().toLowerCase() !== config.adminDefaultEmail || administrator[0].is_active !== true || baseline.activePlatformIdentities !== 1 || baseline.administratorRoleCount !== 1) throw new Error("ACCOUNT_SYNC_TARGET_BASELINE_INVALID");
+    if (administrator.length !== 1 || String(administrator[0].email).trim().toLowerCase() !== config.adminDefaultEmail || !isDatabaseTrue(administrator[0].is_active) || baseline.activePlatformIdentities !== 1 || baseline.administratorRoleCount !== 1) throw new Error("ACCOUNT_SYNC_TARGET_BASELINE_INVALID");
     if (baseline.migrations.length !== bundle.sourceMigrationCount || String(baseline.migrations.at(-1)?.migration_name) !== bundle.sourceLatestMigration) throw new Error("ACCOUNT_SYNC_MIGRATION_PARITY_INVALID");
     const collisionValues: Record<CollisionField, unknown[]> = {
       email: bundle.tables.users.map((row) => row.values.email).filter((value) => value !== null && value !== undefined),
@@ -131,7 +137,9 @@ export const importSelectiveAccounts = async (port: SelectiveAccountImportPort, 
       shop_no: bundle.tables.shops.map((row) => row.values.shop_no).filter((value) => value !== null && value !== undefined),
       code: bundle.tables.merchant_accounts.map((row) => row.values.code).filter((value) => value !== null && value !== undefined),
       owner_no: bundle.tables.merchant_accounts.map((row) => row.values.owner_no).filter((value) => value !== null && value !== undefined),
-      active_key: [...bundle.tables.user_identities, ...bundle.tables.merchant_shop_memberships, ...bundle.tables.technician_shop_affiliations].map((row) => row.values.active_key).filter((value) => value !== null && value !== undefined),
+      user_identity_active_key: bundle.tables.user_identities.map((row) => row.values.active_key).filter((value) => value !== null && value !== undefined),
+      merchant_shop_membership_active_key: bundle.tables.merchant_shop_memberships.map((row) => row.values.active_key).filter((value) => value !== null && value !== undefined),
+      technician_shop_affiliation_active_key: bundle.tables.technician_shop_affiliations.map((row) => row.values.active_key).filter((value) => value !== null && value !== undefined),
       public_id: bundle.tables.public_identifiers.map((row) => row.values.public_id).filter((value) => value !== null && value !== undefined),
       kind_number_part: bundle.tables.public_identifiers.map((row) => `${row.values.kind}:${row.values.number_part}`)
     };
