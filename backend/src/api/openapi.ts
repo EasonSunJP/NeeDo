@@ -2403,21 +2403,21 @@ const membershipListSuccessResponse = () => {
       data: {
         list: [
           {
-          userNeedoId: "u0000000041",
-          nickname: "美咲",
-          city: "东京",
-          shopPublicId: "shop0000000071",
-          shopName: "青山护理店",
-          membershipPublicId: "00000000-0000-4000-8000-000000000031",
-          planName: "月度会员",
-          cardPublicId: "00000000-0000-4000-8000-000000000481",
-          cardNoMasked: "•••• •••• •••• AABB",
-          acquisitionSource: "offline_paid",
-          addedAt: "2026-08-30T03:00:00.000Z",
-          firstPaidAt: "2026-05-01T03:00:00.000Z",
-          memberStatus: "active",
-          cardStatus: "active",
-          expiresAt: "2026-09-30T03:00:00.000Z"
+            userNeedoId: "u0000000041",
+            nickname: "美咲",
+            city: "东京",
+            shopPublicId: "shop0000000071",
+            shopName: "青山护理店",
+            membershipPublicId: "00000000-0000-4000-8000-000000000031",
+            planName: "月度会员",
+            cardPublicId: "00000000-0000-4000-8000-000000000481",
+            cardNoMasked: "•••• •••• •••• AABB",
+            acquisitionSource: "offline_paid",
+            addedAt: "2026-08-30T03:00:00.000Z",
+            firstPaidAt: "2026-05-01T03:00:00.000Z",
+            memberStatus: "active",
+            cardStatus: "active",
+            expiresAt: "2026-09-30T03:00:00.000Z"
           }
         ],
         total: 1,
@@ -3166,8 +3166,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     type: "string",
                     const:
                       metricKey === "new_paid_members"
-                      ? "/admin/analytics/members"
-                      : `/admin/analytics/metrics/${metricKey}`
+                        ? "/admin/analytics/members"
+                        : `/admin/analytics/metrics/${metricKey}`
                   }
                 }
               })),
@@ -14405,7 +14405,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-card-adjustment-requests/{publicId}/cancel`]:
       {
-      post: {
+        post: {
           tags: ["Shop Membership Card Adjustment"],
           summary: "Cancel a pending adjustment before the customer decides",
           security: [{ bearerAuth: [] }],
@@ -14416,8 +14416,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }),
             ...shopMembershipCardAdjustmentErrorResponses
           }
-      }
-    },
+        }
+      },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/top-ups`]: {
       post: {
         tags: ["Shop Membership Card Top-up"],
@@ -14464,20 +14464,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemption-candidates`]:
       {
-      get: {
-        tags: ["Shop Membership Card Redemption"],
-        summary: "List completed same-shop same-customer orders eligible for this card",
-        security: [{ bearerAuth: [] }],
-        parameters: [shopMembershipPublicIdParameter, ...shopMembershipPageParameters],
-        responses: {
+        get: {
+          tags: ["Shop Membership Card Redemption"],
+          summary: "List completed same-shop same-customer orders eligible for this card",
+          security: [{ bearerAuth: [] }],
+          parameters: [shopMembershipPublicIdParameter, ...shopMembershipPageParameters],
+          responses: {
             "200": jsonDataResponse(
               "Paginated redemption candidates with exact card and NDP previews",
               { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidatePage" }
             ),
-          ...shopMembershipCardRedemptionErrorResponses
+            ...shopMembershipCardRedemptionErrorResponses
+          }
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemptions`]: {
       post: {
         tags: ["Shop Membership Card Redemption"],
@@ -14681,27 +14681,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-adjustment-requests/{publicId}/decision`]:
       {
-      post: {
-        tags: ["Shop Membership Card Adjustment"],
-        summary: "Approve or reject an unexpired adjustment request",
-        security: [{ bearerAuth: [] }],
-        parameters: [shopMembershipPublicIdParameter],
-        requestBody: {
-          required: true,
+        post: {
+          tags: ["Shop Membership Card Adjustment"],
+          summary: "Approve or reject an unexpired adjustment request",
+          security: [{ bearerAuth: [] }],
+          parameters: [shopMembershipPublicIdParameter],
+          requestBody: {
+            required: true,
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ShopMembershipCardAdjustmentDecisionRequest" }
               }
             }
-        },
-        responses: {
+          },
+          responses: {
             "200": jsonDataResponse("Customer decision result", {
               $ref: "#/components/schemas/ShopMembershipCardAdjustment"
             }),
-          ...shopMembershipCardAdjustmentErrorResponses
+            ...shopMembershipCardAdjustmentErrorResponses
+          }
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/backoffice/order-acceptance-pauses`]: {
       get: {
         tags: ["Order Acceptance Pause"],
@@ -18007,15 +18007,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Public technician detail",
         parameters: [
           {
-          name: "id",
-          in: "path",
-          required: true,
-          schema: {
-            oneOf: [
-              { type: "integer", minimum: 1 },
-              { type: "string", pattern: "^s[0-9]{10}$" }
-            ]
-          }
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", pattern: "^s[0-9]{10}$" }
+              ]
+            }
           }
         ],
         responses: {
@@ -18109,14 +18109,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           {
-          name: "period",
-          in: "query",
-          required: false,
-          schema: {
-            type: "string",
-            enum: ["last7days", "last30days", "week", "month", "year"],
-            default: "last7days"
-          }
+            name: "period",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["last7days", "last30days", "week", "month", "year"],
+              default: "last7days"
+            }
           }
         ],
         responses: {
@@ -19584,7 +19584,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   ].map(([key, kind, metric, entityType], index) => [
                     key,
                     {
-                    summary: `${kind} by ${metric}`,
+                      summary: `${kind} by ${metric}`,
                       value: {
                         code: 0,
                         message: "success",
@@ -20648,61 +20648,61 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment`]:
       {
-      post: {
-        tags: ["Platform Partners"],
-        summary: "Confirm payment of an agent settlement",
-        description:
-          "Records an external payment reference using the method fixed by the confirmed rule snapshot. Settlement lines are never recalculated or rewritten.",
-        security: [{ bearerAuth: [] }],
-        "x-permission": "backoffice:agent-settlement:pay",
-        parameters: [
-          {
-            name: "agentPublicId",
-            in: "path",
+        post: {
+          tags: ["Platform Partners"],
+          summary: "Confirm payment of an agent settlement",
+          description:
+            "Records an external payment reference using the method fixed by the confirmed rule snapshot. Settlement lines are never recalculated or rewritten.",
+          security: [{ bearerAuth: [] }],
+          "x-permission": "backoffice:agent-settlement:pay",
+          parameters: [
+            {
+              name: "agentPublicId",
+              in: "path",
+              required: true,
+              schema: { type: "string", format: "uuid" }
+            },
+            {
+              name: "settlementPublicId",
+              in: "path",
+              required: true,
+              schema: { type: "string", format: "uuid" }
+            }
+          ],
+          requestBody: {
             required: true,
-            schema: { type: "string", format: "uuid" }
-          },
-          {
-            name: "settlementPublicId",
-            in: "path",
-            required: true,
-            schema: { type: "string", format: "uuid" }
-          }
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["paymentMethod", "paymentReference", "reason"],
-                properties: {
-                  paymentMethod: {
-                    type: "string",
-                    enum: ["bank_transfer", "ndp", "other"]
-                  },
-                  paymentReference: { type: "string", minLength: 1, maxLength: 255 },
-                  reason: { type: "string", minLength: 1, maxLength: 500 }
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["paymentMethod", "paymentReference", "reason"],
+                  properties: {
+                    paymentMethod: {
+                      type: "string",
+                      enum: ["bank_transfer", "ndp", "other"]
+                    },
+                    paymentReference: { type: "string", minLength: 1, maxLength: 255 },
+                    reason: { type: "string", minLength: 1, maxLength: 500 }
+                  }
                 }
               }
             }
+          },
+          responses: {
+            "200": jsonDataResponse("Agent settlement payment confirmed", {
+              $ref: "#/components/schemas/AgentSettlement"
+            }),
+            "400": jsonErrorResponse("error.validation"),
+            "401": jsonErrorResponse("error.auth.token_invalid"),
+            "403": jsonErrorResponse("error.forbidden"),
+            "404": jsonErrorResponse("error.agent_settlement.not_found"),
+            "409": jsonErrorResponse(
+              "error.agent_settlement.conflict or error.agent_settlement.payment_method_mismatch"
+            )
           }
-        },
-        responses: {
-          "200": jsonDataResponse("Agent settlement payment confirmed", {
-            $ref: "#/components/schemas/AgentSettlement"
-          }),
-          "400": jsonErrorResponse("error.validation"),
-          "401": jsonErrorResponse("error.auth.token_invalid"),
-          "403": jsonErrorResponse("error.forbidden"),
-          "404": jsonErrorResponse("error.agent_settlement.not_found"),
-          "409": jsonErrorResponse(
-            "error.agent_settlement.conflict or error.agent_settlement.payment_method_mismatch"
-          )
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/backoffice/operating-costs`]: {
       get: {
         tags: ["Operating Costs"],

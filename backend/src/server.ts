@@ -339,10 +339,7 @@ const shutdown = createShutdownHandler({
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
-    await Promise.all([
-      merchantShopAuditOutboxWorker.stop(),
-      officialNoticeWorker.stopAndDrain()
-    ]);
+    await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain()]);
   }
 });
 

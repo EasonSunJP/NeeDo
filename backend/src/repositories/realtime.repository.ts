@@ -2005,94 +2005,94 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     try {
       return await this.client.$transaction(async (tx) => {
-      const participant = await tx.conversationParticipant.findFirst({
-        where: {
-          conversationId: input.conversationId,
-          identityId,
-          deletedAt: null,
-          conversation: { deletedAt: null }
-        },
-        select: { createdAt: true, clearedThroughMessageId: true }
-      });
-      if (!participant) return null;
-      const messages = await tx.message.findMany({
-        where: {
-          id: {
-            in: messageIds,
-            ...(participant.clearedThroughMessageId
-              ? { gt: participant.clearedThroughMessageId }
-              : {})
-          },
-          conversationId: input.conversationId,
-          createdAt: { gte: participant.createdAt },
-          deletedAt: null,
-          conversation: {
+        const participant = await tx.conversationParticipant.findFirst({
+          where: {
+            conversationId: input.conversationId,
+            identityId,
             deletedAt: null,
-            participants: {
-              some: { identityId, deletedAt: null }
+            conversation: { deletedAt: null }
+          },
+          select: { createdAt: true, clearedThroughMessageId: true }
+        });
+        if (!participant) return null;
+        const messages = await tx.message.findMany({
+          where: {
+            id: {
+              in: messageIds,
+              ...(participant.clearedThroughMessageId
+                ? { gt: participant.clearedThroughMessageId }
+                : {})
+            },
+            conversationId: input.conversationId,
+            createdAt: { gte: participant.createdAt },
+            deletedAt: null,
+            conversation: {
+              deletedAt: null,
+              participants: {
+                some: { identityId, deletedAt: null }
+              }
+            }
+          },
+          select: { id: true }
+        });
+        if (messages.length !== messageIds.length) return null;
+
+        const existing = await tx.imMessageBatchDeleteCommand.findUnique({
+          where: {
+            ownerIdentityId_idempotencyKey: {
+              ownerIdentityId: identityId,
+              idempotencyKey: input.idempotencyKey
             }
           }
-        },
-        select: { id: true }
-      });
-      if (messages.length !== messageIds.length) return null;
-
-      const existing = await tx.imMessageBatchDeleteCommand.findUnique({
-        where: {
-          ownerIdentityId_idempotencyKey: {
-            ownerIdentityId: identityId,
-            idempotencyKey: input.idempotencyKey
-          }
-        }
-      });
-      if (existing) {
-        return this.resolveBatchDeleteReplay(existing, requestFingerprint);
-      }
-
-      for (const messageId of messageIds) {
-        await tx.messageUserDeletion.upsert({
-          where: { identityId_messageId: { identityId, messageId } },
-          create: {
-            conversationId: input.conversationId,
-            messageId,
-            userId: input.userId,
-            identityId
-          },
-          update: { deletedAt: null }
         });
-      }
+        if (existing) {
+          return this.resolveBatchDeleteReplay(existing, requestFingerprint);
+        }
 
-      const storedResult = {
-        conversationId: input.conversationId,
-        messageIds,
-        count: messageIds.length,
-        deleted: true as const
-      };
-      await tx.imMessageBatchDeleteCommand.create({
-        data: {
+        for (const messageId of messageIds) {
+          await tx.messageUserDeletion.upsert({
+            where: { identityId_messageId: { identityId, messageId } },
+            create: {
+              conversationId: input.conversationId,
+              messageId,
+              userId: input.userId,
+              identityId
+            },
+            update: { deletedAt: null }
+          });
+        }
+
+        const storedResult = {
           conversationId: input.conversationId,
-          ownerUserId: input.userId,
-          ownerIdentityId: identityId,
-          idempotencyKey: input.idempotencyKey,
-          requestFingerprint,
-          resultJson: storedResult
-        }
-      });
-      await tx.auditLog.create({
-        data: {
-          actorId: input.userId,
-          action: "im.messages.deleted_for_user",
-          targetType: "Conversation",
-          targetId: input.conversationId,
-          ip: null,
-          userAgent: null,
-          metadata: {
+          messageIds,
+          count: messageIds.length,
+          deleted: true as const
+        };
+        await tx.imMessageBatchDeleteCommand.create({
+          data: {
             conversationId: input.conversationId,
-            count: messageIds.length,
-            messageIds
+            ownerUserId: input.userId,
+            ownerIdentityId: identityId,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint,
+            resultJson: storedResult
           }
-        }
-      });
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: input.userId,
+            action: "im.messages.deleted_for_user",
+            targetType: "Conversation",
+            targetId: input.conversationId,
+            ip: null,
+            userAgent: null,
+            metadata: {
+              conversationId: input.conversationId,
+              count: messageIds.length,
+              messageIds
+            }
+          }
+        });
 
         return { ...storedResult, replayed: false };
       });
@@ -2512,11 +2512,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
     list.push(
       ...friends.map((candidate) => ({
-      targetUserId: candidate.needoId,
-      needoId: candidate.needoId,
-      nickname: candidate.username,
-      avatarUrl: candidate.avatarUrl,
-      relationship: "friend" as const
+        targetUserId: candidate.needoId,
+        needoId: candidate.needoId,
+        nickname: candidate.username,
+        avatarUrl: candidate.avatarUrl,
+        relationship: "friend" as const
       }))
     );
 
@@ -5207,8 +5207,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         conversation.messages[0] &&
         conversation.messages[0].id > (viewer?.clearedThroughMessageId ?? 0) &&
         conversation.messages[0].createdAt.getTime() >= (viewer?.createdAt.getTime() ?? 0)
-        ? this.mapMessage(conversation.messages[0], viewerIdentityId)
-        : null,
+          ? this.mapMessage(conversation.messages[0], viewerIdentityId)
+          : null,
       unreadCount: viewer?.unreadCount ?? 0,
       isPinned: viewer?.isPinned ?? false,
       isMuted: viewer?.isMuted ?? false,
@@ -5375,10 +5375,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private mapParticipant(
     user: {
-    id: number;
-    needoId: string;
-    username: string;
-    avatarUrl: string | null;
+      id: number;
+      needoId: string;
+      username: string;
+      avatarUrl: string | null;
     },
     role?: string
   ): ParticipantPayload {

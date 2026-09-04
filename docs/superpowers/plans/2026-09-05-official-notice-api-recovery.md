@@ -13,7 +13,7 @@
 - [x] Wire the worker and cross-instance event gateway to the formal server and independent API runtimes.
 - [x] Run notice tests, service-boundary tests, schema/migration tests, lint and backend build.
 - [x] Exercise a rollback-contained local MySQL delivery fixture, including identity isolation and duplicate dispatch.
-- [ ] Record evidence and merge the scoped backend slice into main. Continue merchant publication and frontend acceptance after this boundary passes.
+- [x] Record evidence and verify the scoped backend slice for local-main integration. Continue merchant publication and frontend acceptance after this boundary passes.
 
 ## Earlier verification state
 
@@ -43,6 +43,16 @@ The schema recovery was merged after 10 focused assertions, Prisma validation/ge
   as a successful full regression. Verification was rerun with explicit file paths.
 - Concurrent local main changes were detected at `f9f35ac8`; integration must preserve
   those changes and rerun the focused gate on the merged state.
+
+### Final integration gate
+
+Implementation commit `db914697` was combined with local main `0d3e8fd3` by merge
+`70cc6351`. The merged state passed 19 explicit-path suites / **155 tests** and
+backend lint/build. Formatting was reconciled with main without changing unrelated
+behavior. The local MySQL checker also passed concurrent notice/inbox reads with
+one shared timestamp and one audit after the primary-key lock correction.
+No pending DB migration was applied by this task. Local-main fast-forward is the
+remaining Git integration operation after this evidence commit, not a release.
 
 No frontend, merchant issuer migration, live runtime restart, GitHub push or online
 deployment is included in this recovery slice. Remaining product work is listed
