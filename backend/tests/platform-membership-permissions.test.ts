@@ -47,27 +47,26 @@ describe("platform membership administration permissions", () => {
       platformMembershipAdministrationService: service
     } as never);
     fixture.roles[0].rolePermissions.push(
-      ...[
-        "backoffice:membership-tier:read",
-        "backoffice:membership-benefit:read"
-      ].map((code, index) => ({
-        id: 9_200 + index,
-        roleId: fixture.roles[0].id,
-        permissionId: 9_200 + index,
-        deletedAt: null,
-        permission: {
+      ...["backoffice:membership-tier:read", "backoffice:membership-benefit:read"].map(
+        (code, index) => ({
           id: 9_200 + index,
-          name: code,
-          code,
-          type: "api" as const,
-          module: "backoffice",
-          description: code,
-          isSystem: true,
-          createdAt: new Date("2026-09-01T12:00:00.000Z"),
-          updatedAt: new Date("2026-09-01T12:00:00.000Z"),
-          deletedAt: null
-        }
-      }))
+          roleId: fixture.roles[0].id,
+          permissionId: 9_200 + index,
+          deletedAt: null,
+          permission: {
+            id: 9_200 + index,
+            name: code,
+            code,
+            type: "api" as const,
+            module: "backoffice",
+            description: code,
+            isSystem: true,
+            createdAt: new Date("2026-09-01T12:00:00.000Z"),
+            updatedAt: new Date("2026-09-01T12:00:00.000Z"),
+            deletedAt: null
+          }
+        })
+      )
     );
     const token = await fixture.loginAsAdmin();
 

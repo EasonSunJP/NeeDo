@@ -11,16 +11,12 @@ describe("affiliate alliance migrations", () => {
     "prisma/migrations/20260828204500_affiliate_alliance_permissions/migration.sql"
   );
   const foundation = existsSync(foundationPath) ? readFileSync(foundationPath, "utf8") : "";
-  const permissions = existsSync(permissionsPath)
-    ? readFileSync(permissionsPath, "utf8")
-    : "";
+  const permissions = existsSync(permissionsPath) ? readFileSync(permissionsPath, "utf8") : "";
   const invitationsPath = join(
     process.cwd(),
     "prisma/migrations/20260828210000_affiliate_alliance_invitations/migration.sql"
   );
-  const invitations = existsSync(invitationsPath)
-    ? readFileSync(invitationsPath, "utf8")
-    : "";
+  const invitations = existsSync(invitationsPath) ? readFileSync(invitationsPath, "utf8") : "";
 
   it("creates the alliance aggregate and expands wallet ownership additively", () => {
     expect(existsSync(foundationPath)).toBe(true);
@@ -71,7 +67,9 @@ describe("affiliate alliance migrations", () => {
     expect(invitations).toContain("`deleted_at` DATETIME(3) NULL");
     expect(invitations).toContain("affiliate_alliance_invitations_role_parent_check");
     expect(invitations).toMatch(/`role` = 'partner'[\s\S]*`proposed_parent_member_id` IS NULL/i);
-    expect(invitations).toMatch(/`role` = 'subordinate'[\s\S]*`proposed_parent_member_id` IS NOT NULL/i);
+    expect(invitations).toMatch(
+      /`role` = 'subordinate'[\s\S]*`proposed_parent_member_id` IS NOT NULL/i
+    );
     expect(invitations).toContain("REFERENCES `affiliate_alliances`(`id`)");
     expect(invitations).toContain("REFERENCES `affiliate_alliance_members`(`id`)");
     expect(invitations).toContain("REFERENCES `users`(`id`)");

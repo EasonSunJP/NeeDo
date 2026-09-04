@@ -15,9 +15,9 @@ describe("friend request verification schema", () => {
       resolve(__dirname, "../scripts/check-friendship-conversation-pairs.ts"),
       "utf8"
     );
-    const packageJson = JSON.parse(
-      readFileSync(resolve(__dirname, "../package.json"), "utf8")
-    ) as { scripts: Record<string, string> };
+    const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
 
     expect(schema).toContain('EXPIRED  @map("expired")');
     expect(schema).toContain("expiresAt");

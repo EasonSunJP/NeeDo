@@ -66,21 +66,25 @@ describe("PlatformMembershipService entitlement changes", () => {
     const repo = repository();
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.changeEntitlement(actor, context, 42, {
-      kind: "grant",
-      targetTierCode: "silver",
-      billingCycle: "monthly",
-      source: "operations",
-      sourceReference: "ops:membership:42:1",
-      expectedCurrentLockVersion: null
-    })).resolves.toEqual(changed);
-    expect(repo.changeEntitlementWithAudit).toHaveBeenCalledWith(expect.objectContaining({
-      actorId: 9,
-      userId: 42,
-      occurredAt: now,
-      command: expect.objectContaining({ sourceReference: "ops:membership:42:1" }),
-      audit: expect.objectContaining({ action: "platform.membership_entitlement.grant" })
-    }));
+    await expect(
+      service.changeEntitlement(actor, context, 42, {
+        kind: "grant",
+        targetTierCode: "silver",
+        billingCycle: "monthly",
+        source: "operations",
+        sourceReference: "ops:membership:42:1",
+        expectedCurrentLockVersion: null
+      })
+    ).resolves.toEqual(changed);
+    expect(repo.changeEntitlementWithAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 9,
+        userId: 42,
+        occurredAt: now,
+        command: expect.objectContaining({ sourceReference: "ops:membership:42:1" }),
+        audit: expect.objectContaining({ action: "platform.membership_entitlement.grant" })
+      })
+    );
   });
 
   it("rejects technician-only targets before entering the transaction", async () => {
@@ -92,14 +96,16 @@ describe("PlatformMembershipService entitlement changes", () => {
     });
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.changeEntitlement(actor, context, 99, {
-      kind: "grant",
-      targetTierCode: "silver",
-      billingCycle: "monthly",
-      source: "operations",
-      sourceReference: "ops:membership:99:1",
-      expectedCurrentLockVersion: null
-    })).rejects.toMatchObject({
+    await expect(
+      service.changeEntitlement(actor, context, 99, {
+        kind: "grant",
+        targetTierCode: "silver",
+        billingCycle: "monthly",
+        source: "operations",
+        sourceReference: "ops:membership:99:1",
+        expectedCurrentLockVersion: null
+      })
+    ).rejects.toMatchObject({
       message: "error.platform_membership.customer_required",
       statusCode: 422
     });

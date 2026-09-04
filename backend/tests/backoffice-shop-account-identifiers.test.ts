@@ -69,11 +69,7 @@ describe("BackofficeRepository shop owner account identifiers", () => {
     const repository = new BackofficeRepository(
       client as never,
       bootstrapKeyAllocator as never,
-      (tx) =>
-        new IdentifierAllocator(
-          new PublicIdentifierRepository(tx),
-          () => "5831047296"
-        )
+      (tx) => new IdentifierAllocator(new PublicIdentifierRepository(tx), () => "5831047296")
     );
 
     await repository.createShop({

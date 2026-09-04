@@ -23,12 +23,9 @@ const document = () => createOpenApiDocument(env) as unknown as OpenApiDocument;
 describe("IM contact-card OpenAPI contract", () => {
   it("documents the protected candidate and dedicated send operations", () => {
     const api = document();
-    const candidates = api.paths[
-      "/api/v1/im/conversations/{conversationId}/contact-card-candidates"
-    ].get;
-    const send = api.paths[
-      "/api/v1/im/conversations/{conversationId}/contact-cards"
-    ].post;
+    const candidates =
+      api.paths["/api/v1/im/conversations/{conversationId}/contact-card-candidates"].get;
+    const send = api.paths["/api/v1/im/conversations/{conversationId}/contact-cards"].post;
 
     expect(candidates).toMatchObject({ security: [{ bearerAuth: [] }] });
     expect(send).toMatchObject({ security: [{ bearerAuth: [] }] });

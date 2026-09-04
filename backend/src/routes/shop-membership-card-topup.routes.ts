@@ -22,9 +22,14 @@ export const SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS = {
   customerRead: "customer-profile:read"
 } as const;
 
-export const createShopMembershipCardTopUpRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
+export const createShopMembershipCardTopUpRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new ShopMembershipCardTopUpService(
     dependencies.shopMembershipCardTopUpRepository ?? new ShopMembershipCardTopUpRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
@@ -35,7 +40,10 @@ export const createShopMembershipCardTopUpRoutes = (config: AppConfig, dependenc
     "/merchant-admin/shop-membership-cards/:publicId/top-ups",
     authenticate(),
     createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS.create),
-    validateRequest({ params: shopMembershipCardTopUpPublicIdParamSchema, body: shopMembershipCardTopUpCreateBodySchema }),
+    validateRequest({
+      params: shopMembershipCardTopUpPublicIdParamSchema,
+      body: shopMembershipCardTopUpCreateBodySchema
+    }),
     controller.create
   );
   router.get(

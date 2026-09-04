@@ -11,9 +11,7 @@ import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination"
 
 const CURRENT_EMPLOYEE_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED"] as const;
 const CURRENT_TECHNICIAN_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED"] as const;
-const CURRENT_TECHNICIAN_STATUS_SET: ReadonlySet<string> = new Set(
-  CURRENT_TECHNICIAN_STATUSES
-);
+const CURRENT_TECHNICIAN_STATUS_SET: ReadonlySet<string> = new Set(CURRENT_TECHNICIAN_STATUSES);
 
 const employeeDirectorySelect = Prisma.validator<Prisma.ShopEmployeeSelect>()({
   status: true,
@@ -277,7 +275,9 @@ export class ShopEmployeeDirectoryRepository implements ShopEmployeeDirectoryRep
         technicianIsCurrent && affiliation && technicianIdentifier
           ? {
               needoId: technicianIdentifier.publicId,
-              relationshipType: affiliation.relationshipType.toLowerCase() as "exclusive" | "partner",
+              relationshipType: affiliation.relationshipType.toLowerCase() as
+                | "exclusive"
+                | "partner",
               workStatus: affiliation.workStatus.toLowerCase() as ShopEmployeeDirectoryStatus
             }
           : null

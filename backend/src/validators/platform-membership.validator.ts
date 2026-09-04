@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-export const platformMembershipTierCodeSchema = z.enum([
-  "free",
-  "silver",
-  "gold",
-  "black_diamond"
-]);
+export const platformMembershipTierCodeSchema = z.enum(["free", "silver", "gold", "black_diamond"]);
 export const platformMembershipBenefitCodeSchema = z.enum([
   "ndp_experience",
   "member_sign_in",
@@ -22,20 +17,24 @@ export const platformMembershipBenefitLocaleQuerySchema = z
   .strict();
 
 const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
-const localizedTextSchema = z.object({
-  zh: z.string().trim().min(1).max(120),
-  "zh-Hant": z.string().trim().min(1).max(120),
-  ja: z.string().trim().min(1).max(120),
-  en: z.string().trim().min(1).max(120),
-  ko: z.string().trim().min(1).max(120)
-}).strict();
-const localizedDescriptionSchema = z.object({
-  zh: z.string().trim().min(1).max(1000),
-  "zh-Hant": z.string().trim().min(1).max(1000),
-  ja: z.string().trim().min(1).max(1000),
-  en: z.string().trim().min(1).max(1000),
-  ko: z.string().trim().min(1).max(1000)
-}).strict();
+const localizedTextSchema = z
+  .object({
+    zh: z.string().trim().min(1).max(120),
+    "zh-Hant": z.string().trim().min(1).max(120),
+    ja: z.string().trim().min(1).max(120),
+    en: z.string().trim().min(1).max(120),
+    ko: z.string().trim().min(1).max(120)
+  })
+  .strict();
+const localizedDescriptionSchema = z
+  .object({
+    zh: z.string().trim().min(1).max(1000),
+    "zh-Hant": z.string().trim().min(1).max(1000),
+    ja: z.string().trim().min(1).max(1000),
+    en: z.string().trim().min(1).max(1000),
+    ko: z.string().trim().min(1).max(1000)
+  })
+  .strict();
 export const platformMembershipThemeSchema = z
   .object({
     detailAccentColor: hexColorSchema,
@@ -65,9 +64,7 @@ const ndpExperienceConfigurationSchema = z
     }
   });
 
-const ordinaryBenefitCodes = platformMembershipBenefitCodeSchema.exclude([
-  "ndp_experience"
-]);
+const ordinaryBenefitCodes = platformMembershipBenefitCodeSchema.exclude(["ndp_experience"]);
 const tierBenefitSchema = z.union([
   z
     .object({
@@ -161,9 +158,7 @@ export const platformMembershipEntitlementCommandSchema = z.discriminatedUnion("
     .strict()
 ]);
 
-export type PlatformMembershipTierDraftBody = z.infer<
-  typeof platformMembershipTierDraftBodySchema
->;
+export type PlatformMembershipTierDraftBody = z.infer<typeof platformMembershipTierDraftBodySchema>;
 export type PlatformMembershipBenefitUpdateBody = z.infer<
   typeof platformMembershipBenefitUpdateBodySchema
 >;

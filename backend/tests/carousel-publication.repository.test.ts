@@ -385,9 +385,7 @@ describe("CarouselPublicationRepository", () => {
       strings?: readonly string[];
       values?: unknown[];
     };
-    expect(sqlText(lockedQuery)).toContain(
-      "SELECT id FROM carousel_releases WHERE id ="
-    );
+    expect(sqlText(lockedQuery)).toContain("SELECT id FROM carousel_releases WHERE id =");
     expect(sqlText(lockedQuery)).toContain("FOR UPDATE");
     expect(lockedQuery.values).toEqual([71]);
     expect(transaction.carouselRelease.updateMany).toHaveBeenNthCalledWith(

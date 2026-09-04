@@ -81,11 +81,12 @@ describe("ShopMembershipCardRedemptionRepository", () => {
       bookingOrder: { findMany, count }
     } as unknown as PrismaClient;
 
-    await expect(new ShopMembershipCardRedemptionRepository(client).listCandidates(
-      71,
-      cardPublicId,
-      { page: 2, pageSize: 20 }
-    )).resolves.toEqual({ list: [], total: 0, page: 2, page_size: 20 });
+    await expect(
+      new ShopMembershipCardRedemptionRepository(client).listCandidates(71, cardPublicId, {
+        page: 2,
+        pageSize: 20
+      })
+    ).resolves.toEqual({ list: [], total: 0, page: 2, page_size: 20 });
 
     const expectedWhere = {
       shopId: 71,
@@ -96,17 +97,20 @@ describe("ShopMembershipCardRedemptionRepository", () => {
       membershipCardRedemption: null,
       deletedAt: null
     };
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expectedWhere,
-      skip: 20,
-      take: 20
-    }));
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expectedWhere,
+        skip: 20,
+        take: 20
+      })
+    );
     expect(count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
   it("returns an explicit insufficient-card result before any card or reward mutation", async () => {
     const tx = {
-      $queryRaw: jest.fn()
+      $queryRaw: jest
+        .fn()
         .mockResolvedValueOnce([{ id: card.id }])
         .mockResolvedValueOnce([{ now }])
         .mockResolvedValueOnce([{ id: order.id }]),
@@ -126,9 +130,13 @@ describe("ShopMembershipCardRedemptionRepository", () => {
     const evaluate = jest.fn();
     const settle = jest.fn();
 
-    await expect(new ShopMembershipCardRedemptionRepository(client)
-      .createWithEvaluationAndSettlement(createInput, evaluate, settle))
-      .resolves.toEqual({ kind: "insufficient_card_value" });
+    await expect(
+      new ShopMembershipCardRedemptionRepository(client).createWithEvaluationAndSettlement(
+        createInput,
+        evaluate,
+        settle
+      )
+    ).resolves.toEqual({ kind: "insufficient_card_value" });
     expect(tx.shopMembershipCard.updateMany).not.toHaveBeenCalled();
     expect(evaluate).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
@@ -150,11 +158,12 @@ describe("ShopMembershipCardRedemptionRepository", () => {
       bookingOrder: { findMany, count: jest.fn() }
     } as unknown as PrismaClient;
 
-    await expect(new ShopMembershipCardRedemptionRepository(client).listCandidates(
-      71,
-      cardPublicId,
-      { page: 1, pageSize: 20 }
-    )).resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
+    await expect(
+      new ShopMembershipCardRedemptionRepository(client).listCandidates(71, cardPublicId, {
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(findMany).not.toHaveBeenCalled();
   });
 });

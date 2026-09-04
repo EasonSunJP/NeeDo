@@ -12,14 +12,31 @@ describe("customer platform membership projection", () => {
         expiresAt: "2026-10-01T00:00:00.000Z",
         benefits: [{ code: "ndp_experience", configuration: {} }],
         theme: {
-          detailAccentColor: "#F4C967", detailSurfaceColor: "#302818", detailItemSurfaceColor: "#201A10", detailOuterBorderColor: "#A98645", detailItemBorderColor: "#66552F", detailAvatarBorderColor: "#D0A857", simpleTopColor: "#382C13", simpleBottomColor: "#241E12"
+          detailAccentColor: "#F4C967",
+          detailSurfaceColor: "#302818",
+          detailItemSurfaceColor: "#201A10",
+          detailOuterBorderColor: "#A98645",
+          detailItemBorderColor: "#66552F",
+          detailAvatarBorderColor: "#D0A857",
+          simpleTopColor: "#382C13",
+          simpleBottomColor: "#241E12"
         }
       }))
     };
-    const fixture = await createStep06Fixture({ platformMembershipAdministrationService: service } as never);
+    const fixture = await createStep06Fixture({
+      platformMembershipAdministrationService: service
+    } as never);
     const token = await fixture.loginAsAdmin();
-    const response = await request(fixture.app).get("/api/v1/me/platform-membership").set("Authorization", `Bearer ${token}`).expect(200);
-    expect(response.body.data).toMatchObject({ tierCode: "gold", multiplier: 5, ekycVerified: true, theme: { simpleTopColor: "#382C13" } });
+    const response = await request(fixture.app)
+      .get("/api/v1/me/platform-membership")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(response.body.data).toMatchObject({
+      tierCode: "gold",
+      multiplier: 5,
+      ekycVerified: true,
+      theme: { simpleTopColor: "#382C13" }
+    });
     expect(service.getMyMembership).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
   });
 });

@@ -37,9 +37,7 @@ describe("LifeDance admin2 provisioning plan", () => {
   });
 
   it("builds a deterministic seven-day JST booking horizon with two slots per day", () => {
-    const slots = buildLifeDanceAdmin2BookingSlotStarts(
-      new Date("2026-09-02T09:00:00.000Z")
-    );
+    const slots = buildLifeDanceAdmin2BookingSlotStarts(new Date("2026-09-02T09:00:00.000Z"));
 
     expect(slots).toHaveLength(14);
     expect(slots[0]).toEqual({
@@ -154,8 +152,9 @@ describe("LifeDance admin2 provisioning plan", () => {
 
     expect(selected).toHaveLength(20);
     expect(selected.map((candidate) => candidate.email)).toEqual(
-      Array.from({ length: 20 }, (_, index) =>
-        `sim.customer.${String(index + 1).padStart(3, "0")}@needo.local`
+      Array.from(
+        { length: 20 },
+        (_, index) => `sim.customer.${String(index + 1).padStart(3, "0")}@needo.local`
       )
     );
   });
@@ -194,9 +193,7 @@ describe("LifeDance admin2 provisioning plan", () => {
         DATABASE_URL: "mysql://needo:secret@127.0.0.1:3307/needo_prod"
       }
     ]) {
-      expect(() => assertLocalAdmin2ProvisioningTarget(target)).toThrow(
-        "local needo_dev"
-      );
+      expect(() => assertLocalAdmin2ProvisioningTarget(target)).toThrow("local needo_dev");
     }
   });
 });

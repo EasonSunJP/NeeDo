@@ -32,7 +32,11 @@ import type {
   ShopMembershipRewardDebtRepositoryPort
 } from "../services/shop-membership-reward-debt-allocator.service";
 import { AppError } from "../utils/app-error";
-import { buildPaginatedResponse, toPrismaPagination, type PaginationInput } from "../utils/pagination";
+import {
+  buildPaginatedResponse,
+  toPrismaPagination,
+  type PaginationInput
+} from "../utils/pagination";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
@@ -158,7 +162,9 @@ const redemptionSelect = Prisma.validator<Prisma.ShopMembershipCardRedemptionSel
     }
   },
   shop: { select: { shopNo: true, name: true } },
-  customer: { select: { id: true, needoId: true, customerProfile: { select: { displayName: true } } } },
+  customer: {
+    select: { id: true, needoId: true, customerProfile: { select: { displayName: true } } }
+  },
   redeemedBy: { select: { needoId: true, username: true } },
   ledgerTransaction: { select: { transactionNo: true } },
   bookingOrder: {
@@ -185,10 +191,13 @@ const redemptionSelect = Prisma.validator<Prisma.ShopMembershipCardRedemptionSel
 
 type CardRecord = Prisma.ShopMembershipCardGetPayload<{ select: typeof cardSelect }>;
 type OrderRecord = Prisma.BookingOrderGetPayload<{ select: typeof orderSelect }>;
-type RedemptionRecord = Prisma.ShopMembershipCardRedemptionGetPayload<{ select: typeof redemptionSelect }>;
+type RedemptionRecord = Prisma.ShopMembershipCardRedemptionGetPayload<{
+  select: typeof redemptionSelect;
+}>;
 
 export class ShopMembershipCardRedemptionRepository
-implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtRepositoryPort {
+  implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtRepositoryPort
+{
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findByIdempotencyKey(
@@ -202,11 +211,7 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
     return record ? this.mapRedemption(record) : null;
   }
 
-  public async listCandidates(
-    shopId: number,
-    cardPublicId: string,
-    input: PaginationInput
-  ) {
+  public async listCandidates(shopId: number, cardPublicId: string, input: PaginationInput) {
     const databaseNow = await this.getDatabaseNow(this.client);
     const card = await this.loadCard(this.client, shopId, cardPublicId);
     if (!card) throw this.notFoundError();
@@ -223,10 +228,10 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
     if (pendingAdjustment) throw this.pendingConflictError();
 
     if (
-      (card.type === ShopMembershipCardType.STORED_VALUE
-        && (card.principalBalanceJpy === null || card.principalBalanceJpy <= 0))
-      || (card.type === ShopMembershipCardType.COUNT
-        && (card.remainingUses === null || card.remainingUses < 1))
+      (card.type === ShopMembershipCardType.STORED_VALUE &&
+        (card.principalBalanceJpy === null || card.principalBalanceJpy <= 0)) ||
+      (card.type === ShopMembershipCardType.COUNT &&
+        (card.remainingUses === null || card.remainingUses < 1))
     ) {
       return buildPaginatedResponse([], 0, input);
     }
@@ -260,7 +265,9 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
       orders.map((order) => this.buildCandidateContext(this.client, card, order))
     );
     return buildPaginatedResponse(
-      contexts.filter((context): context is ShopMembershipCardRedemptionCandidateContext => Boolean(context)),
+      contexts.filter((context): context is ShopMembershipCardRedemptionCandidateContext =>
+        Boolean(context)
+      ),
       total,
       input
     );
@@ -294,15 +301,17 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
           const card = await this.loadCard(transaction, input.shopId, input.cardPublicId);
           if (!card) return { kind: "not_found" as const };
           if (!this.isCardEligible(card, databaseNow)) return { kind: "invalid_state" as const };
-          const pendingAdjustment = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
-            where: {
-              cardId: card.id,
-              status: ShopMembershipCardAdjustmentStatus.PENDING,
-              expiresAt: { gt: databaseNow },
-              deletedAt: null
-            },
-            select: { id: true }
-          });
+          const pendingAdjustment = await transaction.shopMembershipCardAdjustmentRequest.findFirst(
+            {
+              where: {
+                cardId: card.id,
+                status: ShopMembershipCardAdjustmentStatus.PENDING,
+                expiresAt: { gt: databaseNow },
+                deletedAt: null
+              },
+              select: { id: true }
+            }
+          );
           if (pendingAdjustment) return { kind: "pending_conflict" as const };
 
           const candidateOrder = await this.loadOrder(
@@ -332,14 +341,14 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
           const orderAmountJpy = Number(order.priceAmount.toString());
           if (Number.isSafeInteger(orderAmountJpy) && orderAmountJpy > 0) {
             if (
-              card.type === ShopMembershipCardType.STORED_VALUE
-              && (card.principalBalanceJpy === null || card.principalBalanceJpy < orderAmountJpy)
+              card.type === ShopMembershipCardType.STORED_VALUE &&
+              (card.principalBalanceJpy === null || card.principalBalanceJpy < orderAmountJpy)
             ) {
               return { kind: "insufficient_card_value" as const };
             }
             if (
-              card.type === ShopMembershipCardType.COUNT
-              && (card.remainingUses === null || card.remainingUses < 1)
+              card.type === ShopMembershipCardType.COUNT &&
+              (card.remainingUses === null || card.remainingUses < 1)
             ) {
               return { kind: "insufficient_card_value" as const };
             }
@@ -348,7 +357,8 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
           const context = await this.buildCandidateContext(transaction, card, order);
           if (!context) return { kind: "order_not_eligible" as const };
           if (
-            (card.type === ShopMembershipCardType.STORED_VALUE && context.consumedPrincipalJpy <= 0) ||
+            (card.type === ShopMembershipCardType.STORED_VALUE &&
+              context.consumedPrincipalJpy <= 0) ||
             (card.type === ShopMembershipCardType.COUNT && context.consumedUses !== 1)
           ) {
             return { kind: "insufficient_card_value" as const };
@@ -407,9 +417,10 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
               platformFeeNdp: reward.platformFeeNdp,
               totalShopDebitNdp: reward.totalShopDebitNdp,
               rewardCapped: reward.capped,
-              rewardStatus: reward.totalShopDebitNdp > 0
-                ? ShopMembershipCardRewardStatus.PENDING_FUNDS
-                : ShopMembershipCardRewardStatus.NONE,
+              rewardStatus:
+                reward.totalShopDebitNdp > 0
+                  ? ShopMembershipCardRewardStatus.PENDING_FUNDS
+                  : ShopMembershipCardRewardStatus.NONE,
               outstandingRewardNdp: reward.totalShopDebitNdp,
               status: ShopMembershipCardRedemptionStatus.APPLIED,
               redeemedAt: databaseNow,
@@ -422,16 +433,19 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
 
           let settlementResult = null;
           if (reward.totalShopDebitNdp > 0) {
-            settlementResult = await settle({
-              redemptionId: created.id,
-              shopId: input.shopId,
-              customerUserId: card.membership.customerProfile.user.id,
-              customerRewardNdp: reward.customerRewardNdp,
-              platformFeeNdp: reward.platformFeeNdp,
-              platformFeeRateBps: reward.platformFeeRateBps,
-              idempotencyKey: `membership-redemption:${created.id}:reward:settlement`,
-              actorUserId: input.actorId
-            }, transaction);
+            settlementResult = await settle(
+              {
+                redemptionId: created.id,
+                shopId: input.shopId,
+                customerUserId: card.membership.customerProfile.user.id,
+                customerRewardNdp: reward.customerRewardNdp,
+                platformFeeNdp: reward.platformFeeNdp,
+                platformFeeRateBps: reward.platformFeeRateBps,
+                idempotencyKey: `membership-redemption:${created.id}:reward:settlement`,
+                actorUserId: input.actorId
+              },
+              transaction
+            );
           }
           if (settlementResult) {
             await transaction.shopMembershipCardRedemption.update({
@@ -449,8 +463,14 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
           }
 
           const recipientUserId = card.membership.customerProfile.user.id;
-          const recipientIdentityId = await resolveCanonicalPersonalIdentityId(transaction, recipientUserId);
-          const actorIdentityId = await resolveCanonicalPersonalIdentityId(transaction, input.actorId);
+          const recipientIdentityId = await resolveCanonicalPersonalIdentityId(
+            transaction,
+            recipientUserId
+          );
+          const actorIdentityId = await resolveCanonicalPersonalIdentityId(
+            transaction,
+            input.actorId
+          );
           if (!recipientIdentityId || !actorIdentityId) {
             throw new AppError({
               code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -470,7 +490,11 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
             customerRewardNdp: reward.customerRewardNdp,
             platformFeeNdp: reward.platformFeeNdp,
             totalShopDebitNdp: reward.totalShopDebitNdp,
-            rewardStatus: settlementResult ? "paid" : reward.totalShopDebitNdp > 0 ? "pending_funds" : "none"
+            rewardStatus: settlementResult
+              ? "paid"
+              : reward.totalShopDebitNdp > 0
+                ? "pending_funds"
+                : "none"
           };
           await transaction.auditLog.create({
             data: {
@@ -633,7 +657,10 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
         shop: { select: { shopNo: true } }
       }
     });
-    const recipientIdentityId = await resolveCanonicalPersonalIdentityId(client, redemption.customerUserId);
+    const recipientIdentityId = await resolveCanonicalPersonalIdentityId(
+      client,
+      redemption.customerUserId
+    );
     const actorIdentityId = await resolveCanonicalPersonalIdentityId(client, input.actorUserId);
     if (!recipientIdentityId || !actorIdentityId) {
       throw new AppError({
@@ -698,11 +725,15 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
       }),
       this.client.shopMembershipCardRedemption.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapRedemption(record)), total, input);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapRedemption(record)),
+      total,
+      input
+    );
   }
 
   private transactionClient(value?: unknown): PrismaClient | Prisma.TransactionClient {
-    return value ? value as Prisma.TransactionClient : this.client;
+    return value ? (value as Prisma.TransactionClient) : this.client;
   }
 
   private loadCard(
@@ -736,16 +767,18 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
   }
 
   private isCardEligible(card: CardRecord, databaseNow: Date): boolean {
-    return card.status === ShopMembershipCardStatus.ACTIVE
-      && card.membership.status === ShopCustomerMembershipStatus.ACTIVE
-      && (!card.expiresAt || card.expiresAt > databaseNow)
-      && card.planVersion !== null
-      && card.planVersion.deletedAt === null
-      && card.planVersion.status !== ShopMembershipCardPlanVersionStatus.DRAFT
-      && card.planVersion.publishedAt !== null
-      && card.planVersion.cardType === card.type
-      && card.platformFeeRateBpsSnapshot !== null
-      && card.planVersion.platformFeeRateBps === card.platformFeeRateBpsSnapshot;
+    return (
+      card.status === ShopMembershipCardStatus.ACTIVE &&
+      card.membership.status === ShopCustomerMembershipStatus.ACTIVE &&
+      (!card.expiresAt || card.expiresAt > databaseNow) &&
+      card.planVersion !== null &&
+      card.planVersion.deletedAt === null &&
+      card.planVersion.status !== ShopMembershipCardPlanVersionStatus.DRAFT &&
+      card.planVersion.publishedAt !== null &&
+      card.planVersion.cardType === card.type &&
+      card.platformFeeRateBpsSnapshot !== null &&
+      card.planVersion.platformFeeRateBps === card.platformFeeRateBpsSnapshot
+    );
   }
 
   private async buildCandidateContext(
@@ -762,7 +795,8 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
       order.currency !== "JPY" ||
       !Number.isSafeInteger(eligibleAmountJpy) ||
       eligibleAmountJpy <= 0
-    ) return null;
+    )
+      return null;
 
     let consumedPrincipalJpy = 0;
     let consumedUses = 0;
@@ -771,7 +805,8 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
     let remainingUsesBefore: number | null = null;
     let remainingUsesAfter: number | null = null;
     if (card.type === ShopMembershipCardType.STORED_VALUE) {
-      if (card.principalBalanceJpy === null || card.principalBalanceJpy < eligibleAmountJpy) return null;
+      if (card.principalBalanceJpy === null || card.principalBalanceJpy < eligibleAmountJpy)
+        return null;
       consumedPrincipalJpy = eligibleAmountJpy;
       principalBalanceBeforeJpy = card.principalBalanceJpy;
       principalBalanceAfterJpy = card.principalBalanceJpy - eligibleAmountJpy;
@@ -782,12 +817,10 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
       remainingUsesAfter = card.remainingUses - 1;
     }
 
-    const servicePublicId = order.service?.publicId
-      ?? order.technicianService?.sourceShopService?.publicId
-      ?? null;
-    const serviceCategoryCode = order.service?.category.code
-      ?? order.technicianService?.category.code
-      ?? null;
+    const servicePublicId =
+      order.service?.publicId ?? order.technicianService?.sourceShopService?.publicId ?? null;
+    const serviceCategoryCode =
+      order.service?.category.code ?? order.technicianService?.category.code ?? null;
     const facts = await this.buildRewardFacts(
       client,
       card.id,
@@ -849,9 +882,10 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
     for (const redemption of prior) {
       const hits = this.rewardHits(redemption.rewardHits);
       if (
-        this.japanDayKey(redemption.serviceCompletedAt).startsWith(yearKey)
-        && hits.some((hit) => hit.kind === "birthday_month_bonus")
-      ) birthdayRewardsThisYear += 1;
+        this.japanDayKey(redemption.serviceCompletedAt).startsWith(yearKey) &&
+        hits.some((hit) => hit.kind === "birthday_month_bonus")
+      )
+        birthdayRewardsThisYear += 1;
       for (const hit of hits) {
         if (hit.kind !== "consecutive_month_bonus") continue;
         const milestone = hit.basis.consecutiveMonths;
@@ -860,7 +894,9 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
         }
       }
     }
-    const months = new Set(prior.map((redemption) => this.japanDayKey(redemption.serviceCompletedAt).slice(0, 7)));
+    const months = new Set(
+      prior.map((redemption) => this.japanDayKey(redemption.serviceCompletedAt).slice(0, 7))
+    );
     months.add(monthKey);
     return {
       eligibleAmountJpy,
@@ -868,19 +904,29 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
       categoryCode: categoryCode ?? "membership-category-unknown",
       occurredAt: occurredAt.toISOString(),
       completedCountBefore: prior.length,
-      lifetimeEligibleSpendJpyBefore: prior.reduce((total, redemption) => total + redemption.eligibleAmountJpy, 0),
+      lifetimeEligibleSpendJpyBefore: prior.reduce(
+        (total, redemption) => total + redemption.eligibleAmountJpy,
+        0
+      ),
       isFirstCardUse: prior.length === 0,
       customerBirthMonth: null,
       birthdayRewardsThisYear,
       consecutiveEligibleMonths: this.consecutiveMonthCount(months, monthKey),
-      rewardedConsecutiveMonthMilestones: [...rewardedConsecutiveMonthMilestones].sort((left, right) => left - right),
+      rewardedConsecutiveMonthMilestones: [...rewardedConsecutiveMonthMilestones].sort(
+        (left, right) => left - right
+      ),
       alreadyRewardedTodayNdp: prior
         .filter((redemption) => this.japanDayKey(redemption.serviceCompletedAt) === dayKey)
         .reduce((total, redemption) => total + redemption.customerRewardNdp, 0),
       alreadyRewardedMonthNdp: prior
-        .filter((redemption) => this.japanDayKey(redemption.serviceCompletedAt).startsWith(monthKey))
+        .filter((redemption) =>
+          this.japanDayKey(redemption.serviceCompletedAt).startsWith(monthKey)
+        )
         .reduce((total, redemption) => total + redemption.customerRewardNdp, 0),
-      alreadyRewardedLifetimeNdp: prior.reduce((total, redemption) => total + redemption.customerRewardNdp, 0)
+      alreadyRewardedLifetimeNdp: prior.reduce(
+        (total, redemption) => total + redemption.customerRewardNdp,
+        0
+      )
     };
   }
 
@@ -956,14 +1002,20 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
         publicId: record.card.publicId,
         cardNo: record.card.cardNo,
         name: record.card.name,
-        type: record.card.type === ShopMembershipCardType.STORED_VALUE
-          ? "stored_value"
-          : record.card.type === ShopMembershipCardType.COUNT ? "count" : "benefit",
-        status: record.card.status === ShopMembershipCardStatus.ACTIVE
-          ? "active"
-          : record.card.status === ShopMembershipCardStatus.FROZEN
-            ? "frozen"
-            : record.card.status === ShopMembershipCardStatus.EXPIRED ? "expired" : "void",
+        type:
+          record.card.type === ShopMembershipCardType.STORED_VALUE
+            ? "stored_value"
+            : record.card.type === ShopMembershipCardType.COUNT
+              ? "count"
+              : "benefit",
+        status:
+          record.card.status === ShopMembershipCardStatus.ACTIVE
+            ? "active"
+            : record.card.status === ShopMembershipCardStatus.FROZEN
+              ? "frozen"
+              : record.card.status === ShopMembershipCardStatus.EXPIRED
+                ? "expired"
+                : "void",
         principalBalanceJpy: record.card.principalBalanceJpy,
         bonusBalanceJpy: record.card.bonusBalanceJpy,
         remainingUses: record.card.remainingUses,
@@ -991,39 +1043,47 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
         displayName: record.redeemedBy.username
       },
       ledgerTransactionNo: record.ledgerTransaction?.transactionNo ?? null,
-      refund: record.refund ? {
-        publicId: record.refund.publicId,
-        reason: record.refund.reason,
-        reversalMode: record.refund.reversalMode === ShopMembershipRewardReversalMode.CANCELLED_PENDING
-          ? "cancelled_pending"
-          : record.refund.reversalMode === ShopMembershipRewardReversalMode.LEDGER_REVERSED
-            ? "ledger_reversed"
-            : "none",
-        restoredPrincipalJpy: record.refund.restoredPrincipalJpy,
-        restoredUses: record.refund.restoredUses,
-        customerRewardReversedNdp: record.refund.customerRewardReversedNdp,
-        platformFeeReversedNdp: record.refund.platformFeeReversedNdp,
-        totalShopCreditNdp: record.refund.totalShopCreditNdp,
-        customerBalanceBeforeNdp: record.refund.customerBalanceBeforeNdp,
-        customerBalanceAfterNdp: record.refund.customerBalanceAfterNdp,
-        refundedAt: record.refund.refundedAt,
-        refundedBy: {
-          needoId: record.refund.refundedBy.needoId,
-          displayName: record.refund.refundedBy.username
-        },
-        reversalLedgerTransactionNo: record.refund.reversalLedgerTransaction?.transactionNo ?? null
-      } : null
+      refund: record.refund
+        ? {
+            publicId: record.refund.publicId,
+            reason: record.refund.reason,
+            reversalMode:
+              record.refund.reversalMode === ShopMembershipRewardReversalMode.CANCELLED_PENDING
+                ? "cancelled_pending"
+                : record.refund.reversalMode === ShopMembershipRewardReversalMode.LEDGER_REVERSED
+                  ? "ledger_reversed"
+                  : "none",
+            restoredPrincipalJpy: record.refund.restoredPrincipalJpy,
+            restoredUses: record.refund.restoredUses,
+            customerRewardReversedNdp: record.refund.customerRewardReversedNdp,
+            platformFeeReversedNdp: record.refund.platformFeeReversedNdp,
+            totalShopCreditNdp: record.refund.totalShopCreditNdp,
+            customerBalanceBeforeNdp: record.refund.customerBalanceBeforeNdp,
+            customerBalanceAfterNdp: record.refund.customerBalanceAfterNdp,
+            refundedAt: record.refund.refundedAt,
+            refundedBy: {
+              needoId: record.refund.refundedBy.needoId,
+              displayName: record.refund.refundedBy.username
+            },
+            reversalLedgerTransactionNo:
+              record.refund.reversalLedgerTransaction?.transactionNo ?? null
+          }
+        : null
     };
   }
 
-  private paymentStatus(value: ServicePaymentStatus): ShopMembershipCardRedemptionRecord["order"]["paymentStatus"] {
+  private paymentStatus(
+    value: ServicePaymentStatus
+  ): ShopMembershipCardRedemptionRecord["order"]["paymentStatus"] {
     if (value === ServicePaymentStatus.CONFIRMED) return "confirmed";
     if (value === ServicePaymentStatus.REFUND_PENDING) return "refundPending";
     if (value === ServicePaymentStatus.REFUNDED) return "refunded";
     return "pending";
   }
 
-  private rewardStatus(value: ShopMembershipCardRewardStatus): ShopMembershipCardRedemptionRecord["rewardStatus"] {
+  private rewardStatus(
+    value: ShopMembershipCardRewardStatus
+  ): ShopMembershipCardRedemptionRecord["rewardStatus"] {
     if (value === ShopMembershipCardRewardStatus.PENDING_FUNDS) return "pending_funds";
     if (value === ShopMembershipCardRewardStatus.PAID) return "paid";
     if (value === ShopMembershipCardRewardStatus.REVERSED) return "reversed";
@@ -1032,12 +1092,17 @@ implements ShopMembershipCardRedemptionRepositoryPort, ShopMembershipRewardDebtR
 
   private metadata(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
+      ? (value as Record<string, unknown>)
       : {};
   }
 
   private isUniqueConflict(error: unknown): error is { code: string; meta?: { target?: unknown } } {
-    return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002");
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
+    );
   }
 
   private uniqueTargets(error: { meta?: { target?: unknown } }): string[] {

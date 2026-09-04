@@ -31,7 +31,9 @@ export class IdentityActivationController {
 
   public getCurrentMerchantContract = this.handle(async (request, response) => {
     const { language } = contractLanguageQuerySchema.parse(request.query);
-    response.status(200).json(successResponse(await this.contracts.getCurrent("merchant", language)));
+    response
+      .status(200)
+      .json(successResponse(await this.contracts.getCurrent("merchant", language)));
   });
 
   public activateAffiliate = this.handle(async (request, response) => {
@@ -83,9 +85,11 @@ export class IdentityActivationController {
   public getContractReceipt = this.handle(async (request, response) => {
     const { receiptId } = contractReceiptIdParamSchema.parse(request.params);
     const auth = response.locals.auth as AuthenticatedAccessContext;
-    response.status(200).json(
-      successResponse(await this.contractReceipts.getOwned({ userId: auth.userId, receiptId }))
-    );
+    response
+      .status(200)
+      .json(
+        successResponse(await this.contractReceipts.getOwned({ userId: auth.userId, receiptId }))
+      );
   });
 
   private handle(

@@ -55,7 +55,9 @@ describe("observability middleware", () => {
     const response = await request(app).get("/api/v1/metrics").expect(200);
 
     expect(response.text).toContain('needo_dependency_up{dependency="database"} 1');
-    expect(response.text).toContain('needo_dependency_latency_seconds{dependency="database"} 0.007');
+    expect(response.text).toContain(
+      'needo_dependency_latency_seconds{dependency="database"} 0.007'
+    );
     expect(response.text).toContain('needo_dependency_pool_size{dependency="database"} 20');
     expect(response.text).toContain('needo_dependency_up{dependency="redis"} 1');
     expect(response.text).toContain('needo_dependency_latency_seconds{dependency="redis"} 0.004');

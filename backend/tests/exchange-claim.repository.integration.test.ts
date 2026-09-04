@@ -28,8 +28,7 @@ const requireSafeDatabaseUrl = (): URL => {
   if (
     parsed.protocol !== "mysql:" ||
     !allowedHosts.has(parsed.hostname) ||
-    (!/(?:^|[_-])test(?:$|[_-])/iu.test(databaseName) &&
-      !explicitlyAllowedDevelopmentDatabase) ||
+    (!/(?:^|[_-])test(?:$|[_-])/iu.test(databaseName) && !explicitlyAllowedDevelopmentDatabase) ||
     /(?:^|[_-])prod(?:uction)?(?:$|[_-])/iu.test(databaseName)
   ) {
     throw new Error(
@@ -75,8 +74,10 @@ describeIntegration("ExchangeClaimRepository guarded concurrency", () => {
 
   it("allows exactly one active claim for concurrent attempts on one technician", async () => {
     const marker = randomUUID().replaceAll("-", "").slice(0, 10);
-    const numberPartBase = String(Number.parseInt(marker.slice(0, 8), 16) % 1_000_000_000)
-      .padStart(9, "0");
+    const numberPartBase = String(Number.parseInt(marker.slice(0, 8), 16) % 1_000_000_000).padStart(
+      9,
+      "0"
+    );
     const now = new Date("2026-09-01T00:00:00.000Z");
     const serviceStartAt = new Date("2026-09-02T01:00:00.000Z");
     const serviceEndAt = new Date("2026-09-02T02:00:00.000Z");
@@ -233,9 +234,8 @@ describeIntegration("ExchangeClaimRepository guarded concurrency", () => {
       });
       created.postId = post.id;
 
-      const { ExchangeClaimRepository } = await import(
-        "../src/repositories/exchange-claim.repository"
-      );
+      const { ExchangeClaimRepository } =
+        await import("../src/repositories/exchange-claim.repository");
       const repository = new ExchangeClaimRepository(client);
       const attempt = (suffix: string) =>
         repository.runInTransaction(async (lockedRepository) => {

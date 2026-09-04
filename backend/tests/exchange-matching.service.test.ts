@@ -44,7 +44,8 @@ const participant = (claimId: number, technicianProfileId: number, quoteAmountJp
   currency: "JPY" as const,
   estimatedStartsAt: "2026-09-02T01:00:00.000Z",
   estimatedEndsAt: "2026-09-02T02:00:00.000Z",
-  matchedAt: now.toISOString()
+  matchedAt: now.toISOString(),
+  booking: null
 });
 
 const openPayload: ExchangeMatchingPayload = {
@@ -56,7 +57,7 @@ const openPayload: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 0,
   matchedAt: null,
   participants: [],
-  viewer: { canSelect: true }
+  viewer: { canSelect: true, canCreateBookings: false }
 };
 
 const matchingRecord: ExchangeMatchingRecord = {
@@ -92,6 +93,8 @@ const claim = (
   technicianServiceId: null,
   scheduleSlotId: id + 1_000,
   quoteAmountJpy,
+  serviceNameSnapshot: "ヘアセット",
+  serviceDurationSnapshot: 60,
   currency: "JPY",
   status: "active",
   estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
@@ -116,7 +119,7 @@ const matchedPayload: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 29_000,
   matchedAt: now.toISOString(),
   participants: [participant(301, 81, 15_000), participant(302, 82, 14_000)],
-  viewer: { canSelect: false }
+  viewer: { canSelect: false, canCreateBookings: true }
 };
 
 const createRepository = (

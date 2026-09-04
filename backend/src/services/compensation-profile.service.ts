@@ -55,11 +55,7 @@ export interface EmployeePayrollSummaryPayload {
 
 export type EmployeeCompensationProfilePayload = Omit<
   CompensationProfilePayload,
-  | "id"
-  | "shopId"
-  | "technicianProfileId"
-  | "createdById"
-  | "updatedById"
+  "id" | "shopId" | "technicianProfileId" | "createdById" | "updatedById"
 >;
 
 export interface EmployeeCompensationResult {

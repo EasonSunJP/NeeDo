@@ -12,8 +12,8 @@ import { cn } from "../../../lib/utils";
 import { getClientThemeClassName, useClientTheme } from "../../../theme/ClientThemeProvider";
 import {
   MediaLightbox,
-  MediaPlayGlyph,
   SocialEmptyState,
+  SocialMediaTileButton,
   SocialPostMenuActionIcon,
   UnifiedPostText,
   VerificationBadge,
@@ -318,92 +318,25 @@ function DetailMiniPostCard({
   );
 }
 
-function DetailMediaBlock({
-  post,
-  scope
-}: {
-  post: SocialPost;
-  scope: SocialPortalScope;
-}) {
+function DetailMediaBlock({ post }: { post: SocialPost; scope: SocialPortalScope }) {
   const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null);
-
-  if (post.media.length === 0) {
-    return null;
-  }
-
-  const single = post.media.length === 1 ? post.media[0] : null;
-
-  if (single?.type === "video") {
-    return (
-      <>
-        <button className="group relative mt-4 block aspect-[4/5] w-full overflow-hidden border border-white/10 bg-black p-0 text-left" onClick={() => setActiveMediaIndex(0)} type="button">
-          <video
-            className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-            muted
-            playsInline
-            poster={single.thumbnailUrl ? getGeneratedImageThumbnailUrl(single.thumbnailUrl) : undefined}
-            src={single.url}
-          />
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="grid h-14 w-14 place-items-center rounded-full bg-black/58 text-white shadow-[0_12px_28px_rgba(0,0,0,0.3)]">
-              <MediaPlayGlyph className="ml-0.5 h-5 w-5" />
-            </span>
-          </span>
-        </button>
-        {activeMediaIndex !== null ? <MediaLightbox activeIndex={activeMediaIndex} media={post.media} onChange={setActiveMediaIndex} onClose={() => setActiveMediaIndex(null)} /> : null}
-      </>
-    );
-  }
-
-  if (single?.type === "image") {
-    return (
-      <>
-        <button className="relative mt-4 block aspect-[4/5] w-full overflow-hidden border border-white/10 bg-black p-0 text-left" onClick={() => setActiveMediaIndex(0)} type="button">
-          <img alt={single.alt ?? ""} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getSocialMediaPreviewUrl(single)} />
-        </button>
-        {activeMediaIndex !== null ? <MediaLightbox activeIndex={activeMediaIndex} media={post.media} onChange={setActiveMediaIndex} onClose={() => setActiveMediaIndex(null)} /> : null}
-      </>
-    );
-  }
-
+  if (post.media.length === 0) return null;
   const visibleMedia = post.media.slice(0, 9);
   const hiddenCount = Math.max(0, post.media.length - visibleMedia.length);
   const total = visibleMedia.length;
-
   return (
     <>
       <div className={cn("mt-4 grid gap-1 overflow-hidden border border-white/10 bg-white/10", socialMediaGridClassName(total))}>
         {visibleMedia.map((media, index) => (
-          <button
-            className={cn("group relative block w-full overflow-hidden border-0 bg-black p-0 text-left", socialMediaTileClassName(total, index))}
+          <SocialMediaTileButton
+            className={total === 1 ? "aspect-[4/5]" : socialMediaTileClassName(total, index)}
             key={media.id}
-            onClick={() => setActiveMediaIndex(index)}
-            type="button"
+            media={media}
+            onOpen={() => setActiveMediaIndex(index)}
+            presentation={total === 1 ? "detail-single" : "grid"}
           >
-            {media.type === "video" ? (
-              <>
-                <video
-                  className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-                  muted
-                  playsInline
-                  poster={media.thumbnailUrl ? getGeneratedImageThumbnailUrl(media.thumbnailUrl) : undefined}
-                  src={media.url}
-                />
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span className="grid h-12 w-12 place-items-center rounded-full bg-black/58 text-white shadow-[0_12px_28px_rgba(0,0,0,0.3)]">
-                    <MediaPlayGlyph className="ml-0.5 h-4 w-4" />
-                  </span>
-                </div>
-                <span className="absolute left-3 bottom-3 rounded-full bg-black/68 px-2.5 py-1 text-[11px] font-black text-white">
-                  {media.durationLabel ?? "视频"}
-                </span>
-              </>
-            ) : (
-              <img alt={media.alt ?? ""} className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]" src={getSocialMediaPreviewUrl(media)} />
-            )}
-
             {index === visibleMedia.length - 1 && hiddenCount > 0 ? <div className="absolute inset-0 grid place-items-center bg-black/52 text-xl font-black text-white">+{hiddenCount}</div> : null}
-          </button>
+          </SocialMediaTileButton>
         ))}
       </div>
       {activeMediaIndex !== null ? <MediaLightbox activeIndex={activeMediaIndex} media={post.media} onChange={setActiveMediaIndex} onClose={() => setActiveMediaIndex(null)} /> : null}

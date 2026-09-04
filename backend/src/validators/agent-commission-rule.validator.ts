@@ -12,7 +12,10 @@ const paymentDetailValueSchema = z.union([
 ]);
 const paymentDetailsSchema = z
   .record(z.string().trim().min(1).max(80), paymentDetailValueSchema)
-  .refine((value) => Object.keys(value).length <= 20, "At most 20 payment detail fields are allowed");
+  .refine(
+    (value) => Object.keys(value).length <= 20,
+    "At most 20 payment detail fields are allowed"
+  );
 
 export const agentCommissionRuleListQuerySchema = z
   .object({
@@ -33,9 +36,5 @@ export const agentCommissionRulePublishBodySchema = z
   })
   .strict();
 
-export type AgentCommissionRuleListQuery = z.output<
-  typeof agentCommissionRuleListQuerySchema
->;
-export type AgentCommissionRulePublishBody = z.output<
-  typeof agentCommissionRulePublishBodySchema
->;
+export type AgentCommissionRuleListQuery = z.output<typeof agentCommissionRuleListQuerySchema>;
+export type AgentCommissionRulePublishBody = z.output<typeof agentCommissionRulePublishBodySchema>;

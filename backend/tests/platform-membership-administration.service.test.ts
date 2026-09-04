@@ -25,7 +25,13 @@ const benefitCodes = [
   "birthday_gift"
 ] as const;
 const nameTranslations = { zh: "权益", "zh-Hant": "權益", ja: "特典", en: "Benefit", ko: "혜택" };
-const descriptionTranslations = { zh: "权益说明", "zh-Hant": "權益說明", ja: "特典説明", en: "Benefit description", ko: "혜택 설명" };
+const descriptionTranslations = {
+  zh: "权益说明",
+  "zh-Hant": "權益說明",
+  ja: "特典説明",
+  en: "Benefit description",
+  ko: "혜택 설명"
+};
 const tiers = tierCodes.map((tierCode, sortOrder) => ({
   tierCode,
   sortOrder,
@@ -87,40 +93,52 @@ describe("PlatformMembershipService administration", () => {
     const repo = repository();
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.updateBenefit(
-      actor,
-      { ip: "127.0.0.1" },
-      "ndp_experience",
-      { isGloballyEnabled: false, sortOrder: 0, nameTranslations, descriptionTranslations, expectedLockVersion: 1 }
-    )).resolves.toMatchObject({
+    await expect(
+      service.updateBenefit(actor, { ip: "127.0.0.1" }, "ndp_experience", {
+        isGloballyEnabled: false,
+        sortOrder: 0,
+        nameTranslations,
+        descriptionTranslations,
+        expectedLockVersion: 1
+      })
+    ).resolves.toMatchObject({
       code: "ndp_experience",
       isGloballyEnabled: false,
       lockVersion: 2
     });
-    expect(repo.updateBenefitWithAudit).toHaveBeenCalledWith(expect.objectContaining({
-      actorId: 9,
-      benefitCode: "ndp_experience",
-      expectedLockVersion: 1,
-      sortOrder: 0,
-      nameTranslations,
-      descriptionTranslations,
-      audit: expect.objectContaining({ action: "platform.membership_benefit.update" })
-    }));
+    expect(repo.updateBenefitWithAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 9,
+        benefitCode: "ndp_experience",
+        expectedLockVersion: 1,
+        sortOrder: 0,
+        nameTranslations,
+        descriptionTranslations,
+        audit: expect.objectContaining({ action: "platform.membership_benefit.update" })
+      })
+    );
   });
 
   it("surfaces a stale benefit lock as 409", async () => {
-    const service = new PlatformMembershipService(repository({
-      updateBenefitWithAudit: jest.fn(async (input: UpdateBenefitArgument) => {
-        void input;
-        return { kind: "version_conflict" as const };
-      })
-    }), audit, () => now);
+    const service = new PlatformMembershipService(
+      repository({
+        updateBenefitWithAudit: jest.fn(async (input: UpdateBenefitArgument) => {
+          void input;
+          return { kind: "version_conflict" as const };
+        })
+      }),
+      audit,
+      () => now
+    );
 
-    await expect(service.updateBenefit(
-      actor,
-      { ip: "127.0.0.1" },
-      "ndp_experience",
-      { isGloballyEnabled: false, sortOrder: 0, nameTranslations, descriptionTranslations, expectedLockVersion: 1 }
-    )).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      service.updateBenefit(actor, { ip: "127.0.0.1" }, "ndp_experience", {
+        isGloballyEnabled: false,
+        sortOrder: 0,
+        nameTranslations,
+        descriptionTranslations,
+        expectedLockVersion: 1
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });

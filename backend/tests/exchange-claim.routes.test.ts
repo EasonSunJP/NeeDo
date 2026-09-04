@@ -10,8 +10,12 @@ import { createDirectShopContextRepository } from "./helpers/merchant-shop-conte
 
 class InMemoryAuthSessionStore {
   private readonly values = new Map<string, string>();
-  public async getLoginLock(): Promise<boolean> { return false; }
-  public async getAccountLoginLock(): Promise<boolean> { return false; }
+  public async getLoginLock(): Promise<boolean> {
+    return false;
+  }
+  public async getAccountLoginLock(): Promise<boolean> {
+    return false;
+  }
   public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
     return { count: 1, locked: false };
   }
@@ -21,9 +25,13 @@ class InMemoryAuthSessionStore {
   public async clearFailedLogin(): Promise<void> {}
   public async clearFailedLoginForAccount(): Promise<void> {}
   public async storeOtp(): Promise<void> {}
-  public async getOtp(): Promise<string | null> { return null; }
+  public async getOtp(): Promise<string | null> {
+    return null;
+  }
   public async deleteOtp(): Promise<void> {}
-  public async hasOtpCooldown(): Promise<boolean> { return false; }
+  public async hasOtpCooldown(): Promise<boolean> {
+    return false;
+  }
   public async storeOtpCooldown(): Promise<void> {}
   public async clearOtpCooldown(): Promise<void> {}
   public async storeRefreshToken(userId: number, jti: string): Promise<void> {
@@ -35,10 +43,16 @@ class InMemoryAuthSessionStore {
   public async revokeRefreshToken(userId: number, jti: string): Promise<void> {
     this.values.delete(`${userId}:${jti}`);
   }
-  public async revokeAllRefreshTokens(): Promise<void> { this.values.clear(); }
-  public async rotateRefreshToken(): Promise<boolean> { return true; }
+  public async revokeAllRefreshTokens(): Promise<void> {
+    this.values.clear();
+  }
+  public async rotateRefreshToken(): Promise<boolean> {
+    return true;
+  }
   public async blacklistAccessToken(): Promise<void> {}
-  public async isAccessTokenBlacklisted(): Promise<boolean> { return false; }
+  public async isAccessTokenBlacklisted(): Promise<boolean> {
+    return false;
+  }
 }
 
 const now = new Date("2026-09-01T00:00:00.000Z");
@@ -223,10 +237,7 @@ describe("formal Exchange claim routes", () => {
       .get("/api/v1/exchange/posts/41/claims?page=1&page_size=20")
       .set(auth)
       .expect(200);
-    await request(app)
-      .get("/api/v1/exchange/posts/41/claims/mine")
-      .set(auth)
-      .expect(200);
+    await request(app).get("/api/v1/exchange/posts/41/claims/mine").set(auth).expect(200);
     await request(app)
       .post("/api/v1/exchange/claims/301/withdraw")
       .set(auth)
@@ -276,11 +287,7 @@ describe("formal Exchange claim routes", () => {
     const auth = { Authorization: `Bearer ${token}` };
 
     await request(app).post(endpoint).set(auth).expect(400);
-    await request(app)
-      .post(endpoint)
-      .set(auth)
-      .set("Idempotency-Key", "short")
-      .expect(400);
+    await request(app).post(endpoint).set(auth).set("Idempotency-Key", "short").expect(400);
     expect(service.withdrawClaim).not.toHaveBeenCalled();
   });
 

@@ -308,15 +308,17 @@ export class AuthController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.authService.bindCompliancePhone(
-            request.body.phone,
-            this.getAuthenticatedAccess(response),
-            this.getContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.bindCompliancePhone(
+              request.body.phone,
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

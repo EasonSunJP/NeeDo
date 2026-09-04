@@ -367,11 +367,7 @@ describe("ExchangeClaimService", () => {
     ["missing candidate", { findOptionCandidate: jest.fn(async () => null) }, 40419],
     ["missing technician", { lockTechnician: jest.fn(async () => false) }, 40975],
     ["stale slot", { lockOption: jest.fn(async () => null) }, 40975],
-    [
-      "duplicate",
-      { hasActiveClaimForRequestTechnician: jest.fn(async () => true) },
-      40977
-    ],
+    ["duplicate", { hasActiveClaimForRequestTechnician: jest.fn(async () => true) }, 40977],
     ["soft lock conflict", { hasOverlappingActiveClaim: jest.fn(async () => true) }, 40976],
     [
       "matched participant conflict",
@@ -489,12 +485,7 @@ describe("ExchangeClaimService", () => {
 
     await expect(service.getMine(merchantAccess, 41)).resolves.toEqual(claim);
     await expect(
-      service.withdrawClaim(
-        merchantAccess,
-        301,
-        "claim-withdraw-key-0001",
-        requestContext
-      )
+      service.withdrawClaim(merchantAccess, 301, "claim-withdraw-key-0001", requestContext)
     ).resolves.toMatchObject({ id: 301, status: "withdrawn" });
     expect(events).toEqual([
       "lock-request",
@@ -562,11 +553,10 @@ describe("ExchangeClaimService", () => {
       { resolveActor: jest.fn(async () => ({ ...merchantActor, identityId: 21 })) },
       () => now
     );
-    await service.listReceived(
-      { ...merchantAccess, currentIdentityId: 21 },
-      41,
-      { page: 1, page_size: 20 }
-    );
+    await service.listReceived({ ...merchantAccess, currentIdentityId: 21 }, 41, {
+      page: 1,
+      page_size: 20
+    });
     expect(repository.listReceived).toHaveBeenCalledWith(41, 21, {
       page: 1,
       pageSize: 20

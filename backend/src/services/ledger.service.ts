@@ -24,12 +24,7 @@ import type {
 
 export type { LedgerCurrency } from "./ledger-currency.service";
 
-export type WalletOwnerType =
-  | "user"
-  | "shop"
-  | "platform"
-  | "merchant_account"
-  | "alliance";
+export type WalletOwnerType = "user" | "shop" | "platform" | "merchant_account" | "alliance";
 export type WalletLedgerDirection =
   | "available_credit"
   | "available_debit"
@@ -385,9 +380,7 @@ export interface LedgerRepositoryPort {
   findTransactionByIdempotencyKey: (
     idempotencyKey: string
   ) => Promise<LedgerTransactionPayload | null>;
-  findUserAccountClassification: (
-    userId: number
-  ) => Promise<{ isTestAccount: boolean } | null>;
+  findUserAccountClassification: (userId: number) => Promise<{ isTestAccount: boolean } | null>;
   getOrCreateWallet: (input: {
     ownerType: WalletOwnerType;
     ownerId: number;
@@ -519,9 +512,7 @@ export interface LedgerRepositoryPort {
   lockExchangeRequestFinancialByPostId?: (
     exchangePostId: number
   ) => Promise<ExchangeRequestFinancialPayload | null>;
-  findWalletHoldByExchangePostId?: (
-    exchangePostId: number
-  ) => Promise<WalletHoldPayload | null>;
+  findWalletHoldByExchangePostId?: (exchangePostId: number) => Promise<WalletHoldPayload | null>;
   createExchangeRequestFreezeEvidence?: (input: {
     freeze: ExchangeRequestFreezeInput;
     walletId: number;
@@ -769,11 +760,7 @@ export class LedgerService
   ): Promise<void> {
     if (!this.ndpExperienceRecorder) return;
     for (const entry of transaction.entries) {
-      if (
-        !entry.walletOwnerType ||
-        entry.walletOwnerId === undefined ||
-        !entry.walletCurrency
-      ) {
+      if (!entry.walletOwnerType || entry.walletOwnerId === undefined || !entry.walletCurrency) {
         continue;
       }
       const classification = classifyExperienceSource(
@@ -1339,10 +1326,7 @@ export class LedgerService
         throw this.insufficientFrozenError();
       }
 
-      const claimantCurrency = await this.resolveCurrencyForUser(
-        repository,
-        input.claimantUserId
-      );
+      const claimantCurrency = await this.resolveCurrencyForUser(repository, input.claimantUserId);
       LedgerCurrencyService.assertSameCurrency(publisherWallet.currency, [claimantCurrency]);
       const currency = publisherWallet.currency;
       const claimantWallet = await repository.getOrCreateWallet({
@@ -1551,13 +1535,14 @@ export class LedgerService
         ownerId: input.customerUserId,
         currency: "NDP"
       });
-      const platformWallet = input.platformFeeNdp > 0
-        ? await repository.getOrCreateWallet({
-            ownerType: "platform",
-            ownerId: PLATFORM_WALLET_OWNER_ID,
-            currency: "NDP"
-          })
-        : null;
+      const platformWallet =
+        input.platformFeeNdp > 0
+          ? await repository.getOrCreateWallet({
+              ownerType: "platform",
+              ownerId: PLATFORM_WALLET_OWNER_ID,
+              currency: "NDP"
+            })
+          : null;
       const updatedShopWallet = await repository.applyWalletDelta({
         walletId: lockedShopWallet.id,
         availableDelta: -totalShopDebitNdp,
@@ -1665,19 +1650,28 @@ export class LedgerService
     context: LedgerMutationContext = {}
   ): Promise<ShopMembershipRewardReversalLedgerResult> {
     if (
-      !Number.isSafeInteger(input.redemptionId) || input.redemptionId <= 0
-      || !Number.isSafeInteger(input.shopId) || input.shopId <= 0
-      || !Number.isSafeInteger(input.customerUserId) || input.customerUserId <= 0
-      || !Number.isSafeInteger(input.actorUserId) || input.actorUserId <= 0
-      || !Number.isSafeInteger(input.customerRewardNdp) || input.customerRewardNdp <= 0
-      || !Number.isSafeInteger(input.platformFeeNdp) || input.platformFeeNdp < 0
-      || !Number.isSafeInteger(input.shopWalletId) || input.shopWalletId <= 0
-      || !Number.isSafeInteger(input.customerWalletId) || input.customerWalletId <= 0
-      || (input.platformFeeNdp > 0
+      !Number.isSafeInteger(input.redemptionId) ||
+      input.redemptionId <= 0 ||
+      !Number.isSafeInteger(input.shopId) ||
+      input.shopId <= 0 ||
+      !Number.isSafeInteger(input.customerUserId) ||
+      input.customerUserId <= 0 ||
+      !Number.isSafeInteger(input.actorUserId) ||
+      input.actorUserId <= 0 ||
+      !Number.isSafeInteger(input.customerRewardNdp) ||
+      input.customerRewardNdp <= 0 ||
+      !Number.isSafeInteger(input.platformFeeNdp) ||
+      input.platformFeeNdp < 0 ||
+      !Number.isSafeInteger(input.shopWalletId) ||
+      input.shopWalletId <= 0 ||
+      !Number.isSafeInteger(input.customerWalletId) ||
+      input.customerWalletId <= 0 ||
+      (input.platformFeeNdp > 0
         ? !Number.isSafeInteger(input.platformWalletId) || input.platformWalletId! <= 0
-        : input.platformWalletId !== null)
-      || !input.idempotencyKey.trim()
-    ) throw this.walletMutationError();
+        : input.platformWalletId !== null) ||
+      !input.idempotencyKey.trim()
+    )
+      throw this.walletMutationError();
     const totalShopCreditNdp = input.customerRewardNdp + input.platformFeeNdp;
     if (!Number.isSafeInteger(totalShopCreditNdp)) throw this.walletMutationError();
 
@@ -1686,20 +1680,21 @@ export class LedgerService
       if (existing) {
         const metadata = this.metadataRecord(existing.metadata);
         if (
-          existing.type !== "shop_membership_reward_reversal"
-          || existing.referenceType !== "shop_membership_card_redemption_refund"
-          || existing.referenceId !== input.redemptionId
-          || existing.amount !== totalShopCreditNdp
-          || metadata.shopId !== input.shopId
-          || metadata.customerUserId !== input.customerUserId
-          || metadata.customerRewardNdp !== input.customerRewardNdp
-          || metadata.platformFeeNdp !== input.platformFeeNdp
-          || metadata.shopWalletId !== input.shopWalletId
-          || metadata.customerWalletId !== input.customerWalletId
-          || metadata.platformWalletId !== input.platformWalletId
-          || typeof metadata.customerBalanceBeforeNdp !== "number"
-          || typeof metadata.customerBalanceAfterNdp !== "number"
-        ) throw this.walletMutationError();
+          existing.type !== "shop_membership_reward_reversal" ||
+          existing.referenceType !== "shop_membership_card_redemption_refund" ||
+          existing.referenceId !== input.redemptionId ||
+          existing.amount !== totalShopCreditNdp ||
+          metadata.shopId !== input.shopId ||
+          metadata.customerUserId !== input.customerUserId ||
+          metadata.customerRewardNdp !== input.customerRewardNdp ||
+          metadata.platformFeeNdp !== input.platformFeeNdp ||
+          metadata.shopWalletId !== input.shopWalletId ||
+          metadata.customerWalletId !== input.customerWalletId ||
+          metadata.platformWalletId !== input.platformWalletId ||
+          typeof metadata.customerBalanceBeforeNdp !== "number" ||
+          typeof metadata.customerBalanceAfterNdp !== "number"
+        )
+          throw this.walletMutationError();
         return {
           transaction: existing,
           shopWalletId: input.shopWalletId,
@@ -1712,17 +1707,24 @@ export class LedgerService
 
       const shopWallet = await this.lockWalletById(repository, input.shopWalletId);
       const customerWallet = await this.lockWalletById(repository, input.customerWalletId);
-      const platformWallet = input.platformWalletId === null
-        ? null
-        : await this.lockWalletById(repository, input.platformWalletId);
+      const platformWallet =
+        input.platformWalletId === null
+          ? null
+          : await this.lockWalletById(repository, input.platformWalletId);
       if (
-        shopWallet.ownerType !== "shop" || shopWallet.ownerId !== input.shopId || shopWallet.currency !== "NDP"
-        || customerWallet.ownerType !== "user" || customerWallet.ownerId !== input.customerUserId || customerWallet.currency !== "NDP"
-        || (input.platformFeeNdp > 0 && (
-          !platformWallet || platformWallet.ownerType !== "platform"
-          || platformWallet.ownerId !== PLATFORM_WALLET_OWNER_ID || platformWallet.currency !== "NDP"
-        ))
-      ) throw this.walletMutationError();
+        shopWallet.ownerType !== "shop" ||
+        shopWallet.ownerId !== input.shopId ||
+        shopWallet.currency !== "NDP" ||
+        customerWallet.ownerType !== "user" ||
+        customerWallet.ownerId !== input.customerUserId ||
+        customerWallet.currency !== "NDP" ||
+        (input.platformFeeNdp > 0 &&
+          (!platformWallet ||
+            platformWallet.ownerType !== "platform" ||
+            platformWallet.ownerId !== PLATFORM_WALLET_OWNER_ID ||
+            platformWallet.currency !== "NDP"))
+      )
+        throw this.walletMutationError();
 
       const customerBalanceBeforeNdp = customerWallet.availableBalance;
       const updatedCustomerWallet = await repository.applyWalletDelta({
@@ -1742,7 +1744,11 @@ export class LedgerService
         availableDelta: totalShopCreditNdp,
         frozenDelta: 0
       });
-      if (!updatedCustomerWallet || (platformWallet && !updatedPlatformWallet) || !updatedShopWallet) {
+      if (
+        !updatedCustomerWallet ||
+        (platformWallet && !updatedPlatformWallet) ||
+        !updatedShopWallet
+      ) {
         throw this.walletMutationError();
       }
 
@@ -1815,7 +1821,8 @@ export class LedgerService
         }
       });
       return {
-        transaction: (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
+        transaction:
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ?? transaction,
         shopWalletId: shopWallet.id,
         customerWalletId: customerWallet.id,
         platformWalletId: platformWallet?.id ?? null,
@@ -1896,22 +1903,27 @@ export class LedgerService
           calculationLogId: fee.calculationLogId,
           metadata: this.feeMetadata(fee)
         });
-        await this.upsertOrderFinancial(repository, input, {
-          ...this.holdFinancialFields(feeType, holdAmount),
-          campaignDiscountNdp: fee.campaignDiscountNdp,
-          platformFeePayerType: fee.payerType,
-          platformFeePayerId: fee.payerId,
-          appliedFeeRuleIds: fee.appliedRuleIds,
-          settlementStatus: holdAmount > 0 ? "holding" : "pending",
-          timelineEvent: {
-            action:
-              feeType === "c_request_dispatch_fee"
-                ? "request_accept_dispatch_fee_hold"
-                : "booking_accept_hold",
-            amountNdp: holdAmount,
-            fee
-          }
-        }, currency);
+        await this.upsertOrderFinancial(
+          repository,
+          input,
+          {
+            ...this.holdFinancialFields(feeType, holdAmount),
+            campaignDiscountNdp: fee.campaignDiscountNdp,
+            platformFeePayerType: fee.payerType,
+            platformFeePayerId: fee.payerId,
+            appliedFeeRuleIds: fee.appliedRuleIds,
+            settlementStatus: holdAmount > 0 ? "holding" : "pending",
+            timelineEvent: {
+              action:
+                feeType === "c_request_dispatch_fee"
+                  ? "request_accept_dispatch_fee_hold"
+                  : "booking_accept_hold",
+              amountNdp: holdAmount,
+              fee
+            }
+          },
+          currency
+        );
 
         if (holdAmount === 0) {
           return undefined;
@@ -1982,31 +1994,36 @@ export class LedgerService
     });
 
     if (!policy.feeEnabled) {
-      await this.upsertOrderFinancial(repository, input, {
-        bPlatformFeeHoldNdp: 0,
-        campaignDiscountNdp: fee.campaignDiscountNdp,
-        platformFeePayerType: owner.payerType,
-        platformFeePayerId: owner.payerId,
-        appliedFeeRuleIds: fee.appliedRuleIds,
-        settlementStatus: "pending",
-        ...this.platformFeeSnapshotFields({
-          policy,
-          acceptedAt,
-          amountNdp: 0,
-          wallet: null,
-          shortfallNdp: 0,
-          confirmationKey: null,
-          previewVersion: null
-        }),
-        userRewardEligibleNdp: 0,
-        userRewardStatus: "disabled",
-        timelineEvent: {
-          action: "booking_accept_platform_fee_disabled",
-          amountNdp: 0,
-          policy,
-          fee: this.feeMetadata(fee)
-        }
-      }, currency);
+      await this.upsertOrderFinancial(
+        repository,
+        input,
+        {
+          bPlatformFeeHoldNdp: 0,
+          campaignDiscountNdp: fee.campaignDiscountNdp,
+          platformFeePayerType: owner.payerType,
+          platformFeePayerId: owner.payerId,
+          appliedFeeRuleIds: fee.appliedRuleIds,
+          settlementStatus: "pending",
+          ...this.platformFeeSnapshotFields({
+            policy,
+            acceptedAt,
+            amountNdp: 0,
+            wallet: null,
+            shortfallNdp: 0,
+            confirmationKey: null,
+            previewVersion: null
+          }),
+          userRewardEligibleNdp: 0,
+          userRewardStatus: "disabled",
+          timelineEvent: {
+            action: "booking_accept_platform_fee_disabled",
+            amountNdp: 0,
+            policy,
+            fee: this.feeMetadata(fee)
+          }
+        },
+        currency
+      );
 
       return undefined;
     }
@@ -2079,34 +2096,39 @@ export class LedgerService
       calculationLogId: fee.calculationLogId,
       metadata: { policy, owner, previewVersion, fee: this.feeMetadata(fee) }
     });
-    await this.upsertOrderFinancial(repository, input, {
-      bPlatformFeeHoldNdp: holdAmount,
-      campaignDiscountNdp: fee.campaignDiscountNdp,
-      platformFeePayerType: owner.payerType,
-      platformFeePayerId: owner.payerId,
-      appliedFeeRuleIds: fee.appliedRuleIds,
-      settlementStatus: holdAmount > 0 ? "holding" : "pending",
-      ...this.platformFeeSnapshotFields({
-        policy,
-        acceptedAt,
-        amountNdp: holdAmount,
-        wallet,
-        shortfallNdp,
-        confirmationKey: shortfallNdp > 0 ? (confirmation?.idempotencyKey ?? null) : null,
-        previewVersion
-      }),
-      userRewardEligibleNdp: 100,
-      userRewardStatus: shortfallNdp > 0 ? "pending" : "immediate",
-      timelineEvent: {
-        action: "booking_accept_hold",
-        amountNdp: holdAmount,
-        shortfallNdp,
-        policy,
-        owner,
-        previewVersion,
-        fee: this.feeMetadata(fee)
-      }
-    }, currency);
+    await this.upsertOrderFinancial(
+      repository,
+      input,
+      {
+        bPlatformFeeHoldNdp: holdAmount,
+        campaignDiscountNdp: fee.campaignDiscountNdp,
+        platformFeePayerType: owner.payerType,
+        platformFeePayerId: owner.payerId,
+        appliedFeeRuleIds: fee.appliedRuleIds,
+        settlementStatus: holdAmount > 0 ? "holding" : "pending",
+        ...this.platformFeeSnapshotFields({
+          policy,
+          acceptedAt,
+          amountNdp: holdAmount,
+          wallet,
+          shortfallNdp,
+          confirmationKey: shortfallNdp > 0 ? (confirmation?.idempotencyKey ?? null) : null,
+          previewVersion
+        }),
+        userRewardEligibleNdp: 100,
+        userRewardStatus: shortfallNdp > 0 ? "pending" : "immediate",
+        timelineEvent: {
+          action: "booking_accept_hold",
+          amountNdp: holdAmount,
+          shortfallNdp,
+          policy,
+          owner,
+          previewVersion,
+          fee: this.feeMetadata(fee)
+        }
+      },
+      currency
+    );
 
     if (holdAmount === 0) {
       return undefined;
@@ -2169,19 +2191,24 @@ export class LedgerService
         if (snapshot.settlementStatus === "cancelled") {
           return undefined;
         }
-        await this.upsertOrderFinancial(repository, input, {
-          platformFeeOutstandingNdp: 0,
-          platformFeeDebtStatus: "none",
-          userRewardEligibleNdp: 0,
-          userRewardStatus: "disabled",
-          userRewardDeadlineAt: null,
-          userRewardGrantedAt: null,
-          settlementStatus: "cancelled",
-          timelineEvent: {
-            action: "booking_cancel_platform_fee_disabled",
-            amountNdp: 0
-          }
-        }, snapshot.ndpCurrency);
+        await this.upsertOrderFinancial(
+          repository,
+          input,
+          {
+            platformFeeOutstandingNdp: 0,
+            platformFeeDebtStatus: "none",
+            userRewardEligibleNdp: 0,
+            userRewardStatus: "disabled",
+            userRewardDeadlineAt: null,
+            userRewardGrantedAt: null,
+            settlementStatus: "cancelled",
+            timelineEvent: {
+              action: "booking_cancel_platform_fee_disabled",
+              amountNdp: 0
+            }
+          },
+          snapshot.ndpCurrency
+        );
 
         return undefined;
       }
@@ -2198,23 +2225,28 @@ export class LedgerService
           status: "released",
           releasedAt: new Date()
         });
-        await this.upsertOrderFinancial(repository, input, {
-          ...(snapshot
-            ? {
-                platformFeeOutstandingNdp: 0,
-                platformFeeDebtStatus: "none" as const,
-                userRewardEligibleNdp: 0,
-                userRewardStatus: "disabled" as const,
-                userRewardDeadlineAt: null,
-                userRewardGrantedAt: null
-              }
-            : {}),
-          settlementStatus: "cancelled",
-          timelineEvent: {
-            action: "booking_cancel_no_remaining_hold",
-            amountNdp: 0
-          }
-        }, currency);
+        await this.upsertOrderFinancial(
+          repository,
+          input,
+          {
+            ...(snapshot
+              ? {
+                  platformFeeOutstandingNdp: 0,
+                  platformFeeDebtStatus: "none" as const,
+                  userRewardEligibleNdp: 0,
+                  userRewardStatus: "disabled" as const,
+                  userRewardDeadlineAt: null,
+                  userRewardGrantedAt: null
+                }
+              : {}),
+            settlementStatus: "cancelled",
+            timelineEvent: {
+              action: "booking_cancel_no_remaining_hold",
+              amountNdp: 0
+            }
+          },
+          currency
+        );
 
         return undefined;
       }
@@ -2273,24 +2305,29 @@ export class LedgerService
         status: "released",
         releasedAt: new Date()
       });
-      await this.upsertOrderFinancial(repository, input, {
-        releasedNdp: releaseAmount,
-        ...(snapshot
-          ? {
-              platformFeeOutstandingNdp: 0,
-              platformFeeDebtStatus: "none" as const,
-              userRewardEligibleNdp: 0,
-              userRewardStatus: "disabled" as const,
-              userRewardDeadlineAt: null,
-              userRewardGrantedAt: null
-            }
-          : {}),
-        settlementStatus: "cancelled",
-        timelineEvent: {
-          action: "booking_cancel_release",
-          amountNdp: releaseAmount
-        }
-      }, currency);
+      await this.upsertOrderFinancial(
+        repository,
+        input,
+        {
+          releasedNdp: releaseAmount,
+          ...(snapshot
+            ? {
+                platformFeeOutstandingNdp: 0,
+                platformFeeDebtStatus: "none" as const,
+                userRewardEligibleNdp: 0,
+                userRewardStatus: "disabled" as const,
+                userRewardDeadlineAt: null,
+                userRewardGrantedAt: null
+              }
+            : {}),
+          settlementStatus: "cancelled",
+          timelineEvent: {
+            action: "booking_cancel_release",
+            amountNdp: releaseAmount
+          }
+        },
+        currency
+      );
       await this.recordFinanceAndAudit(repository, transaction, {
         action: "ledger.booking_cancel.unfreeze",
         expectedAmount: releaseAmount,
@@ -2399,23 +2436,28 @@ export class LedgerService
           rewardFee: this.feeMetadata(reward)
         }
       });
-      await this.upsertOrderFinancial(repository, input, {
-        bPlatformFeeActualNdp: captureAmount,
-        userRewardNdp: rewardAmount,
-        campaignDiscountNdp: fee.campaignDiscountNdp,
-        releasedNdp: releaseAmount,
-        completedOrderOrdinalInPeriod: fee.completedOrderOrdinalInPeriod,
-        appliedFeeRuleIds: [...fee.appliedRuleIds, ...reward.appliedRuleIds],
-        settlementStatus: "settled",
-        timelineEvent: {
-          action: "booking_complete_settlement",
-          platformFeeNdp: captureAmount,
-          releasedNdp: releaseAmount,
+      await this.upsertOrderFinancial(
+        repository,
+        input,
+        {
+          bPlatformFeeActualNdp: captureAmount,
           userRewardNdp: rewardAmount,
-          fee,
-          reward
-        }
-      }, currency);
+          campaignDiscountNdp: fee.campaignDiscountNdp,
+          releasedNdp: releaseAmount,
+          completedOrderOrdinalInPeriod: fee.completedOrderOrdinalInPeriod,
+          appliedFeeRuleIds: [...fee.appliedRuleIds, ...reward.appliedRuleIds],
+          settlementStatus: "settled",
+          timelineEvent: {
+            action: "booking_complete_settlement",
+            platformFeeNdp: captureAmount,
+            releasedNdp: releaseAmount,
+            userRewardNdp: rewardAmount,
+            fee,
+            reward
+          }
+        },
+        currency
+      );
 
       if (transactionAmount === 0) {
         return undefined;
@@ -2504,22 +2546,27 @@ export class LedgerService
       if (snapshot.settlementStatus === "settled") {
         return undefined;
       }
-      await this.upsertOrderFinancial(repository, input, {
-        bPlatformFeeActualNdp: 0,
-        userRewardNdp: 0,
-        platformFeeOutstandingNdp: 0,
-        platformFeeDebtStatus: "none",
-        userRewardEligibleNdp: 0,
-        userRewardStatus: "disabled",
-        userRewardDeadlineAt: null,
-        userRewardGrantedAt: null,
-        settlementStatus: "settled",
-        timelineEvent: {
-          action: "booking_complete_platform_fee_disabled",
-          platformFeeNdp: 0,
-          userRewardNdp: 0
-        }
-      }, snapshot.ndpCurrency);
+      await this.upsertOrderFinancial(
+        repository,
+        input,
+        {
+          bPlatformFeeActualNdp: 0,
+          userRewardNdp: 0,
+          platformFeeOutstandingNdp: 0,
+          platformFeeDebtStatus: "none",
+          userRewardEligibleNdp: 0,
+          userRewardStatus: "disabled",
+          userRewardDeadlineAt: null,
+          userRewardGrantedAt: null,
+          settlementStatus: "settled",
+          timelineEvent: {
+            action: "booking_complete_platform_fee_disabled",
+            platformFeeNdp: 0,
+            userRewardNdp: 0
+          }
+        },
+        snapshot.ndpCurrency
+      );
 
       return undefined;
     }
@@ -2597,28 +2644,33 @@ export class LedgerService
         rewardFee: this.feeMetadata(reward)
       }
     });
-    await this.upsertOrderFinancial(repository, input, {
-      bPlatformFeeActualNdp: captureAmount,
-      userRewardNdp: rewardAmount,
-      releasedNdp: releaseAmount,
-      platformFeeOutstandingNdp: snapshot.platformFeeOutstandingNdp,
-      platformFeeDebtStatus: snapshot.platformFeeDebtStatus,
-      userRewardEligibleNdp: eligibleRewardNdp,
-      userRewardStatus: rewardPending ? "pending" : "immediate",
-      userRewardDeadlineAt: rewardDeadlineAt,
-      userRewardGrantedAt: rewardPending ? null : completedAt,
-      appliedFeeRuleIds: reward.appliedRuleIds,
-      settlementStatus: "settled",
-      timelineEvent: {
-        action: "booking_complete_snapshot_settlement",
-        platformFeeNdp: captureAmount,
-        releasedNdp: releaseAmount,
+    await this.upsertOrderFinancial(
+      repository,
+      input,
+      {
+        bPlatformFeeActualNdp: captureAmount,
         userRewardNdp: rewardAmount,
+        releasedNdp: releaseAmount,
+        platformFeeOutstandingNdp: snapshot.platformFeeOutstandingNdp,
+        platformFeeDebtStatus: snapshot.platformFeeDebtStatus,
         userRewardEligibleNdp: eligibleRewardNdp,
-        rewardStatus: rewardPending ? "pending" : "immediate",
-        rewardDeadlineAt: rewardDeadlineAt?.toISOString() ?? null
-      }
-    }, snapshot.ndpCurrency);
+        userRewardStatus: rewardPending ? "pending" : "immediate",
+        userRewardDeadlineAt: rewardDeadlineAt,
+        userRewardGrantedAt: rewardPending ? null : completedAt,
+        appliedFeeRuleIds: reward.appliedRuleIds,
+        settlementStatus: "settled",
+        timelineEvent: {
+          action: "booking_complete_snapshot_settlement",
+          platformFeeNdp: captureAmount,
+          releasedNdp: releaseAmount,
+          userRewardNdp: rewardAmount,
+          userRewardEligibleNdp: eligibleRewardNdp,
+          rewardStatus: rewardPending ? "pending" : "immediate",
+          rewardDeadlineAt: rewardDeadlineAt?.toISOString() ?? null
+        }
+      },
+      snapshot.ndpCurrency
+    );
 
     if (transactionAmount === 0) {
       return undefined;
@@ -2689,10 +2741,7 @@ export class LedgerService
 
     const persisted =
       (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
-    await this.recordNdpExperienceForAppliedTransaction(
-      persisted,
-      context.transactionClient
-    );
+    await this.recordNdpExperienceForAppliedTransaction(persisted, context.transactionClient);
     return persisted;
   }
 
@@ -2753,20 +2802,25 @@ export class LedgerService
           dispatchFee: this.feeMetadata(fee)
         }
       });
-      await this.upsertOrderFinancial(repository, input, {
-        cRequestFeeActualNdp: captureAmount,
-        campaignDiscountNdp: fee.campaignDiscountNdp,
-        releasedNdp: releaseAmount,
-        completedOrderOrdinalInPeriod: fee.completedOrderOrdinalInPeriod,
-        appliedFeeRuleIds: fee.appliedRuleIds,
-        settlementStatus: "settled",
-        timelineEvent: {
-          action: "request_complete_dispatch_fee_settlement",
-          requestFeeNdp: captureAmount,
+      await this.upsertOrderFinancial(
+        repository,
+        input,
+        {
+          cRequestFeeActualNdp: captureAmount,
+          campaignDiscountNdp: fee.campaignDiscountNdp,
           releasedNdp: releaseAmount,
-          fee
-        }
-      }, currency);
+          completedOrderOrdinalInPeriod: fee.completedOrderOrdinalInPeriod,
+          appliedFeeRuleIds: fee.appliedRuleIds,
+          settlementStatus: "settled",
+          timelineEvent: {
+            action: "request_complete_dispatch_fee_settlement",
+            requestFeeNdp: captureAmount,
+            releasedNdp: releaseAmount,
+            fee
+          }
+        },
+        currency
+      );
 
       if (transactionAmount === 0) {
         return undefined;
@@ -2896,19 +2950,24 @@ export class LedgerService
         throw this.walletMutationError();
       }
 
-      await this.upsertOrderFinancial(repository, input, {
-        penaltyNdp: penaltyAmount,
-        compensationToUserNdp: penaltyAmount,
-        campaignDiscountNdp: penaltyFee.campaignDiscountNdp,
-        appliedFeeRuleIds: penaltyFee.appliedRuleIds,
-        settlementStatus: "compensated",
-        timelineEvent: {
-          action: "booking_merchant_cancel_compensation",
+      await this.upsertOrderFinancial(
+        repository,
+        input,
+        {
           penaltyNdp: penaltyAmount,
           compensationToUserNdp: penaltyAmount,
-          penaltyFee
-        }
-      }, currency);
+          campaignDiscountNdp: penaltyFee.campaignDiscountNdp,
+          appliedFeeRuleIds: penaltyFee.appliedRuleIds,
+          settlementStatus: "compensated",
+          timelineEvent: {
+            action: "booking_merchant_cancel_compensation",
+            penaltyNdp: penaltyAmount,
+            compensationToUserNdp: penaltyAmount,
+            penaltyFee
+          }
+        },
+        currency
+      );
 
       if (penaltyAmount === 0) {
         return undefined;
@@ -3935,7 +3994,7 @@ export class LedgerService
 
   private metadataRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
+      ? (value as Record<string, unknown>)
       : {};
   }
 

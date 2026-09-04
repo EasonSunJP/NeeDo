@@ -100,10 +100,16 @@ describe("MerchantApplicationReviewRepository", () => {
       merchantAccount: { create: jest.fn().mockResolvedValue({ id: 51 }) },
       shop: { create: jest.fn().mockResolvedValue({ id: 61 }) },
       merchantApplicationServiceCategory: {
-        findMany: jest.fn().mockResolvedValue([{ category: { id: 1, qualificationPolicy: "PLATFORM_REVIEW" } }])
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ category: { id: 1, qualificationPolicy: "PLATFORM_REVIEW" } }])
       },
       merchantApplicationBusinessKeyword: {
-        findMany: jest.fn().mockResolvedValue([{ businessKeyword: { id: 10, categoryId: 1, qualificationPolicy: "PLATFORM_REVIEW" } }])
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { businessKeyword: { id: 10, categoryId: 1, qualificationPolicy: "PLATFORM_REVIEW" } }
+          ])
       },
       shopServiceCategory: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       shopBusinessKeyword: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -221,8 +227,18 @@ describe("MerchantApplicationReviewRepository", () => {
     });
     expect(tx.shopServiceQualification.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
-        expect.objectContaining({ shopId: 61, categoryId: 1, sourceApplicationId: 41, approvedByUserId: 9 }),
-        expect.objectContaining({ shopId: 61, businessKeywordId: 10, sourceApplicationId: 41, approvedByUserId: 9 })
+        expect.objectContaining({
+          shopId: 61,
+          categoryId: 1,
+          sourceApplicationId: 41,
+          approvedByUserId: 9
+        }),
+        expect.objectContaining({
+          shopId: 61,
+          businessKeywordId: 10,
+          sourceApplicationId: 41,
+          approvedByUserId: 9
+        })
       ])
     });
     expect(tx.saasFreePeriod.create).toHaveBeenCalledWith({

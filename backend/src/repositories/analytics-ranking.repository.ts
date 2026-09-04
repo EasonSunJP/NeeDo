@@ -9,10 +9,16 @@ import {
 } from "../domain/analytics-ranking";
 
 type AnalyticsRankingQueryClient = Pick<PrismaClient, "$queryRaw" | "category">;
-type AnalyticsRankingClient = AnalyticsRankingQueryClient & Partial<Pick<PrismaClient, "$transaction">>;
+type AnalyticsRankingClient = AnalyticsRankingQueryClient &
+  Partial<Pick<PrismaClient, "$transaction">>;
 type NumericValue = bigint | number | string | { toString(): string } | null | undefined;
-interface AnomalyRow { anomalyCount?: NumericValue; anomaly_count?: NumericValue }
-interface CountRow { total?: NumericValue }
+interface AnomalyRow {
+  anomalyCount?: NumericValue;
+  anomaly_count?: NumericValue;
+}
+interface CountRow {
+  total?: NumericValue;
+}
 interface RankingRow {
   rank?: NumericValue;
   rankingPosition?: NumericValue;
@@ -43,7 +49,10 @@ export interface AnalyticsRankingRepositoryPort {
 }
 
 const entityTypes = new Set<RankingEntityType>([
-  "service", "technician_service", "technician", "customer"
+  "service",
+  "technician_service",
+  "technician",
+  "customer"
 ]);
 
 export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPort {
@@ -82,7 +91,8 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     if (
       anomalyRows.length !== 1 ||
       this.safeInteger(anomalyRows[0]?.anomalyCount ?? anomalyRows[0]?.anomaly_count) !== 0
-    ) this.incomplete();
+    )
+      this.incomplete();
 
     const countRows = await client.$queryRaw<CountRow[]>(Prisma.sql`
       /* analytics_ranking_count */
@@ -114,9 +124,8 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
   }
 
   private formalRankingCtes(input: AnalyticsRankingInput): Prisma.Sql {
-    const city = input.city === null
-      ? Prisma.sql`TRUE`
-      : Prisma.sql`BINARY shop.city = BINARY ${input.city}`;
+    const city =
+      input.city === null ? Prisma.sql`TRUE` : Prisma.sql`BINARY shop.city = BINARY ${input.city}`;
     const catalogRequired = input.kind === "service" || input.categoryId !== null;
     return Prisma.sql`
       ranking_request AS (
@@ -463,23 +472,27 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
   }
 
   private rankingCtes(input: AnalyticsRankingInput): Prisma.Sql {
-    const categoryFilter = input.categoryId === null
-      ? Prisma.sql`TRUE`
-      : Prisma.sql`line.category_id = ${input.categoryId}`;
-    const entityRows = input.kind === "service"
-      ? Prisma.sql`
+    const categoryFilter =
+      input.categoryId === null
+        ? Prisma.sql`TRUE`
+        : Prisma.sql`line.category_id = ${input.categoryId}`;
+    const entityRows =
+      input.kind === "service"
+        ? Prisma.sql`
           SELECT line.entity_type, line.entity_public_id, line.entity_numeric_id,
                  MIN(line.display_name) AS display_name, MIN(line.avatar_url) AS avatar_url,
-                 ${input.categoryId === null
-                   ? Prisma.sql`CASE WHEN COUNT(DISTINCT line.category_id) = 1 THEN MIN(line.category_id) ELSE NULL END`
-                   : Prisma.sql`${input.categoryId}`} AS category_id,
+                 ${
+                   input.categoryId === null
+                     ? Prisma.sql`CASE WHEN COUNT(DISTINCT line.category_id) = 1 THEN MIN(line.category_id) ELSE NULL END`
+                     : Prisma.sql`${input.categoryId}`
+                 } AS category_id,
                  MIN(line.registered_at) AS registered_at,
                  SUM(line.line_gmv_jpy) AS gmv_jpy, COUNT(*) AS completed_count
           FROM eligible_lines AS line WHERE ${categoryFilter}
           GROUP BY line.entity_type, line.entity_public_id, line.entity_numeric_id
         `
-      : input.kind === "technician"
-        ? Prisma.sql`
+        : input.kind === "technician"
+          ? Prisma.sql`
           SELECT ${"technician"} AS entity_type, evidence.technician_needo_id AS entity_public_id,
                  evidence.resolved_technician_id AS entity_numeric_id,
                  evidence.technician_display_name AS display_name,
@@ -494,7 +507,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                    evidence.technician_display_name, evidence.technician_avatar_url,
                    evidence.technician_created_at
         `
-        : Prisma.sql`
+          : Prisma.sql`
           SELECT ${"customer"} AS entity_type, evidence.customer_needo_id AS entity_public_id,
                  evidence.resolved_customer_id AS entity_numeric_id,
                  COALESCE(evidence.customer_display_name, evidence.customer_username) AS display_name,
@@ -509,10 +522,11 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                    COALESCE(evidence.customer_display_name, evidence.customer_username),
                    evidence.customer_avatar_url, evidence.customer_created_at
         `;
-    const ordering = input.metric === "gmv"
-      ? Prisma.sql`gmv_jpy DESC, completed_count DESC, registered_at ASC,
+    const ordering =
+      input.metric === "gmv"
+        ? Prisma.sql`gmv_jpy DESC, completed_count DESC, registered_at ASC,
                    entity_numeric_id ASC, BINARY entity_type ASC`
-      : Prisma.sql`completed_count DESC, gmv_jpy DESC, registered_at ASC,
+        : Prisma.sql`completed_count DESC, gmv_jpy DESC, registered_at ASC,
                    entity_numeric_id ASC, BINARY entity_type ASC`;
     return Prisma.sql`
       ranking_lines AS (
@@ -586,9 +600,12 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     const avatar = row.avatarUrl ?? row.avatar_url;
     if (avatar !== null && avatar !== undefined && typeof avatar !== "string") this.incomplete();
     const registered = row.registeredAt ?? row.registered_at;
-    const registeredAt = registered instanceof Date
-      ? registered
-      : typeof registered === "string" ? new Date(registered) : null;
+    const registeredAt =
+      registered instanceof Date
+        ? registered
+        : typeof registered === "string"
+          ? new Date(registered)
+          : null;
     if (!registeredAt || Number.isNaN(registeredAt.getTime())) this.incomplete();
     const category = row.categoryId ?? row.category_id;
     return {
@@ -606,18 +623,31 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
   }
 
   private assertPagination(page: number, pageSize: number): number {
-    if (!Number.isSafeInteger(page) || page < 1 || page > MAX_ANALYTICS_RANKING_PAGE
-      || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 10) this.incomplete();
+    if (
+      !Number.isSafeInteger(page) ||
+      page < 1 ||
+      page > MAX_ANALYTICS_RANKING_PAGE ||
+      !Number.isSafeInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 10
+    )
+      this.incomplete();
     const offset = (page - 1) * pageSize;
     if (!Number.isSafeInteger(offset) || offset < 0) this.incomplete();
     return offset;
   }
 
   private safeInteger(value: NumericValue): number {
-    const serialized = typeof value === "bigint" ? value.toString()
-      : typeof value === "number" ? String(value)
-        : typeof value === "string" ? value
-          : value && typeof value.toString === "function" ? value.toString() : "";
+    const serialized =
+      typeof value === "bigint"
+        ? value.toString()
+        : typeof value === "number"
+          ? String(value)
+          : typeof value === "string"
+            ? value
+            : value && typeof value.toString === "function"
+              ? value.toString()
+              : "";
     if (!/^(?:0|[1-9]\d*)$/u.test(serialized)) this.incomplete();
     const parsed = Number(serialized);
     if (!Number.isSafeInteger(parsed) || parsed < 0) this.incomplete();

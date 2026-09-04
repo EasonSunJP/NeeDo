@@ -21,7 +21,9 @@ const makeWallet = (availableBalance: number) => ({
 const createFixture = () => {
   const transaction: jest.Mocked<TestNdpProvisioningTransactionPort> = {
     findCalibration: jest.fn(
-      async (idempotencyKey: string): ReturnType<TestNdpProvisioningTransactionPort["findCalibration"]> => {
+      async (
+        idempotencyKey: string
+      ): ReturnType<TestNdpProvisioningTransactionPort["findCalibration"]> => {
         void idempotencyKey;
         return null;
       }
@@ -32,28 +34,28 @@ const createFixture = () => {
         return { id: 41, isTestAccount: true };
       }
     ),
-    getOrCreateAndLockTestWallet: jest.fn(
-      async (userId: number) => {
-        void userId;
-        return makeWallet(TEST_NDP_TARGET_AVAILABLE);
-      }
+    getOrCreateAndLockTestWallet: jest.fn(async (userId: number) => {
+      void userId;
+      return makeWallet(TEST_NDP_TARGET_AVAILABLE);
+    }),
+    createCalibration: jest.fn(
+      async (input: Parameters<TestNdpProvisioningTransactionPort["createCalibration"]>[0]) => ({
+        status: "applied" as const,
+        userId: input.userId,
+        adjustmentAmount: input.amount,
+        availableBalance: TEST_NDP_TARGET_AVAILABLE
+      })
     ),
-    createCalibration: jest.fn(async (
-      input: Parameters<TestNdpProvisioningTransactionPort["createCalibration"]>[0]
-    ) => ({
-      status: "applied" as const,
-      userId: input.userId,
-      adjustmentAmount: input.amount,
-      availableBalance: TEST_NDP_TARGET_AVAILABLE
-    })),
-    recordZeroCalibration: jest.fn(async (
-      input: Parameters<TestNdpProvisioningTransactionPort["recordZeroCalibration"]>[0]
-    ) => ({
-      status: "applied" as const,
-      userId: input.userId,
-      adjustmentAmount: 0,
-      availableBalance: input.availableBalance
-    })),
+    recordZeroCalibration: jest.fn(
+      async (
+        input: Parameters<TestNdpProvisioningTransactionPort["recordZeroCalibration"]>[0]
+      ) => ({
+        status: "applied" as const,
+        userId: input.userId,
+        adjustmentAmount: 0,
+        availableBalance: input.availableBalance
+      })
+    ),
     findTestShopAuthorityForUpdate: jest.fn().mockResolvedValue({
       isTestAccount: true,
       activeShopScope: true
@@ -124,9 +126,10 @@ describe("TestNdpProvisioningService", () => {
     const { transaction, service } = createFixture();
     transaction.findTestShopAuthorityForUpdate.mockResolvedValue(authority);
 
-    await expect(
-      service.calibrateShop({ shopId: 9, actorUserId: 41 })
-    ).rejects.toMatchObject({ statusCode: 403, message: "error.forbidden" });
+    await expect(service.calibrateShop({ shopId: 9, actorUserId: 41 })).rejects.toMatchObject({
+      statusCode: 403,
+      message: "error.forbidden"
+    });
     expect(transaction.getOrCreateAndLockTestShopWallet).not.toHaveBeenCalled();
     expect(transaction.createShopCalibration).not.toHaveBeenCalled();
   });

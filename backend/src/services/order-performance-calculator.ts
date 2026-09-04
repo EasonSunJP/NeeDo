@@ -9,8 +9,7 @@ export type TechnicianPerformanceProjection = TechnicianPerformanceCounts & {
   acceptanceRateBps: number;
 };
 
-const INVALID_COUNTS_MESSAGE =
-  "Technician performance counts must be non-negative safe integers";
+const INVALID_COUNTS_MESSAGE = "Technician performance counts must be non-negative safe integers";
 
 export const calculateTechnicianPerformance = (
   counts: TechnicianPerformanceCounts
@@ -23,7 +22,7 @@ export const calculateTechnicianPerformance = (
     completedOrderCount,
     accountableCancellationCount,
     accountableUncompletedCount,
-    specialExcludedCount,
+    specialExcludedCount
   } = counts;
   const denominator =
     completedOrderCount + accountableCancellationCount + accountableUncompletedCount;
@@ -35,6 +34,6 @@ export const calculateTechnicianPerformance = (
     accountableCancellationCount,
     accountableUncompletedCount,
     specialExcludedCount,
-    acceptanceRateBps,
+    acceptanceRateBps
   };
 };

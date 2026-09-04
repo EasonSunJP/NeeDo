@@ -21,8 +21,18 @@ const reviewRecord = {
   contactPhone: "03-1234-5678",
   responsiblePersonName: "山本太郎",
   showcaseDraft: { city: "東京都中央区" },
-  serviceCategories: [{ id: 1, code: "massage", label: "マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }],
-  businessKeywords: [{ id: 10, code: "massage_home_visit", categoryId: 1, label: "訪問マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }],
+  serviceCategories: [
+    { id: 1, code: "massage", label: "マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }
+  ],
+  businessKeywords: [
+    {
+      id: 10,
+      code: "massage_home_visit",
+      categoryId: 1,
+      label: "訪問マッサージ",
+      qualificationPolicy: "PLATFORM_REVIEW"
+    }
+  ],
   bankAccount: {
     id: 81,
     bankCode: "0001",
@@ -47,9 +57,7 @@ const reviewRecord = {
     language: "ja",
     receiptId: "receipt-91"
   },
-  media: [
-    { id: 101, purpose: "corporate_registration", url: "/media/101", mimeType: "image/png" }
-  ]
+  media: [{ id: 101, purpose: "corporate_registration", url: "/media/101", mimeType: "image/png" }]
 };
 
 const allPermissions = [
@@ -99,9 +107,7 @@ const createFixture = (permissions = allPermissions) => {
   };
   const merchantApplicationReviewService = {
     list: jest.fn(async (_query, includeSensitiveDocuments: boolean) => ({
-      list: [
-        includeSensitiveDocuments ? reviewRecord : { ...reviewRecord, media: [] }
-      ],
+      list: [includeSensitiveDocuments ? reviewRecord : { ...reviewRecord, media: [] }],
       total: 1,
       page: 1,
       page_size: 20

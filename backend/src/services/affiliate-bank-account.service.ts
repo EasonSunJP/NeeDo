@@ -89,10 +89,7 @@ export class AffiliateBankAccountService {
       throw this.conflict("error.affiliate_withdrawal.holder_name_mismatch");
     }
 
-    const normalizedHolder = this.holder.normalizeForMatch(
-      "individual",
-      input.accountHolderName
-    );
+    const normalizedHolder = this.holder.normalizeForMatch("individual", input.accountHolderName);
     const record = await this.repository.bindVerifiedAccount({
       userId: input.userId,
       previousBankAccountId: context.previousBankAccountId,

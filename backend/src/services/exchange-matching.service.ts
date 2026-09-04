@@ -35,11 +35,7 @@ export interface ExchangeMatchingRepositoryPort {
     startsAt: Date,
     endsAt: Date
   ): Promise<boolean>;
-  hasBookingConflict(
-    technicianProfileId: number,
-    startsAt: Date,
-    endsAt: Date
-  ): Promise<boolean>;
+  hasBookingConflict(technicianProfileId: number, startsAt: Date, endsAt: Date): Promise<boolean>;
   completeSelection(input: CompleteExchangeSelectionInput): Promise<ExchangeMatchingPayload | null>;
 }
 
@@ -54,10 +50,7 @@ export class ExchangeMatchingService {
     exchangePostId: number
   ): Promise<ExchangeMatchingPayload> {
     const identityId = this.requireIdentityId(access);
-    const record = await this.repository.findForViewer(
-      exchangePostId,
-      identityId
-    );
+    const record = await this.repository.findForViewer(exchangePostId, identityId);
     if (!record) throw this.notFound();
     return record.payload;
   }
@@ -98,7 +91,9 @@ export class ExchangeMatchingService {
         const selectedClaims = selectedClaimIds.map((claimId) => activeById.get(claimId));
         if (selectedClaims.some((claim) => !claim)) throw this.claimSetInvalid();
         const exactClaims = selectedClaims as ExchangeMatchingSelectionClaim[];
-        if (new Set(exactClaims.map((claim) => claim.technicianProfileId)).size !== exactClaims.length) {
+        if (
+          new Set(exactClaims.map((claim) => claim.technicianProfileId)).size !== exactClaims.length
+        ) {
           throw this.claimSetInvalid();
         }
 
@@ -241,10 +236,8 @@ export class ExchangeMatchingService {
     selectedCount: number,
     selectedQuoteTotalJpy: number
   ): ExchangeMatchAdjustmentPreview {
-    const requiresTargetConfirmation =
-      selectedCount < matching.effectiveTargetProviderCount;
-    const requiresBudgetConfirmation =
-      selectedQuoteTotalJpy > matching.effectiveBudgetMaxJpy;
+    const requiresTargetConfirmation = selectedCount < matching.effectiveTargetProviderCount;
+    const requiresBudgetConfirmation = selectedQuoteTotalJpy > matching.effectiveBudgetMaxJpy;
     return {
       currentVersion: matching.version,
       selectedCount,
@@ -306,8 +299,7 @@ export class ExchangeMatchingService {
         effectiveTargetProviderCountAfter:
           preview.requiredTargetProviderCount ?? matching.effectiveTargetProviderCount,
         effectiveBudgetMaxJpyBefore: matching.effectiveBudgetMaxJpy,
-        effectiveBudgetMaxJpyAfter:
-          preview.requiredBudgetMaxJpy ?? matching.effectiveBudgetMaxJpy,
+        effectiveBudgetMaxJpyAfter: preview.requiredBudgetMaxJpy ?? matching.effectiveBudgetMaxJpy,
         versionBefore: matching.version,
         versionAfter:
           matching.version +

@@ -25,19 +25,25 @@ describe("Order performance schema", () => {
     expect(schema).toContain('@@map("order_performance_assessments")');
 
     expect(schema).toContain("model OrderPerformanceAssessmentRevision");
-    expect(schema).toMatch(/idempotencyKey\s+String\s+@unique @map\("idempotency_key"\) @db\.VarChar\(160\)/);
-    expect(schema).toMatch(/requestFingerprint\s+String\s+@map\("request_fingerprint"\) @db\.Char\(64\)/);
+    expect(schema).toMatch(
+      /idempotencyKey\s+String\s+@unique @map\("idempotency_key"\) @db\.VarChar\(160\)/
+    );
+    expect(schema).toMatch(
+      /requestFingerprint\s+String\s+@map\("request_fingerprint"\) @db\.Char\(64\)/
+    );
     expect(schema).toContain('@@map("order_performance_assessment_revisions")');
 
     expect(schema).toContain("model TechnicianPerformanceSummary");
     expect(schema).toMatch(/technicianProfileId\s+Int\s+@unique @map\("technician_profile_id"\)/);
-    expect(schema).toMatch(/acceptanceRateBps\s+Int\s+@default\(10000\) @map\("acceptance_rate_bps"\)/);
+    expect(schema).toMatch(
+      /acceptanceRateBps\s+Int\s+@default\(10000\) @map\("acceptance_rate_bps"\)/
+    );
     expect(schema).toContain('@@map("technician_performance_summaries")');
 
     for (const modelName of [
       "OrderPerformanceAssessment",
       "OrderPerformanceAssessmentRevision",
-      "TechnicianPerformanceSummary",
+      "TechnicianPerformanceSummary"
     ]) {
       const model = schema.match(new RegExp(`model ${modelName} \\{([\\s\\S]*?)\\n\\}`))?.[1];
       expect(model).toBeDefined();

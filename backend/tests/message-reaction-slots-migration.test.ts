@@ -9,13 +9,10 @@ const migrationDirectory = resolve(
 describe("message reaction slot reconciliation migration", () => {
   it("audits and soft-deletes only older active rows in each user slot", () => {
     const migration = readFileSync(resolve(migrationDirectory, "migration.sql"), "utf8");
-    const categoryExpression =
-      "'OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks'";
+    const categoryExpression = "'OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks'";
 
     expect(migration).toContain("ROW_NUMBER() OVER");
-    expect(migration).toMatch(
-      /PARTITION BY\s+`message_id`,\s+`user_id`,\s+CASE[\s\S]+END/
-    );
+    expect(migration).toMatch(/PARTITION BY\s+`message_id`,\s+`user_id`,\s+CASE[\s\S]+END/);
     expect(migration).toContain(categoryExpression);
     expect(migration).toContain("ORDER BY `updated_at` DESC, `id` DESC");
     expect(migration).toContain("WHERE `deleted_at` IS NULL");
@@ -45,7 +42,9 @@ describe("message reaction slot reconciliation migration", () => {
     expect(rollback).toContain("reaction.`updated_at` = cleanup.`created_at`");
     expect(rollback).toContain("reaction.`deleted_at` = NULL");
     expect(rollback).toContain("$.previousUpdatedAt");
-    expect(rollback).toMatch(/UPDATE\s+`audit_logs`[\s\S]+cleanup\.`deleted_at`\s*=\s*CURRENT_TIMESTAMP\(3\)/);
+    expect(rollback).toMatch(
+      /UPDATE\s+`audit_logs`[\s\S]+cleanup\.`deleted_at`\s*=\s*CURRENT_TIMESTAMP\(3\)/
+    );
     expect(rollback).not.toMatch(/DELETE\s+FROM\s+`?audit_logs`?/i);
   });
 
@@ -56,9 +55,7 @@ describe("message reaction slot reconciliation migration", () => {
     );
     const packageJson = readFileSync(resolve(__dirname, "../package.json"), "utf8");
 
-    expect(checker).toContain(
-      "'OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks'"
-    );
+    expect(checker).toContain("'OK', 'NO', 'Pending', '+1', 'Done', 'Cool', 'Good', 'Thanks'");
     expect(checker).toContain("WHERE deleted_at IS NULL");
     expect(checker).toContain("GROUP BY message_id, identity_id, category");
     expect(checker).toContain("HAVING COUNT(*) > 1");

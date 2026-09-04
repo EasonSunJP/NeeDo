@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { resolveDashboardWindow } from "../src/domain/dashboard-period";
-import type {
-  DashboardFinanceFacts,
-  DashboardMerchantFacts
-} from "../src/domain/dashboard";
+import type { DashboardFinanceFacts, DashboardMerchantFacts } from "../src/domain/dashboard";
 import { DashboardRepository } from "../src/repositories/dashboard.repository";
 import type { DashboardFinanceReader } from "../src/repositories/dashboard-finance.repository";
 import type { DashboardMerchantReader } from "../src/repositories/dashboard-merchant.repository";
@@ -13,10 +10,7 @@ import type { DashboardMerchantReader } from "../src/repositories/dashboard-merc
 const input = {
   scope: { kind: "shop", shopId: 21 } as const,
   city: null,
-  window: resolveDashboardWindow(
-    { period: "last7days" },
-    new Date("2026-08-31T03:00:00.000Z")
-  )
+  window: resolveDashboardWindow({ period: "last7days" }, new Date("2026-08-31T03:00:00.000Z"))
 };
 
 describe("DashboardRepository finance and merchant layering", () => {
@@ -48,11 +42,7 @@ describe("DashboardRepository finance and merchant layering", () => {
     const merchantReader = {
       getMerchantFacts: jest.fn(async () => merchantFacts)
     } satisfies DashboardMerchantReader;
-    const repository = new DashboardRepository(
-      {} as PrismaClient,
-      financeReader,
-      merchantReader
-    );
+    const repository = new DashboardRepository({} as PrismaClient, financeReader, merchantReader);
 
     await expect(repository.getFinanceFacts(input)).resolves.toBe(financeFacts);
     await expect(repository.getMerchantFacts(input)).resolves.toBe(merchantFacts);

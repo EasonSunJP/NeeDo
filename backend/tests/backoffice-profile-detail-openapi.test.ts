@@ -5,8 +5,7 @@ describe("formal profile detail OpenAPI contract", () => {
   it("documents public NeeDo account identity and both paginated user timeline routes", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const account = response.body.components.schemas.BackofficeAccount;
-    const platformTimeline =
-      response.body.paths["/api/v1/backoffice/customers/{id}/timeline"].get;
+    const platformTimeline = response.body.paths["/api/v1/backoffice/customers/{id}/timeline"].get;
     const merchantTimeline =
       response.body.paths["/api/v1/merchant-admin/customers/{id}/timeline"].get;
 
@@ -28,8 +27,7 @@ describe("formal profile detail OpenAPI contract", () => {
 
   it("documents the operations-only complimentary membership grant contract", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
-    const operation =
-      response.body.paths["/api/v1/backoffice/customers/{id}/membership"].put;
+    const operation = response.body.paths["/api/v1/backoffice/customers/{id}/membership"].put;
     const input = response.body.components.schemas.BackofficeCustomerMembershipGrantInput;
     const detail = response.body.components.schemas.BackofficeCustomerDetail;
 
@@ -37,32 +35,32 @@ describe("formal profile detail OpenAPI contract", () => {
     expect(operation.requestBody.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/BackofficeCustomerMembershipGrantInput"
     });
-    expect(operation.responses).toEqual(expect.objectContaining({
-      "200": expect.any(Object),
-      "400": expect.any(Object),
-      "401": expect.any(Object),
-      "403": expect.any(Object),
-      "404": expect.any(Object)
-    }));
+    expect(operation.responses).toEqual(
+      expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
+    );
     expect(input).toMatchObject({
       additionalProperties: false,
       required: ["membershipLevel", "grantMode", "durationUnit", "durationValue", "startsAt"]
     });
-    expect(input.properties.membershipLevel.enum).toEqual([
-      "silver",
-      "gold",
-      "black_diamond"
-    ]);
+    expect(input.properties.membershipLevel.enum).toEqual(["silver", "gold", "black_diamond"]);
     expect(input.properties.durationUnit.enum).toEqual(["month"]);
     expect(input.properties.durationValue.enum).toEqual([1, 12]);
-    expect(detail.allOf[1].required).toEqual(expect.arrayContaining([
-      "membershipGrantMode",
-      "membershipDurationUnit",
-      "membershipDurationValue",
-      "membershipStartsAt",
-      "membershipExpiresAt",
-      "membershipGrantedBy"
-    ]));
+    expect(detail.allOf[1].required).toEqual(
+      expect.arrayContaining([
+        "membershipGrantMode",
+        "membershipDurationUnit",
+        "membershipDurationValue",
+        "membershipStartsAt",
+        "membershipExpiresAt",
+        "membershipGrantedBy"
+      ])
+    );
   });
 
   it("documents bounded technician services and the non-silent truncation fields", async () => {
@@ -100,8 +98,7 @@ describe("formal profile detail OpenAPI contract", () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const list = response.body.paths["/api/v1/merchant-admin/employees"].get;
     const detail = response.body.paths["/api/v1/merchant-admin/employees/{needoId}"].get;
-    const schedule =
-      response.body.paths["/api/v1/merchant-admin/employees/{needoId}/schedule"].get;
+    const schedule = response.body.paths["/api/v1/merchant-admin/employees/{needoId}/schedule"].get;
     const update =
       response.body.paths["/api/v1/merchant-admin/employees/{needoId}/affiliation"].put;
     const profileUpdate =
@@ -135,9 +132,11 @@ describe("formal profile detail OpenAPI contract", () => {
         "404": expect.any(Object)
       })
     );
-    expect(response.body.components.schemas.MerchantEmployeeScheduleProjection.required).toEqual(
-      ["employee", "range", "events"]
-    );
+    expect(response.body.components.schemas.MerchantEmployeeScheduleProjection.required).toEqual([
+      "employee",
+      "range",
+      "events"
+    ]);
     expect(update.requestBody.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/MerchantEmployeeAffiliationInput"
     });

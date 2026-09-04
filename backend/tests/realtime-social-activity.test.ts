@@ -200,12 +200,7 @@ describe("RealtimeService friend activity window", () => {
     if (!method) return;
 
     await expect(
-      method.call(
-        service,
-        { userId: 137 },
-        999999,
-        new Date("2026-08-27T10:00:00.000Z")
-      )
+      method.call(service, { userId: 137 }, 999999, new Date("2026-08-27T10:00:00.000Z"))
     ).rejects.toMatchObject({
       message: "error.realtime.social_profile_not_found",
       statusCode: 404

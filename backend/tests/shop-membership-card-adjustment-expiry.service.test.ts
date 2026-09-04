@@ -2,10 +2,16 @@ import { ShopMembershipCardAdjustmentExpiryService } from "../src/services/shop-
 
 describe("ShopMembershipCardAdjustmentExpiryService", () => {
   it("delegates a bounded batch to the database-authoritative repository", async () => {
-    const repository = { expireDue: jest.fn().mockResolvedValue({ scanned: 3, expired: 2, failed: 1 }) };
+    const repository = {
+      expireDue: jest.fn().mockResolvedValue({ scanned: 3, expired: 2, failed: 1 })
+    };
     const service = new ShopMembershipCardAdjustmentExpiryService(repository);
 
-    await expect(service.expireDue({ batchSize: 100 })).resolves.toEqual({ scanned: 3, expired: 2, failed: 1 });
+    await expect(service.expireDue({ batchSize: 100 })).resolves.toEqual({
+      scanned: 3,
+      expired: 2,
+      failed: 1
+    });
     expect(repository.expireDue).toHaveBeenCalledWith({ batchSize: 100 });
   });
 

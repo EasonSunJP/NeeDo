@@ -999,6 +999,7 @@ enum ExchangeMatchEventType {
   BUDGET_INCREASED  @map("budget_increased")
   TARGET_REDUCED    @map("target_reduced")
   SELECTIVE_MATCHED @map("selective_matched")
+  BOOKINGS_CREATED  @map("bookings_created")
   QUICK_MATCHED     @map("quick_matched")
   CLOSED            @map("closed")
 
@@ -3775,6 +3776,7 @@ model BookingOrder {
   servicePriceSnapshot    Decimal?             @map("service_price_snapshot") @db.Decimal(10, 2)
   serviceDurationSnapshot Int?                 @map("service_duration_snapshot")
   serviceSnapshotJson     Json?                @map("service_snapshot_json")
+  fulfillmentAddressSnapshot Json?             @map("fulfillment_address_snapshot")
   startsAt                DateTime             @map("starts_at")
   endsAt                  DateTime             @map("ends_at")
   note                    String?              @db.VarChar(500)
@@ -3814,6 +3816,7 @@ model BookingOrder {
   serviceEvents         OrderServiceEvent[]
   addOns                OrderAddOn[]
   checkout              OrderCheckout?
+  exchangeMatchParticipant ExchangeMatchParticipant?
   membershipCardRedemption       ShopMembershipCardRedemption?
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
@@ -5054,7 +5057,11 @@ model ExchangeMatchParticipant {
   currency              String    @default("JPY") @db.VarChar(3)
   estimatedStartsAt     DateTime  @map("estimated_starts_at")
   estimatedEndsAt       DateTime  @map("estimated_ends_at")
-  activeReservationKey  String    @unique(map: "exchange_match_participants_reservation_key") @map("active_reservation_key") @db.VarChar(191)
+  serviceNameSnapshot    String        @map("service_name_snapshot") @db.VarChar(160)
+  serviceDurationSnapshot Int           @map("service_duration_snapshot")
+  bookingOrderId         Int?      @unique(map: "exchange_match_participants_booking_order_key") @map("booking_order_id")
+  bookedAt               DateTime?     @map("booked_at")
+  activeReservationKey  String?       @unique(map: "exchange_match_participants_reservation_key") @map("active_reservation_key") @db.VarChar(191)
   matchedAt             DateTime  @map("matched_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
@@ -5070,6 +5077,7 @@ model ExchangeMatchParticipant {
   service             Service?                @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   technicianService   TechnicianService?      @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   scheduleSlot        ScheduleSlot            @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrder        BookingOrder?           @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([matchingId, technicianProfileId], map: "exchange_match_participants_matching_technician_key")
   @@index([exchangePostId, deletedAt], map: "exchange_match_participants_post_deleted_idx")
@@ -5077,6 +5085,7 @@ model ExchangeMatchParticipant {
   @@index([participantIdentityId, createdAt], map: "exchange_match_participants_identity_created_idx")
   @@index([shopId, createdAt], map: "exchange_match_participants_shop_created_idx")
   @@index([scheduleSlotId], map: "exchange_match_participants_schedule_slot_idx")
+  @@index([bookingOrderId], map: "exchange_match_participants_booking_order_idx")
   @@index([serviceId], map: "exchange_match_participants_service_idx")
   @@index([technicianServiceId], map: "exchange_match_participants_technician_service_idx")
   @@index([deletedAt], map: "exchange_match_participants_deleted_idx")

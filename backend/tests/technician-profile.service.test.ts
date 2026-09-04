@@ -58,13 +58,15 @@ const repository = (): jest.Mocked<TechnicianProfileRepositoryPort> => ({
 });
 
 const audit = {
-  createInput: jest.fn((input): AuditLogCreateInput => ({
-    actorId: input.actor.userId,
-    action: input.action,
-    targetType: input.targetType,
-    targetId: input.targetId,
-    metadata: input.metadata
-  }))
+  createInput: jest.fn(
+    (input): AuditLogCreateInput => ({
+      actorId: input.actor.userId,
+      action: input.action,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      metadata: input.metadata
+    })
+  )
 };
 
 const storage = (): jest.Mocked<CustomerAvatarStoragePort> => ({ save: jest.fn() });
@@ -77,10 +79,14 @@ describe("TechnicianProfileService", () => {
     const service = new TechnicianProfileService(repo, audit, storage());
 
     await expect(service.getMine(actor)).resolves.toBe(profile);
-    await service.updateMine(actor, { ip: "127.0.0.1", userAgent: "jest" }, {
-      displayName: "彩",
-      gender: "female"
-    });
+    await service.updateMine(
+      actor,
+      { ip: "127.0.0.1", userAgent: "jest" },
+      {
+        displayName: "彩",
+        gender: "female"
+      }
+    );
 
     expect(repo.findMine).toHaveBeenCalledWith(9, 31);
     expect(repo.updateMine).toHaveBeenCalledWith(
@@ -100,8 +106,9 @@ describe("TechnicianProfileService", () => {
     async (identityType) => {
       const repo = repository();
       const service = new TechnicianProfileService(repo, audit, storage());
-      await expect(service.getMine({ ...actor, currentIdentityType: identityType }))
-        .rejects.toMatchObject({ statusCode: 403 });
+      await expect(
+        service.getMine({ ...actor, currentIdentityType: identityType })
+      ).rejects.toMatchObject({ statusCode: 403 });
       expect(repo.findMine).not.toHaveBeenCalled();
     }
   );

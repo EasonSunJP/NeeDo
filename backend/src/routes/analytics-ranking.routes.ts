@@ -23,7 +23,9 @@ export const createAnalyticsRankingRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new AnalyticsRankingService(
     dependencies.analyticsRankingRepository ?? new AnalyticsRankingRepository(prisma),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository()),

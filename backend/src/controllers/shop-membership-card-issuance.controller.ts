@@ -10,7 +10,11 @@ import {
 export class ShopMembershipCardIssuanceController {
   public constructor(private readonly service: ShopMembershipCardIssuanceService) {}
 
-  public issue = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public issue = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const { publicId } = shopMembershipCardIssuanceParamSchema.parse(request.params);
       const result = await this.service.issue(

@@ -145,7 +145,9 @@ const createFixture = () => {
       return alliance;
     }),
     listMembers: jest.fn(async (input) => {
-      const alliance = [...alliances.values()].find((item) => item.allianceId === input.allianceId)!;
+      const alliance = [...alliances.values()].find(
+        (item) => item.allianceId === input.allianceId
+      )!;
       const owner: AffiliateAllianceMemberPayload = {
         memberId: alliance.membership.memberId,
         person: alliance.owner,
@@ -164,11 +166,15 @@ const createFixture = () => {
       page_size: input.pageSize
     })),
     listSentInvitations: jest.fn(async (input) => {
-      const list = invitationRecords.filter((item) => item.alliance.allianceId === input.allianceId);
+      const list = invitationRecords.filter(
+        (item) => item.alliance.allianceId === input.allianceId
+      );
       return { list, total: list.length, page: input.page, page_size: input.pageSize };
     }),
     createInvitation: jest.fn(async (input) => {
-      const alliance = [...alliances.values()].find((item) => item.allianceId === input.allianceId)!;
+      const alliance = [...alliances.values()].find(
+        (item) => item.allianceId === input.allianceId
+      )!;
       const createdAt = input.now();
       const expiresAt = new Date(createdAt.getTime() + input.invitationTtlMs);
       const invitation: AffiliateAllianceInvitationPayload = {
@@ -194,7 +200,11 @@ const createFixture = () => {
     acceptInvitation: jest.fn(async (input) => {
       const invitation = invitationRecords.find((item) => item.invitationId === input.invitationId);
       if (!invitation) return { kind: "not_found" as const };
-      const accepted = { ...invitation, status: "accepted" as const, respondedAt: input.now.toISOString() };
+      const accepted = {
+        ...invitation,
+        status: "accepted" as const,
+        respondedAt: input.now.toISOString()
+      };
       invitationRecords.splice(invitationRecords.indexOf(invitation), 1, accepted);
       const member: AffiliateAllianceMemberPayload = {
         memberId: 100 + input.inviteeUserId,
@@ -216,7 +226,11 @@ const createFixture = () => {
     rejectInvitation: jest.fn(async (input) => {
       const invitation = invitationRecords.find((item) => item.invitationId === input.invitationId);
       if (!invitation) return { kind: "not_found" as const };
-      const rejected = { ...invitation, status: "rejected" as const, respondedAt: input.now.toISOString() };
+      const rejected = {
+        ...invitation,
+        status: "rejected" as const,
+        respondedAt: input.now.toISOString()
+      };
       invitationRecords.splice(invitationRecords.indexOf(invitation), 1, rejected);
       return { kind: "rejected" as const, invitation: rejected };
     })
@@ -256,7 +270,9 @@ describe("affiliate alliance HTTP API", () => {
       .get("/api/v1/affiliate/alliances/me")
       .set("Authorization", authorization)
       .expect(200)
-      .expect(({ body }) => expect(body).toEqual({ code: 0, message: "success", data: { alliance: null } }));
+      .expect(({ body }) =>
+        expect(body).toEqual({ code: 0, message: "success", data: { alliance: null } })
+      );
 
     await request(fixture.app)
       .post("/api/v1/affiliate/alliances")
@@ -390,7 +406,9 @@ describe("affiliate alliance HTTP API", () => {
       .set("Authorization", authorization)
       .send({ inviteeNeedoId: "u0000000008", role: "partner" })
       .expect(201)
-      .expect(({ body }) => expect(body.data.invitation).toMatchObject({ invitationId: 71, status: "pending" }));
+      .expect(({ body }) =>
+        expect(body.data.invitation).toMatchObject({ invitationId: 71, status: "pending" })
+      );
     await request(fixture.app)
       .get("/api/v1/affiliate/alliances/me/invitations?status=pending")
       .set("Authorization", authorization)
@@ -436,7 +454,9 @@ describe("affiliate alliance HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.tokens[8]}`)
       .send({})
       .expect(404)
-      .expect(({ body }) => expect(body.message).toBe("error.affiliate_alliance.invitation_not_found"));
+      .expect(({ body }) =>
+        expect(body.message).toBe("error.affiliate_alliance.invitation_not_found")
+      );
   });
 
   it("enforces invitation RBAC and strict request contracts", async () => {

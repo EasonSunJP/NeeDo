@@ -23,8 +23,8 @@ describe("LedgerCurrencyService", () => {
   });
 
   it("rejects a mixed wallet currency", () => {
-    expect(() =>
-      LedgerCurrencyService.assertSameCurrency("NDP", ["NDP", "TEST_NDP"])
-    ).toThrow("error.ledger.currency_mismatch");
+    expect(() => LedgerCurrencyService.assertSameCurrency("NDP", ["NDP", "TEST_NDP"])).toThrow(
+      "error.ledger.currency_mismatch"
+    );
   });
 });

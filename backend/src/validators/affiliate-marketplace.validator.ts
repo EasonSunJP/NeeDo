@@ -41,16 +41,10 @@ export const affiliateCodeValidateBodySchema = z
 
 export const affiliatePublicTokenParamSchema = z
   .object({
-    publicToken: z
-      .string()
-      .regex(/^[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/)
+    publicToken: z.string().regex(/^[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{43}$/)
   })
   .strict();
 
-export type AffiliateMarketplaceListQuery = z.infer<
-  typeof affiliateMarketplaceListQuerySchema
->;
+export type AffiliateMarketplaceListQuery = z.infer<typeof affiliateMarketplaceListQuerySchema>;
 export type AffiliateClaimListQuery = z.infer<typeof affiliateClaimListQuerySchema>;
-export type AffiliateCodeValidateBody = z.infer<
-  typeof affiliateCodeValidateBodySchema
->;
+export type AffiliateCodeValidateBody = z.infer<typeof affiliateCodeValidateBodySchema>;

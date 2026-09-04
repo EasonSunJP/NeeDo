@@ -200,6 +200,7 @@ import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
 import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes";
+import { createExchangeBookingConversionRoutes } from "./routes/exchange-booking-conversion.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createShopEmployeeDirectoryRoutes } from "./routes/shop-employee-directory.routes";
@@ -226,6 +227,7 @@ import type { NdpExperienceCampaignService } from "./services/ndp-experience-cam
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeMatchingService } from "./services/exchange-matching.service";
+import type { ExchangeBookingConversionService } from "./services/exchange-booking-conversion.service";
 import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
@@ -423,6 +425,7 @@ export interface AppDependencies {
   exchangeService?: ExchangeService;
   exchangeClaimService?: ExchangeClaimService;
   exchangeMatchingService?: ExchangeMatchingService;
+  exchangeBookingConversionService?: ExchangeBookingConversionService;
   exchangeRequestFeeService?: ExchangeRequestFeeService;
   ledgerService?: LedgerService;
 }
@@ -588,6 +591,7 @@ export const createApp = (
   mount("shared", createExchangeRoutes(config, resolvedDependencies));
   mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));
   mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeBookingConversionRoutes(config, resolvedDependencies));
   mount("backoffice", createExchangeRequestFeeRoutes(config, resolvedDependencies));
   mount("merchant-admin", createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopEmployeeDirectoryRoutes(config, resolvedDependencies));

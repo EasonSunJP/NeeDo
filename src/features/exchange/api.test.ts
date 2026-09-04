@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import {
   createExchangeClaim,
+  createExchangeMatchingBookings,
   createExchangeComment,
   getExchangeMatching,
   getMyExchangeClaim,
@@ -278,6 +279,16 @@ describe("formal Exchange API client", () => {
         targetConfirmation: null
       },
       headers: { "Idempotency-Key": "exchange-match-select-0001" },
+      method: "POST"
+    });
+  });
+
+  it("creates matched bookings through the versioned formal route with its idempotency key", async () => {
+    await createExchangeMatchingBookings("42", { expectedVersion: 7 }, "idem-key-0000001");
+
+    expect(httpClient.request).toHaveBeenCalledWith("/exchange/posts/42/matching/bookings", {
+      body: { expectedVersion: 7 },
+      headers: { "Idempotency-Key": "idem-key-0000001" },
       method: "POST"
     });
   });

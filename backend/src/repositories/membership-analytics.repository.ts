@@ -16,7 +16,10 @@ import { maskMembershipCardNumber } from "../utils/membership-card-mask";
 type MembershipAnalyticsQueryClient = Pick<PrismaClient, "$queryRaw">;
 type NumericValue = bigint | number | string | { toString: () => string } | null | undefined;
 
-interface HistoryValidationRow { anomalyCount?: NumericValue; anomaly_count?: NumericValue }
+interface HistoryValidationRow {
+  anomalyCount?: NumericValue;
+  anomaly_count?: NumericValue;
+}
 interface TrendRow {
   bucketIndex?: NumericValue;
   bucket_index?: NumericValue;
@@ -29,7 +32,9 @@ interface TrendRow {
   removedCount?: NumericValue;
   removed_count?: NumericValue;
 }
-interface CountRow { total?: NumericValue }
+interface CountRow {
+  total?: NumericValue;
+}
 interface AddedMemberRow {
   userNeedoId?: unknown;
   user_needo_id?: unknown;
@@ -69,8 +74,13 @@ export interface MembershipAnalyticsRepositoryPort {
 }
 
 const acquisitionSources: ReadonlySet<MemberAcquisitionSource> = new Set([
-  "offline_paid", "online_paid", "gift", "trial", "renewal",
-  "historical_replacement", "manual_grant"
+  "offline_paid",
+  "online_paid",
+  "gift",
+  "trial",
+  "renewal",
+  "historical_replacement",
+  "manual_grant"
 ]);
 const cardStatuses = new Set(["active", "expired", "frozen", "void"]);
 const memberStatuses = new Set(["active", "inactive"]);
@@ -85,7 +95,8 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
 
     const added = input.window.buckets.map((bucket, index) => {
       const row = rows[index];
-      if (!row || this.toSafeCount(row.bucketIndex ?? row.bucket_index) !== index) this.incomplete();
+      if (!row || this.toSafeCount(row.bucketIndex ?? row.bucket_index) !== index)
+        this.incomplete();
       const key = this.string(row.bucketKey ?? row.bucket_key);
       const label = this.string(row.bucketLabel ?? row.bucket_label);
       if (key !== bucket.key || label !== bucket.label) this.incomplete();
@@ -166,18 +177,23 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
         (SELECT COALESCE(SUM(before_count < 0 OR after_count < 0), 0) FROM member_state)
           AS negative_member_state_count
     `);
-    if (rows.length !== 1 || this.toSafeCount(rows[0]?.anomalyCount ?? rows[0]?.anomaly_count) !== 0) {
+    if (
+      rows.length !== 1 ||
+      this.toSafeCount(rows[0]?.anomalyCount ?? rows[0]?.anomaly_count) !== 0
+    ) {
       this.incomplete();
     }
   }
 
   private queryTrend(input: MembershipAnalyticsRepositoryInput): Promise<TrendRow[]> {
     const bucketRows = Prisma.join(
-      input.window.buckets.map((bucket, index) => Prisma.sql`
+      input.window.buckets.map(
+        (bucket, index) => Prisma.sql`
         SELECT ${index} AS bucket_index, ${bucket.key} AS bucket_key,
                ${bucket.label} AS bucket_label, ${bucket.fromInclusive} AS from_inclusive,
                ${bucket.toExclusive} AS to_exclusive
-      `),
+      `
+      ),
       " UNION ALL "
     );
     return this.client.$queryRaw<TrendRow[]>(Prisma.sql`
@@ -241,10 +257,10 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
   }
 
   private lifecycleCtes(input: MembershipAnalyticsRepositoryInput): Prisma.Sql {
-    const scope = input.scope.kind === "shop"
-      ? Prisma.sql`AND shop.id = ${input.scope.shopId}`
-      : Prisma.empty;
-    const city = input.city === null ? Prisma.empty : Prisma.sql`AND TRIM(shop.city) = ${input.city}`;
+    const scope =
+      input.scope.kind === "shop" ? Prisma.sql`AND shop.id = ${input.scope.shopId}` : Prisma.empty;
+    const city =
+      input.city === null ? Prisma.empty : Prisma.sql`AND TRIM(shop.city) = ${input.city}`;
     return Prisma.sql`
       scoped_cards AS (
         SELECT
@@ -669,7 +685,8 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
   private numeric(value: NumericValue): number {
     if (value === null || value === undefined || typeof value === "boolean") this.incomplete();
     if (typeof value === "bigint") {
-      if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) this.incomplete();
+      if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER))
+        this.incomplete();
       return Number(value);
     }
     if (typeof value === "number") return value;

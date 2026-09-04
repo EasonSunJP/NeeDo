@@ -20,6 +20,7 @@ import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderIn
 import { merchantNavItems, technicianNavItems, userNavItems } from "../../../components/mobile/navItems";
 import { InteractiveAvatar } from "../../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
+import { MediaLoadFeedback, MediaViewerResource, useMediaLoadState } from "../../../components/ui/MediaLoadFeedback";
 import { Button } from "../../../components/ui/Button";
 import { KycVerifiedBadge } from "../../../components/ui/KycVerifiedBadge";
 import { NotificationBadge } from "../../../components/ui/NotificationBadge";
@@ -367,11 +368,7 @@ export function MediaLightbox({
         </div>
 
         <div className="flex min-h-0 flex-1 items-center justify-center px-0 pb-[calc(env(safe-area-inset-bottom)+18px)]">
-          {activeMedia.type === "video" ? (
-            <video className="pointer-events-auto max-h-full w-full object-contain" controls playsInline poster={activeMedia.thumbnailUrl} src={activeMedia.url} />
-          ) : (
-            <img alt={activeMedia.alt ?? ""} className="pointer-events-auto max-h-full w-full object-contain" src={activeMedia.url} />
-          )}
+          <MediaViewerResource className="pointer-events-auto max-h-full w-full object-contain" kind={activeMedia.type} poster={activeMedia.thumbnailUrl} src={activeMedia.url} />
         </div>
 
         {canBrowse ? (
@@ -1294,6 +1291,35 @@ function EmbeddedPostCard({
   );
 }
 
+export function SocialMediaTileButton({ media, className, onOpen, children, presentation = "grid" }: {
+  media: SocialMediaItem;
+  className?: string;
+  onOpen: () => void;
+  children?: ReactNode;
+  presentation?: "grid" | "detail-single";
+}) {
+  const source = media.type === "video" ? media.url : getSocialMediaPreviewUrl(media);
+  const load = useMediaLoadState(`${media.id}:${source}`);
+  return (
+    <button
+      aria-label={load.failed ? undefined : media.type === "video" ? "放大视频" : "放大图片"}
+      className={cn("group relative block w-full overflow-hidden border-0 bg-black p-0 text-left text-white", className)}
+      data-social-media-state={load.status}
+      onClick={(event) => { event.stopPropagation(); if (load.failed) load.retry(); else onOpen(); }}
+      type="button"
+    >
+      {load.failed ? <MediaLoadFeedback className="absolute inset-0 h-full" kind={media.type} /> : <>
+        {media.type === "video" ? <>
+          <video className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]" key={load.key} muted onError={load.onError} onLoadedMetadata={load.onLoad} playsInline poster={media.thumbnailUrl ? getGeneratedImageThumbnailUrl(media.thumbnailUrl) : undefined} src={source} />
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><span className={cn("grid place-items-center rounded-full bg-black/58 text-white", presentation === "detail-single" ? "h-14 w-14 shadow-[0_12px_28px_rgba(0,0,0,0.3)]" : "h-12 w-12 shadow-[0_12px_28px_rgba(0,0,0,0.24)]")}><MediaPlayGlyph className={cn("ml-0.5", presentation === "detail-single" ? "h-5 w-5" : "h-4 w-4")} /></span></span>
+          {presentation === "grid" ? <span className="absolute bottom-3 left-3 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-black text-white">{media.durationLabel ?? "视频"}</span> : null}
+        </> : <img alt="图片" className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]" key={load.key} onError={load.onError} onLoad={load.onLoad} src={source} />}
+        {children}
+      </>}
+    </button>
+  );
+}
+
 export function UnifiedMediaBlock({
   post,
   scope
@@ -1320,39 +1346,16 @@ export function UnifiedMediaBlock({
         )}
       >
         {visibleMedia.map((media, index) => (
-          <button
-            aria-label={media.type === "video" ? "放大视频" : "放大图片"}
-            className={cn("group relative block w-full overflow-hidden border-0 bg-black p-0 text-left", socialMediaTileClassName(total, index))}
+          <SocialMediaTileButton
+            className={socialMediaTileClassName(total, index)}
             key={media.id}
-            onClick={() => setActiveMediaIndex(index)}
-            type="button"
+            media={media}
+            onOpen={() => setActiveMediaIndex(index)}
           >
-            {media.type === "video" ? (
-              <>
-                <video
-                  className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-                  muted
-                  playsInline
-                  poster={media.thumbnailUrl ? getGeneratedImageThumbnailUrl(media.thumbnailUrl) : undefined}
-                  src={media.url}
-                />
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span className="grid h-12 w-12 place-items-center rounded-full bg-black/58 text-white shadow-[0_12px_28px_rgba(0,0,0,0.24)]">
-                    <MediaPlayGlyph className="ml-0.5 h-4 w-4" />
-                  </span>
-                </div>
-                <span className="absolute left-3 bottom-3 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-black text-white">
-                  {media.durationLabel ?? "视频"}
-                </span>
-              </>
-            ) : (
-              <img alt={media.alt ?? ""} className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]" src={getSocialMediaPreviewUrl(media)} />
-            )}
-
             {index === visibleMedia.length - 1 && hiddenCount > 0 ? (
               <div className="absolute inset-0 grid place-items-center bg-black/48 text-xl font-black text-white">+{hiddenCount}</div>
             ) : null}
-          </button>
+          </SocialMediaTileButton>
         ))}
       </div>
 

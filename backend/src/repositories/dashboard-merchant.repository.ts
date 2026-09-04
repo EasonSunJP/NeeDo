@@ -1,8 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type {
-  DashboardAggregateInput,
-  DashboardMerchantFacts
-} from "../domain/dashboard";
+import type { DashboardAggregateInput, DashboardMerchantFacts } from "../domain/dashboard";
 
 type NumericValue = bigint | number | string | { toString: () => string } | null | undefined;
 type DashboardQueryClient = Pick<PrismaClient, "$queryRaw">;
@@ -78,9 +75,7 @@ export class DashboardMerchantRepository implements DashboardMerchantReader {
               availableBalance: this.toNumber(
                 row.walletAvailableBalance ?? row.wallet_available_balance
               ),
-              frozenBalance: this.toNumber(
-                row.walletFrozenBalance ?? row.wallet_frozen_balance
-              )
+              frozenBalance: this.toNumber(row.walletFrozenBalance ?? row.wallet_frozen_balance)
             }
     };
   }

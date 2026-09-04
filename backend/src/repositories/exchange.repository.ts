@@ -351,26 +351,30 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       Array<{ record: ExchangePostRecord; priority?: ExchangePriorityPayload }>
     > = publicDemandMarketplace
       ? this.listPrioritizedDemandRows(input, pagination.skip, pagination.take)
-      : this.client.exchangePost.findMany({
+      : this.client.exchangePost
+          .findMany({
             where,
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             skip: pagination.skip,
             take: pagination.take,
             include: postInclude(input.viewerIdentityId)
-          }).then((records) => records.map((record) => ({ record })));
+          })
+          .then((records) => records.map((record) => ({ record })));
     const [rows, total] = await Promise.all([
       rowsPromise,
       this.client.exchangePost.count({ where })
     ]);
 
     return buildPaginatedResponse(
-      rows.map((row) => this.mapPost(
-        row.record,
-        input.viewerIdentityId,
-        input.now,
-        row.priority,
-        input.claimProviderUserId
-      )),
+      rows.map((row) =>
+        this.mapPost(
+          row.record,
+          input.viewerIdentityId,
+          input.now,
+          row.priority,
+          input.claimProviderUserId
+        )
+      ),
       total,
       pagination
     );
@@ -1045,7 +1049,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           ownerView &&
           status !== "withdrawn" &&
           status !== "expired" &&
-          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE
+          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
+        canViewMatching: ownerView || matchedParticipantView
       },
       ...(priority ? { priority } : {}),
       demand,

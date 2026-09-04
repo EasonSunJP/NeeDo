@@ -14,8 +14,12 @@ const persistedRule = {
     kind: "fixed_per_completion",
     rewardNdp: 1000,
     scope: {
-      servicePublicIds: [], categoryCodes: [], excludedServicePublicIds: [],
-      excludedCategoryCodes: [], activeFrom: null, activeTo: null
+      servicePublicIds: [],
+      categoryCodes: [],
+      excludedServicePublicIds: [],
+      excludedCategoryCodes: [],
+      activeFrom: null,
+      activeTo: null
     }
   },
   sortOrder: 0
@@ -114,23 +118,40 @@ describe("ShopMembershipCardPlanRepository", () => {
     };
     const client = {
       $transaction: jest.fn(async (callback) => callback(transaction)),
-      shopMembershipCardPlan: { findFirst: jest.fn().mockResolvedValue({
-        ...plan,
-        status: "ACTIVE",
-        currentVersionId: 41,
-        currentVersion: { ...draftVersion, status: "PUBLISHED", platformFeePolicyId: 11, platformFeeRateBps: 1000, publishedAt: now },
-        versions: []
-      }) }
+      shopMembershipCardPlan: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...plan,
+          status: "ACTIVE",
+          currentVersionId: 41,
+          currentVersion: {
+            ...draftVersion,
+            status: "PUBLISHED",
+            platformFeePolicyId: 11,
+            platformFeeRateBps: 1000,
+            publishedAt: now
+          },
+          versions: []
+        })
+      }
     } as unknown as PrismaClient;
     const repository = new ShopMembershipCardPlanRepository(client, () => now);
 
-    await expect(repository.publishDraftWithAudit({
-      actorId: 9,
-      shopId: 71,
-      planPublicId,
-      expectedLockVersion: 2,
-      audit: { actorId: 9, action: "merchant.shop_membership_card_plan.publish", targetType: "ShopMembershipCardPlan" }
-    })).resolves.toMatchObject({ kind: "published", value: { currentVersion: { platformFeeRateBps: 1000 } } });
+    await expect(
+      repository.publishDraftWithAudit({
+        actorId: 9,
+        shopId: 71,
+        planPublicId,
+        expectedLockVersion: 2,
+        audit: {
+          actorId: 9,
+          action: "merchant.shop_membership_card_plan.publish",
+          targetType: "ShopMembershipCardPlan"
+        }
+      })
+    ).resolves.toMatchObject({
+      kind: "published",
+      value: { currentVersion: { platformFeeRateBps: 1000 } }
+    });
 
     expect(transaction.shopMembershipCardPlanVersion.updateMany).toHaveBeenCalledWith({
       where: { id: 41, status: "DRAFT", lockVersion: 2, deletedAt: null },
@@ -173,7 +194,15 @@ describe("ShopMembershipCardPlanRepository", () => {
       createdBy: null,
       updatedBy: null
     };
-    const created = { ...current, id: 12, version: 2, feeRateBps: 1200, reason: "new rate", createdBy: { needoId: "u0000000009" }, updatedBy: { needoId: "u0000000009" } };
+    const created = {
+      ...current,
+      id: 12,
+      version: 2,
+      feeRateBps: 1200,
+      reason: "new rate",
+      createdBy: { needoId: "u0000000009" },
+      updatedBy: { needoId: "u0000000009" }
+    };
     const transaction = {
       membershipRewardFeePolicyVersion: {
         findFirst: jest.fn().mockResolvedValue(current),
@@ -182,17 +211,25 @@ describe("ShopMembershipCardPlanRepository", () => {
       },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 92 }) }
     };
-    const client = { $transaction: jest.fn(async (callback) => callback(transaction)) } as unknown as PrismaClient;
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(transaction))
+    } as unknown as PrismaClient;
     const repository = new ShopMembershipCardPlanRepository(client, () => now);
 
-    await expect(repository.createFeePolicyVersionWithAudit({
-      actorId: 9,
-      feeRateBps: 1200,
-      expectedVersion: 1,
-      effectiveFrom: now,
-      reason: "new rate",
-      audit: { actorId: 9, action: "platform.membership_reward_fee.publish", targetType: "MembershipRewardFeePolicyVersion" }
-    })).resolves.toMatchObject({ kind: "created", value: { version: 2, feeRateBps: 1200 } });
+    await expect(
+      repository.createFeePolicyVersionWithAudit({
+        actorId: 9,
+        feeRateBps: 1200,
+        expectedVersion: 1,
+        effectiveFrom: now,
+        reason: "new rate",
+        audit: {
+          actorId: 9,
+          action: "platform.membership_reward_fee.publish",
+          targetType: "MembershipRewardFeePolicyVersion"
+        }
+      })
+    ).resolves.toMatchObject({ kind: "created", value: { version: 2, feeRateBps: 1200 } });
 
     expect(transaction.membershipRewardFeePolicyVersion.updateMany).toHaveBeenCalledWith({
       where: { id: 11, version: 1, deletedAt: null },
@@ -202,7 +239,10 @@ describe("ShopMembershipCardPlanRepository", () => {
       data: expect.objectContaining({
         action: "platform.membership_reward_fee.publish",
         targetId: 12,
-        metadata: expect.objectContaining({ previous: { feeRateBps: 1000, version: 1 }, next: { feeRateBps: 1200, version: 2 } })
+        metadata: expect.objectContaining({
+          previous: { feeRateBps: 1000, version: 1 },
+          next: { feeRateBps: 1200, version: 2 }
+        })
       })
     });
   });

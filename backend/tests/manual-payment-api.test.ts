@@ -82,6 +82,7 @@ const makeOrder = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPa
   serviceNameSnapshot: "Shiatsu Recovery",
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
+  fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
   shopName: "Aoyama Studio",
   technicianName: "Mika",

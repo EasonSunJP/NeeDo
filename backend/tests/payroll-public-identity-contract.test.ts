@@ -11,10 +11,7 @@ describe("payroll public employee identity contract", () => {
       join(process.cwd(), "src/services/payroll.service.ts"),
       "utf8"
     );
-    const openApiSource = readFileSync(
-      join(process.cwd(), "src/api/openapi.ts"),
-      "utf8"
-    );
+    const openApiSource = readFileSync(join(process.cwd(), "src/api/openapi.ts"), "utf8");
 
     expect(repositorySource).toContain('type: "technician"');
     expect(repositorySource).toContain('kind: "S"');

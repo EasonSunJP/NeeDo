@@ -40,7 +40,9 @@ describe("shop membership card adjustment approval schema contract", () => {
     ]) {
       expect(schema).toContain(token);
     }
-    expect(schema).toMatch(/pendingKey\s+String\?\s+@unique\(map: "shop_membership_card_adjustments_pending_key"\)/);
+    expect(schema).toMatch(
+      /pendingKey\s+String\?\s+@unique\(map: "shop_membership_card_adjustments_pending_key"\)/
+    );
     expect(schema).toMatch(/lockVersion\s+Int\s+@default\(1\) @map\("lock_version"\)/);
   });
 

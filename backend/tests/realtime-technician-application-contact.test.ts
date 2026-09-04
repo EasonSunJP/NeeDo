@@ -1,8 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import {
-  RealtimeRepository,
-  toFriendshipPairKey
-} from "../src/repositories/realtime.repository";
+import { RealtimeRepository, toFriendshipPairKey } from "../src/repositories/realtime.repository";
 
 describe("RealtimeRepository technician application contact", () => {
   it("normalizes friendship conversation pairs deterministically", () => {
@@ -42,7 +39,9 @@ describe("RealtimeRepository technician application contact", () => {
     ).resolves.toEqual({ conversationId: 91 });
     expect(tx.contact.upsert).toHaveBeenCalledTimes(2);
     expect(tx.contact.upsert).toHaveBeenNthCalledWith(1, {
-      where: { ownerIdentityId_contactIdentityId: { ownerIdentityId: 130, contactIdentityId: 107 } },
+      where: {
+        ownerIdentityId_contactIdentityId: { ownerIdentityId: 130, contactIdentityId: 107 }
+      },
       create: {
         ownerUserId: 30,
         ownerIdentityId: 130,

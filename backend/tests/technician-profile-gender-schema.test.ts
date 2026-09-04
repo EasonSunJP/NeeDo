@@ -9,14 +9,13 @@ describe("technician profile gender schema", () => {
       "prisma/migrations/20260903120000_technician_profile_gender/migration.sql"
     );
     const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
-    const technicianProfileModel = schema.match(/model TechnicianProfile \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const technicianProfileModel =
+      schema.match(/model TechnicianProfile \{[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(technicianProfileModel).toMatch(
       /gender\s+String\s+@default\("private"\)\s+@db\.VarChar\(20\)/
     );
-    expect(migration).toContain(
-      "ADD COLUMN `gender` VARCHAR(20) NOT NULL DEFAULT 'private'"
-    );
+    expect(migration).toContain("ADD COLUMN `gender` VARCHAR(20) NOT NULL DEFAULT 'private'");
     expect(migration).not.toContain("DROP TABLE");
   });
 });

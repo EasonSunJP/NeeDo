@@ -57,11 +57,12 @@ describe("three-month simulation plan", () => {
       )
     ).toBe(true);
     expect(
-      plan.technicians.slice(20).every(
-        (technician) =>
-          technician.employmentType === "FULL_TIME" ||
-          technician.employmentType === "TEMPORARY"
-      )
+      plan.technicians
+        .slice(20)
+        .every(
+          (technician) =>
+            technician.employmentType === "FULL_TIME" || technician.employmentType === "TEMPORARY"
+        )
     ).toBe(true);
   });
 
@@ -166,23 +167,21 @@ describe("three-month simulation plan", () => {
       const slots = plan.scheduleSlots
         .filter((slot) => slot.technicianKey === technician.key)
         .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
-      const bookings = plan.bookings.filter(
-        (booking) => booking.technicianKey === technician.key
-      );
+      const bookings = plan.bookings.filter((booking) => booking.technicianKey === technician.key);
       expect(slots.length).toBeGreaterThanOrEqual(26);
       expect(bookings.length).toBeGreaterThanOrEqual(12);
-      expect(bookings.filter((booking) => booking.status === "COMPLETED").length).toBeGreaterThanOrEqual(6);
+      expect(
+        bookings.filter((booking) => booking.status === "COMPLETED").length
+      ).toBeGreaterThanOrEqual(6);
       expect(
         bookings.some(
-          (booking) =>
-            booking.status === "CONFIRMED" && booking.startsAt > SIMULATION_AS_OF_AT
+          (booking) => booking.status === "CONFIRMED" && booking.startsAt > SIMULATION_AS_OF_AT
         )
       ).toBe(true);
       for (const month of ["2026-06", "2026-07", "2026-08"]) {
         expect(
           bookings.some(
-            (booking) =>
-              booking.status === "COMPLETED" && toTokyoMonth(booking.endsAt) === month
+            (booking) => booking.status === "COMPLETED" && toTokyoMonth(booking.endsAt) === month
           )
         ).toBe(true);
       }

@@ -10,13 +10,25 @@ import {
 import { prisma } from "../prisma/client";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
-import { buildPaginatedResponse, toPrismaPagination, type PaginatedResponse, type PaginationInput } from "../utils/pagination";
+import {
+  buildPaginatedResponse,
+  toPrismaPagination,
+  type PaginatedResponse,
+  type PaginationInput
+} from "../utils/pagination";
 import { maskMembershipCardNumber } from "../utils/membership-card-mask";
 
 export type ShopMembershipStatusPayload = "active" | "ended";
 export type ShopMembershipCardTypePayload = "stored_value" | "count" | "benefit";
 export type ShopMembershipCardStatusPayload = "active" | "frozen" | "expired" | "void";
-export type ShopMembershipCardIssuanceSourcePayload = "offline_paid" | "online_paid" | "gift" | "trial" | "renewal" | "historical_replacement" | "manual_grant";
+export type ShopMembershipCardIssuanceSourcePayload =
+  | "offline_paid"
+  | "online_paid"
+  | "gift"
+  | "trial"
+  | "renewal"
+  | "historical_replacement"
+  | "manual_grant";
 export type ShopMembershipAnalyticsPeriod = "last7days" | "last30days" | "last90days";
 
 export interface ShopMembershipStorePayload {
@@ -172,17 +184,50 @@ export interface CreateShopMembershipRepositoryInput {
 }
 
 export interface ShopMembershipRepositoryPort {
-  getOverview: (shopId: number, todayStart: Date, expiryCutoff: Date) => Promise<ShopMembershipOverviewPayload | null>;
-  listMemberships: (shopId: number, input: MembershipListInput) => Promise<PaginatedResponse<MerchantShopMembershipListItemPayload>>;
-  findMembershipDetail: (shopId: number, publicId: string) => Promise<MerchantShopMembershipDetailPayload | null>;
-  listCandidates: (shopId: number, input: Omit<MembershipListInput, "status">) => Promise<PaginatedResponse<ShopMembershipCandidatePayload>>;
-  findCandidateByNeedoId: (shopId: number, customerNeedoId: string) => Promise<ShopMembershipCandidateRecord | null>;
-  createMembershipWithAudit: (input: CreateShopMembershipRepositoryInput) => Promise<MerchantShopMembershipDetailPayload>;
-  listCards: (shopId: number, input: MembershipCardListInput) => Promise<PaginatedResponse<MerchantShopMembershipCardPayload>>;
-  listActivities: (shopId: number, input: PaginationInput) => Promise<PaginatedResponse<ShopMembershipActivityPayload>>;
-  getAnalytics: (shopId: number, range: MembershipAnalyticsRange) => Promise<ShopMembershipAnalyticsPayload>;
-  listCustomerMemberships: (customerProfileId: number, input: Omit<MembershipListInput, "keyword">) => Promise<PaginatedResponse<CustomerShopMembershipListItemPayload>>;
-  findCustomerMembershipDetail: (customerProfileId: number, publicId: string) => Promise<CustomerShopMembershipDetailPayload | null>;
+  getOverview: (
+    shopId: number,
+    todayStart: Date,
+    expiryCutoff: Date
+  ) => Promise<ShopMembershipOverviewPayload | null>;
+  listMemberships: (
+    shopId: number,
+    input: MembershipListInput
+  ) => Promise<PaginatedResponse<MerchantShopMembershipListItemPayload>>;
+  findMembershipDetail: (
+    shopId: number,
+    publicId: string
+  ) => Promise<MerchantShopMembershipDetailPayload | null>;
+  listCandidates: (
+    shopId: number,
+    input: Omit<MembershipListInput, "status">
+  ) => Promise<PaginatedResponse<ShopMembershipCandidatePayload>>;
+  findCandidateByNeedoId: (
+    shopId: number,
+    customerNeedoId: string
+  ) => Promise<ShopMembershipCandidateRecord | null>;
+  createMembershipWithAudit: (
+    input: CreateShopMembershipRepositoryInput
+  ) => Promise<MerchantShopMembershipDetailPayload>;
+  listCards: (
+    shopId: number,
+    input: MembershipCardListInput
+  ) => Promise<PaginatedResponse<MerchantShopMembershipCardPayload>>;
+  listActivities: (
+    shopId: number,
+    input: PaginationInput
+  ) => Promise<PaginatedResponse<ShopMembershipActivityPayload>>;
+  getAnalytics: (
+    shopId: number,
+    range: MembershipAnalyticsRange
+  ) => Promise<ShopMembershipAnalyticsPayload>;
+  listCustomerMemberships: (
+    customerProfileId: number,
+    input: Omit<MembershipListInput, "keyword">
+  ) => Promise<PaginatedResponse<CustomerShopMembershipListItemPayload>>;
+  findCustomerMembershipDetail: (
+    customerProfileId: number,
+    publicId: string
+  ) => Promise<CustomerShopMembershipDetailPayload | null>;
 }
 
 const shopSelect = { id: true, shopNo: true, name: true, city: true, address: true } as const;
@@ -281,27 +326,59 @@ interface CustomerMembershipListRecord {
 export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async getOverview(shopId: number, todayStart: Date, expiryCutoff: Date): Promise<ShopMembershipOverviewPayload | null> {
-    const shopPromise = this.client.shop.findFirst({ where: { id: shopId, deletedAt: null }, select: shopSelect });
-    const membershipWhere: Prisma.ShopCustomerMembershipWhereInput = { shopId, status: ShopCustomerMembershipStatus.ACTIVE, deletedAt: null };
+  public async getOverview(
+    shopId: number,
+    todayStart: Date,
+    expiryCutoff: Date
+  ): Promise<ShopMembershipOverviewPayload | null> {
+    const shopPromise = this.client.shop.findFirst({
+      where: { id: shopId, deletedAt: null },
+      select: shopSelect
+    });
+    const membershipWhere: Prisma.ShopCustomerMembershipWhereInput = {
+      shopId,
+      status: ShopCustomerMembershipStatus.ACTIVE,
+      deletedAt: null
+    };
     const cardWhere: Prisma.ShopMembershipCardWhereInput = {
       membership: { shopId, deletedAt: null },
       status: ShopMembershipCardStatus.ACTIVE,
       deletedAt: null
     };
-    const [shop, activeMemberCount, todayNewMemberCount, activeCardCount, expiringSoonCardCount, recent] = await Promise.all([
+    const [
+      shop,
+      activeMemberCount,
+      todayNewMemberCount,
+      activeCardCount,
+      expiringSoonCardCount,
+      recent
+    ] = await Promise.all([
       shopPromise,
       this.client.shopCustomerMembership.count({ where: membershipWhere }),
-      this.client.shopCustomerMembership.count({ where: { ...membershipWhere, startedAt: { gte: todayStart } } }),
+      this.client.shopCustomerMembership.count({
+        where: { ...membershipWhere, startedAt: { gte: todayStart } }
+      }),
       this.client.shopMembershipCard.count({ where: cardWhere }),
-      this.client.shopMembershipCard.count({ where: { ...cardWhere, expiresAt: { gte: todayStart, lte: expiryCutoff } } }),
+      this.client.shopMembershipCard.count({
+        where: { ...cardWhere, expiresAt: { gte: todayStart, lte: expiryCutoff } }
+      }),
       this.listActivities(shopId, { page: 1, pageSize: 5 })
     ]);
     if (!shop) return null;
-    return { shop, activeMemberCount, todayNewMemberCount, activeCardCount, expiringSoonCardCount, recentActivities: recent.list };
+    return {
+      shop,
+      activeMemberCount,
+      todayNewMemberCount,
+      activeCardCount,
+      expiringSoonCardCount,
+      recentActivities: recent.list
+    };
   }
 
-  public async listMemberships(shopId: number, input: MembershipListInput): Promise<PaginatedResponse<MerchantShopMembershipListItemPayload>> {
+  public async listMemberships(
+    shopId: number,
+    input: MembershipListInput
+  ): Promise<PaginatedResponse<MerchantShopMembershipListItemPayload>> {
     const pagination = toPrismaPagination(input);
     const keyword = input.keyword?.trim();
     const where: Prisma.ShopCustomerMembershipWhereInput = {
@@ -332,7 +409,10 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
           createdAt: true,
           updatedAt: true,
           customerProfile: { select: customerSelect },
-          cards: { where: { status: ShopMembershipCardStatus.ACTIVE, deletedAt: null }, select: { id: true } },
+          cards: {
+            where: { status: ShopMembershipCardStatus.ACTIVE, deletedAt: null },
+            select: { id: true }
+          },
           _count: { select: { cards: { where: { deletedAt: null } } } }
         },
         orderBy: [{ startedAt: "desc" }, { id: "desc" }],
@@ -341,10 +421,17 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       }),
       this.client.shopCustomerMembership.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapMerchantListItem(record)), total, pagination);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapMerchantListItem(record)),
+      total,
+      pagination
+    );
   }
 
-  public async findMembershipDetail(shopId: number, publicId: string): Promise<MerchantShopMembershipDetailPayload | null> {
+  public async findMembershipDetail(
+    shopId: number,
+    publicId: string
+  ): Promise<MerchantShopMembershipDetailPayload | null> {
     const record = await this.client.shopCustomerMembership.findFirst({
       where: { publicId, shopId, deletedAt: null },
       select: {
@@ -359,13 +446,20 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
         updatedAt: true,
         shop: { select: shopSelect },
         customerProfile: { select: customerSelect },
-        cards: { where: { deletedAt: null }, select: cardSelect, orderBy: [{ issuedAt: "desc" }, { publicId: "desc" }] }
+        cards: {
+          where: { deletedAt: null },
+          select: cardSelect,
+          orderBy: [{ issuedAt: "desc" }, { publicId: "desc" }]
+        }
       }
     });
     return record ? this.mapMerchantDetail(record) : null;
   }
 
-  public async listCandidates(shopId: number, input: Omit<MembershipListInput, "status">): Promise<PaginatedResponse<ShopMembershipCandidatePayload>> {
+  public async listCandidates(
+    shopId: number,
+    input: Omit<MembershipListInput, "status">
+  ): Promise<PaginatedResponse<ShopMembershipCandidatePayload>> {
     const pagination = toPrismaPagination(input);
     const where = this.candidateWhere(shopId, input.keyword);
     const [records, total] = await Promise.all([
@@ -379,7 +473,12 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
             select: {
               needoId: true,
               avatarUrl: true,
-              bookingOrders: { where: { shopId, deletedAt: null }, select: { startsAt: true }, orderBy: { startsAt: "desc" }, take: 1 }
+              bookingOrders: {
+                where: { shopId, deletedAt: null },
+                select: { startsAt: true },
+                orderBy: { startsAt: "desc" },
+                take: 1
+              }
             }
           }
         },
@@ -392,14 +491,27 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     return buildPaginatedResponse(
       records.flatMap((record) => {
         const lastOrderAt = record.user.bookingOrders[0]?.startsAt;
-        return lastOrderAt ? [{ customerNeedoId: record.user.needoId, displayName: record.displayName, avatarUrl: record.user.avatarUrl, city: record.city, lastOrderAt }] : [];
+        return lastOrderAt
+          ? [
+              {
+                customerNeedoId: record.user.needoId,
+                displayName: record.displayName,
+                avatarUrl: record.user.avatarUrl,
+                city: record.city,
+                lastOrderAt
+              }
+            ]
+          : [];
       }),
       total,
       pagination
     );
   }
 
-  public async findCandidateByNeedoId(shopId: number, customerNeedoId: string): Promise<ShopMembershipCandidateRecord | null> {
+  public async findCandidateByNeedoId(
+    shopId: number,
+    customerNeedoId: string
+  ): Promise<ShopMembershipCandidateRecord | null> {
     const record = await this.client.customerProfile.findFirst({
       where: this.candidateWhere(shopId, customerNeedoId),
       select: {
@@ -433,7 +545,9 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     };
   }
 
-  public async createMembershipWithAudit(input: CreateShopMembershipRepositoryInput): Promise<MerchantShopMembershipDetailPayload> {
+  public async createMembershipWithAudit(
+    input: CreateShopMembershipRepositoryInput
+  ): Promise<MerchantShopMembershipDetailPayload> {
     const created = await this.client.$transaction(async (transaction) => {
       const membership = await transaction.shopCustomerMembership.create({
         data: {
@@ -475,7 +589,10 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     return this.mapMerchantDetail(created);
   }
 
-  public async listCards(shopId: number, input: MembershipCardListInput): Promise<PaginatedResponse<MerchantShopMembershipCardPayload>> {
+  public async listCards(
+    shopId: number,
+    input: MembershipCardListInput
+  ): Promise<PaginatedResponse<MerchantShopMembershipCardPayload>> {
     const pagination = toPrismaPagination(input);
     const now = await this.getDatabaseNow();
     const where: Prisma.ShopMembershipCardWhereInput = {
@@ -508,7 +625,12 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
             take: 1
           },
           membership: {
-            select: { publicId: true, customerProfile: { select: { displayName: true, user: { select: { needoId: true } } } } }
+            select: {
+              publicId: true,
+              customerProfile: {
+                select: { displayName: true, user: { select: { needoId: true } } }
+              }
+            }
           }
         },
         orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
@@ -517,29 +639,43 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       }),
       this.client.shopMembershipCard.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => {
-      const pendingAdjustment = record.adjustments[0];
-      const beforeValue = pendingAdjustment?.beforePrincipalBalanceJpy ?? pendingAdjustment?.beforeRemainingUses;
-      const targetValue = pendingAdjustment?.targetPrincipalBalanceJpy ?? pendingAdjustment?.targetRemainingUses;
-      return {
-        ...this.mapCard(record),
-        membershipPublicId: record.membership.publicId,
-        customerNeedoId: record.membership.customerProfile.user.needoId,
-        customerDisplayName: record.membership.customerProfile.displayName,
-        pendingAdjustment: pendingAdjustment && beforeValue !== null && beforeValue !== undefined && targetValue !== null && targetValue !== undefined
-          ? {
-              publicId: pendingAdjustment.publicId,
-              status: "pending" as const,
-              beforeValue,
-              targetValue,
-              expiresAt: pendingAdjustment.expiresAt
-            }
-          : null
-      };
-    }), total, pagination);
+    return buildPaginatedResponse(
+      records.map((record) => {
+        const pendingAdjustment = record.adjustments[0];
+        const beforeValue =
+          pendingAdjustment?.beforePrincipalBalanceJpy ?? pendingAdjustment?.beforeRemainingUses;
+        const targetValue =
+          pendingAdjustment?.targetPrincipalBalanceJpy ?? pendingAdjustment?.targetRemainingUses;
+        return {
+          ...this.mapCard(record),
+          membershipPublicId: record.membership.publicId,
+          customerNeedoId: record.membership.customerProfile.user.needoId,
+          customerDisplayName: record.membership.customerProfile.displayName,
+          pendingAdjustment:
+            pendingAdjustment &&
+            beforeValue !== null &&
+            beforeValue !== undefined &&
+            targetValue !== null &&
+            targetValue !== undefined
+              ? {
+                  publicId: pendingAdjustment.publicId,
+                  status: "pending" as const,
+                  beforeValue,
+                  targetValue,
+                  expiresAt: pendingAdjustment.expiresAt
+                }
+              : null
+        };
+      }),
+      total,
+      pagination
+    );
   }
 
-  public async listActivities(shopId: number, input: PaginationInput): Promise<PaginatedResponse<ShopMembershipActivityPayload>> {
+  public async listActivities(
+    shopId: number,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<ShopMembershipActivityPayload>> {
     const pagination = toPrismaPagination(input);
     const where: Prisma.ShopCustomerMembershipWhereInput = { shopId, deletedAt: null };
     const [records, total] = await Promise.all([
@@ -558,29 +694,46 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       }),
       this.client.shopCustomerMembership.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => ({
-      id: `membership:${record.id}:created`,
-      action: "membership_created",
-      membershipPublicId: record.publicId,
-      customerNeedoId: record.customerProfile.user.needoId,
-      customerDisplayName: record.customerProfile.displayName,
-      actorName: record.createdBy?.username ?? "NeeDo",
-      occurredAt: record.createdAt
-    })), total, pagination);
+    return buildPaginatedResponse(
+      records.map((record) => ({
+        id: `membership:${record.id}:created`,
+        action: "membership_created",
+        membershipPublicId: record.publicId,
+        customerNeedoId: record.customerProfile.user.needoId,
+        customerDisplayName: record.customerProfile.displayName,
+        actorName: record.createdBy?.username ?? "NeeDo",
+        occurredAt: record.createdAt
+      })),
+      total,
+      pagination
+    );
   }
 
-  public async getAnalytics(shopId: number, range: MembershipAnalyticsRange): Promise<ShopMembershipAnalyticsPayload> {
+  public async getAnalytics(
+    shopId: number,
+    range: MembershipAnalyticsRange
+  ): Promise<ShopMembershipAnalyticsPayload> {
     const membershipWhere: Prisma.ShopCustomerMembershipWhereInput = { shopId, deletedAt: null };
     const [activeMemberCount, startDates, groupedCards] = await Promise.all([
-      this.client.shopCustomerMembership.count({ where: { ...membershipWhere, status: ShopCustomerMembershipStatus.ACTIVE } }),
-      this.client.shopCustomerMembership.findMany({ where: { ...membershipWhere, startedAt: { gte: range.from, lte: range.to } }, select: { startedAt: true } }),
+      this.client.shopCustomerMembership.count({
+        where: { ...membershipWhere, status: ShopCustomerMembershipStatus.ACTIVE }
+      }),
+      this.client.shopCustomerMembership.findMany({
+        where: { ...membershipWhere, startedAt: { gte: range.from, lte: range.to } },
+        select: { startedAt: true }
+      }),
       this.client.shopMembershipCard.groupBy({
         by: ["status"],
         where: { membership: { shopId, deletedAt: null }, deletedAt: null },
         _count: { _all: true }
       })
     ]);
-    const counts: Record<ShopMembershipCardStatusPayload, number> = { active: 0, frozen: 0, expired: 0, void: 0 };
+    const counts: Record<ShopMembershipCardStatusPayload, number> = {
+      active: 0,
+      frozen: 0,
+      expired: 0,
+      void: 0
+    };
     for (const item of groupedCards) counts[this.cardStatusFromDb(item.status)] = item._count._all;
     const daily = new Map(range.dateKeys.map((key) => [key, 0]));
     for (const record of startDates) {
@@ -598,7 +751,10 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     };
   }
 
-  public async listCustomerMemberships(customerProfileId: number, input: Omit<MembershipListInput, "keyword">): Promise<PaginatedResponse<CustomerShopMembershipListItemPayload>> {
+  public async listCustomerMemberships(
+    customerProfileId: number,
+    input: Omit<MembershipListInput, "keyword">
+  ): Promise<PaginatedResponse<CustomerShopMembershipListItemPayload>> {
     const pagination = toPrismaPagination(input);
     const where: Prisma.ShopCustomerMembershipWhereInput = {
       customerProfileId,
@@ -624,10 +780,17 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       }),
       this.client.shopCustomerMembership.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapCustomerListItem(record)), total, pagination);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapCustomerListItem(record)),
+      total,
+      pagination
+    );
   }
 
-  public async findCustomerMembershipDetail(customerProfileId: number, publicId: string): Promise<CustomerShopMembershipDetailPayload | null> {
+  public async findCustomerMembershipDetail(
+    customerProfileId: number,
+    publicId: string
+  ): Promise<CustomerShopMembershipDetailPayload | null> {
     const record = await this.client.shopCustomerMembership.findFirst({
       where: { customerProfileId, publicId, deletedAt: null },
       select: {
@@ -638,10 +801,19 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
         endedAt: true,
         updatedAt: true,
         shop: { select: shopSelect },
-        cards: { where: { deletedAt: null }, select: cardSelect, orderBy: [{ issuedAt: "desc" }, { publicId: "desc" }] }
+        cards: {
+          where: { deletedAt: null },
+          select: cardSelect,
+          orderBy: [{ issuedAt: "desc" }, { publicId: "desc" }]
+        }
       }
     });
-    return record ? { ...this.mapCustomerListItem(record), cards: record.cards.map((card) => this.mapCard(card)) } : null;
+    return record
+      ? {
+          ...this.mapCustomerListItem(record),
+          cards: record.cards.map((card) => this.mapCard(card))
+        }
+      : null;
   }
 
   private candidateWhere(shopId: number, keyword?: string): Prisma.CustomerProfileWhereInput {
@@ -652,14 +824,23 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
         deletedAt: null,
         bookingOrders: { some: { shopId, deletedAt: null } }
       },
-      shopMemberships: { none: { shopId, status: ShopCustomerMembershipStatus.ACTIVE, deletedAt: null } },
+      shopMemberships: {
+        none: { shopId, status: ShopCustomerMembershipStatus.ACTIVE, deletedAt: null }
+      },
       ...(normalized
-        ? { OR: [{ displayName: { contains: normalized } }, { user: { needoId: { contains: normalized.toLowerCase() } } }] }
+        ? {
+            OR: [
+              { displayName: { contains: normalized } },
+              { user: { needoId: { contains: normalized.toLowerCase() } } }
+            ]
+          }
         : {})
     };
   }
 
-  private mapMerchantListItem(record: MerchantMembershipListRecord): MerchantShopMembershipListItemPayload {
+  private mapMerchantListItem(
+    record: MerchantMembershipListRecord
+  ): MerchantShopMembershipListItemPayload {
     return {
       internalId: record.id,
       publicId: record.publicId,
@@ -680,7 +861,9 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     };
   }
 
-  private mapMerchantDetail(record: MerchantMembershipDetailRecord): MerchantShopMembershipDetailPayload {
+  private mapMerchantDetail(
+    record: MerchantMembershipDetailRecord
+  ): MerchantShopMembershipDetailPayload {
     const cards = record.cards.map((card) => this.mapCard(card));
     return {
       internalId: record.id,
@@ -697,16 +880,22 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
       cardCount: cards.length,
-      activeCardCount: cards.filter((card: ShopMembershipCardPayload) => card.status === "active").length,
+      activeCardCount: cards.filter((card: ShopMembershipCardPayload) => card.status === "active")
+        .length,
       lastActivityAt: record.updatedAt,
       shop: record.shop,
       cards
     };
   }
 
-  private mapCustomerListItem(record: CustomerMembershipListRecord): CustomerShopMembershipListItemPayload {
+  private mapCustomerListItem(
+    record: CustomerMembershipListRecord
+  ): CustomerShopMembershipListItemPayload {
     const expiryCutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const activeCards = record.cards.filter((card: { status: ShopMembershipCardStatus }) => card.status === ShopMembershipCardStatus.ACTIVE);
+    const activeCards = record.cards.filter(
+      (card: { status: ShopMembershipCardStatus }) =>
+        card.status === ShopMembershipCardStatus.ACTIVE
+    );
     return {
       internalId: record.id,
       publicId: record.publicId,
@@ -715,7 +904,9 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       endedAt: record.endedAt,
       cardCount: record.cards.length,
       activeCardCount: activeCards.length,
-      expiringSoonCardCount: activeCards.filter((card: { expiresAt: Date | null }) => card.expiresAt && card.expiresAt <= expiryCutoff).length,
+      expiringSoonCardCount: activeCards.filter(
+        (card: { expiresAt: Date | null }) => card.expiresAt && card.expiresAt <= expiryCutoff
+      ).length,
       updatedAt: record.updatedAt,
       shop: record.shop
     };
@@ -734,7 +925,9 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
       totalUses: record.totalUses,
       initialPrincipalJpy: record.initialPrincipalJpy,
       initialUses: record.initialUses,
-      issuanceSource: record.issuanceSource ? this.cardIssuanceSourceFromDb(record.issuanceSource) : null,
+      issuanceSource: record.issuanceSource
+        ? this.cardIssuanceSourceFromDb(record.issuanceSource)
+        : null,
       platformFeeRateBpsSnapshot: record.platformFeeRateBpsSnapshot,
       planPublicId: record.plan?.publicId ?? null,
       planVersionPublicId: record.planVersion?.publicId ?? null,
@@ -746,14 +939,19 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
   }
 
   private async getDatabaseNow(): Promise<Date> {
-    const rows = await this.client.$queryRaw<Array<{ now: Date }>>`SELECT CURRENT_TIMESTAMP(3) AS now`;
+    const rows = await this.client.$queryRaw<
+      Array<{ now: Date }>
+    >`SELECT CURRENT_TIMESTAMP(3) AS now`;
     const databaseNow = rows[0]?.now;
-    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime())) throw new Error("error.database_clock_unavailable");
+    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime()))
+      throw new Error("error.database_clock_unavailable");
     return databaseNow;
   }
 
   private membershipStatusToDb(value: ShopMembershipStatusPayload): ShopCustomerMembershipStatus {
-    return value === "active" ? ShopCustomerMembershipStatus.ACTIVE : ShopCustomerMembershipStatus.ENDED;
+    return value === "active"
+      ? ShopCustomerMembershipStatus.ACTIVE
+      : ShopCustomerMembershipStatus.ENDED;
   }
 
   private membershipStatusFromDb(value: ShopCustomerMembershipStatus): ShopMembershipStatusPayload {
@@ -761,15 +959,28 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
   }
 
   private cardTypeToDb(value: ShopMembershipCardTypePayload): ShopMembershipCardType {
-    return value === "stored_value" ? ShopMembershipCardType.STORED_VALUE : value === "count" ? ShopMembershipCardType.COUNT : ShopMembershipCardType.BENEFIT;
+    return value === "stored_value"
+      ? ShopMembershipCardType.STORED_VALUE
+      : value === "count"
+        ? ShopMembershipCardType.COUNT
+        : ShopMembershipCardType.BENEFIT;
   }
 
   private cardTypeFromDb(value: ShopMembershipCardType): ShopMembershipCardTypePayload {
-    return value === ShopMembershipCardType.STORED_VALUE ? "stored_value" : value === ShopMembershipCardType.COUNT ? "count" : "benefit";
+    return value === ShopMembershipCardType.STORED_VALUE
+      ? "stored_value"
+      : value === ShopMembershipCardType.COUNT
+        ? "count"
+        : "benefit";
   }
 
   private cardStatusToDb(value: ShopMembershipCardStatusPayload): ShopMembershipCardStatus {
-    const values = { active: ShopMembershipCardStatus.ACTIVE, frozen: ShopMembershipCardStatus.FROZEN, expired: ShopMembershipCardStatus.EXPIRED, void: ShopMembershipCardStatus.VOID } as const;
+    const values = {
+      active: ShopMembershipCardStatus.ACTIVE,
+      frozen: ShopMembershipCardStatus.FROZEN,
+      expired: ShopMembershipCardStatus.EXPIRED,
+      void: ShopMembershipCardStatus.VOID
+    } as const;
     return values[value];
   }
 
@@ -783,8 +994,13 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
     return values[value];
   }
 
-  private cardIssuanceSourceFromDb(value: ShopMembershipCardIssuanceSource): ShopMembershipCardIssuanceSourcePayload {
-    const values: Record<ShopMembershipCardIssuanceSource, ShopMembershipCardIssuanceSourcePayload> = {
+  private cardIssuanceSourceFromDb(
+    value: ShopMembershipCardIssuanceSource
+  ): ShopMembershipCardIssuanceSourcePayload {
+    const values: Record<
+      ShopMembershipCardIssuanceSource,
+      ShopMembershipCardIssuanceSourcePayload
+    > = {
       [ShopMembershipCardIssuanceSource.OFFLINE_PAID]: "offline_paid",
       [ShopMembershipCardIssuanceSource.ONLINE_PAID]: "online_paid",
       [ShopMembershipCardIssuanceSource.GIFT]: "gift",
@@ -799,6 +1015,11 @@ export class ShopMembershipRepository implements ShopMembershipRepositoryPort {
   }
 
   private japanDateKey(value: Date): string {
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(value);
   }
 }

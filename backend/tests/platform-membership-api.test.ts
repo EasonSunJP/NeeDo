@@ -70,8 +70,20 @@ const createService = () => ({
       code: "ndp_experience" as const,
       sortOrder: 0,
       isGloballyEnabled: true,
-      nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-      descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+      nameTranslations: {
+        zh: "NDP消费经验",
+        "zh-Hant": "NDP消費經驗",
+        ja: "NDP利用経験値",
+        en: "NDP experience",
+        ko: "NDP 사용 경험치"
+      },
+      descriptionTranslations: {
+        zh: "说明",
+        "zh-Hant": "說明",
+        ja: "説明",
+        en: "Description",
+        ko: "설명"
+      },
       lockVersion: 1
     }
   ]),
@@ -79,8 +91,20 @@ const createService = () => ({
     code: "ndp_experience" as const,
     sortOrder: 0,
     isGloballyEnabled: false,
-    nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-    descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+    nameTranslations: {
+      zh: "NDP消费经验",
+      "zh-Hant": "NDP消費經驗",
+      ja: "NDP利用経験値",
+      en: "NDP experience",
+      ko: "NDP 사용 경험치"
+    },
+    descriptionTranslations: {
+      zh: "说明",
+      "zh-Hant": "說明",
+      ja: "説明",
+      en: "Description",
+      ko: "설명"
+    },
     lockVersion: 2
   })),
   changeEntitlement: jest.fn(async () => ({
@@ -177,8 +201,20 @@ describe("platform membership administration API", () => {
       .send({
         isGloballyEnabled: false,
         sortOrder: 0,
-        nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-        descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+        nameTranslations: {
+          zh: "NDP消费经验",
+          "zh-Hant": "NDP消費經驗",
+          ja: "NDP利用経験値",
+          en: "NDP experience",
+          ko: "NDP 사용 경험치"
+        },
+        descriptionTranslations: {
+          zh: "说明",
+          "zh-Hant": "說明",
+          ja: "説明",
+          en: "Description",
+          ko: "설명"
+        },
         expectedLockVersion: 1
       })
       .expect(200);
@@ -208,8 +244,20 @@ describe("platform membership administration API", () => {
       {
         isGloballyEnabled: false,
         sortOrder: 0,
-        nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-        descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+        nameTranslations: {
+          zh: "NDP消费经验",
+          "zh-Hant": "NDP消費經驗",
+          ja: "NDP利用経験値",
+          en: "NDP experience",
+          ko: "NDP 사용 경험치"
+        },
+        descriptionTranslations: {
+          zh: "说明",
+          "zh-Hant": "說明",
+          ja: "説明",
+          en: "Description",
+          ko: "설명"
+        },
         expectedLockVersion: 1
       }
     );

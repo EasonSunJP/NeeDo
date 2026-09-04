@@ -105,14 +105,19 @@ export class DashboardRepository {
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly financeReader: DashboardFinanceReader = new DashboardFinanceRepository(client),
-    private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(client),
-    private readonly operationsFinanceReader: DashboardOperationsFinanceReader =
-      new DashboardOperationsFinanceRepository(client),
-    private readonly commissionReader: DashboardCommissionReader =
-      new DashboardCommissionRepository(client),
+    private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(
+      client
+    ),
+    private readonly operationsFinanceReader: DashboardOperationsFinanceReader = new DashboardOperationsFinanceRepository(
+      client
+    ),
+    private readonly commissionReader: DashboardCommissionReader = new DashboardCommissionRepository(
+      client
+    ),
     private readonly growthReader: DashboardGrowthReader = new DashboardGrowthRepository(client),
-    private readonly membershipReader: DashboardMembershipReader =
-      new DashboardMembershipRepository(client)
+    private readonly membershipReader: DashboardMembershipReader = new DashboardMembershipRepository(
+      client
+    )
   ) {}
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -200,9 +205,7 @@ export class DashboardRepository {
       scheduleRows.map((row) => [
         bucketKey(row),
         {
-          available: this.toNumber(
-            row.scheduleAvailableHours ?? row.schedule_available_hours
-          ),
+          available: this.toNumber(row.scheduleAvailableHours ?? row.schedule_available_hours),
           booked: this.toNumber(row.scheduleBookedHours ?? row.schedule_booked_hours)
         }
       ])
@@ -288,18 +291,10 @@ export class DashboardRepository {
         where: this.scheduleWhere(shopId, window.fromInclusive, window.toExclusive)
       }),
       this.client.scheduleSlot.count({
-        where: this.scheduleWhere(
-          shopId,
-          window.previousFromInclusive,
-          window.previousToExclusive
-        )
+        where: this.scheduleWhere(shopId, window.previousFromInclusive, window.previousToExclusive)
       }),
       this.client.bookingOrder.aggregate({
-        where: this.completedGmvWhere(
-          shopId,
-          window.fromInclusive,
-          window.toExclusive
-        ),
+        where: this.completedGmvWhere(shopId, window.fromInclusive, window.toExclusive),
         _sum: { priceAmount: true }
       }),
       this.client.bookingOrder.aggregate({
@@ -318,10 +313,7 @@ export class DashboardRepository {
         : Promise.resolve(null),
       input.scope.kind === "platform"
         ? this.client.customerProfile.count({
-            where: this.customerWhere(
-              window.previousFromInclusive,
-              window.previousToExclusive
-            )
+            where: this.customerWhere(window.previousFromInclusive, window.previousToExclusive)
           })
         : Promise.resolve(null),
       input.scope.kind === "platform"
@@ -429,9 +421,7 @@ export class DashboardRepository {
         availableScheduleSlots: this.toNumber(
           previous?.availableScheduleSlots ?? previous?.available_schedule_slots
         ),
-        serviceGmvJpy: this.toNumber(
-          previous?.serviceGmvJpy ?? previous?.service_gmv_jpy
-        ),
+        serviceGmvJpy: this.toNumber(previous?.serviceGmvJpy ?? previous?.service_gmv_jpy),
         newCustomers: this.toNumber(previous?.newCustomers ?? previous?.new_customers),
         shopCount: this.toNumber(previous?.shopCount ?? previous?.shop_count)
       }
@@ -474,9 +464,10 @@ export class DashboardRepository {
     };
   }
 
-  private prismaRelatedShopScope(
-    shopId: number | null
-  ): { shopId?: number; shop: Prisma.ShopWhereInput } {
+  private prismaRelatedShopScope(shopId: number | null): {
+    shopId?: number;
+    shop: Prisma.ShopWhereInput;
+  } {
     return {
       ...(shopId ? { shopId } : {}),
       shop: {
@@ -485,10 +476,7 @@ export class DashboardRepository {
     };
   }
 
-  private customerWhere(
-    fromInclusive: Date,
-    toExclusive: Date
-  ): Prisma.CustomerProfileWhereInput {
+  private customerWhere(fromInclusive: Date, toExclusive: Date): Prisma.CustomerProfileWhereInput {
     return {
       deletedAt: null,
       createdAt: { gte: fromInclusive, lt: toExclusive }
@@ -533,9 +521,7 @@ export class DashboardRepository {
           key: bucket.key,
           cutoff: bucket.toExclusive
         }))
-      ].map(
-        (cutoff) => Prisma.sql`SELECT ${cutoff.key} AS period_key, ${cutoff.cutoff} AS cutoff`
-      ),
+      ].map((cutoff) => Prisma.sql`SELECT ${cutoff.key} AS period_key, ${cutoff.cutoff} AS cutoff`),
       " UNION ALL "
     );
   }

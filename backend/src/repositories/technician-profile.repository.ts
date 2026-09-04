@@ -2,10 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
 import {
   loadTechnicianReviewTagSummary,
@@ -201,8 +198,10 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
   ): TechnicianProfilePayload {
     const publicId = profile.user.identities
       .map((identity) => identity.publicIdentifier)
-      .find((identifier) => identifier?.kind === "S" && identifier.status === "ACTIVE" && !identifier.deletedAt)
-      ?.publicId;
+      .find(
+        (identifier) =>
+          identifier?.kind === "S" && identifier.status === "ACTIVE" && !identifier.deletedAt
+      )?.publicId;
     if (!publicId) {
       throw new AppError({
         code: ERROR_CODES.INTERNAL,
@@ -240,11 +239,12 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
               longitude: Number(profile.baseLongitude)
             },
       visibility: this.visibility(profile.visibility),
-      employmentType: profile.employmentType === "FULL_TIME"
-        ? "full_time"
-        : profile.employmentType === "TEMPORARY"
-          ? "temporary"
-          : "independent",
+      employmentType:
+        profile.employmentType === "FULL_TIME"
+          ? "full_time"
+          : profile.employmentType === "TEMPORARY"
+            ? "temporary"
+            : "independent",
       yearsExperience: profile.yearsExperience,
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString()
@@ -284,9 +284,7 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
   }
 
   private visibility(value: string): TechnicianProfileVisibility {
-    return value === "privateAll" || value === "limited" || value === "network"
-      ? value
-      : "public";
+    return value === "privateAll" || value === "limited" || value === "network" ? value : "public";
   }
 
   private gender(value: string): TechnicianProfileGender {

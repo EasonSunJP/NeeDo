@@ -9,10 +9,7 @@ import {
 } from "../utils/transaction-conflict-retry";
 
 export type AgentCommissionPaymentMethod = "bank_transfer" | "ndp" | "other";
-export type AgentCommissionPaymentDetails = Record<
-  string,
-  string | number | boolean | null
-> | null;
+export type AgentCommissionPaymentDetails = Record<string, string | number | boolean | null> | null;
 
 export interface AgentCommissionRuleRecord {
   id: number;
@@ -64,12 +61,8 @@ export type AgentCommissionRulePublishResult =
   | { outcome: "agent_not_found" | "conflict" };
 
 export interface AgentCommissionRuleRepositoryPort {
-  getOverview: (
-    input: AgentCommissionRuleListInput
-  ) => Promise<AgentCommissionRuleOverviewResult>;
-  publish: (
-    input: AgentCommissionRulePublishInput
-  ) => Promise<AgentCommissionRulePublishResult>;
+  getOverview: (input: AgentCommissionRuleListInput) => Promise<AgentCommissionRuleOverviewResult>;
+  publish: (input: AgentCommissionRulePublishInput) => Promise<AgentCommissionRulePublishResult>;
 }
 
 const ruleSelect = {
@@ -202,7 +195,8 @@ export class AgentCommissionRuleRepository implements AgentCommissionRuleReposit
     });
     if (
       latest &&
-      (latest.effectiveTo !== null || input.effectiveFrom.getTime() <= latest.effectiveFrom.getTime())
+      (latest.effectiveTo !== null ||
+        input.effectiveFrom.getTime() <= latest.effectiveFrom.getTime())
     ) {
       return { outcome: "conflict" };
     }

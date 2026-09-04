@@ -2,10 +2,12 @@ import { shopMembershipCardRefundCreateBodySchema } from "../src/validators/shop
 
 describe("shop membership card refund validators", () => {
   it("normalizes a strict refund command", () => {
-    expect(shopMembershipCardRefundCreateBodySchema.parse({
-      reason: "  订单已完成原路退款  ",
-      idempotencyKey: "  membership-refund-001  "
-    })).toEqual({ reason: "订单已完成原路退款", idempotencyKey: "membership-refund-001" });
+    expect(
+      shopMembershipCardRefundCreateBodySchema.parse({
+        reason: "  订单已完成原路退款  ",
+        idempotencyKey: "  membership-refund-001  "
+      })
+    ).toEqual({ reason: "订单已完成原路退款", idempotencyKey: "membership-refund-001" });
   });
 
   it.each([

@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { isAbsolute } from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { assertContentMediaStorageIsolationSync } from "../services/content-media.storage";
@@ -355,6 +356,12 @@ const envSchema = z
 
     if (value.NODE_ENV !== "production") {
       return;
+    }
+
+    for (const field of ["IM_MEDIA_STORAGE_DIR", "CONTENT_MEDIA_STORAGE_DIR"] as const) {
+      if (!isAbsolute(value[field])) {
+        addProductionIssue(context, field, `${field} must be an absolute path in production`);
+      }
     }
 
     const unsafeFlags = [

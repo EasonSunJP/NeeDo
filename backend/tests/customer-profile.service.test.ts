@@ -4,10 +4,7 @@ import type {
   CustomerProfilePayload
 } from "../src/repositories/customer-profile.repository";
 import type { AuditLogCreateInput } from "../src/repositories/audit-log.repository";
-import type {
-  AuthRequestContext,
-  AuthenticatedAccessContext
-} from "../src/services/auth.service";
+import type { AuthRequestContext, AuthenticatedAccessContext } from "../src/services/auth.service";
 import type { AuditLogRecordInput } from "../src/services/audit-log.service";
 import type { CustomerAvatarStoragePort } from "../src/services/customer-avatar.storage";
 import { CustomerProfileService } from "../src/services/customer-profile.service";
@@ -40,13 +37,15 @@ const repository = (): jest.Mocked<CustomerProfileRepositoryPort> => ({
 });
 
 const audit = {
-  createInput: jest.fn((input: AuditLogRecordInput): AuditLogCreateInput => ({
-    action: input.action,
-    actorId: input.actor.userId,
-    metadata: input.metadata,
-    targetId: input.targetId,
-    targetType: input.targetType
-  }))
+  createInput: jest.fn(
+    (input: AuditLogRecordInput): AuditLogCreateInput => ({
+      action: input.action,
+      actorId: input.actor.userId,
+      metadata: input.metadata,
+      targetId: input.targetId,
+      targetType: input.targetType
+    })
+  )
 };
 
 const storage = (): jest.Mocked<CustomerAvatarStoragePort> => ({ save: jest.fn() });
@@ -155,12 +154,7 @@ describe("CustomerProfileService", () => {
         scopeId: 41
       }))
     };
-    const service = new CustomerProfileService(
-      customerRepository,
-      audit,
-      storage(),
-      scopeResolver
-    );
+    const service = new CustomerProfileService(customerRepository, audit, storage(), scopeResolver);
     const affiliateActor = {
       userId: 11,
       currentIdentityId: 71,

@@ -175,9 +175,7 @@ export interface PlatformPartnerRepositoryPort {
     markedById: number;
     reason: string;
   }) => Promise<MarkPartnerProfileRepositoryResult>;
-  listAgents: (
-    input: AgentListInput
-  ) => Promise<PaginatedResponse<AgentProfileListRecord>>;
+  listAgents: (input: AgentListInput) => Promise<PaginatedResponse<AgentProfileListRecord>>;
   listAgentShopReferrals: (
     input: AgentShopReferralListInput
   ) => Promise<AgentShopReferralListRepositoryResult>;

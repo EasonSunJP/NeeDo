@@ -1,11 +1,20 @@
-import {
-  PlatformMembershipBenefitCode,
-  PlatformMembershipTierCode
-} from "@prisma/client";
+import { PlatformMembershipBenefitCode, PlatformMembershipTierCode } from "@prisma/client";
 import { PlatformMembershipRepository } from "../src/repositories/platform-membership.repository";
 
-const nameTranslations = { zh: "优先下单", "zh-Hant": "優先下單", ja: "優先", en: "Priority", ko: "우선" };
-const descriptionTranslations = { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" };
+const nameTranslations = {
+  zh: "优先下单",
+  "zh-Hant": "優先下單",
+  ja: "優先",
+  en: "Priority",
+  ko: "우선"
+};
+const descriptionTranslations = {
+  zh: "说明",
+  "zh-Hant": "說明",
+  ja: "説明",
+  en: "Description",
+  ko: "설명"
+};
 
 describe("PlatformMembershipRepository administration", () => {
   it("lists the four fixed tiers by persisted sort order", async () => {
@@ -30,9 +39,11 @@ describe("PlatformMembershipRepository administration", () => {
         draftVersion: null
       }
     ]);
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
-    }));
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      })
+    );
   });
 
   it("updates a benefit and its audit in one transaction", async () => {
@@ -66,16 +77,18 @@ describe("PlatformMembershipRepository administration", () => {
     };
     const repository = new PlatformMembershipRepository(client as never);
 
-    await expect(repository.updateBenefitWithAudit({
-      actorId: 9,
-      benefitCode: "priority_request",
-      isGloballyEnabled: false,
-      sortOrder: 2,
-      nameTranslations,
-      descriptionTranslations,
-      expectedLockVersion: 2,
-      audit: { actorId: 9, action: "benefit.update", targetType: "benefit" }
-    })).resolves.toEqual({
+    await expect(
+      repository.updateBenefitWithAudit({
+        actorId: 9,
+        benefitCode: "priority_request",
+        isGloballyEnabled: false,
+        sortOrder: 2,
+        nameTranslations,
+        descriptionTranslations,
+        expectedLockVersion: 2,
+        audit: { actorId: 9, action: "benefit.update", targetType: "benefit" }
+      })
+    ).resolves.toEqual({
       kind: "updated",
       value: {
         code: "priority_request",
@@ -86,16 +99,18 @@ describe("PlatformMembershipRepository administration", () => {
         lockVersion: 3
       }
     });
-    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ lockVersion: 2 }),
-      data: {
-        isGloballyEnabled: false,
-        sortOrder: 2,
-        nameTranslations,
-        descriptionTranslations,
-        lockVersion: { increment: 1 }
-      }
-    }));
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ lockVersion: 2 }),
+        data: {
+          isGloballyEnabled: false,
+          sortOrder: 2,
+          nameTranslations,
+          descriptionTranslations,
+          lockVersion: { increment: 1 }
+        }
+      })
+    );
     expect(auditCreate).toHaveBeenCalledTimes(1);
   });
 
@@ -118,16 +133,18 @@ describe("PlatformMembershipRepository administration", () => {
       )
     } as never);
 
-    await expect(repository.updateBenefitWithAudit({
-      actorId: 9,
-      benefitCode: "priority_request",
-      isGloballyEnabled: false,
-      sortOrder: 2,
-      nameTranslations,
-      descriptionTranslations,
-      expectedLockVersion: 2,
-      audit: { actorId: 9, action: "benefit.update", targetType: "benefit" }
-    })).resolves.toEqual({ kind: "version_conflict" });
+    await expect(
+      repository.updateBenefitWithAudit({
+        actorId: 9,
+        benefitCode: "priority_request",
+        isGloballyEnabled: false,
+        sortOrder: 2,
+        nameTranslations,
+        descriptionTranslations,
+        expectedLockVersion: 2,
+        audit: { actorId: 9, action: "benefit.update", targetType: "benefit" }
+      })
+    ).resolves.toEqual({ kind: "version_conflict" });
     expect(auditCreate).not.toHaveBeenCalled();
   });
 });

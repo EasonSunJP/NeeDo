@@ -12,7 +12,12 @@ const identity = (
   id,
   userId: 7,
   type,
-  scopeType: type === "technician" ? "technician_profile" : type === "customer" ? "customer_profile" : "global",
+  scopeType:
+    type === "technician"
+      ? "technician_profile"
+      : type === "customer"
+        ? "customer_profile"
+        : "global",
   scopeId: type === "technician" ? 31 : type === "customer" ? 17 : null,
   displayName: type,
   isDefault: options.isDefault ?? false,
@@ -37,22 +42,24 @@ const user = (identities: AuthUserRecord["identities"]): AuthUserRecord => ({
   userRoles: []
 });
 
-const repository = (record: AuthUserRecord | null) => ({
-  findUserById: jest.fn(async () => record)
-}) as unknown as AuthRepositoryPort;
+const repository = (record: AuthUserRecord | null) =>
+  ({
+    findUserById: jest.fn(async () => record)
+  }) as unknown as AuthRepositoryPort;
 
 describe("PersonalIdentityScopeService", () => {
   it("resolves a customer identity to itself", async () => {
-    const service = new PersonalIdentityScopeService(repository(user([
-      identity(70, "customer", { isDefault: true }),
-      identity(71, "scout")
-    ])));
+    const service = new PersonalIdentityScopeService(
+      repository(user([identity(70, "customer", { isDefault: true }), identity(71, "scout")]))
+    );
 
-    await expect(service.resolve({
-      userId: 7,
-      currentIdentityId: 70,
-      currentIdentityType: "customer"
-    })).resolves.toEqual({
+    await expect(
+      service.resolve({
+        userId: 7,
+        currentIdentityId: 70,
+        currentIdentityType: "customer"
+      })
+    ).resolves.toEqual({
       identityId: 70,
       userId: 7,
       identityType: "customer",
@@ -62,16 +69,17 @@ describe("PersonalIdentityScopeService", () => {
   });
 
   it("resolves an affiliate identity to the same account customer identity", async () => {
-    const service = new PersonalIdentityScopeService(repository(user([
-      identity(70, "customer", { isDefault: true }),
-      identity(71, "scout")
-    ])));
+    const service = new PersonalIdentityScopeService(
+      repository(user([identity(70, "customer", { isDefault: true }), identity(71, "scout")]))
+    );
 
-    await expect(service.resolve({
-      userId: 7,
-      currentIdentityId: 71,
-      currentIdentityType: "scout"
-    })).resolves.toEqual({
+    await expect(
+      service.resolve({
+        userId: 7,
+        currentIdentityId: 71,
+        currentIdentityType: "scout"
+      })
+    ).resolves.toEqual({
       identityId: 70,
       userId: 7,
       identityType: "customer",
@@ -84,16 +92,17 @@ describe("PersonalIdentityScopeService", () => {
     ["technician", 72],
     ["merchant_owner", 73]
   ])("keeps %s in its own identity scope", async (type, id) => {
-    const service = new PersonalIdentityScopeService(repository(user([
-      identity(70, "customer", { isDefault: true }),
-      identity(id, type)
-    ])));
+    const service = new PersonalIdentityScopeService(
+      repository(user([identity(70, "customer", { isDefault: true }), identity(id, type)]))
+    );
 
-    await expect(service.resolve({
-      userId: 7,
-      currentIdentityId: id,
-      currentIdentityType: type
-    })).resolves.toEqual({
+    await expect(
+      service.resolve({
+        userId: 7,
+        currentIdentityId: id,
+        currentIdentityType: type
+      })
+    ).resolves.toEqual({
       identityId: id,
       userId: 7,
       identityType: type,
@@ -110,20 +119,22 @@ describe("PersonalIdentityScopeService", () => {
   ])("rejects %s", async (_label, record, currentIdentityId, currentIdentityType) => {
     const service = new PersonalIdentityScopeService(repository(record));
 
-    await expect(service.resolve({ userId: 7, currentIdentityId, currentIdentityType }))
-      .rejects.toMatchObject({ statusCode: 403, message: "error.auth.identity_not_found" });
+    await expect(
+      service.resolve({ userId: 7, currentIdentityId, currentIdentityType })
+    ).rejects.toMatchObject({ statusCode: 403, message: "error.auth.identity_not_found" });
   });
 
   it("rejects an affiliate identity when the account has no active customer identity", async () => {
-    const service = new PersonalIdentityScopeService(repository(user([
-      identity(71, "scout"),
-      identity(70, "customer", { isActive: false })
-    ])));
+    const service = new PersonalIdentityScopeService(
+      repository(user([identity(71, "scout"), identity(70, "customer", { isActive: false })]))
+    );
 
-    await expect(service.resolve({
-      userId: 7,
-      currentIdentityId: 71,
-      currentIdentityType: "scout"
-    })).rejects.toMatchObject({ statusCode: 403, message: "error.auth.identity_not_found" });
+    await expect(
+      service.resolve({
+        userId: 7,
+        currentIdentityId: 71,
+        currentIdentityType: "scout"
+      })
+    ).rejects.toMatchObject({ statusCode: 403, message: "error.auth.identity_not_found" });
   });
 });

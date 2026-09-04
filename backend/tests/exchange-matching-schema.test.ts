@@ -26,9 +26,7 @@ describe("Exchange selective exact matching persistence contract", () => {
     expect(enumBlock("ExchangePostStatus")).toMatch(/CLOSED\s+@map\("closed"\)/);
     expect(enumBlock("ExchangeClaimStatus")).toMatch(/MATCHED\s+@map\("matched"\)/);
     expect(enumBlock("ExchangeClaimStatus")).toMatch(/NOT_SELECTED\s+@map\("not_selected"\)/);
-    expect(enumBlock("ExchangeClaimStatus")).toMatch(
-      /MATCHING_CLOSED\s+@map\("matching_closed"\)/
-    );
+    expect(enumBlock("ExchangeClaimStatus")).toMatch(/MATCHING_CLOSED\s+@map\("matching_closed"\)/);
   });
 
   it("defines one matching aggregate per request with optimistic versioning", () => {
@@ -43,13 +41,17 @@ describe("Exchange selective exact matching persistence contract", () => {
     expect(matching).toMatch(/@@map\("exchange_request_matchings"\)/);
   });
 
-  it("persists selected participants and the active technician reservation lock", () => {
+  it("persists selected participants and transitions their active technician reservation lock to a booking", () => {
     const participant = modelBlock("ExchangeMatchParticipant");
 
     expect(participant).toMatch(/exchangeClaimId\s+Int\s+@unique/);
     expect(participant).toMatch(/participantUserId\s+Int/);
     expect(participant).toMatch(/participantIdentityId\s+Int/);
-    expect(participant).toMatch(/activeReservationKey\s+String\s+@unique/);
+    expect(participant).toMatch(/serviceNameSnapshot\s+String/);
+    expect(participant).toMatch(/serviceDurationSnapshot\s+Int/);
+    expect(participant).toMatch(/bookingOrderId\s+Int\?\s+@unique/);
+    expect(participant).toMatch(/bookedAt\s+DateTime\?/);
+    expect(participant).toMatch(/activeReservationKey\s+String\?\s+@unique/);
     expect(participant).toMatch(/estimatedStartsAt\s+DateTime/);
     expect(participant).toMatch(/estimatedEndsAt\s+DateTime/);
     expect(participant).toMatch(/@@map\("exchange_match_participants"\)/);
@@ -63,6 +65,9 @@ describe("Exchange selective exact matching persistence contract", () => {
     expect(event).toMatch(/payloadFingerprint\s+String\?/);
     expect(event).toMatch(/@@unique\(\[matchingId, sequence\]/);
     expect(event).toMatch(/@@map\("exchange_match_events"\)/);
+    expect(enumBlock("ExchangeMatchEventType")).toMatch(
+      /BOOKINGS_CREATED\s+@map\("bookings_created"\)/
+    );
   });
 
   it("creates, backfills, and restricts the three matching tables", () => {

@@ -11,43 +11,49 @@ const author = {
   username: "Aya",
   avatarUrl: null,
   createdAt: now,
-  identities: [
-    { type: "customer", displayName: "Aya", isDefault: true }
-  ]
+  identities: [{ type: "customer", displayName: "Aya", isDefault: true }]
 };
 
-const createFixture = (overrides: {
-  contacts?: Array<{ contactUserId: number; contactIdentityId: number }>;
-  mediaAssets?: Array<{
-    id: number;
-    checksumSha256: string;
-    url: string;
-    createdAt: Date;
-  }>;
-} = {}) => {
+const createFixture = (
+  overrides: {
+    contacts?: Array<{ contactUserId: number; contactIdentityId: number }>;
+    mediaAssets?: Array<{
+      id: number;
+      checksumSha256: string;
+      url: string;
+      createdAt: Date;
+    }>;
+  } = {}
+) => {
   let notificationId = 800;
   const transaction = {
     contact: {
-      findMany: jest.fn(async () => overrides.contacts ?? [
-        { contactUserId: 52, contactIdentityId: 152 },
-        { contactUserId: 63, contactIdentityId: 163 }
-      ])
+      findMany: jest.fn(
+        async () =>
+          overrides.contacts ?? [
+            { contactUserId: 52, contactIdentityId: 152 },
+            { contactUserId: 63, contactIdentityId: 163 }
+          ]
+      )
     },
     mediaAsset: {
-      findMany: jest.fn(async () => overrides.mediaAssets ?? [
-        {
-          id: 301,
-          checksumSha256: firstChecksum,
-          url: `/media/content/${firstChecksum}.png`,
-          createdAt: now
-        },
-        {
-          id: 302,
-          checksumSha256: secondChecksum,
-          url: `/media/content/${secondChecksum}.webp`,
-          createdAt: now
-        }
-      ]),
+      findMany: jest.fn(
+        async () =>
+          overrides.mediaAssets ?? [
+            {
+              id: 301,
+              checksumSha256: firstChecksum,
+              url: `/media/content/${firstChecksum}.png`,
+              createdAt: now
+            },
+            {
+              id: 302,
+              checksumSha256: secondChecksum,
+              url: `/media/content/${secondChecksum}.webp`,
+              createdAt: now
+            }
+          ]
+      ),
       updateMany: jest.fn(async () => ({ count: 2 }))
     },
     socialPost: {

@@ -15,12 +15,14 @@ describe("TechnicianDataCenterRepository", () => {
       }))
     };
     const technicianShopAffiliation = {
-      findMany: jest.fn(async () => [{
-        shopId: 73,
-        relationshipType: "EXCLUSIVE",
-        startsAt: new Date("2026-04-01T00:00:00.000Z"),
-        shop: { name: "GINZA Calm Body Lab" }
-      }])
+      findMany: jest.fn(async () => [
+        {
+          shopId: 73,
+          relationshipType: "EXCLUSIVE",
+          startsAt: new Date("2026-04-01T00:00:00.000Z"),
+          shop: { name: "GINZA Calm Body Lab" }
+        }
+      ])
     };
     const order = {
       id: 501,
@@ -41,9 +43,7 @@ describe("TechnicianDataCenterRepository", () => {
       }
     };
     const bookingOrder = {
-      findMany: jest.fn()
-        .mockResolvedValueOnce([order])
-        .mockResolvedValueOnce([order]),
+      findMany: jest.fn().mockResolvedValueOnce([order]).mockResolvedValueOnce([order]),
       count: jest.fn(async () => 2),
       findFirst: jest.fn(async () => null)
     };
@@ -70,25 +70,27 @@ describe("TechnicianDataCenterRepository", () => {
         deductionRulesJson: [],
         updatedAt: now
       })),
-      findMany: jest.fn(async () => [{
-        id: 81,
-        shopId: 73,
-        technicianProfileId: 31,
-        name: "专属技师",
-        wageMode: "commission",
-        baseSalaryJpy: 280_000,
-        hourlyRateJpy: 0,
-        dailyRateJpy: 0,
-        fixedOrderPayJpy: 0,
-        commissionRateBps: 5000,
-        extensionCommissionRateBps: 7000,
-        nominationFeeJpy: 1_000,
-        guaranteedMinimumJpy: 0,
-        ndpFeeBearer: "shop",
-        technicianNdpShareBps: 0,
-        bonusRulesJson: [],
-        deductionRulesJson: []
-      }])
+      findMany: jest.fn(async () => [
+        {
+          id: 81,
+          shopId: 73,
+          technicianProfileId: 31,
+          name: "专属技师",
+          wageMode: "commission",
+          baseSalaryJpy: 280_000,
+          hourlyRateJpy: 0,
+          dailyRateJpy: 0,
+          fixedOrderPayJpy: 0,
+          commissionRateBps: 5000,
+          extensionCommissionRateBps: 7000,
+          nominationFeeJpy: 1_000,
+          guaranteedMinimumJpy: 0,
+          ndpFeeBearer: "shop",
+          technicianNdpShareBps: 0,
+          bonusRulesJson: [],
+          deductionRulesJson: []
+        }
+      ])
     };
     const shopFinanceRuleSet = {
       findFirst: jest.fn(async () => null),
@@ -126,9 +128,11 @@ describe("TechnicianDataCenterRepository", () => {
       recognizedIncomeByOrderId: { 501: 5_000 },
       recentOrders: [{ id: 501, serviceName: "肩颈护理", status: "completed" }]
     });
-    expect(technicianProfile.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 31, userId: 9, deletedAt: null }
-    }));
+    expect(technicianProfile.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 31, userId: 9, deletedAt: null }
+      })
+    );
     expect(bookingOrder.findMany.mock.calls[0]?.[0]).toMatchObject({
       where: {
         technicianProfileId: 31,
@@ -137,14 +141,16 @@ describe("TechnicianDataCenterRepository", () => {
       }
     });
     expect(bookingOrder.findMany.mock.calls[1]?.[0]).toMatchObject({ take: 3 });
-    expect(payslipLine.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        orderId: { in: [501] },
-        payslip: expect.objectContaining({
-          technicianProfileId: 31,
-          status: { in: ["published", "confirmed", "approved", "scheduled", "paid", "locked"] }
+    expect(payslipLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orderId: { in: [501] },
+          payslip: expect.objectContaining({
+            technicianProfileId: 31,
+            status: { in: ["published", "confirmed", "approved", "scheduled", "paid", "locked"] }
+          })
         })
       })
-    }));
+    );
   });
 });

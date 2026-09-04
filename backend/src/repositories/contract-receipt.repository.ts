@@ -8,10 +8,7 @@ import type {
 export class ContractReceiptRepository implements ContractReceiptRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async findOwned(
-    userId: number,
-    receiptId: string
-  ): Promise<ContractReceiptRecord | null> {
+  public async findOwned(userId: number, receiptId: string): Promise<ContractReceiptRecord | null> {
     const receipt = await this.client.contractAcceptance.findFirst({
       where: { receiptId, acceptedByUserId: userId, deletedAt: null },
       select: {

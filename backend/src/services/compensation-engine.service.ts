@@ -101,8 +101,7 @@ export class CompensationEngine {
       componentMode ? (input.nominationChargeAmountJpy ?? 0) : 0
     );
     const nominated = componentMode && Boolean(input.nominated);
-    const serviceAmountJpy =
-      baseServiceAmountJpy + extensionAmountJpy + nominationChargeAmountJpy;
+    const serviceAmountJpy = baseServiceAmountJpy + extensionAmountJpy + nominationChargeAmountJpy;
     const platformFeeNdp = Math.round(input.platformFeeNdp ?? 500);
     const workedMinutes = Math.max(0, input.workedMinutes ?? 60);
     const basePayJpy = this.calculateBasePay(ruleSet, workedMinutes);
@@ -128,8 +127,12 @@ export class CompensationEngine {
     const deductionJpy = appliedDeductionRules.reduce((sum, rule) => sum + rule.amountJpy, 0);
     const technicianGrossIncomeJpy = Math.max(
       0,
-      basePayJpy + commissionPayJpy + nominationPayJpy +
-        minimumGuaranteeAdjustmentJpy + bonusPayJpy - deductionJpy
+      basePayJpy +
+        commissionPayJpy +
+        nominationPayJpy +
+        minimumGuaranteeAdjustmentJpy +
+        bonusPayJpy -
+        deductionJpy
     );
     const { shopNdpShareNdp, technicianNdpShareNdp } = this.splitPlatformFee(
       ruleSet,

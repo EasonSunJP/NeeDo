@@ -59,9 +59,7 @@ export class MerchantFinanceRulesRepository implements MerchantFinanceRulesRepos
           dailyRateJpy: input.dailyRateJpy,
           fixedOrderPayJpy: input.fixedOrderPayJpy,
           commissionRateBps: this.percentToBps(input.commissionRatePercent),
-          extensionCommissionRateBps: this.percentToBps(
-            input.extensionCommissionRatePercent
-          ),
+          extensionCommissionRateBps: this.percentToBps(input.extensionCommissionRatePercent),
           nominationFeeJpy: input.nominationFeeJpy,
           guaranteedMinimumJpy: input.guaranteedMinimumJpy,
           ndpFeeBearer: input.ndpFeeBearer,

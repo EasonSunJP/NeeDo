@@ -165,24 +165,17 @@ describe("agent commission rule HTTP API", () => {
     const fixture = createFixture();
     const path = `/api/v1/backoffice/agents/${agentPublicId}/commission-rules`;
     await request(fixture.app).get(path).expect(401);
-    await request(fixture.app)
-      .get(path)
-      .set("Authorization", "Bearer no-permission")
-      .expect(403);
+    await request(fixture.app).get(path).set("Authorization", "Bearer no-permission").expect(403);
     await request(fixture.app)
       .post(path)
       .set("Authorization", "Bearer read-only")
       .send({})
       .expect(403);
-    await request(fixture.app)
-      .get(path)
-      .set("Authorization", "Bearer shop")
-      .expect(403)
-      .expect({
-        code: ERROR_CODES.IDENTITY_FORBIDDEN,
-        message: "error.identity.forbidden",
-        data: null
-      });
+    await request(fixture.app).get(path).set("Authorization", "Bearer shop").expect(403).expect({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.identity.forbidden",
+      data: null
+    });
     expect(fixture.repository.getOverview).not.toHaveBeenCalled();
   });
 
@@ -220,9 +213,7 @@ describe("agent commission rule HTTP API", () => {
       paths: Record<string, Record<string, Record<string, unknown>>>;
       components: { schemas: Record<string, unknown> };
     };
-    const path = document.paths[
-      "/api/v1/backoffice/agents/{agentPublicId}/commission-rules"
-    ];
+    const path = document.paths["/api/v1/backoffice/agents/{agentPublicId}/commission-rules"];
     expect(path.get).toMatchObject({
       "x-permission": "backoffice:agent:read",
       security: [{ bearerAuth: [] }]

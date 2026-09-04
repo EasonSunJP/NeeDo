@@ -72,9 +72,7 @@ describe("IdentityApplicationPolicyService", () => {
   });
 
   it("rejects stale optimistic versions", () => {
-    expect(() => policy.assertVersion(4, 5)).toThrow(
-      "error.identity_application.version_conflict"
-    );
+    expect(() => policy.assertVersion(4, 5)).toThrow("error.identity_application.version_conflict");
     expect(() => policy.assertVersion(5, 5)).not.toThrow();
   });
 

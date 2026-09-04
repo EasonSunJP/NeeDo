@@ -58,7 +58,9 @@ export class PersonalIdentityScopeService {
           CUSTOMER_IDENTITY_TYPES.has(identity.type) &&
           isAvailableIdentity(identity)
       )
-      .sort((left, right) => Number(right.isDefault) - Number(left.isDefault) || left.id - right.id)[0];
+      .sort(
+        (left, right) => Number(right.isDefault) - Number(left.isDefault) || left.id - right.id
+      )[0];
 
     if (!customerIdentity) {
       throw this.identityNotFound();
