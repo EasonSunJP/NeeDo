@@ -322,6 +322,24 @@ describe("AWS Staging CloudFormation contract", () => {
     expect(verification).toContain('test "$(docker compose version --short)" = "$compose_version"');
   });
 
+  it("installs the pinned ARM64 Docker Buildx plugin with its release digest", () => {
+    const bootstrap = resourceBlock("HostBootstrapDocument");
+    const verification = resourceBlock("HostVerificationDocument");
+    const buildxVersion = "0.37.0";
+    const buildxSha256 = "d263ce31bd2c9e9210aaa2c7537c67802bccabcd342e4c9fe4907085ddb41aa5";
+    const buildxUrl = `https://github.com/docker/buildx/releases/download/v${buildxVersion}/buildx-v${buildxVersion}.linux-arm64`;
+
+    expect(bootstrap).toContain(`buildx_version=${buildxVersion}`);
+    expect(bootstrap).toContain(`buildx_sha256=${buildxSha256}`);
+    expect(bootstrap).toContain(`buildx_url=${buildxUrl}`);
+    expect(bootstrap).toContain("buildx_plugin=/usr/local/lib/docker/cli-plugins/docker-buildx");
+    expect(bootstrap).toContain('install -m 0755 "$buildx_tmp" "$buildx_plugin"');
+    expect(bootstrap).toContain('test "$(docker buildx version | awk \'{print $2}\' | sed \'s/^v//\')" = "$buildx_version"');
+    expect(bootstrap).not.toMatch(/docker\/buildx\/releases\/latest/);
+    expect(verification).toContain(`buildx_version=${buildxVersion}`);
+    expect(verification).toContain('test "$(docker buildx version | awk \'{print $2}\' | sed \'s/^v//\')" = "$buildx_version"');
+  });
+
   it("defines the exact alarm metrics, thresholds, dimensions, and SNS actions", () => {
     const alarms = {
       StatusCheckFailedAlarm: ["AWS/EC2", "StatusCheckFailed", "Maximum", "1", "missing", ["- Name: InstanceId", "Value: !Ref Instance"]],
