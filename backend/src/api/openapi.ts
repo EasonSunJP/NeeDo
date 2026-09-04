@@ -15452,7 +15452,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": jsonDataResponse("Action-bound email verification challenge", {
             $ref: "#/components/schemas/AuthChallengeMetadata"
           }),
-          ...authActionErrorResponses
+          ...authActionErrorResponses,
+          "403": jsonErrorResponse(
+            "40313 error.auth.registration_disabled — registration is disabled for this environment"
+          )
         }
       }
     },
@@ -15471,7 +15474,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": jsonDataResponse("Created account token pair and generated NeeDo ID", {
             $ref: "#/components/schemas/TokenPairWithNeedoId"
           }),
-          ...authActionErrorResponses
+          ...authActionErrorResponses,
+          "403": jsonErrorResponse(
+            "40313 error.auth.registration_disabled — registration is disabled for this environment"
+          )
         }
       }
     },

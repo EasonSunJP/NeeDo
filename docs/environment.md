@@ -84,6 +84,11 @@ and [error handling](https://developers.deepl.com/docs/best-practices/error-hand
 
 ### Verified registration and account-security variables
 
+- `AUTH_REGISTRATION_ENABLED`: defaults to `true` when absent. Set it to
+  `false` to fail closed for both public email-registration endpoints before
+  request validation, rate limiting, OTP delivery, challenge creation, or
+  database writes. A disabled endpoint returns HTTP `403` with
+  `{ "code": 40313, "message": "error.auth.registration_disabled", "data": null }`.
 - `AUTH_VERIFICATION_SECRET`: dedicated secret, at least 32 characters and
   different from both JWT secrets. It HMACs OTP digests/cooldown identities and
   derives the AES-GCM key for Google nonce encryption. It does not encrypt the

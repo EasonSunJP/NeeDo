@@ -677,6 +677,28 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
 };
 
 describe("verified email registration and formal password authentication", () => {
+  it("fails closed before validation and side effects when registration is disabled", async () => {
+    const fixture = await createAuthFixture({
+      ...env,
+      AUTH_REGISTRATION_ENABLED: false
+    } as Parameters<typeof createApp>[0]);
+
+    for (const path of ["/api/v1/auth/register", "/api/v1/auth/register/verify"]) {
+      const response = await request(fixture.app).post(path).send({ secret: "must-not-be-read" });
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        code: ERROR_CODES.REGISTRATION_DISABLED,
+        message: "error.auth.registration_disabled",
+        data: null
+      });
+    }
+
+    expect(fixture.deliveredOtps).toHaveLength(0);
+    expect(fixture.otpDeliveryClient.sendOtp).not.toHaveBeenCalled();
+    expect(fixture.repository.createVerifiedBaselineCustomer).not.toHaveBeenCalled();
+    expect(fixture.registrations).toHaveLength(0);
+  });
+
   it("starts a verified email registration without creating a user", async () => {
     const fixture = await createAuthFixture();
 

@@ -1,4 +1,4 @@
-import { Router, type NextFunction, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { AuthController } from "../controllers/auth.controller";
@@ -41,12 +41,28 @@ export const AUTH_ROUTE_PERMISSIONS = {
   passwordSetup: "auth:password:setup"
 } as const;
 
+export const createRequireRegistrationEnabled = (config: AppConfig): RequestHandler =>
+  (_request, _response, next): void => {
+    if (config.AUTH_REGISTRATION_ENABLED === false) {
+      next(
+        new AppError({
+          code: ERROR_CODES.REGISTRATION_DISABLED,
+          message: "error.auth.registration_disabled",
+          statusCode: 403
+        })
+      );
+      return;
+    }
+    next();
+  };
+
 export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
   const router = Router();
   const authService = createAuthServiceForRoutes(config, dependencies);
   const controller = new AuthController(authService);
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
+  const requireRegistrationEnabled = createRequireRegistrationEnabled(config);
   const registrationRateLimit = createAuthRegistrationRateLimitMiddleware(config);
   const verificationRateLimit = createAuthVerificationRateLimitMiddleware(config);
   const googleInitRateLimit = createGoogleInitRateLimitMiddleware(config);
@@ -57,12 +73,14 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post("/auth/login", validateRequest({ body: loginBodySchema }), controller.login);
   router.post(
     "/auth/register",
+    requireRegistrationEnabled,
     registrationRateLimit,
     validateRequest({ body: registerBodySchema }),
     controller.register
   );
   router.post(
     "/auth/register/verify",
+    requireRegistrationEnabled,
     verificationRateLimit,
     validateRequest({ body: registerVerifyBodySchema }),
     controller.verifyRegistration

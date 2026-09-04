@@ -206,6 +206,7 @@ const envSchema = z
     AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
     AUTH_ACTION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),
     AUTH_REGISTRATION_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    AUTH_REGISTRATION_ENABLED: booleanSchema.default(true),
     AUTH_GOOGLE_ENABLED: booleanSchema.default(true),
     AUTH_GOOGLE_INIT_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
     AUTH_GOOGLE_CREDENTIAL_RATE_LIMIT_MAX: z.coerce.number().int().positive(),

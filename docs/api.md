@@ -50,6 +50,11 @@ NeeDoID. A NeeDoID is lowercase `n` plus ten decimal digits. The initial
 nickname/profile display name equals the NeeDoID; later display-name edits do
 not change the NeeDoID. Subsequent password login does not send another OTP.
 
+When `AUTH_REGISTRATION_ENABLED=false`, both public registration endpoints
+fail before request validation, rate limiting, OTP delivery, challenge creation,
+or database writes with HTTP `403` and
+`{ "code": 40313, "message": "error.auth.registration_disabled", "data": null }`.
+
 `loginIdentifier` accepts the normalized verified email address or immutable
 NeeDoID. It does not accept an editable nickname. Invalid email/NeeDoID/password
 combinations use the same generic invalid-credentials response.
