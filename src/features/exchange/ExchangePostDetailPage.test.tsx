@@ -315,7 +315,7 @@ describe("ExchangePostDetailPage", () => {
     });
     await renderDetail();
     await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，请查看已选服务者的预约状态；支付不会自动扣款"));
-    expect(document.body.textContent).toContain("已匹配服务者可单独确认预约；支付仍未启用");
+    expect(document.body.textContent).toContain("确认预约后，每位已匹配服务者各有一张独立订单；支付仍未启用");
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull();
     expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(true);
   });

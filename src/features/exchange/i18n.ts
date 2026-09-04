@@ -26,7 +26,7 @@ const translations = {
   intelligenceValidUntil: { zh: "情报有效至", "zh-Hant": "情報有效至", ja: "サービス情報掲載終了", en: "Service post valid until", ko: "서비스 정보 마감" },
   paymentInformation: { zh: "支付信息", "zh-Hant": "支付資訊", ja: "支払い情報", en: "Payment information", ko: "결제 정보" },
   bookingPaymentDeferred: { zh: "预约与支付后续开放", "zh-Hant": "預約與支付後續開放", ja: "予約と支払いは後続フェーズで公開", en: "Booking and payment will open in a later phase", ko: "예약 및 결제는 후속 단계에서 제공됩니다" },
-  matchedBookingAvailablePaymentDeferred: { zh: "已匹配服务者可单独确认预约；支付仍未启用", "zh-Hant": "可為已配對服務者個別確認預約；付款仍未啟用", ja: "マッチ済みの提供者ごとに予約を確定できます。支払いはまだ利用できません。", en: "Bookings can be confirmed for each matched provider; payment is not enabled yet.", ko: "매칭된 제공자별로 예약을 확정할 수 있습니다. 결제는 아직 제공되지 않습니다." },
+  matchedBookingAvailablePaymentDeferred: { zh: "确认预约后，每位已匹配服务者各有一张独立订单；支付仍未启用", "zh-Hant": "確認預約後，每位已配對服務者各有一張獨立訂單；付款仍未啟用", ja: "予約を確定すると、マッチ済みの提供者ごとに個別の注文が作成されます。支払いはまだ利用できません。", en: "Confirming the booking creates a separate order for each matched provider; payment is not enabled yet.", ko: "예약을 확정하면 매칭된 제공자마다 개별 주문이 생성됩니다. 결제는 아직 제공되지 않습니다." },
   notEnabled: { zh: "暂未启用", "zh-Hant": "暫未啟用", ja: "未提供", en: "Not enabled", ko: "아직 미지원" },
   price: { zh: "价格", "zh-Hant": "價格", ja: "価格", en: "Price", ko: "가격" },
   prepayment: { zh: "需预付", "zh-Hant": "需預付", ja: "事前支払い", en: "Prepayment", ko: "선결제" },
