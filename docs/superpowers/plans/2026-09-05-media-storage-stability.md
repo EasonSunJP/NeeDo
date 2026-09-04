@@ -24,6 +24,14 @@
 
 The remaining unchecked browser acceptance step must be completed with the user's authenticated session before claiming full acceptance.
 
+### Integration preflight (2026-09-05)
+
+- Synced current `main@288cf0ec` into this repair branch as `09401922`, without conflicts. The latest notification schema and Exchange implementation remain unchanged relative to main; no main worktree files or running standard services were modified.
+- Regenerated this branch's Prisma client only. No migration was applied and no database records were written.
+- Repeated compatibility checks on the combined tree: frontend 15 files / 291 tests passed, backend 7 suites / 161 tests passed (including notification schema and realtime service). Frontend lint and frontend/backend builds passed; existing Vite warnings remain.
+- Standard-port baseline was rechecked: the original IM image still returns 404 on port 3000 while readiness is healthy. Running service cwd is `main-agent-admin-integration`, not this repair branch. Switching to this fix requires local-main integration and restarting the formal launcher so its media-directory environment is updated.
+- The previous browser tab is no longer available in the browser session; authenticated page acceptance is still unproven. Local-main merge/restart approval was requested separately; no remote push or deployment is authorized by this preflight.
+
 ## Global Constraints
 
 - One reversible Step 13 microstep only; do not merge `codex/im-message-lifecycle`.
@@ -101,7 +109,7 @@ describe("formal media storage", () => {
 
 - [x] **Step 2: Run the resolver tests and verify RED**
 
-Run: `npx vitest run scripts/formal-media-storage.test.mjs`  
+Run: `npx vitest run scripts/formal-media-storage.test.mjs`
 Expected: FAIL because `scripts/formal-media-storage.mjs` does not exist.
 
 - [x] **Step 3: Implement the resolver**
@@ -151,7 +159,7 @@ export function resolveFormalMediaStorage({ env, projectRoot, gitCommonDirectory
 
 - [x] **Step 4: Run the resolver tests and verify GREEN**
 
-Run: `npx vitest run scripts/formal-media-storage.test.mjs`  
+Run: `npx vitest run scripts/formal-media-storage.test.mjs`
 Expected: 4 tests pass.
 
 - [x] **Step 5: Wire the resolver into every formal API process**
@@ -183,7 +191,7 @@ Each API `start(..., { env })` call must spread `mediaStorageEnv` before its ser
 
 - [x] **Step 6: Re-run launcher tests**
 
-Run: `npx vitest run scripts/formal-media-storage.test.mjs scripts/dev-formal-config.test.mjs`  
+Run: `npx vitest run scripts/formal-media-storage.test.mjs scripts/dev-formal-config.test.mjs`
 Expected: both test files pass with no warnings.
 
 - [x] **Step 7: Commit Task 1**
@@ -226,7 +234,7 @@ it.each(["IM_MEDIA_STORAGE_DIR", "CONTENT_MEDIA_STORAGE_DIR"])(
 
 - [x] **Step 2: Run the production test and verify RED**
 
-Run: `npm test -- --runInBand tests/production-safety.test.ts` from `backend/`.  
+Run: `npm test -- --runInBand tests/production-safety.test.ts` from `backend/`.
 Expected: the two new cases fail because relative paths are currently accepted.
 
 - [x] **Step 3: Add production-only absolute path validation**
@@ -245,7 +253,7 @@ Update `backend/.env.dev.example` comments to explain that `npm run dev:formal` 
 
 - [x] **Step 4: Run the production test and verify GREEN**
 
-Run: `npm test -- --runInBand tests/production-safety.test.ts` from `backend/`.  
+Run: `npm test -- --runInBand tests/production-safety.test.ts` from `backend/`.
 Expected: all cases pass.
 
 - [x] **Step 5: Commit Task 2**
@@ -289,7 +297,7 @@ Click the failure button and assert a fresh element with the same formal URL is 
 
 - [x] **Step 2: Run the IM test and verify RED**
 
-Run: `npx vitest run src/features/im/components.action-menu.test.tsx`  
+Run: `npx vitest run src/features/im/components.action-menu.test.tsx`
 Expected: new assertions fail because the raw media elements remain visible and no expired/failure states exist.
 
 - [x] **Step 3: Add the formal media state and minimal stateful renderers**
@@ -335,9 +343,9 @@ if (message.ext?.mediaState === "expired") {
 
 - [x] **Step 5: Run IM and i18n verification**
 
-Run: `npx vitest run src/features/im/components.action-menu.test.tsx src/features/im/formal-api.test.ts`  
-Expected: both files pass.  
-Run: `npm run i18n:audit`  
+Run: `npx vitest run src/features/im/components.action-menu.test.tsx src/features/im/formal-api.test.ts`
+Expected: both files pass.
+Run: `npm run i18n:audit`
 Expected: exit 0 with no missing entries introduced by this task.
 
 - [x] **Step 6: Commit Task 3**
@@ -373,7 +381,7 @@ Click once and assert the image remounts without calling `onOpen`; after a succe
 
 - [x] **Step 2: Run the Social test and verify RED**
 
-Run: `npx vitest run src/features/social/components/UnifiedSocialUi.test.ts`  
+Run: `npx vitest run src/features/social/components/UnifiedSocialUi.test.ts`
 Expected: FAIL because `SocialMediaTileButton` is not exported.
 
 - [x] **Step 3: Implement the stateful Social tile**
@@ -411,7 +419,7 @@ Keep the existing grid classes, video play glyph, duration label, hidden-count o
 
 - [x] **Step 4: Run Social and combined component tests**
 
-Run: `npx vitest run src/features/social/components/UnifiedSocialUi.test.ts src/features/im/components.action-menu.test.tsx`  
+Run: `npx vitest run src/features/social/components/UnifiedSocialUi.test.ts src/features/im/components.action-menu.test.tsx`
 Expected: both files pass with no React DOM nesting warning.
 
 - [x] **Step 5: Commit Task 4**

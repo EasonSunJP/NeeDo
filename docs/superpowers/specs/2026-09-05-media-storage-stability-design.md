@@ -1,6 +1,6 @@
 # NeeDo 媒体存储稳定性与失败状态设计
 
-**Date:** 2026-09-05  
+**Date:** 2026-09-05
 **Status:** Implemented on `codex/media-storage-stability`; authenticated page acceptance and main integration pending
 **Scope:** Step 13 IM/Social 媒体交付的一个可回滚微步骤。只处理跨 worktree 的稳定磁盘路径、现有文件恢复和前端失败状态；不在本步骤合并完整 IM 生命周期分支。
 
