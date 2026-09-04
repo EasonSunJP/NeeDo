@@ -139,6 +139,50 @@ describe("selective staging account exporter", () => {
       .rejects.toThrow("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
   });
 
+  it("rejects the unsupported merchant-account role scope alias", async () => {
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
+    fixtureDirectories.add(outputDirectory);
+    const rowsByQuery = new Map<string, Array<Record<string, unknown>>>([
+      [ACCOUNT_EXPORT_QUERIES.activeUsers, [{ id: 1 }]],
+      [ACCOUNT_EXPORT_QUERIES.merchantAccounts, [{ id: 20 }]],
+      [ACCOUNT_EXPORT_QUERIES.merchant_accounts, [{ id: 20, owner_user_id: 1 }]],
+      [ACCOUNT_EXPORT_QUERIES.users, [{ id: 1, is_test_account: 1, session_generation: 0 }]],
+      [ACCOUNT_EXPORT_QUERIES.user_roles, [{ id: 2, user_id: 1, role_id: 99, role_code: "merchant_owner", scope_type: "merchant-account", scope_id: 20 }]],
+      [ACCOUNT_EXPORT_QUERIES.migrations, []]
+    ]);
+    const port: SelectiveAccountExportPort = {
+      deployEnv: "local",
+      outputPath: path.join(outputDirectory, "bundle.json.gz"),
+      sourceDatabaseUrl: "mysql://user:password@127.0.0.1:3306/needo_dev",
+      query: async (query) => rowsByQuery.get(query) ?? []
+    };
+
+    await expect(exportSelectiveAccounts(port, new Date("2026-09-05T00:00:00.000Z")))
+      .rejects.toThrow("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  });
+
+  it("rejects the unsupported merchantAccount role scope alias", async () => {
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
+    fixtureDirectories.add(outputDirectory);
+    const rowsByQuery = new Map<string, Array<Record<string, unknown>>>([
+      [ACCOUNT_EXPORT_QUERIES.activeUsers, [{ id: 1 }]],
+      [ACCOUNT_EXPORT_QUERIES.merchantAccounts, [{ id: 20 }]],
+      [ACCOUNT_EXPORT_QUERIES.merchant_accounts, [{ id: 20, owner_user_id: 1 }]],
+      [ACCOUNT_EXPORT_QUERIES.users, [{ id: 1, is_test_account: 1, session_generation: 0 }]],
+      [ACCOUNT_EXPORT_QUERIES.user_roles, [{ id: 2, user_id: 1, role_id: 99, role_code: "merchant_owner", scope_type: "merchantAccount", scope_id: 20 }]],
+      [ACCOUNT_EXPORT_QUERIES.migrations, []]
+    ]);
+    const port: SelectiveAccountExportPort = {
+      deployEnv: "local",
+      outputPath: path.join(outputDirectory, "bundle.json.gz"),
+      sourceDatabaseUrl: "mysql://user:password@127.0.0.1:3306/needo_dev",
+      query: async (query) => rowsByQuery.get(query) ?? []
+    };
+
+    await expect(exportSelectiveAccounts(port, new Date("2026-09-05T00:00:00.000Z")))
+      .rejects.toThrow("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  });
+
   it("rejects a candidate shop missing from the final exported rows", async () => {
     const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
     fixtureDirectories.add(outputDirectory);

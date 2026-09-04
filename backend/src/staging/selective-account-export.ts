@@ -224,7 +224,7 @@ const assertRoleScope = (row: SyncRow, references: ExportReferences): void => {
       ? references.technicianProfileIds
       : scopeType === "shop"
         ? references.shopIds
-        : ["merchant", "merchant_account", "merchant-account", "merchantAccount"].includes(scopeType)
+        : ["merchant", "merchant_account"].includes(scopeType)
           ? references.merchantAccountIds
           : undefined;
   if (!selected) throw new Error("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
