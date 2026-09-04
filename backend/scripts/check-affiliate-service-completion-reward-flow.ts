@@ -240,6 +240,8 @@ const main = async (): Promise<void> => {
             create: {
               walletId: publisherWallet.id,
               totalFrozenNdp: input.totalBudgetNdp,
+              commissionFrozenNdp: input.totalBudgetNdp,
+              platformFeeFrozenNdp: 0,
               idempotencyKey: `${marker}-${input.label}-reservation`
             }
           }
@@ -933,6 +935,6 @@ const main = async (): Promise<void> => {
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error);
   process.exitCode = 1;
 });
