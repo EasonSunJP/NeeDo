@@ -41,17 +41,30 @@ const refreshBundleIntegrity = (bundle: SelectiveAccountSyncBundle): SelectiveAc
 
 const fullGraphBundle = (): SelectiveAccountSyncBundle => {
   const bundle = validBundle();
-  bundle.tables.users[0].values = { email: "sync-1@example.test", needo_id: "N1", is_test_account: 1, session_generation: 0 };
-  bundle.tables.shops.push({ sourceId: 1, values: { shop_no: "S000000001", owner_user_id: 1, name: "shop", city: "Tokyo", address: "address", pricing_mode_updated_by: 1 } });
-  bundle.tables.merchant_accounts.push({ sourceId: 1, values: { code: "merchant", owner_no: "M000000001", owner_user_id: 1, settlement_bank_account_id: null, name: "merchant" } });
-  bundle.tables.customer_profiles.push({ sourceId: 1, values: { user_id: 1, display_name: "customer", languages: "[\"ja\"]" } });
-  bundle.tables.technician_profiles.push({ sourceId: 1, values: { user_id: 1, shop_id: 1, display_name: "tech", city: "Tokyo", service_areas: "[\"Tokyo\"]", languages: "[\"ja\"]" } });
-  bundle.tables.user_identities.push({ sourceId: 1, values: { user_id: 1, type: "customer", active_key: "identity-key", scope_type: "customer_profile", scope_id: 1, is_default: 1, is_active: 1 } });
-  bundle.tables.merchant_identity_profiles.push({ sourceId: 1, values: { identity_id: 1, user_id: 1, display_name: "merchant identity", languages: "[\"ja\"]" } });
-  bundle.tables.user_roles[0].values = { user_id: 1, role_code: "admin", scope_type: "merchant", scope_id: 1 };
-  bundle.tables.merchant_shop_memberships.push({ sourceId: 1, values: { merchant_account_id: 1, shop_id: 1, active_key: "membership-key", starts_at: "2026-09-05 00:00:00", created_by_id: 1, removed_by_id: null } });
-  bundle.tables.technician_shop_affiliations.push({ sourceId: 1, values: { technician_profile_id: 1, shop_id: 1, relationship_type: "EMPLOYEE", work_status: "ACTIVE", active_key: "affiliation-key", created_by_id: 1, updated_by_id: 1 } });
-  bundle.tables.public_identifiers.push({ sourceId: 1, values: { public_id: "PUBLIC0001", number_part: "0000000001", kind: "USER", user_identity_id: 1, shop_id: null, merchant_account_id: null, customer_support_account_id: null } });
+  for (const user of bundle.tables.users) user.values = { ...user.values, username: `user-${user.sourceId}`, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" };
+  bundle.tables.shops.push({ sourceId: 1, values: { shop_no: "S000000001", owner_user_id: 1, name: "shop", city: "Tokyo", address: "address", pricing_mode: "merchant", pricing_mode_updated_by: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.merchant_accounts.push({ sourceId: 1, values: { code: "merchant", owner_no: "M000000001", owner_user_id: 1, settlement_bank_account_id: null, name: "merchant", status: "active", payment_responsibility: "group_consolidated", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.customer_profiles.push({ sourceId: 1, values: { user_id: 1, display_name: "customer", membership_grant_mode: "self_service", membership_granted_by_id: 1, languages: "[\"ja\"]", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.technician_profiles.push({ sourceId: 1, values: { user_id: 1, shop_id: 1, display_name: "tech", city: "Tokyo", service_areas: "[\"Tokyo\"]", languages: "[\"ja\"]", employment_type: "INDEPENDENT", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.user_identities.push(
+    { sourceId: 1, values: { user_id: 1, type: "customer", active_key: "identity-key", scope_type: "customer_profile", scope_id: 1, is_default: 1, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 2, values: { user_id: 1, type: "shop", active_key: "shop-identity-key", scope_type: "shop", scope_id: 1, is_default: 0, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 3, values: { user_id: 1, type: "merchant", active_key: "merchant-identity-key", scope_type: "merchant_account", scope_id: 1, is_default: 0, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 4, values: { user_id: 1, type: "technician", active_key: "tech-identity-key", scope_type: "technician_profile", scope_id: 1, is_default: 0, is_active: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } }
+  );
+  bundle.tables.merchant_identity_profiles.push({ sourceId: 1, values: { identity_id: 3, user_id: 1, display_name: "merchant identity", languages: "[\"ja\"]", created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.user_roles = [
+    { sourceId: 1, values: { user_id: 1, role_code: "admin", scope_type: "merchant_account", scope_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 2, values: { user_id: 1, role_code: "admin", scope_type: "shop", scope_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 3, values: { user_id: 1, role_code: "admin", scope_type: "technician_profile", scope_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } }
+  ];
+  bundle.tables.merchant_shop_memberships.push({ sourceId: 1, values: { merchant_account_id: 1, shop_id: 1, active_key: "membership-key", starts_at: "2026-09-05 00:00:00", created_by_id: 1, removed_by_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.technician_shop_affiliations.push({ sourceId: 1, values: { technician_profile_id: 1, shop_id: 1, relationship_type: "exclusive", work_status: "active", active_key: "affiliation-key", created_by_id: 1, updated_by_id: 1, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } });
+  bundle.tables.public_identifiers.push(
+    { sourceId: 1, values: { public_id: "PUBLIC0001", number_part: "0000000001", kind: "u", user_identity_id: 1, shop_id: null, merchant_account_id: null, customer_support_account_id: null, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 2, values: { public_id: "PUBLIC0002", number_part: "0000000002", kind: "s", user_identity_id: null, shop_id: 1, merchant_account_id: null, customer_support_account_id: null, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } },
+    { sourceId: 3, values: { public_id: "PUBLIC0003", number_part: "0000000003", kind: "b", user_identity_id: null, shop_id: null, merchant_account_id: 1, customer_support_account_id: null, created_at: "2026-09-05 00:00:00", updated_at: "2026-09-05 00:00:00" } }
+  );
   return refreshBundleIntegrity(bundle);
 };
 
@@ -209,6 +222,19 @@ describe("selective staging account importer", () => {
     let committed = false;
     let rolledBack = false;
     let ended = false;
+    const requiredColumns: Record<string, readonly string[]> = {
+      users: ["needo_id", "email", "username", "is_test_account"],
+      shops: ["name", "city", "address", "pricing_mode"],
+      merchant_accounts: ["code", "name", "settlement_bank_account_id"],
+      customer_profiles: ["user_id", "display_name", "membership_grant_mode", "membership_granted_by_id"],
+      technician_profiles: ["user_id", "shop_id", "display_name", "city", "employment_type"],
+      user_identities: ["user_id", "type", "scope_type", "scope_id", "is_default", "is_active"],
+      merchant_identity_profiles: ["identity_id", "user_id", "display_name"],
+      user_roles: ["user_id", "role_id", "scope_type", "scope_id"],
+      merchant_shop_memberships: ["merchant_account_id", "shop_id", "starts_at", "created_by_id", "removed_by_id"],
+      technician_shop_affiliations: ["technician_profile_id", "shop_id", "relationship_type", "work_status", "created_by_id", "updated_by_id"],
+      public_identifiers: ["public_id", "number_part", "kind", "user_identity_id", "shop_id", "merchant_account_id", "customer_support_account_id"]
+    };
     const connection = {
       beginTransaction: async () => undefined,
       commit: async () => { committed = true; },
@@ -227,7 +253,19 @@ describe("selective staging account importer", () => {
           const table = sql.match(/^INSERT INTO ([a-z_]+)/u)?.[1];
           const columns = [...sql.matchAll(/`([^`]+)`/gu)].map((match) => match[1]);
           if (!table) throw new Error("test insert table missing");
-          inserted[table].push({ id: nextId++, ...Object.fromEntries(columns.map((column, index) => [column, parameters[index]])) });
+          const values = Object.fromEntries(columns.map((column, index) => [column, parameters[index]]));
+          if (requiredColumns[table]?.some((column) => !(column in values))) throw new Error(`TEST_REQUIRED_COLUMN_MISSING:${table}`);
+          if (table === "users" && (typeof values.email !== "string" || typeof values.needo_id !== "string" || typeof values.username !== "string" || values.is_test_account !== 1)) throw new Error("TEST_TYPE_INVALID:users");
+          if (table === "customer_profiles" && (typeof values.user_id !== "number" || typeof values.membership_granted_by_id !== "number")) throw new Error("TEST_TYPE_INVALID:customer_profiles");
+          if (table === "user_identities" && (typeof values.user_id !== "number" || typeof values.scope_id !== "number" || ![0, 1].includes(Number(values.is_default)) || ![0, 1].includes(Number(values.is_active)))) throw new Error("TEST_TYPE_INVALID:user_identities");
+          if (["merchant_shop_memberships", "technician_shop_affiliations"].includes(table) && ["created_by_id", "removed_by_id", "updated_by_id"].some((column) => column in values && typeof values[column] !== "number")) throw new Error(`TEST_TYPE_INVALID:${table}`);
+          if (table === "shops" && values.pricing_mode !== "merchant") throw new Error("TEST_ENUM_INVALID:shops");
+          if (table === "customer_profiles" && values.membership_grant_mode !== "self_service") throw new Error("TEST_ENUM_INVALID:customer_profiles");
+          if (table === "technician_profiles" && values.employment_type !== "INDEPENDENT") throw new Error("TEST_ENUM_INVALID:technician_profiles");
+          if (table === "technician_shop_affiliations" && (values.relationship_type !== "exclusive" || values.work_status !== "active")) throw new Error("TEST_ENUM_INVALID:technician_shop_affiliations");
+          if (table === "public_identifiers" && (!["u", "s", "b"].includes(String(values.kind)) || [values.user_identity_id, values.shop_id, values.merchant_account_id].filter((value) => value !== null).length !== 1)) throw new Error("TEST_ENUM_INVALID:public_identifiers");
+          for (const jsonColumn of ["languages", "service_areas"]) if (jsonColumn in values && (typeof values[jsonColumn] !== "string" || !Array.isArray(JSON.parse(values[jsonColumn] as string)))) throw new Error(`TEST_JSON_INVALID:${table}`);
+          inserted[table].push({ id: nextId++, ...values });
           return { insertId: nextId - 1 };
         }
         if (sql.startsWith("UPDATE users SET is_test_account")) return { affectedRows: 1 };
@@ -254,6 +292,23 @@ describe("selective staging account importer", () => {
     expect(rolledBack).toBe(false);
     expect(ended).toBe(true);
     expect(Object.values(inserted).every((rows) => rows.length > 0)).toBe(true);
+    const targetUserId = inserted.users[0]?.id;
+    const targetShopId = inserted.shops[0]?.id;
+    const targetMerchantId = inserted.merchant_accounts[0]?.id;
+    const targetCustomerProfileId = inserted.customer_profiles[0]?.id;
+    const targetTechnicianProfileId = inserted.technician_profiles[0]?.id;
+    expect(inserted.customer_profiles[0]).toMatchObject({ membership_granted_by_id: targetUserId });
+    expect(inserted.merchant_shop_memberships[0]).toMatchObject({ created_by_id: targetUserId, removed_by_id: targetUserId });
+    expect(inserted.technician_shop_affiliations[0]).toMatchObject({ created_by_id: targetUserId, updated_by_id: targetUserId });
+    expect(inserted.user_identities.map((row) => [row.scope_type, row.scope_id])).toEqual(expect.arrayContaining([
+      ["customer_profile", targetCustomerProfileId], ["shop", targetShopId], ["merchant_account", targetMerchantId], ["technician_profile", targetTechnicianProfileId]
+    ]));
+    expect(inserted.user_roles.map((row) => [row.scope_type, row.scope_id])).toEqual(expect.arrayContaining([
+      ["merchant_account", targetMerchantId], ["shop", targetShopId], ["technician_profile", targetTechnicianProfileId]
+    ]));
+    expect(inserted.public_identifiers.map((row) => [row.user_identity_id, row.shop_id, row.merchant_account_id])).toEqual(expect.arrayContaining([
+      [inserted.user_identities[0]?.id, null, null], [null, targetShopId, null], [null, null, targetMerchantId]
+    ]));
     expect(queries.some((query) => query.includes("type = 'platform' AND scope_type = 'global' AND scope_id IS NULL"))).toBe(true);
     expect(queries.some((query) => query.includes("LEFT JOIN merchant_accounts"))).toBe(true);
     expect(JSON.parse(output[0] ?? "{}")).toMatchObject({ status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1 });
