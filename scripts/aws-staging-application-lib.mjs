@@ -144,14 +144,30 @@ export function buildApplicationDeploymentCommand({
     "install -d -m 0700 /srv/needo/tmp /srv/needo/releases",
     `archive_path=${shellQuote(archivePath)}`,
     `release_dir=${shellQuote(releaseDirectory)}`,
+    "release_created=false",
+    "cleanup_failed_release() {",
+    "  status=$?",
+    "  trap - EXIT",
+    "  rm -f -- \"$archive_path\"",
+    "  if test \"$status\" -ne 0 && test \"$release_created\" = true; then",
+    "    active_release=\"$(readlink -f /srv/needo/current 2>/dev/null || true)\"",
+    "    test \"$active_release\" != \"$release_dir\"",
+    "    rm -rf --one-file-system -- \"$release_dir\"",
+    "  fi",
+    "  exit \"$status\"",
+    "}",
+    "trap cleanup_failed_release EXIT",
     `aws s3 cp ${shellQuote(`s3://${releaseBucketName}/${releaseObjectKey}`)} \"$archive_path\" --region ${shellQuote(region)} --only-show-errors`,
     `printf '%s\\n' ${shellQuote(checksumLine)} | sha256sum --check -`,
     "test ! -e \"$release_dir\"",
     "install -d -m 0750 \"$release_dir\"",
+    "release_created=true",
     "tar -xzf \"$archive_path\" -C \"$release_dir\" --no-same-owner --no-same-permissions",
     "test -x \"$release_dir/deploy/staging/deploy-release.sh\"",
     `\"$release_dir/deploy/staging/deploy-release.sh\" --region ${shellQuote(region)} --hostname ${shellQuote(hostname)} --secret-id ${shellQuote(secretId)} --backup-bucket ${shellQuote(backupBucketName)} --revision ${shellQuote(revision)} --archive-sha256 ${shellQuote(archiveSha256)}`,
-    "rm -f \"$archive_path\""
+    "release_created=false",
+    "rm -f -- \"$archive_path\"",
+    "trap - EXIT"
   ].join("\n");
 }
 
@@ -196,4 +212,3 @@ export function createRedactedApplicationEvidence(input) {
   }
   return Object.freeze(evidence);
 }
-

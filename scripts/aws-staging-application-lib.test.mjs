@@ -83,6 +83,10 @@ test("bounded SSM command verifies content before invoking the repository deploy
   assert.match(command, /sha256sum --check/);
   assert.match(command, /deploy\/staging\/deploy-release\.sh/);
   assert.match(command, /set -euo pipefail/);
+  assert.match(command, /trap cleanup_failed_release EXIT/);
+  assert.match(command, /rm -rf --one-file-system -- "\$release_dir"/);
+  assert.match(command, /test "\$active_release" != "\$release_dir"/);
+  assert.match(command, /rm -f -- "\$archive_path"/);
   assert.doesNotMatch(command, /ADMIN_DEFAULT_PASSWORD|SecretString/);
   assert.ok(command.length < 7_500);
 });
