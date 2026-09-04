@@ -29,5 +29,10 @@ describe("affiliate service completion reward acceptance script", () => {
     expect(source).toContain("error.wallet.insufficient_frozen");
     expect(source).toContain("completion rollback did not preserve order state");
     expect(source).toContain("marker cleanup left reward settlement rows behind");
+
+    const cleanupFoundations = source.lastIndexOf("deleteFormalTestUserFoundations(");
+    const deleteShop = source.lastIndexOf("transaction.shop.deleteMany(");
+    expect(cleanupFoundations).toBeGreaterThan(-1);
+    expect(deleteShop).toBeGreaterThan(cleanupFoundations);
   });
 });

@@ -44,6 +44,7 @@ export interface UnifiedIdentifierRoleAssignmentSnapshot {
 
 export interface UnifiedIdentifierUserSnapshot {
   id: number;
+  email: string;
   needoId: string;
   accountNo: string | null;
   primaryIdentityType: UnifiedIdentifierPrimaryKind | null;
@@ -159,6 +160,7 @@ interface PlanSummary {
 }
 
 const PLATFORM_ROLE_CODES = new Set(["admin", "operator", "finance", "support"]);
+const OFFICIAL_ACCOUNT_EMAIL_SUFFIX = "@lifedance.com";
 const PLATFORM_IDENTITY_TYPES = new Set([
   "platform",
   "platform_admin",
@@ -219,6 +221,9 @@ const hasPlatformCompanySignal = (user: UnifiedIdentifierUserSnapshot): boolean 
       PLATFORM_ROLE_CODES.has(assignment.code) &&
       (assignment.scopeType === null || assignment.scopeType === "global")
   ) || activeIdentities(user).some((identity) => PLATFORM_IDENTITY_TYPES.has(identity.type));
+
+const hasOfficialAccountEmail = (user: UnifiedIdentifierUserSnapshot): boolean =>
+  user.email.trim().toLowerCase().endsWith(OFFICIAL_ACCOUNT_EMAIL_SUFFIX);
 
 const findExistingPersonnelIdentifier = (
   user: UnifiedIdentifierUserSnapshot,
@@ -289,18 +294,17 @@ const planPrimaryIdentifier = (
   issues: UnifiedIdentifierBackfillIssue[]
 ): { primaryKind: UnifiedIdentifierPrimaryKind; knownNumberPart?: string } | null => {
   const platformCompany = hasPlatformCompanySignal(user);
-  if (user.primaryIdentityType === "U" && platformCompany) {
+  if (user.primaryIdentityType === "U" && hasOfficialAccountEmail(user)) {
     issues.push(
       issue(
         "User",
         user.id,
         "PRIMARY_KIND_CONFLICT",
-        "An explicit U primary kind conflicts with active platform-company authorization."
+        "An official lifedance.com account cannot use a U primary identifier."
       )
     );
     return null;
   }
-
   const primaryKind: UnifiedIdentifierPrimaryKind =
     user.primaryIdentityType ?? (platformCompany ? "NEEDO" : "U");
   const primaryIdentifiers = findExistingPersonnelIdentifier(user, new Set(["U", "NEEDO"]));
@@ -922,6 +926,7 @@ export class PrismaUnifiedIdentifierBackfillRuntime implements UnifiedIdentifier
         ...(userCursor === undefined ? {} : { cursor: { id: userCursor }, skip: 1 }),
         select: {
           id: true,
+          email: true,
           needoId: true,
           accountNo: true,
           primaryIdentityType: true,
@@ -965,6 +970,7 @@ export class PrismaUnifiedIdentifierBackfillRuntime implements UnifiedIdentifier
       yield {
         users: users.map((user) => ({
           id: user.id,
+          email: user.email,
           needoId: user.needoId,
           accountNo: user.accountNo,
           primaryIdentityType: user.primaryIdentityType,

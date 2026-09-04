@@ -897,6 +897,10 @@ const main = async (): Promise<void> => {
       if (walletIds.length > 0) {
         await transaction.wallet.deleteMany({ where: { id: { in: walletIds } } });
       }
+      if (userIds.length > 0) {
+        await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
+        await deleteFormalTestUserFoundations(transaction, userIds);
+      }
       if (serviceId) await transaction.service.deleteMany({ where: { id: serviceId } });
       if (shopId) await transaction.shop.deleteMany({ where: { id: shopId } });
       if (categoryId) await transaction.category.deleteMany({ where: { id: categoryId } });
@@ -905,8 +909,6 @@ const main = async (): Promise<void> => {
         await transaction.platformFeeRuleSet.deleteMany({ where: { id: feeRuleSetId } });
       }
       if (userIds.length > 0) {
-        await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
-        await deleteFormalTestUserFoundations(transaction, userIds);
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });
       }
     });
