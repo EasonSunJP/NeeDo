@@ -206,6 +206,7 @@ const envSchema = z
     AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
     AUTH_ACTION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),
     AUTH_REGISTRATION_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    AUTH_GOOGLE_ENABLED: booleanSchema.default(true),
     AUTH_GOOGLE_INIT_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
     AUTH_GOOGLE_CREDENTIAL_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
     AUTH_VERIFICATION_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
@@ -221,7 +222,7 @@ const envSchema = z
       .int()
       .min(100)
       .default(1_000),
-    GOOGLE_AUTH_CLIENT_ID: z.string().trim().min(1),
+    GOOGLE_AUTH_CLIENT_ID: z.string().trim().default(""),
     GOOGLE_AUTH_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive(),
     AFFILIATE_LINK_SECRET: z.string().min(32),
     SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
@@ -350,6 +351,14 @@ const envSchema = z
       }
     }
 
+    if (value.AUTH_GOOGLE_ENABLED && !value.GOOGLE_AUTH_CLIENT_ID) {
+      addProductionIssue(
+        context,
+        "GOOGLE_AUTH_CLIENT_ID",
+        "GOOGLE_AUTH_CLIENT_ID is required when AUTH_GOOGLE_ENABLED=true"
+      );
+    }
+
     if (value.NODE_ENV !== "production") {
       return;
     }
@@ -434,9 +443,10 @@ const envSchema = z
     }
 
     if (
-      !productionGoogleWebClientIdPattern.test(value.GOOGLE_AUTH_CLIENT_ID) ||
-      productionPlaceholderPattern.test(value.GOOGLE_AUTH_CLIENT_ID) ||
-      productionGoogleClientIdNonProductionValuePattern.test(value.GOOGLE_AUTH_CLIENT_ID)
+      value.AUTH_GOOGLE_ENABLED &&
+      (!productionGoogleWebClientIdPattern.test(value.GOOGLE_AUTH_CLIENT_ID) ||
+        productionPlaceholderPattern.test(value.GOOGLE_AUTH_CLIENT_ID) ||
+        productionGoogleClientIdNonProductionValuePattern.test(value.GOOGLE_AUTH_CLIENT_ID))
     ) {
       addProductionIssue(
         context,

@@ -193,7 +193,7 @@ class InMemorySessionStore {
   }
 }
 
-const createFixture = () => {
+const createFixture = (options: { googleAuthEnabled?: boolean } = {}) => {
   const users = [createUser()];
   const challengeStore = new InMemoryChallengeStore();
   const sessionStore = new InMemorySessionStore();
@@ -310,7 +310,10 @@ const createFixture = () => {
     })
   } satisfies Partial<AuthRepositoryPort> & Partial<GoogleAuthRepositoryPort>;
   const service = new AuthService(
-    process.env as never,
+    {
+      ...process.env,
+      AUTH_GOOGLE_ENABLED: options.googleAuthEnabled ?? true
+    } as never,
     repository as never,
     sessionStore as never,
     {
@@ -339,6 +342,43 @@ const createFixture = () => {
 };
 
 describe("formal Google sign-in service", () => {
+  it("rejects every Google auth entry point when the capability is explicitly disabled", async () => {
+    const fixture = createFixture({ googleAuthEnabled: false });
+    const unavailable = {
+      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      message: "error.dependency.google_auth_unavailable",
+      statusCode: 503
+    };
+    const calls = [
+      () => fixture.service.initializeGoogleLogin(),
+      () => fixture.service.getGoogleLinkStatus({} as never),
+      () => fixture.service.initializeAuthenticatedGoogleLink({} as never),
+      () =>
+        fixture.service.submitAuthenticatedGoogleLink(
+          { credential: "x", nonceChallengeId: "x" },
+          {} as never,
+          context
+        ),
+      () =>
+        fixture.service.verifyAuthenticatedGoogleLink("x", "000000", {} as never, context),
+      () => fixture.service.startGoogleUnlink({} as never, context),
+      () => fixture.service.verifyGoogleUnlink("x", "000000", {} as never, context),
+      () =>
+        fixture.service.submitGoogleCredential(
+          { credential: "x", nonceChallengeId: "x" },
+          context
+        ),
+      () => fixture.service.verifyGoogleRegistrationOrLink("x", "000000", context),
+      () => fixture.service.recoverGoogleUnlinkCompletion("x", "x")
+    ];
+
+    for (const call of calls) {
+      await expect(call()).rejects.toMatchObject(unavailable);
+    }
+    expect(fixture.verifier.verify).not.toHaveBeenCalled();
+    expect(fixture.repository.findUserById).not.toHaveBeenCalled();
+  });
+
   it("accepts merchant_owner account scope and signs its deterministic shop on Google login", async () => {
     const fixture = createFixture();
     fixture.users[0].identities = [
