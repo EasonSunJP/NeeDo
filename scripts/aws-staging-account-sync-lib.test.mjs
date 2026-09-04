@@ -19,7 +19,7 @@ import {
   waitForCommand,
   writeRedactedEvidenceAtomic
 } from "./aws-staging-account-sync-lib.mjs";
-import { createAws, requireAcceptedDeployment } from "./aws-staging-sync-test-accounts.mjs";
+import { buildActiveReleaseProbeCommand, createAws, requireAcceptedDeployment } from "./aws-staging-sync-test-accounts.mjs";
 
 const sha = "a".repeat(64);
 const input = { profile: "needo-staging-bootstrap", accountId: "430611185505", region: "ap-southeast-2", bundlePath: "/private/tmp/bundle.json.gz", bundleSha256: sha, sourceRevision: "b".repeat(40), instanceId: "i-0123456789abcdef0", volumeId: "vol-0123456789abcdef0", releaseBucket: "needo-transfer", backupBucket: "needo-backup" };
@@ -87,7 +87,9 @@ test("builds a bounded, non-disclosing host command", () => {
   const command = buildHostCommand({ ...input, transferBucket: "transfer", transferKey: transferObjectKey(input.sourceRevision, sha), transferVersionId: "v1", backupBucket: "backup", backupKey: `staging/pre-account-sync/${input.sourceRevision}/1-${sha}.sql.gz` });
   for (const pattern of [/set -euo pipefail/, /umask 077/, /mysqldump --single-transaction/, /sha256sum --check/, /selective-account-import\.cli\.js/, /rm -f -- "\$bundle_path"/]) assert.match(command, pattern);
   assert.doesNotMatch(command, /FOREIGN_KEY_CHECKS|prisma db seed|bundle content/);
-  assert.match(command, /application-deployment\.json/);
+  assert.match(command, /active-release\.json/);
+  assert.match(command, /python3 -c/);
+  assert.doesNotMatch(command, /application-deployment\.json|node -e/);
   assert.match(command, /--version-id/);
   assert.match(command, /node dist\/staging\/selective-account-import\.cli\.js/);
   assert.match(command, /MYSQL_PWD="\$MYSQL_PASSWORD" mysqldump .* -u"\$MYSQL_USER" "\$MYSQL_DATABASE"/);
@@ -107,6 +109,31 @@ test("builds a bounded, non-disclosing host command", () => {
   assert.ok(command.indexOf("sha256sum --check") < command.indexOf("chown \"$backend_uid\" \"$bundle_path\""));
   assert.ok(command.indexOf("chown \"$backend_uid\" \"$bundle_path\"") < command.indexOf("run --rm --no-deps --volume \"$bundle_path:/run/needo/account-sync.json.gz:ro\" backend node"));
   assert.doesNotMatch(command, /aws s3api[^\n]+--only-show-errors/);
+});
+
+test("active release probe executes the manifest-to-current-release contract and rejects a mismatched symlink", async () => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-active-release-"));
+  const releaseRoot = path.join(fixtureRoot, "releases");
+  const manifestPath = path.join(fixtureRoot, "active-release.json");
+  const currentLink = path.join(fixtureRoot, "current");
+  const revision = "b".repeat(40);
+  const archiveSha256 = "a".repeat(64);
+  const expectedRelease = path.join(releaseRoot, `${revision}-${archiveSha256.slice(0, 16)}`);
+  await fs.mkdir(expectedRelease, { recursive: true });
+  await fs.writeFile(manifestPath, JSON.stringify({ sourceRevision: revision, archiveSha256 }));
+  await fs.symlink(expectedRelease, currentLink);
+
+  const command = buildActiveReleaseProbeCommand({ manifestPath, currentLink, releaseRoot });
+  const accepted = spawnSync("sh", ["-c", command], { encoding: "utf8" });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.deepEqual(JSON.parse(accepted.stdout), { sourceRevision: revision });
+
+  await fs.unlink(currentLink);
+  const mismatchedRelease = path.join(releaseRoot, "unexpected-release");
+  await fs.mkdir(mismatchedRelease);
+  await fs.symlink(mismatchedRelease, currentLink);
+  const rejected = spawnSync("sh", ["-c", command], { encoding: "utf8" });
+  assert.notEqual(rejected.status, 0);
 });
 
 test("validates versioned transfer, completed snapshot, and exact object identity", () => {

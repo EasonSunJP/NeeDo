@@ -19,6 +19,24 @@ const deploymentEvidencePath = path.join(outputDirectory, "application-deploymen
 const accountSyncEvidencePath = path.join(outputDirectory, "account-sync.json");
 
 const fail = (message) => { throw new Error(message); };
+const shellQuote = (value) => {
+  if (typeof value !== "string" || !value || /[\0\r\n]/u.test(value)) fail("Active release probe value is invalid");
+  return `'${value.replaceAll("'", "'\\''")}'`;
+};
+
+export function buildActiveReleaseProbeCommand({
+  manifestPath = "/srv/needo/active-release.json",
+  currentLink = "/srv/needo/current",
+  releaseRoot = "/srv/needo/releases"
+} = {}) {
+  if (![manifestPath, currentLink, releaseRoot].every((value) => path.isAbsolute(value))) fail("Active release probe path is invalid");
+  const python = "import json,os,re,sys; manifest,current,root=sys.argv[1:4]; value=json.load(open(manifest,encoding='utf-8')); assert set(value)=={'sourceRevision','archiveSha256'}; revision=value['sourceRevision']; archive=value['archiveSha256']; assert isinstance(revision,str) and re.fullmatch(r'[a-f0-9]{40}',revision); assert isinstance(archive,str) and re.fullmatch(r'[a-f0-9]{64}',archive); expected=os.path.join(os.path.realpath(root),revision+'-'+archive[:16]); assert os.path.realpath(current)==expected; print(json.dumps({'sourceRevision':revision},separators=(',',':')))";
+  return [
+    "set -euo pipefail", `manifest_path=${shellQuote(manifestPath)}`, `current_link=${shellQuote(currentLink)}`, "test -f \"$manifest_path\"",
+    "current_release=$(readlink -f \"$current_link\")", "test -d \"$current_release\"",
+    `python3 -c ${shellQuote(python)} \"$manifest_path\" \"$current_release\" ${shellQuote(releaseRoot)}`
+  ].join("\n");
+}
 
 export function parseArgs(argv) {
   const allowed = new Set(["--profile", "--account-id", "--region", "--bundle", "--sha256", "--source-revision"]);
@@ -84,11 +102,7 @@ async function waitForReadonlyCommand(aws, commandId, instanceId) {
 }
 
 async function readActiveReleaseRevision(aws, instanceId) {
-  const command = [
-    "set -euo pipefail", "current_release=$(readlink -f /srv/needo/current)", "test -d \"$current_release\"",
-    "manifest_path=\"$current_release/application-deployment.json\"", "test -f \"$manifest_path\"",
-    "node -e 'const fs=require(\"fs\"); const value=JSON.parse(fs.readFileSync(process.argv[1],\"utf8\")); process.stdout.write(JSON.stringify({sourceRevision:value.sourceRevision}))' \"$manifest_path\""
-  ].join("\n");
+  const command = buildActiveReleaseProbeCommand();
   const sent = await aws.json(["ssm", "send-command", "--document-name", "AWS-RunShellScript", "--instance-ids", instanceId, "--timeout-seconds", "120", "--comment", "NeeDo staging active release probe", "--parameters", JSON.stringify({ commands: [command], executionTimeout: ["120"] })]);
   const commandId = sent?.Command?.CommandId;
   if (!/^[0-9a-f-]{36}$/.test(commandId ?? "")) fail("Active release probe command identity is invalid");
