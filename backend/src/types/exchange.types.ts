@@ -29,6 +29,7 @@ export interface ExchangeViewerState {
   canWithdraw: boolean;
   canClaim: boolean;
   canViewClaims: boolean;
+  canViewMatching: boolean;
 }
 
 export interface ExchangePriorityPayload {

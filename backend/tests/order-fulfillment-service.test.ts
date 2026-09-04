@@ -80,6 +80,7 @@ const makeOrder = (
   updatedAt: now,
   statusHistory: [],
   ...overrides,
+  fulfillmentAddressSnapshot: overrides.fulfillmentAddressSnapshot ?? null,
   performanceAssessment: overrides.performanceAssessment ?? null,
   timelineEvents: overrides.timelineEvents ?? []
 });

@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ApiClientError } from "../../api/httpClient";
 import type { Language } from "../../i18n/translations";
+import type { MessageCenterContext } from "../../lib/messageCenter";
+import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import {
+  createExchangeMatchingBookings,
   getExchangeMatching,
   listReceivedExchangeClaims,
   selectExchangeMatching
@@ -189,10 +192,12 @@ function ClaimCard({
 }
 
 export function ExchangeReceivedClaims({
+  context = "user",
   language,
   onMatched,
   postId
 }: {
+  context?: MessageCenterContext;
   language: Language;
   onMatched?: () => void;
   postId: string;
@@ -208,20 +213,27 @@ export function ExchangeReceivedClaims({
   const [error, setError] = useState(false);
   const [matchingError, setMatchingError] = useState(false);
   const [matchingPending, setMatchingPending] = useState(false);
+  const [bookingPending, setBookingPending] = useState(false);
+  const [bookingError, setBookingError] = useState(false);
+  const [bookingStaleRefreshed, setBookingStaleRefreshed] = useState(false);
   const [adjustmentPreview, setAdjustmentPreview] =
     useState<ExchangeMatchAdjustmentPreview | null>(null);
   const [adjustmentChanged, setAdjustmentChanged] = useState(false);
   const selectionAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+  const bookingAttemptRef = useRef<{ signature: string; key: string } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(false);
     setMatchingError(false);
+    setBookingError(false);
+    setBookingStaleRefreshed(false);
     setSelectedClaimIds([]);
     setAdjustmentPreview(null);
     setAdjustmentChanged(false);
     selectionAttemptRef.current = null;
+    bookingAttemptRef.current = null;
     void Promise.all([
       listReceivedExchangeClaims(postId, {
         page: 1,
@@ -279,6 +291,36 @@ export function ExchangeReceivedClaims({
     }
   }
 
+  async function createBookings() {
+    if (!matching?.viewer.canCreateBookings || bookingPending) return;
+    const signature = JSON.stringify({ postId, expectedVersion: matching.version });
+    const attempt =
+      bookingAttemptRef.current?.signature === signature
+        ? bookingAttemptRef.current
+        : { signature, key: globalThis.crypto.randomUUID() };
+    bookingAttemptRef.current = attempt;
+    setBookingPending(true);
+    setBookingError(false);
+    setBookingStaleRefreshed(false);
+    try {
+      await createExchangeMatchingBookings(postId, { expectedVersion: matching.version }, attempt.key);
+      await refreshPersistedState();
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 409) {
+        try {
+          await refreshPersistedState();
+          setBookingStaleRefreshed(true);
+        } catch {
+          setError(true);
+        }
+      } else {
+        setBookingError(true);
+      }
+    } finally {
+      setBookingPending(false);
+    }
+  }
+
   function toggleClaim(claimId: number) {
     if (!matching || matching.status !== "open" || !matching.viewer.canSelect) return;
     setMatchingError(false);
@@ -309,6 +351,11 @@ export function ExchangeReceivedClaims({
       selectedClaimIds.length > 0 &&
       selectedClaimIds.length <= matching.effectiveTargetProviderCount &&
       !matchingPending
+  );
+  const bookingsCreated = Boolean(
+    matching?.status === "matched" &&
+      matching.participants.length > 0 &&
+      matching.participants.every((participant) => participant.booking !== null)
   );
 
   async function completeMatching(preview: ExchangeMatchAdjustmentPreview | null = null) {
@@ -394,6 +441,8 @@ export function ExchangeReceivedClaims({
       {loading ? <p className="mt-5 text-sm font-bold text-[color:var(--client-muted)]">{t("matchingLoading")}</p> : null}
       {error ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("receivedClaimsFailed")}</p> : null}
       {matchingError ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("matchingFailed")}</p> : null}
+      {bookingError ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("bookingCreateFailed")}</p> : null}
+      {bookingStaleRefreshed ? <p className="mt-5 text-sm font-bold text-[color:var(--client-primary)]" role="status">{t("bookingStaleRefreshed")}</p> : null}
       {!loading && !error && claims.length === 0 ? <p className="mt-5 rounded-[20px] bg-[color:var(--client-bg-soft)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">{t("receivedClaimsEmpty")}</p> : null}
 
       {!loading && matching ? (
@@ -523,18 +572,53 @@ export function ExchangeReceivedClaims({
       {matching?.status === "matched" && matching.participants.length > 0 ? (
         <div className="mt-4">
           <h3 className="text-sm font-black text-[color:var(--client-text)]">{t("matchingParticipants")}</h3>
+          {bookingsCreated ? <p className="mt-2 text-xs font-black text-[color:var(--client-primary)]" role="status">{t("bookingCreated")}</p> : null}
           <div className="mt-2 grid gap-2">
             {matching.participants.map((participant) => (
-              <div className="flex items-center justify-between gap-3 rounded-2xl bg-[color:var(--client-bg-soft)] px-3 py-3" key={participant.exchangeClaimId}>
+              <div className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[color:var(--client-bg-soft)] px-3 py-3" key={participant.exchangeClaimId}>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-[color:var(--client-text)]">{participant.provider.displayName}</p>
                   <p className="mt-0.5 truncate font-mono text-[10px] font-black text-[color:var(--client-primary)]">{participant.provider.publicId}</p>
+                  {participant.booking ? (
+                    <p className="mt-1 truncate text-[11px] font-black text-[color:var(--client-muted)]">
+                      {t("bookingOrderNumber")} · {participant.booking.orderNo}
+                      {participant.booking.status === "pending" ? ` · ${t("bookingPending")}` : ""}
+                    </p>
+                  ) : null}
                 </div>
-                <strong className="shrink-0 text-sm font-black text-[color:var(--client-primary)]">¥{participant.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
+                <div className="shrink-0 text-right">
+                  <strong className="block text-sm font-black text-[color:var(--client-primary)]">¥{participant.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
+                  {participant.booking ? (
+                    <a
+                      aria-label={t("bookingViewOrder")}
+                      className="focus-ring mt-1 inline-flex min-h-8 items-center rounded-full border border-[color:var(--client-line)] px-2.5 text-[10px] font-black text-[color:var(--client-text)]"
+                      href={`#${getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}`}
+                    >
+                      {t("bookingViewOrder")}
+                    </a>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
         </div>
+      ) : null}
+
+      {matching?.viewer.canCreateBookings ? (
+        <section className="mt-4 rounded-[22px] border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-4" data-testid="exchange-booking-conversion">
+          <h3 className="text-base font-black text-[color:var(--client-text)]">{t("bookingTitle")}</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[color:var(--client-text)]">{t("bookingBatchExplanation")}</p>
+          <p className="mt-2 text-xs font-black text-[color:var(--client-primary)]">{t("bookingNoCharge")}</p>
+          <button
+            className="focus-ring mt-4 min-h-12 w-full rounded-2xl bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-40"
+            data-action="create-exchange-bookings"
+            disabled={bookingPending}
+            onClick={() => void createBookings()}
+            type="button"
+          >
+            {t(bookingPending ? "bookingCreating" : bookingError ? "bookingRetry" : "bookingConfirm")}
+          </button>
+        </section>
       ) : null}
 
       {claims.length < total ? (

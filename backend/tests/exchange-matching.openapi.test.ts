@@ -32,7 +32,7 @@ describe("Exchange selective exact matching OpenAPI", () => {
     );
   });
 
-  it("requires idempotency for selection and exposes no close, booking or payment mutation", () => {
+  it("requires idempotency for selection and exposes no close or payment mutation", () => {
     const select = document.paths["/api/v1/exchange/posts/{id}/matching/select"].post;
     expect(select.parameters).toEqual(
       expect.arrayContaining([
@@ -45,7 +45,10 @@ describe("Exchange selective exact matching OpenAPI", () => {
       ])
     );
     expect(document.paths).not.toHaveProperty("/api/v1/exchange/posts/{id}/matching/close");
-    expect(JSON.stringify(document.paths)).not.toMatch(/matching\/(?:book|pay)/u);
+    expect(document.paths).toHaveProperty(
+      "/api/v1/exchange/posts/{id}/matching/bookings.post"
+    );
+    expect(JSON.stringify(document.paths)).not.toMatch(/matching\/pay/u);
   });
 
   it("documents strict matching and participant payloads without internal lock fields", () => {
