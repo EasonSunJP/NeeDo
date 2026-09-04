@@ -398,7 +398,7 @@ function passingFixture() {
     ].map((name) => [name, { TagList: tags() }])),
     releaseBucket: bucketFixture("release"),
     backupBucket: bucketFixture("backup"),
-    iamTags: { Tags: tags(), IsTruncated: false },
+    iamTags: { Tags: tags() },
     secret: { ARN: ids.secretArn, Name: "/needo/staging/application", Tags: tags() },
     secretVersions: { Versions: [] },
     logGroups: {

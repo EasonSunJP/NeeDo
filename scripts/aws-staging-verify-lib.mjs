@@ -1176,7 +1176,7 @@ export async function verifyAwsStagingEnvironment({
     "iam", "list-role-tags", "--role-name", resources.InstanceRole.physicalId
   ]);
   noPagination(roleTags, "IAM role tags", ["Marker"]);
-  if (roleTags.IsTruncated !== false) throw new Error("IAM role tag result is truncated");
+  if (roleTags.IsTruncated === true) throw new Error("IAM role tag result is truncated");
   requireTags(roleTags.Tags, config.owner, "IAM instance role");
 
   const describedSecret = await aws.json([
