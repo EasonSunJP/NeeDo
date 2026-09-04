@@ -270,12 +270,12 @@ function bucketFixture(kind) {
     lifecycle: {
       Rules: isBackup ? [
         {
-          ID: "DailyBackups30Days", Status: "Enabled", Prefix: "staging/daily/",
+          ID: "DailyBackups30Days", Status: "Enabled", Filter: { Prefix: "staging/daily/" },
           Expiration: { Days: 30 }, NoncurrentVersionExpiration: { NoncurrentDays: 30 },
           AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 }
         },
         {
-          ID: "PreMigrationRecovery90Days", Status: "Enabled", Prefix: "staging/pre-migration/",
+          ID: "PreMigrationRecovery90Days", Status: "Enabled", Filter: { Prefix: "staging/pre-migration/" },
           Expiration: { Days: 90 }, NoncurrentVersionExpiration: { NoncurrentDays: 90 },
           AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 }
         }

@@ -649,7 +649,7 @@ function requireLifecycle(response, kind) {
   const byId = Object.fromEntries(response.Rules.map((rule) => [rule.ID, rule]));
   return expected.map(([id, prefix, days]) => {
     const rule = byId[id];
-    if (!rule || rule.Status !== "Enabled" || rule.Prefix !== prefix
+    if (!rule || rule.Status !== "Enabled" || rule.Filter?.Prefix !== prefix
       || rule.Expiration?.Days !== days || rule.NoncurrentVersionExpiration?.NoncurrentDays !== days
       || rule.AbortIncompleteMultipartUpload?.DaysAfterInitiation !== 7) {
       throw new Error(`backup bucket lifecycle rule ${id} does not match`);
