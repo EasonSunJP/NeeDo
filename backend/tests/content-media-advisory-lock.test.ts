@@ -11,6 +11,7 @@ import {
 } from "../src/repositories/content-media.repository";
 import { ContentMediaFileStorage } from "../src/services/content-media.storage";
 import { ContentMediaService } from "../src/services/content-media.service";
+import { validPng } from "./fixtures/content-images";
 
 jest.mock("mariadb", () => ({ createConnection: jest.fn() }));
 
@@ -25,11 +26,6 @@ const actor = {
   roles: ["operator"],
   permissions: ["button:backoffice-content-media-upload"]
 };
-const validPng = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("needo-dedicated-lock")
-]);
-
 const createInput = {
   entityType: "content_publication_upload" as const,
   entityId: 7,
@@ -191,7 +187,7 @@ describe("ContentMediaRepository dedicated MariaDB advisory lock", () => {
       })
     };
     const storage = new ContentMediaFileStorage(directory);
-    const prepared = storage.prepare({ bytes: validPng, mimeType: "image/png" });
+    const prepared = await storage.prepare({ bytes: validPng, mimeType: "image/png" });
     const originalDelete = storage.delete.bind(storage);
     jest.spyOn(storage, "delete").mockImplementation(async (fileKey) => {
       events.push("compensate");

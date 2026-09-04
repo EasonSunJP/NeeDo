@@ -9,6 +9,7 @@ import type {
 } from "../validators/pricing-mode.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { ContentMediaMimeType } from "./content-media.storage";
 import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type PricingModePayload = "merchant" | "technician";
@@ -104,6 +105,38 @@ export interface TechnicianServiceReorderRepositoryInput {
   auditLog: AuditLogCreateInput;
 }
 
+export interface TechnicianServiceDeleteRepositoryInput {
+  shopId: number;
+  technicianId: number;
+  serviceId: number;
+  updatedBy: number;
+  now: Date;
+  auditLog: AuditLogCreateInput;
+}
+
+export interface TechnicianServiceCoverTarget {
+  service: TechnicianServicePayload;
+  activeMediaAssetId: number | null;
+  checksumSha256: string | null;
+  mimeType: string | null;
+}
+
+export interface TechnicianServiceCoverWriteInput {
+  shopId: number;
+  technicianId: number;
+  serviceId: number;
+  ownerUserId: number;
+  ownerIdentityId: number;
+  url: string;
+  fileKey: string;
+  mimeType: ContentMediaMimeType;
+  checksumSha256: string;
+  fileSize: number;
+  now: Date;
+  action: "technician.service.cover.updated";
+  context: AuthRequestContext;
+}
+
 export interface PricingModeRepositoryPort {
   findShopPricingMode: (shopId: number) => Promise<ShopPricingModePayload | null>;
   updateShopPricingMode: (
@@ -119,9 +152,7 @@ export interface PricingModeRepositoryPort {
   listTechnicianServicesByProfile: (
     input: PaginationInput & { technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
-  findPrimaryTechnicianService: (
-    technicianId: number
-  ) => Promise<TechnicianServicePayload | null>;
+  findPrimaryTechnicianService: (technicianId: number) => Promise<TechnicianServicePayload | null>;
   reorderTechnicianServices: (
     input: TechnicianServiceReorderRepositoryInput
   ) => Promise<TechnicianServicePayload[]>;
@@ -131,12 +162,26 @@ export interface PricingModeRepositoryPort {
   updateTechnicianService: (
     input: TechnicianServiceUpdateRepositoryInput
   ) => Promise<TechnicianServicePayload | null>;
-  deleteTechnicianService: (input: {
+  deleteTechnicianService: (input: TechnicianServiceDeleteRepositoryInput) => Promise<boolean>;
+  findTechnicianServiceCoverTarget(input: {
     shopId: number;
     technicianId: number;
     serviceId: number;
-    updatedBy: number;
-  }) => Promise<boolean>;
+  }): Promise<TechnicianServiceCoverTarget | null>;
+  replaceTechnicianServiceCover(
+    input: TechnicianServiceCoverWriteInput
+  ): Promise<TechnicianServicePayload | null>;
+  removeTechnicianServiceCover(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+    ownerUserId: number;
+    ownerIdentityId: number;
+    now: Date;
+    action: "technician.service.cover.removed";
+    context: AuthRequestContext;
+  }): Promise<TechnicianServicePayload | null>;
+  hasActiveMediaUrl(url: string): Promise<boolean>;
   listBookingNavigationShopServices: (
     input: PaginationInput & { shopId: number }
   ) => Promise<PaginatedResponse<BookingNavigationServicePayload>>;
@@ -328,17 +373,20 @@ export class PricingModeService {
       shopId,
       technicianId: scope.technicianId,
       serviceId,
-      updatedBy: actor.userId
+      updatedBy: actor.userId,
+      now: new Date(),
+      auditLog: {
+        ...this.transactionalAuditLog(actor, context, "technician.services.delete", "shop", {
+          technicianId: scope.technicianId,
+          serviceId
+        }),
+        targetId: shopId
+      }
     });
 
     if (!deleted) {
       throw this.notFound("error.technician_service.not_found");
     }
-
-    await this.record(actor, context, "technician.services.delete", shopId, {
-      technicianId: scope.technicianId,
-      serviceId
-    });
 
     return { deleted: true };
   }

@@ -33,6 +33,7 @@ import {
   type ShopPricingMode,
   type TechnicianServicePayload
 } from "../../features/pricing-mode/api";
+import { TechnicianServiceCoverField } from "../../features/pricing-mode/TechnicianServiceCoverField";
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { cn, yen } from "../../lib/utils";
 import {
@@ -618,6 +619,14 @@ function describeServiceError(error: unknown) {
   return error instanceof Error ? error.message : "error.technician_service.failed";
 }
 
+function upsertTechnicianService(
+  current: TechnicianServicePayload[],
+  saved: TechnicianServicePayload
+) {
+  const existingIndex = current.findIndex((service) => service.id === saved.id);
+  if (existingIndex < 0) return [...current, saved];
+  return current.map((service) => service.id === saved.id ? saved : service);
+}
 function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, privacySlot, profile, technician = null }: {
   defaultShopId: number | null;
   defaultCategoryId: number | null;
@@ -633,6 +642,14 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [deleteArmedId, setDeleteArmedId] = useState<number | null>(null);
   const [draft, setDraft] = useState({ name: "", priceAmount: "", durationMinutes: "60", description: "" });
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [removeCover, setRemoveCover] = useState(false);
+  const [persistedAfterPartialSave, setPersistedAfterPartialSave] = useState<TechnicianServicePayload | null>(null);
+  const pendingCoverOperation: "upload" | "remove" | "none" = coverFile
+    ? "upload"
+    : removeCover
+      ? "remove"
+      : "none";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -656,14 +673,50 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
   }, [defaultShopId]);
 
   useEffect(() => { void load(); }, [load]);
+  const closeAndResetServiceEditor = () => {
+    setEditingId(null);
+    setDeleteArmedId(null);
+    setCoverFile(null);
+    setRemoveCover(false);
+    setPersistedAfterPartialSave(null);
+  };
   const openEditor = (service?: TechnicianServicePayload) => {
     setEditingId(service?.id ?? "new");
     setDeleteArmedId(null);
     setError("");
+    setCoverFile(null);
+    setRemoveCover(false);
+    setPersistedAfterPartialSave(null);
     setDraft(service ? { name: service.name, priceAmount: String(service.priceAmount), durationMinutes: String(service.durationMinutes), description: service.description ?? "" } : { name: "", priceAmount: "", durationMinutes: "60", description: "" });
   };
   const save = async () => {
     if (saving || editingId === null) return;
+    if (persistedAfterPartialSave) {
+      setSaving(true);
+      setError("");
+      try {
+        let saved = persistedAfterPartialSave;
+        if (pendingCoverOperation === "upload" && coverFile) {
+          saved = await pricingModeApi.uploadTechnicianServiceCover(saved.shopId, saved.id, coverFile);
+        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl) {
+          saved = await pricingModeApi.removeTechnicianServiceCover(saved.shopId, saved.id);
+        }
+        const completedService = saved;
+        setServices((current) => upsertTechnicianService(current, completedService));
+        closeAndResetServiceEditor();
+      } catch {
+        setError(
+          pendingCoverOperation === "remove"
+            ? "封面移除失败，请重试"
+            : pendingCoverOperation === "upload"
+              ? "封面上传失败，请重试"
+              : ""
+        );
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (editingId === "new" && services.length >= 5) {
       setError("服务数量已达到 5 个上限");
       return;
@@ -683,11 +736,46 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
     setError("");
     try {
       const body = { name: draft.name.trim(), priceAmount, durationMinutes, description: draft.description.trim() || null, categoryId, currency: "JPY" };
-      const saved = existing ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body) : await pricingModeApi.createTechnicianService(targetShopId, { ...body, sortOrder: services.length });
-      setServices((current) => existing ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
-      setEditingId(null);
-    } catch (saveError) {
-      setError(describeServiceError(saveError));
+      let saved = existing ?? persistedAfterPartialSave;
+      if (!persistedAfterPartialSave) {
+        try {
+          saved = existing
+            ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body)
+            : await pricingModeApi.createTechnicianService(targetShopId, { ...body, sortOrder: services.length });
+          const persistedService = saved;
+          setServices((current) => upsertTechnicianService(current, persistedService));
+        } catch (saveError) {
+          setError(describeServiceError(saveError));
+          return;
+        }
+      }
+      if (!saved) return;
+      try {
+        if (pendingCoverOperation === "upload" && coverFile) {
+          saved = await pricingModeApi.uploadTechnicianServiceCover(saved.shopId, saved.id, coverFile);
+        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl) {
+          saved = await pricingModeApi.removeTechnicianServiceCover(saved.shopId, saved.id);
+        }
+        const completedService = saved;
+        setServices((current) => upsertTechnicianService(current, completedService));
+        closeAndResetServiceEditor();
+      } catch {
+        setDraft({
+          name: saved.name,
+          priceAmount: String(saved.priceAmount),
+          durationMinutes: String(saved.durationMinutes),
+          description: saved.description ?? ""
+        });
+        setPersistedAfterPartialSave(saved);
+        setEditingId(saved.id);
+        setError(
+          pendingCoverOperation === "remove"
+            ? "服务已保存，封面移除失败，请重试"
+            : pendingCoverOperation === "upload"
+              ? "服务已保存，封面上传失败，请重试"
+              : ""
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -700,8 +788,7 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
     try {
       await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
       setServices((current) => current.filter((item) => item.id !== service.id));
-      setEditingId(null);
-      setDeleteArmedId(null);
+      closeAndResetServiceEditor();
     } catch (deleteError) {
       setError(describeServiceError(deleteError));
     } finally {
@@ -749,14 +836,23 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
   const editor = editingId !== null ? (
     <article className={cn(surface.panel, "rounded-[22px] border p-4")} data-testid="technician-service-card">
       <div className="space-y-3">
-        <label className="block text-xs font-bold"><span className={surface.muted}>服务名称</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none")} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} /></label>
+        <TechnicianServiceCoverField
+          disabled={saving}
+          onFileChange={(file) => { setCoverFile(file); setError(""); }}
+          onRemovePersisted={(remove) => { setRemoveCover(remove); setError(""); }}
+          onValidationError={setError}
+          persistedUrl={editorService?.coverImageUrl ?? null}
+          removePersisted={removeCover}
+          selectedFile={coverFile}
+        />
+        <label className="block text-xs font-bold"><span className={surface.muted}>服务名称</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} /></label>
         <div className="grid grid-cols-2 gap-2">
-          <label className="block text-xs font-bold"><span className={surface.muted}>价格</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none")} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, priceAmount: event.target.value }))} value={draft.priceAmount} /></label>
-          <label className="block text-xs font-bold"><span className={surface.muted}>时长（分钟）</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none")} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} value={draft.durationMinutes} /></label>
+          <label className="block text-xs font-bold"><span className={surface.muted}>价格</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, priceAmount: event.target.value }))} value={draft.priceAmount} /></label>
+          <label className="block text-xs font-bold"><span className={surface.muted}>时长（分钟）</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} value={draft.durationMinutes} /></label>
         </div>
-        <label className="block text-xs font-bold"><span className={surface.muted}>描述</span><textarea className={cn(surface.metric, "mt-1 min-h-20 w-full rounded-[14px] border px-3 py-2 text-sm font-bold outline-none")} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} /></label>
-        <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => { setEditingId(null); setDeleteArmedId(null); }} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : "保存"}</button></div>
-        {editorService ? <button className="w-full rounded-[16px] border border-red-500/40 px-3 py-2.5 text-sm font-black text-red-500" disabled={saving} onClick={() => void remove(editorService)} type="button">{deleteArmedId === editorService.id ? "再次点击确认删除" : "删除该服务"}</button> : null}
+        <label className="block text-xs font-bold"><span className={surface.muted}>描述</span><textarea className={cn(surface.metric, "mt-1 min-h-20 w-full rounded-[14px] border px-3 py-2 text-sm font-bold outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} /></label>
+        <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={closeAndResetServiceEditor} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : persistedAfterPartialSave ? pendingCoverOperation === "remove" ? "重试移除封面" : pendingCoverOperation === "upload" ? "重试上传封面" : "完成并关闭" : "保存"}</button></div>
+        {editorService && !persistedAfterPartialSave ? <button className="w-full rounded-[16px] border border-red-500/40 px-3 py-2.5 text-sm font-black text-red-500" disabled={saving} onClick={() => void remove(editorService)} type="button">{deleteArmedId === editorService.id ? "再次点击确认删除" : "删除该服务"}</button> : null}
       </div>
     </article>
   ) : null;

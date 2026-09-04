@@ -7,11 +7,7 @@ import {
   SocialMediaService,
   type SocialMediaRepositoryPort
 } from "../src/services/social-media.service";
-
-const validPng = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("needo-social-media")
-]);
+import { validPng } from "./fixtures/content-images";
 
 const actor = {
   userId: 41,
@@ -46,19 +42,15 @@ describe("SocialMediaService", () => {
         fileSize: input.fileSize
       }))
     };
-    const service = new SocialMediaService(
-      repository,
-      new ContentMediaFileStorage(directory),
-      {
-        resolve: jest.fn(async () => ({
-          identityId: 71,
-          userId: 41,
-          identityType: "technician",
-          scopeType: "technician_profile",
-          scopeId: 17
-        }))
-      }
-    );
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory), {
+      resolve: jest.fn(async () => ({
+        identityId: 71,
+        userId: 41,
+        identityType: "technician",
+        scopeType: "technician_profile",
+        scopeId: 17
+      }))
+    });
 
     const result = await service.upload(actor, context, {
       bytes: validPng,
@@ -115,10 +107,7 @@ describe("SocialMediaService", () => {
     const repository: SocialMediaRepositoryPort = {
       createUpload: jest.fn()
     };
-    const service = new SocialMediaService(
-      repository,
-      new ContentMediaFileStorage(directory)
-    );
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory));
 
     await expect(
       service.upload(actor, context, {

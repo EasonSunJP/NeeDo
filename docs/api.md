@@ -272,6 +272,25 @@ The authenticated technician portfolio is profile-wide rather than shop-wide:
 
 A technician may have at most five non-deleted services across all shops. The limit is enforced under the technician-profile lock, so concurrent sixth creates cannot both succeed. Every service price is integer JPY and the response declares `taxIncluded: true`; duration is integer minutes. The first eligible service after ordering by `sortOrder`, then ID, is the primary service.
 
+### Technician service cover
+
+- `PUT /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
+  accepts one authenticated, single-frame raw JPEG/PNG/WebP body up to 8 MiB and
+  at most 25,000,000 decoded pixels, then returns the updated `TechnicianService`.
+- `DELETE /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
+  removes the current public cover association and returns the updated service.
+
+Both routes require `technician:services:write` and derive actor scope from the
+session. Effective mutations persist the `MediaAsset` lifecycle change and audit
+evidence. An exact-image `PUT` retry or a `DELETE` when no cover is active returns
+the current service without creating duplicate media rows or audit entries.
+Before persistence, bounded header walks reject PNG `acTL`/`fcTL`/`fdAT` animation
+chunks and JPEG APP2 `MPF` multi-picture containers without calculating CRCs or
+decoding pixels. Sharp metadata then rejects any other image reporting more than one
+page, and libvips asynchronously fully decodes the accepted single frame. Header-only,
+truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded pixel-limit
+violations all fail with the existing cover-invalid HTTP 400 contract.
+
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 
 `GET /api/v1/im/directory/:userId` may include `technicianContactDetails` only when the caller owns an active, non-deleted, unblocked contact pointing to that technician identity. Reverse-only contacts, pending requests, deleted contacts, blocked contacts, self lookups without that relationship, and public lookups omit the entire key. The optional object contains integer bid-budget bounds, payment methods, active non-expired operations tags, technician profile tags, up to five active approved services, completed-order count, and acceptance rate in basis points (`10000` = 100%). It never contains `baseLatitude`, `baseLongitude`, `serviceBase`, or other precise coordinates.
