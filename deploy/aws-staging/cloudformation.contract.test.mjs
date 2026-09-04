@@ -340,6 +340,22 @@ describe("AWS Staging CloudFormation contract", () => {
     expect(verification).toContain('test "$(docker buildx version | awk \'{print $2}\' | sed \'s/^v//\')" = "$buildx_version"');
   });
 
+  it("provisions a fixed two GiB persistent swap file without sparse allocation", () => {
+    const bootstrap = resourceBlock("HostBootstrapDocument");
+    const verification = resourceBlock("HostVerificationDocument");
+
+    expect(bootstrap).toContain("swapfile=/var/lib/needo/swapfile");
+    expect(bootstrap).toContain("swap_size_mib=2048");
+    expect(bootstrap).toContain('dd if=/dev/zero of="$swapfile" bs=1M count="$swap_size_mib" status=none');
+    expect(bootstrap).toContain('chmod 0600 "$swapfile"');
+    expect(bootstrap).toContain('mkswap "$swapfile"');
+    expect(bootstrap).toContain('swapon "$swapfile"');
+    expect(bootstrap).toContain("/var/lib/needo/swapfile none swap defaults,nofail 0 0");
+    expect(bootstrap).not.toContain("fallocate");
+    expect(verification).toContain("swapfile=/var/lib/needo/swapfile");
+    expect(verification).toContain('swapon --show=NAME --noheadings --raw');
+  });
+
   it("defines the exact alarm metrics, thresholds, dimensions, and SNS actions", () => {
     const alarms = {
       StatusCheckFailedAlarm: ["AWS/EC2", "StatusCheckFailed", "Maximum", "1", "missing", ["- Name: InstanceId", "Value: !Ref Instance"]],
