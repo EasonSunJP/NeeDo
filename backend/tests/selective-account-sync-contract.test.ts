@@ -2,6 +2,7 @@ import {
   ACCOUNT_SYNC_TABLES,
   canonicalizeCollection,
   collectionDigest,
+  normalizeAccountJson,
   parseSelectiveAccountSyncBundle,
   type SyncRow
 } from "../src/staging/selective-account-sync-contract";
@@ -35,6 +36,15 @@ const withRows = (
 });
 
 describe("selective account sync bundle contract", () => {
+  it("normalizes only JSON columns while preserving array order and scalar content", () => {
+    expect(normalizeAccountJson("technician_profiles", "profile_tags", '{"z": [2, 1], "a": {"y":true,"b":" x "}}'))
+      .toBe('{"a":{"b":" x ","y":true},"z":[2,1]}');
+    expect(normalizeAccountJson("customer_profiles", "languages", ["ja", "zh"])).toBe('["ja","zh"]');
+    expect(normalizeAccountJson("customer_profiles", "languages", null)).toBeNull();
+    expect(normalizeAccountJson("users", "username", " {unparsed} ")).toBe(" {unparsed} ");
+    expect(() => normalizeAccountJson("customer_profiles", "languages", "invalid")).toThrow("ACCOUNT_SYNC_JSON_VALUE_INVALID");
+    expect(normalizeAccountJson("customer_profiles", "languages", '["ja","zh"]')).not.toBe(normalizeAccountJson("customer_profiles", "languages", '["zh","ja"]'));
+  });
   it("uses the fixed allowlist table order", () => {
     expect(ACCOUNT_SYNC_TABLES).toEqual([
       "users",

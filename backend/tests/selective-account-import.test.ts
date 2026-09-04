@@ -254,6 +254,8 @@ describe("selective staging account importer", () => {
 
   it("commits a complete eleven-table graph through the MariaDB adapter with JSON-safe keyed digests", async () => {
     const bundle = fullGraphBundle();
+    bundle.tables.customer_profiles[0].values.languages = '["ja","zh"]';
+    refreshBundleIntegrity(bundle);
     const archive = gzipSync(Buffer.from(JSON.stringify(bundle), "utf8"));
     const inserted = Object.fromEntries(ACCOUNT_SYNC_TABLES.map((table) => [table, [] as Row[]])) as Record<string, Row[]>;
     const queries: string[] = [];
@@ -312,7 +314,10 @@ describe("selective staging account importer", () => {
         if (sql === "SELECT id, code FROM roles WHERE deleted_at IS NULL") return requiredRoles;
         if (sql.startsWith("SELECT * FROM ")) {
           const table = sql.match(/^SELECT \* FROM ([a-z_]+)/u)?.[1];
-          return inserted[table ?? ""]?.filter((row) => parameters.includes(row.id)) ?? [];
+          return inserted[table ?? ""]?.filter((row) => parameters.includes(row.id)).map((row) => ({
+            ...row,
+            ...(typeof row.languages === "string" ? { languages: JSON.stringify(JSON.parse(row.languages), null, 1) } : {})
+          })) ?? [];
         }
         if (sql.includes("is_default = 1")) return [{ count: 1 }];
         if (sql.includes("COUNT(*)")) return [{ count: 0 }];

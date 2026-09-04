@@ -41,8 +41,9 @@ Cover exact table order, unknown-table rejection, unsafe scalar rejection, dupli
 const minimal = {
   formatVersion: 2,
   sourceDatabase: "needo_dev",
-  sourceMigrationCount: 125,
+  sourceMigrationCount: 1,
   sourceLatestMigration: "20260903170000_order_review_shop_summary",
+  sourceMigrations: [{ migration_name: "20260903170000_order_review_shop_summary", checksum: "a".repeat(64) }],
   exportedAt: "2026-09-05T00:00:00.000Z",
   verificationKey: "a".repeat(64),
   tables: Object.fromEntries(ACCOUNT_SYNC_TABLES.map((name) => [name, []])),

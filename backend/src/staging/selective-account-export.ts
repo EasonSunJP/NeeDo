@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 import {
   ACCOUNT_SYNC_TABLES,
   collectionDigest,
+  normalizeAccountJson,
   parseSelectiveAccountSyncBundle,
   type JsonScalar,
   type SyncRow
@@ -158,6 +159,7 @@ interface ExportReferences {
 const mapRow = (table: (typeof ACCOUNT_SYNC_TABLES)[number], row: Record<string, unknown>, references: ExportReferences): SyncRow => {
   const { userIds, shopIds, merchantAccountIds, technicianProfileIds, identityIds } = references;
   const mapped = sourceRow(row);
+  for (const [column, value] of Object.entries(mapped.values)) mapped.values[column] = scalarValue(normalizeAccountJson(table, column, value));
   for (const field of nullableUserReferences) {
     if (field in mapped.values) mapped.values[field] = assertSelected(mapped.values[field], userIds, "USER", true) as JsonScalar;
   }

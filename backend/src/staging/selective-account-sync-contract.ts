@@ -18,6 +18,31 @@ export const ACCOUNT_SYNC_TABLES = [
 type AccountSyncTable = (typeof ACCOUNT_SYNC_TABLES)[number];
 export type JsonScalar = null | boolean | number | string;
 
+const accountJsonColumns: Partial<Record<AccountSyncTable, readonly string[]>> = {
+  customer_profiles: ["languages"],
+  technician_profiles: ["service_areas", "languages", "profile_tags", "payment_methods"],
+  merchant_identity_profiles: ["languages"]
+};
+
+export const normalizeAccountJson = (table: AccountSyncTable, column: string, value: unknown): unknown => {
+  if (!accountJsonColumns[table]?.includes(column) || value === null) return value;
+  const canonical = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(canonical);
+    if (typeof input === "object" && input !== null) {
+      return Object.fromEntries(Object.entries(input).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, child]) => [key, canonical(child)]));
+    }
+    return input;
+  };
+  try {
+    const parsed: unknown = typeof value === "string" ? JSON.parse(value) : value;
+    const serialized = JSON.stringify(canonical(parsed));
+    if (serialized === undefined) throw new Error();
+    return serialized;
+  } catch {
+    throw new Error("ACCOUNT_SYNC_JSON_VALUE_INVALID");
+  }
+};
+
 export interface SyncRow {
   sourceId: number;
   values: Record<string, JsonScalar>;

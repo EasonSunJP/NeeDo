@@ -4,7 +4,7 @@ import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { createConnection, type Connection, type ConnectionConfig } from "mariadb";
 import { importSelectiveAccounts, parseSelectiveAccountImportConfig, type CollisionField, type SelectiveAccountImportPort } from "./selective-account-import";
-import { ACCOUNT_SYNC_TABLES, collectionDigest, parseSelectiveAccountSyncBundle, type SelectiveAccountSyncBundle, type SyncRow } from "./selective-account-sync-contract";
+import { ACCOUNT_SYNC_TABLES, collectionDigest, normalizeAccountJson, parseSelectiveAccountSyncBundle, type SelectiveAccountSyncBundle, type SyncRow } from "./selective-account-sync-contract";
 
 const LOCK_NAME = "needo-staging-selective-account-sync";
 type DatabaseRow = Record<string, unknown>;
@@ -84,7 +84,7 @@ const targetRowsToSourceRows = (table: (typeof ACCOUNT_SYNC_TABLES)[number], tar
   return targetRows.map((row) => {
     const sourceId = reverse[table].get(Number(row.id));
     if (!sourceId) throw new Error("ACCOUNT_SYNC_POSTCONDITION_INVALID");
-    const values = Object.fromEntries(Object.entries(row).filter(([key]) => key !== "id").map(([key, value]) => [key, normalizeScalar(value)]));
+    const values = Object.fromEntries(Object.entries(row).filter(([key]) => key !== "id").map(([key, value]) => [key, normalizeScalar(normalizeAccountJson(table, key, value))]));
     for (const field of ["user_id", "owner_user_id", "membership_granted_by_id", "pricing_mode_updated_by", "created_by_id", "updated_by_id", "removed_by_id"]) remap(values, field, "users");
     remap(values, "shop_id", "shops"); remap(values, "merchant_account_id", "merchant_accounts"); remap(values, "technician_profile_id", "technician_profiles");
     remap(values, "identity_id", "user_identities"); remap(values, "user_identity_id", "user_identities");
