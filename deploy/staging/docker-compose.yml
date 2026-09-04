@@ -1,89 +1,198 @@
 name: needo-staging
 
+x-api-service: &api-service
+  build:
+    context: ../..
+    dockerfile: deploy/staging/backend-runtime.Dockerfile
+    target: runtime
+  env_file:
+    - ${NEEDO_ENV_FILE:-/srv/needo/config/staging.env}
+  environment: &api-environment
+    NODE_ENV: production
+    DEPLOY_ENV: staging
+    PORT: "3000"
+    API_PREFIX: /api/v1
+    DATABASE_URL: mysql://needo:${MYSQL_PASSWORD}@mysql:3306/needo_staging
+    REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+    TRUST_PROXY: "true"
+    NODE_OPTIONS: --max-old-space-size=256
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  expose:
+    - "3000"
+  volumes:
+    - /srv/needo/media:/app/runtime
+  restart: unless-stopped
+  healthcheck: &api-healthcheck
+    test:
+      [
+        "CMD",
+        "node",
+        "-e",
+        "const p=process.env.PORT||3000;fetch('http://127.0.0.1:'+p+'/api/v1/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      ]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 45s
+  logging: &service-logging
+    driver: json-file
+    options:
+      max-file: "3"
+      max-size: 10m
+
 services:
+  mysql:
+    image: mysql:8.0
+    env_file:
+      - ${NEEDO_ENV_FILE:-/srv/needo/config/staging.env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=100
+      - --innodb-buffer-pool-size=512M
+      - --slow-query-log=ON
+      - --long-query-time=0.5
+      - --log-output=TABLE
+    volumes:
+      - /srv/needo/mysql:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} --silent"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    restart: unless-stopped
+    logging: *service-logging
+
+  redis:
+    image: redis:7.2-alpine
+    env_file:
+      - ${NEEDO_ENV_FILE:-/srv/needo/config/staging.env}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - /srv/needo/redis:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a \"$${REDIS_PASSWORD}\" --no-auth-warning ping | grep -q PONG"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    logging: *service-logging
+
   migrate:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: deploy/staging/backend-runtime.Dockerfile
       target: migration
     env_file:
-      - ${NEEDO_ENV_FILE:-../../backend/.env.staging}
+      - ${NEEDO_ENV_FILE:-/srv/needo/config/staging.env}
+    environment:
+      NODE_ENV: production
+      DEPLOY_ENV: staging
+      DATABASE_URL: mysql://needo:${MYSQL_PASSWORD}@mysql:3306/needo_staging
     depends_on:
       mysql:
         condition: service_healthy
     restart: "no"
+    logging: *service-logging
+
+  bootstrap-admin:
+    <<: *api-service
+    command: ["npm", "run", "bootstrap:staging-admin"]
+    environment:
+      <<: *api-environment
+      ALLOW_STAGING_ADMIN_BOOTSTRAP: "true"
+      SERVICE_NAME: needo-staging-bootstrap
+      AUTH_TOKEN_AUDIENCE: needo-backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      disable: true
 
   backend:
-    build:
-      context: ../../backend
-      dockerfile: Dockerfile
-    env_file:
-      - ${NEEDO_ENV_FILE:-../../backend/.env.staging}
-    ports:
-      - "${BACKEND_HOST_PORT:-3000}:${BACKEND_CONTAINER_PORT:-3000}"
+    <<: *api-service
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: needo-backend
+      AUTH_TOKEN_AUDIENCE: needo-backend
     depends_on:
+      bootstrap-admin:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  ops-api:
+    <<: *api-service
+    command: ["node", "dist/ops-server.js"]
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: needo-ops-api
+      AUTH_TOKEN_AUDIENCE: needo-ops-api
+
+  merchant-api:
+    <<: *api-service
+    command: ["node", "dist/merchant-server.js"]
+    environment:
+      <<: *api-environment
+      SERVICE_NAME: needo-merchant-api
+      AUTH_TOKEN_AUDIENCE: needo-merchant-api
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/staging/frontend.Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${NEEDO_NGINX_CONFIG:-/srv/needo/config/nginx.conf}:/etc/nginx/conf.d/default.conf:ro
+      - /srv/needo/certbot/conf:/etc/letsencrypt:ro
+      - /srv/needo/certbot/www:/var/www/certbot:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      ops-api:
+        condition: service_healthy
+      merchant-api:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-              "const port=process.env.PORT||3000; const prefix=process.env.API_PREFIX||'/api/v1'; fetch('http://127.0.0.1:'+port+prefix+'/ready').then((r)=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))"
-        ]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/api/v1/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 45s
+      start_period: 15s
+    logging: *service-logging
 
-  mysql:
-    image: mysql:8.0
-    env_file:
-      - ${NEEDO_ENV_FILE:-../../backend/.env.staging}
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --max-connections=200
-      - --innodb-buffer-pool-size=512M
-      - --slow-query-log=ON
-      - --long-query-time=0.5
-      - --log-output=TABLE
+  certbot:
+    image: certbot/certbot:v2.11.0
+    profiles: ["certificate"]
     volumes:
-      - needo_staging_mysql_data:/var/lib/mysql
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD}"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    restart: unless-stopped
-
-  redis:
-    image: redis:7.2-alpine
-    env_file:
-      - ${NEEDO_ENV_FILE:-../../backend/.env.staging}
-    command:
-      - sh
-      - -c
-      - exec redis-server --appendonly yes --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
-    volumes:
-      - needo_staging_redis_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" --no-auth-warning ping | grep -q PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    restart: unless-stopped
-
-volumes:
-  needo_staging_mysql_data:
-  needo_staging_redis_data:
+      - /srv/needo/certbot/conf:/etc/letsencrypt
+      - /srv/needo/certbot/www:/var/www/certbot
+    logging: *service-logging
