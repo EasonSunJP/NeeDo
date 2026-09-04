@@ -364,14 +364,14 @@ Resources:
               - Sid: ReadReleaseObjects
                 Effect: Allow
                 Action: s3:GetObject
-                Resource: !Sub ${ReleaseBucket.Arn}/releases/*
+                Resource: !Sub ${ReleaseBucket.Arn}/staging/releases/*
               - Sid: ListReleasePrefix
                 Effect: Allow
                 Action: s3:ListBucket
                 Resource: !GetAtt ReleaseBucket.Arn
                 Condition:
                   StringLike:
-                    s3:prefix: releases/*
+                    s3:prefix: staging/releases/*
               - Sid: ReadWriteBackupPrefixes
                 Effect: Allow
                 Action:

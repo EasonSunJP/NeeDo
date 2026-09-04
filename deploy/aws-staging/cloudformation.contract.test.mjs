@@ -249,8 +249,8 @@ describe("AWS Staging CloudFormation contract", () => {
     ]);
     const expectedStatements = {
       ReadOnlyApplicationSecret: ["Effect: Allow", "Action: secretsmanager:GetSecretValue", "Resource: !Ref ApplicationSecret"],
-      ReadReleaseObjects: ["Effect: Allow", "Action: s3:GetObject", "Resource: !Sub ${ReleaseBucket.Arn}/releases/*"],
-      ListReleasePrefix: ["Effect: Allow", "Action: s3:ListBucket", "Resource: !GetAtt ReleaseBucket.Arn", "Condition:", "StringLike:", "s3:prefix: releases/*"],
+      ReadReleaseObjects: ["Effect: Allow", "Action: s3:GetObject", "Resource: !Sub ${ReleaseBucket.Arn}/staging/releases/*"],
+      ListReleasePrefix: ["Effect: Allow", "Action: s3:ListBucket", "Resource: !GetAtt ReleaseBucket.Arn", "Condition:", "StringLike:", "s3:prefix: staging/releases/*"],
       ReadWriteBackupPrefixes: ["Effect: Allow", "Action:", "- s3:GetObject", "- s3:PutObject", "- s3:AbortMultipartUpload", "Resource:", "- !Sub ${BackupBucket.Arn}/staging/daily/*", "- !Sub ${BackupBucket.Arn}/staging/pre-migration/*"],
       ListBackupPrefixes: ["Effect: Allow", "Action: s3:ListBucket", "Resource: !GetAtt BackupBucket.Arn", "Condition:", "StringLike:", "s3:prefix:", "- staging/daily/*", "- staging/pre-migration/*"],
       PublishHostMetrics: ["Effect: Allow", "Action: cloudwatch:PutMetricData", 'Resource: "*"', "Condition:", "StringEquals:", "cloudwatch:namespace: Needo/Staging"],
