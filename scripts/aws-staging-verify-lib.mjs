@@ -116,6 +116,7 @@ const notificationDefinitions = Object.freeze([
 const instanceIdPattern = /^i-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
 const volumeIdPattern = /^vol-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
 const amiIdPattern = /^ami-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
+const elasticIpAllocationIdPattern = /^eipalloc-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
 const resourceIdPatterns = Object.freeze({
   Vpc: /^vpc-[0-9a-f]{8}(?:[0-9a-f]{9})?$/,
   InternetGateway: /^igw-[0-9a-f]{8}(?:[0-9a-f]{9})?$/,
@@ -124,7 +125,6 @@ const resourceIdPatterns = Object.freeze({
   PublicSubnetRouteTableAssociation: /^rtbassoc-[0-9a-f]{8}(?:[0-9a-f]{9})?$/,
   WebSecurityGroup: /^sg-[0-9a-f]{8}(?:[0-9a-f]{9})?$/,
   Instance: instanceIdPattern,
-  ElasticIp: /^eipalloc-[0-9a-f]{8}(?:[0-9a-f]{9})?$/,
   ElasticIpAssociation: /^eipassoc-[0-9a-f]{8}(?:[0-9a-f]{9})?$/,
   DataVolume: volumeIdPattern
 });
@@ -375,7 +375,7 @@ function requireStackResources(response, outputs) {
   }
   const outputBindings = {
     Instance: outputs.InstanceId,
-    ElasticIp: null,
+    ElasticIp: outputs.ElasticIp,
     DataVolume: outputs.DataVolumeId,
     ReleaseBucket: outputs.ReleaseBucketName,
     ReleaseBucketPolicy: outputs.ReleaseBucketName,
@@ -492,14 +492,19 @@ function requireElasticAddress(response, outputs, resources, instanceId, network
     throw new Error("Expected exactly one EC2 Elastic IP address");
   }
   const [address] = response.Addresses;
-  if (address.AllocationId !== resources.ElasticIp.physicalId
-    || address.AssociationId !== resources.ElasticIpAssociation.physicalId
+  const allocationId = safeArgument(
+    address.AllocationId,
+    "EC2 Elastic IP allocation ID",
+    elasticIpAllocationIdPattern
+  );
+  if (address.AssociationId !== resources.ElasticIpAssociation.physicalId
     || address.InstanceId !== instanceId
     || address.NetworkInterfaceId !== networkInterfaceId
     || address.PublicIp !== outputs.ElasticIp
     || address.Domain !== "vpc") {
     throw new Error("EC2 Elastic IP allocation and association do not match stack resources");
   }
+  return allocationId;
 }
 
 function requireImage(response, imageId) {
@@ -910,7 +915,7 @@ function notificationArgument(notification) {
   ].join(",");
 }
 
-function resourceArns({ config, resources, rootVolumeId, logs, alarms, outputs }) {
+function resourceArns({ config, resources, rootVolumeId, elasticIpAllocationId, logs, alarms, outputs }) {
   const ec2Arn = (type, id) => `arn:aws:ec2:${config.region}:${config.accountId}:${type}/${id}`;
   const mappings = new Map([
     [ec2Arn("vpc", resources.Vpc.physicalId), "Vpc"],
@@ -919,7 +924,7 @@ function resourceArns({ config, resources, rootVolumeId, logs, alarms, outputs }
     [ec2Arn("route-table", resources.PublicRouteTable.physicalId), "PublicRouteTable"],
     [ec2Arn("security-group", resources.WebSecurityGroup.physicalId), "WebSecurityGroup"],
     [ec2Arn("instance", outputs.InstanceId), "Instance"],
-    [ec2Arn("elastic-ip", resources.ElasticIp.physicalId), "ElasticIp"],
+    [ec2Arn("elastic-ip", elasticIpAllocationId), "ElasticIp"],
     [ec2Arn("volume", outputs.DataVolumeId), "DataVolume"],
     [ec2Arn("volume", rootVolumeId), "InstanceRootVolume"],
     [`arn:aws:s3:::${outputs.ReleaseBucketName}`, "ReleaseBucket"],
@@ -1083,9 +1088,9 @@ export async function verifyAwsStagingEnvironment({
     describedInstances, outputs, resources, config
   );
   const describedAddresses = await aws.json([
-    "ec2", "describe-addresses", "--allocation-ids", resources.ElasticIp.physicalId
+    "ec2", "describe-addresses", "--public-ips", outputs.ElasticIp
   ]);
-  requireElasticAddress(
+  const elasticIpAllocationId = requireElasticAddress(
     describedAddresses, outputs, resources, outputs.InstanceId, networkInterfaceId
   );
   const describedImages = await aws.json([
@@ -1108,7 +1113,7 @@ export async function verifyAwsStagingEnvironment({
     resources.Vpc.physicalId, resources.InternetGateway.physicalId,
     resources.PublicSubnet.physicalId, resources.PublicRouteTable.physicalId,
     resources.WebSecurityGroup.physicalId, outputs.InstanceId,
-    resources.ElasticIp.physicalId, rootVolumeId, outputs.DataVolumeId
+    elasticIpAllocationId, rootVolumeId, outputs.DataVolumeId
   ];
   const describedEc2Tags = await aws.json([
     "ec2", "describe-tags", "--filters", `Name=resource-id,Values=${ec2TaggedIds.join(",")}`
@@ -1250,7 +1255,15 @@ export async function verifyAwsStagingEnvironment({
   ]);
   requireTags(budgetTags?.ResourceTags, config.owner, "AWS Budget");
 
-  const arnMappings = resourceArns({ config, resources, rootVolumeId, logs, alarms, outputs });
+  const arnMappings = resourceArns({
+    config,
+    resources,
+    rootVolumeId,
+    elasticIpAllocationId,
+    logs,
+    alarms,
+    outputs
+  });
   const resourceGroupTags = await aws.json([
     "resourcegroupstaggingapi", "get-resources", "--tag-filters",
     "Key=Project,Values=needo", "Key=Environment,Values=staging",
@@ -1310,7 +1323,7 @@ export async function verifyAwsStagingEnvironment({
       securityGroupId: resources.WebSecurityGroup.physicalId,
       vpcId: resources.Vpc.physicalId,
       subnetId: resources.PublicSubnet.physicalId,
-      elasticIpAllocationId: resources.ElasticIp.physicalId,
+      elasticIpAllocationId,
       releaseBucketName: outputs.ReleaseBucketName,
       backupBucketName: outputs.BackupBucketName,
       applicationSecretArn: "REDACTED",
@@ -1427,7 +1440,11 @@ function reconstructAcceptanceEvidence(evidence) {
   safeArgument(evidence.resourceIds.securityGroupId, "Acceptance securityGroupId", resourceIdPatterns.WebSecurityGroup);
   safeArgument(evidence.resourceIds.vpcId, "Acceptance vpcId", resourceIdPatterns.Vpc);
   safeArgument(evidence.resourceIds.subnetId, "Acceptance subnetId", resourceIdPatterns.PublicSubnet);
-  safeArgument(evidence.resourceIds.elasticIpAllocationId, "Acceptance EIP allocation", resourceIdPatterns.ElasticIp);
+  safeArgument(
+    evidence.resourceIds.elasticIpAllocationId,
+    "Acceptance EIP allocation",
+    elasticIpAllocationIdPattern
+  );
   for (const key of ["releaseBucketName", "backupBucketName"]) {
     safeArgument(evidence.resourceIds[key], `Acceptance ${key}`, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/);
   }

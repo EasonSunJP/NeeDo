@@ -100,6 +100,7 @@ function preflight(overrides = {}) {
 function stackResources(overrides = {}) {
   const boundPhysicalIds = {
     Instance: outputValues.InstanceId,
+    ElasticIp: outputValues.ElasticIp,
     DataVolume: outputValues.DataVolumeId,
     ReleaseBucket: outputValues.ReleaseBucketName,
     ReleaseBucketPolicy: outputValues.ReleaseBucketName,

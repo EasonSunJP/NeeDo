@@ -208,6 +208,7 @@ export function requireAwsStagingResources(response, outputs, config, {
   }
   const bindings = {
     Instance: outputs.InstanceId,
+    ElasticIp: outputs.ElasticIp,
     DataVolume: outputs.DataVolumeId,
     ReleaseBucket: outputs.ReleaseBucketName,
     ReleaseBucketPolicy: outputs.ReleaseBucketName,

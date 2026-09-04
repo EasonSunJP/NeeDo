@@ -157,7 +157,7 @@ const resources = Object.freeze([
   ["InstanceRole", "AWS::IAM::Role", ids.roleName],
   ["InstanceProfile", "AWS::IAM::InstanceProfile", ids.instanceProfileName],
   ["Instance", "AWS::EC2::Instance", ids.instance],
-  ["ElasticIp", "AWS::EC2::EIP", ids.elasticAllocation],
+  ["ElasticIp", "AWS::EC2::EIP", ids.elasticIp],
   ["ElasticIpAssociation", "AWS::EC2::EIPAssociation", ids.elasticAssociation],
   ["DataVolume", "AWS::EC2::Volume", ids.dataVolume],
   ["DataVolumeAttachment", "AWS::EC2::VolumeAttachment", `${ids.instance}|${ids.dataVolume}`],
@@ -1195,7 +1195,7 @@ describe("AWS Staging environment-only acceptance", () => {
     ["mismatched network EIP owner", (f) => { f.instance.Reservations[0].Instances[0].NetworkInterfaces[0].Association.IpOwnerId = "999999999999"; }],
     ["missing described EIP", (f) => { f.address.Addresses = []; }],
     ["multiple described EIPs", (f) => { f.address.Addresses.push({ ...f.address.Addresses[0] }); }],
-    ["mismatched allocation", (f) => { f.address.Addresses[0].AllocationId = "eipalloc-0fedcba9876543210"; }],
+    ["malformed allocation", (f) => { f.address.Addresses[0].AllocationId = "eipalloc-invalid"; }],
     ["mismatched EIP association", (f) => { f.address.Addresses[0].AssociationId = "eipassoc-0fedcba9876543210"; }],
     ["mismatched EIP instance", (f) => { f.address.Addresses[0].InstanceId = "i-0fedcba9876543210"; }],
     ["mismatched EIP network interface", (f) => { f.address.Addresses[0].NetworkInterfaceId = "eni-0fedcba9876543210"; }],
@@ -1249,7 +1249,7 @@ describe("AWS Staging environment-only acceptance", () => {
     expect(aws.json.mock.calls.find(([args]) => (
       args[0] === "ec2" && args[1] === "describe-addresses"
     ))).toEqual([[
-      "ec2", "describe-addresses", "--allocation-ids", ids.elasticAllocation
+      "ec2", "describe-addresses", "--public-ips", ids.elasticIp
     ]]);
     expect(aws.json.mock.calls.find(([args]) => (
       args[0] === "sns" && args[1] === "list-subscriptions-by-topic"

@@ -99,7 +99,9 @@ const expectedResources = Object.freeze([
   ["InstanceRole", "AWS::IAM::Role", "needo-staging-instance-role"],
   ["InstanceProfile", "AWS::IAM::InstanceProfile", "needo-staging-instance-profile"],
   ["Instance", "AWS::EC2::Instance", outputValues.InstanceId],
-  ["ElasticIp", "AWS::EC2::EIP", "eipalloc-0123456789abcdef0"],
+  // CloudFormation reports an AWS::EC2::EIP physical ID as its public IPv4
+  // address, not the EC2 allocation ID returned by DescribeAddresses.
+  ["ElasticIp", "AWS::EC2::EIP", outputValues.ElasticIp],
   ["ElasticIpAssociation", "AWS::EC2::EIPAssociation", "eipassoc-0123456789abcdef0"],
   ["DataVolume", "AWS::EC2::Volume", outputValues.DataVolumeId],
   ["DataVolumeAttachment", "AWS::EC2::VolumeAttachment", "volume-attachment"],
@@ -573,7 +575,7 @@ describe("AWS Staging CloudFormation deployment", () => {
     expect(aws.json.mock.calls.slice(1)).toEqual([
       [["cloudformation", "describe-stacks", "--stack-name", stackId]],
       [["cloudformation", "list-stack-resources", "--stack-name", stackId]],
-      [["ec2", "describe-addresses", "--allocation-ids", "eipalloc-0123456789abcdef0"]],
+      [["ec2", "describe-addresses", "--public-ips", outputValues.ElasticIp]],
       [["ec2", "describe-instances", "--instance-ids", outputValues.InstanceId]]
     ]);
     expect(trace).toEqual([
@@ -726,11 +728,11 @@ describe("AWS Staging CloudFormation deployment", () => {
       })
     });
 
-    await expect(deploy({ aws })).rejects.toThrow(/Elastic IP.*stack|address.*identity/i);
+    await expect(deploy({ aws })).rejects.toThrow(/ElasticIp.*output|Elastic IP.*stack|address.*identity/i);
   });
 
   it.each([
-    ["allocation", { AllocationId: "eipalloc-0fedcba9876543210" }],
+    ["allocation", { AllocationId: "eipalloc-invalid" }],
     ["association", { AssociationId: "eipassoc-0fedcba9876543210" }],
     ["instance", { InstanceId: "i-0fedcba9876543210" }],
     ["public IP", { PublicIp: "198.51.100.88" }],

@@ -13,6 +13,7 @@ import {
 
 const SAFE_PREFLIGHT_STACK_STATES = new Set(["ABSENT"]);
 const CREATE_COMPLETE_ONLY = new Set(["CREATE_COMPLETE"]);
+const ELASTIC_IP_ALLOCATION_ID_PATTERN = /^eipalloc-[0-9a-f]{8}(?:[0-9a-f]{9})?$/;
 
 function requireInProcessPreflight(preflight, config, templateArtifact, runtimeArtifact) {
   if (!preflight || typeof preflight !== "object" || !Object.isFrozen(preflight)) {
@@ -100,7 +101,6 @@ function requireInstance(described, expectedInstanceId) {
 }
 
 function requireElasticAddress(described, {
-  allocationId,
   associationId,
   instanceId,
   publicIp
@@ -112,7 +112,7 @@ function requireElasticAddress(described, {
     throw new Error("Elastic IP address identity does not match the created stack");
   }
   const [address] = described.Addresses;
-  if (address?.AllocationId !== allocationId
+  if (!ELASTIC_IP_ALLOCATION_ID_PATTERN.test(String(address?.AllocationId ?? ""))
     || address?.AssociationId !== associationId
     || address?.InstanceId !== instanceId
     || address?.PublicIp !== publicIp
@@ -211,10 +211,9 @@ export async function deployAwsStagingInfrastructure({
   });
 
   const describedAddresses = await aws.json([
-    "ec2", "describe-addresses", "--allocation-ids", resources.ElasticIp.physicalId
+    "ec2", "describe-addresses", "--public-ips", outputs.ElasticIp
   ]);
   requireElasticAddress(describedAddresses, {
-    allocationId: resources.ElasticIp.physicalId,
     associationId: resources.ElasticIpAssociation.physicalId,
     instanceId: outputs.InstanceId,
     publicIp: outputs.ElasticIp
