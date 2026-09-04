@@ -28,7 +28,7 @@ const validBundle = (): SelectiveAccountSyncBundle => {
   const tables = Object.fromEntries(ACCOUNT_SYNC_TABLES.map((table) => [table, table === "users" ? users : table === "user_roles" ? userRoles : []])) as unknown as SelectiveAccountSyncBundle["tables"];
   const counts = Object.fromEntries(ACCOUNT_SYNC_TABLES.map((table) => [table, tables[table].length])) as SelectiveAccountSyncBundle["counts"];
   const digests = Object.fromEntries(ACCOUNT_SYNC_TABLES.map((table) => [table, collectionDigest(verificationKey, tables[table])])) as SelectiveAccountSyncBundle["digests"];
-  return { formatVersion: 1, sourceDatabase: "needo_dev", sourceMigrationCount: 1, sourceLatestMigration: "baseline", exportedAt: "2026-09-05T00:00:00.000Z", verificationKey, tables, counts, digests };
+  return { formatVersion: 2, sourceDatabase: "needo_dev", sourceMigrationCount: 1, sourceLatestMigration: "baseline", sourceMigrations: [{ migration_name: "baseline", checksum: "a".repeat(64) }], exportedAt: "2026-09-05T00:00:00.000Z", verificationKey, tables, counts, digests };
 };
 
 const refreshBundleIntegrity = (bundle: SelectiveAccountSyncBundle): SelectiveAccountSyncBundle => {
@@ -89,7 +89,7 @@ const createImportHarness = (state: {
     acquireLock: async () => true, releaseLock: async () => undefined,
     begin: async () => { working = copy(committed); },
     commit: async () => { committed = working; }, rollback: async () => { working = committed; },
-    baseline: async () => ({ users: working.users, roles: state.roles ?? requiredRoles, migrations: [{ migration_name: "baseline" }], activePlatformIdentities: 1, administratorRoleCount: 1 }),
+    baseline: async () => ({ users: working.users, roles: state.roles ?? requiredRoles, migrations: [{ migration_name: "baseline", checksum: "a".repeat(64) }], activePlatformIdentities: 1, administratorRoleCount: 1 }),
     occupied: async (field, values) => { occupiedCalls.push({ field, values }); return state.occupiedUniqueValues?.[field] ?? []; },
     insert: async (table, values) => {
       const rows = working.rows[table] ?? []; const row = { id: rows.length + 1000, ...values }; rows.push(row); working.rows[table] = rows;
@@ -116,6 +116,34 @@ const createImportHarness = (state: {
 };
 
 describe("selective staging account importer", () => {
+  it("allows only the approved source-only Exchange migration with all common checksums equal", async () => {
+    const common = Array.from({ length: 125 }, (_, index) => ({ migration_name: `20260801_${index}`, checksum: "a".repeat(64) }));
+    const extra = { migration_name: "20260903100000_exchange_matched_booking_conversion", checksum: "ecae7c8e14424f4d35def9fa51bffc1ca7292270db54b58d58545c471e7148f2" };
+    const bundle = { ...validBundle(), formatVersion: 2, sourceMigrationCount: 126, sourceLatestMigration: extra.migration_name, sourceMigrations: [...common, extra] };
+    const harness = createImportHarness();
+    const baseline = await harness.baseline();
+    harness.baseline = async () => ({ ...baseline, migrations: common });
+    await expect(importSelectiveAccounts(harness, bundle)).resolves.toMatchObject({ userCount: 252 });
+  });
+
+  it.each(["extra-name", "extra-checksum", "common-checksum", "target-extra", "target-duplicate", "second-missing"])("rejects migration exception drift: %s before any insertion", async (mutation) => {
+    const common = Array.from({ length: 125 }, (_, index) => ({ migration_name: `20260801_${index}`, checksum: "a".repeat(64) }));
+    const sourceMigrations = [...common.map((row) => ({ ...row })), { migration_name: "20260903100000_exchange_matched_booking_conversion", checksum: "ecae7c8e14424f4d35def9fa51bffc1ca7292270db54b58d58545c471e7148f2" }];
+    if (mutation === "extra-name") sourceMigrations[125].migration_name = "different-migration";
+    if (mutation === "extra-checksum") sourceMigrations[125].checksum = "b".repeat(64);
+    if (mutation === "common-checksum") common[0].checksum = "b".repeat(64);
+    if (mutation === "target-extra") common.push({ migration_name: "target-only", checksum: "a".repeat(64) });
+    if (mutation === "target-duplicate") common[1] = { ...common[0] };
+    if (mutation === "second-missing") common.pop();
+    const bundle = { ...validBundle(), sourceMigrationCount: 126, sourceLatestMigration: sourceMigrations[125].migration_name, sourceMigrations };
+    const harness = createImportHarness();
+    const baseline = await harness.baseline();
+    harness.baseline = async () => ({ ...baseline, migrations: common });
+    await expect(importSelectiveAccounts(harness, bundle)).rejects.toThrow("ACCOUNT_SYNC_MIGRATION_PARITY_INVALID");
+    expect(harness.committedRows("users")).toEqual([administrator]);
+    expect(harness.occupiedCalls).toEqual([]);
+  });
+
   it("enforces staging-only target guard", () => {
     expect(() => parseSelectiveAccountImportConfig({ NODE_ENV: "development", DEPLOY_ENV: "staging", DATABASE_URL: "mysql://x:y@mysql/needo_staging", ADMIN_DEFAULT_EMAIL: "admin@example.test" })).toThrow("ACCOUNT_SYNC_TARGET_BOUNDARY_REJECTED");
   });
@@ -207,7 +235,7 @@ describe("selective staging account importer", () => {
         if (sql.includes("RELEASE_LOCK")) return [{ released: 1 }];
         if (sql.includes("FROM users")) return [administrator];
         if (sql.includes("FROM roles")) return requiredRoles;
-        if (sql.includes("_prisma_migrations")) return [{ migration_name: "baseline" }];
+        if (sql.includes("_prisma_migrations")) return [{ migration_name: "baseline", checksum: "a".repeat(64) }];
         if (sql.includes("COUNT")) return [{ count: 0 }];
         if (sql.startsWith("INSERT")) return { insertId: 1000 };
         if (sql.startsWith("UPDATE")) return { affectedRows: 1 };
@@ -257,7 +285,7 @@ describe("selective staging account importer", () => {
         if (sql.includes("RELEASE_LOCK")) return [{ released: 1 }];
         if (sql.startsWith("SELECT id, email")) return [{ ...administrator, is_active: "1" }];
         if (sql.includes("FROM roles") && sql.includes("deleted_at")) return requiredRoles;
-        if (sql.includes("_prisma_migrations")) return [{ migration_name: "baseline" }];
+        if (sql.includes("_prisma_migrations")) return [{ migration_name: "baseline", checksum: "a".repeat(64) }];
         if (sql.includes("type = 'platform'")) return [{ count: 1 }];
         if (sql.includes("JOIN user_roles ur") || sql.includes("FROM user_roles ur JOIN roles")) return [{ count: 1 }];
         if (sql.startsWith("INSERT INTO ")) {

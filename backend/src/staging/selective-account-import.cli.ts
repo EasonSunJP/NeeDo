@@ -117,7 +117,7 @@ const makeImportPort = (connection: Connection, env: NodeJS.ProcessEnv): Selecti
     const users = rows(await connection.query("SELECT id, email, is_active, is_test_account, deleted_at FROM users WHERE deleted_at IS NULL"));
     const administratorId = users.length === 1 ? Number(users[0].id) : -1;
     const [roles, migrations, identities, administratorRoles] = await Promise.all([
-      connection.query("SELECT id, code, deleted_at FROM roles WHERE deleted_at IS NULL"), connection.query("SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at ASC"),
+      connection.query("SELECT id, code, deleted_at FROM roles WHERE deleted_at IS NULL"), connection.query("SELECT migration_name, checksum FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name ASC"),
       connection.query("SELECT COUNT(*) AS count FROM user_identities WHERE user_id = ? AND deleted_at IS NULL AND is_active = 1 AND type = 'platform' AND scope_type = 'global' AND scope_id IS NULL", [administratorId]),
       connection.query("SELECT COUNT(*) AS count FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND ur.deleted_at IS NULL AND r.deleted_at IS NULL AND r.code = 'admin'", [administratorId])
     ]);

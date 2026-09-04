@@ -9,10 +9,11 @@ import {
 const verificationKey = "a".repeat(64);
 
 const createMinimalBundle = () => ({
-  formatVersion: 1,
+  formatVersion: 2,
   sourceDatabase: "needo_dev",
-  sourceMigrationCount: 125,
+  sourceMigrationCount: 1,
   sourceLatestMigration: "20260903170000_order_review_shop_summary",
+  sourceMigrations: [{ migration_name: "20260903170000_order_review_shop_summary", checksum: "a".repeat(64) }],
   exportedAt: "2026-09-05T00:00:00.000Z",
   verificationKey,
   tables: Object.fromEntries(ACCOUNT_SYNC_TABLES.map((name) => [name, []])),
@@ -52,6 +53,14 @@ describe("selective account sync bundle contract", () => {
 
   it("accepts a complete empty allowlist bundle", () => {
     expect(parseSelectiveAccountSyncBundle(createMinimalBundle()).counts.users).toBe(0);
+  });
+
+  it("rejects missing, duplicate, or inconsistent migration metadata", () => {
+    const bundle = createMinimalBundle();
+    expect(() => parseSelectiveAccountSyncBundle({ ...bundle, sourceMigrations: undefined })).toThrow("ACCOUNT_SYNC_BUNDLE_INVALID");
+    expect(() => parseSelectiveAccountSyncBundle({ ...bundle, sourceMigrations: [...bundle.sourceMigrations, ...bundle.sourceMigrations], sourceMigrationCount: 2 })).toThrow("ACCOUNT_SYNC_MIGRATION_METADATA_INVALID");
+    expect(() => parseSelectiveAccountSyncBundle({ ...bundle, sourceMigrationCount: 2 })).toThrow("ACCOUNT_SYNC_MIGRATION_METADATA_INVALID");
+    expect(() => parseSelectiveAccountSyncBundle({ ...bundle, sourceLatestMigration: "other" })).toThrow("ACCOUNT_SYNC_MIGRATION_METADATA_INVALID");
   });
 
   it("rejects unknown or extra table keys", () => {

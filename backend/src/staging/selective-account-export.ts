@@ -30,7 +30,7 @@ export const ACCOUNT_EXPORT_QUERIES = {
   merchant_shop_memberships: "SELECT * FROM merchant_shop_memberships WHERE deleted_at IS NULL AND merchant_account_id IN (?) AND shop_id IN (?)",
   technician_shop_affiliations: "SELECT * FROM technician_shop_affiliations WHERE deleted_at IS NULL AND technician_profile_id IN (?) AND shop_id IN (?)",
   public_identifiers: "SELECT * FROM public_identifiers WHERE deleted_at IS NULL AND customer_support_account_id IS NULL AND (user_identity_id IN (?) OR shop_id IN (?) OR merchant_account_id IN (?))",
-  migrations: "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at ASC"
+  migrations: "SELECT migration_name, checksum FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name ASC"
 } as const;
 
 export interface AccountClosureInput {
@@ -309,7 +309,7 @@ export const exportSelectiveAccounts = async (port: SelectiveAccountExportPort, 
   const verificationKey = randomBytes(32).toString("hex");
   const counts = Object.fromEntries(ACCOUNT_SYNC_TABLES.map((table) => [table, tableRows[table].length])) as Record<(typeof ACCOUNT_SYNC_TABLES)[number], number>;
   const digests = Object.fromEntries(ACCOUNT_SYNC_TABLES.map((table) => [table, collectionDigest(verificationKey, tableRows[table])])) as Record<(typeof ACCOUNT_SYNC_TABLES)[number], string>;
-  const bundle = parseSelectiveAccountSyncBundle({ formatVersion: 1, sourceDatabase: "needo_dev", sourceMigrationCount: migrations.length, sourceLatestMigration: String(migrations.at(-1)?.migration_name ?? "baseline"), exportedAt: now.toISOString(), verificationKey, tables: tableRows, counts, digests });
+  const bundle = parseSelectiveAccountSyncBundle({ formatVersion: 2, sourceDatabase: "needo_dev", sourceMigrationCount: migrations.length, sourceLatestMigration: String(migrations.at(-1)?.migration_name ?? "baseline"), sourceMigrations: migrations.map(({ migration_name, checksum }) => ({ migration_name, checksum })), exportedAt: now.toISOString(), verificationKey, tables: tableRows, counts, digests });
   const archive = gzipSync(Buffer.from(JSON.stringify(bundle), "utf8"), { mtime: 0 } as never);
   await writeFile(port.outputPath, archive, { flag: "wx", mode: 0o600 });
   const fileMode = (await stat(port.outputPath)).mode & 0o777;

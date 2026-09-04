@@ -107,3 +107,22 @@ Account sync Task 7: pending
   the web service. HTTPS readiness returned 200/code 0; HTTP redirected 301.
 - Both registration endpoints returned 40313, and a bounded read-only check
   confirmed exactly one undeleted user. No account sync or seed ran.
+
+## Task 6 execution checkpoint (2026-09-05)
+
+- User authorized current 251 source / 252 target baseline. `8b5be51c`
+  implements that baseline and fixes S3 CLI flags and non-root bundle ownership;
+  independent review approved.
+- `5e9e9e02` fixes host Python/active-release manifest compatibility. Root reran
+  account-sync orchestration tests: 12/12 passed. Independent review approved.
+- Actual source export contains 251 users. No account import has run.
+- Read-only migration comparison: source 126 completed, target 125 completed.
+  Source-only migration is `20260903100000_exchange_matched_booking_conversion`.
+  It exists in the exchange-matched-booking-conversion worktree, not pinned main
+  `886dc470` or the staging branch. It changes Exchange/Booking and permission
+  data, outside the approved 11-table selective sync scope.
+- Do not weaken migration parity, deploy unrelated Exchange changes, alter
+  migration history, or import until this plan boundary is resolved. Exact
+  account-table schema comparison is in progress. Current deployed revision
+  remains `d5c494a401d622288c92239033f9581f81aff66e`; current target has only its
+  existing administrator.

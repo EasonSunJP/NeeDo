@@ -24,10 +24,11 @@ export interface SyncRow {
 }
 
 export interface SelectiveAccountSyncBundle {
-  formatVersion: 1;
+  formatVersion: 2;
   sourceDatabase: string;
   sourceMigrationCount: number;
   sourceLatestMigration: string;
+  sourceMigrations: Array<{ migration_name: string; checksum: string }>;
   exportedAt: string;
   verificationKey: string;
   tables: Record<AccountSyncTable, SyncRow[]>;
@@ -67,10 +68,11 @@ const tableDigestsSchema = z.object(
 ).strict();
 
 const bundleSchema = z.object({
-  formatVersion: z.literal(1),
+  formatVersion: z.literal(2),
   sourceDatabase: z.string().trim().min(1),
   sourceMigrationCount: z.number().int().safe().nonnegative(),
   sourceLatestMigration: z.string().trim().min(1),
+  sourceMigrations: z.array(z.object({ migration_name: z.string().min(1), checksum: z.string().regex(/^[a-f0-9]{64}$/u) }).strict()),
   exportedAt: z.string().datetime({ offset: true }),
   verificationKey: z.string().regex(/^[a-f0-9]{64}$/u),
   tables: tableRowsSchema,
@@ -122,6 +124,11 @@ export const parseSelectiveAccountSyncBundle = (value: unknown): SelectiveAccoun
 
   const parsed = bundleSchema.safeParse(value);
   if (!parsed.success) throw new Error("ACCOUNT_SYNC_BUNDLE_INVALID");
+  if (parsed.data.sourceMigrations.length !== parsed.data.sourceMigrationCount
+    || new Set(parsed.data.sourceMigrations.map((migration) => migration.migration_name)).size !== parsed.data.sourceMigrationCount
+    || parsed.data.sourceLatestMigration !== (parsed.data.sourceMigrations.at(-1)?.migration_name ?? "baseline")) {
+    throw new Error("ACCOUNT_SYNC_MIGRATION_METADATA_INVALID");
+  }
 
   for (const table of ACCOUNT_SYNC_TABLES) {
     const rows = parsed.data.tables[table] as SyncRow[];
@@ -146,6 +153,7 @@ export const parseSelectiveAccountSyncBundle = (value: unknown): SelectiveAccoun
     sourceDatabase: parsed.data.sourceDatabase,
     sourceMigrationCount: parsed.data.sourceMigrationCount,
     sourceLatestMigration: parsed.data.sourceLatestMigration,
+    sourceMigrations: parsed.data.sourceMigrations,
     exportedAt: parsed.data.exportedAt,
     verificationKey: parsed.data.verificationKey,
     tables: parsed.data.tables as Record<AccountSyncTable, SyncRow[]>,

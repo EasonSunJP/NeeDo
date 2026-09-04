@@ -39,7 +39,7 @@ Cover exact table order, unknown-table rejection, unsafe scalar rejection, dupli
 
 ```ts
 const minimal = {
-  formatVersion: 1,
+  formatVersion: 2,
   sourceDatabase: "needo_dev",
   sourceMigrationCount: 125,
   sourceLatestMigration: "20260903170000_order_review_shop_summary",
@@ -293,7 +293,7 @@ Require `NODE_ENV=production`, `DEPLOY_ENV=staging`, host `mysql`, database `nee
 SELECT GET_LOCK('needo-staging-selective-account-sync', 0) AS acquired
 ```
 
-Inside `connection.beginTransaction()`, verify exactly one undeleted target user, its normalized email equals `ADMIN_DEFAULT_EMAIL`, it is active, it has exactly one active platform identity, and it owns an undeleted `admin` role. Verify the target migration count/latest name match the bundle.
+Inside `connection.beginTransaction()`, verify exactly one undeleted target user, its normalized email equals `ADMIN_DEFAULT_EMAIL`, it is active, it has exactly one active platform identity, and it owns an undeleted `admin` role. The v2 bundle includes `sourceMigrations` with all completed, non-rolled-back names/checksums. Require full set/checksum equality, except the user-approved source-only `20260903100000_exchange_matched_booking_conversion` with checksum `ecae7c8e14424f4d35def9fa51bffc1ca7292270db54b58d58545c471e7148f2`, exactly 126 source / 125 target entries, and all common entries identical. This exception requires prior 11-table column/index/foreign-key compatibility verification. Reject every other delta; never change migration history or deploy the unrelated Exchange branch.
 
 - [ ] **Step 4: Implement multi-key collision and role preflight**
 

@@ -73,6 +73,27 @@ export const parseSelectiveAccountImportConfig = (env: NodeJS.ProcessEnv) => {
 
 const isDatabaseTrue = (value: unknown): boolean => Number(value) === 1;
 
+const assertMigrationCompatibility = (bundle: SelectiveAccountSyncBundle, target: TargetRow[]): void => {
+  const source = new Map(bundle.sourceMigrations.map((row) => [row.migration_name, row.checksum]));
+  const targetNames = new Set<string>();
+  for (const row of target) {
+    if (typeof row.migration_name !== "string" || typeof row.checksum !== "string"
+      || targetNames.has(row.migration_name) || source.get(row.migration_name) !== row.checksum) {
+      throw new Error("ACCOUNT_SYNC_MIGRATION_PARITY_INVALID");
+    }
+    targetNames.add(row.migration_name);
+  }
+  const missing = bundle.sourceMigrations.filter((row) => !targetNames.has(row.migration_name));
+  if (missing.length === 0) return;
+  // User-approved one-time exception after independent 11-table schema comparison.
+  // No Exchange schema, permissions, or migration history is copied by this importer.
+  if (target.length !== 125 || source.size !== 126 || missing.length !== 1
+    || missing[0].migration_name !== "20260903100000_exchange_matched_booking_conversion"
+    || missing[0].checksum !== "ecae7c8e14424f4d35def9fa51bffc1ca7292270db54b58d58545c471e7148f2") {
+    throw new Error("ACCOUNT_SYNC_MIGRATION_PARITY_INVALID");
+  }
+};
+
 const roleScopeMap = (values: Record<string, unknown>, maps: Record<string, Map<number, number>>): void => {
   const scopeType = values.scope_type;
   const scopeId = values.scope_id;
@@ -128,7 +149,7 @@ export const importSelectiveAccounts = async (port: SelectiveAccountImportPort, 
     const baseline = await port.baseline();
     const administrator = baseline.users.filter((user) => user.deleted_at === null || user.deleted_at === undefined);
     if (administrator.length !== 1 || String(administrator[0].email).trim().toLowerCase() !== config.adminDefaultEmail || !isDatabaseTrue(administrator[0].is_active) || baseline.activePlatformIdentities !== 1 || baseline.administratorRoleCount !== 1) throw new Error("ACCOUNT_SYNC_TARGET_BASELINE_INVALID");
-    if (baseline.migrations.length !== bundle.sourceMigrationCount || String(baseline.migrations.at(-1)?.migration_name) !== bundle.sourceLatestMigration) throw new Error("ACCOUNT_SYNC_MIGRATION_PARITY_INVALID");
+    assertMigrationCompatibility(bundle, baseline.migrations);
     const collisionValues: Record<CollisionField, unknown[]> = {
       email: bundle.tables.users.map((row) => row.values.email).filter((value) => value !== null && value !== undefined),
       needo_id: bundle.tables.users.map((row) => row.values.needo_id).filter((value) => value !== null && value !== undefined),

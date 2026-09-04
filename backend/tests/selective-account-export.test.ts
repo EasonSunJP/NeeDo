@@ -115,6 +115,8 @@ describe("selective staging account exporter", () => {
     }
     expect(ACCOUNT_EXPORT_QUERIES.technician_shop_affiliations)
       .toContain("technician_profile_id IN (?) AND shop_id IN (?)");
+    expect(ACCOUNT_EXPORT_QUERIES.migrations).toContain("migration_name, checksum");
+    expect(ACCOUNT_EXPORT_QUERIES.migrations).toContain("rolled_back_at IS NULL");
   });
 
   it("rejects a role scope that is not part of the final exported graph", async () => {
@@ -252,7 +254,7 @@ describe("selective staging account exporter", () => {
       [ACCOUNT_EXPORT_QUERIES.technician_shop_affiliations, []],
       [ACCOUNT_EXPORT_QUERIES.shops, []],
       [ACCOUNT_EXPORT_QUERIES.public_identifiers, []],
-      [ACCOUNT_EXPORT_QUERIES.migrations, [{ migration_name: "20260903170000_order_review_shop_summary" }]]
+      [ACCOUNT_EXPORT_QUERIES.migrations, [{ migration_name: "20260903170000_order_review_shop_summary", checksum: "a".repeat(64) }]]
     ]);
     const port: SelectiveAccountExportPort = {
       deployEnv: "local",
