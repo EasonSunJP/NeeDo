@@ -85,9 +85,7 @@ const userPolicyEnforcementService = new UserPolicyEnforcementService(
   new UserGlobalPolicyService(userGlobalPolicyRepository)
 );
 const ndpExperienceCampaignRepository = new NdpExperienceCampaignRepository();
-const platformMembershipResolver = new PlatformMembershipService(
-  platformMembershipRepository
-);
+const platformMembershipResolver = new PlatformMembershipService(platformMembershipRepository);
 const userExperienceService = new UserExperienceService(
   userExperienceRepository,
   platformMembershipResolver,
@@ -241,9 +239,7 @@ const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
   env.ORDER_SERVICE_EXPIRY_BATCH_SIZE
 );
 const shopMembershipCardAdjustmentExpiryWorker = new ShopMembershipCardAdjustmentExpiryWorker(
-  new ShopMembershipCardAdjustmentExpiryService(
-    new ShopMembershipCardAdjustmentRepository()
-  ),
+  new ShopMembershipCardAdjustmentExpiryService(new ShopMembershipCardAdjustmentRepository()),
   logger,
   env.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_INTERVAL_MS,
   env.SHOP_MEMBERSHIP_CARD_ADJUSTMENT_EXPIRY_BATCH_SIZE

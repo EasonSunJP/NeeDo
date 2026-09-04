@@ -6,12 +6,7 @@ import {
 } from "./three-month-simulation-plan";
 
 export type SocialSimulationType = "shop" | "technician" | "user";
-export type SocialSimulationPostKind =
-  | "text"
-  | "single_image"
-  | "multi_image"
-  | "video"
-  | "quote";
+export type SocialSimulationPostKind = "text" | "single_image" | "multi_image" | "video" | "quote";
 
 export interface SocialSimulationAccount {
   key: string;
@@ -165,9 +160,7 @@ const buildAccounts = (): SocialSimulationAccount[] => {
     }))
   ];
   const simulatedEmails = new Set(simulated.map((account) => account.email));
-  const fixed = TEST_USER_ACCOUNTS.filter(
-    (account) => !simulatedEmails.has(account.email)
-  ).map(
+  const fixed = TEST_USER_ACCOUNTS.filter((account) => !simulatedEmails.has(account.email)).map(
     (account): SocialSimulationAccount => ({
       key:
         account.email === "customer@example.com"
@@ -203,8 +196,8 @@ const orderAccountsForFriendGraph = (accounts: SocialSimulationAccount[]) => {
   for (let index = 0; index < slots.length; index += 1) {
     if (slots[index]) continue;
     const next = takeTechnician
-      ? technicians[technicianIndex++] ?? users[userIndex++]
-      : users[userIndex++] ?? technicians[technicianIndex++];
+      ? (technicians[technicianIndex++] ?? users[userIndex++])
+      : (users[userIndex++] ?? technicians[technicianIndex++]);
     slots[index] = next;
     takeTechnician = !takeTechnician;
   }
@@ -238,7 +231,14 @@ const buildPosts = (accounts: SocialSimulationAccount[]): SocialSimulationPost[]
       const imageAt = (offset: number) => IMAGE_POOL[(imageStart + offset) % IMAGE_POOL.length]!;
       const items: SocialSimulationMediaItem[] =
         kind === "single_image"
-          ? [{ id: `${key}-image-1`, type: "image", url: imageAt(0), alt: `${account.displayName} 发布的现场照片` }]
+          ? [
+              {
+                id: `${key}-image-1`,
+                type: "image",
+                url: imageAt(0),
+                alt: `${account.displayName} 发布的现场照片`
+              }
+            ]
           : kind === "multi_image"
             ? Array.from({ length: 3 }, (_, index) => ({
                 id: `${key}-image-${index + 1}`,
@@ -247,14 +247,16 @@ const buildPosts = (accounts: SocialSimulationAccount[]): SocialSimulationPost[]
                 alt: `${account.displayName} 发布的组图 ${index + 1}`
               }))
             : kind === "video"
-              ? [{
-                  id: `${key}-video-1`,
-                  type: "video",
-                  url: VIDEO_URL,
-                  thumbnailUrl: imageAt(0),
-                  alt: `${account.displayName} 发布的短视频`,
-                  durationLabel: "0:30"
-                }]
+              ? [
+                  {
+                    id: `${key}-video-1`,
+                    type: "video",
+                    url: VIDEO_URL,
+                    thumbnailUrl: imageAt(0),
+                    alt: `${account.displayName} 发布的短视频`,
+                    durationLabel: "0:30"
+                  }
+                ]
               : [];
       const quotePostKey =
         kind === "quote"
