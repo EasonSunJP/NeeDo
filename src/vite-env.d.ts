@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
   readonly VITE_AUTH_GOOGLE_ENABLED?: string;
+  readonly VITE_AUTH_REGISTRATION_ENABLED?: string;
   readonly VITE_MERCHANT_API_BASE_URL?: string;
   readonly VITE_OPS_API_BASE_URL?: string;
 }

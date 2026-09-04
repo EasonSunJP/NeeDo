@@ -244,6 +244,12 @@ export function isGoogleAuthEnabled(value = import.meta.env.VITE_AUTH_GOOGLE_ENA
   return value?.trim().toLowerCase() !== "false";
 }
 
+export function isRegistrationEnabled(
+  value = import.meta.env.VITE_AUTH_REGISTRATION_ENABLED
+) {
+  return value?.trim().toLowerCase() !== "false";
+}
+
 function AppMark() {
   return (
     <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
@@ -260,9 +266,11 @@ function AppMark() {
 
 export function LoginPage({
   googleAuthEnabled = isGoogleAuthEnabled(),
+  registrationEnabled = isRegistrationEnabled(),
   navigateToPortal = openPortalEntry
 }: {
   googleAuthEnabled?: boolean;
+  registrationEnabled?: boolean;
   navigateToPortal?: (portal: PortalScope, route: string) => void;
 }) {
   const { portal } = useParams();
@@ -729,7 +737,7 @@ export function LoginPage({
                   {copy.logout}
                 </button>
               </div>
-            ) : panelMode === "register" ? (
+            ) : panelMode === "register" && registrationEnabled ? (
               <form
                 className="space-y-5 text-left"
                 data-testid="registration-form"
@@ -868,7 +876,7 @@ export function LoginPage({
                 >
                   {copy.accountLogin}
                 </button>
-                {activePortal === "user" ? (
+                {activePortal === "user" && registrationEnabled ? (
                   <button
                     className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
                     data-testid="show-registration"
