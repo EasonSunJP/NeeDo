@@ -136,7 +136,7 @@ if [[ "$has_existing_schema" == "1" ]]; then
   backup_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   backup_path="/srv/needo/tmp/pre-migration-${revision}-${backup_timestamp}.sql.gz"
   compose_for "$release_dir" exec -T mysql sh -c \
-    'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump --single-transaction --routines --triggers -u"$MYSQL_USER" "$MYSQL_DATABASE"' \
+    'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump --single-transaction --routines --triggers --no-tablespaces -u"$MYSQL_USER" "$MYSQL_DATABASE"' \
     | gzip -9 >"$backup_path"
   backup_sha256="$(sha256sum "$backup_path" | awk '{print $1}')"
   AWS_PAGER="" aws s3 cp "$backup_path" \

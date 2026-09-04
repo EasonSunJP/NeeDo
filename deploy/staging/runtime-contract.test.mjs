@@ -86,6 +86,11 @@ test("release provisioning keeps the ACME webroot public while certificate state
   );
 });
 
+test("staging migration backup avoids privileged tablespace reads", () => {
+  const releaseScript = read("./deploy-release.sh");
+  assert.match(releaseScript, /mysqldump --single-transaction --routines --triggers --no-tablespaces/);
+});
+
 test("web healthcheck tolerates the local HTTPS redirect after TLS activation", () => {
   const compose = read("./docker-compose.yml");
 

@@ -91,6 +91,7 @@ test("builds a bounded, non-disclosing host command", () => {
   assert.match(command, /--version-id/);
   assert.match(command, /node dist\/staging\/selective-account-import\.cli\.js/);
   assert.match(command, /MYSQL_PWD="\$MYSQL_PASSWORD" mysqldump .* -u"\$MYSQL_USER" "\$MYSQL_DATABASE"/);
+  assert.match(command, /mysqldump --single-transaction --routines --triggers --no-tablespaces/);
   assert.match(command, /aws s3api get-object[^\n]+>\/dev\/null/);
   assert.match(command, /sha256sum --check[^\n]+>\/dev\/null/);
   assert.match(command, /backup_version_id=\$\(aws s3api put-object/);
