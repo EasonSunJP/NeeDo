@@ -289,6 +289,7 @@ export type ImContactCardSnapshot = {
 };
 
 export type MessageExt = {
+  mediaState?: "available" | "expired";
   width?: number;
   height?: number;
   duration?: number;

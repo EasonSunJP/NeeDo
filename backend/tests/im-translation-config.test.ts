@@ -7,6 +7,8 @@ describe("IM translation environment configuration", () => {
   const productionEnv = (override: Record<string, string>): NodeJS.ProcessEnv => ({
     ...originalEnv,
     NODE_ENV: "production",
+    IM_MEDIA_STORAGE_DIR: "/var/lib/needo/im-media",
+    CONTENT_MEDIA_STORAGE_DIR: "/var/lib/needo/content-media",
     DEPLOY_ENV: "prod",
     ALLOW_TEST_LOGIN: "false",
     ALLOW_FORMAL_TEST_SEED: "false",

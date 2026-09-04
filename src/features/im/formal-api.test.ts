@@ -50,6 +50,17 @@ function chatRecordItem(position: number, overrides: Record<string, unknown> = {
 }
 
 describe("formal IM adapter", () => {
+  it("does not accept a sender-supplied media expiry flag as server state", () => {
+    const result = toFormalImStoreUpdate({
+      id: "media-state-untrusted", type: "message.created",
+      payload: {
+        id: 700, conversationId: 91, senderUserId: 100, type: "text", content: "/media/im/a.jpg", createdAt: now,
+        metadata: { needoMessageType: "image", needoMessageExt: { mediaState: "expired", caption: "keep caption" } }
+      }
+    });
+    expect(result).toMatchObject({ type: "message.created", message: { type: "image", ext: { caption: "keep caption" } } });
+    if (result?.type === "message.created") expect(result.message.ext?.mediaState).toBeUndefined();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });

@@ -19,6 +19,7 @@ import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
+import { MediaViewerResource } from "../../components/ui/MediaLoadFeedback";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -7356,24 +7357,14 @@ export function ImConversationRoomPage({
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={() => setMediaPreviewScale((scale) => (scale > 1 ? 1 : 2))}
           >
-            {mediaPreview.type === "image" ? (
-              <img
-                alt={mediaPreview.ext?.fileName ?? "图片"}
-                className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
-                draggable={false}
-                src={mediaPreview.ext?.url ?? mediaPreview.content}
-                style={{ transform: `scale(${mediaPreviewScale})` }}
-              />
-            ) : mediaPreview.type === "video" ? (
-              <video
-                className="max-h-full max-w-full object-contain transition-transform duration-150"
-                controls
-                playsInline
-                poster={mediaPreview.ext?.thumbnailUrl}
-                src={mediaPreview.ext?.url ?? mediaPreview.content}
-                style={{ transform: `scale(${mediaPreviewScale})` }}
-              />
-            ) : null}
+            {mediaPreview.type === "image" || mediaPreview.type === "video" ? <MediaViewerResource
+              className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
+              expired={mediaPreview.ext?.mediaState === "expired"}
+              kind={mediaPreview.type}
+              poster={mediaPreview.ext?.thumbnailUrl}
+              src={mediaPreview.ext?.url ?? mediaPreview.content}
+              style={{ transform: `scale(${mediaPreviewScale})` }}
+            /> : null}
           </div>
 
           <footer
