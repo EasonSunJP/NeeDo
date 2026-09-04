@@ -244,15 +244,16 @@ describe("AWS Staging CloudFormation contract", () => {
     ]);
     expect([...role.matchAll(/^              - Sid: ([A-Za-z0-9]+)$/gm)].map((match) => match[1])).toEqual([
       "ReadOnlyApplicationSecret", "ReadReleaseObjects", "ListReleasePrefix",
-      "ReadWriteBackupPrefixes", "ListBackupPrefixes", "PublishHostMetrics",
+      "ReadAccountSyncObjects", "ReadWriteBackupPrefixes", "ListBackupPrefixes", "PublishHostMetrics",
       "ReadCloudWatchAgentConfig", "WriteHostLogs",
     ]);
     const expectedStatements = {
       ReadOnlyApplicationSecret: ["Effect: Allow", "Action: secretsmanager:GetSecretValue", "Resource: !Ref ApplicationSecret"],
       ReadReleaseObjects: ["Effect: Allow", "Action: s3:GetObject", "Resource: !Sub ${ReleaseBucket.Arn}/staging/releases/*"],
       ListReleasePrefix: ["Effect: Allow", "Action: s3:ListBucket", "Resource: !GetAtt ReleaseBucket.Arn", "Condition:", "StringLike:", "s3:prefix: staging/releases/*"],
-      ReadWriteBackupPrefixes: ["Effect: Allow", "Action:", "- s3:GetObject", "- s3:PutObject", "- s3:AbortMultipartUpload", "Resource:", "- !Sub ${BackupBucket.Arn}/staging/daily/*", "- !Sub ${BackupBucket.Arn}/staging/pre-migration/*"],
-      ListBackupPrefixes: ["Effect: Allow", "Action: s3:ListBucket", "Resource: !GetAtt BackupBucket.Arn", "Condition:", "StringLike:", "s3:prefix:", "- staging/daily/*", "- staging/pre-migration/*"],
+      ReadAccountSyncObjects: ["Effect: Allow", "Action:", "- s3:GetObjectVersion", "- s3:DeleteObjectVersion", "Resource: !Sub ${ReleaseBucket.Arn}/staging/account-sync/*"],
+      ReadWriteBackupPrefixes: ["Effect: Allow", "Action:", "- s3:GetObject", "- s3:GetObjectVersion", "- s3:PutObject", "- s3:AbortMultipartUpload", "Resource:", "- !Sub ${BackupBucket.Arn}/staging/daily/*", "- !Sub ${BackupBucket.Arn}/staging/pre-migration/*", "- !Sub ${BackupBucket.Arn}/staging/pre-account-sync/*"],
+      ListBackupPrefixes: ["Effect: Allow", "Action: s3:ListBucket", "Resource: !GetAtt BackupBucket.Arn", "Condition:", "StringLike:", "s3:prefix:", "- staging/daily/*", "- staging/pre-migration/*", "- staging/pre-account-sync/*"],
       PublishHostMetrics: ["Effect: Allow", "Action: cloudwatch:PutMetricData", 'Resource: "*"', "Condition:", "StringEquals:", "cloudwatch:namespace: Needo/Staging"],
       ReadCloudWatchAgentConfig: ["Effect: Allow", "Action: ssm:GetParameter", "Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/needo/staging/cloudwatch-agent"],
     };

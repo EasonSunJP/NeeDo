@@ -372,15 +372,23 @@ Resources:
                 Condition:
                   StringLike:
                     s3:prefix: staging/releases/*
+              - Sid: ReadAccountSyncObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObjectVersion
+                  - s3:DeleteObjectVersion
+                Resource: !Sub ${ReleaseBucket.Arn}/staging/account-sync/*
               - Sid: ReadWriteBackupPrefixes
                 Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:GetObjectVersion
                   - s3:PutObject
                   - s3:AbortMultipartUpload
                 Resource:
                   - !Sub ${BackupBucket.Arn}/staging/daily/*
                   - !Sub ${BackupBucket.Arn}/staging/pre-migration/*
+                  - !Sub ${BackupBucket.Arn}/staging/pre-account-sync/*
               - Sid: ListBackupPrefixes
                 Effect: Allow
                 Action: s3:ListBucket
@@ -390,6 +398,7 @@ Resources:
                     s3:prefix:
                       - staging/daily/*
                       - staging/pre-migration/*
+                      - staging/pre-account-sync/*
               - Sid: PublishHostMetrics
                 Effect: Allow
                 Action: cloudwatch:PutMetricData
