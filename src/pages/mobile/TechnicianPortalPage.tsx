@@ -728,10 +728,13 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
       return;
     }
     const existing = typeof editingId === "number" ? services.find((item) => item.id === editingId) : null;
-    const categoryId = existing?.categoryId ?? defaultCategoryId;
-    if (!categoryId) { setError("当前没有可用的正式服务分类，暂时无法新增服务"); return; }
     const targetShopId = existing?.shopId ?? defaultShopId;
     if (!targetShopId) { setError("当前没有可用的正式店铺，暂时无法新增服务"); return; }
+    const categoryId = existing?.categoryId
+      ?? services.find((service) => service.shopId === targetShopId)?.categoryId
+      ?? defaultCategoryId
+      ?? services[0]?.categoryId;
+    if (!categoryId) { setError("当前没有可用的正式服务分类，暂时无法新增服务"); return; }
     setSaving(true);
     setError("");
     try {

@@ -470,6 +470,47 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.querySelector('input[type="file"]')).toBeNull();
   });
 
+  it("uses the authenticated technician service category when public detail services are unavailable", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.mocked(pricingModeApi.listMyTechnicianServices).mockResolvedValue({
+      list: [service],
+      total: 1,
+      page: 1,
+      page_size: 5
+    });
+    vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+      shopId: 71,
+      pricingMode: "technician",
+      technicianPricingRatePercent: 100,
+      entry: "technician_list",
+      technicians: { list: [], total: 0, page: 1, page_size: 1 }
+    });
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService")
+      .mockResolvedValue({ ...service, id: 902, publicId: "service0000000902", name: "正式新增服务" });
+
+    await renderPortal();
+    await flushUntil(() => expect(findButton("添加服务 1/5")).toBeDefined());
+    await act(async () => findButton("添加服务 1/5")?.click());
+    const name = findInput("服务名称");
+    const price = findInput("价格");
+    expect(name).toBeDefined();
+    expect(price).toBeDefined();
+    await act(async () => {
+      if (name) setInputValue(name, "正式新增服务");
+      if (price) setInputValue(price, "9800");
+    });
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(createRequest).toHaveBeenCalledTimes(1));
+
+    expect(createRequest).toHaveBeenCalledWith(71, expect.objectContaining({
+      categoryId: 8,
+      name: "正式新增服务",
+      priceAmount: 9800
+    }));
+    expect(container.textContent).not.toContain("当前没有可用的正式服务分类");
+  });
+
   it("updates service text before replacing an existing cover", async () => {
     mockServiceEditorContext([service]);
     const updated = { ...service, name: "肩颈调理" };
