@@ -66,6 +66,7 @@ rollback_application() {
   if [[ "$deployment_complete" != true && -n "$previous_release" && -d "$previous_release" ]]; then
     install -m 0644 "$previous_release/deploy/staging/nginx-http.conf" /srv/needo/config/nginx.conf
     compose_for "$previous_release" up -d --build --wait backend ops-api merchant-api web || true
+    compose_for "$previous_release" up -d --no-deps --force-recreate --wait web || true
     ln -sfn "$previous_release" /srv/needo/current.rollback
     mv -Tf /srv/needo/current.rollback /srv/needo/current
   fi
@@ -148,6 +149,7 @@ fi
 compose_for "$release_dir" run --rm migrate
 compose_for "$release_dir" run --rm bootstrap-admin
 compose_for "$release_dir" up -d --build --wait backend ops-api merchant-api web
+compose_for "$release_dir" up -d --no-deps --force-recreate --wait web
 
 curl --fail --silent --show-error --header "Host: $hostname" \
   http://127.0.0.1/api/v1/ready | grep -q '"code":0'

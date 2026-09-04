@@ -91,6 +91,12 @@ test("staging migration backup avoids privileged tablespace reads", () => {
   assert.match(releaseScript, /mysqldump --single-transaction --routines --triggers --no-tablespaces/);
 });
 
+test("staging web reloads the written HTTP Nginx config for deploy and rollback", () => {
+  const releaseScript = read("./deploy-release.sh");
+  assert.match(releaseScript, /install -m 0644 "\$previous_release\/deploy\/staging\/nginx-http\.conf"[\s\S]{0,180}up -d --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /install -m 0644 "\$release_dir\/deploy\/staging\/nginx-http\.conf"[\s\S]{0,2200}up -d --no-deps --force-recreate --wait web/);
+});
+
 test("web healthcheck tolerates the local HTTPS redirect after TLS activation", () => {
   const compose = read("./docker-compose.yml");
 
