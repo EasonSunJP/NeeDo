@@ -10,9 +10,9 @@ remains TEST as explicitly requested. No remote push or deployment is included.
 - [x] Reconcile current source, historical acceptance notes, and local runtime.
 - [x] Close backend formatter debt in directory-bounded mechanical batches.
 - [x] Verify merchant-account multi-shop switching against formal data and UI.
-- [ ] Verify the five published carousel media objects after the separately owned
-  media storage repair is available, without duplicating its active changes.
-- [ ] Run appropriate regression/build checks, correct stale dashboard documents,
+- [x] Resolve local carousel storage configuration and verify the five published
+  media objects without altering the separately owned IM/Social repair.
+- [x] Run appropriate regression/build checks, correct stale dashboard documents,
   and merge the reviewed commits into local `main`.
 
 ## Starting evidence
@@ -64,6 +64,41 @@ the local main integration worktree; merchant requests used `/merchant-api/v1/`.
   created. They were removed in `finally`, with setup/cleanup audit records retained.
   No existing shop, password, order, wallet or membership-card data was changed.
 
-Raw logs and screenshots are local ignored acceptance artifacts under
-`backend/.data/dashboard-closure/`; no credentials or session tokens are included
-in this report.
+## Final integration and runtime
+
+- Latest main changes were integrated before final merge. Five formatting conflicts
+  were resolved by preserving the complete main version and applying Prettier.
+  All 533 backend files differing from that main revision were AST-equivalent.
+- All 30 test files introduced/changed by that main update were selected explicitly:
+  29 suites / 370 tests passed; one opt-in MySQL suite/test remained skipped.
+  Backend lint, build and format check passed on the combined result.
+- Final frontend regression: 374 files / 2,613 tests passed. Build and unchanged
+  production bundle audit passed with 8 HTML entries / 40 assets. Service-search
+  administration is also lazy-loaded after the integration's bundle regression;
+  its added test was verified RED then GREEN.
+- Authenticated production-preview acceptance on isolated port 5181 loaded all
+  three management page chunks with HTTP 200 and no page errors. The actual
+  agent, operating-cost, taxonomy and search-trend APIs returned HTTP 200.
+  This preview check is separate from the standard-port acceptance below.
+- Code was fast-forwarded into local main at `f9f35ac8`. On standard port 5180,
+  the main dashboard rendered all 17 finance/commission/growth accessories in
+  their card headers, with the five unavailable/reserved actions marked TEST.
+  All three rankings switched from GMV to completed-count ordering, with their
+  formal API requests returning HTTP 200. The three management routes also
+  rendered successfully on main, with no page errors.
+- Final main listeners: frontend 14207, formal API 27167, operations API 27151,
+  merchant API 27168. Their cwd was the main integration worktree. Health and
+  readiness checks returned HTTP 200.
+- The ignored local `.env.dev` now sets `CONTENT_MEDIA_STORAGE_DIR` to the
+  existing shared checkout media directory. No media file or publication record
+  was replaced. After main's development servers reloaded, all five previously
+  failing images returned HTTP 200 with image MIME types. This is a local
+  configuration repair; it does not claim the separate IM/Social work is merged.
+- No remote push, production deployment, production migration, or production
+  data mutation was performed. Explicitly reserved fare/consumables integrations
+  and franchisee/supplier TEST navigation remain intentionally reserved.
+
+Raw logs and screenshots are retained as ignored acceptance artifacts under the
+main integration worktree's `backend/.data/dashboard-final-closure/`. No credentials
+or session tokens are included in this report. The temporary preview and closure
+worktree can be removed after preserving these artifacts; main remains runnable.
