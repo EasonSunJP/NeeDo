@@ -3,7 +3,7 @@
 ## 1. 状态与目的
 
 - 日期：2026-09-04
-- 状态：待用户确认文档
+- 状态：已批准并实现
 - 环境：个人 AWS Staging，账号 `430611185505`，区域 `ap-southeast-2`
 - 目的：在没有正式 Google OAuth Web Client ID 时，使 NeeDo Staging 可以诚实地以密码登录方式启动；不伪造 Google 凭据，不放宽其他生产安全配置。
 

@@ -17,6 +17,30 @@ different AWS account.
 - Take and complete an EBS snapshot before the first migration command.
 - Switch `/srv/needo/current` only after all three readiness endpoints pass.
 
+## Google authentication capability
+
+The initial personal-account Staging release uses password authentication and
+explicitly disables Google authentication:
+
+```text
+AUTH_GOOGLE_ENABLED=false
+VITE_AUTH_GOOGLE_ENABLED=false
+GOOGLE_AUTH_CLIENT_ID omitted
+```
+
+The backend flag makes every Google login, link, unlink, and recovery entry
+point return HTTP `503` with `error.dependency.google_auth_unavailable`. The
+frontend build flag hides the Google login surface and prevents Google SDK/API
+initialization. Password login, JWT, refresh tokens, RBAC, migrations, audit,
+and the guarded administrator bootstrap remain enabled.
+
+To enable Google authentication later, create or select a real Google Web OAuth
+client, allow the `https://staging.needo.life` origin and its formal callback,
+inject the client ID through the stack-managed Secrets Manager secret, set both
+flags to `true`, rebuild an immutable release, deploy it, and verify login,
+link, and unlink. Do not put the client ID in Git. EC2, EBS, MySQL, Redis, the
+Elastic IP, DNS, and the TLS certificate do not need to be recreated.
+
 ## Release sequence
 
 1. Confirm `outputs/aws-staging/environment-acceptance.json` still passes the
@@ -85,4 +109,3 @@ backup through a separately approved restore procedure.
 acceptance file may contain only identifiers, counts, timestamps, statuses, and
 digests. They must not contain an email address, password, token, secret JSON,
 database URL, AWS temporary credential, SSM output body, or application log.
-

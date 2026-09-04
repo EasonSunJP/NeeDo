@@ -32,7 +32,7 @@
 - Consumes: existing `booleanSchema`, `AppConfig`, `AppError`, `ERROR_CODES.DEPENDENCY_UNAVAILABLE`.
 - Produces: `AppConfig.AUTH_GOOGLE_ENABLED: boolean` and a private `assertGoogleAuthEnabled(): void` guard used by every public Google auth entry point.
 
-- [ ] **Step 1: Write failing production configuration tests**
+- [x] **Step 1: Write failing production configuration tests**
 
 Add cases proving explicit disable accepts a missing ID while default/explicit enable remains strict:
 
@@ -54,7 +54,7 @@ it("still rejects an absent Google client ID when Google auth is explicitly enab
 });
 ```
 
-- [ ] **Step 2: Write the failing service-boundary test**
+- [x] **Step 2: Write the failing service-boundary test**
 
 Make `createFixture` accept `{ googleAuthEnabled?: boolean }`, pass a boolean config value, and add a table of all Google service entry points. Every call must reject before touching repositories, Redis, OTP, tokens, or the Google verifier:
 
@@ -80,7 +80,7 @@ const calls = [
 for (const call of calls) await expect(call()).rejects.toMatchObject(unavailable);
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run:
 
@@ -91,7 +91,7 @@ npm test -- --runInBand tests/production-safety.test.ts tests/google-auth.servic
 
 Expected: FAIL because `AUTH_GOOGLE_ENABLED` is not parsed and disabled service calls are not guarded.
 
-- [ ] **Step 4: Implement the minimum backend configuration rule**
+- [x] **Step 4: Implement the minimum backend configuration rule**
 
 Add the two schema fields and cross-field validation:
 
@@ -102,7 +102,7 @@ GOOGLE_AUTH_CLIENT_ID: z.string().trim().default(""),
 
 Before the production-only early return, require a non-empty ID whenever enabled. In the production Google ID pattern check, execute the strict check only when `AUTH_GOOGLE_ENABLED` is true.
 
-- [ ] **Step 5: Implement the service guard**
+- [x] **Step 5: Implement the service guard**
 
 Add this private method and call it as the first statement in every Google public method listed in Step 2:
 
@@ -120,7 +120,7 @@ private assertGoogleAuthEnabled(): void {
 
 The exact comparison keeps legacy test fixtures without the new property default-on; parsed runtime configuration always supplies a boolean.
 
-- [ ] **Step 6: Document the Staging backend value**
+- [x] **Step 6: Document the Staging backend value**
 
 Add this adjacent to the Google rate-limit and client-ID values in `backend/.env.staging.example`:
 
@@ -130,7 +130,7 @@ AUTH_GOOGLE_ENABLED=false
 GOOGLE_AUTH_CLIENT_ID=
 ```
 
-- [ ] **Step 7: Run targeted backend tests and build**
+- [x] **Step 7: Run targeted backend tests and build**
 
 Run:
 
@@ -142,7 +142,7 @@ npm run build
 
 Expected: targeted suites PASS and TypeScript build exits `0`.
 
-- [ ] **Step 8: Commit backend capability boundary**
+- [x] **Step 8: Commit backend capability boundary**
 
 ```bash
 git add backend/.env.staging.example backend/src/config/env.ts backend/src/services/auth.service.ts backend/tests/production-safety.test.ts backend/tests/google-auth.service.test.ts
@@ -164,7 +164,7 @@ git commit -m "feat: allow explicit Google auth disable"
 - Consumes: `import.meta.env`, `LoginPage`, the Staging package build environment.
 - Produces: `isGoogleAuthEnabled(value?: string): boolean`, optional `LoginPage.googleAuthEnabled`, and a release build pinned to `VITE_AUTH_GOOGLE_ENABLED=false`.
 
-- [ ] **Step 1: Write failing frontend behavior tests**
+- [x] **Step 1: Write failing frontend behavior tests**
 
 Add a pure parser assertion and render a disabled page:
 
@@ -183,7 +183,7 @@ expect(mocked.authApi.initializeGoogleLogin).not.toHaveBeenCalled();
 expect(container.querySelector('[data-testid="show-password-login"]')).not.toBeNull();
 ```
 
-- [ ] **Step 2: Write the failing Staging packaging contract**
+- [x] **Step 2: Write the failing Staging packaging contract**
 
 Read `../../scripts/aws-staging-package-application.mjs` from `runtime-contract.test.mjs` and assert:
 
@@ -191,7 +191,7 @@ Read `../../scripts/aws-staging-package-application.mjs` from `runtime-contract.
 assert.match(packager, /VITE_AUTH_GOOGLE_ENABLED:\s*"false"/);
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run:
 
@@ -202,7 +202,7 @@ node --test deploy/staging/runtime-contract.test.mjs
 
 Expected: FAIL because the parser, prop, render guard, and package build binding do not exist.
 
-- [ ] **Step 4: Implement the default-on frontend parser and render guard**
+- [x] **Step 4: Implement the default-on frontend parser and render guard**
 
 Declare the variable in `src/vite-env.d.ts` and implement:
 
@@ -214,7 +214,7 @@ export function isGoogleAuthEnabled(value = import.meta.env.VITE_AUTH_GOOGLE_ENA
 
 Add `googleAuthEnabled = isGoogleAuthEnabled()` to `LoginPage` props. Return early from the Google initialization effect when false, include the boolean in its dependency list, and render the Google surface only when the flag is true. Do not change the password or registration surfaces.
 
-- [ ] **Step 5: Bind the immutable Staging build**
+- [x] **Step 5: Bind the immutable Staging build**
 
 Extend the packager's child environment exactly:
 
@@ -227,7 +227,7 @@ env: {
 }
 ```
 
-- [ ] **Step 6: Run targeted frontend and packaging tests**
+- [x] **Step 6: Run targeted frontend and packaging tests**
 
 Run:
 
@@ -239,7 +239,7 @@ npm run build -- --mode formal
 
 Expected: targeted suites PASS. The build may retain the already-waived bundle-size baseline failure, but compilation and asset generation must complete without a new error.
 
-- [ ] **Step 7: Commit frontend and release binding**
+- [x] **Step 7: Commit frontend and release binding**
 
 ```bash
 git add src/vite-env.d.ts src/pages/auth/LoginPage.tsx src/pages/auth/LoginPage.test.ts scripts/aws-staging-package-application.mjs deploy/staging/runtime-contract.test.mjs
@@ -258,7 +258,7 @@ git commit -m "feat: hide disabled Google login in staging"
 - Consumes: the two capability flags and existing immutable release procedure.
 - Produces: exact disable/enable operator instructions and a reviewed clean source revision ready for packaging.
 
-- [ ] **Step 1: Add exact operational instructions**
+- [x] **Step 1: Add exact operational instructions**
 
 Document the current Staging values:
 
@@ -270,11 +270,11 @@ GOOGLE_AUTH_CLIENT_ID omitted
 
 Document re-enable as: create a real Web OAuth client, allow `https://staging.needo.life`, inject the client ID through Secrets Manager, set both flags true, rebuild an immutable release, deploy, and verify login/link/unlink. State explicitly that EC2, EBS, MySQL, Redis, EIP, DNS, and TLS do not need recreation.
 
-- [ ] **Step 2: Mark the approved design implemented**
+- [x] **Step 2: Mark the approved design implemented**
 
 Change the design status from `待用户确认文档` to `已批准并实现`, without changing its approved boundaries.
 
-- [ ] **Step 3: Run final focused verification**
+- [x] **Step 3: Run final focused verification**
 
 Run:
 
@@ -291,7 +291,7 @@ git status --short
 
 Expected: all focused tests and builds PASS, diff check is clean, and only planned documentation files remain uncommitted.
 
-- [ ] **Step 4: Commit documentation and record the release revision**
+- [x] **Step 4: Commit documentation and record the release revision**
 
 ```bash
 git add docs/aws-staging-application-runbook.md docs/superpowers/specs/2026-09-04-staging-google-auth-disable-design.md docs/superpowers/plans/2026-09-04-staging-google-auth-disable.md
