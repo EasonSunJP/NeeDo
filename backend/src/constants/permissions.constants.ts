@@ -117,6 +117,13 @@ export const CONTENT_PUBLICATION_PERMISSIONS = {
   contentMediaUpload: "button:backoffice-content-media-upload"
 } as const;
 
+export const OFFICIAL_NOTICE_PERMISSIONS = {
+  read: "page:backoffice-official-notice",
+  create: "button:backoffice-official-notice-create",
+  review: "button:backoffice-official-notice-review",
+  send: "button:backoffice-official-notice-send"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -1693,6 +1700,34 @@ export const SYSTEM_PERMISSIONS = [
     "上传正式内容发布媒体资源"
   ),
   createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.read,
+    "官方通知读取",
+    "page",
+    "official-notice",
+    "分页查看平台官方通知及投递回执"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.create,
+    "官方通知创建",
+    "button",
+    "official-notice",
+    "创建官方通知草稿并选择正式受众"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.review,
+    "官方通知审核",
+    "button",
+    "official-notice",
+    "审核、取消与归档平台官方通知"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.send,
+    "官方通知发送",
+    "button",
+    "official-notice",
+    "立即或定时发送并重试失败的官方通知"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.postList,
     "需求情报列表",
     "api",
@@ -2213,7 +2248,11 @@ const CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES = [
   CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementPublish,
   CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeEdit,
   CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticePublish,
-  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload
+  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload,
+  OFFICIAL_NOTICE_PERMISSIONS.read,
+  OFFICIAL_NOTICE_PERMISSIONS.create,
+  OFFICIAL_NOTICE_PERMISSIONS.review,
+  OFFICIAL_NOTICE_PERMISSIONS.send
 ] as const satisfies readonly SystemPermissionCode[];
 
 export const buildRolePermissionAssignments = (): Record<

@@ -18,6 +18,7 @@ import { IdentityApplicationPurgeRepository } from "./repositories/identity-appl
 import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
+import { OfficialNoticeRepository } from "./repositories/official-notice.repository";
 import { OrderServiceExpiryRepository } from "./repositories/order-service-expiry.repository";
 import { RealtimeRepository } from "./repositories/realtime.repository";
 import { PlatformMembershipRepository } from "./repositories/platform-membership.repository";
@@ -61,6 +62,7 @@ import { IdentityApplicationPurgeWorker } from "./workers/identity-application-p
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
 import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
 import { OrderServiceExpiryWorker } from "./workers/order-service-expiry.worker";
+import { OfficialNoticeWorker } from "./workers/official-notice.worker";
 
 const realtimeEventGateway = new SseRealtimeEventGateway({
   eventBus: new RedisRealtimeEventBus({
@@ -76,6 +78,11 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
   }
 });
 const authRepository = new AuthRepository();
+const officialNoticeRepository = new OfficialNoticeRepository(
+  undefined,
+  env.OFFICIAL_NOTICE_MAX_DELIVERY_ATTEMPTS,
+  realtimeEventGateway
+);
 const platformMembershipRepository = new PlatformMembershipRepository();
 const userExperienceRepository = new UserExperienceRepository();
 const userGlobalPolicyRepository = new UserGlobalPolicyRepository();
@@ -191,6 +198,7 @@ const app = createApp(env, {
   userPolicyEnforcementRepository,
   userPolicyEnforcementService,
   ndpExperienceCampaignRepository,
+  officialNoticeRepository,
   merchantShopAuditOutboxTrigger: merchantShopAuditOutboxWorker
 });
 const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
@@ -274,6 +282,11 @@ const contentPublicationWorker = new ContentPublicationWorker(
   env.CONTENT_PUBLICATION_INTERVAL_MS,
   env.CONTENT_PUBLICATION_BATCH_SIZE
 );
+const officialNoticeWorker = new OfficialNoticeWorker(officialNoticeRepository, {
+  intervalMs: env.OFFICIAL_NOTICE_DELIVERY_INTERVAL_MS,
+  batchSize: env.OFFICIAL_NOTICE_DELIVERY_BATCH_SIZE,
+  logger
+});
 const imPrivacyExpiryWorker = new ImPrivacyExpiryWorker(
   new ImPrivacyExpiryService(new ImPrivacyExpiryRepository(), realtimeEventGateway),
   logger,
@@ -301,6 +314,7 @@ const server = app.listen(env.PORT, () => {
   }
   affiliateAllianceInvitationExpiryWorker.start();
   contentPublicationWorker.start();
+  officialNoticeWorker.start();
   imPrivacyExpiryWorker.start();
   merchantShopAuditOutboxWorker.start();
 });
@@ -323,12 +337,16 @@ const shutdown = createShutdownHandler({
     shopMembershipCardAdjustmentExpiryWorker.stop();
     exchangePostExpiryWorker.stop();
     contentPublicationWorker.stop();
+    officialNoticeWorker.stop();
     affiliateAllianceInvitationExpiryWorker.stop();
     affiliateTaskExpiryWorker.stop();
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
-    await merchantShopAuditOutboxWorker.stop();
+    await Promise.all([
+      merchantShopAuditOutboxWorker.stop(),
+      officialNoticeWorker.stopAndDrain()
+    ]);
   }
 });
 

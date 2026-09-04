@@ -12187,6 +12187,261 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      OfficialNoticeBlock: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "type", "content"],
+        properties: {
+          id: { type: "string", minLength: 1, maxLength: 80 },
+          type: {
+            type: "string",
+            enum: [
+              "paragraph",
+              "heading",
+              "subheading",
+              "bullet",
+              "numbered",
+              "quote",
+              "callout",
+              "divider",
+              "image",
+              "video",
+              "file"
+            ]
+          },
+          content: { type: "string", maxLength: 20000 },
+          caption: { type: "string", maxLength: 255 },
+          fileName: { type: "string", maxLength: 255 },
+          fileSize: { type: "integer", minimum: 1, maximum: 52428800 },
+          mimeType: { type: "string", maxLength: 100 },
+          source: { type: "string", enum: ["url", "media"] },
+          mediaAssetId: { type: "integer", minimum: 1 }
+        }
+      },
+      OfficialNoticeAudience: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { type: "string", enum: ["all"] } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "identityTypes"],
+            properties: {
+              type: { type: "string", enum: ["identity_types"] },
+              identityTypes: {
+                type: "array",
+                minItems: 1,
+                maxItems: 7,
+                items: {
+                  type: "string",
+                  enum: [
+                    "customer",
+                    "technician",
+                    "merchant_owner",
+                    "merchant_staff",
+                    "platform",
+                    "platform_admin",
+                    "scout"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "userIds"],
+            properties: {
+              type: { type: "string", enum: ["exact_users"] },
+              userIds: {
+                type: "array",
+                minItems: 1,
+                maxItems: 500,
+                items: { type: "integer", minimum: 1 }
+              }
+            }
+          }
+        ]
+      },
+      OfficialNoticeCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "audience",
+          "sendMode",
+          "scheduledAt",
+          "idempotencyKey"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          },
+          audience: { $ref: "#/components/schemas/OfficialNoticeAudience" },
+          sendMode: { type: "string", enum: ["now", "scheduled"] },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      OfficialNoticeLifecycle: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "reason", "idempotencyKey"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 2, maxLength: 500 },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      OfficialNoticeTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "blocks", "sourceLocale", "isInitialCopy"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: { type: "array", items: { $ref: "#/components/schemas/OfficialNoticeBlock" } },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      OfficialNoticeProtectedPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "level",
+          "status",
+          "sourceLocale",
+          "targetSummary",
+          "scheduledAt",
+          "sentAt",
+          "cancelledAt",
+          "archivedAt",
+          "lockVersion",
+          "translations",
+          "audienceCount",
+          "delivery",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          status: {
+            type: "string",
+            enum: [
+              "draft",
+              "pending_review",
+              "approved",
+              "scheduled",
+              "sending",
+              "sent",
+              "cancelled",
+              "archived"
+            ]
+          },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          targetSummary: { type: "string" },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          sentAt: { type: ["string", "null"], format: "date-time" },
+          cancelledAt: { type: ["string", "null"], format: "date-time" },
+          archivedAt: { type: ["string", "null"], format: "date-time" },
+          lockVersion: { type: "integer", minimum: 1 },
+          translations: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+            properties: Object.fromEntries(
+              ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+                locale,
+                { $ref: "#/components/schemas/OfficialNoticeTranslation" }
+              ])
+            )
+          },
+          audienceCount: { type: "integer", minimum: 0 },
+          delivery: {
+            type: "object",
+            additionalProperties: false,
+            required: ["pending", "delivered", "failed", "read"],
+            properties: Object.fromEntries(
+              ["pending", "delivered", "failed", "read"].map((key) => [
+                key,
+                { type: "integer", minimum: 0 }
+              ])
+            )
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OfficialNoticeProtectedPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      RecipientOfficialNoticePayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "targetSummary",
+          "sentAt",
+          "readAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string" },
+          summary: { type: "string" },
+          blocks: { type: "array", items: { $ref: "#/components/schemas/OfficialNoticeBlock" } },
+          targetSummary: { type: "string" },
+          sentAt: { type: "string", format: "date-time" },
+          readAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      RecipientOfficialNoticePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/RecipientOfficialNoticePayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       OfficialAnnouncementTranslationInput: {
         type: "object",
         additionalProperties: false,
@@ -22584,6 +22839,181 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
         )
       })
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices`]: {
+      get: {
+        tags: ["Official Notices"],
+        summary: "List official notice delivery records",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "page:backoffice-official-notice",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "draft",
+                "pending_review",
+                "approved",
+                "scheduled",
+                "sending",
+                "sent",
+                "cancelled",
+                "archived"
+              ]
+            }
+          },
+          {
+            name: "level",
+            in: "query",
+            schema: { type: "string", enum: ["general", "important", "urgent"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated official notices", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Official Notices"],
+        summary: "Create an audience snapshot and plan formal delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": [
+          "button:backoffice-official-notice-create",
+          "button:backoffice-official-notice-send"
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeCreate" } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Official notice created and planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Audience, schedule, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/cancel`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Cancel a notice before delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Official notice cancelled", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/archive`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Archive a terminal official notice",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Official notice archived", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/retry-failures`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Retry failed identity deliveries",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-send",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Failed official-notice deliveries requeued", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/official-notices`]: {
+      get: {
+        tags: ["Official Notices"],
+        summary: "List official notices delivered to the current identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "locale",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+          },
+          { name: "unreadOnly", in: "query", schema: { type: "boolean", default: false } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-identity official notices", {
+            $ref: "#/components/schemas/RecipientOfficialNoticePage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.auth.identity_required")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/official-notices/{publicId}/read`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Mark one current-identity official notice as read",
+        security: [{ bearerAuth: [] }],
+        parameters: [announcementPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Official notice marked read", {
+            type: "object",
+            additionalProperties: false,
+            required: ["publicId", "readAt"],
+            properties: {
+              publicId: { type: "string", format: "uuid" },
+              readAt: { type: "string", format: "date-time" }
+            }
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.auth.identity_required"),
+          "404": jsonErrorResponse("error.official_notice.not_found")
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/affiliate/announcements`]: {
       get: announcementOperation(

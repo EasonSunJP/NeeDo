@@ -43,6 +43,10 @@ npm run build
 
 ## Formal Auth Frontend
 
+The recovered platform announcement backend, delivery guarantees, guarded local
+MySQL acceptance command and explicitly pending merchant/UI scope are documented
+in [Official notice delivery](docs/official-notice-delivery.md).
+
 Step 07 has added the frontend side of formal Auth / RBAC while keeping the existing React / TSX / Vite stack. The frontend now calls `/api/v1/auth/*`, `/api/v1/users`, `/api/v1/roles`, and `/api/v1/permissions` through `src/api/httpClient.ts`.
 
 Auth behavior:

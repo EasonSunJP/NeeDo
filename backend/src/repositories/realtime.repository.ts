@@ -4598,39 +4598,112 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     identityId: number,
     notificationId: number
   ): Promise<NotificationPayload | null> {
-    const notification = await this.client.notification.findFirst({
-      where: {
-        id: notificationId,
-        recipientIdentityId: identityId,
-        deletedAt: null
+    const candidate = await this.client.noticeDelivery.findFirst({
+      where: { notificationId, recipientIdentityId: identityId, deletedAt: null },
+      select: { id: true }
+    });
+    return this.client.$transaction(async (transaction) => {
+      // All notice read entry points lock the delivery before its notification.
+      const receipts = candidate
+        ? await transaction.$queryRaw<Array<{ id: number; noticeId: number }>>(
+            Prisma.sql`SELECT id, notice_id AS noticeId FROM notice_deliveries
+        WHERE id = ${candidate.id} AND recipient_identity_id = ${identityId}
+        AND deleted_at IS NULL FOR UPDATE`
+          )
+        : [];
+      await transaction.$queryRaw(Prisma.sql`SELECT id FROM notifications
+      WHERE id = ${notificationId} AND recipient_identity_id = ${identityId}
+      AND deleted_at IS NULL FOR UPDATE`);
+      const notification = await transaction.notification.findFirst({
+        where: {
+          id: notificationId,
+          recipientIdentityId: identityId,
+          deletedAt: null
+        }
+      });
+
+      if (!notification) {
+        return null;
       }
+
+      const now = new Date();
+      const readAt = notification.readAt ?? now;
+      const updated = await transaction.notification.update({
+        where: { id: notification.id },
+        data: { readAt }
+      });
+      const read = await transaction.noticeDelivery.updateMany({
+        where: {
+          notificationId,
+          recipientIdentityId: identityId,
+          readAt: null,
+          status: "DELIVERED",
+          deletedAt: null
+        },
+        data: { readAt, updatedAt: now }
+      });
+      if (read.count > 0 && receipts[0]) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: notification.recipientUserId,
+            action: "official_notice.read",
+            targetType: "OfficialNotice",
+            targetId: receipts[0].noticeId,
+            metadata: { recipientIdentityId: identityId, source: "notification_inbox" },
+            createdAt: now
+          }
+        });
+      }
+
+      return this.mapNotification(updated);
     });
-
-    if (!notification) {
-      return null;
-    }
-
-    const updated = await this.client.notification.update({
-      where: { id: notification.id },
-      data: { readAt: notification.readAt ?? new Date() }
-    });
-
-    return this.mapNotification(updated);
   }
 
   public async markAllNotificationsRead(identityId: number): Promise<{ count: number }> {
-    const result = await this.client.notification.updateMany({
-      where: {
-        recipientIdentityId: identityId,
-        readAt: null,
-        deletedAt: null
-      },
-      data: {
-        readAt: new Date()
+    return this.client.$transaction(async (transaction) => {
+      await transaction.$queryRaw(Prisma.sql`SELECT id FROM notice_deliveries
+      WHERE recipient_identity_id = ${identityId} AND read_at IS NULL
+      AND deleted_at IS NULL ORDER BY id FOR UPDATE`);
+      const now = new Date();
+      const read = await transaction.noticeDelivery.updateMany({
+        where: {
+          recipientIdentityId: identityId,
+          readAt: null,
+          status: "DELIVERED",
+          deletedAt: null,
+          notification: { recipientIdentityId: identityId, readAt: null, deletedAt: null }
+        },
+        data: { readAt: now, updatedAt: now }
+      });
+      const result = await transaction.notification.updateMany({
+        where: {
+          recipientIdentityId: identityId,
+          readAt: null,
+          deletedAt: null
+        },
+        data: {
+          readAt: now
+        }
+      });
+      if (read.count > 0) {
+        const identity = await transaction.userIdentity.findUniqueOrThrow({
+          where: { id: identityId },
+          select: { userId: true }
+        });
+        await transaction.auditLog.create({
+          data: {
+            actorId: identity.userId,
+            action: "official_notice.read_all",
+            targetType: "UserIdentity",
+            targetId: identityId,
+            metadata: { count: read.count, source: "notification_inbox" },
+            createdAt: now
+          }
+        });
       }
-    });
 
-    return { count: result.count };
+      return { count: result.count };
+    });
   }
 
   public async getUnreadCounts(identityId: number): Promise<UnreadCountsPayload> {
