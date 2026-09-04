@@ -59,6 +59,15 @@ Account sync Task 7: pending
 - Both registration endpoints return exact 40313; database user/challenge counts were unchanged by controlled fail-closed calls.
 - Desktop 1920px and mobile 546px login surfaces have no registration UI, no overflow, and no console errors.
 
+## Latest-main follow-up release
+
+- Deployed exact latest-main merge `d5c494a4` through the immutable Staging
+  release path after a completed pre-migration snapshot.
+- Activated the exact release HTTPS configuration by recreating only web;
+  HTTPS readiness returned 200/code 0 and HTTP redirected 301.
+- Registration and registration-verification remained fail-closed at 40313;
+  a read-only count confirmed one undeleted Staging user. No account sync ran.
+
 ## Selective account sync Task 1
 
 - `c637149c` defined the fixed 11-table account-sync bundle contract.
