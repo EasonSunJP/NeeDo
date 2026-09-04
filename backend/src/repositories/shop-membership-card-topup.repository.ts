@@ -71,7 +71,10 @@ type TopUpRecord = Prisma.ShopMembershipCardTopUpGetPayload<{ select: typeof top
 export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopUpRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async findByIdempotencyKey(shopId: number, idempotencyKey: string): Promise<ShopMembershipCardTopUpRecord | null> {
+  public async findByIdempotencyKey(
+    shopId: number,
+    idempotencyKey: string
+  ): Promise<ShopMembershipCardTopUpRecord | null> {
     const record = await this.client.shopMembershipCardTopUp.findFirst({
       where: { shopId, idempotencyKey, deletedAt: null },
       select: topUpSelect
@@ -81,120 +84,134 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
 
   public async createWithAuditAndNotification(input: CreateShopMembershipCardTopUpRepositoryInput) {
     try {
-      return await runWithTransactionConflictRetry(() => this.client.$transaction(async (transaction) => {
-        const replay = await transaction.shopMembershipCardTopUp.findFirst({
-          where: { shopId: input.shopId, idempotencyKey: input.idempotencyKey, deletedAt: null },
-          select: topUpSelect
-        });
-        if (replay) {
-          return replay.requestFingerprint === input.requestFingerprint
-            ? { kind: "replayed" as const, value: this.mapTopUp(replay) }
-            : { kind: "idempotency_conflict" as const };
-        }
-
-        const candidate = await this.loadCard(transaction, input.shopId, input.cardPublicId);
-        if (!candidate) return { kind: "not_found" as const };
-        const lockedRows = await transaction.$queryRaw<Array<{ id: number }>>(
-          Prisma.sql`SELECT id FROM shop_membership_cards WHERE id = ${candidate.id} AND deleted_at IS NULL FOR UPDATE`
-        );
-        if (lockedRows.length !== 1) return { kind: "not_found" as const };
-        const databaseNow = await this.getDatabaseNow(transaction);
-        const card = await this.loadCard(transaction, input.shopId, input.cardPublicId);
-        if (!card) return { kind: "not_found" as const };
-        if (!this.isEligible(card, databaseNow)) return { kind: "invalid_state" as const };
-
-        const pendingAdjustment = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
-          where: {
-            cardId: card.id,
-            status: ShopMembershipCardAdjustmentStatus.PENDING,
-            expiresAt: { gt: databaseNow },
-            deletedAt: null
-          },
-          select: { id: true }
-        });
-        if (pendingAdjustment) return { kind: "pending_conflict" as const };
-
-        const principalBefore = card.principalBalanceJpy!;
-        const principalAfter = principalBefore + input.amountJpy;
-        if (!Number.isSafeInteger(principalAfter) || principalAfter > 2_147_483_647) {
-          return { kind: "invalid_state" as const };
-        }
-        const updated = await transaction.shopMembershipCard.updateMany({
-          where: {
-            id: card.id,
-            lockVersion: card.lockVersion,
-            type: ShopMembershipCardType.STORED_VALUE,
-            status: ShopMembershipCardStatus.ACTIVE,
-            principalBalanceJpy: principalBefore,
-            deletedAt: null
-          },
-          data: { principalBalanceJpy: principalAfter, lockVersion: { increment: 1 } }
-        });
-        if (updated.count !== 1) return { kind: "concurrency_conflict" as const };
-
-        const created = await transaction.shopMembershipCardTopUp.create({
-          data: {
-            cardId: card.id,
-            shopId: input.shopId,
-            createdById: input.actorId,
-            amountJpy: input.amountJpy,
-            paymentMethod: this.paymentMethodToDb(input.paymentMethod),
-            paymentReference: input.paymentReference,
-            note: input.note,
-            principalBalanceBeforeJpy: principalBefore,
-            principalBalanceAfterJpy: principalAfter,
-            cardLockVersionBefore: card.lockVersion,
-            idempotencyKey: input.idempotencyKey,
-            requestFingerprint: input.requestFingerprint,
-            createdAt: databaseNow
-          },
-          select: topUpSelect
-        });
-
-        const recipientUserId = card.membership.customerProfile.user.id;
-        const recipientIdentityId = await resolveCanonicalPersonalIdentityId(transaction, recipientUserId);
-        const actorIdentityId = await resolveCanonicalPersonalIdentityId(transaction, input.actorId);
-        if (!recipientIdentityId || !actorIdentityId) {
-          throw new AppError({ code: ERROR_CODES.IDENTITY_NOT_FOUND, message: "error.auth.identity_not_found", statusCode: 403 });
-        }
-        const metadata = {
-          ...this.metadata(input.audit.metadata),
-          topUpPublicId: created.publicId,
-          cardPublicId: card.publicId,
-          customerNeedoId: card.membership.customerProfile.user.needoId,
-          shopNo: card.membership.shop.shopNo,
-          principalBalanceBeforeJpy: principalBefore,
-          principalBalanceAfterJpy: principalAfter
-        };
-        await transaction.auditLog.create({
-          data: {
-            ...toAuditLogCreateData({ ...input.audit, targetId: created.id, metadata }),
-            createdAt: databaseNow
+      return await runWithTransactionConflictRetry(() =>
+        this.client.$transaction(async (transaction) => {
+          const replay = await transaction.shopMembershipCardTopUp.findFirst({
+            where: { shopId: input.shopId, idempotencyKey: input.idempotencyKey, deletedAt: null },
+            select: topUpSelect
+          });
+          if (replay) {
+            return replay.requestFingerprint === input.requestFingerprint
+              ? { kind: "replayed" as const, value: this.mapTopUp(replay) }
+              : { kind: "idempotency_conflict" as const };
           }
-        });
-        await transaction.notification.create({
-          data: {
-            recipientUserId,
-            recipientIdentityId,
-            actorUserId: input.actorId,
-            actorIdentityId,
-            type: "SYSTEM",
-            title: "shop_membership.card_topup.created.title",
-            body: "shop_membership.card_topup.created.body",
-            payload: {
-              topUpPublicId: created.publicId,
-              cardPublicId: card.publicId,
-              shopNo: card.membership.shop.shopNo,
-              amountJpy: input.amountJpy,
-              paymentMethod: input.paymentMethod,
-              principalBalanceBeforeJpy: principalBefore,
-              principalBalanceAfterJpy: principalAfter
+
+          const candidate = await this.loadCard(transaction, input.shopId, input.cardPublicId);
+          if (!candidate) return { kind: "not_found" as const };
+          const lockedRows = await transaction.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT id FROM shop_membership_cards WHERE id = ${candidate.id} AND deleted_at IS NULL FOR UPDATE`
+          );
+          if (lockedRows.length !== 1) return { kind: "not_found" as const };
+          const databaseNow = await this.getDatabaseNow(transaction);
+          const card = await this.loadCard(transaction, input.shopId, input.cardPublicId);
+          if (!card) return { kind: "not_found" as const };
+          if (!this.isEligible(card, databaseNow)) return { kind: "invalid_state" as const };
+
+          const pendingAdjustment = await transaction.shopMembershipCardAdjustmentRequest.findFirst(
+            {
+              where: {
+                cardId: card.id,
+                status: ShopMembershipCardAdjustmentStatus.PENDING,
+                expiresAt: { gt: databaseNow },
+                deletedAt: null
+              },
+              select: { id: true }
+            }
+          );
+          if (pendingAdjustment) return { kind: "pending_conflict" as const };
+
+          const principalBefore = card.principalBalanceJpy!;
+          const principalAfter = principalBefore + input.amountJpy;
+          if (!Number.isSafeInteger(principalAfter) || principalAfter > 2_147_483_647) {
+            return { kind: "invalid_state" as const };
+          }
+          const updated = await transaction.shopMembershipCard.updateMany({
+            where: {
+              id: card.id,
+              lockVersion: card.lockVersion,
+              type: ShopMembershipCardType.STORED_VALUE,
+              status: ShopMembershipCardStatus.ACTIVE,
+              principalBalanceJpy: principalBefore,
+              deletedAt: null
             },
-            createdAt: databaseNow
+            data: { principalBalanceJpy: principalAfter, lockVersion: { increment: 1 } }
+          });
+          if (updated.count !== 1) return { kind: "concurrency_conflict" as const };
+
+          const created = await transaction.shopMembershipCardTopUp.create({
+            data: {
+              cardId: card.id,
+              shopId: input.shopId,
+              createdById: input.actorId,
+              amountJpy: input.amountJpy,
+              paymentMethod: this.paymentMethodToDb(input.paymentMethod),
+              paymentReference: input.paymentReference,
+              note: input.note,
+              principalBalanceBeforeJpy: principalBefore,
+              principalBalanceAfterJpy: principalAfter,
+              cardLockVersionBefore: card.lockVersion,
+              idempotencyKey: input.idempotencyKey,
+              requestFingerprint: input.requestFingerprint,
+              createdAt: databaseNow
+            },
+            select: topUpSelect
+          });
+
+          const recipientUserId = card.membership.customerProfile.user.id;
+          const recipientIdentityId = await resolveCanonicalPersonalIdentityId(
+            transaction,
+            recipientUserId
+          );
+          const actorIdentityId = await resolveCanonicalPersonalIdentityId(
+            transaction,
+            input.actorId
+          );
+          if (!recipientIdentityId || !actorIdentityId) {
+            throw new AppError({
+              code: ERROR_CODES.IDENTITY_NOT_FOUND,
+              message: "error.auth.identity_not_found",
+              statusCode: 403
+            });
           }
-        });
-        return { kind: "created" as const, value: this.mapTopUp(created) };
-      }));
+          const metadata = {
+            ...this.metadata(input.audit.metadata),
+            topUpPublicId: created.publicId,
+            cardPublicId: card.publicId,
+            customerNeedoId: card.membership.customerProfile.user.needoId,
+            shopNo: card.membership.shop.shopNo,
+            principalBalanceBeforeJpy: principalBefore,
+            principalBalanceAfterJpy: principalAfter
+          };
+          await transaction.auditLog.create({
+            data: {
+              ...toAuditLogCreateData({ ...input.audit, targetId: created.id, metadata }),
+              createdAt: databaseNow
+            }
+          });
+          await transaction.notification.create({
+            data: {
+              recipientUserId,
+              recipientIdentityId,
+              actorUserId: input.actorId,
+              actorIdentityId,
+              type: "SYSTEM",
+              title: "shop_membership.card_topup.created.title",
+              body: "shop_membership.card_topup.created.body",
+              payload: {
+                topUpPublicId: created.publicId,
+                cardPublicId: card.publicId,
+                shopNo: card.membership.shop.shopNo,
+                amountJpy: input.amountJpy,
+                paymentMethod: input.paymentMethod,
+                principalBalanceBeforeJpy: principalBefore,
+                principalBalanceAfterJpy: principalAfter
+              },
+              createdAt: databaseNow
+            }
+          });
+          return { kind: "created" as const, value: this.mapTopUp(created) };
+        })
+      );
     } catch (error) {
       if (!this.isUniqueConflict(error)) throw error;
       const targets = this.uniqueTargets(error);
@@ -228,7 +245,10 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
     return this.list(where, input);
   }
 
-  private async list(where: Prisma.ShopMembershipCardTopUpWhereInput, input: ShopMembershipCardTopUpListInput) {
+  private async list(
+    where: Prisma.ShopMembershipCardTopUpWhereInput,
+    input: ShopMembershipCardTopUpListInput
+  ) {
     const pagination = toPrismaPagination(input);
     const [records, total] = await Promise.all([
       this.client.shopMembershipCardTopUp.findMany({
@@ -240,10 +260,18 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
       }),
       this.client.shopMembershipCardTopUp.count({ where })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapTopUp(record)), total, input);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapTopUp(record)),
+      total,
+      input
+    );
   }
 
-  private loadCard(client: Prisma.TransactionClient, shopId: number, cardPublicId: string): Promise<CardRecord | null> {
+  private loadCard(
+    client: Prisma.TransactionClient,
+    shopId: number,
+    cardPublicId: string
+  ): Promise<CardRecord | null> {
     return client.shopMembershipCard.findFirst({
       where: { publicId: cardPublicId, membership: { shopId, deletedAt: null }, deletedAt: null },
       select: cardSelect
@@ -251,18 +279,23 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
   }
 
   private async getDatabaseNow(client: Prisma.TransactionClient): Promise<Date> {
-    const rows = await client.$queryRaw<Array<{ now: Date }>>(Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS now`);
+    const rows = await client.$queryRaw<Array<{ now: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS now`
+    );
     const databaseNow = rows[0]?.now;
-    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime())) throw new Error("error.database_clock_unavailable");
+    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime()))
+      throw new Error("error.database_clock_unavailable");
     return databaseNow;
   }
 
   private isEligible(card: CardRecord, databaseNow: Date): boolean {
-    return card.type === ShopMembershipCardType.STORED_VALUE
-      && card.status === ShopMembershipCardStatus.ACTIVE
-      && card.membership.status === ShopCustomerMembershipStatus.ACTIVE
-      && card.principalBalanceJpy !== null
-      && (!card.expiresAt || card.expiresAt > databaseNow);
+    return (
+      card.type === ShopMembershipCardType.STORED_VALUE &&
+      card.status === ShopMembershipCardStatus.ACTIVE &&
+      card.membership.status === ShopCustomerMembershipStatus.ACTIVE &&
+      card.principalBalanceJpy !== null &&
+      (!card.expiresAt || card.expiresAt > databaseNow)
+    );
   }
 
   private mapTopUp(record: TopUpRecord): ShopMembershipCardTopUpRecord {
@@ -283,8 +316,20 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
         publicId: record.card.publicId,
         cardNo: record.card.cardNo,
         name: record.card.name,
-        type: record.card.type === ShopMembershipCardType.STORED_VALUE ? "stored_value" : record.card.type === ShopMembershipCardType.COUNT ? "count" : "benefit",
-        status: record.card.status === ShopMembershipCardStatus.ACTIVE ? "active" : record.card.status === ShopMembershipCardStatus.FROZEN ? "frozen" : record.card.status === ShopMembershipCardStatus.EXPIRED ? "expired" : "void",
+        type:
+          record.card.type === ShopMembershipCardType.STORED_VALUE
+            ? "stored_value"
+            : record.card.type === ShopMembershipCardType.COUNT
+              ? "count"
+              : "benefit",
+        status:
+          record.card.status === ShopMembershipCardStatus.ACTIVE
+            ? "active"
+            : record.card.status === ShopMembershipCardStatus.FROZEN
+              ? "frozen"
+              : record.card.status === ShopMembershipCardStatus.EXPIRED
+                ? "expired"
+                : "void",
         principalBalanceJpy: record.card.principalBalanceJpy,
         bonusBalanceJpy: record.card.bonusBalanceJpy,
         expiresAt: record.card.expiresAt,
@@ -300,7 +345,9 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
     };
   }
 
-  private paymentMethodToDb(value: ShopMembershipCardTopUpPaymentMethodPayload): ShopMembershipCardTopUpPaymentMethod {
+  private paymentMethodToDb(
+    value: ShopMembershipCardTopUpPaymentMethodPayload
+  ): ShopMembershipCardTopUpPaymentMethod {
     const values = {
       cash: ShopMembershipCardTopUpPaymentMethod.CASH,
       card: ShopMembershipCardTopUpPaymentMethod.CARD,
@@ -311,8 +358,13 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
     return values[value];
   }
 
-  private paymentMethodFromDb(value: ShopMembershipCardTopUpPaymentMethod): ShopMembershipCardTopUpPaymentMethodPayload {
-    const values: Record<ShopMembershipCardTopUpPaymentMethod, ShopMembershipCardTopUpPaymentMethodPayload> = {
+  private paymentMethodFromDb(
+    value: ShopMembershipCardTopUpPaymentMethod
+  ): ShopMembershipCardTopUpPaymentMethodPayload {
+    const values: Record<
+      ShopMembershipCardTopUpPaymentMethod,
+      ShopMembershipCardTopUpPaymentMethodPayload
+    > = {
       [ShopMembershipCardTopUpPaymentMethod.CASH]: "cash",
       [ShopMembershipCardTopUpPaymentMethod.CARD]: "card",
       [ShopMembershipCardTopUpPaymentMethod.PAYPAY]: "paypay",
@@ -323,11 +375,18 @@ export class ShopMembershipCardTopUpRepository implements ShopMembershipCardTopU
   }
 
   private metadata(value: unknown): Record<string, unknown> {
-    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   private isUniqueConflict(error: unknown): error is { code: string; meta?: { target?: unknown } } {
-    return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002");
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
+    );
   }
 
   private uniqueTargets(error: { meta?: { target?: unknown } }): string[] {

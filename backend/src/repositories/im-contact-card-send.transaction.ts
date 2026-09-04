@@ -5,14 +5,8 @@ import {
 } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
-import {
-  serializeContactCardSnapshotV2,
-  type ImContactCardV2
-} from "../domain/im-contact-card";
-import {
-  imMessageInclude,
-  persistImMessageInTransaction
-} from "./im-message-send.transaction";
+import { serializeContactCardSnapshotV2, type ImContactCardV2 } from "../domain/im-contact-card";
+import { imMessageInclude, persistImMessageInTransaction } from "./im-message-send.transaction";
 
 const contactCardMembershipVersionSelect = {
   publicId: true,
@@ -131,33 +125,36 @@ export async function persistImContactCardInTransaction(
     if (!reciprocalFriend) return { status: "target_not_allowed" };
   }
 
-  const customerProfile = target.customerProfile?.deletedAt === null
-    ? target.customerProfile
-    : null;
+  const customerProfile =
+    target.customerProfile?.deletedAt === null ? target.customerProfile : null;
   const hasCustomerIdentity = target.identities.some((identity) => identity.type === "customer");
-  const entityKind = customerProfile || hasCustomerIdentity
-    ? "customer"
-    : target.identities.some((identity) => identity.type === "technician")
-      ? "technician"
-      : target.identities.some((identity) =>
-          identity.type === "merchant" || identity.type === "merchant_owner" ||
-          identity.type === "merchant_organization"
-        )
-        ? "shop"
-        : "service";
-  const experience = entityKind === "customer"
-    ? await tx.userExperienceAccount.upsert({
-        where: { userId: target.id },
-        create: {
-          userId: target.id,
-          currentLevel: 1,
-          totalExpUnits: 0n,
-          lockVersion: 1
-        },
-        update: {},
-        select: { currentLevel: true }
-      })
-    : null;
+  const entityKind =
+    customerProfile || hasCustomerIdentity
+      ? "customer"
+      : target.identities.some((identity) => identity.type === "technician")
+        ? "technician"
+        : target.identities.some(
+              (identity) =>
+                identity.type === "merchant" ||
+                identity.type === "merchant_owner" ||
+                identity.type === "merchant_organization"
+            )
+          ? "shop"
+          : "service";
+  const experience =
+    entityKind === "customer"
+      ? await tx.userExperienceAccount.upsert({
+          where: { userId: target.id },
+          create: {
+            userId: target.id,
+            currentLevel: 1,
+            totalExpUnits: 0n,
+            lockVersion: 1
+          },
+          update: {},
+          select: { currentLevel: true }
+        })
+      : null;
   const membership = customerProfile
     ? await resolveContactCardMembershipVersion(tx, target.id, input.transactionNow)
     : null;
@@ -169,9 +166,10 @@ export async function persistImContactCardInTransaction(
     entityKind,
     ekycVerified: target.ekycVerifications.length > 0,
     level: experience?.currentLevel ?? null,
-    bio: customerProfile?.isPublic && customerProfile.visibility === "public"
-      ? boundedBio(customerProfile.bio)
-      : null,
+    bio:
+      customerProfile?.isPublic && customerProfile.visibility === "public"
+        ? boundedBio(customerProfile.bio)
+        : null,
     tierCode: membership ? normalizeTierCode(membership.tier.code) : null,
     themeVersionPublicId: membership?.publicId ?? null,
     simpleTopColor: membership?.simpleTopColor ?? null,
@@ -217,10 +215,7 @@ async function resolveContactCardMembershipVersion(
       OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }],
       tierVersion: {
         status: {
-          in: [
-            PlatformMembershipVersionStatus.PUBLISHED,
-            PlatformMembershipVersionStatus.ARCHIVED
-          ]
+          in: [PlatformMembershipVersionStatus.PUBLISHED, PlatformMembershipVersionStatus.ARCHIVED]
         },
         deletedAt: null,
         tier: { deletedAt: null }
@@ -252,10 +247,12 @@ export function contactCardRequestFingerprint(input: {
   targetUserPublicId: string;
 }): string {
   return createHash("sha256")
-    .update(JSON.stringify({
-      conversationId: input.conversationId,
-      targetUserPublicId: input.targetUserPublicId
-    }))
+    .update(
+      JSON.stringify({
+        conversationId: input.conversationId,
+        targetUserPublicId: input.targetUserPublicId
+      })
+    )
     .digest("hex");
 }
 

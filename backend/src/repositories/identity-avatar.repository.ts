@@ -34,20 +34,22 @@ export async function persistIdentityAvatar(
     });
   }
 
-  const sourceWhere = input.source.kind === "customer"
-    ? { customerProfileId: input.source.profileId }
-    : input.source.kind === "technician"
-      ? { technicianProfileId: input.source.profileId }
-      : input.source.kind === "shop"
-        ? { shopId: input.source.shopId }
-        : {};
-  const entityType = input.source.kind === "customer"
-    ? "customer_profile"
-    : input.source.kind === "technician"
-      ? "technician_profile"
-      : input.source.kind === "shop"
-        ? "shop"
-        : "merchant_identity_profile";
+  const sourceWhere =
+    input.source.kind === "customer"
+      ? { customerProfileId: input.source.profileId }
+      : input.source.kind === "technician"
+        ? { technicianProfileId: input.source.profileId }
+        : input.source.kind === "shop"
+          ? { shopId: input.source.shopId }
+          : {};
+  const entityType =
+    input.source.kind === "customer"
+      ? "customer_profile"
+      : input.source.kind === "technician"
+        ? "technician_profile"
+        : input.source.kind === "shop"
+          ? "shop"
+          : "merchant_identity_profile";
   const entityId = input.source.kind === "shop" ? input.source.shopId : input.source.profileId;
 
   await transaction.mediaAsset.updateMany({

@@ -22,7 +22,9 @@ export interface TransactionAwareAuditLogRepositoryPort extends AuditLogReposito
   ) => Promise<void>;
 }
 
-export const toAuditLogCreateData = (input: AuditLogCreateInput): Prisma.AuditLogUncheckedCreateInput => ({
+export const toAuditLogCreateData = (
+  input: AuditLogCreateInput
+): Prisma.AuditLogUncheckedCreateInput => ({
   actorId: input.actorId ?? null,
   action: input.action,
   targetType: input.targetType,

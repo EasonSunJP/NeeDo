@@ -5,9 +5,7 @@ import type {
   AffiliateWithdrawalEligibilityRepositoryPort
 } from "../services/affiliate-withdrawal-eligibility.service";
 
-export class AffiliateWithdrawalEligibilityRepository
-  implements AffiliateWithdrawalEligibilityRepositoryPort
-{
+export class AffiliateWithdrawalEligibilityRepository implements AffiliateWithdrawalEligibilityRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findEligibility(

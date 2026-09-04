@@ -29,9 +29,7 @@ import {
   type PaginationInput
 } from "../utils/pagination";
 
-const eventTypeToDb: Readonly<
-  Record<UserExperienceEventTypeValue, UserExperienceEventType>
-> = {
+const eventTypeToDb: Readonly<Record<UserExperienceEventTypeValue, UserExperienceEventType>> = {
   member_sign_in: UserExperienceEventType.MEMBER_SIGN_IN,
   service_completed: UserExperienceEventType.SERVICE_COMPLETED,
   social_post_liked: UserExperienceEventType.SOCIAL_POST_LIKED,
@@ -41,9 +39,7 @@ const eventTypeToDb: Readonly<
   reversal: UserExperienceEventType.REVERSAL
 };
 
-const eventTypeFromDb: Readonly<
-  Record<UserExperienceEventType, UserExperienceEventTypeValue>
-> = {
+const eventTypeFromDb: Readonly<Record<UserExperienceEventType, UserExperienceEventTypeValue>> = {
   [UserExperienceEventType.MEMBER_SIGN_IN]: "member_sign_in",
   [UserExperienceEventType.SERVICE_COMPLETED]: "service_completed",
   [UserExperienceEventType.SOCIAL_POST_LIKED]: "social_post_liked",
@@ -53,14 +49,13 @@ const eventTypeFromDb: Readonly<
   [UserExperienceEventType.REVERSAL]: "reversal"
 };
 
-const tierCodeToDb: Readonly<
-  Record<PlatformMembershipTierCodeValue, PlatformMembershipTierCode>
-> = {
-  free: PlatformMembershipTierCode.FREE,
-  silver: PlatformMembershipTierCode.SILVER,
-  gold: PlatformMembershipTierCode.GOLD,
-  black_diamond: PlatformMembershipTierCode.BLACK_DIAMOND
-};
+const tierCodeToDb: Readonly<Record<PlatformMembershipTierCodeValue, PlatformMembershipTierCode>> =
+  {
+    free: PlatformMembershipTierCode.FREE,
+    silver: PlatformMembershipTierCode.SILVER,
+    gold: PlatformMembershipTierCode.GOLD,
+    black_diamond: PlatformMembershipTierCode.BLACK_DIAMOND
+  };
 
 const tierCodeFromDb: Readonly<
   Record<PlatformMembershipTierCode, PlatformMembershipTierCodeValue>
@@ -135,9 +130,7 @@ const mapEntry = (record: EntryRecord): UserExperienceEntrySnapshot => ({
   membershipMultiplierBps: record.membershipMultiplierBps,
   extraUnits: record.extraUnits,
   finalUnits: record.finalUnits,
-  membershipTierCode: record.membershipTierCode
-    ? tierCodeFromDb[record.membershipTierCode]
-    : null,
+  membershipTierCode: record.membershipTierCode ? tierCodeFromDb[record.membershipTierCode] : null,
   membershipTierVersionId: record.membershipTierVersionId,
   policyVersionId: record.policyVersionId,
   campaignVersionId: record.campaignVersionId,
@@ -157,9 +150,7 @@ const mapEntry = (record: EntryRecord): UserExperienceEntrySnapshot => ({
 export class UserExperienceRepository implements UserExperienceRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async findActiveAccount(
-    userId: number
-  ): Promise<UserExperienceAccountSnapshot | null> {
+  public async findActiveAccount(userId: number): Promise<UserExperienceAccountSnapshot | null> {
     const account = await this.client.userExperienceAccount.findFirst({
       where: {
         userId,
@@ -259,9 +250,7 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
         );
       } catch (error) {
         if (this.isUniqueConflict(error)) {
-          const duplicate = await this.findDuplicate(
-            `ndp-reversal:${source.transactionNo}`
-          );
+          const duplicate = await this.findDuplicate(`ndp-reversal:${source.transactionNo}`);
           if (duplicate) return duplicate;
         }
         if (error instanceof UserExperienceOptimisticConflict && attempt < 2) continue;
@@ -279,10 +268,7 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
     const duplicate = await transaction.userExperienceEntry.findFirst({
       where: {
         deletedAt: null,
-        OR: [
-          { idempotencyKey },
-          { ledgerTransactionId: source.ledgerTransactionId }
-        ]
+        OR: [{ idempotencyKey }, { ledgerTransactionId: source.ledgerTransactionId }]
       },
       select: entrySelect
     });
@@ -372,8 +358,7 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
       });
       accumulatorBeforeNumerator = accumulator.remainderNumerator;
       const threshold = BigInt(original.extraThresholdNdp);
-      const removedNumerator =
-        BigInt(calculation.appliedNdp) * original.extraAwardUnits;
+      const removedNumerator = BigInt(calculation.appliedNdp) * original.extraAwardUnits;
       const remainder = (accumulator.remainderNumerator - removedNumerator) % threshold;
       accumulatorAfterNumerator = remainder < 0n ? remainder + threshold : remainder;
       const accumulatorUpdated = await transaction.userNdpExperienceAccumulator.updateMany({
@@ -585,92 +570,90 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
   }
 
   private recordOnce(event: UserExperienceCalculatedEvent) {
-    return this.client.$transaction((transaction) =>
-      this.recordOnceWithClient(event, transaction)
-    );
+    return this.client.$transaction((transaction) => this.recordOnceWithClient(event, transaction));
   }
 
   private async recordOnceWithClient(
     event: UserExperienceCalculatedEvent,
     transaction: Prisma.TransactionClient
   ): Promise<UserExperienceMutationResult> {
-      const existing = await transaction.userExperienceEntry.findUnique({
-        where: { idempotencyKey: event.idempotencyKey },
-        select: entrySelect
-      });
-      if (existing) {
-        const account = await transaction.userExperienceAccount.findFirst({
-          where: { userId: event.userId, deletedAt: null },
-          select: accountSelect
-        });
-        return account
-          ? { status: "duplicate" as const, account: mapAccount(account), entry: mapEntry(existing) }
-          : { status: "ineligible" as const, account: null };
-      }
-
+    const existing = await transaction.userExperienceEntry.findUnique({
+      where: { idempotencyKey: event.idempotencyKey },
+      select: entrySelect
+    });
+    if (existing) {
       const account = await transaction.userExperienceAccount.findFirst({
-        where: {
-          userId: event.userId,
-          deletedAt: null,
-          user: { customerProfile: { is: { deletedAt: null } }, deletedAt: null }
-        },
-        select: { id: true, ...accountSelect }
+        where: { userId: event.userId, deletedAt: null },
+        select: accountSelect
       });
-      if (!account) return { status: "ineligible" as const, account: null };
+      return account
+        ? { status: "duplicate" as const, account: mapAccount(account), entry: mapEntry(existing) }
+        : { status: "ineligible" as const, account: null };
+    }
 
-      const entry = await transaction.userExperienceEntry.create({
-        data: {
-          accountId: account.id,
-          userId: event.userId,
-          eventType: eventTypeToDb[event.eventType],
-          sourceType: event.sourceType,
-          sourcePublicId: event.sourcePublicId,
-          idempotencyKey: event.idempotencyKey,
-          baseUnits: event.baseUnits,
-          campaignFactorBps: event.campaignFactorBps,
-          membershipMultiplierBps: event.membershipMultiplierBps,
-          extraUnits: event.extraUnits,
-          finalUnits: event.finalUnits,
-          membershipTierCode: tierCodeToDb[event.membershipTierCode],
-          membershipTierVersionId: event.membershipTierVersionId,
-          policyVersionId: event.policyVersionId,
-          campaignVersionId: event.campaignVersionId,
-          occurredAt: event.occurredAt,
-          reversalOfEntryId: event.reversalOfEntryId,
-          ledgerTransactionId: event.ledgerTransactionId ?? null,
-          entitlementId: event.entitlementId ?? null,
-          tierBenefitId: event.tierBenefitId ?? null,
-          ndpAmount: event.ndpAmount ?? null,
-          ndpPerBaseExp: event.ndpPerBaseExp ?? null,
-          extraThresholdNdp: event.extraThresholdNdp ?? null,
-          extraAwardUnits: event.extraAwardUnits ?? null,
-          accumulatorBeforeNumerator: event.accumulatorBeforeNumerator ?? null,
-          accumulatorAfterNumerator: event.accumulatorAfterNumerator ?? null
-        },
-        select: entrySelect
-      });
-      const totalUnits = account.totalExpUnits + event.finalUnits;
-      if (totalUnits < 0n) throw new RangeError("experience total cannot be negative");
-      const updated = await transaction.userExperienceAccount.updateMany({
-        where: { id: account.id, lockVersion: account.lockVersion, deletedAt: null },
-        data: {
-          totalExpUnits: totalUnits,
-          currentLevel: resolveLevel(totalUnits),
-          lockVersion: { increment: 1 }
-        }
-      });
-      if (updated.count !== 1) throw new UserExperienceOptimisticConflict();
-      return {
-        status: "awarded" as const,
-        account: {
-          publicId: account.publicId,
-          userId: account.userId,
-          totalUnits,
-          currentLevel: resolveLevel(totalUnits),
-          lockVersion: account.lockVersion + 1
-        },
-        entry: mapEntry(entry)
-      };
+    const account = await transaction.userExperienceAccount.findFirst({
+      where: {
+        userId: event.userId,
+        deletedAt: null,
+        user: { customerProfile: { is: { deletedAt: null } }, deletedAt: null }
+      },
+      select: { id: true, ...accountSelect }
+    });
+    if (!account) return { status: "ineligible" as const, account: null };
+
+    const entry = await transaction.userExperienceEntry.create({
+      data: {
+        accountId: account.id,
+        userId: event.userId,
+        eventType: eventTypeToDb[event.eventType],
+        sourceType: event.sourceType,
+        sourcePublicId: event.sourcePublicId,
+        idempotencyKey: event.idempotencyKey,
+        baseUnits: event.baseUnits,
+        campaignFactorBps: event.campaignFactorBps,
+        membershipMultiplierBps: event.membershipMultiplierBps,
+        extraUnits: event.extraUnits,
+        finalUnits: event.finalUnits,
+        membershipTierCode: tierCodeToDb[event.membershipTierCode],
+        membershipTierVersionId: event.membershipTierVersionId,
+        policyVersionId: event.policyVersionId,
+        campaignVersionId: event.campaignVersionId,
+        occurredAt: event.occurredAt,
+        reversalOfEntryId: event.reversalOfEntryId,
+        ledgerTransactionId: event.ledgerTransactionId ?? null,
+        entitlementId: event.entitlementId ?? null,
+        tierBenefitId: event.tierBenefitId ?? null,
+        ndpAmount: event.ndpAmount ?? null,
+        ndpPerBaseExp: event.ndpPerBaseExp ?? null,
+        extraThresholdNdp: event.extraThresholdNdp ?? null,
+        extraAwardUnits: event.extraAwardUnits ?? null,
+        accumulatorBeforeNumerator: event.accumulatorBeforeNumerator ?? null,
+        accumulatorAfterNumerator: event.accumulatorAfterNumerator ?? null
+      },
+      select: entrySelect
+    });
+    const totalUnits = account.totalExpUnits + event.finalUnits;
+    if (totalUnits < 0n) throw new RangeError("experience total cannot be negative");
+    const updated = await transaction.userExperienceAccount.updateMany({
+      where: { id: account.id, lockVersion: account.lockVersion, deletedAt: null },
+      data: {
+        totalExpUnits: totalUnits,
+        currentLevel: resolveLevel(totalUnits),
+        lockVersion: { increment: 1 }
+      }
+    });
+    if (updated.count !== 1) throw new UserExperienceOptimisticConflict();
+    return {
+      status: "awarded" as const,
+      account: {
+        publicId: account.publicId,
+        userId: account.userId,
+        totalUnits,
+        currentLevel: resolveLevel(totalUnits),
+        lockVersion: account.lockVersion + 1
+      },
+      entry: mapEntry(entry)
+    };
   }
 
   private async findDuplicate(
@@ -691,8 +674,6 @@ export class UserExperienceRepository implements UserExperienceRepositoryPort {
   }
 
   private isUniqueConflict(error: unknown): boolean {
-    return (
-      error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
-    );
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
   }
 }

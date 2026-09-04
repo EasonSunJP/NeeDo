@@ -45,12 +45,17 @@ export type ShopTaxonomySelectionState = Omit<
 >;
 
 export interface ShopTaxonomyRepositoryPort extends ShopTaxonomyQualificationPort {
-  listCategories(input: ShopTaxonomyCatalogQuery): Promise<PaginatedResponse<LocalizedServiceCategory>>;
+  listCategories(
+    input: ShopTaxonomyCatalogQuery
+  ): Promise<PaginatedResponse<LocalizedServiceCategory>>;
   listKeywords(
     categoryId: number,
     input: ShopTaxonomyCatalogQuery
   ): Promise<PaginatedResponse<LocalizedBusinessKeyword>>;
-  getShopSelectionState(shopId: number, locale: ShopTaxonomyCatalogQuery["locale"]): Promise<ShopTaxonomySelectionState>;
+  getShopSelectionState(
+    shopId: number,
+    locale: ShopTaxonomyCatalogQuery["locale"]
+  ): Promise<ShopTaxonomySelectionState>;
   replaceShopSelection(input: {
     shopId: number;
     actorUserId: number;
@@ -196,10 +201,7 @@ export class ShopTaxonomyRepository implements ShopTaxonomyRepositoryPort {
           shopId: input.shopId,
           status: "APPROVED",
           deletedAt: null,
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gt: input.at } }
-          ],
+          OR: [{ expiresAt: null }, { expiresAt: { gt: input.at } }],
           AND: [
             {
               OR: [
@@ -213,7 +215,10 @@ export class ShopTaxonomyRepository implements ShopTaxonomyRepositoryPort {
       })
     ]);
 
-    if (categories.length !== input.categoryIds.length || keywords.length !== input.keywordIds.length) {
+    if (
+      categories.length !== input.categoryIds.length ||
+      keywords.length !== input.keywordIds.length
+    ) {
       throw this.conflict("error.shop_taxonomy.selection_unavailable");
     }
 
@@ -239,8 +244,7 @@ export class ShopTaxonomyRepository implements ShopTaxonomyRepositoryPort {
           category.qualificationPolicy !== "OPEN" && !approvedCategoryIds.has(category.id)
       ) ||
       keywords.some(
-        (keyword) =>
-          keyword.qualificationPolicy !== "OPEN" && !approvedKeywordIds.has(keyword.id)
+        (keyword) => keyword.qualificationPolicy !== "OPEN" && !approvedKeywordIds.has(keyword.id)
       )
     ) {
       throw this.conflict("error.shop_taxonomy.qualification_required");
@@ -267,147 +271,150 @@ export class ShopTaxonomyRepository implements ShopTaxonomyRepositoryPort {
     keywordLimit: number;
     at: Date;
   }): Promise<ShopServiceTaxonomyPayload> {
-    return this.db.$transaction(async (tx) => {
-      const replay = await tx.shopServiceTaxonomyCommand.findUnique({
-        where: {
-          shopId_idempotencyKey: {
+    return this.db.$transaction(
+      async (tx) => {
+        const replay = await tx.shopServiceTaxonomyCommand.findUnique({
+          where: {
+            shopId_idempotencyKey: {
+              shopId: input.shopId,
+              idempotencyKey: input.idempotencyKey
+            }
+          }
+        });
+        if (replay) {
+          if (replay.requestFingerprint !== input.requestFingerprint) {
+            throw this.idempotencyConflict();
+          }
+          return replay.resultJson as unknown as ShopServiceTaxonomyPayload;
+        }
+
+        const currentState = await tx.shopServiceTaxonomyState.findUnique({
+          where: { shopId: input.shopId }
+        });
+        const currentRevision = currentState?.version ?? 0;
+        if (currentRevision !== input.expectedRevision) {
+          throw this.versionConflict();
+        }
+
+        await new ShopTaxonomyRepository(tx).assertSelectable({
+          shopId: input.shopId,
+          categoryIds: input.categoryIds,
+          keywordIds: input.keywordIds,
+          at: input.at
+        });
+
+        const previousKeywords = await tx.shopBusinessKeyword.findMany({
+          where: { shopId: input.shopId, deletedAt: null },
+          select: { businessKeywordId: true }
+        });
+        const nextKeywordIds = new Set(input.keywordIds);
+        const removedKeywordIds = previousKeywords
+          .map((selection) => selection.businessKeywordId)
+          .filter((id) => !nextKeywordIds.has(id))
+          .sort((a, b) => a - b);
+
+        await tx.shopBusinessKeyword.updateMany({
+          where: {
             shopId: input.shopId,
-            idempotencyKey: input.idempotencyKey
+            deletedAt: null,
+            businessKeywordId: { notIn: input.keywordIds }
+          },
+          data: { deletedAt: input.at }
+        });
+        await tx.shopServiceCategory.updateMany({
+          where: {
+            shopId: input.shopId,
+            deletedAt: null,
+            categoryId: { notIn: input.categoryIds }
+          },
+          data: { deletedAt: input.at }
+        });
+
+        for (const categoryId of input.categoryIds) {
+          const existing = await tx.shopServiceCategory.findFirst({
+            where: { shopId: input.shopId, categoryId },
+            orderBy: { id: "desc" }
+          });
+          if (existing) {
+            await tx.shopServiceCategory.update({
+              where: { id: existing.id },
+              data: { selectedByUserId: input.actorUserId, deletedAt: null }
+            });
+          } else {
+            await tx.shopServiceCategory.create({
+              data: { shopId: input.shopId, categoryId, selectedByUserId: input.actorUserId }
+            });
           }
         }
-      });
-      if (replay) {
-        if (replay.requestFingerprint !== input.requestFingerprint) {
-          throw this.idempotencyConflict();
-        }
-        return replay.resultJson as unknown as ShopServiceTaxonomyPayload;
-      }
 
-      const currentState = await tx.shopServiceTaxonomyState.findUnique({
-        where: { shopId: input.shopId }
-      });
-      const currentRevision = currentState?.version ?? 0;
-      if (currentRevision !== input.expectedRevision) {
-        throw this.versionConflict();
-      }
-
-      await new ShopTaxonomyRepository(tx).assertSelectable({
-        shopId: input.shopId,
-        categoryIds: input.categoryIds,
-        keywordIds: input.keywordIds,
-        at: input.at
-      });
-
-      const previousKeywords = await tx.shopBusinessKeyword.findMany({
-        where: { shopId: input.shopId, deletedAt: null },
-        select: { businessKeywordId: true }
-      });
-      const nextKeywordIds = new Set(input.keywordIds);
-      const removedKeywordIds = previousKeywords
-        .map((selection) => selection.businessKeywordId)
-        .filter((id) => !nextKeywordIds.has(id))
-        .sort((a, b) => a - b);
-
-      await tx.shopBusinessKeyword.updateMany({
-        where: {
-          shopId: input.shopId,
-          deletedAt: null,
-          businessKeywordId: { notIn: input.keywordIds }
-        },
-        data: { deletedAt: input.at }
-      });
-      await tx.shopServiceCategory.updateMany({
-        where: {
-          shopId: input.shopId,
-          deletedAt: null,
-          categoryId: { notIn: input.categoryIds }
-        },
-        data: { deletedAt: input.at }
-      });
-
-      for (const categoryId of input.categoryIds) {
-        const existing = await tx.shopServiceCategory.findFirst({
-          where: { shopId: input.shopId, categoryId },
-          orderBy: { id: "desc" }
-        });
-        if (existing) {
-          await tx.shopServiceCategory.update({
-            where: { id: existing.id },
-            data: { selectedByUserId: input.actorUserId, deletedAt: null }
+        for (const businessKeywordId of input.keywordIds) {
+          const existing = await tx.shopBusinessKeyword.findFirst({
+            where: { shopId: input.shopId, businessKeywordId },
+            orderBy: { id: "desc" }
           });
-        } else {
-          await tx.shopServiceCategory.create({
-            data: { shopId: input.shopId, categoryId, selectedByUserId: input.actorUserId }
-          });
-        }
-      }
-
-      for (const businessKeywordId of input.keywordIds) {
-        const existing = await tx.shopBusinessKeyword.findFirst({
-          where: { shopId: input.shopId, businessKeywordId },
-          orderBy: { id: "desc" }
-        });
-        if (existing) {
-          await tx.shopBusinessKeyword.update({
-            where: { id: existing.id },
-            data: { selectedByUserId: input.actorUserId, deletedAt: null }
-          });
-        } else {
-          await tx.shopBusinessKeyword.create({
-            data: { shopId: input.shopId, businessKeywordId, selectedByUserId: input.actorUserId }
-          });
-        }
-      }
-
-      const resultingVersion = currentRevision + 1;
-      if (currentState) {
-        const updated = await tx.shopServiceTaxonomyState.updateMany({
-          where: { shopId: input.shopId, version: input.expectedRevision, deletedAt: null },
-          data: { version: resultingVersion }
-        });
-        if (updated.count !== 1) throw this.versionConflict();
-      } else {
-        await tx.shopServiceTaxonomyState.create({
-          data: { shopId: input.shopId, version: resultingVersion }
-        });
-      }
-
-      const selected = await this.loadSelectionState(tx, input.shopId, input.locale);
-      const result: ShopServiceTaxonomyPayload = {
-        ...selected,
-        categoryLimit: input.categoryLimit,
-        keywordLimit: input.keywordLimit,
-        removedKeywordIds
-      };
-
-      await tx.auditLog.create({
-        data: {
-          actorId: input.actorUserId,
-          action: "merchant_admin.shop.service_taxonomy.replace",
-          targetType: "Shop",
-          targetId: input.shopId,
-          metadata: {
-            beforeRevision: currentRevision,
-            afterRevision: resultingVersion,
-            categoryIds: input.categoryIds,
-            keywordIds: input.keywordIds,
-            removedKeywordIds
+          if (existing) {
+            await tx.shopBusinessKeyword.update({
+              where: { id: existing.id },
+              data: { selectedByUserId: input.actorUserId, deletedAt: null }
+            });
+          } else {
+            await tx.shopBusinessKeyword.create({
+              data: { shopId: input.shopId, businessKeywordId, selectedByUserId: input.actorUserId }
+            });
           }
         }
-      });
-      await tx.shopServiceTaxonomyCommand.create({
-        data: {
-          shopId: input.shopId,
-          actorUserId: input.actorUserId,
-          idempotencyKey: input.idempotencyKey,
-          requestFingerprint: input.requestFingerprint,
-          resultingVersion,
-          resultJson: result as unknown as Prisma.InputJsonObject
-        }
-      });
 
-      return result;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        const resultingVersion = currentRevision + 1;
+        if (currentState) {
+          const updated = await tx.shopServiceTaxonomyState.updateMany({
+            where: { shopId: input.shopId, version: input.expectedRevision, deletedAt: null },
+            data: { version: resultingVersion }
+          });
+          if (updated.count !== 1) throw this.versionConflict();
+        } else {
+          await tx.shopServiceTaxonomyState.create({
+            data: { shopId: input.shopId, version: resultingVersion }
+          });
+        }
+
+        const selected = await this.loadSelectionState(tx, input.shopId, input.locale);
+        const result: ShopServiceTaxonomyPayload = {
+          ...selected,
+          categoryLimit: input.categoryLimit,
+          keywordLimit: input.keywordLimit,
+          removedKeywordIds
+        };
+
+        await tx.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "merchant_admin.shop.service_taxonomy.replace",
+            targetType: "Shop",
+            targetId: input.shopId,
+            metadata: {
+              beforeRevision: currentRevision,
+              afterRevision: resultingVersion,
+              categoryIds: input.categoryIds,
+              keywordIds: input.keywordIds,
+              removedKeywordIds
+            }
+          }
+        });
+        await tx.shopServiceTaxonomyCommand.create({
+          data: {
+            shopId: input.shopId,
+            actorUserId: input.actorUserId,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint,
+            resultingVersion,
+            resultJson: result as unknown as Prisma.InputJsonObject
+          }
+        });
+
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
   }
 
   private async loadSelectionState(
@@ -464,23 +471,27 @@ export class ShopTaxonomyRepository implements ShopTaxonomyRepositoryPort {
       revision: state?.version ?? 0,
       selectedCategories: categorySelections.flatMap(({ category }) =>
         category.translations[0]
-          ? [{
-              id: category.id,
-              code: category.code,
-              label: category.translations[0].name,
-              qualificationPolicy: category.qualificationPolicy
-            }]
+          ? [
+              {
+                id: category.id,
+                code: category.code,
+                label: category.translations[0].name,
+                qualificationPolicy: category.qualificationPolicy
+              }
+            ]
           : []
       ),
       selectedKeywords: keywordSelections.flatMap(({ businessKeyword }) =>
         businessKeyword.translations[0]
-          ? [{
-              id: businessKeyword.id,
-              code: businessKeyword.code,
-              categoryId: businessKeyword.categoryId,
-              label: businessKeyword.translations[0].label,
-              qualificationPolicy: businessKeyword.qualificationPolicy
-            }]
+          ? [
+              {
+                id: businessKeyword.id,
+                code: businessKeyword.code,
+                categoryId: businessKeyword.categoryId,
+                label: businessKeyword.translations[0].label,
+                qualificationPolicy: businessKeyword.qualificationPolicy
+              }
+            ]
           : []
       )
     };

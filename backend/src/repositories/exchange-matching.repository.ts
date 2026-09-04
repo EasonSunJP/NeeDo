@@ -14,10 +14,7 @@ import type {
   ExchangeMatchingPayload
 } from "../types/exchange-matching.types";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 type ExchangeMatchingPrismaClient = PrismaClient | Prisma.TransactionClient;
 
@@ -211,17 +208,12 @@ export class ExchangeMatchingRepository {
       }
     });
     if (!event?.payloadFingerprint || !event.actorIdentityId) return null;
-    const record = await this.findForViewer(
-      event.matching.exchangePostId,
-      event.actorIdentityId
-    );
+    const record = await this.findForViewer(event.matching.exchangePostId, event.actorIdentityId);
     if (!record) return null;
     return { payload: record.payload, payloadFingerprint: event.payloadFingerprint };
   }
 
-  public async lockActiveClaims(
-    exchangePostId: number
-  ): Promise<ExchangeMatchingSelectionClaim[]> {
+  public async lockActiveClaims(exchangePostId: number): Promise<ExchangeMatchingSelectionClaim[]> {
     const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id FROM \`exchange_claims\`
       WHERE exchange_post_id = ${exchangePostId}
@@ -233,7 +225,12 @@ export class ExchangeMatchingRepository {
     const ids = locked.map((row) => Number(row.id));
     if (ids.length === 0) return [];
     const rows = await this.client.exchangeClaim.findMany({
-      where: { id: { in: ids }, exchangePostId, status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
+      where: {
+        id: { in: ids },
+        exchangePostId,
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
       include: { scheduleSlot: { select: { startsAt: true, endsAt: true } } },
       orderBy: { id: "asc" }
     });
@@ -328,13 +325,25 @@ export class ExchangeMatchingRepository {
       });
     }
     await this.client.exchangeClaim.updateMany({
-      where: { id: { in: input.selectedClaimIds }, status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
+      where: {
+        id: { in: input.selectedClaimIds },
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
       data: { status: DatabaseExchangeClaimStatus.MATCHED, activeKey: null, terminalAt: input.at }
     });
     if (input.unselectedClaimIds.length > 0) {
       await this.client.exchangeClaim.updateMany({
-        where: { id: { in: input.unselectedClaimIds }, status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
-        data: { status: DatabaseExchangeClaimStatus.NOT_SELECTED, activeKey: null, terminalAt: input.at }
+        where: {
+          id: { in: input.unselectedClaimIds },
+          status: DatabaseExchangeClaimStatus.ACTIVE,
+          deletedAt: null
+        },
+        data: {
+          status: DatabaseExchangeClaimStatus.NOT_SELECTED,
+          activeKey: null,
+          terminalAt: input.at
+        }
       });
     }
     const updated = await this.client.exchangeRequestMatching.updateMany({
@@ -469,7 +478,9 @@ export class ExchangeMatchingRepository {
       ownerIdentityId: row.exchangePost.ownerIdentityId,
       postType: row.exchangePost.type.toLowerCase() as ExchangeMatchingRecord["postType"],
       postStatus: row.exchangePost.status.toLowerCase() as ExchangeMatchingRecord["postStatus"],
-      matchMode: row.exchangePost.demand?.matchMode.toLowerCase() as ExchangeMatchingRecord["matchMode"] ?? null,
+      matchMode:
+        (row.exchangePost.demand?.matchMode.toLowerCase() as ExchangeMatchingRecord["matchMode"]) ??
+        null,
       expiresAt: row.exchangePost.expiresAt,
       status,
       effectiveTargetProviderCount: row.effectiveTargetProviderCount,
@@ -499,7 +510,8 @@ export class ExchangeMatchingRepository {
       technician: {
         profileId: participant.technicianProfile.id,
         publicId: technicianIdentity?.publicIdentifier?.publicId ?? "",
-        displayName: participant.technicianProfile.displayName ?? technicianIdentity?.displayName ?? ""
+        displayName:
+          participant.technicianProfile.displayName ?? technicianIdentity?.displayName ?? ""
       },
       service: {
         ref: participant.serviceId

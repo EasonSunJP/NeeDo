@@ -101,10 +101,7 @@ const eventTime = (value: string): number => {
   return parsed;
 };
 
-const isInRange = (
-  value: string,
-  range: GrowthFixtureInput<unknown>["range"]
-): boolean => {
+const isInRange = (value: string, range: GrowthFixtureInput<unknown>["range"]): boolean => {
   const time = eventTime(value);
   return time >= range.fromInclusive.getTime() && time < range.toExclusive.getTime();
 };
@@ -113,11 +110,10 @@ const matchesScope = (
   shop: { shopId: number; city: string },
   scope: DashboardAggregateInput["scope"],
   city: string | null
-): boolean => scope.kind === "shop" ? shop.shopId === scope.shopId : city === null || shop.city.trim() === city;
+): boolean =>
+  scope.kind === "shop" ? shop.shopId === scope.shopId : city === null || shop.city.trim() === city;
 
-export const countNewUserEvents = (
-  input: GrowthFixtureInput<NewUserGrowthEvent>
-): number => {
+export const countNewUserEvents = (input: GrowthFixtureInput<NewUserGrowthEvent>): number => {
   const counted = new Set<number>();
   for (const event of input.events) {
     if (
@@ -132,8 +128,9 @@ export const countNewUserEvents = (
       const scopedShopId = input.scope.shopId;
       if (
         !event.customerProfileActive ||
-        !event.memberships.some((membership) =>
-          membership.shopId === scopedShopId && membership.active && !membership.deleted
+        !event.memberships.some(
+          (membership) =>
+            membership.shopId === scopedShopId && membership.active && !membership.deleted
         )
       ) {
         continue;
@@ -157,7 +154,11 @@ export const countFirstPaidMemberEvents = (
     if (event.issuanceSource !== "offline_paid" && event.issuanceSource !== "online_paid") continue;
     const time = eventTime(event.issuedAt);
     const existing = firstPaidByUser.get(event.userId);
-    if (!existing || time < existing.issuedAt || (time === existing.issuedAt && event.cardId < existing.cardId)) {
+    if (
+      !existing ||
+      time < existing.issuedAt ||
+      (time === existing.issuedAt && event.cardId < existing.cardId)
+    ) {
       firstPaidByUser.set(event.userId, { issuedAt: time, cardId: event.cardId });
     }
   }
@@ -200,11 +201,12 @@ export const countFirstTechnicianOnboardingEvents = (
       event.userDeleted ||
       event.isTestUser ||
       !event.profileValid ||
-      !event.shops.some((shop) =>
-        shop.active !== false &&
-        shop.deleted !== true &&
-        shop.effective !== false &&
-        matchesScope(shop, input.scope, input.city)
+      !event.shops.some(
+        (shop) =>
+          shop.active !== false &&
+          shop.deleted !== true &&
+          shop.effective !== false &&
+          matchesScope(shop, input.scope, input.city)
       )
     ) {
       continue;
@@ -219,14 +221,17 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
 
   public async getGrowthFacts(input: DashboardAggregateInput): Promise<GrowthFacts> {
     const rows = await this.queryGrowthFacts(input);
-    const periods = new Map<"current" | "previous", {
-      newUsers: number;
-      newPaidMembers: number;
-      technicianOnboarding: number;
-      agentOnboarding: number;
-      franchiseeOnboarding: number;
-      supplierOnboarding: number;
-    }>();
+    const periods = new Map<
+      "current" | "previous",
+      {
+        newUsers: number;
+        newPaidMembers: number;
+        technicianOnboarding: number;
+        agentOnboarding: number;
+        franchiseeOnboarding: number;
+        supplierOnboarding: number;
+      }
+    >();
     for (const row of rows) {
       const key = row.periodKey ?? row.period_key;
       if ((key !== "current" && key !== "previous") || periods.has(key)) {
@@ -242,9 +247,7 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
         franchiseeOnboarding: this.toSafeAggregate(
           row.franchiseeOnboarding ?? row.franchisee_onboarding
         ),
-        supplierOnboarding: this.toSafeAggregate(
-          row.supplierOnboarding ?? row.supplier_onboarding
-        )
+        supplierOnboarding: this.toSafeAggregate(row.supplierOnboarding ?? row.supplier_onboarding)
       });
     }
     const zero = {
@@ -259,19 +262,42 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
     const previous = periods.get("previous") ?? zero;
     return {
       newUsers: { current: current.newUsers, previous: previous.newUsers, dataStatus: "ready" },
-      newPaidMembers: { current: current.newPaidMembers, previous: previous.newPaidMembers, dataStatus: "ready" },
-      technicianOnboarding: { current: current.technicianOnboarding, previous: previous.technicianOnboarding, dataStatus: "ready" },
-      agentOnboarding: { current: current.agentOnboarding, previous: previous.agentOnboarding, dataStatus: "ready" },
-      franchiseeOnboarding: { current: current.franchiseeOnboarding, previous: previous.franchiseeOnboarding, dataStatus: "ready" },
-      supplierOnboarding: { current: current.supplierOnboarding, previous: previous.supplierOnboarding, dataStatus: "ready" }
+      newPaidMembers: {
+        current: current.newPaidMembers,
+        previous: previous.newPaidMembers,
+        dataStatus: "ready"
+      },
+      technicianOnboarding: {
+        current: current.technicianOnboarding,
+        previous: previous.technicianOnboarding,
+        dataStatus: "ready"
+      },
+      agentOnboarding: {
+        current: current.agentOnboarding,
+        previous: previous.agentOnboarding,
+        dataStatus: "ready"
+      },
+      franchiseeOnboarding: {
+        current: current.franchiseeOnboarding,
+        previous: previous.franchiseeOnboarding,
+        dataStatus: "ready"
+      },
+      supplierOnboarding: {
+        current: current.supplierOnboarding,
+        previous: previous.supplierOnboarding,
+        dataStatus: "ready"
+      }
     };
   }
 
   private periodTable(input: DashboardAggregateInput): Prisma.Sql {
-    return Prisma.join([
-      Prisma.sql`SELECT ${"current"} AS period_key, ${input.window.fromInclusive} AS from_inclusive, ${input.window.toExclusive} AS to_exclusive`,
-      Prisma.sql`SELECT ${"previous"} AS period_key, ${input.window.previousFromInclusive} AS from_inclusive, ${input.window.previousToExclusive} AS to_exclusive`
-    ], " UNION ALL ");
+    return Prisma.join(
+      [
+        Prisma.sql`SELECT ${"current"} AS period_key, ${input.window.fromInclusive} AS from_inclusive, ${input.window.toExclusive} AS to_exclusive`,
+        Prisma.sql`SELECT ${"previous"} AS period_key, ${input.window.previousFromInclusive} AS from_inclusive, ${input.window.previousToExclusive} AS to_exclusive`
+      ],
+      " UNION ALL "
+    );
   }
 
   private newUserScope(input: DashboardAggregateInput): Prisma.Sql {
@@ -510,7 +536,8 @@ export class DashboardGrowthRepository implements DashboardGrowthReader {
   private toSafeAggregate(value: NumericValue): number {
     if (value === null || value === undefined) throw new RangeError(aggregateError);
     if (typeof value === "bigint") {
-      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError(aggregateError);
+      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
+        throw new RangeError(aggregateError);
       return Number(value);
     }
     if (typeof value === "number") {

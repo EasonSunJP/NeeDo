@@ -132,9 +132,7 @@ export class TechnicianResumeRepository
     return { buffer: await this.readFileFromDisk(path), extension };
   }
 
-  public async recordSensitiveDownload(
-    input: TechnicianResumeDownloadAuditInput
-  ): Promise<void> {
+  public async recordSensitiveDownload(input: TechnicianResumeDownloadAuditInput): Promise<void> {
     await this.client.auditLog.create({
       data: {
         actorId: input.reviewerUserId,
