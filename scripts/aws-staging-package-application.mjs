@@ -114,6 +114,7 @@ async function copyReleaseInputs(stageRoot) {
     "backend/package.json",
     "backend/package-lock.json",
     "backend/prisma",
+    "backend/prisma.config.ts",
     "deploy/staging"
   ];
   for (const relative of inputs) {

@@ -41,13 +41,19 @@ test("runtime Dockerfiles consume only locked dependencies and prebuilt outputs"
   const backend = read("./backend-runtime.Dockerfile");
   const frontend = read("./frontend.Dockerfile");
 
+  assert.match(backend, /^FROM nginx:1\.27-alpine AS trusted-certificates$/m);
+  assert.match(backend, /COPY --from=trusted-certificates \/etc\/ssl\/certs\/ca-certificates\.crt \/etc\/ssl\/certs\/ca-certificates\.crt/);
   assert.match(backend, /npm ci/);
+  assert.match(backend, /s\|http:\/\/deb\.debian\.org\|https:\/\/deb\.debian\.org\|g/);
+  assert.match(backend, /apt-get install -y --no-install-recommends openssl/);
   assert.match(backend, /npx prisma generate/);
+  assert.match(backend, /COPY backend\/prisma\.config\.ts \.\/prisma\.config\.ts/);
   assert.match(backend, /FROM all-deps AS migration/);
   assert.match(backend, /FROM node:22-bookworm-slim AS runtime/);
   assert.match(backend, /USER node/);
   assert.match(backend, /COPY backend\/dist \.\/dist/);
   assert.doesNotMatch(backend, /npm run build/);
+  assert.doesNotMatch(backend, /Verify-Peer|--allow-unauthenticated/);
   assert.match(frontend, /FROM nginx:1\.27-alpine/);
   assert.match(frontend, /COPY dist\/ \/usr\/share\/nginx\/html\//);
 });
@@ -56,4 +62,5 @@ test("immutable staging packaging explicitly disables Google auth in the fronten
   const packager = read("../../scripts/aws-staging-package-application.mjs");
 
   assert.match(packager, /VITE_AUTH_GOOGLE_ENABLED:\s*"false"/);
+  assert.match(packager, /"backend\/prisma\.config\.ts"/);
 });
