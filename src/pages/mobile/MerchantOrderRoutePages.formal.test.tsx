@@ -41,7 +41,7 @@ vi.mock("../../features/core-read/api", () => ({
   mapCoreCustomerToCustomer: (value: { id: number; displayName: string }) => ({ id: String(value.id), name: value.displayName }),
   mapCoreServiceToServiceItem: (value: { id: number; name: string }) => ({ id: String(value.id), name: value.name, tags: [] }),
   mapCoreShopToStore: (value: { id: number; name: string }) => ({ id: String(value.id), name: value.name }),
-  mapCoreTechnicianToTechnician: (value: { id: number; displayName: string }) => ({ id: String(value.id), name: value.displayName })
+  mapCoreTechnicianToTechnician: (value: { id: number; publicId: string; displayName: string }) => ({ id: String(value.id), systemId: value.publicId, name: value.displayName })
 }));
 vi.mock("../../state/entityStore", () => ({ useEntityStore: () => ({ customers: [], stores: [], technicians: [] }) }));
 vi.mock("../../state/scheduleStore", () => ({
@@ -62,7 +62,8 @@ vi.mock("../../shared/profile-card", () => ({
   SocialProfileMiniCard: ({ customer, data, store, technician }: { customer?: { name: string }; data?: { displayName: string }; store?: { name: string }; technician?: { name: string } }) => (
     <article>{customer?.name ?? data?.displayName ?? store?.name ?? technician?.name}</article>
   ),
-  buildServiceMiniCardData: (service: { name: string }) => ({ displayName: service.name })
+  buildServiceMiniCardData: (service: { name: string }) => ({ displayName: service.name }),
+  getScopedTechnicianDynamicPath: (scope: string, technician: { id: string; systemId?: string }) => `/${scope}/profiles/technician/${technician.systemId ?? technician.id}`
 }));
 
 import { MerchantOrderDetailRoutePage } from "./MerchantOrderRoutePages";

@@ -68,6 +68,8 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("showSocialStats={false}");
     expect(formalSource).toContain("showLevel={false}");
     expect(formalSource).toContain("?view=card");
+    expect(formalSource).toContain("id: technician.publicId");
+    expect(formalSource).not.toContain("id: String(technician.id)");
     expect(formalSource).not.toContain("navigate(`/technicians/");
     expect(formalSource).not.toContain("acceptanceRatePercent}% 接单率");
   });

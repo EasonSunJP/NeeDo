@@ -40,6 +40,11 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(serviceDetailSource).toContain("服务链接不可用");
   });
 
+  it("opens a formal technician through the canonical public profile path", () => {
+    expect(serviceDetailSource).toContain("getTechnicianDynamicPath(technician)");
+    expect(serviceDetailSource).not.toContain('to={`/profiles/technician/${technician.id}`}');
+  });
+
   it("deduplicates overlapping service areas and tags before rendering keyed chips", () => {
     expect(buildServiceTagLabels(["Tokyo", "Minato"], ["Tokyo", "cleaning"])).toEqual([
       "Tokyo",

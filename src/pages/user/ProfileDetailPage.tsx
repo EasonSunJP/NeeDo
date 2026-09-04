@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -9,6 +9,7 @@ import { pricingModeApi } from "../../features/pricing-mode/api";
 import { socialPaths } from "../../features/social/paths";
 import { SocialProfilePage } from "../../features/social/pages/SocialProfilePage";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { TechnicianProfileInfoView, fromCoreTechnicianDetail } from "../../shared/technician-profile";
 
 function technicianDetailIdFromRoute(id: string | undefined) {
@@ -46,8 +47,12 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [retryRevision, setRetryRevision] = useState(0);
-  const detailQuery = useCoreReadQuery(() => id ? coreReadApi.getTechnicianDetail(id) : null, [id, retryRevision]);
-  const detail = detailQuery.data;
+  const [canonicalAlias, setCanonicalAlias] = useState<{ internalId: number; publicId: string } | null>(null);
+  const requestId = typeof id === "string" && canonicalAlias?.publicId === id ? canonicalAlias.internalId : id;
+  const detailQuery = useCoreReadQuery(() => requestId ? coreReadApi.getTechnicianDetail(requestId) : null, [requestId, retryRevision]);
+  const queriedDetail = detailQuery.data;
+  const detailMatchesRoute = !queriedDetail || (typeof id === "number" ? queriedDetail.id === id : queriedDetail.publicId === id);
+  const detail = detailMatchesRoute ? queriedDetail : null;
   const shopId = detail?.shop?.id ?? null;
   const technicianId = detail?.id ?? null;
   const servicesQuery = useCoreReadQuery(
@@ -55,6 +60,22 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
     [shopId, technicianId, retryRevision]
   );
   const scope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
+
+  useEffect(() => {
+    if (typeof id !== "number" || !detail?.publicId) {
+      return;
+    }
+
+    setCanonicalAlias({ internalId: detail.id, publicId: detail.publicId });
+    navigate(
+      {
+        pathname: getScopedProfileDetailPath(scope, "technician", detail.publicId),
+        search: location.search
+      },
+      { replace: true }
+    );
+  }, [detail?.publicId, id, location.search, navigate, scope]);
+
   const handleBack = () => navigate(-1);
   const handleClose = () => {
     if (searchParams.get("view") === "card" && typeof window !== "undefined" && window.history.state?.idx > 0) {
@@ -70,7 +91,7 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
     return <TechnicianProfileStatus description="技师资料链接无效。" onBack={handleBack} onClose={handleClose} title="暂无技师资料" />;
   }
 
-  if (detailQuery.loading || (detail?.shop && servicesQuery.loading)) {
+  if (detailQuery.loading || !detailMatchesRoute || (detail?.shop && servicesQuery.loading)) {
     return <TechnicianProfileStatus description="正在从正式资料服务读取技师信息。" onBack={handleBack} onClose={handleClose} title="正在载入技师" />;
   }
 

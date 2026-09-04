@@ -30,8 +30,7 @@ import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
-import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
-import { getScopedProfileDetailPath } from "../../shared/profile-detail";
+import { getScopedTechnicianDynamicPath, SocialProfileMiniCard } from "../../shared/profile-card";
 import {
   mapCoreServiceCardToUnifiedData,
   UnifiedServiceInfoCard,
@@ -524,7 +523,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ProfileSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
-                detailTo={getScopedProfileDetailPath("user", "technician", displayTechnician.id)}
+                detailTo={getScopedTechnicianDynamicPath("user", displayTechnician)}
                 showAction={false}
                 technician={displayTechnician}
                 topTags={[{ label: "本次担当", tone: "green" }]}

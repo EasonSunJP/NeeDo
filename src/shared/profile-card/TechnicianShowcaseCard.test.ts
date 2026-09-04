@@ -4,9 +4,41 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
 import type { Technician } from "../../types/domain";
-import { getTechnicianCardRankBadge, shouldShowTechnicianBeginnerIcon, TechnicianShowcaseCard } from "./TechnicianShowcaseCard";
+import {
+  getTechnicianCardRankBadge,
+  getTechnicianDynamicPath,
+  shouldShowTechnicianBeginnerIcon,
+  TechnicianShowcaseCard
+} from "./TechnicianShowcaseCard";
 import cardSource from "./TechnicianShowcaseCard.tsx?raw";
 import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
+
+const publicRouteTechnician: Technician = {
+  id: "186",
+  systemId: "s0000000002",
+  name: "LifeDance 管理员 2",
+  storeId: "217",
+  role: "therapist",
+  status: "available",
+  rating: 5,
+  orderCount: 3,
+  income: 0,
+  skills: ["ボディケア"],
+  serviceAreas: ["東京都"],
+  acceptRate: 100,
+  cancelRate: 0,
+  reviewCount: 3,
+  languages: ["日本語"],
+  avatar: "/images/generated/profiles/ai-profile-29.jpg"
+};
+
+describe("technician public profile path", () => {
+  it("uses the canonical technician public ID instead of the internal profile key", () => {
+    expect(getTechnicianDynamicPath(publicRouteTechnician)).toBe(
+      "/profiles/technician/s0000000002"
+    );
+  });
+});
 
 describe("TechnicianShowcaseCard photo source", () => {
   it("uses the generated technician avatar before service or store gallery photos", () => {
@@ -40,6 +72,22 @@ describe("TechnicianShowcaseCard photo source", () => {
 });
 
 describe("TechnicianShowcaseCard selectable behavior", () => {
+  it("keeps the canonical public ID in the default detail link", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(TechnicianShowcaseCard, {
+          language: "ja",
+          rankIndex: 0,
+          technician: publicRouteTechnician
+        })
+      )
+    );
+
+    expect(markup).toContain('href="/profiles/technician/s0000000002"');
+  });
+
   it("opens every technician photo through the scoped detail link without a dialog", () => {
     const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
 
@@ -50,7 +98,7 @@ describe("TechnicianShowcaseCard selectable behavior", () => {
 
   it("keeps the card linked to the technician dynamic page while selection is handled by the corner icon", () => {
     expect(cardSource).toContain('const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";');
-    expect(cardSource).toContain('const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);');
+    expect(cardSource).toContain("const detailHref = detailTo ?? getScopedTechnicianDynamicPath(currentScope, technician);");
     expect(cardSource).toContain("to={detailHref}");
     expect(cardSource).toContain("event.stopPropagation()");
     expect(cardSource).toContain("onClick={(event) => {");

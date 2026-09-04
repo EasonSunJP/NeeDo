@@ -135,6 +135,12 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `GET` | `/api/v1/technicians/:id` | Public technician detail | Public |
 | `GET` | `/api/v1/profiles/customers/:id` | Public customer profile without account credentials | Public |
 
+For public technician navigation, `:id` is canonically the lowercase NeeDoID
+`s##########`. A positive numeric `TechnicianProfile.id` remains accepted only
+as a transition and internal-caller compatibility lookup. The response retains
+both `id` (internal relation key) and `publicId` (public identity); new public UI
+links must use `publicId` and must not display the numeric key as the account ID.
+
 ### Common Query Parameters
 
 `GET /categories`

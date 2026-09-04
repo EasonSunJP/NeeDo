@@ -319,6 +319,14 @@ Merchant employee identity is now founded on one global technician profile, its 
 
 The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page. The same employee card reads, edits, and previews the current shop-scoped compensation rule through `/api/v1/merchant-admin/employees/:needoId/compensation-profile`, and shows the latest persisted payslip totals without exposing internal shop, technician, or actor IDs. Actual payment is still a manual finance record; this workflow never initiates a bank transfer.
 
+All new user-, merchant-, and technician-facing public profile links use the
+technician's canonical lowercase `s##########` NeeDoID. Numeric
+`TechnicianProfile.id` values remain internal relation keys for services,
+bookings, schedules, and compatibility lookups; they must not be displayed as
+the technician account identifier or used to construct a new public profile
+URL. A legacy numeric profile URL remains readable and is replaced with the
+canonical scoped URL after the formal detail API resolves the entity.
+
 ## Operations Technician Ranking
 
 The operations technician ranking is available at

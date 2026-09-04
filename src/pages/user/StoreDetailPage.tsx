@@ -62,9 +62,9 @@ import {
 import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUiDecoration } from "../../lib/storeUiDecoration";
 import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
-import { TechnicianShowcaseCard } from "../../shared/profile-card";
+import { getScopedTechnicianDynamicPath, TechnicianShowcaseCard } from "../../shared/profile-card";
 import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
-import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import { getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
 import {
   mapCoreServiceCardToUnifiedData,
   mapStoreMenuConfigToUnifiedData,
@@ -3214,7 +3214,7 @@ export function StoreDetailExperience({
                 setSelectedTechnicianId(active ? "" : technician.id);
               } : undefined}
               onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}
-              profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+              profileTo={getScopedTechnicianDynamicPath(scope, technician)}
               quoteRatePercent={effectiveTechnicianPricingRatePercent}
               selected={selectable ? active : undefined}
               serviceListTo={getTechnicianServiceListTo(technician.id)}
@@ -3636,7 +3636,7 @@ export function StoreDetailExperience({
 
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
-                          profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+                          profileTo={getScopedTechnicianDynamicPath(scope, technician)}
                           rankIndex={index}
                           technician={technician}
                           technicianVisible={technicianVisible}

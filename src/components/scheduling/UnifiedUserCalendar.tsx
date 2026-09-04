@@ -22,6 +22,7 @@ import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserS
 import { getJapaneseHoliday } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
+import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -712,7 +713,7 @@ function getTechnicianParticipant(technician: Technician | undefined, scope: Uni
     avatar: technician.avatar,
     meta: [technician.identityLabel, technician.status === "busy" ? "服务中" : technician.status === "off" ? "休息" : "可排班"].filter(Boolean).join(" · "),
     role,
-    to: getScopedProfileDetailPath(scope, "technician", technician.id)
+    to: getScopedTechnicianDynamicPath(scope, technician)
   };
 }
 
@@ -1308,7 +1309,7 @@ function getParallelCalendarLanes(
         caption: "我的排班",
         accent: "var(--client-primary)",
         avatar: currentTechnician.avatar,
-        detailPath: getScopedProfileDetailPath("technician", "technician", currentTechnician.id)
+        detailPath: getScopedTechnicianDynamicPath("technician", currentTechnician)
       }
     ];
   }

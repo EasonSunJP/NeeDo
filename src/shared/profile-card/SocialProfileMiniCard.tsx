@@ -13,6 +13,7 @@ import { getScopedProfileDetailPath } from "../profile-detail/paths";
 import { mapServiceItemToUnifiedData, UnifiedServiceInfoCard, type UnifiedServiceInfoCardData } from "../service-card";
 import { CustomerMembershipIcon } from "./CustomerMembershipIcon";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
+import { getScopedTechnicianDynamicPath } from "./TechnicianShowcaseCard";
 import { getCustomerLevelLabel, resolveCustomerMembership, type SocialProfileMiniMembershipKind } from "./customerMembership";
 
 export type SocialProfileMiniActionLabel = "关注" | "关注中" | "好友";
@@ -797,7 +798,7 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
   const resolvedShowLevel = showLevel ?? data.entityType !== "technician";
   const resolvedShowSocialStats = showSocialStats ?? data.entityType !== "technician";
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
-  const resolvedDetailTo = detailTo ?? (data.entityType === "technician" ? getScopedProfileDetailPath(currentScope, "technician", data.id) : data.detailPath);
+  const resolvedDetailTo = detailTo ?? ("technician" in props ? getScopedTechnicianDynamicPath(currentScope, props.technician) : data.entityType === "technician" ? getScopedProfileDetailPath(currentScope, "technician", data.id) : data.detailPath);
   if (data.entityType === "service" && data.serviceInfo) {
     return (
       <UnifiedServiceInfoCard

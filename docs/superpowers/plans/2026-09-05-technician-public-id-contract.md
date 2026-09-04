@@ -77,12 +77,21 @@ Expected: PASS.
 - Modify: `src/pages/user/StoreDetailPage.tsx`
 - Modify: `src/pages/user/FormalCheckoutPage.tsx`
 - Modify: `src/pages/user/UserOrderDetailPage.tsx`
+- Modify: `src/pages/user/TechnicianServicesPage.tsx`
 - Modify: `src/pages/mobile/MerchantOrderRoutePages.tsx`
+- Modify: `src/components/scheduling/UnifiedUserCalendar.tsx`
+- Modify: `src/shared/profile-card/SocialProfileMiniCard.tsx`
+- Modify: `src/shared/info-card/mappers.ts`
 - Test: `src/pages/user/CategoryPage.test.ts`
 - Test: `src/pages/user/ServiceDetailPage.test.ts`
 - Test: `src/pages/user/StoreDetailPage.test.ts`
 - Test: `src/pages/user/FormalCheckoutPage.test.ts`
 - Test: `src/pages/user/UserOrderDetailPage.test.ts`
+- Test: `src/pages/user/TechnicianServicesPage.test.ts`
+- Test: `src/pages/mobile/MerchantOrderRoutePages.test.tsx`
+- Test: `src/components/scheduling/UnifiedUserCalendar.test.ts`
+- Test: `src/shared/profile-card/SocialProfileMiniCard.test.ts`
+- Test: `src/shared/info-card/mappers.test.ts`
 
 **Interfaces:**
 - Consumes: shared `getTechnicianDynamicPath` and `getScopedTechnicianDynamicPath` from Task 1, or authoritative `CoreTechnicianCard.publicId` where the unmapped DTO is still available.
@@ -90,17 +99,17 @@ Expected: PASS.
 
 - [ ] **Step 1: Write failing source-contract assertions**
 
-Require Category to use `item.profile.publicId`; require mapped `Technician` entry points to call the shared public-path helper; reject the known direct numeric patterns such as ``/profiles/technician/${technician.id}`` and `getScopedProfileDetailPath(..., displayTechnician.id)` in formal technician-card links.
+Require Category to use `item.profile.publicId`; require mapped `Technician` entry points, social mini cards, information-card mappers, technician services, calendar participants, and merchant order assignments to call the shared public-path helper; reject the known direct numeric patterns such as ``/profiles/technician/${technician.id}`` and `getScopedProfileDetailPath(..., displayTechnician.id)` in formal technician-card links.
 
 - [ ] **Step 2: Run the focused page tests and verify RED**
 
-Run: `npm test -- src/pages/user/CategoryPage.test.ts src/pages/user/ServiceDetailPage.test.ts src/pages/user/StoreDetailPage.test.ts src/pages/user/FormalCheckoutPage.test.ts src/pages/user/UserOrderDetailPage.test.ts`
+Run: `npm test -- src/pages/user/CategoryPage.test.ts src/pages/user/ServiceDetailPage.test.ts src/pages/user/StoreDetailPage.test.ts src/pages/user/FormalCheckoutPage.test.ts src/pages/user/UserOrderDetailPage.test.ts src/pages/user/TechnicianServicesPage.test.ts src/pages/mobile/MerchantOrderRoutePages.test.tsx src/components/scheduling/UnifiedUserCalendar.test.ts src/shared/profile-card/SocialProfileMiniCard.test.ts src/shared/info-card/mappers.test.ts`
 
 Expected: FAIL on the new canonical public-ID assertions.
 
 - [ ] **Step 3: Replace only public profile link construction**
 
-Use `item.profile.publicId` in Category and shared path helpers in the mapped technician pages. Keep `technician.id` unchanged for service selection, booking payloads, schedule lookups, React keys, and map joins.
+Use `item.profile.publicId` in Category and shared path helpers in every mapped technician profile entry point. Keep `technician.id` unchanged for service selection, booking payloads, schedule lookups, React keys, map joins, and merchant staff administration routes.
 
 - [ ] **Step 4: Run focused page tests and verify GREEN**
 
@@ -155,7 +164,7 @@ Add concise wording to README identity acceptance and the technician API table. 
 
 - [ ] **Step 2: Run focused regression tests**
 
-Run: `npm test -- src/shared/profile-card/TechnicianShowcaseCard.test.ts src/pages/user/CategoryPage.test.ts src/pages/user/ServiceDetailPage.test.ts src/pages/user/StoreDetailPage.test.ts src/pages/user/FormalCheckoutPage.test.ts src/pages/user/UserOrderDetailPage.test.ts src/pages/user/ProfileDetailPage.routing.test.tsx src/pages/user/ProfileDetailPage.render.test.tsx`
+Run: `npm test -- src/shared/profile-card/TechnicianShowcaseCard.test.ts src/shared/profile-card/SocialProfileMiniCard.test.ts src/shared/info-card/mappers.test.ts src/pages/user/CategoryPage.test.ts src/pages/user/ServiceDetailPage.test.ts src/pages/user/StoreDetailPage.test.ts src/pages/user/FormalCheckoutPage.test.ts src/pages/user/UserOrderDetailPage.test.ts src/pages/user/TechnicianServicesPage.test.ts src/pages/mobile/MerchantOrderRoutePages.test.tsx src/components/scheduling/UnifiedUserCalendar.test.ts src/pages/user/ProfileDetailPage.routing.test.tsx src/pages/user/ProfileDetailPage.render.test.tsx`
 
 Expected: PASS.
 
@@ -184,4 +193,3 @@ Commit only the design, plan, tests, implementation, and documentation for this 
 ```text
 fix(technician): canonicalize public profile ids
 ```
-

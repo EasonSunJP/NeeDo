@@ -269,7 +269,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     if (!technician) return null;
 
     return {
-      id: String(technician.id),
+      id: technician.publicId,
       entityType: "technician" as const,
       displayName: technician.displayName,
       avatar: technician.avatarUrl ?? "",

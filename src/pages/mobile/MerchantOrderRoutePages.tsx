@@ -37,7 +37,7 @@ import { readNavigationReturnTarget } from "../../lib/navigationReturn";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
-import { SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
+import { getScopedTechnicianDynamicPath, SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
 import {
   mapCoreServiceCardToUnifiedData,
   mapServiceItemToUnifiedData,
@@ -1165,7 +1165,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
               <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">技师 / 担当</h2>
               {technician ? (
                 <SocialProfileMiniCard
-                  detailTo={getScopedProfileDetailPath("merchant", "technician", technician.id)}
+                  detailTo={getScopedTechnicianDynamicPath("merchant", technician)}
                   showAction={false}
                   technician={technician}
                   topTags={[{ label: "担当技师", tone: "green" }]}

@@ -10,6 +10,13 @@ describe("MerchantOrderRoutePages service cards", () => {
     expect(source).toContain("selectServicePackage(selection)");
   });
 
+  it("opens the assigned technician through the canonical merchant-scoped profile path", () => {
+    expect(source).toContain('getScopedTechnicianDynamicPath("merchant", technician)');
+    expect(source).not.toContain(
+      'getScopedProfileDetailPath("merchant", "technician", technician.id)'
+    );
+  });
+
   it("does not manufacture unavailable order service facts", () => {
     expect(source).toContain("usageCount: formalData?.usageCount ?? null");
     expect(source).toContain("shopPublicId: formalData?.shopPublicId ?? null");

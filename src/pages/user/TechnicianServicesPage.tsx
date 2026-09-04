@@ -8,8 +8,8 @@ import { useSocial } from "../../features/social/context";
 import type { SocialPortalScope, SocialProfile } from "../../features/social/types";
 import { profileKey } from "../../features/social/utils";
 import { cn } from "../../lib/utils";
+import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { mapTechnicianServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
-import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useEntityStore } from "../../state/entityStore";
 import type { Technician } from "../../types/domain";
 
@@ -160,7 +160,7 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
         </div>
         <Link
           className="block text-center text-xs font-bold text-[color:var(--client-muted)]"
-          to={technician ? getScopedProfileDetailPath(scope, "technician", technician.id) : getTechnicianServiceFallbackPath(scope)}
+          to={technician ? getScopedTechnicianDynamicPath(scope, technician) : getTechnicianServiceFallbackPath(scope)}
         >
           查看技师动态
         </Link>

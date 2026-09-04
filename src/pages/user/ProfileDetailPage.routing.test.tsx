@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   coreReadApi,
@@ -105,6 +105,11 @@ async function waitFor(assertion: () => void) {
   throw lastError;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}{location.search}</output>;
+}
+
 async function renderRoute(path: string) {
   await act(async () => {
     root.render(
@@ -113,6 +118,7 @@ async function renderRoute(path: string) {
           <Routes>
             <Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" />
           </Routes>
+          <LocationProbe />
         </MemoryRouter>
       </ClientThemeProvider>
     );
@@ -132,6 +138,19 @@ afterEach(async () => {
 });
 
 describe("ProfileDetailPage routing behavior", () => {
+  it("replaces a legacy numeric technician route with the canonical public ID", async () => {
+    const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technician);
+
+    await renderRoute("/profiles/technician/17?view=card");
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
+        "/profiles/technician/s0000000017?view=card"
+      );
+    });
+    expect(getTechnicianDetail).toHaveBeenCalledWith(17);
+  });
+
   it.each([
     "/profiles/technician/17",
     "/profiles/technician/17?view=social"

@@ -43,7 +43,8 @@ describe("CategoryPage formal entity cards", () => {
   it("shows up to 20 technician cards and routes cards to the formal profile", () => {
     expect(categoryPageSource).toContain('pageSize: 40');
     expect(categoryPageSource).toContain('entityFilter === "technician" ? 20');
-    expect(categoryPageSource).toContain('const detailPath = `/profiles/technician/${item.profile.id}`');
+    expect(categoryPageSource).toContain('const detailPath = `/profiles/technician/${item.profile.publicId}`');
+    expect(categoryPageSource).not.toContain('const detailPath = `/profiles/technician/${item.profile.id}`');
   });
 
   it("adapts formal search DTOs into the shared cards without legacy mock collections", () => {

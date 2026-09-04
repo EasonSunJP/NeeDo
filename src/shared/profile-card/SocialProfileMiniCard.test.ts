@@ -177,7 +177,7 @@ describe("SocialProfileMiniCard cover readability", () => {
     const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
 
     expect(cardSource).toContain('const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";');
-    expect(cardSource).toContain('data.entityType === "technician" ? getScopedProfileDetailPath(currentScope, "technician", data.id)');
+    expect(cardSource).toContain('"technician" in props ? getScopedTechnicianDynamicPath(currentScope, props.technician)');
     expect(cardSource).toContain("detailTo={avatarDetailTo}");
     expect(cardSource).not.toContain(retiredModalName);
   });
