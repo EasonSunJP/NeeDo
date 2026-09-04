@@ -87,6 +87,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "bootstrap:staging-admin": "node dist/staging/staging-admin-bootstrap.cli.js",
+    "export:staging-test-accounts": "tsx src/staging/selective-account-export.cli.ts",
     "prisma:status": "prisma migrate status",
     "prisma:seed": "prisma db seed",
     "seed": "prisma db seed",
