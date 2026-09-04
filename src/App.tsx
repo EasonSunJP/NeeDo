@@ -32,7 +32,6 @@ import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
 import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
 import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";
-import { ServiceSearchAnalyticsPage } from "./pages/admin/ServiceSearchAnalyticsPage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
 import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
@@ -218,6 +217,7 @@ import {
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
 const AgentsPage = lazy(() => import("./pages/admin/AgentsPage").then((module) => ({ default: module.AgentsPage })));
 const OperatingCostsPage = lazy(() => import("./pages/admin/OperatingCostsPage").then((module) => ({ default: module.OperatingCostsPage })));
+const ServiceSearchAnalyticsPage = lazy(() => import("./pages/admin/ServiceSearchAnalyticsPage").then((module) => ({ default: module.ServiceSearchAnalyticsPage })));
 const PlatformUserListPage = lazy(() => import("./features/platform-user-management/UserListPage").then((module) => ({ default: module.UserListPage })));
 const UserGroupsPage = lazy(() => import("./features/platform-user-management/UserGroupsPage").then((module) => ({ default: module.UserGroupsPage })));
 const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-management/UserGlobalSettingsPage").then((module) => ({ default: module.UserGlobalSettingsPage })));
@@ -1445,7 +1445,7 @@ export default function App() {
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
               <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
-              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <ServiceSearchAnalyticsPage />)} />
+              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>
