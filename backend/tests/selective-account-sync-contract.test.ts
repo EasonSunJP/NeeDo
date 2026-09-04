@@ -101,6 +101,28 @@ describe("selective account sync bundle contract", () => {
     );
   });
 
+  it("canonicalizes Unicode-equivalent keys without preserving insertion order", () => {
+    const composed = "é";
+    const decomposed = "e\u0301";
+    const composedFirst: SyncRow[] = [
+      {
+        sourceId: 1,
+        values: { [composed]: "composed value", [decomposed]: "decomposed value" }
+      }
+    ];
+    const decomposedFirst: SyncRow[] = [
+      {
+        sourceId: 1,
+        values: { [decomposed]: "decomposed value", [composed]: "composed value" }
+      }
+    ];
+
+    expect(canonicalizeCollection(composedFirst)).toBe(canonicalizeCollection(decomposedFirst));
+    expect(collectionDigest(verificationKey, composedFirst)).toBe(
+      collectionDigest(verificationKey, decomposedFirst)
+    );
+  });
+
   it("rejects every manifest count or digest mismatch", () => {
     const minimal = createMinimalBundle();
 

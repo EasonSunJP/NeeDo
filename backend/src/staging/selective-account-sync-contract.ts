@@ -88,6 +88,11 @@ const hasExactTableKeys = (value: unknown): boolean => {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 };
 
+const compareUtf16Ordinal = (left: string, right: string): number => {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+};
+
 export const canonicalizeCollection = (rows: readonly SyncRow[]): string =>
   JSON.stringify(
     [...rows]
@@ -95,7 +100,7 @@ export const canonicalizeCollection = (rows: readonly SyncRow[]): string =>
       .map(({ sourceId, values }) => ({
         sourceId,
         values: Object.fromEntries(
-          Object.entries(values).sort(([left], [right]) => left.localeCompare(right))
+          Object.entries(values).sort(([left], [right]) => compareUtf16Ordinal(left, right))
         )
       }))
   );
