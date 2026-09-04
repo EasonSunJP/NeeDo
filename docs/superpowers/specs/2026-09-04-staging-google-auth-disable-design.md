@@ -23,7 +23,7 @@
 
 ## 4. API 与前端行为
 
-- Google 登录、绑定和解绑接口在功能关闭时返回 HTTP `503`，使用稳定错误键 `error.auth.google_unavailable`，不得返回 SDK 或配置异常。
+- Google 登录、绑定和解绑接口在功能关闭时返回 HTTP `503`，复用现有稳定错误键 `error.dependency.google_auth_unavailable`，不得返回 SDK 或配置异常。
 - Staging 前端通过构建期显式开关隐藏 Google 登录入口，避免向用户展示不可用能力。
 - 密码登录入口保持可见、可用；界面不显示“Google 已配置”之类误导状态。
 
