@@ -9,15 +9,17 @@ import { UserExperienceService } from "../services/user-experience.service";
 
 export const createUserExperienceServiceForRoutes = (
   dependencies: AppDependencies
-): Pick<
-  UserExperienceService,
-  | "recordEvent"
-  | "recordNdpConsumption"
-  | "recordNdpReversal"
-  | "recordMembershipRenewal"
-  | "getSummary"
-  | "listEntries"
-> | undefined => {
+):
+  | Pick<
+      UserExperienceService,
+      | "recordEvent"
+      | "recordNdpConsumption"
+      | "recordNdpReversal"
+      | "recordMembershipRenewal"
+      | "getSummary"
+      | "listEntries"
+    >
+  | undefined => {
   if (dependencies.userExperienceService) return dependencies.userExperienceService;
   if (!dependencies.userExperienceRepository) return undefined;
 

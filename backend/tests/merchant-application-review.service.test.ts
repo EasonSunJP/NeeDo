@@ -26,8 +26,18 @@ const corporateApplication = (
   contactPhone: "03-1234-5678",
   responsiblePersonName: "山本太郎",
   showcaseDraft: { city: "東京都中央区", description: "リラクゼーション" },
-  serviceCategories: [{ id: 1, code: "massage", label: "マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }],
-  businessKeywords: [{ id: 10, code: "massage_home_visit", categoryId: 1, label: "訪問マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }],
+  serviceCategories: [
+    { id: 1, code: "massage", label: "マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }
+  ],
+  businessKeywords: [
+    {
+      id: 10,
+      code: "massage_home_visit",
+      categoryId: 1,
+      label: "訪問マッサージ",
+      qualificationPolicy: "PLATFORM_REVIEW"
+    }
+  ],
   bankAccount: {
     id: 81,
     bankCode: "0001",
@@ -70,13 +80,11 @@ const createRepository = (): jest.Mocked<MerchantApplicationReviewRepositoryPort
       page_size: 20
     };
   }),
-  findById: jest.fn(
-    async (applicationId: number, includeSensitiveDocuments: boolean) => {
-      void applicationId;
-      void includeSensitiveDocuments;
-      return corporateApplication();
-    }
-  ),
+  findById: jest.fn(async (applicationId: number, includeSensitiveDocuments: boolean) => {
+    void applicationId;
+    void includeSensitiveDocuments;
+    return corporateApplication();
+  }),
   approveInTransaction: jest.fn(async (input) => ({
     applicationId: input.applicationId,
     status: "approved" as const,

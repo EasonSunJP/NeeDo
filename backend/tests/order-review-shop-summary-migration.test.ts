@@ -3,7 +3,10 @@ import { resolve } from "node:path";
 
 describe("order review shop summary backfill", () => {
   const sql = readFileSync(
-    resolve(__dirname, "../prisma/migrations/20260903170000_order_review_shop_summary/migration.sql"),
+    resolve(
+      __dirname,
+      "../prisma/migrations/20260903170000_order_review_shop_summary/migration.sql"
+    ),
     "utf8"
   );
 

@@ -49,8 +49,13 @@ describe("CustomerAvatarFileStorage", () => {
     const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
     try {
-      const oversizedPng = Buffer.concat([pngSignature, Buffer.alloc(675_001 - pngSignature.length)]);
-      await expect(storage.save(`data:image/png;base64,${oversizedPng.toString("base64")}`)).rejects.toMatchObject({
+      const oversizedPng = Buffer.concat([
+        pngSignature,
+        Buffer.alloc(675_001 - pngSignature.length)
+      ]);
+      await expect(
+        storage.save(`data:image/png;base64,${oversizedPng.toString("base64")}`)
+      ).rejects.toMatchObject({
         statusCode: 400
       });
 

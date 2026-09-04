@@ -35,7 +35,8 @@ const permittedExchangeCapabilityMutations = new Set([
 function isForbiddenExchangeCapabilityMutation(route: RouteTuple): boolean {
   const method = route.method.toLowerCase();
   const path = route.path.toLowerCase();
-  const isCapabilityMutation = exchangeMutationMethods.has(method) &&
+  const isCapabilityMutation =
+    exchangeMutationMethods.has(method) &&
     exchangeDeferredCapabilityTokens.some((token) => path.includes(token));
 
   return isCapabilityMutation && !permittedExchangeCapabilityMutations.has(`${method} ${path}`);
@@ -46,20 +47,20 @@ describe("formal Exchange source policy", () => {
   const exchangeSourcePaths = listSourceFiles(sourceRoot).filter((path) =>
     path.slice(sourceRoot.length).toLowerCase().includes("exchange")
   );
-  const exchangeSources = exchangeSourcePaths
-    .map((path) => readFileSync(path, "utf8"))
-    .join("\n");
+  const exchangeSources = exchangeSourcePaths.map((path) => readFileSync(path, "utf8")).join("\n");
   const exchangeRouteSources = listSourceFiles(resolve(sourceRoot, "routes"))
     .map((path) => readFileSync(path, "utf8"))
     .join("\n");
-  const routeInventory = [...exchangeRouteSources.matchAll(
-    /router\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gu
-  )]
+  const routeInventory = [
+    ...exchangeRouteSources.matchAll(/router\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gu)
+  ]
     .map((match) => ({ method: match[1], path: match[2] }))
     .filter((route) => route.path.toLowerCase().includes("exchange"));
 
   it("keeps backend Exchange runtime free of mock actors and deferred mutations", () => {
-    expect(exchangeSources).not.toMatch(/Math\.random|localStorage|needoExchangeBridge|hashSystemId|getSeedPosts|getExtraPosts/iu);
+    expect(exchangeSources).not.toMatch(
+      /Math\.random|localStorage|needoExchangeBridge|hashSystemId|getSeedPosts|getExtraPosts/iu
+    );
     expect(routeInventory.filter(isForbiddenExchangeCapabilityMutation)).toEqual([]);
   });
 
@@ -77,18 +78,24 @@ describe("formal Exchange source policy", () => {
   });
 
   it("allows only the exact formal booking mutation tuple and does not block reads", () => {
-    expect(isForbiddenExchangeCapabilityMutation({
-      method: "post",
-      path: "/exchange/posts/:id/matching/bookings"
-    })).toBe(false);
-    expect(isForbiddenExchangeCapabilityMutation({
-      method: "get",
-      path: "/exchange/bookings/:id"
-    })).toBe(false);
-    expect(isForbiddenExchangeCapabilityMutation({
-      method: "put",
-      path: "/exchange/posts/:id/matching/bookings"
-    })).toBe(true);
+    expect(
+      isForbiddenExchangeCapabilityMutation({
+        method: "post",
+        path: "/exchange/posts/:id/matching/bookings"
+      })
+    ).toBe(false);
+    expect(
+      isForbiddenExchangeCapabilityMutation({
+        method: "get",
+        path: "/exchange/bookings/:id"
+      })
+    ).toBe(false);
+    expect(
+      isForbiddenExchangeCapabilityMutation({
+        method: "put",
+        path: "/exchange/posts/:id/matching/bookings"
+      })
+    ).toBe(true);
   });
 
   it("inventories exactly one formal mounted booking conversion POST across split route files", async () => {
@@ -110,7 +117,9 @@ describe("formal Exchange source policy", () => {
     expect(
       Object.entries(document.paths)
         .filter(([path]) => path === openApiPath)
-        .flatMap(([path, operations]) => Object.keys(operations).map((method) => ({ method, path })))
+        .flatMap(([path, operations]) =>
+          Object.keys(operations).map((method) => ({ method, path }))
+        )
     ).toEqual([{ method: "post", path: openApiPath }]);
   });
 });

@@ -21,7 +21,9 @@ const actor: AuthenticatedAccessContext = {
 };
 const requestContext = { ip: "127.0.0.1", userAgent: "jest" };
 
-const record = (overrides: Partial<ShopMembershipCardRefundRecord> = {}): ShopMembershipCardRefundRecord => ({
+const record = (
+  overrides: Partial<ShopMembershipCardRefundRecord> = {}
+): ShopMembershipCardRefundRecord => ({
   internalId: 301,
   publicId: "00000000-0000-4000-8000-000000000803",
   requestFingerprint: "fingerprint",
@@ -62,25 +64,32 @@ const record = (overrides: Partial<ShopMembershipCardRefundRecord> = {}): ShopMe
   ...overrides
 });
 
-const repository = (overrides: Partial<ShopMembershipCardRefundRepositoryPort> = {}) => ({
-  findByIdempotencyKey: jest.fn(async () => null),
-  refundWithReversalAuditAndNotification: jest.fn(async (input, reverse) => {
-    await reverse({
-      redemptionId: 191,
-      shopId: input.shopId,
-      customerUserId: 41,
-      customerRewardNdp: 1_000,
-      platformFeeNdp: 100,
-      shopWalletId: 301,
-      customerWalletId: 302,
-      platformWalletId: 303,
-      idempotencyKey: "membership-redemption:191:refund:reversal",
-      actorUserId: input.actorId
-    }, { transaction: true });
-    return { kind: "created" as const, value: record({ requestFingerprint: input.requestFingerprint }) };
-  }),
-  ...overrides
-}) as jest.Mocked<ShopMembershipCardRefundRepositoryPort>;
+const repository = (overrides: Partial<ShopMembershipCardRefundRepositoryPort> = {}) =>
+  ({
+    findByIdempotencyKey: jest.fn(async () => null),
+    refundWithReversalAuditAndNotification: jest.fn(async (input, reverse) => {
+      await reverse(
+        {
+          redemptionId: 191,
+          shopId: input.shopId,
+          customerUserId: 41,
+          customerRewardNdp: 1_000,
+          platformFeeNdp: 100,
+          shopWalletId: 301,
+          customerWalletId: 302,
+          platformWalletId: 303,
+          idempotencyKey: "membership-redemption:191:refund:reversal",
+          actorUserId: input.actorId
+        },
+        { transaction: true }
+      );
+      return {
+        kind: "created" as const,
+        value: record({ requestFingerprint: input.requestFingerprint })
+      };
+    }),
+    ...overrides
+  }) as jest.Mocked<ShopMembershipCardRefundRepositoryPort>;
 
 const reversal = {
   reverseShopMembershipReward: jest.fn(async () => ({
@@ -107,10 +116,12 @@ describe("ShopMembershipCardRefundService", () => {
   it("restores the immutable consumption and reverses customer reward plus platform fee exactly", async () => {
     const repo = repository();
     const service = new ShopMembershipCardRefundService(repo, reversal, audit);
-    await expect(service.create(actor, requestContext, redemptionPublicId, {
-      reason: " 订单已完成原路退款 ",
-      idempotencyKey: "membership-refund-001"
-    })).resolves.toMatchObject({
+    await expect(
+      service.create(actor, requestContext, redemptionPublicId, {
+        reason: " 订单已完成原路退款 ",
+        idempotencyKey: "membership-refund-001"
+      })
+    ).resolves.toMatchObject({
       restoredPrincipalJpy: 10_000,
       customerRewardReversedNdp: 1_000,
       platformFeeReversedNdp: 100,
@@ -129,7 +140,9 @@ describe("ShopMembershipCardRefundService", () => {
         shopId: 71,
         actorId: 9,
         reason: "订单已完成原路退款",
-        audit: expect.objectContaining({ action: "merchant.shop_membership_card.redemption.refund" })
+        audit: expect.objectContaining({
+          action: "merchant.shop_membership_card.redemption.refund"
+        })
       }),
       expect.any(Function)
     );
@@ -138,19 +151,38 @@ describe("ShopMembershipCardRefundService", () => {
   it("replays only the same normalized request", async () => {
     const initial = repository();
     const input = { reason: "订单退款", idempotencyKey: "membership-refund-002" };
-    await new ShopMembershipCardRefundService(initial, reversal, audit)
-      .create(actor, requestContext, redemptionPublicId, input);
-    const fingerprint = initial.refundWithReversalAuditAndNotification.mock.calls[0][0].requestFingerprint;
-    const replay = repository({ findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: fingerprint })) });
-    await expect(new ShopMembershipCardRefundService(replay, reversal, audit)
-      .create(actor, requestContext, redemptionPublicId, input))
-      .resolves.toMatchObject({ replayed: true });
+    await new ShopMembershipCardRefundService(initial, reversal, audit).create(
+      actor,
+      requestContext,
+      redemptionPublicId,
+      input
+    );
+    const fingerprint =
+      initial.refundWithReversalAuditAndNotification.mock.calls[0][0].requestFingerprint;
+    const replay = repository({
+      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: fingerprint }))
+    });
+    await expect(
+      new ShopMembershipCardRefundService(replay, reversal, audit).create(
+        actor,
+        requestContext,
+        redemptionPublicId,
+        input
+      )
+    ).resolves.toMatchObject({ replayed: true });
     expect(replay.refundWithReversalAuditAndNotification).not.toHaveBeenCalled();
 
-    const conflict = repository({ findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" })) });
-    await expect(new ShopMembershipCardRefundService(conflict, reversal, audit)
-      .create(actor, requestContext, redemptionPublicId, input))
-      .rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_IDEMPOTENCY_CONFLICT });
+    const conflict = repository({
+      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" }))
+    });
+    await expect(
+      new ShopMembershipCardRefundService(conflict, reversal, audit).create(
+        actor,
+        requestContext,
+        redemptionPublicId,
+        input
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_IDEMPOTENCY_CONFLICT });
   });
 
   it.each([
@@ -161,19 +193,29 @@ describe("ShopMembershipCardRefundService", () => {
     ["concurrency_conflict", ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_CONCURRENCY_CONFLICT],
     ["idempotency_conflict", ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_IDEMPOTENCY_CONFLICT]
   ] as const)("maps %s to the formal error contract", async (kind, code) => {
-    const repo = repository({ refundWithReversalAuditAndNotification: jest.fn(async () => ({ kind })) });
-    await expect(new ShopMembershipCardRefundService(repo, reversal, audit).create(
-      actor, requestContext, redemptionPublicId,
-      { reason: "订单退款", idempotencyKey: `refund-${kind}` }
-    )).rejects.toMatchObject({ code });
+    const repo = repository({
+      refundWithReversalAuditAndNotification: jest.fn(async () => ({ kind }))
+    });
+    await expect(
+      new ShopMembershipCardRefundService(repo, reversal, audit).create(
+        actor,
+        requestContext,
+        redemptionPublicId,
+        { reason: "订单退款", idempotencyKey: `refund-${kind}` }
+      )
+    ).rejects.toMatchObject({ code });
   });
 
   it("rejects invalid input before accessing persistence", async () => {
     const repo = repository();
-    await expect(new ShopMembershipCardRefundService(repo, reversal, audit).create(
-      actor, requestContext, redemptionPublicId,
-      { reason: " ", idempotencyKey: "short" }
-    )).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_INVALID_VALUE });
+    await expect(
+      new ShopMembershipCardRefundService(repo, reversal, audit).create(
+        actor,
+        requestContext,
+        redemptionPublicId,
+        { reason: " ", idempotencyKey: "short" }
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_INVALID_VALUE });
     expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
   });
 });

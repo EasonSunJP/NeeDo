@@ -14,10 +14,9 @@ const strictBooleanQuerySchema = z
   .union([z.enum(["true", "false"]), z.boolean()])
   .transform((value) => value === "true" || value === true);
 
-const isoDateSchema = z.union([
-  z.date(),
-  z.string().datetime({ offset: true })
-]).transform((value) => value instanceof Date ? value : new Date(value));
+const isoDateSchema = z
+  .union([z.date(), z.string().datetime({ offset: true })])
+  .transform((value) => (value instanceof Date ? value : new Date(value)));
 const boundedDateRange = <TSchema extends z.ZodTypeAny>(schema: TSchema) => schema;
 const hasVisibleCodePoint = (value: string): boolean => /[\p{L}\p{N}\p{P}\p{S}]/u.test(value);
 const visibleTextSchema = (maximumLength: number) =>
@@ -38,29 +37,46 @@ const serviceCatalogIdSchema = z.number().int().positive().max(2_147_483_647);
 const routeIdSchema = z.coerce.number().int().positive().max(2_147_483_647);
 const normalizeReviewText = (value: string): string => value.normalize("NFKC").trim();
 const unicodeCodePointLength = (value: string): number => Array.from(value).length;
-const reviewTagSchema = z.string().transform(normalizeReviewText).superRefine((value, context) => {
-  if (!hasVisibleCodePoint(value)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "tag must contain a visible character" });
-  }
-  if (unicodeCodePointLength(value) > 40) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "tag must not exceed 40 code points" });
-  }
-});
-const reviewCommentSchema = z.union([
-  z.null(),
-  z.string().transform((value) => {
-    const normalized = normalizeReviewText(value);
-    return normalized.length === 0 ? null : normalized;
-  })
-]).superRefine((value, context) => {
-  if (value === null) return;
-  if (!hasVisibleCodePoint(value)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "comment must contain a visible character" });
-  }
-  if (unicodeCodePointLength(value) > 1000) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "comment must not exceed 1000 code points" });
-  }
-});
+const reviewTagSchema = z
+  .string()
+  .transform(normalizeReviewText)
+  .superRefine((value, context) => {
+    if (!hasVisibleCodePoint(value)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "tag must contain a visible character"
+      });
+    }
+    if (unicodeCodePointLength(value) > 40) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "tag must not exceed 40 code points"
+      });
+    }
+  });
+const reviewCommentSchema = z
+  .union([
+    z.null(),
+    z.string().transform((value) => {
+      const normalized = normalizeReviewText(value);
+      return normalized.length === 0 ? null : normalized;
+    })
+  ])
+  .superRefine((value, context) => {
+    if (value === null) return;
+    if (!hasVisibleCodePoint(value)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "comment must contain a visible character"
+      });
+    }
+    if (unicodeCodePointLength(value) > 1000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "comment must not exceed 1000 code points"
+      });
+    }
+  });
 
 export const availabilityListQuerySchema = z
   .object({
@@ -227,9 +243,10 @@ export const orderReviewCreateBodySchema = z
   .superRefine((value, context) => {
     const seen = new Set<string>();
     value.tags.forEach((tag, index) => {
-      const folded = value.targetType === "technician"
-        ? technicianReviewTagKey(tag)
-        : unicodeDefaultCaseFoldKey(tag);
+      const folded =
+        value.targetType === "technician"
+          ? technicianReviewTagKey(tag)
+          : unicodeDefaultCaseFoldKey(tag);
       if (seen.has(folded)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -251,53 +268,57 @@ export const orderReviewCreateBodySchema = z
       });
     }
   })
-  .transform((value) => value.targetType === "technician"
-    ? { ...value, tags: value.tags.map(canonicalizeTechnicianReviewTag) }
-    : value);
+  .transform((value) =>
+    value.targetType === "technician"
+      ? { ...value, tags: value.tags.map(canonicalizeTechnicianReviewTag) }
+      : value
+  );
 
-export const orderTimelineCommentBodySchema = z
-  .object({ body: visibleTextSchema(1000) })
-  .strict();
+export const orderTimelineCommentBodySchema = z.object({ body: visibleTextSchema(1000) }).strict();
 
-export const orderListQuerySchema = z.object({
-  ...paginationQuerySchema,
-  customerUserId: z.coerce.number().int().positive().optional(),
-  status: z.enum([
-    "pending",
-    "confirmed",
-    "inService",
-    "awaitingCheckout",
-    "awaitingPaymentConfirmation",
-    "completed",
-    "cancelled"
-  ]).optional(),
-  from: isoDateSchema.optional(),
-  to: isoDateSchema.optional()
-}).superRefine((value, context) => {
-  if (Boolean(value.from) !== Boolean(value.to)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "from and to must be provided together",
-      path: [value.from ? "to" : "from"]
-    });
-    return;
-  }
-  if (!value.from || !value.to) return;
-  if (value.from.getTime() >= value.to.getTime()) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "from must be earlier than to",
-      path: ["to"]
-    });
-  }
-  if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "date range must not exceed 93 days",
-      path: ["to"]
-    });
-  }
-});
+export const orderListQuerySchema = z
+  .object({
+    ...paginationQuerySchema,
+    customerUserId: z.coerce.number().int().positive().optional(),
+    status: z
+      .enum([
+        "pending",
+        "confirmed",
+        "inService",
+        "awaitingCheckout",
+        "awaitingPaymentConfirmation",
+        "completed",
+        "cancelled"
+      ])
+      .optional(),
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional()
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.from) !== Boolean(value.to)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "from and to must be provided together",
+        path: [value.from ? "to" : "from"]
+      });
+      return;
+    }
+    if (!value.from || !value.to) return;
+    if (value.from.getTime() >= value.to.getTime()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "from must be earlier than to",
+        path: ["to"]
+      });
+    }
+    if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "date range must not exceed 93 days",
+        path: ["to"]
+      });
+    }
+  });
 
 export const orderCancelBodySchema = z.object({
   reason: z.string().trim().max(500).optional()
@@ -315,50 +336,85 @@ export const manualPaymentRefundBodySchema = z.object({
   reference: z.string().trim().min(1).max(120).nullable().optional()
 });
 
-export const scheduleSlotListQuerySchema = boundedDateRange(z.object({
-  ...paginationQuerySchema,
-  from: isoDateSchema,
-  to: isoDateSchema,
-  serviceId: z.coerce.number().int().positive().optional(),
-  technicianServiceId: z.coerce.number().int().positive().optional(),
-  technicianProfileId: z.coerce.number().int().positive().optional(),
-  status: z.enum(["available", "booked", "blocked"]).optional()
-}).superRefine((value, context) => {
-  if (value.from.getTime() >= value.to.getTime()) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "from must be earlier than to", path: ["to"] });
-  }
-  if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "date range must not exceed 93 days", path: ["to"] });
-  }
-}));
+export const scheduleSlotListQuerySchema = boundedDateRange(
+  z
+    .object({
+      ...paginationQuerySchema,
+      from: isoDateSchema,
+      to: isoDateSchema,
+      serviceId: z.coerce.number().int().positive().optional(),
+      technicianServiceId: z.coerce.number().int().positive().optional(),
+      technicianProfileId: z.coerce.number().int().positive().optional(),
+      status: z.enum(["available", "booked", "blocked"]).optional()
+    })
+    .superRefine((value, context) => {
+      if (value.from.getTime() >= value.to.getTime()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "from must be earlier than to",
+          path: ["to"]
+        });
+      }
+      if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "date range must not exceed 93 days",
+          path: ["to"]
+        });
+      }
+    })
+);
 
-export const scheduleSlotCreateBodySchema = z.object({
-  serviceId: z.coerce.number().int().positive().optional(),
-  technicianServiceId: z.coerce.number().int().positive().optional(),
-  technicianProfileId: z.coerce.number().int().positive().nullable().optional(),
-  startsAt: isoDateSchema,
-  endsAt: isoDateSchema,
-  capacity: z.coerce.number().int().positive().max(100).default(1)
-}).superRefine((value, context) => {
-  if (Boolean(value.serviceId) === Boolean(value.technicianServiceId)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Exactly one of serviceId or technicianServiceId is required", path: ["serviceId"] });
-  }
-  const duration = value.endsAt.getTime() - value.startsAt.getTime();
-  if (duration <= 0) context.addIssue({ code: z.ZodIssueCode.custom, message: "startsAt must be earlier than endsAt", path: ["endsAt"] });
-  if (duration > 24 * 60 * 60 * 1000) context.addIssue({ code: z.ZodIssueCode.custom, message: "slot duration must not exceed 24 hours", path: ["endsAt"] });
-});
+export const scheduleSlotCreateBodySchema = z
+  .object({
+    serviceId: z.coerce.number().int().positive().optional(),
+    technicianServiceId: z.coerce.number().int().positive().optional(),
+    technicianProfileId: z.coerce.number().int().positive().nullable().optional(),
+    startsAt: isoDateSchema,
+    endsAt: isoDateSchema,
+    capacity: z.coerce.number().int().positive().max(100).default(1)
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.serviceId) === Boolean(value.technicianServiceId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Exactly one of serviceId or technicianServiceId is required",
+        path: ["serviceId"]
+      });
+    }
+    const duration = value.endsAt.getTime() - value.startsAt.getTime();
+    if (duration <= 0)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "startsAt must be earlier than endsAt",
+        path: ["endsAt"]
+      });
+    if (duration > 24 * 60 * 60 * 1000)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "slot duration must not exceed 24 hours",
+        path: ["endsAt"]
+      });
+  });
 
-export const scheduleSlotUpdateBodySchema = z.object({
-  startsAt: isoDateSchema.optional(),
-  endsAt: isoDateSchema.optional(),
-  capacity: z.coerce.number().int().positive().max(100).optional(),
-  status: z.enum(["available", "blocked"]).optional()
-}).superRefine((value, context) => {
-  if (Object.keys(value).length === 0) context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one field is required" });
-  if (value.startsAt && value.endsAt && value.startsAt.getTime() >= value.endsAt.getTime()) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "startsAt must be earlier than endsAt", path: ["endsAt"] });
-  }
-});
+export const scheduleSlotUpdateBodySchema = z
+  .object({
+    startsAt: isoDateSchema.optional(),
+    endsAt: isoDateSchema.optional(),
+    capacity: z.coerce.number().int().positive().max(100).optional(),
+    status: z.enum(["available", "blocked"]).optional()
+  })
+  .superRefine((value, context) => {
+    if (Object.keys(value).length === 0)
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one field is required" });
+    if (value.startsAt && value.endsAt && value.startsAt.getTime() >= value.endsAt.getTime()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "startsAt must be earlier than endsAt",
+        path: ["endsAt"]
+      });
+    }
+  });
 
 export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;

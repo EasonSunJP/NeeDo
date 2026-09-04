@@ -37,9 +37,7 @@ export const createPlatformMembershipRoutes = (
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
   );
-  const audit = new AuditLogService(
-    dependencies.auditLogRepository ?? new AuditLogRepository()
-  );
+  const audit = new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository());
   const service =
     dependencies.platformMembershipAdministrationService ??
     new PlatformMembershipService(
@@ -50,11 +48,7 @@ export const createPlatformMembershipRoutes = (
     );
   const controller = new PlatformMembershipController(service as PlatformMembershipService);
 
-  router.get(
-    "/me/platform-membership",
-    authenticate(),
-    controller.getMine
-  );
+  router.get("/me/platform-membership", authenticate(), controller.getMine);
   router.get(
     "/me/membership-benefits",
     authenticate(),

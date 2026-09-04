@@ -462,11 +462,7 @@ export class ExchangeService {
       }
       const cancelledClaimCount =
         locked.type === "demand"
-          ? await repository.cancelActiveClaimsByPost(
-              locked.id,
-              "request_withdrawn",
-              occurredAt
-            )
+          ? await repository.cancelActiveClaimsByPost(locked.id, "request_withdrawn", occurredAt)
           : 0;
       if (cancelledClaimCount > 0) {
         await repository.createAudit({
@@ -604,11 +600,7 @@ export class ExchangeService {
       }
       const cancelledClaimCount =
         locked.type === "demand"
-          ? await repository.cancelActiveClaimsByPost(
-              locked.id,
-              "request_expired",
-              now
-            )
+          ? await repository.cancelActiveClaimsByPost(locked.id, "request_expired", now)
           : 0;
       if (cancelledClaimCount > 0) {
         await repository.createAudit({
@@ -925,7 +917,8 @@ export class ExchangeService {
       post.viewer.canWithdraw ||
       post.viewer.canViewClaims ||
       DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)
-    ) return;
+    )
+      return;
     throw this.postNotFound();
   }
 
@@ -933,9 +926,7 @@ export class ExchangeService {
     post: ExchangePostPayload,
     actor: ExchangeActorRecord
   ): ExchangePostPayload {
-    const selectiveDemand =
-      post.type === "demand" &&
-      post.demand?.matchMode === "selective";
+    const selectiveDemand = post.type === "demand" && post.demand?.matchMode === "selective";
     const selectiveLiveDemand = selectiveDemand && post.status === "published";
     const ownerView = post.viewer.canWithdraw || post.viewer.canViewClaims;
     return {
@@ -948,9 +939,7 @@ export class ExchangeService {
           !ownerView &&
           post.viewer.canClaim,
         canViewClaims:
-          selectiveDemand &&
-          (post.status === "published" || post.status === "matched") &&
-          ownerView
+          selectiveDemand && (post.status === "published" || post.status === "matched") && ownerView
       }
     };
   }

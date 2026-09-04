@@ -46,8 +46,7 @@ export class AffiliateBankAccountRepository implements AffiliateBankAccountRepos
     return {
       userId,
       affiliateIdentityActive: user.identities.length > 0,
-      verifiedEkycNameKanaEncrypted:
-        user.ekycVerifications[0]?.verifiedNameKanaEncrypted ?? null,
+      verifiedEkycNameKanaEncrypted: user.ekycVerifications[0]?.verifiedNameKanaEncrypted ?? null,
       previousBankAccountId: user.protectedBankAccounts[0]?.id ?? null
     };
   }

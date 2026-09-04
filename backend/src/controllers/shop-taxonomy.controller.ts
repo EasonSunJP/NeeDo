@@ -18,11 +18,13 @@ export class ShopTaxonomyController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.service.listCategories(shopTaxonomyCatalogQuerySchema.parse(request.query))
-        )
-      );
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listCategories(shopTaxonomyCatalogQuerySchema.parse(request.query))
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -35,14 +37,13 @@ export class ShopTaxonomyController {
   ): Promise<void> => {
     try {
       const { id } = shopTaxonomyCategoryParamSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.service.listKeywords(
-            id,
-            shopTaxonomyCatalogQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listKeywords(id, shopTaxonomyCatalogQuerySchema.parse(request.query))
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -55,11 +56,13 @@ export class ShopTaxonomyController {
   ): Promise<void> => {
     try {
       const { locale } = shopTaxonomyMerchantQuerySchema.parse(request.query);
-      response.status(200).json(
-        successResponse(
-          await this.service.getShopTaxonomy(getAuthenticatedAccess(response), locale)
-        )
-      );
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getShopTaxonomy(getAuthenticatedAccess(response), locale)
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -72,15 +75,17 @@ export class ShopTaxonomyController {
   ): Promise<void> => {
     try {
       const { locale } = shopTaxonomyMerchantQuerySchema.parse(request.query);
-      response.status(200).json(
-        successResponse(
-          await this.service.replaceShopTaxonomy(
-            getAuthenticatedAccess(response),
-            shopTaxonomyReplaceBodySchema.parse(request.body),
-            locale
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.replaceShopTaxonomy(
+              getAuthenticatedAccess(response),
+              shopTaxonomyReplaceBodySchema.parse(request.body),
+              locale
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

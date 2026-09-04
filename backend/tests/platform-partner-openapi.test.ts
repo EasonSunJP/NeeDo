@@ -6,21 +6,15 @@ describe("platform partner OpenAPI", () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const paths = response.body.paths;
 
-    expect(
-      paths["/api/v1/backoffice/users/{userId}/partner-profiles"].post["x-permission"]
-    ).toBe("backoffice:partner-profile:write");
-    expect(paths["/api/v1/backoffice/agents"].get["x-permission"]).toBe(
-      "backoffice:agent:read"
+    expect(paths["/api/v1/backoffice/users/{userId}/partner-profiles"].post["x-permission"]).toBe(
+      "backoffice:partner-profile:write"
     );
+    expect(paths["/api/v1/backoffice/agents"].get["x-permission"]).toBe("backoffice:agent:read");
     expect(
-      paths["/api/v1/backoffice/agents/{agentPublicId}/shop-referrals"].post[
-        "x-permission"
-      ]
+      paths["/api/v1/backoffice/agents/{agentPublicId}/shop-referrals"].post["x-permission"]
     ).toBe("backoffice:agent:write");
     expect(
-      paths["/api/v1/backoffice/agents/{agentPublicId}/shop-referrals"].get[
-        "x-permission"
-      ]
+      paths["/api/v1/backoffice/agents/{agentPublicId}/shop-referrals"].get["x-permission"]
     ).toBe("backoffice:agent:read");
     expect(response.body.components.schemas.PlatformPartnerProfile).toBeDefined();
     expect(

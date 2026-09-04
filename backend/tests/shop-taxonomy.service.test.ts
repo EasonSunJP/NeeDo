@@ -12,7 +12,9 @@ const defaultQuota: ShopTaxonomyQuotaPolicyPort = {
 
 describe("shop taxonomy selection policy", () => {
   it("rejects a sixth category and a sixth total keyword", async () => {
-    const service = new ShopTaxonomyService(defaultQuota, { assertSelectable: async () => undefined });
+    const service = new ShopTaxonomyService(defaultQuota, {
+      assertSelectable: async () => undefined
+    });
 
     await expect(
       service.assertSelectionPolicy({
@@ -37,7 +39,9 @@ describe("shop taxonomy selection policy", () => {
     const optionQuota: ShopTaxonomyQuotaPolicyPort = {
       resolve: async () => ({ categoryLimit: 8, keywordLimit: 12, source: "option" })
     };
-    const service = new ShopTaxonomyService(optionQuota, { assertSelectable: async () => undefined });
+    const service = new ShopTaxonomyService(optionQuota, {
+      assertSelectable: async () => undefined
+    });
 
     await expect(
       service.assertSelectionPolicy({
@@ -50,7 +54,8 @@ describe("shop taxonomy selection policy", () => {
   });
 
   it("delegates active exact qualification checks for every selection", async () => {
-    const calls: Array<{ shopId: number; categoryIds: number[]; keywordIds: number[]; at: Date }> = [];
+    const calls: Array<{ shopId: number; categoryIds: number[]; keywordIds: number[]; at: Date }> =
+      [];
     const qualificationPort: ShopTaxonomyQualificationPort = {
       assertSelectable: async (input) => {
         calls.push(input);

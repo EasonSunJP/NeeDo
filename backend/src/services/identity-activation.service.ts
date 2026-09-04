@@ -50,10 +50,7 @@ export interface ActivateIdentityInput {
 }
 
 const activationMapping: Readonly<
-  Record<
-    IdentityActivationKind,
-    { identityType: string; roleCode: string; scopeType: string }
-  >
+  Record<IdentityActivationKind, { identityType: string; roleCode: string; scopeType: string }>
 > = {
   technician: {
     identityType: "technician",

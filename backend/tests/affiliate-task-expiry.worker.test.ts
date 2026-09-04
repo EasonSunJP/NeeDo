@@ -18,13 +18,7 @@ describe("AffiliateTaskExpiryWorker", () => {
     const timer = { unref } as unknown as NodeJS.Timeout;
     const setIntervalSpy = jest.spyOn(global, "setInterval").mockReturnValue(timer);
     const now = new Date("2026-08-26T05:00:00.000Z");
-    const worker = new AffiliateTaskExpiryWorker(
-      { expireDue },
-      logger,
-      300_000,
-      100,
-      () => now
-    );
+    const worker = new AffiliateTaskExpiryWorker({ expireDue }, logger, 300_000, 100, () => now);
 
     worker.start();
     worker.start();
@@ -86,10 +80,7 @@ describe("AffiliateTaskExpiryWorker", () => {
     await worker.runOnce();
     await worker.runOnce();
 
-    expect(logger.error).toHaveBeenCalledWith(
-      { error: failure },
-      "Affiliate task expiry failed"
-    );
+    expect(logger.error).toHaveBeenCalledWith({ error: failure }, "Affiliate task expiry failed");
     expect(expireDue).toHaveBeenCalledTimes(2);
   });
 
@@ -105,7 +96,9 @@ describe("AffiliateTaskExpiryWorker", () => {
     const unref = jest.fn();
     const timer = { unref } as unknown as NodeJS.Timeout;
     jest.spyOn(global, "setInterval").mockReturnValue(timer);
-    const clearIntervalSpy = jest.spyOn(global, "clearInterval").mockImplementation(() => undefined);
+    const clearIntervalSpy = jest
+      .spyOn(global, "clearInterval")
+      .mockImplementation(() => undefined);
     const worker = new AffiliateTaskExpiryWorker({ expireDue }, logger, 300_000, 100);
 
     worker.start();

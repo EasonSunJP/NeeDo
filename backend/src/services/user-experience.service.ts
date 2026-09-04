@@ -52,8 +52,7 @@ export class UserExperienceService {
       });
     }
     const levelStartUnits =
-      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel - 1]) *
-      USER_EXPERIENCE_UNITS_PER_EXP;
+      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel - 1]) * USER_EXPERIENCE_UNITS_PER_EXP;
     if (account.currentLevel === 100) {
       return {
         level: 100,
@@ -64,8 +63,7 @@ export class UserExperienceService {
       };
     }
     const nextLevelUnits =
-      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel]) *
-      USER_EXPERIENCE_UNITS_PER_EXP;
+      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel]) * USER_EXPERIENCE_UNITS_PER_EXP;
     const currentLevelUnits = account.totalUnits - levelStartUnits;
     const levelSpanUnits = nextLevelUnits - levelStartUnits;
     return {
@@ -175,9 +173,7 @@ export class UserExperienceService {
       this.globalPolicyResolver.resolvePolicyAt(source.occurredAt),
       this.campaignResolver.resolveCampaignAt(source.occurredAt)
     ]);
-    const ndpBenefit = membership.benefits.find(
-      (benefit) => benefit.code === "ndp_experience"
-    );
+    const ndpBenefit = membership.benefits.find((benefit) => benefit.code === "ndp_experience");
     if (!ndpBenefit) return { status: "ineligible", account };
     if (!Number.isSafeInteger(ndpBenefit.tierBenefitId) || (ndpBenefit.tierBenefitId ?? 0) < 1) {
       throw new AppError({
@@ -265,8 +261,7 @@ export class UserExperienceService {
       throw new RangeError("membership renewal experience policy is invalid");
     }
     const baseUnits =
-      (BigInt(source.experienceValueNdp) *
-        BigInt(policy.baseExpUnitsPerThreshold)) /
+      (BigInt(source.experienceValueNdp) * BigInt(policy.baseExpUnitsPerThreshold)) /
       BigInt(policy.ndpPerBaseExp);
     const finalUnits = calculateFinalExperienceUnits({
       baseUnits,

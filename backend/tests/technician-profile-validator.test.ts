@@ -2,21 +2,23 @@ import { technicianProfileUpdateBodySchema } from "../src/validators/technician-
 
 describe("technician profile self-edit validation", () => {
   it("accepts the complete public self-edit payload", () => {
-    expect(technicianProfileUpdateBodySchema.parse({
-      displayName: "田中 彩",
-      gender: "female",
-      age: 28,
-      heightCm: 164,
-      languages: ["日本語", "中文"],
-      bio: "肩颈护理与睡眠放松。",
-      serviceAreas: ["銀座", "新宿"],
-      canServeForeigners: true,
-      bidBudgetMinJpy: 12_000,
-      bidBudgetMaxJpy: 28_000,
-      paymentMethods: ["platform", "offline", "cash", "paypay"],
-      serviceBase: { latitude: 35.6762, longitude: 139.6503 },
-      visibility: "network"
-    })).toMatchObject({ displayName: "田中 彩", gender: "female", visibility: "network" });
+    expect(
+      technicianProfileUpdateBodySchema.parse({
+        displayName: "田中 彩",
+        gender: "female",
+        age: 28,
+        heightCm: 164,
+        languages: ["日本語", "中文"],
+        bio: "肩颈护理与睡眠放松。",
+        serviceAreas: ["銀座", "新宿"],
+        canServeForeigners: true,
+        bidBudgetMinJpy: 12_000,
+        bidBudgetMaxJpy: 28_000,
+        paymentMethods: ["platform", "offline", "cash", "paypay"],
+        serviceBase: { latitude: 35.6762, longitude: 139.6503 },
+        visibility: "network"
+      })
+    ).toMatchObject({ displayName: "田中 彩", gender: "female", visibility: "network" });
   });
 
   it("accepts a complete service-base coordinate pair or an explicit clear", () => {
@@ -31,11 +33,13 @@ describe("technician profile self-edit validation", () => {
   });
 
   it("accepts intentionally cleared optional list fields", () => {
-    expect(technicianProfileUpdateBodySchema.parse({
-      languages: [],
-      serviceAreas: [],
-      paymentMethods: []
-    })).toEqual({
+    expect(
+      technicianProfileUpdateBodySchema.parse({
+        languages: [],
+        serviceAreas: [],
+        paymentMethods: []
+      })
+    ).toEqual({
       languages: [],
       serviceAreas: [],
       paymentMethods: []

@@ -61,27 +61,35 @@ describe("RealtimeService formal social interactions", () => {
     await expect(service.setSocialPostBookmark(auth, 88, true, context)).resolves.toBe(post);
     await expect(service.recordSocialPostView(auth, 88, context)).resolves.toBe(post);
 
-    expect(repository.setSocialPostLike).toHaveBeenCalledWith(expect.objectContaining({
-      actorIdentityId: 70,
-      actorUserId: 7,
-      active: true,
-      postId: 88
-    }));
-    expect(repository.setSocialPostBookmark).toHaveBeenCalledWith(expect.objectContaining({
-      actorIdentityId: 70,
-      actorUserId: 7,
-      active: true,
-      postId: 88
-    }));
-    expect(repository.recordSocialPostView).toHaveBeenCalledWith(expect.objectContaining({
-      actorIdentityId: 70,
-      actorUserId: 7,
-      postId: 88
-    }));
-    expect(gateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      type: "social.post.interaction.updated",
-      payload: post
-    }));
+    expect(repository.setSocialPostLike).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorIdentityId: 70,
+        actorUserId: 7,
+        active: true,
+        postId: 88
+      })
+    );
+    expect(repository.setSocialPostBookmark).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorIdentityId: 70,
+        actorUserId: 7,
+        active: true,
+        postId: 88
+      })
+    );
+    expect(repository.recordSocialPostView).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorIdentityId: 70,
+        actorUserId: 7,
+        postId: 88
+      })
+    );
+    expect(gateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "social.post.interaction.updated",
+        payload: post
+      })
+    );
   });
 
   it("publishes persisted friend-share messages and returns delivered users", async () => {
@@ -101,24 +109,30 @@ describe("RealtimeService formal social interactions", () => {
       scopeResolver as never
     ) as unknown as SocialInteractionService;
 
-    await expect(service.shareSocialPost(
-      auth,
-      88,
-      { targetUserIds: [8], idempotencyKey: "share-88-8" },
-      context
-    )).resolves.toEqual(expect.objectContaining({ deliveredUserIds: [8] }));
+    await expect(
+      service.shareSocialPost(
+        auth,
+        88,
+        { targetUserIds: [8], idempotencyKey: "share-88-8" },
+        context
+      )
+    ).resolves.toEqual(expect.objectContaining({ deliveredUserIds: [8] }));
 
-    expect(repository.shareSocialPost).toHaveBeenCalledWith(expect.objectContaining({
-      actorIdentityId: 70,
-      actorUserId: 7,
-      idempotencyKey: "share-88-8",
-      postId: 88,
-      targetUserIds: [8]
-    }));
-    expect(gateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      type: "message.created",
-      recipientIdentityId: 80,
-      payload: message
-    }));
+    expect(repository.shareSocialPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorIdentityId: 70,
+        actorUserId: 7,
+        idempotencyKey: "share-88-8",
+        postId: 88,
+        targetUserIds: [8]
+      })
+    );
+    expect(gateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "message.created",
+        recipientIdentityId: 80,
+        payload: message
+      })
+    );
   });
 });

@@ -8,7 +8,12 @@ describe("ShopMembershipCardAdjustmentExpiryWorker", () => {
     const logger = { info: jest.fn(), error: jest.fn() };
     const timer = { unref: jest.fn() } as unknown as NodeJS.Timeout;
     const setIntervalSpy = jest.spyOn(global, "setInterval").mockReturnValue(timer);
-    const worker = new ShopMembershipCardAdjustmentExpiryWorker({ expireDue }, logger, 300_000, 100);
+    const worker = new ShopMembershipCardAdjustmentExpiryWorker(
+      { expireDue },
+      logger,
+      300_000,
+      100
+    );
 
     worker.start();
     await Promise.resolve();
@@ -17,17 +22,33 @@ describe("ShopMembershipCardAdjustmentExpiryWorker", () => {
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 300_000);
     expect(timer.unref).toHaveBeenCalledTimes(1);
     expect(expireDue).toHaveBeenCalledWith({ batchSize: 100 });
-    expect(logger.info).toHaveBeenCalledWith({ scanned: 4, expired: 3, failed: 1 }, "Membership card adjustment expiry completed");
+    expect(logger.info).toHaveBeenCalledWith(
+      { scanned: 4, expired: 3, failed: 1 },
+      "Membership card adjustment expiry completed"
+    );
   });
 
   it("does not overlap runs and recovers after a failure", async () => {
-    let resolveRun: ((value: { scanned: number; expired: number; failed: number }) => void) | undefined;
-    const expireDue = jest.fn()
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveRun = resolve; }))
+    let resolveRun:
+      | ((value: { scanned: number; expired: number; failed: number }) => void)
+      | undefined;
+    const expireDue = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRun = resolve;
+          })
+      )
       .mockRejectedValueOnce(new Error("database unavailable"))
       .mockResolvedValueOnce({ scanned: 0, expired: 0, failed: 0 });
     const logger = { info: jest.fn(), error: jest.fn() };
-    const worker = new ShopMembershipCardAdjustmentExpiryWorker({ expireDue }, logger, 300_000, 100);
+    const worker = new ShopMembershipCardAdjustmentExpiryWorker(
+      { expireDue },
+      logger,
+      300_000,
+      100
+    );
 
     const first = worker.runOnce();
     await worker.runOnce();
@@ -37,13 +58,18 @@ describe("ShopMembershipCardAdjustmentExpiryWorker", () => {
     await worker.runOnce();
     await worker.runOnce();
     expect(expireDue).toHaveBeenCalledTimes(3);
-    expect(logger.error).toHaveBeenCalledWith({ error: expect.any(Error) }, "Membership card adjustment expiry failed");
+    expect(logger.error).toHaveBeenCalledWith(
+      { error: expect.any(Error) },
+      "Membership card adjustment expiry failed"
+    );
   });
 
   it("stops idempotently", () => {
     const timer = { unref: jest.fn() } as unknown as NodeJS.Timeout;
     jest.spyOn(global, "setInterval").mockReturnValue(timer);
-    const clearIntervalSpy = jest.spyOn(global, "clearInterval").mockImplementation(() => undefined);
+    const clearIntervalSpy = jest
+      .spyOn(global, "clearInterval")
+      .mockImplementation(() => undefined);
     const worker = new ShopMembershipCardAdjustmentExpiryWorker(
       { expireDue: jest.fn().mockResolvedValue({ scanned: 0, expired: 0, failed: 0 }) },
       { info: jest.fn(), error: jest.fn() },

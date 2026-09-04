@@ -249,7 +249,9 @@ describe("Step 06 User API", () => {
   it("maps exhausted NeeDo ID allocation to a stable protected-create error", async () => {
     const fixture = await createStep06Fixture();
     const accessToken = await fixture.loginAsAdmin();
-    fixture.userRepository.create.mockRejectedValueOnce(new UserBootstrapKeyAllocationExhaustedError());
+    fixture.userRepository.create.mockRejectedValueOnce(
+      new UserBootstrapKeyAllocationExhaustedError()
+    );
 
     await request(fixture.app)
       .post("/api/v1/users")

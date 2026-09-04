@@ -558,30 +558,81 @@ describe("ImChatRecordService", () => {
 
   const richSnapshotCases: Array<[string, unknown]> = [
     ["emoji", { needoMessageType: "emoji" }],
-    ["location", { needoMessageType: "location", needoMessageExt: { location: { title: "駅", address: "東京", latitude: 35, longitude: 139 } } }],
-    ["contact-card", { needoMessageType: "contact-card", needoMessageExt: { contactCard: { userId: "u1", displayName: "A", avatar: "/a", profileKind: "person" } } }],
-    ["service-card", { needoMessageType: "service-card", needoMessageExt: { serviceCard: { serviceId: "s1", name: "护理", cover: "/c", summary: "介绍", priceLabel: "¥1" } } }],
-    ["schedule-invite", { needoMessageType: "schedule-invite", needoMessageExt: { scheduleInvite: { scheduleId: "sc1", title: "会面", date: "2026-09-01", timeRange: "10:00" } } }]
+    [
+      "location",
+      {
+        needoMessageType: "location",
+        needoMessageExt: {
+          location: { title: "駅", address: "東京", latitude: 35, longitude: 139 }
+        }
+      }
+    ],
+    [
+      "contact-card",
+      {
+        needoMessageType: "contact-card",
+        needoMessageExt: {
+          contactCard: { userId: "u1", displayName: "A", avatar: "/a", profileKind: "person" }
+        }
+      }
+    ],
+    [
+      "service-card",
+      {
+        needoMessageType: "service-card",
+        needoMessageExt: {
+          serviceCard: {
+            serviceId: "s1",
+            name: "护理",
+            cover: "/c",
+            summary: "介绍",
+            priceLabel: "¥1"
+          }
+        }
+      }
+    ],
+    [
+      "schedule-invite",
+      {
+        needoMessageType: "schedule-invite",
+        needoMessageExt: {
+          scheduleInvite: {
+            scheduleId: "sc1",
+            title: "会面",
+            date: "2026-09-01",
+            timeRange: "10:00"
+          }
+        }
+      }
+    ]
   ];
 
-  it.each(richSnapshotCases)("persists safe %s display metadata for the read-only renderer", async (messageType, metadata) => {
-    const fixture = createFixture();
-    fixture.repository.readSourceMessages.mockResolvedValue([
-      sourceMessage(1, "A", { content: "显示文本", metadata })
-    ]);
+  it.each(richSnapshotCases)(
+    "persists safe %s display metadata for the read-only renderer",
+    async (messageType, metadata) => {
+      const fixture = createFixture();
+      fixture.repository.readSourceMessages.mockResolvedValue([
+        sourceMessage(1, "A", { content: "显示文本", metadata })
+      ]);
 
-    await fixture.service.createFavorite(auth, context, {
-      idempotencyKey: `rich-${messageType}`,
-      messageIds: [1],
-      sourceConversationId: 91
-    });
+      await fixture.service.createFavorite(auth, context, {
+        idempotencyKey: `rich-${messageType}`,
+        messageIds: [1],
+        sourceConversationId: 91
+      });
 
-    expect(fixture.repository.createFavorite).toHaveBeenCalledWith(
-      expect.objectContaining({
-        items: [expect.objectContaining({ messageType, metadataSnapshot: expect.objectContaining({ snapshotVersion: 1, type: messageType }) })]
-      })
-    );
-  });
+      expect(fixture.repository.createFavorite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [
+            expect.objectContaining({
+              messageType,
+              metadataSnapshot: expect.objectContaining({ snapshotVersion: 1, type: messageType })
+            })
+          ]
+        })
+      );
+    }
+  );
 
   it("caps item pagination at 50 while retaining the 100-item favorites page cap", async () => {
     const fixture = createFixture();
@@ -599,7 +650,9 @@ describe("ImChatRecordService", () => {
       fixture.service.listItems(auth, "11111111-1111-4111-8111-111111111111", { pageSize: 51 })
     ).rejects.toThrow("error.validation_failed");
     await expect(fixture.service.listFavorites(auth, { pageSize: 100 })).resolves.toBeDefined();
-    expect(fixture.repository.listFavorites).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }));
+    expect(fixture.repository.listFavorites).toHaveBeenCalledWith(
+      expect.objectContaining({ pageSize: 100 })
+    );
   });
 
   it("rejects unsafe integer IDs at the service boundary", async () => {
@@ -850,15 +903,17 @@ describe("ImChatRecordService", () => {
 
     expect(fixture.mediaStorage.clone).toHaveBeenCalledWith("/media/im/source.png", "image/png");
     const persistenceInput = fixture.repository.createFavorite.mock.calls[0]?.[0];
-    expect(persistenceInput?.items[0]?.metadataSnapshot).toEqual(expect.objectContaining({
-      media: {
-        checksumSha256: "a".repeat(64),
-        mimeType: "image/png",
-        size: 16
-      },
-      snapshotVersion: 1,
-      type: "image"
-    }));
+    expect(persistenceInput?.items[0]?.metadataSnapshot).toEqual(
+      expect.objectContaining({
+        media: {
+          checksumSha256: "a".repeat(64),
+          mimeType: "image/png",
+          size: 16
+        },
+        snapshotVersion: 1,
+        type: "image"
+      })
+    );
     expect(JSON.stringify(persistenceInput)).not.toContain("must-not-leak.png");
     expect(JSON.stringify(persistenceInput)).not.toContain(`${"a".repeat(64)}.png`);
     expect(fixture.mediaStorage.delete).toHaveBeenCalledWith(

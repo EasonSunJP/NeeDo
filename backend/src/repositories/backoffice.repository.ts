@@ -11,20 +11,14 @@ import {
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
-import {
-  IdentifierAllocator,
-  formatPersonId
-} from "../services/public-identifier.service";
+import { IdentifierAllocator, formatPersonId } from "../services/public-identifier.service";
 import { PublicIdentifierRepository } from "./public-identifier.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
-import type {
-  DashboardAggregateFacts,
-  DashboardAggregateInput
-} from "../domain/dashboard";
+import type { DashboardAggregateFacts, DashboardAggregateInput } from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
 import {
   type BackofficeCsvExportPayload,
@@ -215,9 +209,7 @@ type ManagedUserRecord = Prisma.UserGetPayload<{
 
 type TechnicianEmploymentPayload = BackofficeTechnicianPayload["employmentType"];
 
-const employmentTypeFromDb = (
-  value: TechnicianEmploymentType
-): TechnicianEmploymentPayload =>
+const employmentTypeFromDb = (value: TechnicianEmploymentType): TechnicianEmploymentPayload =>
   value === TechnicianEmploymentType.FULL_TIME
     ? "full_time"
     : value === TechnicianEmploymentType.TEMPORARY
@@ -495,9 +487,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           name: assignment.role.name,
           scopeType: assignment.scopeType,
           scopeId: assignment.scopeId,
-          permissions: assignment.role.rolePermissions
-            .map((item) => item.permission.code)
-            .sort()
+          permissions: assignment.role.rolePermissions.map((item) => item.permission.code).sort()
         }))
       },
       bookingSpend: {
@@ -931,80 +921,92 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       endsAt: { gt: scheduleWindowStart },
       ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
     } satisfies Prisma.ScheduleSlotWhereInput;
-    const [statusGroups, completedRevenue, monthSlots, upcomingSlots, technicianServices, legacyServices, compensationProfile, auditRows] =
-      await Promise.all([
-        this.client.bookingOrder.groupBy({ by: ["status"], where: bookingWhere, _count: { _all: true } }),
-        this.client.bookingOrder.aggregate({
-          where: { ...bookingWhere, status: "COMPLETED" },
-          _sum: { priceAmount: true }
-        }),
-        this.client.scheduleSlot.findMany({
-          where: scheduleWhere,
-          select: { startsAt: true, endsAt: true }
-        }),
-        this.client.scheduleSlot.findMany({
-          where: {
-            deletedAt: null,
-            technicianProfileId: profile.id,
-            startsAt: { gte: now },
-            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
-          },
-          include: this.scheduleInclude(),
-          take: 12,
-          orderBy: [{ startsAt: "asc" }, { id: "asc" }]
-        }),
-        this.client.technicianService.findMany({
-          where: {
-            technicianId: profile.id,
-            isActive: true,
-            deletedAt: null,
-            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
-          },
-          select: {
-            id: true,
-            sourceShopServiceId: true,
-            name: true,
-            description: true,
-            categoryId: true,
-            priceAmount: true,
-            currency: true,
-            durationMinutes: true,
-            isRecommended: true
-          },
-          take: PROFILE_DETAIL_SERVICE_LIMIT + 1,
-          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
-        }),
-        this.client.service.findMany({
-          where: {
-            technicianProfileId: profile.id,
-            status: "published",
-            deletedAt: null,
-            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
-          },
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            categoryId: true,
-            priceAmount: true,
-            currency: true,
-            durationMinutes: true,
-            isRecommended: true
-          },
-          take: PROFILE_DETAIL_SERVICE_LIMIT + 1,
-          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
-        }),
-        this.client.technicianCompensationProfile.findFirst({
-          where: {
-            technicianProfileId: profile.id,
-            status: "active",
-            deletedAt: null,
-            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
-          },
-          orderBy: [{ version: "desc" }, { id: "desc" }]
-        }),
-        this.findScopedAuditEvents(input, profile.id, profile.userId, "technician")
-      ]);
+    const [
+      statusGroups,
+      completedRevenue,
+      monthSlots,
+      upcomingSlots,
+      technicianServices,
+      legacyServices,
+      compensationProfile,
+      auditRows
+    ] = await Promise.all([
+      this.client.bookingOrder.groupBy({
+        by: ["status"],
+        where: bookingWhere,
+        _count: { _all: true }
+      }),
+      this.client.bookingOrder.aggregate({
+        where: { ...bookingWhere, status: "COMPLETED" },
+        _sum: { priceAmount: true }
+      }),
+      this.client.scheduleSlot.findMany({
+        where: scheduleWhere,
+        select: { startsAt: true, endsAt: true }
+      }),
+      this.client.scheduleSlot.findMany({
+        where: {
+          deletedAt: null,
+          technicianProfileId: profile.id,
+          startsAt: { gte: now },
+          ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+        },
+        include: this.scheduleInclude(),
+        take: 12,
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+      }),
+      this.client.technicianService.findMany({
+        where: {
+          technicianId: profile.id,
+          isActive: true,
+          deletedAt: null,
+          ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+        },
+        select: {
+          id: true,
+          sourceShopServiceId: true,
+          name: true,
+          description: true,
+          categoryId: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true,
+          isRecommended: true
+        },
+        take: PROFILE_DETAIL_SERVICE_LIMIT + 1,
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.client.service.findMany({
+        where: {
+          technicianProfileId: profile.id,
+          status: "published",
+          deletedAt: null,
+          ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          categoryId: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true,
+          isRecommended: true
+        },
+        take: PROFILE_DETAIL_SERVICE_LIMIT + 1,
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.client.technicianCompensationProfile.findFirst({
+        where: {
+          technicianProfileId: profile.id,
+          status: "active",
+          deletedAt: null,
+          ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+        },
+        orderBy: [{ version: "desc" }, { id: "desc" }]
+      }),
+      this.findScopedAuditEvents(input, profile.id, profile.userId, "technician")
+    ]);
 
     const statusTotals = this.statusTotals(statusGroups);
     const mergedServices = this.mergeTechnicianServices(technicianServices, legacyServices);
@@ -1056,30 +1058,35 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       customerUserId: profile.userId,
       ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
     } satisfies Prisma.BookingOrderWhereInput;
-    const [statusGroups, completedSpend, recentBookings, nextBookings, auditRows] = await Promise.all([
-      this.client.bookingOrder.groupBy({ by: ["status"], where: bookingWhere, _count: { _all: true } }),
-      this.client.bookingOrder.aggregate({
-        where: { ...bookingWhere, status: "COMPLETED" },
-        _sum: { priceAmount: true }
-      }),
-      this.client.bookingOrder.findMany({
-        where: bookingWhere,
-        include: this.orderInclude(),
-        take: 10,
-        orderBy: [{ startsAt: "desc" }, { id: "desc" }]
-      }),
-      this.client.bookingOrder.findMany({
-        where: {
-          ...bookingWhere,
-          status: { in: ["PENDING", "CONFIRMED", "IN_SERVICE"] },
-          startsAt: { gte: now }
-        },
-        include: this.orderInclude(),
-        take: 1,
-        orderBy: [{ startsAt: "asc" }, { id: "asc" }]
-      }),
-      this.findScopedAuditEvents(input, profile.id, profile.userId, "customer")
-    ]);
+    const [statusGroups, completedSpend, recentBookings, nextBookings, auditRows] =
+      await Promise.all([
+        this.client.bookingOrder.groupBy({
+          by: ["status"],
+          where: bookingWhere,
+          _count: { _all: true }
+        }),
+        this.client.bookingOrder.aggregate({
+          where: { ...bookingWhere, status: "COMPLETED" },
+          _sum: { priceAmount: true }
+        }),
+        this.client.bookingOrder.findMany({
+          where: bookingWhere,
+          include: this.orderInclude(),
+          take: 10,
+          orderBy: [{ startsAt: "desc" }, { id: "desc" }]
+        }),
+        this.client.bookingOrder.findMany({
+          where: {
+            ...bookingWhere,
+            status: { in: ["PENDING", "CONFIRMED", "IN_SERVICE"] },
+            startsAt: { gte: now }
+          },
+          include: this.orderInclude(),
+          take: 1,
+          orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+        }),
+        this.findScopedAuditEvents(input, profile.id, profile.userId, "customer")
+      ]);
     const bookingStatusTotals = this.statusTotals(statusGroups);
 
     return {
@@ -1089,9 +1096,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       email: profile.user.email,
       city: profile.city,
       membershipLevel: resolveEffectiveCustomerMembershipLevel(profile),
-      membershipGrantMode: profile.membershipGrantMode.toLowerCase() as BackofficeCustomerDetailPayload["membershipGrantMode"],
+      membershipGrantMode:
+        profile.membershipGrantMode.toLowerCase() as BackofficeCustomerDetailPayload["membershipGrantMode"],
       membershipDurationUnit: profile.membershipDurationUnit
-        ? profile.membershipDurationUnit.toLowerCase() as BackofficeCustomerDetailPayload["membershipDurationUnit"]
+        ? (profile.membershipDurationUnit.toLowerCase() as BackofficeCustomerDetailPayload["membershipDurationUnit"])
         : null,
       membershipDurationValue: profile.membershipDurationValue,
       membershipStartsAt: profile.membershipStartsAt?.toISOString() ?? null,
@@ -1145,115 +1153,117 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public createShop(input: BackofficeShopCreateData): Promise<BackofficeShopPayload> {
-    return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) => this.client.$transaction(async (transaction) => {
-      const roles = await transaction.role.findMany({
-        where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
-        select: { id: true, code: true }
-      });
-      const customerRole = roles.find((role) => role.code === "customer");
-      const merchantRole = roles.find((role) => role.code === "merchant_owner");
-      if (!customerRole || !merchantRole) {
-        throw new Error("Registration roles are missing: customer or merchant_owner");
-      }
-      const owner = await transaction.user.create({
-        data: {
-          needoId: bootstrapKey,
-          email: input.ownerEmail,
-          emailVerifiedAt: new Date(),
-          passwordHash: input.ownerPasswordHash,
-          username: input.ownerUsername,
-          isActive: false
+    return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
+      this.client.$transaction(async (transaction) => {
+        const roles = await transaction.role.findMany({
+          where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
+          select: { id: true, code: true }
+        });
+        const customerRole = roles.find((role) => role.code === "customer");
+        const merchantRole = roles.find((role) => role.code === "merchant_owner");
+        if (!customerRole || !merchantRole) {
+          throw new Error("Registration roles are missing: customer or merchant_owner");
         }
-      });
-      const customerProfile = await transaction.customerProfile.create({
-        data: { userId: owner.id, displayName: input.ownerUsername }
-      });
-      await transaction.userExperienceAccount.create({
-        data: { userId: owner.id, currentLevel: 1, totalExpUnits: 0n }
-      });
-      const customerIdentity = await transaction.userIdentity.create({
-        data: {
-          userId: owner.id,
-          type: "customer",
-          scopeType: "customer_profile",
-          scopeId: customerProfile.id,
-          displayName: input.ownerUsername,
-          isDefault: true,
-          isActive: true
+        const owner = await transaction.user.create({
+          data: {
+            needoId: bootstrapKey,
+            email: input.ownerEmail,
+            emailVerifiedAt: new Date(),
+            passwordHash: input.ownerPasswordHash,
+            username: input.ownerUsername,
+            isActive: false
+          }
+        });
+        const customerProfile = await transaction.customerProfile.create({
+          data: { userId: owner.id, displayName: input.ownerUsername }
+        });
+        await transaction.userExperienceAccount.create({
+          data: { userId: owner.id, currentLevel: 1, totalExpUnits: 0n }
+        });
+        const customerIdentity = await transaction.userIdentity.create({
+          data: {
+            userId: owner.id,
+            type: "customer",
+            scopeType: "customer_profile",
+            scopeId: customerProfile.id,
+            displayName: input.ownerUsername,
+            isDefault: true,
+            isActive: true
+          }
+        });
+        const primaryIdentifier = await this.createIdentifierAllocator(transaction).allocate({
+          kind: "U",
+          userIdentityId: customerIdentity.id
+        });
+        await transaction.user.update({
+          where: { id: owner.id },
+          data: { needoId: primaryIdentifier.publicId }
+        });
+        await transaction.userRole.create({
+          data: {
+            userId: owner.id,
+            roleId: customerRole.id,
+            scopeType: "customer_profile",
+            scopeId: customerProfile.id
+          }
+        });
+        const shop = await transaction.shop.create({
+          data: {
+            ownerUserId: owner.id,
+            name: input.name,
+            description: input.description ?? null,
+            city: input.city,
+            address: input.address,
+            phone: input.phone ?? null,
+            status: "pending_review",
+            isRecommended: input.isRecommended ?? false
+          }
+        });
+        const merchantIdentity = await transaction.userIdentity.create({
+          data: {
+            userId: owner.id,
+            type: "merchant_owner",
+            scopeType: "shop",
+            scopeId: shop.id,
+            displayName: input.ownerUsername,
+            isDefault: false,
+            isActive: false
+          }
+        });
+        await new PublicIdentifierRepository(transaction).createIdentifier({
+          publicId: formatPersonId("B", primaryIdentifier.numberPart),
+          numberPart: primaryIdentifier.numberPart,
+          kind: "B",
+          userIdentityId: merchantIdentity.id,
+          loginAllowed: true,
+          searchable: true
+        });
+        await transaction.merchantIdentityProfile.create({
+          data: {
+            userId: owner.id,
+            identityId: merchantIdentity.id,
+            displayName: input.ownerUsername,
+            languages: []
+          }
+        });
+        await transaction.userRole.create({
+          data: {
+            userId: owner.id,
+            roleId: merchantRole.id,
+            scopeType: "shop",
+            scopeId: shop.id
+          }
+        });
+        const record = await transaction.shop.findFirst({
+          where: { id: shop.id, deletedAt: null },
+          include: this.shopInclude()
+        });
+        if (!record) {
+          throw new Error("Created shop could not be reloaded");
         }
-      });
-      const primaryIdentifier = await this.createIdentifierAllocator(transaction).allocate({
-        kind: "U",
-        userIdentityId: customerIdentity.id
-      });
-      await transaction.user.update({
-        where: { id: owner.id },
-        data: { needoId: primaryIdentifier.publicId }
-      });
-      await transaction.userRole.create({
-        data: {
-          userId: owner.id,
-          roleId: customerRole.id,
-          scopeType: "customer_profile",
-          scopeId: customerProfile.id
-        }
-      });
-      const shop = await transaction.shop.create({
-        data: {
-          ownerUserId: owner.id,
-          name: input.name,
-          description: input.description ?? null,
-          city: input.city,
-          address: input.address,
-          phone: input.phone ?? null,
-          status: "pending_review",
-          isRecommended: input.isRecommended ?? false
-        }
-      });
-      const merchantIdentity = await transaction.userIdentity.create({
-        data: {
-          userId: owner.id,
-          type: "merchant_owner",
-          scopeType: "shop",
-          scopeId: shop.id,
-          displayName: input.ownerUsername,
-          isDefault: false,
-          isActive: false
-        }
-      });
-      await new PublicIdentifierRepository(transaction).createIdentifier({
-        publicId: formatPersonId("B", primaryIdentifier.numberPart),
-        numberPart: primaryIdentifier.numberPart,
-        kind: "B",
-        userIdentityId: merchantIdentity.id,
-        loginAllowed: true,
-        searchable: true
-      });
-      await transaction.merchantIdentityProfile.create({
-        data: {
-          userId: owner.id,
-          identityId: merchantIdentity.id,
-          displayName: input.ownerUsername,
-          languages: []
-        }
-      });
-      await transaction.userRole.create({
-        data: {
-          userId: owner.id,
-          roleId: merchantRole.id,
-          scopeType: "shop",
-          scopeId: shop.id
-        }
-      });
-      const record = await transaction.shop.findFirst({
-        where: { id: shop.id, deletedAt: null },
-        include: this.shopInclude()
-      });
-      if (!record) {
-        throw new Error("Created shop could not be reloaded");
-      }
-      return this.mapShop(record);
-    }));
+        return this.mapShop(record);
+      })
+    );
   }
 
   public async updateShop(
@@ -1262,7 +1272,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Promise<BackofficeShopPayload | null> {
     const existing = await this.client.shop.findFirst({ where: { id, deletedAt: null } });
     if (!existing) return null;
-    return this.mapShop(await this.client.shop.update({ where: { id }, data: input, include: this.shopInclude() }));
+    return this.mapShop(
+      await this.client.shop.update({ where: { id }, data: input, include: this.shopInclude() })
+    );
   }
 
   public async updateMerchantShopProfile(input: {
@@ -1295,10 +1307,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         });
       }
 
-      return this.mapShop(await transaction.shop.findUniqueOrThrow({
-        where: { id: input.shopId },
-        include: this.shopInclude()
-      }));
+      return this.mapShop(
+        await transaction.shop.findUniqueOrThrow({
+          where: { id: input.shopId },
+          include: this.shopInclude()
+        })
+      );
     });
   }
 
@@ -1312,7 +1326,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         include: this.shopInclude()
       });
       if (shop.ownerUserId) {
-        await transaction.user.update({ where: { id: shop.ownerUserId }, data: { isActive: true } });
+        await transaction.user.update({
+          where: { id: shop.ownerUserId },
+          data: { isActive: true }
+        });
         await transaction.userIdentity.updateMany({
           where: { userId: shop.ownerUserId, scopeType: "shop", scopeId: shop.id, deletedAt: null },
           data: { isActive: true }
@@ -1358,7 +1375,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     });
     if (!existing) return null;
     if (input.scope === "platform" && input.shopId) {
-      const shop = await this.client.shop.findFirst({ where: { id: input.shopId, deletedAt: null } });
+      const shop = await this.client.shop.findFirst({
+        where: { id: input.shopId, deletedAt: null }
+      });
       if (!shop) return null;
     }
     const data = {
@@ -1377,11 +1396,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {}),
       ...(input.scope === "platform" && input.shopId !== undefined ? { shopId: input.shopId } : {})
     };
-    return this.mapTechnician(await this.client.technicianProfile.update({
-      where: { id: existing.id },
-      data,
-      include: this.technicianInclude()
-    }));
+    return this.mapTechnician(
+      await this.client.technicianProfile.update({
+        where: { id: existing.id },
+        data,
+        include: this.technicianInclude()
+      })
+    );
   }
 
   public approveTechnician(
@@ -1393,7 +1414,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         include: this.technicianInclude()
       });
       if (!existing) return null;
-      const shopId = input.scope === "merchant" ? input.shopId : input.shopId ?? existing.shopId;
+      const shopId = input.scope === "merchant" ? input.shopId : (input.shopId ?? existing.shopId);
       if (shopId) {
         const shop = await transaction.shop.findFirst({ where: { id: shopId, deletedAt: null } });
         if (!shop) return null;
@@ -1412,7 +1433,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     });
   }
 
-  public softDeleteTechnician(input: ScopedEntityInput): Promise<BackofficeTechnicianPayload | null> {
+  public softDeleteTechnician(
+    input: ScopedEntityInput
+  ): Promise<BackofficeTechnicianPayload | null> {
     return this.client.$transaction(async (transaction) => {
       const existing = await transaction.technicianProfile.findFirst({
         where: this.technicianMutationWhere(input, input.id),
@@ -1440,10 +1463,20 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const where = this.customerWhere(input, input);
     const include = this.customerInclude(input);
     const [list, total] = await Promise.all([
-      this.client.customerProfile.findMany({ where, include, skip: pagination.skip, take: pagination.take, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }),
+      this.client.customerProfile.findMany({
+        where,
+        include,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
       this.client.customerProfile.count({ where })
     ]);
-    return buildPaginatedResponse(list.map((customer) => this.mapCustomer(customer)), total, input);
+    return buildPaginatedResponse(
+      list.map((customer) => this.mapCustomer(customer)),
+      total,
+      input
+    );
   }
 
   public async getCustomer(input: ScopedEntityInput): Promise<BackofficeCustomerPayload | null> {
@@ -1459,7 +1492,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Promise<PaginatedResponse<BackofficeAuditEventPayload> | null> {
     const profile = await this.client.customerProfile.findFirst({
       where: { ...this.customerWhere(input, {}), id: input.id },
-      select: { id: true, userId: true, createdAt: true },
+      select: { id: true, userId: true, createdAt: true }
     });
     if (!profile) return null;
 
@@ -1468,16 +1501,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const auditTotal = await this.client.auditLog.count({ where });
     const syntheticCount = 1;
     const auditTake =
-      pagination.skip < auditTotal
-        ? Math.min(pagination.take, auditTotal - pagination.skip)
-        : 0;
+      pagination.skip < auditTotal ? Math.min(pagination.take, auditTotal - pagination.skip) : 0;
     const rows = auditTake
       ? await this.client.auditLog.findMany({
           where,
           include: { actor: { select: { username: true, avatarUrl: true } } },
           skip: pagination.skip,
           take: auditTake,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       : [];
     const list = rows.map((row) => this.mapAuditEvent(row));
@@ -1490,7 +1521,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         actorName: "System",
         actorAvatarUrl: null,
         createdAt: profile.createdAt.toISOString(),
-        metadata: null,
+        metadata: null
       });
     }
 
@@ -1501,11 +1532,17 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     id: number,
     input: BackofficeCustomerUpdateBody
   ): Promise<BackofficeCustomerPayload | null> {
-    const existing = await this.client.customerProfile.findFirst({ where: { id, deletedAt: null } });
+    const existing = await this.client.customerProfile.findFirst({
+      where: { id, deletedAt: null }
+    });
     if (!existing) return null;
-    return this.mapCustomer(await this.client.customerProfile.update({
-      where: { id }, data: input, include: this.customerInclude({ scope: "platform" })
-    }));
+    return this.mapCustomer(
+      await this.client.customerProfile.update({
+        where: { id },
+        data: input,
+        include: this.customerInclude({ scope: "platform" })
+      })
+    );
   }
 
   public async findCustomerMembershipGrantContext(
@@ -1521,23 +1558,25 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       where: { id: grantedById, deletedAt: null },
       select: { needoId: true, username: true }
     });
-    return membershipGrantedBy
-      ? { customerUserId: customer.userId, membershipGrantedBy }
-      : null;
+    return membershipGrantedBy ? { customerUserId: customer.userId, membershipGrantedBy } : null;
   }
 
   public softDeleteCustomer(id: number): Promise<BackofficeCustomerPayload | null> {
     return this.client.$transaction(async (transaction) => {
       const existing = await transaction.customerProfile.findFirst({
-        where: { id, deletedAt: null }, include: this.customerInclude({ scope: "platform" })
+        where: { id, deletedAt: null },
+        include: this.customerInclude({ scope: "platform" })
       });
       if (!existing) return null;
       const customer = await transaction.customerProfile.update({
-        where: { id }, data: { deletedAt: new Date() }, include: this.customerInclude({ scope: "platform" })
+        where: { id },
+        data: { deletedAt: new Date() },
+        include: this.customerInclude({ scope: "platform" })
       });
       await transaction.user.update({ where: { id: existing.userId }, data: { isActive: false } });
       await transaction.userIdentity.updateMany({
-        where: { userId: existing.userId, type: "customer", deletedAt: null }, data: { isActive: false }
+        where: { userId: existing.userId, type: "customer", deletedAt: null },
+        data: { isActive: false }
       });
       return this.mapCustomer(customer);
     });
@@ -1549,42 +1588,66 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const pagination = toPrismaPagination(input);
     const where = this.serviceWhere(input, input);
     const [list, total] = await Promise.all([
-      this.client.service.findMany({ where, include: this.serviceInclude(), skip: pagination.skip, take: pagination.take, orderBy: [{ sortOrder: "asc" }, { id: "desc" }] }),
+      this.client.service.findMany({
+        where,
+        include: this.serviceInclude(),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ sortOrder: "asc" }, { id: "desc" }]
+      }),
       this.client.service.count({ where })
     ]);
-    return buildPaginatedResponse(list.map((service) => this.mapService(service)), total, input);
+    return buildPaginatedResponse(
+      list.map((service) => this.mapService(service)),
+      total,
+      input
+    );
   }
 
   public async createService(input: ScopedServiceCreateInput): Promise<BackofficeServicePayload> {
     const shopId = input.shopId;
     await this.requireServiceRelations(shopId, input.categoryId, input.technicianProfileId ?? null);
-    return this.mapService(await this.client.service.create({
-      data: {
-        categoryId: input.categoryId,
-        shopId,
-        technicianProfileId: input.technicianProfileId ?? null,
-        name: input.name,
-        description: input.description ?? null,
-        city: input.city,
-        serviceMode: input.serviceMode,
-        priceAmount: input.priceAmount,
-        currency: "JPY",
-        durationMinutes: input.durationMinutes,
-        status: input.status ?? "draft",
-        isRecommended: input.isRecommended ?? false,
-        sortOrder: input.sortOrder ?? 0
-      },
-      include: this.serviceInclude()
-    }));
+    return this.mapService(
+      await this.client.service.create({
+        data: {
+          categoryId: input.categoryId,
+          shopId,
+          technicianProfileId: input.technicianProfileId ?? null,
+          name: input.name,
+          description: input.description ?? null,
+          city: input.city,
+          serviceMode: input.serviceMode,
+          priceAmount: input.priceAmount,
+          currency: "JPY",
+          durationMinutes: input.durationMinutes,
+          status: input.status ?? "draft",
+          isRecommended: input.isRecommended ?? false,
+          sortOrder: input.sortOrder ?? 0
+        },
+        include: this.serviceInclude()
+      })
+    );
   }
 
-  public async updateService(input: ScopedServiceUpdateInput): Promise<BackofficeServicePayload | null> {
-    const existing = await this.client.service.findFirst({ where: { ...this.serviceWhere(input, {}), id: input.serviceId } });
+  public async updateService(
+    input: ScopedServiceUpdateInput
+  ): Promise<BackofficeServicePayload | null> {
+    const existing = await this.client.service.findFirst({
+      where: { ...this.serviceWhere(input, {}), id: input.serviceId }
+    });
     if (!existing) return null;
-    await this.requireServiceRelations(existing.shopId, input.categoryId ?? existing.categoryId, input.technicianProfileId === undefined ? existing.technicianProfileId : input.technicianProfileId);
+    await this.requireServiceRelations(
+      existing.shopId,
+      input.categoryId ?? existing.categoryId,
+      input.technicianProfileId === undefined
+        ? existing.technicianProfileId
+        : input.technicianProfileId
+    );
     const data = {
       ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
-      ...(input.technicianProfileId !== undefined ? { technicianProfileId: input.technicianProfileId } : {}),
+      ...(input.technicianProfileId !== undefined
+        ? { technicianProfileId: input.technicianProfileId }
+        : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.city !== undefined ? { city: input.city } : {}),
@@ -1595,18 +1658,35 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {}),
       ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {})
     };
-    return this.mapService(await this.client.service.update({ where: { id: existing.id }, data, include: this.serviceInclude() }));
+    return this.mapService(
+      await this.client.service.update({
+        where: { id: existing.id },
+        data,
+        include: this.serviceInclude()
+      })
+    );
   }
 
-  public async softDeleteService(input: ScopedEntityInput): Promise<BackofficeServicePayload | null> {
-    const existing = await this.client.service.findFirst({ where: { ...this.serviceWhere(input, {}), id: input.id } });
+  public async softDeleteService(
+    input: ScopedEntityInput
+  ): Promise<BackofficeServicePayload | null> {
+    const existing = await this.client.service.findFirst({
+      where: { ...this.serviceWhere(input, {}), id: input.id }
+    });
     if (!existing) return null;
-    return this.mapService(await this.client.service.update({
-      where: { id: existing.id }, data: { status: "archived", deletedAt: new Date() }, include: this.serviceInclude()
-    }));
+    return this.mapService(
+      await this.client.service.update({
+        where: { id: existing.id },
+        data: { status: "archived", deletedAt: new Date() },
+        include: this.serviceInclude()
+      })
+    );
   }
 
-  private technicianMutationWhere(scope: BackofficeScope, id: number): Prisma.TechnicianProfileWhereInput {
+  private technicianMutationWhere(
+    scope: BackofficeScope,
+    id: number
+  ): Prisma.TechnicianProfileWhereInput {
     return {
       id,
       deletedAt: null,
@@ -1861,7 +1941,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const tierCode = entitlement
       ? entitlement.tierVersion.tier.code === PlatformMembershipTierCode.BLACK_DIAMOND
         ? "black_diamond"
-        : entitlement.tierVersion.tier.code.toLowerCase() as "free" | "silver" | "gold"
+        : (entitlement.tierVersion.tier.code.toLowerCase() as "free" | "silver" | "gold")
       : "free";
     const operationMember = user.userRoles.some((assignment) =>
       OPERATIONS_ROLE_CODES.includes(assignment.role.code)
@@ -1944,7 +2024,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Prisma.ServiceWhereInput {
     return {
       deletedAt: null,
-      ...(scope.scope === "merchant" ? { shopId: scope.shopId } : input.shopId ? { shopId: input.shopId } : {}),
+      ...(scope.scope === "merchant"
+        ? { shopId: scope.shopId }
+        : input.shopId
+          ? { shopId: input.shopId }
+          : {}),
       ...(input.categoryId ? { categoryId: input.categoryId } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.keyword
@@ -1972,13 +2056,23 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Promise<void> {
     const [shop, category, technician] = await Promise.all([
       this.client.shop.findFirst({ where: { id: shopId, deletedAt: null }, select: { id: true } }),
-      this.client.category.findFirst({ where: { id: categoryId, deletedAt: null, isActive: true }, select: { id: true } }),
+      this.client.category.findFirst({
+        where: { id: categoryId, deletedAt: null, isActive: true },
+        select: { id: true }
+      }),
       technicianProfileId
-        ? this.client.technicianProfile.findFirst({ where: { id: technicianProfileId, shopId, deletedAt: null }, select: { id: true } })
+        ? this.client.technicianProfile.findFirst({
+            where: { id: technicianProfileId, shopId, deletedAt: null },
+            select: { id: true }
+          })
         : Promise.resolve({ id: 0 })
     ]);
     if (!shop || !category || !technician) {
-      throw new AppError({ code: ERROR_CODES.NOT_FOUND, message: "error.master_data.relation_not_found", statusCode: 404 });
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.master_data.relation_not_found",
+        statusCode: 404
+      });
     }
   }
 
@@ -2138,20 +2232,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     } satisfies Prisma.CustomerProfileInclude;
   }
 
-  private accountSelect(
-    input: ScopedEntityInput,
-    profileIdentityType: "technician" | "customer"
-  ) {
+  private accountSelect(input: ScopedEntityInput, profileIdentityType: "technician" | "customer") {
     const profileScopeType =
       profileIdentityType === "technician" ? "technician_profile" : "customer_profile";
-    const merchantRoleScope = input.scope === "merchant"
-      ? {
-          OR: [
-            { scopeType: "shop", scopeId: input.shopId },
-            { scopeType: profileScopeType, scopeId: input.id }
-          ]
-        }
-      : {};
+    const merchantRoleScope =
+      input.scope === "merchant"
+        ? {
+            OR: [
+              { scopeType: "shop", scopeId: input.shopId },
+              { scopeType: profileScopeType, scopeId: input.id }
+            ]
+          }
+        : {};
     const merchantIdentityScope =
       input.scope === "merchant"
         ? {
@@ -2211,12 +2303,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     userId: number,
     profileType: "technician" | "customer"
   ): Prisma.AuditLogWhereInput {
-    const targetTypes = profileType === "technician"
-      ? ["TechnicianProfile", "technician_profile"]
-      : ["CustomerProfile", "customer_profile"];
-    const metadataProfileIdPaths = profileType === "technician"
-      ? ["$.technicianProfileId", "$.technicianId"]
-      : ["$.customerProfileId"];
+    const targetTypes =
+      profileType === "technician"
+        ? ["TechnicianProfile", "technician_profile"]
+        : ["CustomerProfile", "customer_profile"];
+    const metadataProfileIdPaths =
+      profileType === "technician"
+        ? ["$.technicianProfileId", "$.technicianId"]
+        : ["$.customerProfileId"];
 
     return {
       deletedAt: null,
@@ -2233,15 +2327,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             ...targetTypes.map((targetType) => ({ targetType, targetId: profileId })),
             { targetType: "User", targetId: userId },
             ...metadataProfileIdPaths.map((path) => ({
-              metadata: { path, equals: profileId },
+              metadata: { path, equals: profileId }
             })),
-            { metadata: { path: "$.userId", equals: userId } },
-          ],
+            { metadata: { path: "$.userId", equals: userId } }
+          ]
         },
         ...(input.scope === "merchant"
           ? [{ metadata: { path: "$.shopId", equals: input.shopId } }]
-          : []),
-      ],
+          : [])
+      ]
     };
   }
 
@@ -2477,19 +2571,21 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       })),
       ...order.serviceEvents.flatMap((event) => {
         if (!event.orderAddOn) return [];
-        return [{
-          type: this.addOnTimelineType(event.eventType),
-          id: `service:${event.id}`,
-          createdAt: event.occurredAt.toISOString(),
-          actorUserId: event.actorUserId,
-          publicReason: event.reason,
-          addOnId: event.orderAddOn.id,
-          serviceId: event.orderAddOn.serviceId,
-          serviceName: event.orderAddOn.serviceNameSnapshot,
-          priceAmountJpy: event.orderAddOn.priceAmountJpy,
-          currency: "JPY" as const,
-          durationMinutes: event.orderAddOn.durationMinutes
-        }];
+        return [
+          {
+            type: this.addOnTimelineType(event.eventType),
+            id: `service:${event.id}`,
+            createdAt: event.occurredAt.toISOString(),
+            actorUserId: event.actorUserId,
+            publicReason: event.reason,
+            addOnId: event.orderAddOn.id,
+            serviceId: event.orderAddOn.serviceId,
+            serviceName: event.orderAddOn.serviceNameSnapshot,
+            priceAmountJpy: event.orderAddOn.priceAmountJpy,
+            currency: "JPY" as const,
+            durationMinutes: event.orderAddOn.durationMinutes
+          }
+        ];
       })
     ].sort(
       (left, right) =>
@@ -2538,10 +2634,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private performanceTimelineType(
     action: OrderPerformanceRevisionAction
-  ): Extract<
-    BackofficeOrderTimelineEventPayload,
-    { internalNote: string | null }
-  >["type"] {
+  ): Extract<BackofficeOrderTimelineEventPayload, { internalNote: string | null }>["type"] {
     switch (action) {
       case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED:
         return "TECHNICIAN_CANCEL_CLASSIFIED";
@@ -2668,43 +2761,51 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
-  private mapAccount(account: {
-    needoId: string;
-    username: string;
-    email: string;
-    phone: string | null;
-    avatarUrl: string | null;
-    isActive: boolean;
-    lastLoginAt: Date | null;
-    userRoles: Array<{
-      scopeType: string | null;
-      scopeId: number | null;
-      role: { name: string; code: string };
-    }>;
-    identities: Array<{
-      type: string;
-      scopeType: string | null;
-      scopeId: number | null;
-      displayName: string | null;
-    }>;
-  }, input: ScopedEntityInput, profileIdentityType: "technician" | "customer"): BackofficeAccountPayload {
+  private mapAccount(
+    account: {
+      needoId: string;
+      username: string;
+      email: string;
+      phone: string | null;
+      avatarUrl: string | null;
+      isActive: boolean;
+      lastLoginAt: Date | null;
+      userRoles: Array<{
+        scopeType: string | null;
+        scopeId: number | null;
+        role: { name: string; code: string };
+      }>;
+      identities: Array<{
+        type: string;
+        scopeType: string | null;
+        scopeId: number | null;
+        displayName: string | null;
+      }>;
+    },
+    input: ScopedEntityInput,
+    profileIdentityType: "technician" | "customer"
+  ): BackofficeAccountPayload {
     const profileScopeType =
       profileIdentityType === "technician" ? "technician_profile" : "customer_profile";
-    const roles = input.scope === "merchant"
-      ? account.userRoles.filter((userRole) =>
-          (userRole.scopeType === "shop" && userRole.scopeId === input.shopId) ||
-          (userRole.scopeType === profileScopeType && userRole.scopeId === input.id)
-        )
-      : account.userRoles;
-    const identities = input.scope === "merchant"
-      ? account.identities.filter((identity) =>
+    const roles =
+      input.scope === "merchant"
+        ? account.userRoles.filter(
+            (userRole) =>
+              (userRole.scopeType === "shop" && userRole.scopeId === input.shopId) ||
+              (userRole.scopeType === profileScopeType && userRole.scopeId === input.id)
+          )
+        : account.userRoles;
+    const identities =
+      input.scope === "merchant"
+        ? account.identities.filter(
+            (identity) =>
               (identity.scopeType === "shop" && identity.scopeId === input.shopId) ||
               (identity.type === profileIdentityType && identity.scopeType === "global") ||
               (identity.type === profileIdentityType &&
                 identity.scopeType === profileScopeType &&
                 identity.scopeId === input.id)
-        )
-      : account.identities;
+          )
+        : account.identities;
 
     return {
       needoId: account.needoId,
@@ -2729,12 +2830,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
-  private mapDetailReviewSummary(summary: {
-    ratingAverage: DecimalLike;
-    reviewCount: number;
-    latestReviewAt: Date | null;
-    highlights: unknown;
-  } | null) {
+  private mapDetailReviewSummary(
+    summary: {
+      ratingAverage: DecimalLike;
+      reviewCount: number;
+      latestReviewAt: Date | null;
+      highlights: unknown;
+    } | null
+  ) {
     if (!summary) return null;
 
     return {
@@ -2745,7 +2848,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
-  private statusTotals(groups: Array<{ status: string; _count: { _all: number } }>): Record<string, number> {
+  private statusTotals(
+    groups: Array<{ status: string; _count: { _all: number } }>
+  ): Record<string, number> {
     return groups.reduce<Record<string, number>>((totals, group) => {
       totals[this.statusFromDb(group.status)] = group._count._all;
       return totals;
@@ -2762,7 +2867,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     "todayScheduleMinutes" | "weekScheduleMinutes" | "monthScheduleMinutes"
   > {
     const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const dayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const dayEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
+    );
     const daysFromMonday = (dayStart.getUTCDay() + 6) % 7;
     const weekStart = new Date(dayStart.getTime() - daysFromMonday * 24 * 60 * 60 * 1000);
     const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -2906,9 +3013,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const events = rows.map((row) => this.mapAuditEvent(row));
     this.appendLifecycleEvent(events, "profile.created", createdAt);
     if (verifiedAt) this.appendLifecycleEvent(events, "profile.verified", verifiedAt);
-    return events
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .slice(0, 30);
+    return events.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, 30);
   }
 
   private appendLifecycleEvent(

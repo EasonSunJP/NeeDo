@@ -80,32 +80,39 @@ export class ShopMembershipRewardDebtAllocator implements MembershipRewardDebtAl
         pending.rewardStatus !== "pending_funds" ||
         pending.totalShopDebitNdp <= 0 ||
         pending.outstandingRewardNdp !== pending.totalShopDebitNdp
-      ) return;
+      )
+        return;
 
-      const settled = await this.settlement.settleShopMembershipReward({
-        redemptionId: pending.id,
-        shopId: pending.shopId,
-        customerUserId: pending.customerUserId,
-        customerRewardNdp: pending.customerRewardNdp,
-        platformFeeNdp: pending.platformFeeNdp,
-        platformFeeRateBps: pending.platformFeeRateBps,
-        idempotencyKey: `membership-redemption:${pending.id}:reward:settlement`,
-        actorUserId: input.actorUserId
-      }, { transactionClient: input.transactionClient });
+      const settled = await this.settlement.settleShopMembershipReward(
+        {
+          redemptionId: pending.id,
+          shopId: pending.shopId,
+          customerUserId: pending.customerUserId,
+          customerRewardNdp: pending.customerRewardNdp,
+          platformFeeNdp: pending.platformFeeNdp,
+          platformFeeRateBps: pending.platformFeeRateBps,
+          idempotencyKey: `membership-redemption:${pending.id}:reward:settlement`,
+          actorUserId: input.actorUserId
+        },
+        { transactionClient: input.transactionClient }
+      );
       if (!settled) return;
       if (settled.shopWalletId !== input.walletId) {
         throw new Error("error.shop_membership_card_redemption.wallet_scope_conflict");
       }
-      await this.repository.markPendingRewardPaid({
-        redemptionId: pending.id,
-        expectedOutstandingRewardNdp: pending.outstandingRewardNdp,
-        shopWalletId: settled.shopWalletId,
-        customerWalletId: settled.customerWalletId,
-        platformWalletId: settled.platformWalletId,
-        ledgerTransactionId: settled.transaction.id,
-        actorUserId: input.actorUserId,
-        settledAt: this.now()
-      }, input.transactionClient);
+      await this.repository.markPendingRewardPaid(
+        {
+          redemptionId: pending.id,
+          expectedOutstandingRewardNdp: pending.outstandingRewardNdp,
+          shopWalletId: settled.shopWalletId,
+          customerWalletId: settled.customerWalletId,
+          platformWalletId: settled.platformWalletId,
+          ledgerTransactionId: settled.transaction.id,
+          actorUserId: input.actorUserId,
+          settledAt: this.now()
+        },
+        input.transactionClient
+      );
     }
   }
 }

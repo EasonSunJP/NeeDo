@@ -20,7 +20,9 @@ describe("BackofficeRepository managed users", () => {
         lastLoginAt: now,
         createdAt: now,
         updatedAt: now,
-        identities: [{ type: "customer", displayName: "Mia", scopeType: "customer_profile", scopeId: 7 }],
+        identities: [
+          { type: "customer", displayName: "Mia", scopeType: "customer_profile", scopeId: 7 }
+        ],
         userRoles: [],
         customerProfile: { id: 7, displayName: "Mia", city: "Tokyo" },
         technicianProfile: null,

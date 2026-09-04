@@ -45,12 +45,17 @@ describe("MerchantProfileService", () => {
         findMine: jest.fn(async () => profile),
         updateMine: jest.fn()
       } as unknown as jest.Mocked<MerchantProfileRepositoryPort>;
-      const service = new MerchantProfileService(repository, { createInput: jest.fn() }, {
-        save: jest.fn()
-      });
+      const service = new MerchantProfileService(
+        repository,
+        { createInput: jest.fn() },
+        {
+          save: jest.fn()
+        }
+      );
 
-      await expect(service.getMine(merchantActor({ currentIdentityType: identityType }))).resolves
-        .toEqual(profile);
+      await expect(
+        service.getMine(merchantActor({ currentIdentityType: identityType }))
+      ).resolves.toEqual(profile);
       expect(repository.findMine).toHaveBeenCalledWith(9, 109);
     }
   );
@@ -70,10 +75,14 @@ describe("MerchantProfileService", () => {
     const service = new MerchantProfileService(repository, { createInput }, { save: jest.fn() });
 
     await expect(
-      service.updateMine(merchantActor(), { ip: "127.0.0.1", userAgent: "jest" }, {
-        displayName: "Misaki",
-        languages: []
-      })
+      service.updateMine(
+        merchantActor(),
+        { ip: "127.0.0.1", userAgent: "jest" },
+        {
+          displayName: "Misaki",
+          languages: []
+        }
+      )
     ).resolves.toMatchObject({ displayName: "Misaki", languages: [] });
 
     expect(repository.updateMine).toHaveBeenCalledWith(
@@ -94,11 +103,17 @@ describe("MerchantProfileService", () => {
       findMine: jest.fn(),
       updateMine: jest.fn()
     } as unknown as jest.Mocked<MerchantProfileRepositoryPort>;
-    const service = new MerchantProfileService(repository, { createInput: jest.fn() }, {
-      save: jest.fn()
-    });
+    const service = new MerchantProfileService(
+      repository,
+      { createInput: jest.fn() },
+      {
+        save: jest.fn()
+      }
+    );
 
-    await expect(service.getMine(merchantActor({ currentIdentityType: type }))).rejects.toMatchObject({
+    await expect(
+      service.getMine(merchantActor({ currentIdentityType: type }))
+    ).rejects.toMatchObject({
       statusCode: 403,
       message: "error.identity.forbidden"
     });

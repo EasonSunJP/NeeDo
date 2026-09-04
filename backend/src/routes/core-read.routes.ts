@@ -18,10 +18,7 @@ import {
   serviceListQuerySchema
 } from "../validators/core-read.validator";
 
-export const createCoreReadRoutes = (
-  config: AppConfig,
-  dependencies: AppDependencies
-): Router => {
+export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
   const router = Router();
   const coreReadService = new CoreReadService(
     dependencies.coreReadRepository ?? new CoreReadRepository(),

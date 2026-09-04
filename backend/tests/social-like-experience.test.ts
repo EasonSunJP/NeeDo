@@ -63,23 +63,20 @@ const createExperienceService = () => {
   const seen = new Set<string>();
   return {
     recordEvent: jest.fn(
-      async (
-        input: UserExperienceRecordEventInput,
-        options?: { transactionClient?: unknown }
-      ) => {
-      void options;
-      const duplicate = seen.has(input.idempotencyKey);
-      seen.add(input.idempotencyKey);
-      return {
-        status: duplicate ? ("duplicate" as const) : ("awarded" as const),
-        account: {
-          publicId: "experience-account-9",
-          userId: input.userId,
-          totalUnits: 10_000n,
-          currentLevel: 1,
-          lockVersion: 2
-        },
-        entry: null
+      async (input: UserExperienceRecordEventInput, options?: { transactionClient?: unknown }) => {
+        void options;
+        const duplicate = seen.has(input.idempotencyKey);
+        seen.add(input.idempotencyKey);
+        return {
+          status: duplicate ? ("duplicate" as const) : ("awarded" as const),
+          account: {
+            publicId: "experience-account-9",
+            userId: input.userId,
+            totalUnits: 10_000n,
+            currentLevel: 1,
+            lockVersion: 2
+          },
+          entry: null
         };
       }
     )

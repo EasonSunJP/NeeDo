@@ -6,7 +6,7 @@ import { ImVoiceFileStorage } from "../src/services/im-voice.storage";
 const samples = [
   ["audio/webm", Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x01])],
   ["audio/mp4", Buffer.from([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d])],
-  ["audio/ogg", Buffer.from("OggS\u0000", "binary")],
+  ["audio/ogg", Buffer.from("OggS\u0000", "binary")]
 ] as const;
 
 describe("ImVoiceFileStorage", () => {
@@ -34,13 +34,13 @@ describe("ImVoiceFileStorage", () => {
 
     await expect(storage.save(Buffer.from("fake"), "audio/webm")).rejects.toMatchObject({
       message: "error.im.voice_invalid",
-      statusCode: 400,
+      statusCode: 400
     });
     await expect(storage.save(Buffer.alloc(0), "audio/ogg")).rejects.toMatchObject({
-      message: "error.im.voice_invalid",
+      message: "error.im.voice_invalid"
     });
     await expect(storage.save(Buffer.alloc(9), "audio/mp4")).rejects.toMatchObject({
-      message: "error.im.voice_invalid",
+      message: "error.im.voice_invalid"
     });
     await expect(readdir(directory)).resolves.toEqual([]);
   });
@@ -53,7 +53,7 @@ describe("ImVoiceFileStorage", () => {
     await storage.remove(stored.fileKey);
     await expect(readdir(directory)).resolves.toEqual([]);
     await expect(storage.remove("../escape.webm")).rejects.toMatchObject({
-      message: "error.im.voice_invalid",
+      message: "error.im.voice_invalid"
     });
   });
 });

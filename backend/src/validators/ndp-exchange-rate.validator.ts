@@ -3,7 +3,11 @@ import { PRISMA_INT_MAX } from "../constants/database";
 
 const hasVisibleContent = (value: string): boolean => /[\p{L}\p{N}\p{P}\p{S}]/u.test(value);
 const positivePersistenceInteger = z.number().int().positive().max(PRISMA_INT_MAX);
-const versionWithSafeSuccessor = z.number().int().min(0).max(PRISMA_INT_MAX - 1);
+const versionWithSafeSuccessor = z
+  .number()
+  .int()
+  .min(0)
+  .max(PRISMA_INT_MAX - 1);
 const isoDate = z.union([
   z.date(),
   z

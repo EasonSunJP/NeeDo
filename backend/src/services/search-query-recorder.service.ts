@@ -28,7 +28,8 @@ export class SearchQueryRecorderService implements SearchQueryRecorderPort {
     const distinct = new Map<string, string>();
     for (const original of submitted) {
       const normalized = normalizeSearchKeyword(original);
-      if (normalized.length > 0 && !distinct.has(normalized)) distinct.set(normalized, original.trim());
+      if (normalized.length > 0 && !distinct.has(normalized))
+        distinct.set(normalized, original.trim());
     }
     if (distinct.size === 0) return;
 

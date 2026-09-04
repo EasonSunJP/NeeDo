@@ -59,7 +59,9 @@ describe("formal test account export", () => {
 
   it("labels and places the operations super administrator first", () => {
     const rows = orderFormalTestAccountExports(
-      accounts.map((account) => buildFormalTestAccountExportRow(account, "ExportFixturePassword-2026!"))
+      accounts.map((account) =>
+        buildFormalTestAccountExportRow(account, "ExportFixturePassword-2026!")
+      )
     );
 
     expect(rows[0]).toEqual(

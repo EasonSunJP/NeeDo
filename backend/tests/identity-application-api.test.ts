@@ -72,9 +72,7 @@ const createUser = (permissionCodes: string[]) => ({
   ]
 });
 
-const createFixture = (
-  permissionCodes = ["identity-application:own", "bank-account:own"]
-) => {
+const createFixture = (permissionCodes = ["identity-application:own", "bank-account:own"]) => {
   const user = createUser(permissionCodes);
   const identityApplicationService = {
     listMine: jest.fn(async () => ({
@@ -251,10 +249,20 @@ describe("identity application applicant HTTP API", () => {
       .send({ expectedVersion: 1 })
       .expect(200);
     expect(fixture.identityApplicationService.submit).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 7, applicationId: 11, expectedVersion: 1, now: expect.any(Date) })
+      expect.objectContaining({
+        userId: 7,
+        applicationId: 11,
+        expectedVersion: 1,
+        now: expect.any(Date)
+      })
     );
     expect(fixture.identityApplicationService.withdraw).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 7, applicationId: 11, expectedVersion: 1, now: expect.any(Date) })
+      expect.objectContaining({
+        userId: 7,
+        applicationId: 11,
+        expectedVersion: 1,
+        now: expect.any(Date)
+      })
     );
   });
 

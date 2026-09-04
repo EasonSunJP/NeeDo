@@ -86,9 +86,7 @@ const order = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPayloa
   ...overrides
 });
 
-const repository = (
-  result: ManualPaymentMutationResult
-): jest.Mocked<BookingRepositoryPort> =>
+const repository = (result: ManualPaymentMutationResult): jest.Mocked<BookingRepositoryPort> =>
   ({
     confirmManualPayment: jest.fn(async () => result),
     refundManualPayment: jest.fn(async () => result)
@@ -160,7 +158,12 @@ describe("BookingService manual payment", () => {
     ["amount_mismatch", ERROR_CODES.PAYMENT_AMOUNT_MISMATCH, "error.payment.amount_mismatch"],
     ["conflict", ERROR_CODES.PAYMENT_CONFLICT, "error.payment.conflict"]
   ] as const)("maps %s repository outcomes to stable errors", async (outcome, code, message) => {
-    const service = new BookingService(repository({ outcome }), undefined, undefined, auditLogService());
+    const service = new BookingService(
+      repository({ outcome }),
+      undefined,
+      undefined,
+      auditLogService()
+    );
 
     await expect(
       service.confirmManualPayment(

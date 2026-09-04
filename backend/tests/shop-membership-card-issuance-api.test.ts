@@ -22,7 +22,13 @@ const body = {
 };
 
 const issuanceContext = {
-  membership: { internalId: 31, publicId: membershipPublicId, customerUserId: 41, customerNeedoId: "u0000000041", customerDisplayName: "王小美" },
+  membership: {
+    internalId: 31,
+    publicId: membershipPublicId,
+    customerUserId: 41,
+    customerNeedoId: "u0000000041",
+    customerDisplayName: "王小美"
+  },
   shop: { internalId: 71, shopNo: "s000000071", name: "青山护理店" },
   plan: { internalId: 51, publicId: planPublicId },
   version: {
@@ -75,7 +81,10 @@ function repository(overrides: Partial<ShopMembershipCardIssuanceRepositoryPort>
   return {
     findByIdempotencyKey: jest.fn(async () => null),
     getIssuanceContext: jest.fn(async () => ({ kind: "ready" as const, value: issuanceContext })),
-    issueCardWithAuditAndNotification: jest.fn(async (input) => ({ kind: "created" as const, value: record(input.issuanceFingerprint) })),
+    issueCardWithAuditAndNotification: jest.fn(async (input) => ({
+      kind: "created" as const,
+      value: record(input.issuanceFingerprint)
+    })),
     ...overrides
   } as jest.Mocked<ShopMembershipCardIssuanceRepositoryPort>;
 }
@@ -96,24 +105,56 @@ function makeUser(permissions: string[]) {
     sessionGeneration: 0,
     lastLoginAt: null,
     deletedAt: null,
-    identities: [{ id: 900, userId: 90, type: "merchant_owner", scopeType: "shop", scopeId: 71, displayName: "青山店主", isDefault: true, isActive: true, deletedAt: null }],
+    identities: [
+      {
+        id: 900,
+        userId: 90,
+        type: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 71,
+        displayName: "青山店主",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ],
     identityApplications: [],
-    userRoles: [{ deletedAt: null, role: { code: "merchant_owner", deletedAt: null, rolePermissions: permissions.map((code) => ({ deletedAt: null, permission: { code, type: "api", deletedAt: null } })) } }]
+    userRoles: [
+      {
+        deletedAt: null,
+        role: {
+          code: "merchant_owner",
+          deletedAt: null,
+          rolePermissions: permissions.map((code) => ({
+            deletedAt: null,
+            permission: { code, type: "api", deletedAt: null }
+          }))
+        }
+      }
+    ]
   };
 }
 
-function fixture(permissions: string[], overrides: Partial<ShopMembershipCardIssuanceRepositoryPort> = {}) {
+function fixture(
+  permissions: string[],
+  overrides: Partial<ShopMembershipCardIssuanceRepositoryPort> = {}
+) {
   const user = makeUser(permissions);
   const issuanceRepository = repository(overrides);
   const app = createApp(env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-    authRepository: { findUserById: jest.fn(async (id: number) => id === user.id ? user : null) },
+    authRepository: { findUserById: jest.fn(async (id: number) => (id === user.id ? user : null)) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository({ shopId: 71 }),
     shopMembershipCardIssuanceRepository: issuanceRepository
   } as never);
-  const token = new AuthTokenService(env).issueAccessToken({ id: user.id, email: user.email, currentIdentityId: user.identities[0].id, sessionGeneration: 0 }).token;
+  const token = new AuthTokenService(env).issueAccessToken({
+    id: user.id,
+    email: user.email,
+    currentIdentityId: user.identities[0].id,
+    sessionGeneration: 0
+  }).token;
   return { app, repository: issuanceRepository, token };
 }
 
@@ -123,21 +164,41 @@ describe("shop membership card issuance API", () => {
   it("requires authentication and the exact issue permission", async () => {
     const noPermission = fixture([]);
     await request(noPermission.app).post(path).send(body).expect(401);
-    await request(noPermission.app).post(path).set("Authorization", `Bearer ${noPermission.token}`).send(body).expect(403);
+    await request(noPermission.app)
+      .post(path)
+      .set("Authorization", `Bearer ${noPermission.token}`)
+      .send(body)
+      .expect(403);
     expect(noPermission.repository.issueCardWithAuditAndNotification).not.toHaveBeenCalled();
   });
 
   it("strictly rejects client shop scope and malformed type fields", async () => {
     const issuer = fixture(["shop.member.card.issue"]);
-    await request(issuer.app).post(path).set("Authorization", `Bearer ${issuer.token}`).send({ ...body, shopId: 999 }).expect(400);
-    await request(issuer.app).post(path).set("Authorization", `Bearer ${issuer.token}`).send({ ...body, initialUses: 2 }).expect(400);
-    await request(issuer.app).post(path).set("Authorization", `Bearer ${issuer.token}`).send({ ...body, idempotencyKey: "short" }).expect(400);
+    await request(issuer.app)
+      .post(path)
+      .set("Authorization", `Bearer ${issuer.token}`)
+      .send({ ...body, shopId: 999 })
+      .expect(400);
+    await request(issuer.app)
+      .post(path)
+      .set("Authorization", `Bearer ${issuer.token}`)
+      .send({ ...body, initialUses: 2 })
+      .expect(400);
+    await request(issuer.app)
+      .post(path)
+      .set("Authorization", `Bearer ${issuer.token}`)
+      .send({ ...body, idempotencyKey: "short" })
+      .expect(400);
     expect(issuer.repository.issueCardWithAuditAndNotification).not.toHaveBeenCalled();
   });
 
   it("returns 201 and the safe immutable issuance snapshot on first issue", async () => {
     const issuer = fixture(["shop.member.card.issue"]);
-    const response = await request(issuer.app).post(path).set("Authorization", `Bearer ${issuer.token}`).send(body).expect(201);
+    const response = await request(issuer.app)
+      .post(path)
+      .set("Authorization", `Bearer ${issuer.token}`)
+      .send(body)
+      .expect(201);
 
     expect(response.body.data).toMatchObject({
       publicId: "00000000-0000-4000-8000-000000000481",
@@ -155,21 +216,49 @@ describe("shop membership card issuance API", () => {
 
   it("returns 200 for an exact idempotent replay and 409 for a changed request", async () => {
     const first = fixture(["shop.member.card.issue"]);
-    await request(first.app).post(path).set("Authorization", `Bearer ${first.token}`).send(body).expect(201);
+    await request(first.app)
+      .post(path)
+      .set("Authorization", `Bearer ${first.token}`)
+      .send(body)
+      .expect(201);
     const createInput = first.repository.issueCardWithAuditAndNotification.mock.calls[0][0];
 
-    const replay = fixture(["shop.member.card.issue"], { findByIdempotencyKey: jest.fn(async () => record(createInput.issuanceFingerprint)) });
-    await request(replay.app).post(path).set("Authorization", `Bearer ${replay.token}`).send(body).expect(200);
+    const replay = fixture(["shop.member.card.issue"], {
+      findByIdempotencyKey: jest.fn(async () => record(createInput.issuanceFingerprint))
+    });
+    await request(replay.app)
+      .post(path)
+      .set("Authorization", `Bearer ${replay.token}`)
+      .send(body)
+      .expect(200);
     expect(replay.repository.issueCardWithAuditAndNotification).not.toHaveBeenCalled();
 
-    const conflict = fixture(["shop.member.card.issue"], { findByIdempotencyKey: jest.fn(async () => record("different")) });
-    await request(conflict.app).post(path).set("Authorization", `Bearer ${conflict.token}`).send(body).expect(409);
+    const conflict = fixture(["shop.member.card.issue"], {
+      findByIdempotencyKey: jest.fn(async () => record("different"))
+    });
+    await request(conflict.app)
+      .post(path)
+      .set("Authorization", `Bearer ${conflict.token}`)
+      .send(body)
+      .expect(409);
   });
 
   it("keeps cross-shop and inactive records behind stable errors", async () => {
-    const missing = fixture(["shop.member.card.issue"], { getIssuanceContext: jest.fn(async () => ({ kind: "not_found" as const })) });
-    await request(missing.app).post(path).set("Authorization", `Bearer ${missing.token}`).send(body).expect(404);
-    const inactive = fixture(["shop.member.card.issue"], { getIssuanceContext: jest.fn(async () => ({ kind: "invalid_state" as const })) });
-    await request(inactive.app).post(path).set("Authorization", `Bearer ${inactive.token}`).send(body).expect(409);
+    const missing = fixture(["shop.member.card.issue"], {
+      getIssuanceContext: jest.fn(async () => ({ kind: "not_found" as const }))
+    });
+    await request(missing.app)
+      .post(path)
+      .set("Authorization", `Bearer ${missing.token}`)
+      .send(body)
+      .expect(404);
+    const inactive = fixture(["shop.member.card.issue"], {
+      getIssuanceContext: jest.fn(async () => ({ kind: "invalid_state" as const }))
+    });
+    await request(inactive.app)
+      .post(path)
+      .set("Authorization", `Bearer ${inactive.token}`)
+      .send(body)
+      .expect(409);
   });
 });

@@ -27,12 +27,8 @@ describe("technician service portfolio policy", () => {
   it("publishes only active, approved, non-deleted services", () => {
     expect(isPublicEligibleTechnicianService(service())).toBe(true);
     expect(isPublicEligibleTechnicianService(service({ isActive: false }))).toBe(false);
-    expect(
-      isPublicEligibleTechnicianService(service({ reviewStatus: "PENDING" }))
-    ).toBe(false);
-    expect(
-      isPublicEligibleTechnicianService(service({ reviewStatus: "REJECTED" }))
-    ).toBe(false);
+    expect(isPublicEligibleTechnicianService(service({ reviewStatus: "PENDING" }))).toBe(false);
+    expect(isPublicEligibleTechnicianService(service({ reviewStatus: "REJECTED" }))).toBe(false);
     expect(
       isPublicEligibleTechnicianService(service({ deletedAt: new Date("2026-09-01T00:00:00Z") }))
     ).toBe(false);

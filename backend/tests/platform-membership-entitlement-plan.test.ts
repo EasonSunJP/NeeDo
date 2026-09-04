@@ -32,12 +32,14 @@ const current = (
 
 describe("platform membership entitlement transition planning", () => {
   it("values an annual black-diamond grant at ten monthly fees and lasts twelve months", () => {
-    expect(planPlatformMembershipEntitlementChange({
-      occurredAt: now,
-      current: null,
-      target: tier("black_diamond", 4_999),
-      command: { kind: "grant", billingCycle: "annual", expectedCurrentLockVersion: null }
-    })).toMatchObject({
+    expect(
+      planPlatformMembershipEntitlementChange({
+        occurredAt: now,
+        current: null,
+        target: tier("black_diamond", 4_999),
+        command: { kind: "grant", billingCycle: "annual", expectedCurrentLockVersion: null }
+      })
+    ).toMatchObject({
       experienceValueNdp: 49_990,
       billingMonths: 12,
       create: {
@@ -48,12 +50,14 @@ describe("platform membership entitlement transition planning", () => {
   });
 
   it("schedules renewal after the current period instead of overlapping it", () => {
-    expect(planPlatformMembershipEntitlementChange({
-      occurredAt: now,
-      current: current("silver", 300),
-      target: tier("silver", 300),
-      command: { kind: "renew", billingCycle: "monthly", expectedCurrentLockVersion: 3 }
-    })).toMatchObject({
+    expect(
+      planPlatformMembershipEntitlementChange({
+        occurredAt: now,
+        current: current("silver", 300),
+        target: tier("silver", 300),
+        command: { kind: "renew", billingCycle: "monthly", expectedCurrentLockVersion: 3 }
+      })
+    ).toMatchObject({
       experienceValueNdp: 300,
       currentUpdate: { expectedLockVersion: 3, supersededAt: null },
       create: {
@@ -64,12 +68,14 @@ describe("platform membership entitlement transition planning", () => {
   });
 
   it("values an immediate gold-to-black upgrade only at the monthly difference", () => {
-    expect(planPlatformMembershipEntitlementChange({
-      occurredAt: now,
-      current: current("gold", 1_999),
-      target: tier("black_diamond", 4_999),
-      command: { kind: "upgrade", billingCycle: "monthly", expectedCurrentLockVersion: 3 }
-    })).toMatchObject({
+    expect(
+      planPlatformMembershipEntitlementChange({
+        occurredAt: now,
+        current: current("gold", 1_999),
+        target: tier("black_diamond", 4_999),
+        command: { kind: "upgrade", billingCycle: "monthly", expectedCurrentLockVersion: 3 }
+      })
+    ).toMatchObject({
       experienceValueNdp: 3_000,
       currentUpdate: { supersededAt: now },
       create: {
@@ -80,24 +86,32 @@ describe("platform membership entitlement transition planning", () => {
   });
 
   it("schedules a paid downgrade at the current expiry with no membership-value EXP", () => {
-    expect(planPlatformMembershipEntitlementChange({
-      occurredAt: now,
-      current: current("black_diamond", 4_999),
-      target: tier("gold", 1_999),
-      command: { kind: "schedule_downgrade", billingCycle: "monthly", expectedCurrentLockVersion: 3 }
-    })).toMatchObject({
+    expect(
+      planPlatformMembershipEntitlementChange({
+        occurredAt: now,
+        current: current("black_diamond", 4_999),
+        target: tier("gold", 1_999),
+        command: {
+          kind: "schedule_downgrade",
+          billingCycle: "monthly",
+          expectedCurrentLockVersion: 3
+        }
+      })
+    ).toMatchObject({
       experienceValueNdp: 0,
       create: { startsAt: new Date("2026-10-01T12:00:00.000Z") }
     });
   });
 
   it("expires paid membership into the free fallback without creating a free entitlement", () => {
-    expect(planPlatformMembershipEntitlementChange({
-      occurredAt: now,
-      current: current("gold", 1_999),
-      target: tier("free", 0),
-      command: { kind: "expire", expectedCurrentLockVersion: 3 }
-    })).toMatchObject({
+    expect(
+      planPlatformMembershipEntitlementChange({
+        occurredAt: now,
+        current: current("gold", 1_999),
+        target: tier("free", 0),
+        command: { kind: "expire", expectedCurrentLockVersion: 3 }
+      })
+    ).toMatchObject({
       experienceValueNdp: 0,
       currentUpdate: { supersededAt: now, expiresAt: now },
       create: null

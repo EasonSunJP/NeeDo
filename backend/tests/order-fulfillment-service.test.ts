@@ -209,15 +209,18 @@ describe("formal order fulfillment service", () => {
       makeOrder("confirmed", { technicianProfileId: null, technicianName: null }),
       { actor: "customer" as const, idempotencyKey: "missing-technician-01" }
     ]
-  ])("rejects unrelated or incomplete participants at the service boundary", async (requestActor, order, input) => {
-    const repository = createRepository(order);
-    const service = new BookingService(repository);
-    await expect(service.startService(requestActor, 41, input, context)).rejects.toMatchObject({
-      code: ERROR_CODES.NOT_FOUND,
-      statusCode: 404
-    });
-    expect(repository.startService).not.toHaveBeenCalled();
-  });
+  ])(
+    "rejects unrelated or incomplete participants at the service boundary",
+    async (requestActor, order, input) => {
+      const repository = createRepository(order);
+      const service = new BookingService(repository);
+      await expect(service.startService(requestActor, 41, input, context)).rejects.toMatchObject({
+        code: ERROR_CODES.NOT_FOUND,
+        statusCode: 404
+      });
+      expect(repository.startService).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["not_found", ERROR_CODES.NOT_FOUND, 404],
@@ -225,19 +228,22 @@ describe("formal order fulfillment service", () => {
     ["invalid_transition", ERROR_CODES.ORDER_INVALID_TRANSITION, 409],
     ["unresolved_add_on", ERROR_CODES.ORDER_INVALID_TRANSITION, 409],
     ["conflict", ERROR_CODES.IDEMPOTENCY_KEY_REUSED, 409]
-  ] as const)("maps repository outcome %s without participant leakage", async (outcome, code, statusCode) => {
-    const repository = createRepository(makeOrder("inService"), { outcome });
-    const service = new BookingService(repository);
+  ] as const)(
+    "maps repository outcome %s without participant leakage",
+    async (outcome, code, statusCode) => {
+      const repository = createRepository(makeOrder("inService"), { outcome });
+      const service = new BookingService(repository);
 
-    await expect(
-      service.endService(
-        customer,
-        41,
-        { reason: "customer_completed", idempotencyKey: "customer-end-0000001" },
-        context
-      )
-    ).rejects.toMatchObject({ code, statusCode });
-  });
+      await expect(
+        service.endService(
+          customer,
+          41,
+          { reason: "customer_completed", idempotencyKey: "customer-end-0000001" },
+          context
+        )
+      ).rejects.toMatchObject({ code, statusCode });
+    }
+  );
 
   it("maps invalid add-on catalog selections to a validated client error", async () => {
     const repository = createRepository(makeOrder("inService"), { outcome: "invalid_service" });
@@ -691,9 +697,7 @@ describe("formal order fulfillment repository transactions", () => {
     expect(firstExpectedEndsAt.getTime() - harness.getSession()!.startedAt.getTime()).toBe(
       60 * 60_000
     );
-    expect(harness.getSession()!.verificationHash).not.toBe(
-      deriveOrderServiceVerificationCode(41)
-    );
+    expect(harness.getSession()!.verificationHash).not.toBe(deriveOrderServiceVerificationCode(41));
     expect(harness.getSession()!.verificationHash).not.toMatch(/^\d{6}$/);
     expect(harness.events).toHaveLength(1);
 
@@ -802,18 +806,21 @@ describe("formal order fulfillment repository transactions", () => {
     [{ status: "draft" }, "unpublished"],
     [{ currency: "usd" }, "non-JPY"],
     [{ priceAmount: "4000.50" }, "fractional-JPY"]
-  ] as const)("rejects %s catalog data instead of trusting a client snapshot", async (service, label) => {
-    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true, service });
-    await expect(
-      harness.repository.createOrderAddOn({
-        ...repositoryActor,
-        orderId: 41,
-        serviceId: 19,
-        idempotencyKey: `invalid-addon-${label.padEnd(20, "0")}`
-      })
-    ).resolves.toEqual({ outcome: "invalid_service" });
-    expect(harness.addOns).toHaveLength(0);
-  });
+  ] as const)(
+    "rejects %s catalog data instead of trusting a client snapshot",
+    async (service, label) => {
+      const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true, service });
+      await expect(
+        harness.repository.createOrderAddOn({
+          ...repositoryActor,
+          orderId: 41,
+          serviceId: 19,
+          idempotencyKey: `invalid-addon-${label.padEnd(20, "0")}`
+        })
+      ).resolves.toEqual({ outcome: "invalid_service" });
+      expect(harness.addOns).toHaveLength(0);
+    }
+  );
 
   it("conflicts when a proposal key is reused with a different service", async () => {
     const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });

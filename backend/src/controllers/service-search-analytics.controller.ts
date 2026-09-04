@@ -58,15 +58,17 @@ export class ServiceSearchAnalyticsController {
   });
 
   public createCategory = this.handle(async (request, response) => {
-    response.status(201).json(
-      successResponse(
-        await this.service.createCategory(
-          getAuthenticatedAccess(response),
-          categoryCreateBodySchema.parse(request.body),
-          getRequestContext(request)
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.createCategory(
+            getAuthenticatedAccess(response),
+            categoryCreateBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
   });
 
   public updateCategory = this.handle(async (request, response) => {
@@ -84,15 +86,17 @@ export class ServiceSearchAnalyticsController {
   });
 
   public createKeyword = this.handle(async (request, response) => {
-    response.status(201).json(
-      successResponse(
-        await this.service.createKeyword(
-          getAuthenticatedAccess(response),
-          keywordCreateBodySchema.parse(request.body),
-          getRequestContext(request)
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.createKeyword(
+            getAuthenticatedAccess(response),
+            keywordCreateBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
   });
 
   public updateKeyword = this.handle(async (request, response) => {
@@ -110,15 +114,17 @@ export class ServiceSearchAnalyticsController {
   });
 
   public createAlias = this.handle(async (request, response) => {
-    response.status(201).json(
-      successResponse(
-        await this.service.createAlias(
-          getAuthenticatedAccess(response),
-          aliasCreateBodySchema.parse(request.body),
-          getRequestContext(request)
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.createAlias(
+            getAuthenticatedAccess(response),
+            aliasCreateBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
   });
 
   public updateAlias = this.handle(async (request, response) => {

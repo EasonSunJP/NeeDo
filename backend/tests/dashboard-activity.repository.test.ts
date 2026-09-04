@@ -26,18 +26,9 @@ const storedCityFixtures = [
 ];
 
 const createClient = () => {
-  const scheduleCount = jest
-    .fn()
-    .mockResolvedValueOnce(8)
-    .mockResolvedValueOnce(5);
-  const customerCount = jest
-    .fn()
-    .mockResolvedValueOnce(3)
-    .mockResolvedValueOnce(1);
-  const shopCount = jest
-    .fn()
-    .mockResolvedValueOnce(11)
-    .mockResolvedValueOnce(10);
+  const scheduleCount = jest.fn().mockResolvedValueOnce(8).mockResolvedValueOnce(5);
+  const customerCount = jest.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(1);
+  const shopCount = jest.fn().mockResolvedValueOnce(11).mockResolvedValueOnce(10);
   const pendingOrderCount = jest.fn(async () => 4);
   const orderAggregate = jest
     .fn()
@@ -46,11 +37,15 @@ const createClient = () => {
   const queryRaw = jest.fn(async (query: SqlQuery) => {
     const sql = queryText(query);
     if (sql.includes("dashboard_available_cities")) {
-      return [...new Set(
-        storedCityFixtures
-          .filter((row) => row.deletedAt === null && row.city.trim() !== "")
-          .map((row) => row.city.trim())
-      )].sort().map((city) => ({ city }));
+      return [
+        ...new Set(
+          storedCityFixtures
+            .filter((row) => row.deletedAt === null && row.city.trim() !== "")
+            .map((row) => row.city.trim())
+        )
+      ]
+        .sort()
+        .map((city) => ({ city }));
     }
     if (sql.includes("dashboard_city_activity_scalars")) {
       return [
@@ -170,17 +165,13 @@ describe("DashboardRepository activity and supply aggregates", () => {
       sql: queryText(query as SqlQuery),
       values: (query as SqlQuery).values ?? []
     }));
-    const availableCities = queries.find(({ sql }) =>
-      sql.includes("dashboard_available_cities")
-    );
+    const availableCities = queries.find(({ sql }) => sql.includes("dashboard_available_cities"));
     expect(availableCities?.sql).toContain("SELECT DISTINCT TRIM(shop.city) AS city");
     expect(availableCities?.sql).toContain("shop.deleted_at IS NULL");
     expect(availableCities?.sql).toContain("TRIM(shop.city) <>");
     expect(availableCities?.sql).toContain("ORDER BY city ASC");
 
-    const scalar = queries.find(({ sql }) =>
-      sql.includes("dashboard_city_activity_scalars")
-    );
+    const scalar = queries.find(({ sql }) => sql.includes("dashboard_city_activity_scalars"));
     expect(scalar?.sql).toContain("TRIM(shop.city) =");
     expect(scalar?.sql).toContain("TRIM(profile.city) =");
 
@@ -191,13 +182,9 @@ describe("DashboardRepository activity and supply aggregates", () => {
       "dashboard_order_series",
       "dashboard_schedule_series"
     ]) {
-      expect(queries.find(({ sql }) => sql.includes(marker))?.sql).toContain(
-        "TRIM(shop.city) ="
-      );
+      expect(queries.find(({ sql }) => sql.includes(marker))?.sql).toContain("TRIM(shop.city) =");
     }
-    const technicians = queries.find(({ sql }) =>
-      sql.includes("dashboard_registered_technicians")
-    );
+    const technicians = queries.find(({ sql }) => sql.includes("dashboard_registered_technicians"));
     expect(technicians?.sql).toContain("TRIM(profile.city) =");
     expect(technicians?.sql).toContain("TRIM(direct_shop.city) =");
     expect(technicians?.sql).toContain("TRIM(affiliation_shop.city) =");
@@ -327,9 +314,7 @@ describe("DashboardRepository activity and supply aggregates", () => {
         ].some((marker) => sql.includes(marker))
       );
     expect(relatedShopQueries).toHaveLength(4);
-    expect(relatedShopQueries.every((sql) => sql.includes("shop.deleted_at IS NULL"))).toBe(
-      true
-    );
+    expect(relatedShopQueries.every((sql) => sql.includes("shop.deleted_at IS NULL"))).toBe(true);
   });
 
   it("applies overlap, soft-delete, cumulative, startsAt, refund, union, and clipping rules", async () => {
@@ -360,9 +345,7 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(active?.sql).toContain("profile.deleted_at IS NULL");
     expect(active?.values).toContain("cancelled");
 
-    const scalars = queries.find(({ sql }) =>
-      sql.includes("dashboard_city_activity_scalars")
-    );
+    const scalars = queries.find(({ sql }) => sql.includes("dashboard_city_activity_scalars"));
     expect(scalars?.sql).toContain("slot.starts_at < period.to_exclusive");
     expect(scalars?.sql).toContain("booking.starts_at >= period.from_inclusive");
     expect(scalars?.sql).toContain("booking.payment_status NOT IN");
@@ -371,9 +354,7 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(scalars?.sql).toContain("TRIM(profile.city) =");
     expect(scalars?.sql.match(/TRIM\(shop\.city\) =/gu)).toHaveLength(4);
 
-    const technicians = queries.find(({ sql }) =>
-      sql.includes("dashboard_registered_technicians")
-    );
+    const technicians = queries.find(({ sql }) => sql.includes("dashboard_registered_technicians"));
     expect(technicians?.sql).toContain("profile.created_at < cutoffs.cutoff");
     expect(technicians?.sql).toContain("affiliation.work_status =");
     expect(technicians?.sql).toContain("affiliation.deleted_at IS NULL");
@@ -407,9 +388,7 @@ describe("DashboardRepository activity and supply aggregates", () => {
     expect(schedule?.sql).toContain("slot.deleted_at IS NULL");
     expect(schedule?.sql).toContain("GREATEST(slot.starts_at, bucket.from_inclusive)");
     expect(schedule?.sql).toContain("LEAST(slot.ends_at, bucket.to_exclusive)");
-    expect(schedule?.values).toEqual(
-      expect.arrayContaining(["available", "booked", "Tokyo"])
-    );
+    expect(schedule?.values).toEqual(expect.arrayContaining(["available", "booked", "Tokyo"]));
 
     expect(fixture.queryRaw).toHaveBeenCalledTimes(7);
     expect(queries.every(({ values }) => values.includes("Tokyo"))).toBe(true);
@@ -466,8 +445,6 @@ describe("DashboardRepository activity and supply aggregates", () => {
       .map(([query]) => queryText(query as SqlQuery))
       .filter((sql) => !sql.includes("dashboard_registered_technicians"));
     expect(relatedShopQueries).toHaveLength(4);
-    expect(relatedShopQueries.every((sql) => sql.includes("shop.deleted_at IS NULL"))).toBe(
-      true
-    );
+    expect(relatedShopQueries.every((sql) => sql.includes("shop.deleted_at IS NULL"))).toBe(true);
   });
 });

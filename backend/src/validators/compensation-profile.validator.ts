@@ -6,7 +6,10 @@ export const compensationProfileParamSchema = z.object({
 });
 
 export const employeeCompensationProfileParamSchema = z.object({
-  needoId: z.string().trim().regex(/^s\d{10}$/)
+  needoId: z
+    .string()
+    .trim()
+    .regex(/^s\d{10}$/)
 });
 
 const activeFlagSchema = z.boolean().default(true);

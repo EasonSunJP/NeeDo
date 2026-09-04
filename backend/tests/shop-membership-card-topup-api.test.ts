@@ -19,7 +19,9 @@ const createBody = {
   idempotencyKey: "topup-api-request-001"
 };
 
-const record = (overrides: Partial<ShopMembershipCardTopUpRecord> = {}): ShopMembershipCardTopUpRecord => ({
+const record = (
+  overrides: Partial<ShopMembershipCardTopUpRecord> = {}
+): ShopMembershipCardTopUpRecord => ({
   internalId: 101,
   publicId: topUpPublicId,
   amountJpy: createBody.amountJpy,
@@ -49,16 +51,17 @@ const record = (overrides: Partial<ShopMembershipCardTopUpRecord> = {}): ShopMem
   ...overrides
 });
 
-const repository = (overrides: Partial<ShopMembershipCardTopUpRepositoryPort> = {}) => ({
-  findByIdempotencyKey: jest.fn(async () => null),
-  createWithAuditAndNotification: jest.fn(async (input) => ({
-    kind: "created" as const,
-    value: record({ requestFingerprint: input.requestFingerprint })
-  })),
-  listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  ...overrides
-}) as jest.Mocked<ShopMembershipCardTopUpRepositoryPort>;
+const repository = (overrides: Partial<ShopMembershipCardTopUpRepositoryPort> = {}) =>
+  ({
+    findByIdempotencyKey: jest.fn(async () => null),
+    createWithAuditAndNotification: jest.fn(async (input) => ({
+      kind: "created" as const,
+      value: record({ requestFingerprint: input.requestFingerprint })
+    })),
+    listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    ...overrides
+  }) as jest.Mocked<ShopMembershipCardTopUpRepositoryPort>;
 
 function makeUser(kind: "merchant" | "customer", permissions: string[]) {
   const merchant = kind === "merchant";
@@ -77,38 +80,46 @@ function makeUser(kind: "merchant" | "customer", permissions: string[]) {
     sessionGeneration: 0,
     lastLoginAt: null,
     deletedAt: null,
-    identities: [{
-      id: merchant ? 900 : 410,
-      userId: merchant ? 90 : 41,
-      type: merchant ? "merchant_owner" : "customer",
-      scopeType: merchant ? "shop" : "customer_profile",
-      scopeId: merchant ? 71 : 51,
-      displayName: merchant ? "青山店主" : "王小美",
-      isDefault: true,
-      isActive: true,
-      deletedAt: null
-    }],
-    identityApplications: [],
-    userRoles: [{
-      deletedAt: null,
-      role: {
-        code: merchant ? "merchant_owner" : "customer",
-        deletedAt: null,
-        rolePermissions: permissions.map((code) => ({
-          deletedAt: null,
-          permission: { code, type: "api", deletedAt: null }
-        }))
+    identities: [
+      {
+        id: merchant ? 900 : 410,
+        userId: merchant ? 90 : 41,
+        type: merchant ? "merchant_owner" : "customer",
+        scopeType: merchant ? "shop" : "customer_profile",
+        scopeId: merchant ? 71 : 51,
+        displayName: merchant ? "青山店主" : "王小美",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
       }
-    }]
+    ],
+    identityApplications: [],
+    userRoles: [
+      {
+        deletedAt: null,
+        role: {
+          code: merchant ? "merchant_owner" : "customer",
+          deletedAt: null,
+          rolePermissions: permissions.map((code) => ({
+            deletedAt: null,
+            permission: { code, type: "api", deletedAt: null }
+          }))
+        }
+      }
+    ]
   };
 }
 
-function fixture(kind: "merchant" | "customer", permissions: string[], overrides: Partial<ShopMembershipCardTopUpRepositoryPort> = {}) {
+function fixture(
+  kind: "merchant" | "customer",
+  permissions: string[],
+  overrides: Partial<ShopMembershipCardTopUpRepositoryPort> = {}
+) {
   const user = makeUser(kind, permissions);
   const topUpRepository = repository(overrides);
   const app = createApp(env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-    authRepository: { findUserById: jest.fn(async (id: number) => id === user.id ? user : null) },
+    authRepository: { findUserById: jest.fn(async (id: number) => (id === user.id ? user : null)) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository({ shopId: 71 }),
@@ -131,14 +142,26 @@ describe("shop membership card top-up API", () => {
   it("requires authentication and the exact merchant top-up permission", async () => {
     const merchant = fixture("merchant", []);
     await request(merchant.app).post(createPath).send(createBody).expect(401);
-    await request(merchant.app).post(createPath).set("Authorization", `Bearer ${merchant.token}`).send(createBody).expect(403);
+    await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send(createBody)
+      .expect(403);
     expect(merchant.repository.createWithAuditAndNotification).not.toHaveBeenCalled();
   });
 
   it("strictly rejects client scope and creates a safe immutable top-up", async () => {
     const merchant = fixture("merchant", ["shop.member.card.topup.create"]);
-    await request(merchant.app).post(createPath).set("Authorization", `Bearer ${merchant.token}`).send({ ...createBody, shopId: 999 }).expect(400);
-    const response = await request(merchant.app).post(createPath).set("Authorization", `Bearer ${merchant.token}`).send(createBody).expect(201);
+    await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send({ ...createBody, shopId: 999 })
+      .expect(400);
+    const response = await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send(createBody)
+      .expect(201);
     expect(response.body.data).toMatchObject({
       publicId: topUpPublicId,
       amountJpy: 5_000,
@@ -153,19 +176,33 @@ describe("shop membership card top-up API", () => {
 
   it("returns 200 for an exact replay and 409 for changed contents", async () => {
     const first = fixture("merchant", ["shop.member.card.topup.create"]);
-    await request(first.app).post(createPath).set("Authorization", `Bearer ${first.token}`).send(createBody).expect(201);
+    await request(first.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${first.token}`)
+      .send(createBody)
+      .expect(201);
     const input = first.repository.createWithAuditAndNotification.mock.calls[0][0];
 
     const replay = fixture("merchant", ["shop.member.card.topup.create"], {
-      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: input.requestFingerprint }))
+      findByIdempotencyKey: jest.fn(async () =>
+        record({ requestFingerprint: input.requestFingerprint })
+      )
     });
-    await request(replay.app).post(createPath).set("Authorization", `Bearer ${replay.token}`).send(createBody).expect(200);
+    await request(replay.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${replay.token}`)
+      .send(createBody)
+      .expect(200);
     expect(replay.repository.createWithAuditAndNotification).not.toHaveBeenCalled();
 
     const conflict = fixture("merchant", ["shop.member.card.topup.create"], {
       findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" }))
     });
-    await request(conflict.app).post(createPath).set("Authorization", `Bearer ${conflict.token}`).send(createBody).expect(409);
+    await request(conflict.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${conflict.token}`)
+      .send(createBody)
+      .expect(409);
   });
 
   it("returns shop-scoped merchant history and customer-owned history", async () => {
@@ -186,7 +223,13 @@ describe("shop membership card top-up API", () => {
       .get(`${customerListPath}?page=1&pageSize=20`)
       .set("Authorization", `Bearer ${customer.token}`)
       .expect(200);
-    expect(customerPage.body.data.list[0]).toMatchObject({ publicId: topUpPublicId, amountJpy: 5_000 });
-    expect(customer.repository.listCustomer).toHaveBeenCalledWith(41, expect.objectContaining({ page: 1, pageSize: 20 }));
+    expect(customerPage.body.data.list[0]).toMatchObject({
+      publicId: topUpPublicId,
+      amountJpy: 5_000
+    });
+    expect(customer.repository.listCustomer).toHaveBeenCalledWith(
+      41,
+      expect.objectContaining({ page: 1, pageSize: 20 })
+    );
   });
 });

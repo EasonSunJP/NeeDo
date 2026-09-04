@@ -86,8 +86,7 @@ describe("Exchange selective exact matching validators", () => {
 
   it("rejects duplicates, empty selections, unknown fields and invalid versions", () => {
     expect(
-      selectExchangeMatchSchema.safeParse({ selectedClaimIds: [9, 9], expectedVersion: 3 })
-        .success
+      selectExchangeMatchSchema.safeParse({ selectedClaimIds: [9, 9], expectedVersion: 3 }).success
     ).toBe(false);
     expect(
       selectExchangeMatchSchema.safeParse({ selectedClaimIds: [], expectedVersion: 3 }).success

@@ -126,9 +126,7 @@ describe("localized publication checker final error composition", () => {
     const result = composeLocalizedPublicationCheckerError(undefined, [cleanupError]);
 
     expect(result).toBeInstanceOf(AggregateError);
-    expect((result as AggregateError).message).toBe(
-      "localized publication checker cleanup failed"
-    );
+    expect((result as AggregateError).message).toBe("localized publication checker cleanup failed");
     expect((result as AggregateError).errors).toEqual([cleanupError]);
   });
 
@@ -148,10 +146,7 @@ describe("localized publication checker final error composition", () => {
 
 describe("localized carousel publication real-database checker", () => {
   const backendRoot = join(__dirname, "..");
-  const scriptPath = join(
-    backendRoot,
-    "scripts/check-localized-carousel-publication-flow.ts"
-  );
+  const scriptPath = join(backendRoot, "scripts/check-localized-carousel-publication-flow.ts");
 
   const safeEnvironment = {
     envFile: "/tmp/needo-local.env",
@@ -244,9 +239,9 @@ describe("localized carousel publication real-database checker", () => {
   });
 
   it("registers one guarded local-only checker command", () => {
-    const packageJson = JSON.parse(
-      readFileSync(join(backendRoot, "package.json"), "utf8")
-    ) as { scripts: Record<string, string> };
+    const packageJson = JSON.parse(readFileSync(join(backendRoot, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
 
     expect(existsSync(scriptPath)).toBe(true);
     expect(packageJson.scripts["check:localized-carousel-publication-flow"]).toBe(
@@ -292,10 +287,12 @@ describe("localized carousel publication real-database checker", () => {
     expect(source).toContain("new CarouselPublicationService(");
     expect(source).toContain("new ContentPublicationSchedulerService(");
     expect(source).toContain('badge: "TEST"');
-    expect(source).not.toContain('badge: `${marker} TEST`');
+    expect(source).not.toContain("badge: `${marker} TEST`");
     expect(source).toContain("try {");
     expect(source).toContain("finally {");
-    expect(source).toContain("cleanup residue verification across all captured rows and media files");
+    expect(source).toContain(
+      "cleanup residue verification across all captured rows and media files"
+    );
     expect(source).toContain("created.carouselReleaseIds");
     expect(source).toContain("created.announcementReleaseIds");
     expect(source).toContain("created.mediaAssetIds");

@@ -1027,12 +1027,10 @@ describe("ExchangePostRepository", () => {
     await expect(repository.listDuePostIds(now, 3)).resolves.toEqual([41, 42, 43]);
     await expect(repository.markWithdrawnIfPublished(41, now)).resolves.toBe(true);
     await expect(repository.markExpiredIfPublished(42, now)).resolves.toBe(true);
-    await expect(
-      repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)
-    ).resolves.toBe(2);
-    await expect(
-      repository.cancelActiveClaimsByPost(42, "request_expired", now)
-    ).resolves.toBe(1);
+    await expect(repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)).resolves.toBe(
+      2
+    );
+    await expect(repository.cancelActiveClaimsByPost(42, "request_expired", now)).resolves.toBe(1);
 
     expect(findMany).toHaveBeenCalledWith({
       where: { status: "PUBLISHED", expiresAt: { lte: now }, deletedAt: null },

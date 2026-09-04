@@ -6,10 +6,7 @@ import type {
   UserExperienceAccount
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";

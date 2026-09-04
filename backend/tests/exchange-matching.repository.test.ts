@@ -38,7 +38,11 @@ describe("ExchangeMatchingRepository", () => {
           technicianProfile: {
             id: 81,
             displayName: "山田 花子",
-            user: { identities: [{ displayName: "山田 花子", publicIdentifier: { publicId: "S000000081" } }] }
+            user: {
+              identities: [
+                { displayName: "山田 花子", publicIdentifier: { publicId: "S000000081" } }
+              ]
+            }
           },
           exchangeClaim: {
             claimantIdentity: {
@@ -67,7 +71,11 @@ describe("ExchangeMatchingRepository", () => {
           technicianProfile: {
             id: 82,
             displayName: "佐々木 花子",
-            user: { identities: [{ displayName: "佐々木 花子", publicIdentifier: { publicId: "S000000082" } }] }
+            user: {
+              identities: [
+                { displayName: "佐々木 花子", publicIdentifier: { publicId: "S000000082" } }
+              ]
+            }
           },
           exchangeClaim: {
             claimantIdentity: {

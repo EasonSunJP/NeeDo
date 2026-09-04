@@ -450,11 +450,7 @@ export class FeeCalculationService {
   }
 
   private resolveCalculationTime(input: FeeCalculationInput): Date {
-    if (
-      input.stage === "capture" &&
-      input.feeType === "b_platform_fee" &&
-      input.acceptedAt
-    ) {
+    if (input.stage === "capture" && input.feeType === "b_platform_fee" && input.acceptedAt) {
       return input.acceptedAt;
     }
     if (input.stage === "capture" && input.completedAt) {

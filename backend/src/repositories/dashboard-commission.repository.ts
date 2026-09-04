@@ -189,15 +189,13 @@ export const resolveTechnicianCompensationAllocations = (input: {
         invalidCandidate = true;
         continue;
       }
-      const isEffective = (
-        profile.effectiveFrom === undefined ||
-        profile.effectiveFrom === null ||
-        profile.effectiveFrom <= workDate.workDate
-      ) && (
-        profile.effectiveTo === undefined ||
-        profile.effectiveTo === null ||
-        profile.effectiveTo >= workDate.workDate
-      );
+      const isEffective =
+        (profile.effectiveFrom === undefined ||
+          profile.effectiveFrom === null ||
+          profile.effectiveFrom <= workDate.workDate) &&
+        (profile.effectiveTo === undefined ||
+          profile.effectiveTo === null ||
+          profile.effectiveTo >= workDate.workDate);
       if (!isEffective) continue;
       candidates.push(profile);
     }
@@ -268,11 +266,9 @@ export const calculateTechnicianCommission = (
       continue;
     }
 
-    const activeKey = [
-      allocation.technicianProfileId,
-      allocation.shopId,
-      allocation.workDate
-    ].join(":");
+    const activeKey = [allocation.technicianProfileId, allocation.shopId, allocation.workDate].join(
+      ":"
+    );
     const existing = activeByTechnicianShopDate.get(activeKey);
     if (
       existing &&
@@ -323,22 +319,23 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
 
   public async getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts> {
     const rows = await this.queryCommissionFacts(input);
-    const periods = new Map<"current" | "previous", {
-      dedicated: number;
-      partTime: number;
-      marketing: number;
-      agent: number;
-      ndpIncome: number;
-      affiliatePlatform: number;
-    }>();
+    const periods = new Map<
+      "current" | "previous",
+      {
+        dedicated: number;
+        partTime: number;
+        marketing: number;
+        agent: number;
+        ndpIncome: number;
+        affiliatePlatform: number;
+      }
+    >();
     for (const row of rows) {
       const key = row.periodKey ?? row.period_key;
       if ((key !== "current" && key !== "previous") || periods.has(key)) {
         throw new RangeError(aggregateError);
       }
-      const anomalyCount = this.toSafeAggregate(
-        row.salaryAnomalyCount ?? row.salary_anomaly_count
-      );
+      const anomalyCount = this.toSafeAggregate(row.salaryAnomalyCount ?? row.salary_anomaly_count);
       if (anomalyCount !== 0) throw new RangeError(compensationAnomalyError);
       periods.set(key, {
         dedicated: this.toSafeAggregate(row.dedicatedJpy ?? row.dedicated_jpy),
@@ -351,25 +348,51 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
         )
       });
     }
-    const zero = { dedicated: 0, partTime: 0, marketing: 0, agent: 0, ndpIncome: 0, affiliatePlatform: 0 };
+    const zero = {
+      dedicated: 0,
+      partTime: 0,
+      marketing: 0,
+      agent: 0,
+      ndpIncome: 0,
+      affiliatePlatform: 0
+    };
     const current = periods.get("current") ?? zero;
     const previous = periods.get("previous") ?? zero;
     return {
-      dedicatedTechnicianCommission: { current: current.dedicated, previous: previous.dedicated, dataStatus: "ready" },
-      partTimeTechnicianCommission: { current: current.partTime, previous: previous.partTime, dataStatus: "ready" },
-      marketingCommission: { current: current.marketing, previous: previous.marketing, dataStatus: "ready" },
+      dedicatedTechnicianCommission: {
+        current: current.dedicated,
+        previous: previous.dedicated,
+        dataStatus: "ready"
+      },
+      partTimeTechnicianCommission: {
+        current: current.partTime,
+        previous: previous.partTime,
+        dataStatus: "ready"
+      },
+      marketingCommission: {
+        current: current.marketing,
+        previous: previous.marketing,
+        dataStatus: "ready"
+      },
       agentCommission: { current: current.agent, previous: previous.agent, dataStatus: "ready" },
       ndpIncome: { current: current.ndpIncome, previous: previous.ndpIncome, dataStatus: "ready" },
-      affiliatePlatformIncome: { current: current.affiliatePlatform, previous: previous.affiliatePlatform, dataStatus: "ready" },
+      affiliatePlatformIncome: {
+        current: current.affiliatePlatform,
+        previous: previous.affiliatePlatform,
+        dataStatus: "ready"
+      },
       consumablesProfit: { current: null, previous: null, dataStatus: "not_connected" }
     };
   }
 
   private periodTable(input: DashboardAggregateInput): Prisma.Sql {
-    return Prisma.join([
-      Prisma.sql`SELECT ${"current"} AS period_key, ${input.window.fromInclusive} AS from_inclusive, ${input.window.toExclusive} AS to_exclusive`,
-      Prisma.sql`SELECT ${"previous"} AS period_key, ${input.window.previousFromInclusive} AS from_inclusive, ${input.window.previousToExclusive} AS to_exclusive`
-    ], " UNION ALL ");
+    return Prisma.join(
+      [
+        Prisma.sql`SELECT ${"current"} AS period_key, ${input.window.fromInclusive} AS from_inclusive, ${input.window.toExclusive} AS to_exclusive`,
+        Prisma.sql`SELECT ${"previous"} AS period_key, ${input.window.previousFromInclusive} AS from_inclusive, ${input.window.previousToExclusive} AS to_exclusive`
+      ],
+      " UNION ALL "
+    );
   }
 
   private shopScope(input: DashboardAggregateInput, alias: string): Prisma.Sql {
@@ -852,7 +875,8 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
   private toSafeAggregate(value: NumericValue): number {
     if (value === null || value === undefined) throw new RangeError(aggregateError);
     if (typeof value === "bigint") {
-      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError(aggregateError);
+      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
+        throw new RangeError(aggregateError);
       return Number(value);
     }
     if (typeof value === "number") {

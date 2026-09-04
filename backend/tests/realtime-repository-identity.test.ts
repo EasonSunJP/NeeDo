@@ -284,8 +284,9 @@ describe("RealtimeRepository formal identity payloads", () => {
     ];
     const client = {
       conversationParticipant: {
-        findFirst: jest.fn(async ({ where }: { where: { identityId: number } }) =>
-          participants.find((participant) => participant.identityId === where.identityId) ?? null
+        findFirst: jest.fn(
+          async ({ where }: { where: { identityId: number } }) =>
+            participants.find((participant) => participant.identityId === where.identityId) ?? null
         ),
         update: jest.fn(async () => ({}))
       }
@@ -412,12 +413,9 @@ describe("RealtimeRepository technician contact privacy", () => {
 
   it("returns expanded technician details only for an active unblocked owner contact", async () => {
     const client = createClient({ id: 90 });
-    const result = await new RealtimeRepository(client as unknown as PrismaClient).getDirectoryProfile(
-      1,
-      10,
-      2,
-      20
-    );
+    const result = await new RealtimeRepository(
+      client as unknown as PrismaClient
+    ).getDirectoryProfile(1, 10, 2, 20);
 
     expect(result).toMatchObject({
       relationship: "friend",
@@ -474,12 +472,9 @@ describe("RealtimeRepository technician contact privacy", () => {
 
   it("omits expanded fields for self lookup without reading contacts", async () => {
     const client = createClient({ id: 90 });
-    const result = await new RealtimeRepository(client as unknown as PrismaClient).getDirectoryProfile(
-      2,
-      20,
-      2,
-      20
-    );
+    const result = await new RealtimeRepository(
+      client as unknown as PrismaClient
+    ).getDirectoryProfile(2, 20, 2, 20);
 
     expect(result).toMatchObject({ relationship: "self" });
     expect(result).not.toHaveProperty("technicianContactDetails");

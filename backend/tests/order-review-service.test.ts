@@ -63,63 +63,68 @@ describe("formal completed-order review service", () => {
       body: "请提前五分钟联系",
       orderId: 41
     });
-    expect(realtime.notifyOrderChanged).toHaveBeenCalledWith(expect.objectContaining({
-      actorIdentityId: 1501,
-      changeType: "timeline_comment",
-      orderId: 41
-    }));
+    expect(realtime.notifyOrderChanged).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorIdentityId: 1501,
+        changeType: "timeline_comment",
+        orderId: 41
+      })
+    );
   });
 
   it.each([
     [customer, "technician", null],
     [technician, "customer", 702]
-  ] as const)("derives and persists the permitted direction", async (actor, targetType, profileId) => {
-    const review = {
-      targetType,
-      rating: 5,
-      tags: targetType === "technician" ? ["服务max", "魅力max"] : ["准时到达"],
-      comment: "很好",
-      createdAt: new Date("2026-09-01T12:00:00.000Z")
-    };
-    const repository = {
-      findOrderById: jest.fn(async () => order),
-      createOrderReview: jest.fn(async () => ({ outcome: "ok", applied: true, review }))
-    };
-    const audit = {
-      createInput: jest.fn((input) => ({ ...input, actorId: actor.userId }))
-    };
-    const service = new BookingService(repository as never, undefined, undefined, audit as never);
-
-    await expect(
-      service.createOrderReview(
-        actor,
-        41,
-        {
-          targetType,
-          rating: 5,
-          tags: [...review.tags].reverse(),
-          comment: "  很好  ",
-          idempotencyKey: "review-command-key-0001"
-        },
-        context
-      )
-    ).resolves.toEqual({ applied: true, review });
-
-    expect(repository.createOrderReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: 41,
-        actorUserId: actor.userId,
-        actor: targetType === "technician" ? "customer" : "technician",
-        technicianProfileId: profileId,
+  ] as const)(
+    "derives and persists the permitted direction",
+    async (actor, targetType, profileId) => {
+      const review = {
         targetType,
-        tags: expect.any(Array),
+        rating: 5,
+        tags: targetType === "technician" ? ["服务max", "魅力max"] : ["准时到达"],
         comment: "很好",
-        idempotencyKey: "review-command-key-0001",
-        requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
-        audit: expect.objectContaining({ action: "order.review.create" })
-      })
-    );
-  });
+        createdAt: new Date("2026-09-01T12:00:00.000Z")
+      };
+      const repository = {
+        findOrderById: jest.fn(async () => order),
+        createOrderReview: jest.fn(async () => ({ outcome: "ok", applied: true, review }))
+      };
+      const audit = {
+        createInput: jest.fn((input) => ({ ...input, actorId: actor.userId }))
+      };
+      const service = new BookingService(repository as never, undefined, undefined, audit as never);
+
+      await expect(
+        service.createOrderReview(
+          actor,
+          41,
+          {
+            targetType,
+            rating: 5,
+            tags: [...review.tags].reverse(),
+            comment: "  很好  ",
+            idempotencyKey: "review-command-key-0001"
+          },
+          context
+        )
+      ).resolves.toEqual({ applied: true, review });
+
+      expect(repository.createOrderReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: 41,
+          actorUserId: actor.userId,
+          actor: targetType === "technician" ? "customer" : "technician",
+          technicianProfileId: profileId,
+          targetType,
+          tags: expect.any(Array),
+          comment: "很好",
+          idempotencyKey: "review-command-key-0001",
+          requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+          audit: expect.objectContaining({ action: "order.review.create" })
+        })
+      );
+    }
+  );
 
   it("rejects an actor-selected direction mismatch without touching the mutation repository", async () => {
     const repository = {
@@ -128,13 +133,18 @@ describe("formal completed-order review service", () => {
     };
     const service = new BookingService(repository as never);
     await expect(
-      service.createOrderReview(customer, 41, {
-        targetType: "customer",
-        rating: 5,
-        tags: [],
-        comment: null,
-        idempotencyKey: "review-command-key-0002"
-      }, context)
+      service.createOrderReview(
+        customer,
+        41,
+        {
+          targetType: "customer",
+          rating: 5,
+          tags: [],
+          comment: null,
+          idempotencyKey: "review-command-key-0002"
+        },
+        context
+      )
     ).rejects.toMatchObject({ statusCode: 404 });
     expect(repository.createOrderReview).not.toHaveBeenCalled();
   });
@@ -153,18 +163,29 @@ describe("formal completed-order review service", () => {
     const audit = { createInput: jest.fn((input) => input) };
     const service = new BookingService(repository as never, undefined, undefined, audit as never);
     await expect(
-      service.createOrderReview(customer, 41, {
-        targetType: "technician",
-        rating: 4,
-        tags: [],
-        comment: null,
-        idempotencyKey: "review-command-key-0003"
-      }, context)
+      service.createOrderReview(
+        customer,
+        41,
+        {
+          targetType: "technician",
+          rating: 4,
+          tags: [],
+          comment: null,
+          idempotencyKey: "review-command-key-0003"
+        },
+        context
+      )
     ).rejects.toMatchObject({ statusCode, message });
   });
 
   it("returns only the current participant's permitted direction", async () => {
-    const review = { targetType: "technician", rating: 5, tags: ["元气"], comment: null, createdAt: new Date() };
+    const review = {
+      targetType: "technician",
+      rating: 5,
+      tags: ["元气"],
+      comment: null,
+      createdAt: new Date()
+    };
     const repository = {
       findOrderById: jest.fn(async () => order),
       findOwnOrderReview: jest.fn(async () => ({ outcome: "ok", review }))

@@ -7,7 +7,10 @@ import {
 
 const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
 const migration = readFileSync(
-  join(process.cwd(), "prisma/migrations/20260831160000_shop_membership_card_issuance/migration.sql"),
+  join(
+    process.cwd(),
+    "prisma/migrations/20260831160000_shop_membership_card_issuance/migration.sql"
+  ),
   "utf8"
 );
 
@@ -45,8 +48,12 @@ describe("shop membership card issuance schema contract", () => {
     expect(migration).toContain("shop_membership_cards_plan_id_fkey");
     expect(migration).toContain("shop_membership_cards_plan_version_id_fkey");
     expect(migration).toContain("shop_membership_cards_issued_by_id_fkey");
-    expect(migration).toContain("CREATE UNIQUE INDEX `shop_membership_cards_issuance_idempotency_key`");
-    expect(migration).not.toMatch(/UPDATE\s+`?(wallets|wallet_ledger|ledger_transactions|shop_membership_cards)`?/i);
+    expect(migration).toContain(
+      "CREATE UNIQUE INDEX `shop_membership_cards_issuance_idempotency_key`"
+    );
+    expect(migration).not.toMatch(
+      /UPDATE\s+`?(wallets|wallet_ledger|ledger_transactions|shop_membership_cards)`?/i
+    );
     expect(migration).not.toMatch(/INSERT\s+INTO\s+`?(wallets|wallet_ledger|ledger_transactions)/i);
   });
 

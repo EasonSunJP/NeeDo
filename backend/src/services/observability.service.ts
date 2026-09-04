@@ -128,9 +128,7 @@ export class ObservabilityMetricsService implements ObservabilityMetricsPort {
           lines.push(`needo_dependency_pool_size{${dependencyLabels}} ${metric.poolSize}`);
         }
         if (metric.healthyClients !== undefined) {
-          lines.push(
-            `needo_dependency_pool_healthy{${dependencyLabels}} ${metric.healthyClients}`
-          );
+          lines.push(`needo_dependency_pool_healthy{${dependencyLabels}} ${metric.healthyClients}`);
         }
         lines.push(
           `needo_dependency_last_check_timestamp_seconds{${dependencyLabels}} ${metric.checkedAtSeconds}`

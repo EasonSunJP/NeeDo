@@ -2,10 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
 
 export type MerchantProfileGender = "female" | "male" | "private";
@@ -63,7 +60,10 @@ type AvatarReader = Pick<Prisma.TransactionClient, "mediaAsset">;
 export class MerchantProfileRepository implements MerchantProfileRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
-  public async findMine(userId: number, identityId: number): Promise<MerchantProfilePayload | null> {
+  public async findMine(
+    userId: number,
+    identityId: number
+  ): Promise<MerchantProfilePayload | null> {
     const profile = await this.client.merchantIdentityProfile.findFirst({
       where: { userId, identityId, deletedAt: null },
       include: profileInclude
@@ -108,7 +108,9 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
     return this.mapProfile(result.profile, result.avatarUrl);
   }
 
-  private profileData(mutation: MerchantProfileMutation): Prisma.MerchantIdentityProfileUpdateInput {
+  private profileData(
+    mutation: MerchantProfileMutation
+  ): Prisma.MerchantIdentityProfileUpdateInput {
     return {
       ...(mutation.displayName !== undefined ? { displayName: mutation.displayName } : {}),
       ...(mutation.gender !== undefined ? { gender: mutation.gender } : {}),
@@ -120,7 +122,10 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
     };
   }
 
-  private async findAvatar(client: AvatarReader, profile: MerchantProfileRecord): Promise<string | null> {
+  private async findAvatar(
+    client: AvatarReader,
+    profile: MerchantProfileRecord
+  ): Promise<string | null> {
     const avatar = await client.mediaAsset.findFirst({
       where: {
         entityId: profile.id,
@@ -137,7 +142,10 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
     return avatar?.url ?? profile.user.avatarBootstrapUrl ?? null;
   }
 
-  private mapProfile(profile: MerchantProfileRecord, avatarUrl: string | null): MerchantProfilePayload {
+  private mapProfile(
+    profile: MerchantProfileRecord,
+    avatarUrl: string | null
+  ): MerchantProfilePayload {
     const identifier = profile.identity.publicIdentifier;
     if (!identifier || identifier.status !== "ACTIVE" || identifier.deletedAt) {
       throw new AppError({
@@ -175,9 +183,7 @@ export class MerchantProfileRepository implements MerchantProfileRepositoryPort 
   }
 
   private visibility(value: string): MerchantProfileVisibility {
-    return value === "privateAll" || value === "limited" || value === "network"
-      ? value
-      : "public";
+    return value === "privateAll" || value === "limited" || value === "network" ? value : "public";
   }
 
   private notFound(): AppError {

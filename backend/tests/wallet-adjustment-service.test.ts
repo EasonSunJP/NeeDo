@@ -113,9 +113,7 @@ const createRepository = (availableBalance = 1000, isTestAccount = false) => {
     findTransactionByIdempotencyKey: jest.fn(async () => null),
     findUserAccountClassification: jest.fn(async () => ({ isTestAccount })),
     getOrCreateWallet: jest.fn(async () => wallet),
-    lockWalletById: jest.fn(async (walletId: number) =>
-      wallet.id === walletId ? wallet : null
-    ),
+    lockWalletById: jest.fn(async (walletId: number) => (wallet.id === walletId ? wallet : null)),
     applyWalletDelta: jest.fn(
       async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
         if (
@@ -163,25 +161,22 @@ const createRepository = (availableBalance = 1000, isTestAccount = false) => {
 };
 
 describe("LedgerService wallet adjustment requests", () => {
-  it.each(["topup", "withdrawal"] as const)(
-    "rejects %s for a Test NDP account",
-    async (type) => {
-      const repository = createRepository(1000, true);
-      const service = new LedgerService(repository as never);
+  it.each(["topup", "withdrawal"] as const)("rejects %s for a Test NDP account", async (type) => {
+    const repository = createRepository(1000, true);
+    const service = new LedgerService(repository as never);
 
-      await expect(
-        service.createWalletAdjustmentRequest(merchant, {
-          type,
-          amountNdp: 500,
-          idempotencyKey: `test-ndp-${type}-forbidden`
-        })
-      ).rejects.toMatchObject({
-        code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
-        statusCode: 409
-      });
-      expect(repository.createWalletAdjustmentRequest).not.toHaveBeenCalled();
-    }
-  );
+    await expect(
+      service.createWalletAdjustmentRequest(merchant, {
+        type,
+        amountNdp: 500,
+        idempotencyKey: `test-ndp-${type}-forbidden`
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
+      statusCode: 409
+    });
+    expect(repository.createWalletAdjustmentRequest).not.toHaveBeenCalled();
+  });
 
   it("rejects approval of an existing Test NDP adjustment request", async () => {
     const repository = createRepository(1_000, true);

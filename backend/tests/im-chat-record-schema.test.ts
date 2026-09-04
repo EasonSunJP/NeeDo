@@ -23,7 +23,9 @@ describe("IM chat-record persistence", () => {
   it("indexes identity ownership, source conversation, bundle position, and translation cache keys", () => {
     expect(schema).toContain("@@unique([createdByIdentityId, commandType, idempotencyKey]");
     expect(schema).toContain("@@unique([bundleId, position]");
-    expect(schema).toContain("@@unique([messageId, sourceContentHash, targetLanguage, providerKey]");
+    expect(schema).toContain(
+      "@@unique([messageId, sourceContentHash, targetLanguage, providerKey]"
+    );
     expect(schema).toContain("@@unique([ownerIdentityId, idempotencyKey]");
   });
 
@@ -61,20 +63,22 @@ describe("IM chat-record persistence", () => {
       "@@index([senderIdentityId])",
       "@@index([bundleId, deletedAt])"
     ].forEach((field) => expect(item).toContain(field));
-    ["@@index([bundleId, deletedAt])", "@@index([conversationId, deletedAt])"].forEach(
-      (index) => expect(delivery).toContain(index)
+    ["@@index([bundleId, deletedAt])", "@@index([conversationId, deletedAt])"].forEach((index) =>
+      expect(delivery).toContain(index)
     );
     [
       "@@index([ownerUserId, deletedAt])",
       "@@index([ownerIdentityId, createdAt, deletedAt])",
       "@@index([bundleId, deletedAt])"
     ].forEach((index) => expect(favorite).toContain(index));
-    ["@@index([messageId, targetLanguage, deletedAt])", "@@index([translatedAt, deletedAt])"].forEach(
-      (index) => expect(translation).toContain(index)
-    );
-    ["@@index([conversationId, ownerIdentityId, deletedAt])", "@@index([ownerUserId, deletedAt])"].forEach(
-      (index) => expect(batchDelete).toContain(index)
-    );
+    [
+      "@@index([messageId, targetLanguage, deletedAt])",
+      "@@index([translatedAt, deletedAt])"
+    ].forEach((index) => expect(translation).toContain(index));
+    [
+      "@@index([conversationId, ownerIdentityId, deletedAt])",
+      "@@index([ownerUserId, deletedAt])"
+    ].forEach((index) => expect(batchDelete).toContain(index));
   });
 
   it("uses explicit identity-scoped relation names and planned deletion policies", () => {
@@ -82,14 +86,49 @@ describe("IM chat-record persistence", () => {
       ["User", "createdImChatRecordBundles", "ImChatRecordBundle[]", "ImChatRecordBundleCreator"],
       ["User", "sentImChatRecordItems", "ImChatRecordItem[]", "ImChatRecordItemSender"],
       ["User", "imChatRecordFavorites", "ImChatRecordFavorite[]", "ImChatRecordFavoriteOwner"],
-      ["User", "imBatchDeleteCommands", "ImMessageBatchDeleteCommand[]", "ImMessageBatchDeleteOwner"],
-      ["UserIdentity", "createdImChatRecordBundles", "ImChatRecordBundle[]", "ImChatRecordBundleIdentity"],
-      ["UserIdentity", "sentImChatRecordItems", "ImChatRecordItem[]", "ImChatRecordItemSenderIdentity"],
-      ["UserIdentity", "imChatRecordFavorites", "ImChatRecordFavorite[]", "ImChatRecordFavoriteIdentity"],
-      ["UserIdentity", "imBatchDeleteCommands", "ImMessageBatchDeleteCommand[]", "ImMessageBatchDeleteIdentity"],
-      ["Conversation", "sourceImChatRecordBundles", "ImChatRecordBundle[]", "ImChatRecordSourceConversation"],
+      [
+        "User",
+        "imBatchDeleteCommands",
+        "ImMessageBatchDeleteCommand[]",
+        "ImMessageBatchDeleteOwner"
+      ],
+      [
+        "UserIdentity",
+        "createdImChatRecordBundles",
+        "ImChatRecordBundle[]",
+        "ImChatRecordBundleIdentity"
+      ],
+      [
+        "UserIdentity",
+        "sentImChatRecordItems",
+        "ImChatRecordItem[]",
+        "ImChatRecordItemSenderIdentity"
+      ],
+      [
+        "UserIdentity",
+        "imChatRecordFavorites",
+        "ImChatRecordFavorite[]",
+        "ImChatRecordFavoriteIdentity"
+      ],
+      [
+        "UserIdentity",
+        "imBatchDeleteCommands",
+        "ImMessageBatchDeleteCommand[]",
+        "ImMessageBatchDeleteIdentity"
+      ],
+      [
+        "Conversation",
+        "sourceImChatRecordBundles",
+        "ImChatRecordBundle[]",
+        "ImChatRecordSourceConversation"
+      ],
       ["Conversation", "imChatRecordDeliveries", "ImChatRecordDelivery[]", undefined],
-      ["Conversation", "imBatchDeleteCommands", "ImMessageBatchDeleteCommand[]", "ImMessageBatchDeleteConversation"],
+      [
+        "Conversation",
+        "imBatchDeleteCommands",
+        "ImMessageBatchDeleteCommand[]",
+        "ImMessageBatchDeleteConversation"
+      ],
       ["Message", "sourceImChatRecordItems", "ImChatRecordItem[]", "ImChatRecordSourceMessage"],
       ["Message", "imChatRecordDelivery", "ImChatRecordDelivery?", undefined],
       ["Message", "translations", "ImMessageTranslation[]", undefined]
@@ -97,11 +136,13 @@ describe("IM chat-record persistence", () => {
 
     expectedBackRelations.forEach(([model, field, type, relation]) => {
       const relationPattern = relation ? `\\s+@relation\\("${relation}"\\)` : "";
-      expect(modelBody(model)).toMatch(new RegExp(`${field}\\s+${type.replace(/[?[\]]/g, "\\$&")}${relationPattern}`));
+      expect(modelBody(model)).toMatch(
+        new RegExp(`${field}\\s+${type.replace(/[?[\]]/g, "\\$&")}${relationPattern}`)
+      );
     });
     [
       'sourceMessage  Message?           @relation("ImChatRecordSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)',
-      'message      Message            @relation(fields: [messageId], references: [id], onDelete: Restrict)',
+      "message      Message            @relation(fields: [messageId], references: [id], onDelete: Restrict)",
       'createdByUser      User         @relation("ImChatRecordBundleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)',
       'ownerIdentity UserIdentity       @relation("ImChatRecordFavoriteIdentity", fields: [ownerIdentityId], references: [id], onDelete: Restrict)',
       'conversation  Conversation @relation("ImMessageBatchDeleteConversation", fields: [conversationId], references: [id], onDelete: Restrict)'

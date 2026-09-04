@@ -39,19 +39,21 @@ export const createShopMembershipCardRedemptionRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new ShopMembershipCardRedemptionService(
-    dependencies.shopMembershipCardRedemptionRepository
-      ?? new ShopMembershipCardRedemptionRepository(),
-    dependencies.ledgerService
-      ?? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
+    dependencies.shopMembershipCardRedemptionRepository ??
+      new ShopMembershipCardRedemptionRepository(),
+    dependencies.ledgerService ??
+      new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
   );
   const controller = new ShopMembershipCardRedemptionController(service);
   const refundService = new ShopMembershipCardRefundService(
     dependencies.shopMembershipCardRefundRepository ?? new ShopMembershipCardRefundRepository(),
-    dependencies.ledgerService
-      ?? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
+    dependencies.ledgerService ??
+      new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
   );
   const refundController = new ShopMembershipCardRefundController(refundService);

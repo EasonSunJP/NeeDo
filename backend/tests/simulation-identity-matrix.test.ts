@@ -22,9 +22,24 @@ describe("simulation identity matrix", () => {
 
   it("gives every technician customer, technician, and affiliate identities", () => {
     expect(build("technician")).toEqual([
-      expect.objectContaining({ identityType: "customer", scopeType: "customer_profile", scopeId: 71, isDefault: true }),
-      expect.objectContaining({ identityType: "technician", scopeType: "technician_profile", scopeId: 72, isDefault: false }),
-      expect.objectContaining({ identityType: "scout", scopeType: "global", scopeId: null, isDefault: false })
+      expect.objectContaining({
+        identityType: "customer",
+        scopeType: "customer_profile",
+        scopeId: 71,
+        isDefault: true
+      }),
+      expect.objectContaining({
+        identityType: "technician",
+        scopeType: "technician_profile",
+        scopeId: 72,
+        isDefault: false
+      }),
+      expect.objectContaining({
+        identityType: "scout",
+        scopeType: "global",
+        scopeId: null,
+        isDefault: false
+      })
     ]);
   });
 
@@ -56,19 +71,28 @@ describe("simulation identity matrix", () => {
   });
 
   it("is applied and independently checked by the local-only simulation workflow", () => {
-    const seed = readFileSync(resolve(__dirname, "../scripts/seed-three-month-simulation.ts"), "utf8");
-    const check = readFileSync(resolve(__dirname, "../scripts/check-three-month-simulation.ts"), "utf8");
+    const seed = readFileSync(
+      resolve(__dirname, "../scripts/seed-three-month-simulation.ts"),
+      "utf8"
+    );
+    const check = readFileSync(
+      resolve(__dirname, "../scripts/check-three-month-simulation.ts"),
+      "utf8"
+    );
     expect(seed).toContain("buildSimulationIdentityGrants");
     expect(seed).toContain("simulationIdentityActiveKey");
     expect(seed).toContain('accountKind: "merchant"');
     expect(seed).toContain('accountKind: "technician"');
-    expect(check).toContain('expectedTypes: string[]');
+    expect(check).toContain("expectedTypes: string[]");
     expect(check).toContain('["customer", "technician", "merchant_owner", "scout"]');
     expect(check).toContain("must keep the customer identity only");
   });
 
   it("removes every restrictive child before reseeding simulation booking orders", () => {
-    const seed = readFileSync(resolve(__dirname, "../scripts/seed-three-month-simulation.ts"), "utf8");
+    const seed = readFileSync(
+      resolve(__dirname, "../scripts/seed-three-month-simulation.ts"),
+      "utf8"
+    );
     const reviewTagDelete = seed.indexOf("tx.orderReviewTag.deleteMany");
     const reviewDelete = seed.indexOf("tx.orderReview.deleteMany");
     const timelineDelete = seed.indexOf("tx.orderTimelineComment.deleteMany");
@@ -87,7 +111,10 @@ describe("simulation identity matrix", () => {
   });
 
   it("soft-deletes reusable scheduling and service records so historical orders stay intact", () => {
-    const seed = readFileSync(resolve(__dirname, "../scripts/seed-three-month-simulation.ts"), "utf8");
+    const seed = readFileSync(
+      resolve(__dirname, "../scripts/seed-three-month-simulation.ts"),
+      "utf8"
+    );
 
     expect(seed).toContain("tx.scheduleSlot.updateMany");
     expect(seed).toContain("tx.availability.updateMany");

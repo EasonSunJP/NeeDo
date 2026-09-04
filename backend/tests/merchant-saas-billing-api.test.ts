@@ -422,7 +422,9 @@ describe("merchant SaaS billing backoffice API", () => {
     const token = await fixture.login("viewer@example.com");
 
     await request(fixture.app)
-      .get("/api/v1/backoffice/billing-subjects/merchant_account/5/free-periods?page=1&pageSize=100")
+      .get(
+        "/api/v1/backoffice/billing-subjects/merchant_account/5/free-periods?page=1&pageSize=100"
+      )
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 

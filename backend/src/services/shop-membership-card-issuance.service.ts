@@ -126,8 +126,14 @@ export type ShopMembershipCardIssuanceMutationResult =
 
 export interface ShopMembershipCardIssuanceRepositoryPort {
   findByIdempotencyKey: (idempotencyKey: string) => Promise<IssuedMembershipCardRecord | null>;
-  getIssuanceContext: (shopId: number, membershipPublicId: string, planPublicId: string) => Promise<ShopMembershipCardIssuanceContextResult>;
-  issueCardWithAuditAndNotification: (input: CreateMembershipCardIssuanceRepositoryInput) => Promise<ShopMembershipCardIssuanceMutationResult>;
+  getIssuanceContext: (
+    shopId: number,
+    membershipPublicId: string,
+    planPublicId: string
+  ) => Promise<ShopMembershipCardIssuanceContextResult>;
+  issueCardWithAuditAndNotification: (
+    input: CreateMembershipCardIssuanceRepositoryInput
+  ) => Promise<ShopMembershipCardIssuanceMutationResult>;
 }
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
@@ -147,7 +153,8 @@ export class ShopMembershipCardIssuanceService {
     private readonly repository: ShopMembershipCardIssuanceRepositoryPort,
     private readonly auditInputFactory: AuditInputFactory,
     private readonly now: () => Date = () => new Date(),
-    private readonly generateCardNumber: () => string = () => `NMC-${randomBytes(12).toString("hex").toUpperCase()}`
+    private readonly generateCardNumber: () => string = () =>
+      `NMC-${randomBytes(12).toString("hex").toUpperCase()}`
   ) {}
 
   public async issue(
@@ -161,11 +168,16 @@ export class ShopMembershipCardIssuanceService {
     const issuanceFingerprint = this.fingerprint(membershipPublicId, input);
     const existing = await this.repository.findByIdempotencyKey(input.idempotencyKey);
     if (existing) {
-      if (existing.shopId !== shopId || existing.issuanceFingerprint !== issuanceFingerprint) throw this.idempotencyConflict();
+      if (existing.shopId !== shopId || existing.issuanceFingerprint !== issuanceFingerprint)
+        throw this.idempotencyConflict();
       return this.toPublic(existing, true);
     }
 
-    const contextResult = await this.repository.getIssuanceContext(shopId, membershipPublicId, input.planPublicId);
+    const contextResult = await this.repository.getIssuanceContext(
+      shopId,
+      membershipPublicId,
+      input.planPublicId
+    );
     if (contextResult.kind === "not_found") throw this.notFound();
     if (contextResult.kind === "invalid_state") throw this.invalidState();
     const issuanceContext = contextResult.value;
@@ -173,7 +185,11 @@ export class ShopMembershipCardIssuanceService {
     const values = this.resolveValues(issuanceContext, input);
     const expiresAt = this.resolveExpiry(issuanceContext.version.validity, issuedAt);
     const platformFeeRateBpsSnapshot = issuanceContext.version.platformFeeRateBps;
-    if (platformFeeRateBpsSnapshot === null || platformFeeRateBpsSnapshot < 0 || platformFeeRateBpsSnapshot > 10_000) {
+    if (
+      platformFeeRateBpsSnapshot === null ||
+      platformFeeRateBpsSnapshot < 0 ||
+      platformFeeRateBpsSnapshot > 10_000
+    ) {
       throw this.invalidState();
     }
 
@@ -220,7 +236,11 @@ export class ShopMembershipCardIssuanceService {
       });
       if (result.kind === "created") return this.toPublic(result.value, false);
       if (result.kind === "replayed") {
-        if (result.value.shopId !== shopId || result.value.issuanceFingerprint !== issuanceFingerprint) throw this.idempotencyConflict();
+        if (
+          result.value.shopId !== shopId ||
+          result.value.issuanceFingerprint !== issuanceFingerprint
+        )
+          throw this.idempotencyConflict();
         return this.toPublic(result.value, true);
       }
       if (result.kind === "not_found") throw this.notFound();
@@ -236,22 +256,46 @@ export class ShopMembershipCardIssuanceService {
     const issuanceNote = this.normalizeOptionalText(input.issuanceNote);
     const planPublicId = input.planPublicId?.trim();
     const idempotencyKey = input.idempotencyKey?.trim();
-    if (!planPublicId || !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160 || !validSources.has(input.issuanceSource)) {
+    if (
+      !planPublicId ||
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 160 ||
+      !validSources.has(input.issuanceSource)
+    ) {
       throw this.invalidValue();
     }
-    if ((input.issuanceSource === "offline_paid" || input.issuanceSource === "online_paid") && !issuanceReference && !issuanceNote) throw this.invalidValue();
-    if (input.issuanceSource === "renewal" && !issuanceReference && !issuanceNote) throw this.invalidValue();
-    if (["gift", "trial", "historical_replacement", "manual_grant"].includes(input.issuanceSource) && !issuanceNote) throw this.invalidValue();
+    if (
+      (input.issuanceSource === "offline_paid" || input.issuanceSource === "online_paid") &&
+      !issuanceReference &&
+      !issuanceNote
+    )
+      throw this.invalidValue();
+    if (input.issuanceSource === "renewal" && !issuanceReference && !issuanceNote)
+      throw this.invalidValue();
+    if (
+      ["gift", "trial", "historical_replacement", "manual_grant"].includes(input.issuanceSource) &&
+      !issuanceNote
+    )
+      throw this.invalidValue();
     this.assertOptionalSafeNonNegativeInteger(input.initialPrincipalJpy);
     this.assertOptionalSafeNonNegativeInteger(input.initialUses);
     return { ...input, planPublicId, idempotencyKey, issuanceReference, issuanceNote };
   }
 
-  private resolveValues(context: ShopMembershipCardIssuanceContext, input: ShopMembershipCardIssuanceInput) {
+  private resolveValues(
+    context: ShopMembershipCardIssuanceContext,
+    input: ShopMembershipCardIssuanceInput
+  ) {
     const version = context.version;
     if (version.cardType === "stored_value") {
-      if (input.initialPrincipalJpy === null || input.initialUses !== null) throw this.invalidValue();
-      this.assertWithinRange(input.initialPrincipalJpy, version.minInitialPrincipalJpy, version.maxInitialPrincipalJpy);
+      if (input.initialPrincipalJpy === null || input.initialUses !== null)
+        throw this.invalidValue();
+      this.assertWithinRange(
+        input.initialPrincipalJpy,
+        version.minInitialPrincipalJpy,
+        version.maxInitialPrincipalJpy
+      );
       return {
         initialPrincipalJpy: input.initialPrincipalJpy,
         initialUses: null,
@@ -262,7 +306,8 @@ export class ShopMembershipCardIssuanceService {
       };
     }
     if (version.cardType === "count") {
-      if (input.initialUses === null || input.initialPrincipalJpy !== null) throw this.invalidValue();
+      if (input.initialUses === null || input.initialPrincipalJpy !== null)
+        throw this.invalidValue();
       this.assertWithinRange(input.initialUses, version.minInitialUses, version.maxInitialUses);
       return {
         initialPrincipalJpy: null,
@@ -290,22 +335,30 @@ export class ShopMembershipCardIssuanceService {
       if (!Number.isSafeInteger(validity.days) || validity.days <= 0) throw this.invalidState();
       return new Date(issuedAt.getTime() + validity.days * 24 * 60 * 60 * 1000);
     }
-    if (!(validity.expiresAt instanceof Date) || Number.isNaN(validity.expiresAt.getTime()) || validity.expiresAt <= issuedAt) {
+    if (
+      !(validity.expiresAt instanceof Date) ||
+      Number.isNaN(validity.expiresAt.getTime()) ||
+      validity.expiresAt <= issuedAt
+    ) {
       throw this.invalidState();
     }
     return new Date(validity.expiresAt);
   }
 
   private fingerprint(membershipPublicId: string, input: ShopMembershipCardIssuanceInput): string {
-    return createHash("sha256").update(JSON.stringify({
-      membershipPublicId,
-      planPublicId: input.planPublicId,
-      initialPrincipalJpy: input.initialPrincipalJpy,
-      initialUses: input.initialUses,
-      issuanceSource: input.issuanceSource,
-      issuanceReference: input.issuanceReference,
-      issuanceNote: input.issuanceNote
-    })).digest("hex");
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          membershipPublicId,
+          planPublicId: input.planPublicId,
+          initialPrincipalJpy: input.initialPrincipalJpy,
+          initialUses: input.initialUses,
+          issuanceSource: input.issuanceSource,
+          issuanceReference: input.issuanceReference,
+          issuanceNote: input.issuanceNote
+        })
+      )
+      .digest("hex");
   }
 
   private toPublic(record: IssuedMembershipCardRecord, replayed: boolean) {
@@ -338,8 +391,17 @@ export class ShopMembershipCardIssuanceService {
   }
 
   private requireMerchantShop(actor: AuthenticatedAccessContext): number {
-    if (!actor.currentIdentityType || !merchantIdentityTypes.has(actor.currentIdentityType) || actor.currentIdentityScopeType !== "shop" || !actor.currentIdentityScopeId) {
-      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+    if (
+      !actor.currentIdentityType ||
+      !merchantIdentityTypes.has(actor.currentIdentityType) ||
+      actor.currentIdentityScopeType !== "shop" ||
+      !actor.currentIdentityScopeId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.auth.identity_forbidden",
+        statusCode: 403
+      });
     }
     return actor.currentIdentityScopeId;
   }
@@ -354,22 +416,39 @@ export class ShopMembershipCardIssuanceService {
   }
 
   private assertWithinRange(value: number, minimum: number | null, maximum: number | null): void {
-    if ((minimum !== null && value < minimum) || (maximum !== null && value > maximum)) throw this.invalidValue();
+    if ((minimum !== null && value < minimum) || (maximum !== null && value > maximum))
+      throw this.invalidValue();
   }
 
   private notFound(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_NOT_FOUND, message: "error.shop_membership_card_issuance.not_found", statusCode: 404 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_NOT_FOUND,
+      message: "error.shop_membership_card_issuance.not_found",
+      statusCode: 404
+    });
   }
 
   private invalidValue(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_VALUE, message: "error.shop_membership_card_issuance.invalid_value", statusCode: 400 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_VALUE,
+      message: "error.shop_membership_card_issuance.invalid_value",
+      statusCode: 400
+    });
   }
 
   private invalidState(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_STATE, message: "error.shop_membership_card_issuance.invalid_state", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_INVALID_STATE,
+      message: "error.shop_membership_card_issuance.invalid_state",
+      statusCode: 409
+    });
   }
 
   private idempotencyConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_IDEMPOTENCY_CONFLICT, message: "error.shop_membership_card_issuance.idempotency_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_ISSUANCE_IDEMPOTENCY_CONFLICT,
+      message: "error.shop_membership_card_issuance.idempotency_conflict",
+      statusCode: 409
+    });
   }
 }

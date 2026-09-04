@@ -58,15 +58,17 @@ export class BackofficeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.service.getDashboardOverview(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            backofficeDashboardQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getDashboardOverview(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              backofficeDashboardQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -79,16 +81,18 @@ export class BackofficeController {
   ): Promise<void> => {
     try {
       const { metricKey } = backofficeDashboardMetricParamSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.service.getDashboardMetricDetail(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            metricKey,
-            backofficeDashboardQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getDashboardMetricDetail(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              metricKey,
+              backofficeDashboardQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

@@ -271,7 +271,12 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
       businessKeywordId: input.businessKeywordId,
       deletedAt: null,
       ...(input.keyword
-        ? { OR: [{ alias: { contains: input.keyword } }, { normalizedAlias: { contains: input.keyword } }] }
+        ? {
+            OR: [
+              { alias: { contains: input.keyword } },
+              { normalizedAlias: { contains: input.keyword } }
+            ]
+          }
         : {})
     };
     const [list, total] = await Promise.all([
@@ -291,7 +296,12 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
     input: CategoryMutationInput
   ): Promise<TaxonomyMutationResult<ServiceTaxonomyCategoryRecord>> {
     return this.inTransaction(async (tx) => {
-      if (await tx.category.findFirst({ where: { code: input.code, deletedAt: null }, select: { id: true } })) {
+      if (
+        await tx.category.findFirst({
+          where: { code: input.code, deletedAt: null },
+          select: { id: true }
+        })
+      ) {
         return { outcome: "conflict" };
       }
       const primary = input.translations[0]?.value ?? input.code;
@@ -307,7 +317,9 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
         },
         select: categorySelect
       });
-      await tx.auditLog.create({ data: toAuditLogCreateData({ ...input.audit, targetId: created.id }) });
+      await tx.auditLog.create({
+        data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
+      });
       return { outcome: "saved", value: this.serializeCategory(created) };
     });
   }
@@ -349,8 +361,14 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
     input: KeywordMutationInput
   ): Promise<TaxonomyMutationResult<ServiceTaxonomyKeywordRecord>> {
     return this.inTransaction(async (tx) => {
-      if (!(await this.activeCategoryExists(tx, input.categoryId))) return { outcome: "invalid_relation" };
-      if (await tx.businessKeyword.findFirst({ where: { code: input.code, deletedAt: null }, select: { id: true } })) {
+      if (!(await this.activeCategoryExists(tx, input.categoryId)))
+        return { outcome: "invalid_relation" };
+      if (
+        await tx.businessKeyword.findFirst({
+          where: { code: input.code, deletedAt: null },
+          select: { id: true }
+        })
+      ) {
         return { outcome: "conflict" };
       }
       const created = await tx.businessKeyword.create({
@@ -365,7 +383,9 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
         },
         select: keywordSelect
       });
-      await tx.auditLog.create({ data: toAuditLogCreateData({ ...input.audit, targetId: created.id }) });
+      await tx.auditLog.create({
+        data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
+      });
       return { outcome: "saved", value: this.serializeKeyword(created) };
     });
   }
@@ -381,7 +401,8 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
       });
       if (!current) return { outcome: "not_found" };
       if (current.configurationVersion !== input.expectedVersion) return { outcome: "conflict" };
-      if (!(await this.activeCategoryExists(tx, input.categoryId))) return { outcome: "invalid_relation" };
+      if (!(await this.activeCategoryExists(tx, input.categoryId)))
+        return { outcome: "invalid_relation" };
       const duplicate = await tx.businessKeyword.findFirst({
         where: { code: input.code, deletedAt: null, NOT: { id } },
         select: { id: true }
@@ -422,7 +443,9 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
         },
         select: aliasSelect
       });
-      await tx.auditLog.create({ data: toAuditLogCreateData({ ...input.audit, targetId: created.id }) });
+      await tx.auditLog.create({
+        data: toAuditLogCreateData({ ...input.audit, targetId: created.id })
+      });
       return { outcome: "saved", value: this.serializeAlias(created) };
     });
   }
@@ -499,7 +522,10 @@ export class ServiceSearchAnalyticsRepository implements ServiceSearchAnalyticsR
       ORDER BY date ASC, normalizedKeyword ASC
     `);
     return rows.map((row) => ({
-      date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+      date:
+        row.date instanceof Date
+          ? row.date.toISOString().slice(0, 10)
+          : String(row.date).slice(0, 10),
       normalizedKeyword: row.normalizedKeyword,
       searchCount: Number(row.searchCount)
     }));

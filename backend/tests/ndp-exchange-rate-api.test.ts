@@ -256,27 +256,34 @@ describe("formal NDP exchange-rate API", () => {
       read: "backoffice:ndp-exchange-rate:read",
       write: "backoffice:ndp-exchange-rate:write"
     });
-    expect(roles.operator).toEqual(expect.arrayContaining(Object.values(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS)));
-    expect(roles.finance).toEqual(expect.arrayContaining(Object.values(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS)));
+    expect(roles.operator).toEqual(
+      expect.arrayContaining(Object.values(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS))
+    );
+    expect(roles.finance).toEqual(
+      expect.arrayContaining(Object.values(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS))
+    );
     expect(roles.viewer).toContain(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS.read);
     expect(roles.viewer).not.toContain(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS.write);
-    expect(roles.admin).toEqual(expect.arrayContaining(Object.values(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS)));
+    expect(roles.admin).toEqual(
+      expect.arrayContaining(Object.values(NDP_EXCHANGE_RATE_ROUTE_PERMISSIONS))
+    );
   });
 
   it("publishes authenticated OpenAPI contracts without idempotency examples", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;
       components: {
-        schemas: Record<
-          string,
-          { properties?: Record<string, { maximum?: number }> }
-        >;
+        schemas: Record<string, { properties?: Record<string, { maximum?: number }> }>;
       };
     };
     const path = document.paths["/api/v1/backoffice/ndp-exchange-rates"];
     expect(path.get).toMatchObject({
       security: [{ bearerAuth: [] }],
-      responses: expect.objectContaining({ "200": expect.anything(), "401": expect.anything(), "403": expect.anything() })
+      responses: expect.objectContaining({
+        "200": expect.anything(),
+        "401": expect.anything(),
+        "403": expect.anything()
+      })
     });
     expect(path.post).toMatchObject({
       security: [{ bearerAuth: [] }],

@@ -75,7 +75,13 @@ export class ServiceSearchAnalyticsService {
       await this.repository.createCategory({
         ...input,
         actorUserId: actor.userId,
-        audit: this.audit(actor, context, "backoffice.service_taxonomy.category_created", "Category", input.reason)
+        audit: this.audit(
+          actor,
+          context,
+          "backoffice.service_taxonomy.category_created",
+          "Category",
+          input.reason
+        )
       })
     );
   }
@@ -91,7 +97,14 @@ export class ServiceSearchAnalyticsService {
       await this.repository.updateCategory(id, {
         ...input,
         actorUserId: actor.userId,
-        audit: this.audit(actor, context, "backoffice.service_taxonomy.category_updated", "Category", input.reason, id)
+        audit: this.audit(
+          actor,
+          context,
+          "backoffice.service_taxonomy.category_updated",
+          "Category",
+          input.reason,
+          id
+        )
       })
     );
   }
@@ -106,7 +119,13 @@ export class ServiceSearchAnalyticsService {
       await this.repository.createKeyword({
         ...input,
         actorUserId: actor.userId,
-        audit: this.audit(actor, context, "backoffice.service_taxonomy.keyword_created", "BusinessKeyword", input.reason)
+        audit: this.audit(
+          actor,
+          context,
+          "backoffice.service_taxonomy.keyword_created",
+          "BusinessKeyword",
+          input.reason
+        )
       })
     );
   }
@@ -122,7 +141,14 @@ export class ServiceSearchAnalyticsService {
       await this.repository.updateKeyword(id, {
         ...input,
         actorUserId: actor.userId,
-        audit: this.audit(actor, context, "backoffice.service_taxonomy.keyword_updated", "BusinessKeyword", input.reason, id)
+        audit: this.audit(
+          actor,
+          context,
+          "backoffice.service_taxonomy.keyword_updated",
+          "BusinessKeyword",
+          input.reason,
+          id
+        )
       })
     );
   }
@@ -138,7 +164,13 @@ export class ServiceSearchAnalyticsService {
         ...input,
         normalizedAlias: normalizeSearchKeyword(input.alias),
         actorUserId: actor.userId,
-        audit: this.audit(actor, context, "backoffice.service_taxonomy.alias_created", "SearchKeywordAlias", input.reason)
+        audit: this.audit(
+          actor,
+          context,
+          "backoffice.service_taxonomy.alias_created",
+          "SearchKeywordAlias",
+          input.reason
+        )
       })
     );
   }
@@ -155,7 +187,14 @@ export class ServiceSearchAnalyticsService {
         ...input,
         normalizedAlias: normalizeSearchKeyword(input.alias),
         actorUserId: actor.userId,
-        audit: this.audit(actor, context, "backoffice.service_taxonomy.alias_updated", "SearchKeywordAlias", input.reason, id)
+        audit: this.audit(
+          actor,
+          context,
+          "backoffice.service_taxonomy.alias_updated",
+          "SearchKeywordAlias",
+          input.reason,
+          id
+        )
       })
     );
   }
@@ -259,7 +298,10 @@ export class ServiceSearchAnalyticsService {
   }
 
   private assertPlatformIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType !== "global" && actor.currentIdentityScopeType !== "platform") {
+    if (
+      actor.currentIdentityScopeType !== "global" &&
+      actor.currentIdentityScopeType !== "platform"
+    ) {
       throw new AppError({
         code: ERROR_CODES.IDENTITY_FORBIDDEN,
         message: "error.identity.forbidden",

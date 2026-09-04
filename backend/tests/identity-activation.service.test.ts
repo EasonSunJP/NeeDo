@@ -4,7 +4,9 @@ import {
   type IdentityActivationRepositoryPort
 } from "../src/services/identity-activation.service";
 
-const activeIdentity = (overrides: Partial<ActivatedIdentityRecord> = {}): ActivatedIdentityRecord => ({
+const activeIdentity = (
+  overrides: Partial<ActivatedIdentityRecord> = {}
+): ActivatedIdentityRecord => ({
   identityId: 91,
   userId: 3,
   identityType: "technician",
@@ -87,23 +89,26 @@ describe("IdentityActivationService", () => {
     expect(repository.activateInTransaction).not.toHaveBeenCalled();
   });
 
-  it.each(["technician", "merchant"] as const)("requires a scope for %s activation", async (kind) => {
-    const service = new IdentityActivationService(createRepository());
+  it.each(["technician", "merchant"] as const)(
+    "requires a scope for %s activation",
+    async (kind) => {
+      const service = new IdentityActivationService(createRepository());
 
-    await expect(
-      service.activate({
-        kind,
-        userId: 3,
-        actorUserId: 8,
-        displayName: "山本太郎",
-        scopeId: null,
-        applicationId: 11,
-        contractAcceptanceId: null,
-        activatedAt: new Date("2026-08-26T05:00:00.000Z")
-      })
-    ).rejects.toMatchObject({
-      message: "error.identity_activation.scope_required",
-      statusCode: 400
-    });
-  });
+      await expect(
+        service.activate({
+          kind,
+          userId: 3,
+          actorUserId: 8,
+          displayName: "山本太郎",
+          scopeId: null,
+          applicationId: 11,
+          contractAcceptanceId: null,
+          activatedAt: new Date("2026-08-26T05:00:00.000Z")
+        })
+      ).rejects.toMatchObject({
+        message: "error.identity_activation.scope_required",
+        statusCode: 400
+      });
+    }
+  );
 });

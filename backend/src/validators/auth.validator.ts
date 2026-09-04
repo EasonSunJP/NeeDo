@@ -88,7 +88,10 @@ export const passwordSetupBodySchema = z
 
 export const compliancePhoneBindingBodySchema = z
   .object({
-    phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/)
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+[1-9]\d{7,14}$/)
   })
   .strict();
 

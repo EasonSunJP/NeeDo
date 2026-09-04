@@ -1,8 +1,5 @@
 import type { AuthRequestContext, AuthenticatedAccessContext } from "../src/services/auth.service";
-import {
-  BackofficeService,
-  DASHBOARD_METRIC_KEYS
-} from "../src/services/backoffice.service";
+import { BackofficeService, DASHBOARD_METRIC_KEYS } from "../src/services/backoffice.service";
 import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
@@ -70,12 +67,23 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
     });
 
     expect(DASHBOARD_METRIC_KEYS).toEqual([
-      "gross_revenue", "travel_fare", "discount_amount", "consumables_sales",
-      "dedicated_technician_commission", "part_time_technician_commission",
-      "marketing_commission", "agent_commission", "ndp_income",
-      "affiliate_platform_income", "consumables_profit", "new_users",
-      "new_paid_members", "technician_onboarding", "agent_onboarding",
-      "franchisee_onboarding", "supplier_onboarding"
+      "gross_revenue",
+      "travel_fare",
+      "discount_amount",
+      "consumables_sales",
+      "dedicated_technician_commission",
+      "part_time_technician_commission",
+      "marketing_commission",
+      "agent_commission",
+      "ndp_income",
+      "affiliate_platform_income",
+      "consumables_profit",
+      "new_users",
+      "new_paid_members",
+      "technician_onboarding",
+      "agent_onboarding",
+      "franchisee_onboarding",
+      "supplier_onboarding"
     ]);
     expect(result.filter).toEqual({
       period: "last7days",
@@ -122,8 +130,9 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
       comparisonPercent: -75,
       comparisonDirection: "down"
     });
-    expect(result.growthMetrics.find((metric) => metric.metricKey === "new_paid_members")?.detailRoute)
-      .toBe("/admin/analytics/members");
+    expect(
+      result.growthMetrics.find((metric) => metric.metricKey === "new_paid_members")?.detailRoute
+    ).toBe("/admin/analytics/members");
     expect(result.growthMetrics.at(-2)?.detailRoute).toBeNull();
     expect(result.growthMetrics.at(-1)?.detailRoute).toBeNull();
     for (const metric of [
@@ -146,45 +155,49 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
     expect(fixture.reader.getCommissionFacts).toHaveBeenCalledWith(sharedInput);
     expect(fixture.reader.getGrowthFacts).toHaveBeenCalledWith(sharedInput);
     expect(fixture.record).toHaveBeenCalledTimes(1);
-    expect(fixture.record).toHaveBeenCalledWith(expect.objectContaining({
-      action: "backoffice.dashboard.overview.read",
-      targetType: "backoffice_dashboard_overview",
-      metadata: {
-        period: "last7days",
-        from: "2026-08-25",
-        to: "2026-08-31",
-        city: "Tokyo"
-      }
-    }));
+    expect(fixture.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "backoffice.dashboard.overview.read",
+        targetType: "backoffice_dashboard_overview",
+        metadata: {
+          period: "last7days",
+          from: "2026-08-25",
+          to: "2026-08-31",
+          city: "Tokyo"
+        }
+      })
+    );
   });
 
   it("calls only the focused reader for detail and returns fixed chronological points", async () => {
     const fixture = createService();
-    const result = await fixture.service.getDashboardMetricDetail(
-      actor,
-      context,
-      "new_users",
-      { period: "last7days", city: "Tokyo" }
-    );
+    const result = await fixture.service.getDashboardMetricDetail(actor, context, "new_users", {
+      period: "last7days",
+      city: "Tokyo"
+    });
 
     expect(fixture.reader.getOperationsFinance).not.toHaveBeenCalled();
     expect(fixture.reader.getCommissionFacts).not.toHaveBeenCalled();
     expect(fixture.reader.getGrowthFacts).toHaveBeenCalledTimes(1);
     expect(result.metric).toMatchObject({ metricKey: "new_users", unit: "people" });
-    expect(result.series).toEqual([{
-      seriesKey: "new_users",
-      label: result.metric.description,
-      unit: "people",
-      points: [
-        { key: "previous", label: "2026-08-18 - 2026-08-24", value: 4 },
-        { key: "current", label: "2026-08-25 - 2026-08-31", value: 8 }
-      ]
-    }]);
+    expect(result.series).toEqual([
+      {
+        seriesKey: "new_users",
+        label: result.metric.description,
+        unit: "people",
+        points: [
+          { key: "previous", label: "2026-08-18 - 2026-08-24", value: 4 },
+          { key: "current", label: "2026-08-25 - 2026-08-31", value: 8 }
+        ]
+      }
+    ]);
     expect(fixture.record).toHaveBeenCalledTimes(1);
-    expect(fixture.record).toHaveBeenCalledWith(expect.objectContaining({
-      action: "backoffice.dashboard.metric.read",
-      metadata: expect.objectContaining({ metricKey: "new_users", city: "Tokyo" })
-    }));
+    expect(fixture.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "backoffice.dashboard.metric.read",
+        metadata: expect.objectContaining({ metricKey: "new_users", city: "Tokyo" })
+      })
+    );
   });
 
   it("returns ready summary values for a metric that intentionally has no detail route", async () => {
@@ -215,19 +228,21 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
       previous: null,
       dataStatus: "not_connected"
     } as never;
-    await expect(createService({ operations: incoherent.operations }).service.getDashboardOverview(
-      actor,
-      context,
-      { period: "last7days" }
-    )).rejects.toThrow("Dashboard analytics fact is incoherent");
+    await expect(
+      createService({ operations: incoherent.operations }).service.getDashboardOverview(
+        actor,
+        context,
+        { period: "last7days" }
+      )
+    ).rejects.toThrow("Dashboard analytics fact is incoherent");
 
     const unsafe = analyticsFacts();
     unsafe.growth.newUsers.current = Number.MAX_SAFE_INTEGER + 1;
-    await expect(createService({ growth: unsafe.growth }).service.getDashboardOverview(
-      actor,
-      context,
-      { period: "last7days" }
-    )).rejects.toThrow("Dashboard analytics fact is incoherent");
+    await expect(
+      createService({ growth: unsafe.growth }).service.getDashboardOverview(actor, context, {
+        period: "last7days"
+      })
+    ).rejects.toThrow("Dashboard analytics fact is incoherent");
   });
 
   it("does not silently substitute zeroes when the analytics reader is unavailable", async () => {
@@ -237,7 +252,8 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
       createDirectShopContextRepository(),
       () => now
     );
-    await expect(service.getDashboardOverview(actor, context, { period: "last7days" }))
-      .rejects.toThrow("Backoffice analytics reader is unavailable");
+    await expect(
+      service.getDashboardOverview(actor, context, { period: "last7days" })
+    ).rejects.toThrow("Backoffice analytics reader is unavailable");
   });
 });

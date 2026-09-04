@@ -27,9 +27,7 @@ type SearchQueryRecorderClient = PrismaClient | Prisma.TransactionClient;
 export class SearchQueryRecorderRepository implements SearchQueryRecorderRepositoryPort {
   public constructor(private readonly client: SearchQueryRecorderClient = prisma) {}
 
-  public async resolveTaxonomy(
-    normalizedKeyword: string
-  ): Promise<ResolvedSearchTaxonomy | null> {
+  public async resolveTaxonomy(normalizedKeyword: string): Promise<ResolvedSearchTaxonomy | null> {
     const alias = await this.client.searchKeywordAlias.findFirst({
       where: {
         normalizedAlias: normalizedKeyword,

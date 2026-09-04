@@ -7,7 +7,12 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import { requireMerchantShopId } from "./merchant-shop-scope";
 
-export type ShopMembershipCardTopUpPaymentMethodPayload = "cash" | "card" | "paypay" | "bank_transfer" | "other";
+export type ShopMembershipCardTopUpPaymentMethodPayload =
+  | "cash"
+  | "card"
+  | "paypay"
+  | "bank_transfer"
+  | "other";
 
 export interface ShopMembershipCardTopUpCreateInput {
   amountJpy: number;
@@ -65,17 +70,51 @@ export interface CreateShopMembershipCardTopUpRepositoryInput {
 
 export type ShopMembershipCardTopUpMutationResult =
   | { kind: "created" | "replayed"; value: ShopMembershipCardTopUpRecord }
-  | { kind: "not_found" | "invalid_state" | "pending_conflict" | "concurrency_conflict" | "idempotency_conflict" };
+  | {
+      kind:
+        | "not_found"
+        | "invalid_state"
+        | "pending_conflict"
+        | "concurrency_conflict"
+        | "idempotency_conflict";
+    };
 
 export interface ShopMembershipCardTopUpRepositoryPort {
-  findByIdempotencyKey: (shopId: number, idempotencyKey: string) => Promise<ShopMembershipCardTopUpRecord | null>;
-  createWithAuditAndNotification: (input: CreateShopMembershipCardTopUpRepositoryInput) => Promise<ShopMembershipCardTopUpMutationResult>;
-  listMerchant: (shopId: number, input: ShopMembershipCardTopUpListInput) => Promise<{ list: ShopMembershipCardTopUpRecord[]; total: number; page: number; page_size: number }>;
-  listCustomer: (customerUserId: number, input: ShopMembershipCardTopUpListInput) => Promise<{ list: ShopMembershipCardTopUpRecord[]; total: number; page: number; page_size: number }>;
+  findByIdempotencyKey: (
+    shopId: number,
+    idempotencyKey: string
+  ) => Promise<ShopMembershipCardTopUpRecord | null>;
+  createWithAuditAndNotification: (
+    input: CreateShopMembershipCardTopUpRepositoryInput
+  ) => Promise<ShopMembershipCardTopUpMutationResult>;
+  listMerchant: (
+    shopId: number,
+    input: ShopMembershipCardTopUpListInput
+  ) => Promise<{
+    list: ShopMembershipCardTopUpRecord[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
+  listCustomer: (
+    customerUserId: number,
+    input: ShopMembershipCardTopUpListInput
+  ) => Promise<{
+    list: ShopMembershipCardTopUpRecord[];
+    total: number;
+    page: number;
+    page_size: number;
+  }>;
 }
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
-const validPaymentMethods = new Set<ShopMembershipCardTopUpPaymentMethodPayload>(["cash", "card", "paypay", "bank_transfer", "other"]);
+const validPaymentMethods = new Set<ShopMembershipCardTopUpPaymentMethodPayload>([
+  "cash",
+  "card",
+  "paypay",
+  "bank_transfer",
+  "other"
+]);
 
 export class ShopMembershipCardTopUpService {
   public constructor(
@@ -141,24 +180,38 @@ export class ShopMembershipCardTopUpService {
     throw this.invalidState();
   }
 
-  public async listMerchant(actor: AuthenticatedAccessContext, input: ShopMembershipCardTopUpListInput) {
+  public async listMerchant(
+    actor: AuthenticatedAccessContext,
+    input: ShopMembershipCardTopUpListInput
+  ) {
     const page = await this.repository.listMerchant(requireMerchantShopId(actor), input);
     return { ...page, list: page.list.map((record) => this.toPublic(record, false)) };
   }
 
-  public async listCustomer(actor: AuthenticatedAccessContext, input: ShopMembershipCardTopUpListInput) {
+  public async listCustomer(
+    actor: AuthenticatedAccessContext,
+    input: ShopMembershipCardTopUpListInput
+  ) {
     const page = await this.repository.listCustomer(this.requireCustomer(actor), input);
     return { ...page, list: page.list.map((record) => this.toPublic(record, false)) };
   }
 
-  private normalizeInput(input: ShopMembershipCardTopUpCreateInput): ShopMembershipCardTopUpCreateInput {
+  private normalizeInput(
+    input: ShopMembershipCardTopUpCreateInput
+  ): ShopMembershipCardTopUpCreateInput {
     const paymentReference = this.normalizeOptionalText(input.paymentReference);
     const note = this.normalizeOptionalText(input.note);
     const idempotencyKey = input.idempotencyKey?.trim();
-    if (!Number.isSafeInteger(input.amountJpy) || input.amountJpy < 1 || input.amountJpy > 10_000_000) throw this.invalidValue();
+    if (
+      !Number.isSafeInteger(input.amountJpy) ||
+      input.amountJpy < 1 ||
+      input.amountJpy > 10_000_000
+    )
+      throw this.invalidValue();
     if (!validPaymentMethods.has(input.paymentMethod)) throw this.invalidValue();
     if (!paymentReference && !note) throw this.invalidValue();
-    if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160) throw this.invalidValue();
+    if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160)
+      throw this.invalidValue();
     return { ...input, paymentReference, note, idempotencyKey };
   }
 
@@ -196,8 +249,16 @@ export class ShopMembershipCardTopUpService {
   }
 
   private requireCustomer(actor: AuthenticatedAccessContext): number {
-    if (actor.currentIdentityType !== "customer" || actor.currentIdentityScopeType !== "customer_profile" || !actor.currentIdentityScopeId) {
-      throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.identity.forbidden", statusCode: 403 });
+    if (
+      actor.currentIdentityType !== "customer" ||
+      actor.currentIdentityScopeType !== "customer_profile" ||
+      !actor.currentIdentityScopeId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
     }
     return actor.userId;
   }
@@ -212,26 +273,50 @@ export class ShopMembershipCardTopUpService {
   }
 
   private notFound(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_NOT_FOUND, message: "error.shop_membership_card_topup.not_found", statusCode: 404 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_NOT_FOUND,
+      message: "error.shop_membership_card_topup.not_found",
+      statusCode: 404
+    });
   }
 
   private invalidValue(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_INVALID_VALUE, message: "error.shop_membership_card_topup.invalid_value", statusCode: 400 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_INVALID_VALUE,
+      message: "error.shop_membership_card_topup.invalid_value",
+      statusCode: 400
+    });
   }
 
   private invalidState(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_INVALID_STATE, message: "error.shop_membership_card_topup.invalid_state", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_INVALID_STATE,
+      message: "error.shop_membership_card_topup.invalid_state",
+      statusCode: 409
+    });
   }
 
   private pendingConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_PENDING_CONFLICT, message: "error.shop_membership_card_topup.pending_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_PENDING_CONFLICT,
+      message: "error.shop_membership_card_topup.pending_conflict",
+      statusCode: 409
+    });
   }
 
   private concurrencyConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_CONCURRENCY_CONFLICT, message: "error.shop_membership_card_topup.concurrency_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_CONCURRENCY_CONFLICT,
+      message: "error.shop_membership_card_topup.concurrency_conflict",
+      statusCode: 409
+    });
   }
 
   private idempotencyConflict(): AppError {
-    return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_IDEMPOTENCY_CONFLICT, message: "error.shop_membership_card_topup.idempotency_conflict", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_IDEMPOTENCY_CONFLICT,
+      message: "error.shop_membership_card_topup.idempotency_conflict",
+      statusCode: 409
+    });
   }
 }
