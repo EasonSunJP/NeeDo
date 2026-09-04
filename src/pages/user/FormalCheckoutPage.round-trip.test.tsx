@@ -328,7 +328,7 @@ describe("formal checkout technician-card round trip", () => {
       expect(probe.dataset.existingSource).toBe("recommendation");
     });
 
-    const technicianLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/17?view=card"]')!;
+    const technicianLink = container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/s0000000017?view=card"]')!;
     await click(technicianLink);
     await waitFor(() => expect(document.body.textContent).toContain("详细信息卡"));
     await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回"]')!);
@@ -354,7 +354,7 @@ describe("formal checkout technician-card round trip", () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
     const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail").mockImplementation(async (id) => (
-      id === 16 ? harukaDetail : technicianDetail
+      id === 16 || id === "s0000000016" ? harukaDetail : technicianDetail
     ));
     vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
       list: slots,
@@ -398,13 +398,13 @@ describe("formal checkout technician-card round trip", () => {
     await waitFor(() => {
       expect(getTechnicianDetail).toHaveBeenCalledWith(16);
       expect(container.textContent).toContain("Haruka");
-      expect(container.querySelector('a[href="/profiles/technician/16?view=card"]')).not.toBeNull();
-      expect(container.querySelector('a[href="/profiles/technician/17?view=card"]')).toBeNull();
+      expect(container.querySelector('a[href="/profiles/technician/s0000000016?view=card"]')).not.toBeNull();
+      expect(container.querySelector('a[href="/profiles/technician/s0000000017?view=card"]')).toBeNull();
     });
 
-    await click(container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/16?view=card"]')!);
+    await click(container.querySelector<HTMLAnchorElement>('a[href="/profiles/technician/s0000000016?view=card"]')!);
     await waitFor(() => {
-      expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/profiles/technician/16?view=card");
+      expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/profiles/technician/s0000000016?view=card");
       expect(document.body.textContent).toContain("Haruka");
     });
     await click(document.body.querySelector<HTMLButtonElement>('button[aria-label="返回"]')!);

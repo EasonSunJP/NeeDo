@@ -99,6 +99,31 @@ afterEach(async () => {
 });
 
 describe("TechnicianInfoCardRoutePage", () => {
+  it("returns a checkout-origin card route to the selected checkout entry on close", async () => {
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(detail);
+    window.history.replaceState({ idx: 1 }, "", "/profiles/technician/17?view=card");
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?time=10%3A00", "/profiles/technician/17?view=card"]} initialIndex={1}>
+            <LocationProbe />
+            <Routes>
+              <Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(document.body.textContent).toContain("Misaki"));
+    await act(async () => {
+      document.body.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')?.click();
+    });
+
+    expect(document.body.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/checkout/31?time=10%3A00");
+  });
+
   it("loads formal public detail and renders the unified information card", async () => {
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(detail);
     await renderPage();

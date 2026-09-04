@@ -25,6 +25,10 @@ const dashboardTranslationsPath = path.join(
   workspaceRoot,
   "src/features/dashboard/dashboardTranslations.ts",
 );
+const orderPerformanceTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/order-performance/i18n.ts",
+);
 const platformUserManagementTranslationsPath = path.join(
   workspaceRoot,
   "src/features/platform-user-management/i18n.ts",
@@ -131,6 +135,7 @@ let identityTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
 let dashboardTranslationsPromise;
+let orderPerformanceTranslationsPromise;
 let platformUserManagementTranslationsPromise;
 
 async function loadIdentityTranslations() {
@@ -204,6 +209,23 @@ async function loadDashboardTranslations() {
   return dashboardTranslationsPromise;
 }
 
+async function loadOrderPerformanceTranslations() {
+  orderPerformanceTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(orderPerformanceTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.orderPerformanceTranslations ?? {};
+  })();
+
+  return orderPerformanceTranslationsPromise;
+}
+
 async function loadPlatformUserManagementTranslations() {
   platformUserManagementTranslationsPromise ??= (async () => {
     const source = await fs.readFile(platformUserManagementTranslationsPath, "utf8");
@@ -227,6 +249,7 @@ async function loadTranslationsFromSource(sourceCode) {
   const affiliateMarketplaceTranslations =
     await loadAffiliateMarketplaceTranslations();
   const dashboardTranslations = await loadDashboardTranslations();
+  const orderPerformanceTranslations = await loadOrderPerformanceTranslations();
   const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
@@ -240,6 +263,9 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*dashboardTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const dashboardTranslations = ${JSON.stringify(dashboardTranslations)};`,
+  ).replace(
+    /import\s+\{\s*orderPerformanceTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const orderPerformanceTranslations = ${JSON.stringify(orderPerformanceTranslations)};`,
   ).replace(
     /import\s+\{\s*platformUserManagementTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const platformUserManagementTranslations = ${JSON.stringify(platformUserManagementTranslations)};`,

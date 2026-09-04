@@ -133,7 +133,7 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(markup).not.toContain("关注：");
   });
 
-  it("can reuse the technician card without social counts or level", () => {
+  it("hides technician social counts and level by default", () => {
     const markup = renderToStaticMarkup(
       createElement(
         ClientThemeProvider,
@@ -159,9 +159,7 @@ describe("SocialProfileMiniCard cover readability", () => {
               followingCount: 300
             },
             detailTo: "/profiles/technician/17?view=card",
-            showAction: false,
-            showLevel: false,
-            showSocialStats: false
+            showAction: false
           })
         )
       )
@@ -179,7 +177,7 @@ describe("SocialProfileMiniCard cover readability", () => {
     const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
 
     expect(cardSource).toContain('const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";');
-    expect(cardSource).toContain('data.entityType === "technician" ? getScopedProfileDetailPath(currentScope, "technician", data.id)');
+    expect(cardSource).toContain('"technician" in props ? getScopedTechnicianDynamicPath(currentScope, props.technician)');
     expect(cardSource).toContain("detailTo={avatarDetailTo}");
     expect(cardSource).not.toContain(retiredModalName);
   });

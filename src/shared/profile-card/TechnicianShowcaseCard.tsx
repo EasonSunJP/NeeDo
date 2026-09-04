@@ -101,8 +101,26 @@ function getTechnicianCardShareCount() {
   return 0;
 }
 
-export function getTechnicianDynamicPath(technician: Technician) {
-  return `/profiles/technician/${technician.id}`;
+type TechnicianPublicProfileReference = Pick<Technician, "id"> & Partial<Pick<Technician, "systemId">>;
+
+export function getTechnicianPublicProfileId(
+  technician: TechnicianPublicProfileReference
+) {
+  const publicId = technician.systemId?.trim();
+  return publicId && /^s\d{10}$/u.test(publicId) ? publicId : technician.id;
+}
+
+export function getTechnicianDynamicPath(
+  technician: TechnicianPublicProfileReference
+) {
+  return getScopedTechnicianDynamicPath("user", technician);
+}
+
+export function getScopedTechnicianDynamicPath(
+  scope: "user" | "merchant" | "technician",
+  technician: TechnicianPublicProfileReference
+) {
+  return getScopedProfileDetailPath(scope, "technician", getTechnicianPublicProfileId(technician));
 }
 
 function getStableBucketFromText(value: string) {
@@ -419,7 +437,7 @@ export function TechnicianShowcaseCard({
       ? ""
     : localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
-  const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);
+  const detailHref = detailTo ?? getScopedTechnicianDynamicPath(currentScope, technician);
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
   const favoriteCount = formalData ? normalizeFormalCount(formalData.favoriteCount) : getTechnicianCardFavoriteCount(technician);

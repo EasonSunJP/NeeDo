@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { CoreServiceCard } from "../../features/core-read/api";
 import type { TechnicianServicePayload } from "../../features/pricing-mode/api";
-import type { ServiceItem } from "../../types/domain";
+import type { ServiceItem, Store, StoreMenuConfig } from "../../types/domain";
 import {
   mapCoreServiceCardToUnifiedData,
   mapServiceItemToUnifiedData,
+  mapStoreMenuConfigToUnifiedData,
   mapTechnicianServiceToUnifiedData
 } from "./mappers";
 
@@ -94,6 +95,55 @@ describe("unified service-card mappers", () => {
       usageCount: null,
       shopPublicId: null,
       durationMinutes: 60
+    });
+  });
+
+  it("marks legacy duration unavailable when no persisted package duration exists", () => {
+    const service = {
+      id: "legacy-without-duration",
+      name: "旧服务",
+      priceFrom: 8800,
+      summary: "旧资料简介",
+      tags: [],
+      cover: "",
+      serviceAreas: [],
+      packages: []
+    } as unknown as ServiceItem;
+
+    expect(mapServiceItemToUnifiedData(service).durationMinutes).toBeNull();
+  });
+
+  it("adapts a persisted store menu to the shared card without inventing formal facts", () => {
+    const menu = {
+      id: "menu-1",
+      sourceServiceId: "service-1",
+      name: "季节护理套餐",
+      subtitle: "适合日常放松",
+      duration: "90 分钟",
+      priceLabel: "￥9,800 起",
+      audience: "1 人",
+      tags: ["护理", "可预约"],
+      cover: "/menu.jpg",
+      highlights: []
+    } satisfies StoreMenuConfig;
+    const store = {
+      id: "217",
+      systemId: "217",
+      address: "東京都中央区銀座1-2-3"
+    } as Store;
+
+    expect(mapStoreMenuConfigToUnifiedData(menu, store)).toEqual({
+      id: "service-1",
+      coverUrl: "/menu.jpg",
+      name: "季节护理套餐",
+      priceAmount: 9800,
+      currency: "JPY",
+      durationMinutes: 90,
+      usageCount: null,
+      shopPublicId: null,
+      shopAddress: "東京都中央区銀座1-2-3",
+      description: "适合日常放松",
+      tags: ["护理", "可预约"]
     });
   });
 });

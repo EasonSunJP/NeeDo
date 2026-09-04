@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { AppTopBar, PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import { buildOrderServiceMiniCardData } from "../../components/mobile/OrderServiceMiniCard";
 import {
   bookingApi,
   createBookingIdempotencyKey,
@@ -16,7 +17,6 @@ import {
 } from "../../features/booking/api";
 import {
   coreReadApi,
-  mapCoreServiceToServiceItem,
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician,
   type CoreServiceCard,
@@ -30,8 +30,12 @@ import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
-import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card/SocialProfileMiniCard";
-import { getScopedProfileDetailPath } from "../../shared/profile-detail";
+import { getScopedTechnicianDynamicPath, SocialProfileMiniCard } from "../../shared/profile-card";
+import {
+  mapCoreServiceCardToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { useUserOrders } from "../../state/userOrderStore";
 
 function describeFormalOrderError(error: unknown) {
@@ -117,20 +121,64 @@ function SummaryStat({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+function buildBookingOrderSnapshotServiceData(order: BookingOrder): UnifiedServiceInfoCardData {
+  const snapshotPrice = Number(order.servicePriceSnapshot ?? order.priceAmount);
+
+  return {
+    id: String(order.id),
+    coverUrl: null,
+    name: order.serviceNameSnapshot?.trim() || order.serviceName,
+    priceAmount: Number.isFinite(snapshotPrice) ? snapshotPrice : order.paymentAmountJpy,
+    currency: order.currency,
+    durationMinutes: order.serviceDurationSnapshot ?? getPersistedBookingDurationMinutes(order),
+    usageCount: null,
+    shopPublicId: null,
+    shopAddress: null,
+    description: null,
+    tags: []
+  };
+}
+
+function getPersistedBookingDurationMinutes(order: BookingOrder) {
+  const startsAt = new Date(order.startsAt).getTime();
+  const endsAt = new Date(order.endsAt).getTime();
+  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= startsAt) {
+    return 0;
+  }
+  return Math.max(1, Math.round((endsAt - startsAt) / 60_000));
+}
+
+function buildAddOnSnapshotServiceData(addOn: BookingOrderAddOn): UnifiedServiceInfoCardData {
+  return {
+    id: String(addOn.id),
+    coverUrl: null,
+    name: addOn.serviceNameSnapshot,
+    priceAmount: addOn.priceAmountJpy,
+    currency: addOn.currency,
+    durationMinutes: addOn.durationMinutes,
+    usageCount: null,
+    shopPublicId: null,
+    shopAddress: null,
+    description: null,
+    tags: []
+  };
+}
+
 function AddOnRow({ addOn, actions }: { addOn: BookingOrderAddOn; actions?: ReactNode }) {
+  const status = addOn.status === "accepted" ? "已接受" : addOn.status === "rejected" ? "已拒绝" : addOn.proposedBy === "customer" ? "等待技师确认" : "等待你的确认";
+
   return (
-    <article className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-black text-[color:var(--client-text)]">{addOn.serviceNameSnapshot}</h3>
-          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">+{addOn.durationMinutes} 分钟 · {yen(addOn.priceAmountJpy)}</p>
+    <UnifiedServiceInfoCard
+      actionSlot={(
+        <div className="flex max-w-[108px] flex-col items-end gap-2">
+          <span className="rounded-full bg-[color:var(--client-elevated)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)]">
+            {status}
+          </span>
+          {actions ? <div className="grid w-full grid-cols-2 gap-1">{actions}</div> : null}
         </div>
-        <span className="rounded-full bg-[color:var(--client-surface)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)]">
-          {addOn.status === "accepted" ? "已接受" : addOn.status === "rejected" ? "已拒绝" : addOn.proposedBy === "customer" ? "等待技师确认" : "等待你的确认"}
-        </span>
-      </div>
-      {actions ? <div className="mt-3 grid grid-cols-2 gap-2">{actions}</div> : null}
-    </article>
+      )}
+      data={buildAddOnSnapshotServiceData(addOn)}
+    />
   );
 }
 
@@ -400,10 +448,6 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   };
 
   const remaining = getRemainingSeconds(order?.serviceSession?.expectedEndsAt, now);
-  const displayService = useMemo(
-    () => (orderService ? mapCoreServiceToServiceItem(orderService) : null),
-    [orderService]
-  );
   const displayShop = useMemo(
     () => (orderShop ? mapCoreShopToStore(orderShop) : null),
     [orderShop]
@@ -451,20 +495,10 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {profileLoadError ? <p className="rounded-[18px] bg-amber-500/10 px-4 py-3 text-xs font-black text-amber-500">{profileLoadError}</p> : null}
 
           <ProfileSection title="服务">
-            {displayService ? (
-              <SocialProfileMiniCard
-                data={buildServiceMiniCardData(displayService, displayShop ?? undefined)}
-                detailTo={`/services/${displayService.id}`}
-                showAction={false}
-                topTags={[{ label: formalStatusLabel(order.status), tone: "green" }]}
-              />
-            ) : (
-              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
-                <p className="text-xs font-black text-[color:var(--client-muted)]">正式预约服务</p>
-                <h2 className="mt-1 text-xl font-black text-[color:var(--client-text)]">{order.serviceName}</h2>
-                <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.shopName}</p>
-              </section>
-            )}
+            <UnifiedServiceInfoCard
+              data={orderService ? mapCoreServiceCardToUnifiedData(orderService) : buildBookingOrderSnapshotServiceData(order)}
+              detailTo={orderService ? `/services/${orderService.id}` : undefined}
+            />
           </ProfileSection>
 
           <div className="grid grid-cols-3 gap-2">
@@ -489,7 +523,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ProfileSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
-                detailTo={getScopedProfileDetailPath("user", "technician", displayTechnician.id)}
+                detailTo={getScopedTechnicianDynamicPath("user", displayTechnician)}
                 showAction={false}
                 technician={displayTechnician}
                 topTags={[{ label: "本次担当", tone: "green" }]}
@@ -547,10 +581,20 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
                 <h2 className="text-sm font-black">追加正式服务</h2>
                 <div className="mt-2 grid gap-2">
                   {services.map((service) => (
-                    <button className="flex items-center justify-between rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3 text-left" disabled={Boolean(pendingAction)} key={service.id} onClick={() => void runOrderMutation(`addon-${service.id}`, (idempotencyKey) => bookingApi.createAddOn(orderId, { serviceId: service.id, idempotencyKey }))} type="button">
-                      <span><strong className="block text-sm">{service.name}</strong><small className="text-[color:var(--client-muted)]">+{service.durationMinutes} 分钟</small></span>
-                      <strong>{yen(Number(service.priceAmount))}</strong>
-                    </button>
+                    <UnifiedServiceInfoCard
+                      actionSlot={(
+                        <button
+                          className="h-9 rounded-full bg-[color:var(--client-primary)] px-3 text-xs font-black text-[color:var(--client-primary-contrast)] disabled:opacity-50"
+                          disabled={Boolean(pendingAction)}
+                          onClick={() => void runOrderMutation(`addon-${service.id}`, (idempotencyKey) => bookingApi.createAddOn(orderId, { serviceId: service.id, idempotencyKey }))}
+                          type="button"
+                        >
+                          追加<span className="sr-only"> {service.name}</span>
+                        </button>
+                      )}
+                      data={mapCoreServiceCardToUnifiedData(service)}
+                      key={service.id}
+                    />
                   ))}
                 </div>
               </div>
@@ -619,7 +663,8 @@ function LegacyUserOrderDetailPage() {
   return (
     <PageScaffold contentClassName="space-y-4 pb-8" navItems={[]}>
       <AppTopBar closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
-      <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5"><p className="text-xs font-black text-[color:var(--client-muted)]">历史只读预约</p><h2 className="mt-2 text-xl font-black">{order.itemName}</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.storeName} · {order.bookedAt}</p><p className="mt-4 text-sm font-black">{statusLabel(order.status)} · {yen(order.amount)}</p></section>
+      <p className="text-xs font-black text-[color:var(--client-muted)]">历史只读预约</p>
+      <UnifiedServiceInfoCard data={buildOrderServiceMiniCardData(order)} detailTo={order.serviceId ? `/services/${order.serviceId}` : undefined} />
       <p className="rounded-[20px] bg-[color:var(--client-elevated)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">此旧记录仅供查看，不支持开始、追加、结束、结算或评价操作。</p>
       {order.serviceId ? <Link className="text-center text-sm font-black text-[color:var(--client-primary)]" to={`/services/${order.serviceId}`}>查看服务</Link> : null}
     </PageScaffold>

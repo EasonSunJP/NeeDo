@@ -81,6 +81,40 @@ const makeOrderRecord = () => ({
       internalNote: "投诉工单 C-123",
       createdAt: new Date("2026-05-25T04:00:00.000Z")
     }
+  ],
+  serviceEvents: [
+    {
+      id: 501,
+      eventType: "ADD_ON_PROPOSED",
+      actorUserId: 101,
+      reason: null,
+      occurredAt: new Date("2026-05-25T02:15:00.000Z"),
+      orderAddOn: {
+        id: 44,
+        serviceId: 7,
+        status: "ACCEPTED",
+        serviceNameSnapshot: "Extended care 60 minutes",
+        priceAmountJpy: 8800,
+        currency: "JPY",
+        durationMinutes: 60
+      }
+    },
+    {
+      id: 502,
+      eventType: "ADD_ON_ACCEPTED",
+      actorUserId: 301,
+      reason: null,
+      occurredAt: new Date("2026-05-25T02:20:00.000Z"),
+      orderAddOn: {
+        id: 44,
+        serviceId: 7,
+        status: "ACCEPTED",
+        serviceNameSnapshot: "Extended care 60 minutes",
+        priceAmountJpy: 8800,
+        currency: "JPY",
+        durationMinutes: 60
+      }
+    }
   ]
 });
 
@@ -99,6 +133,22 @@ describe("BackofficeRepository order performance detail", () => {
     expect(result?.timelineEvents).toEqual([
       expect.objectContaining({ id: "performance:91", internalNote: null }),
       expect.objectContaining({ id: "status:11", type: "ORDER_STATUS_CHANGED" }),
+      expect.objectContaining({
+        id: "service:501",
+        type: "ADD_ON_PROPOSED",
+        addOnId: 44,
+        serviceName: "Extended care 60 minutes",
+        priceAmountJpy: 8800,
+        durationMinutes: 60
+      }),
+      expect.objectContaining({
+        id: "service:502",
+        type: "ADD_ON_ACCEPTED",
+        addOnId: 44,
+        serviceName: "Extended care 60 minutes",
+        priceAmountJpy: 8800,
+        durationMinutes: 60
+      }),
       expect.objectContaining({ id: "performance:92", internalNote: "后台核验材料 A" }),
       expect.objectContaining({ id: "performance:93", internalNote: "投诉工单 C-123" })
     ]);
@@ -108,6 +158,18 @@ describe("BackofficeRepository order performance detail", () => {
         include: expect.objectContaining({
           performanceRevisions: expect.objectContaining({
             select: expect.objectContaining({ internalNote: true })
+          }),
+          serviceEvents: expect.objectContaining({
+            where: {
+              deletedAt: null,
+              eventType: { in: ["ADD_ON_PROPOSED", "ADD_ON_ACCEPTED", "ADD_ON_REJECTED"] }
+            },
+            select: expect.objectContaining({
+              eventType: true,
+              orderAddOn: expect.objectContaining({
+                select: expect.objectContaining({ serviceNameSnapshot: true })
+              })
+            })
           })
         })
       })

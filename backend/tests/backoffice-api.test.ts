@@ -473,6 +473,19 @@ const createFixture = async (
             },
             timelineEvents: [
               {
+                id: "service:501",
+                type: "ADD_ON_ACCEPTED" as const,
+                createdAt: "2026-05-25T02:20:00.000Z",
+                actorUserId: 301,
+                publicReason: null,
+                addOnId: 44,
+                serviceId: 7,
+                serviceName: "Extended care 60 minutes",
+                priceAmountJpy: 8800,
+                currency: "JPY" as const,
+                durationMinutes: 60
+              },
+              {
                 id: "performance:92",
                 type: "SPECIAL_CANCELLATION_APPLIED" as const,
                 createdAt: "2026-05-25T03:00:00.000Z",
@@ -1516,6 +1529,13 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       version: 3
     });
     expect(response.body.data.timelineEvents).toEqual([
+      expect.objectContaining({
+        id: "service:501",
+        type: "ADD_ON_ACCEPTED",
+        serviceName: "Extended care 60 minutes",
+        priceAmountJpy: 8800,
+        durationMinutes: 60
+      }),
       expect.objectContaining({
         id: "performance:92",
         type: "SPECIAL_CANCELLATION_APPLIED",

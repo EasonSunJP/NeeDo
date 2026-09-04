@@ -177,6 +177,14 @@ describe("HomePage shared theme layout", () => {
     expect(homePageSource).toContain("floatingHeaderGlassPanelClassName");
     expect(homePageSource).toContain("<RecommendationCard");
   });
+
+  it("delegates service recommendations while keeping only image navigation tiles exempt", () => {
+    expect(homePageSource).toContain("<SocialProfileMiniCard data={buildServiceMiniCardData(data.service)}");
+    expect(homePageSource).toContain("function ServiceModule(");
+    expect(homePageSource).toContain("图像化入口，点击进入对应服务列表");
+    expect(homePageSource).not.toContain("ServicePreviewCard");
+    expect(homePageSource).not.toContain("resolveServiceProvider");
+  });
 });
 
 describe("HomePage formal user-home carousel contract", () => {
@@ -342,6 +350,17 @@ describe("HomePage formal carousel integration", () => {
     const appointmentOverview = container.querySelector<HTMLAnchorElement>('a[aria-label="查看预约记录"][href="/orders"]');
     expect(appointmentOverview).not.toBeNull();
     expect(appointmentOverview?.textContent).toContain("10:00");
+  });
+
+  it("keeps the appointment overview button available when there is no active booking", async () => {
+    apiMocks.getUserHomeCarousel.mockResolvedValue(publishedPayload("正式轮播", "zh-CN"));
+
+    await renderHome();
+    await waitFor(() => expect(apiMocks.listOrders).toHaveBeenCalledWith({ page: 1, pageSize: 100 }));
+
+    const appointmentOverview = container.querySelector<HTMLAnchorElement>('a[aria-label="查看预约记录"][href="/orders"]');
+    expect(appointmentOverview).not.toBeNull();
+    expect(appointmentOverview?.textContent).toContain("预约一览");
   });
 
   it("reloads the formal scene when the content locale changes", async () => {

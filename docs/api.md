@@ -140,6 +140,12 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `GET` | `/api/v1/technicians/:id` | Public technician detail | Public |
 | `GET` | `/api/v1/profiles/customers/:id` | Public customer profile without account credentials | Public |
 
+For public technician navigation, `:id` is canonically the lowercase NeeDoID
+`s##########`. A positive numeric `TechnicianProfile.id` remains accepted only
+as a transition and internal-caller compatibility lookup. The response retains
+both `id` (internal relation key) and `publicId` (public identity); new public UI
+links must use `publicId` and must not display the numeric key as the account ID.
+
 ### Common Query Parameters
 
 `GET /categories`
@@ -276,6 +282,31 @@ The authenticated technician portfolio is profile-wide rather than shop-wide:
 | `DELETE` | `/api/v1/technicians/me/shops/:shopId/services/:serviceId` | Soft-delete a service in its owning shop context | `technician:services:write` |
 
 A technician may have at most five non-deleted services across all shops. The limit is enforced under the technician-profile lock, so concurrent sixth creates cannot both succeed. Every service price is integer JPY and the response declares `taxIncluded: true`; duration is integer minutes. The first eligible service after ordering by `sortOrder`, then ID, is the primary service.
+
+### Technician service cover
+
+- `PUT /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
+  accepts one authenticated, single-frame raw JPEG/PNG/WebP body up to 8 MiB and
+  at most 25,000,000 decoded pixels, then returns the updated `TechnicianService`.
+- `DELETE /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
+  removes the current public cover association and returns the updated service.
+
+Both routes require `technician:services:write` and derive actor scope from the
+session. Effective mutations persist the `MediaAsset` lifecycle change and audit
+evidence. An exact-image `PUT` retry or a `DELETE` when no cover is active returns
+the current service without creating duplicate media rows or audit entries.
+Before persistence, bounded header walks reject PNG `acTL`/`fcTL`/`fdAT` animation
+chunks and JPEG APP2 `MPF` multi-picture containers without calculating CRCs or
+decoding pixels. Sharp metadata then rejects any other image reporting more than one
+page, and libvips asynchronously fully decodes the accepted single frame. Header-only,
+truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded pixel-limit
+violations all fail with the existing cover-invalid HTTP 400 contract.
+
+This decoded single-frame profile is cover-specific. The shared storage default used
+by `/api/v1/social/media` and `/api/v1/backoffice/content/media` retains their existing
+contract: at most 8 MiB, one of the three declared MIME types, and the corresponding
+magic signature. Those generic endpoints do not inherit the cover-only frame/page or
+decoded-pixel restrictions.
 
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 

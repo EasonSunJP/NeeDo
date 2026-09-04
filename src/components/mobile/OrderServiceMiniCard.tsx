@@ -1,11 +1,10 @@
 import type { MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon } from "../client-ui/AppScaffold";
-import { emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import { shareContent } from "../../lib/share";
 import { cn, yen } from "../../lib/utils";
-import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
-import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
+import { UnifiedServiceInfoCard, type UnifiedServiceInfoCardData } from "../../shared/service-card";
+import type { Order, Store, Technician } from "../../types/domain";
 
 type OrderServiceMiniCardTopTag = string | { label: string; tone?: "neutral" | "green" | "yellow" | "purple" };
 
@@ -23,34 +22,22 @@ type OrderServiceMiniCardProps = {
   topTags?: OrderServiceMiniCardTopTag[];
 };
 
-function normalizeOrderServiceName(value: string) {
-  return value.replace(/\s+\d+\s*分钟/g, "").trim();
-}
-
-export function findOrderService(order: Order): ServiceItem {
-  const normalizedOrderName = normalizeOrderServiceName(order.itemName);
-
-  return services.find((service) =>
-    order.itemName.includes(service.name) ||
-    service.name.includes(normalizedOrderName) ||
-    service.packages.some((item) => order.itemName.includes(item.name))
-  ) ?? services[0]!;
-}
-
-export function buildOrderServiceMiniCardData(order: Order, provider?: Store | Technician) {
-  const service = findOrderService(order);
-  const modeLabel = order.mode === "home" ? "上门服务" : "到店预约";
+export function buildOrderServiceMiniCardData(order: Order): UnifiedServiceInfoCardData {
+  const durationMatch = order.itemName.match(/(\d+)\s*分钟/u)?.[1];
+  const durationMinutes = durationMatch ? Number(durationMatch) : null;
 
   return {
-    ...buildServiceMiniCardData(service, provider),
     id: order.id,
-    displayName: order.itemName,
-    headline: `${order.bookedAt} · ${order.customerName}`,
-    regionLabel: order.area,
-    addressLabel: order.area,
-    addressValue: order.storeName ?? order.area,
-    serviceTags: [modeLabel, order.area, ...service.tags].slice(0, 6),
-    detailPath: undefined
+    coverUrl: null,
+    name: order.itemName,
+    priceAmount: order.amount,
+    currency: "JPY",
+    durationMinutes,
+    usageCount: null,
+    shopPublicId: null,
+    shopAddress: null,
+    description: null,
+    tags: []
   };
 }
 
@@ -107,11 +94,10 @@ export function OrderServiceMiniCard({
   onOpenDetails,
   onShare,
   order,
-  provider,
   shareLabel = "转发服务卡",
   topTags = []
 }: OrderServiceMiniCardProps) {
-  const serviceCardData = buildOrderServiceMiniCardData(order, provider);
+  const serviceCardData = buildOrderServiceMiniCardData(order);
   const visibleTopTags: OrderServiceMiniCardTopTag[] = [
     { label: yen(order.amount), tone: "yellow" },
     ...topTags
@@ -133,9 +119,28 @@ export function OrderServiceMiniCard({
     });
   };
 
-  return (
-    <SocialProfileMiniCard
-      actionSlot={hasActions ? (
+  const wrapperActions = hasActions || visibleTopTags.length > 0 ? (
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex flex-wrap justify-end gap-1">
+        {visibleTopTags.map((tag) => {
+          const normalized = typeof tag === "string" ? { label: tag, tone: "neutral" as const } : tag;
+          return (
+            <span
+              className={cn(
+                "rounded-full border px-2 py-1 text-[9px] font-black",
+                normalized.tone === "green" && "border-emerald-400/35 bg-emerald-500/15 text-emerald-500",
+                normalized.tone === "yellow" && "border-amber-400/35 bg-amber-500/15 text-amber-500",
+                normalized.tone === "purple" && "border-purple-400/35 bg-purple-500/15 text-purple-500",
+                (!normalized.tone || normalized.tone === "neutral") && "border-[color:var(--client-line)] bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]"
+              )}
+              key={normalized.label}
+            >
+              {normalized.label}
+            </span>
+          );
+        })}
+      </div>
+      {hasActions ? (
         <div className="flex items-center gap-1.5">
           {contactTo ? (
             <OrderServiceIconButton label={contactLabel} to={contactTo}>
@@ -146,13 +151,17 @@ export function OrderServiceMiniCard({
             <AppIcon className="h-4 w-4" name="share" />
           </OrderServiceIconButton>
         </div>
-      ) : undefined}
-      className={className}
-      dark={dark}
+      ) : null}
+    </div>
+  ) : undefined;
+
+  return (
+    <UnifiedServiceInfoCard
+      actionSlot={wrapperActions}
+      className={cn(className, dark && "border-white/10 bg-[#15120f]")}
       data={serviceCardData}
       detailTo={detailTo}
       onOpenDetails={onOpenDetails}
-      topTags={visibleTopTags}
     />
   );
 }

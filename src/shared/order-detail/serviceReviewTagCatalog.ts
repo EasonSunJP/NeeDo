@@ -39,11 +39,23 @@ export const serviceReviewSpecialTags: Required<Pick<ServiceReviewTagOption, "la
   { label: "元气max", count: 0, kind: "stamp", tone: "energy" }
 ];
 
-const legacyServiceReviewSpecialLabels = ["魅力值MAX", "服务精神MAX", "情绪价值MAX", "元气MAX"];
+export const serviceReviewSpecialTagAliases = [
+  "魅力值",
+  "魅力值MAX",
+  "魅力MAX",
+  "服务精神",
+  "服务精神MAX",
+  "服务MAX",
+  "情绪价值",
+  "情绪价值MAX",
+  "情绪MAX",
+  "元气",
+  "元气MAX"
+] as const;
 
 export const serviceReviewSpecialLabelSet = new Set([
   ...serviceReviewSpecialTags.map((tag) => tag.label),
-  ...legacyServiceReviewSpecialLabels
+  ...serviceReviewSpecialTagAliases
 ]);
 
 export function getServiceReviewStampVisual(tag: Pick<ServiceReviewTagOption, "tone">, index: number) {
@@ -51,10 +63,9 @@ export function getServiceReviewStampVisual(tag: Pick<ServiceReviewTagOption, "t
 }
 
 export function splitMaxReviewStampLabel(label: string) {
-  const marker = label.slice(-3);
-  const markerIndex = marker.toLowerCase() === "max" ? label.length - marker.length : -1;
+  const markerMatch = label.match(/max$/i);
 
-  if (markerIndex <= 0 || markerIndex !== label.length - marker.length) {
+  if (!markerMatch || markerMatch.index === undefined || markerMatch.index === 0) {
     return {
       title: label,
       marker: ""
@@ -62,7 +73,7 @@ export function splitMaxReviewStampLabel(label: string) {
   }
 
   return {
-    title: label.slice(0, markerIndex),
-    marker
+    title: label.slice(0, markerMatch.index),
+    marker: "max"
   };
 }

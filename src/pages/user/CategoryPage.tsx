@@ -1150,7 +1150,7 @@ export function CategoryPage() {
                         const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
                         const shareCount = shareCounts[entityTargetKey(target)] ?? normalizeMetric(item.profile.shareCount);
                         const hasEngagementMetrics = isFiniteMetric(item.profile.favoriteCount) && isFiniteMetric(item.profile.shareCount);
-                        const detailPath = `/profiles/technician/${item.profile.id}`;
+                        const detailPath = `/profiles/technician/${item.profile.publicId}`;
 
                         return (
                           <TechnicianShowcaseCard

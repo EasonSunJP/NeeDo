@@ -98,7 +98,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("{serviceMenuHomePackageSection}");
     expect(pageSource).toContain("{serviceMenuTabOrderedSections}");
     expect(pageSource).toContain("<StoreTechnicianServiceListRow");
-    expect(pageSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(pageSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(pageSource).toContain("getScopedTechnicianServiceListPath");
     expect(pageSource).toContain("const getTechnicianServiceListTo = (technicianId: string)");
     expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
@@ -120,7 +120,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
     expect(homeTechnicianSource).toContain(") : storeTechnicians.length > 0 ? (");
     expect(homeTechnicianSource).toContain("<StoreTechnicianSelectableCard");
-    expect(homeTechnicianSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(homeTechnicianSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(homeTechnicianSource).toContain("setSelectedTechnicianId(active ? \"\" : technician.id);");
     expect(homeTechnicianSource).not.toContain("onServiceSelect");
   });

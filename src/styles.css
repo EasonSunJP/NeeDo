@@ -7758,14 +7758,14 @@ body:has(.admin-theme-dark),
   --review-stamp-bg-bottom: #201a2a;
   position: relative;
   display: grid;
-  min-height: 94px;
-  aspect-ratio: 0.94 / 1;
-  grid-template-rows: 48px minmax(0, 1fr);
+  min-height: 86px;
+  aspect-ratio: auto;
+  grid-template-rows: 42px minmax(0, 1fr);
   align-items: center;
   justify-items: center;
   overflow: visible;
   border: 1px solid rgb(var(--review-stamp-accent-rgb) / 0.58);
-  border-radius: 18px;
+  border-radius: 16px;
   background:
     linear-gradient(135deg, rgb(var(--review-stamp-accent-rgb) / 0.2) 0%, transparent 44%),
     linear-gradient(180deg, var(--review-stamp-bg-top) 0%, var(--review-stamp-bg-bottom) 100%);
@@ -7775,7 +7775,7 @@ body:has(.admin-theme-dark),
     0 0 0 1px rgb(var(--review-stamp-accent-rgb) / 0.08);
   color: #ffffff;
   isolation: isolate;
-  padding: 8px 6px 9px;
+  padding: 7px 4px 8px;
   text-align: center;
 }
 
@@ -7839,15 +7839,15 @@ body:has(.admin-theme-dark),
   position: relative;
   z-index: 1;
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   place-items: center;
 }
 
 .service-review-stamp__icon img {
   display: block;
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   max-width: none;
   object-fit: contain;
   filter: drop-shadow(0 5px 9px rgb(var(--review-stamp-accent-rgb) / 0.24));
@@ -7873,17 +7873,17 @@ body:has(.admin-theme-dark),
 .service-review-stamp__count {
   position: absolute;
   z-index: 3;
-  top: -8px;
-  right: -5px;
+  top: -6px;
+  right: -2px;
   border-radius: 999px;
   border: 1px solid rgb(255 255 255 / 0.26);
   background: #666c77;
   box-shadow: 0 8px 16px rgb(0 0 0 / 0.28);
   color: #ffffff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   line-height: 1;
-  padding: 4px 8px;
+  padding: 3px 5px;
 }
 
 .service-review-stamp.is-selected .service-review-stamp__count {
@@ -7895,10 +7895,11 @@ body:has(.admin-theme-dark),
 }
 
 .social-profile-review-stamps .service-review-stamp {
-  min-height: 84px;
-  grid-template-rows: 39px minmax(0, 1fr);
-  border-radius: 16px;
-  padding: 7px 4px 8px;
+  min-height: 72px;
+  aspect-ratio: auto;
+  grid-template-rows: 32px minmax(0, 1fr);
+  border-radius: 13px;
+  padding: 5px 2px 6px;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.16),
     0 9px 18px rgb(0 0 0 / 0.2),
@@ -7907,66 +7908,69 @@ body:has(.admin-theme-dark),
 
 .social-profile-review-stamps .service-review-stamp__icon,
 .social-profile-review-stamps .service-review-stamp__icon img {
-  width: 39px;
-  height: 39px;
+  width: 32px;
+  height: 32px;
 }
 
 .social-profile-review-stamps .service-review-stamp__label {
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.05;
 }
 
 .social-profile-review-stamps .service-review-stamp__label span:last-child {
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .social-profile-review-stamps .service-review-stamp__count {
-  top: -9px;
-  right: -5px;
-  padding: 4px 7px;
+  top: -6px;
+  right: -2px;
+  font-size: 9px;
+  padding: 3px 5px;
 }
 
 @media (max-width: 420px) {
   .service-review-stamp {
-    min-height: 90px;
-    grid-template-rows: 46px minmax(0, 1fr);
-    border-radius: 17px;
-    padding-inline: 5px;
+    min-height: 82px;
+    aspect-ratio: auto;
+    grid-template-rows: 38px minmax(0, 1fr);
+    border-radius: 15px;
+    padding-inline: 3px;
   }
 
   .service-review-stamp__icon,
   .service-review-stamp__icon img {
-    width: 44px;
-    height: 44px;
+    width: 38px;
+    height: 38px;
   }
 
   .service-review-stamp__label {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .service-review-stamp__label span:last-child {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .social-profile-review-stamps .service-review-stamp {
-    min-height: 80px;
-    grid-template-rows: 36px minmax(0, 1fr);
-    border-radius: 15px;
-    padding: 6px 3px 7px;
+    min-height: 72px;
+    aspect-ratio: auto;
+    grid-template-rows: 32px minmax(0, 1fr);
+    border-radius: 13px;
+    padding: 5px 2px 6px;
   }
 
   .social-profile-review-stamps .service-review-stamp__icon,
   .social-profile-review-stamps .service-review-stamp__icon img {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
   }
 
   .social-profile-review-stamps .service-review-stamp__label {
-    font-size: 9.5px;
+    font-size: 9px;
   }
 
   .social-profile-review-stamps .service-review-stamp__label span:last-child {
-    font-size: 16px;
+    font-size: 15px;
   }
 }
 

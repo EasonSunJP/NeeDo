@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import type { BookingOrder, OrderCheckout } from "../../features/booking/api";
+import type { CoreServiceDetail } from "../../features/core-read/api";
 
 const mocks = vi.hoisted(() => ({
   getCheckout: vi.fn(),
@@ -40,7 +41,7 @@ vi.mock("../../features/core-read/api", () => ({
   mapCoreCustomerToCustomer: (value: { id: number; displayName: string }) => ({ id: String(value.id), name: value.displayName }),
   mapCoreServiceToServiceItem: (value: { id: number; name: string }) => ({ id: String(value.id), name: value.name, tags: [] }),
   mapCoreShopToStore: (value: { id: number; name: string }) => ({ id: String(value.id), name: value.name }),
-  mapCoreTechnicianToTechnician: (value: { id: number; displayName: string }) => ({ id: String(value.id), name: value.displayName })
+  mapCoreTechnicianToTechnician: (value: { id: number; publicId: string; displayName: string }) => ({ id: String(value.id), systemId: value.publicId, name: value.displayName })
 }));
 vi.mock("../../state/entityStore", () => ({ useEntityStore: () => ({ customers: [], stores: [], technicians: [] }) }));
 vi.mock("../../state/scheduleStore", () => ({
@@ -61,7 +62,8 @@ vi.mock("../../shared/profile-card", () => ({
   SocialProfileMiniCard: ({ customer, data, store, technician }: { customer?: { name: string }; data?: { displayName: string }; store?: { name: string }; technician?: { name: string } }) => (
     <article>{customer?.name ?? data?.displayName ?? store?.name ?? technician?.name}</article>
   ),
-  buildServiceMiniCardData: (service: { name: string }) => ({ displayName: service.name })
+  buildServiceMiniCardData: (service: { name: string }) => ({ displayName: service.name }),
+  getScopedTechnicianDynamicPath: (scope: string, technician: { id: string; systemId?: string }) => `/${scope}/profiles/technician/${technician.systemId ?? technician.id}`
 }));
 
 import { MerchantOrderDetailRoutePage } from "./MerchantOrderRoutePages";
@@ -127,6 +129,51 @@ const checkout: OrderCheckout = {
   updatedAt: "2026-09-02T18:39:00.000Z"
 };
 
+const service: CoreServiceDetail = {
+  id: 463,
+  publicId: "svc0000000463",
+  name: order.serviceName,
+  description: "正式服务说明",
+  category: {
+    id: 1,
+    code: "massage",
+    name: "按摩",
+    nameJa: "マッサージ",
+    nameEn: "Massage",
+    parentId: null,
+    iconUrl: null,
+    sortOrder: 1,
+    isActive: true,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt
+  },
+  shop: {
+    id: 16,
+    publicId: "shop0000000016",
+    name: order.shopName,
+    city: "东京都",
+    address: "东京都渋谷区",
+    coverUrl: null,
+    reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] },
+    favoriteCount: 0,
+    shareCount: 0,
+    serviceCategories: [],
+    businessKeywords: []
+  },
+  technician: null,
+  city: "东京都",
+  priceAmount: order.priceAmount,
+  currency: order.currency,
+  durationMinutes: 60,
+  usageCount: 1,
+  coverUrl: null,
+  reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] },
+  serviceMode: "store",
+  mediaAssets: [],
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt
+};
+
 describe("MerchantOrderDetailRoutePage formal order", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -144,7 +191,7 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
       page_size: 1
     });
     mocks.getCustomerProfile.mockResolvedValue({ id: 7, displayName: "LifeDance 管理员" });
-    mocks.getServiceDetail.mockResolvedValue({ id: 463, name: order.serviceName });
+    mocks.getServiceDetail.mockResolvedValue(service);
     mocks.getShopDetail.mockResolvedValue({ id: 16, name: order.shopName });
     mocks.getTechnicianDetail.mockResolvedValue({ id: 28, displayName: order.technicianName });
   });

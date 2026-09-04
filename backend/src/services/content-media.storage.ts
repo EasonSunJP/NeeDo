@@ -2,23 +2,114 @@ import { createHash, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import sharp from "sharp";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
+export const CONTENT_MEDIA_MAX_DECODED_PIXELS = 25_000_000;
+export const CONTENT_MEDIA_VALIDATION_PROFILES = {
+  signature: "signature",
+  decodedSingleFrame: "decoded-single-frame"
+} as const;
+const MAX_CONTAINER_HEADER_ENTRIES = 4_096;
+const MAX_JPEG_MARKER_PADDING_BYTES = 16;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_ANIMATION_CHUNKS = new Set(
+  ["acTL", "fcTL", "fdAT"].map((chunkType) => Buffer.from(chunkType).readUInt32BE(0))
+);
+const PNG_END_CHUNK = Buffer.from("IEND").readUInt32BE(0);
+
+const hasUnsupportedPngAnimation = (bytes: Buffer): boolean => {
+  if (bytes.length < PNG_SIGNATURE.length || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return false;
+  }
+
+  let offset = 8;
+  for (let chunkCount = 0; chunkCount < MAX_CONTAINER_HEADER_ENTRIES; chunkCount += 1) {
+    if (offset + 12 > bytes.length) {
+      return false;
+    }
+    const dataLength = bytes.readUInt32BE(offset);
+    const chunkType = bytes.readUInt32BE(offset + 4);
+    const nextOffset = offset + 12 + dataLength;
+    if (nextOffset > bytes.length) {
+      return false;
+    }
+    if (PNG_ANIMATION_CHUNKS.has(chunkType)) {
+      return true;
+    }
+    if (chunkType === PNG_END_CHUNK) {
+      return false;
+    }
+    offset = nextOffset;
+  }
+
+  return true;
+};
+
+const hasUnsupportedJpegMultiPicture = (bytes: Buffer): boolean => {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return false;
+  }
+
+  let offset = 2;
+  for (let segmentCount = 0; segmentCount < MAX_CONTAINER_HEADER_ENTRIES; segmentCount += 1) {
+    if (offset + 1 >= bytes.length || bytes[offset] !== 0xff) {
+      return false;
+    }
+    offset += 1;
+    let paddingBytes = 0;
+    while (offset < bytes.length && bytes[offset] === 0xff) {
+      paddingBytes += 1;
+      if (paddingBytes > MAX_JPEG_MARKER_PADDING_BYTES) {
+        return true;
+      }
+      offset += 1;
+    }
+    if (offset >= bytes.length) {
+      return false;
+    }
+
+    const marker = bytes[offset]!;
+    offset += 1;
+    if (marker === 0xda || marker === 0xd9) {
+      return false;
+    }
+    if (marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+      continue;
+    }
+    if (marker === 0x00 || offset + 2 > bytes.length) {
+      return false;
+    }
+
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+      return false;
+    }
+    if (marker === 0xe2 && segmentLength >= 6 && bytes.readUInt32BE(offset + 2) === 0x4d504600) {
+      return true;
+    }
+    offset += segmentLength;
+  }
+
+  return true;
+};
 
 const imageMetadata = {
   "image/jpeg": {
     extension: "jpg",
+    decodedFormat: "jpeg",
     matches: (bytes: Buffer) => bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
   },
   "image/png": {
     extension: "png",
-    matches: (bytes: Buffer) =>
-      bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    decodedFormat: "png",
+    matches: (bytes: Buffer) => bytes.subarray(0, 8).equals(PNG_SIGNATURE)
   },
   "image/webp": {
     extension: "webp",
+    decodedFormat: "webp",
     matches: (bytes: Buffer) =>
       bytes.subarray(0, 4).equals(Buffer.from("RIFF")) &&
       bytes.subarray(8, 12).equals(Buffer.from("WEBP"))
@@ -26,6 +117,14 @@ const imageMetadata = {
 } as const;
 
 export type ContentMediaMimeType = keyof typeof imageMetadata;
+export type ContentMediaValidationProfile =
+  (typeof CONTENT_MEDIA_VALIDATION_PROFILES)[keyof typeof CONTENT_MEDIA_VALIDATION_PROFILES];
+
+export interface ContentMediaStorageInput {
+  bytes: Buffer;
+  mimeType: ContentMediaMimeType;
+  validationProfile?: ContentMediaValidationProfile;
+}
 
 export interface PreparedContentMedia {
   fileKey: string;
@@ -38,8 +137,8 @@ export interface StoredContentMedia extends PreparedContentMedia {
 }
 
 export interface ContentMediaStoragePort {
-  prepare(input: { bytes: Buffer; mimeType: ContentMediaMimeType }): PreparedContentMedia;
-  save(input: { bytes: Buffer; mimeType: ContentMediaMimeType }): Promise<StoredContentMedia>;
+  prepare(input: ContentMediaStorageInput): Promise<PreparedContentMedia>;
+  save(input: ContentMediaStorageInput): Promise<StoredContentMedia>;
   read(fileKey: string): Promise<Buffer>;
   delete(fileKey: string): Promise<void>;
 }
@@ -101,7 +200,7 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     }
   }
 
-  public prepare(input: { bytes: Buffer; mimeType: ContentMediaMimeType }): PreparedContentMedia {
+  public async prepare(input: ContentMediaStorageInput): Promise<PreparedContentMedia> {
     if (input.bytes.length === 0) {
       throw this.invalid();
     }
@@ -112,6 +211,39 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     if (!metadata || !metadata.matches(input.bytes)) {
       throw this.invalid();
     }
+    const validationProfile =
+      input.validationProfile ?? CONTENT_MEDIA_VALIDATION_PROFILES.signature;
+    if (validationProfile === CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame) {
+      if (
+        (input.mimeType === "image/png" && hasUnsupportedPngAnimation(input.bytes)) ||
+        (input.mimeType === "image/jpeg" && hasUnsupportedJpegMultiPicture(input.bytes))
+      ) {
+        throw this.invalid();
+      }
+      try {
+        const decoder = sharp(input.bytes, {
+          failOn: "warning",
+          limitInputPixels: CONTENT_MEDIA_MAX_DECODED_PIXELS,
+          sequentialRead: true
+        });
+        const decoded = await decoder.metadata();
+        if (
+          decoded.format !== metadata.decodedFormat ||
+          !decoded.width ||
+          !decoded.height ||
+          (decoded.pages ?? 1) > 1 ||
+          decoded.width * decoded.height > CONTENT_MEDIA_MAX_DECODED_PIXELS
+        ) {
+          throw this.invalid();
+        }
+        await decoder.clone().stats();
+      } catch (error) {
+        if (error instanceof AppError) {
+          throw error;
+        }
+        throw this.invalid();
+      }
+    }
     const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
     return {
       checksumSha256,
@@ -120,11 +252,8 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     };
   }
 
-  public async save(input: {
-    bytes: Buffer;
-    mimeType: ContentMediaMimeType;
-  }): Promise<StoredContentMedia> {
-    const prepared = this.prepare(input);
+  public async save(input: ContentMediaStorageInput): Promise<StoredContentMedia> {
+    const prepared = await this.prepare(input);
     const canonicalPath = this.pathFor(prepared.fileKey);
     await mkdir(this.directory, { recursive: true });
 

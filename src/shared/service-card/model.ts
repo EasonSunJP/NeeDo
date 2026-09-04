@@ -4,7 +4,7 @@ export type UnifiedServiceInfoCardData = {
   name: string;
   priceAmount: number;
   currency: string;
-  durationMinutes: number;
+  durationMinutes: number | null;
   usageCount: number | null;
   shopPublicId: string | null;
   shopAddress: string | null;

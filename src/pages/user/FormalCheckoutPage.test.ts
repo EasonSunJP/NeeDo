@@ -68,8 +68,16 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("showSocialStats={false}");
     expect(formalSource).toContain("showLevel={false}");
     expect(formalSource).toContain("?view=card");
+    expect(formalSource).toContain("id: technician.publicId");
+    expect(formalSource).not.toContain("id: String(technician.id)");
     expect(formalSource).not.toContain("navigate(`/technicians/");
     expect(formalSource).not.toContain("acceptanceRatePercent}% 接单率");
+  });
+
+  it("renders the formal package through the unified service information card", () => {
+    expect(formalSource).toContain("UnifiedServiceInfoCard");
+    expect(formalSource).toContain("mapCoreServiceCardToUnifiedData(service)");
+    expect(formalSource).not.toContain("mapCoreServiceToServiceItem");
   });
 
   it("renders the approved detailed body without reviving unsupported stores", () => {

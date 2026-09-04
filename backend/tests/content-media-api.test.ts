@@ -5,13 +5,20 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { ContentMediaFileStorage } from "../src/services/content-media.storage";
+import {
+  ContentMediaService,
+  type ContentMediaLockedRepositoryPort,
+  type ContentMediaRepositoryPort
+} from "../src/services/content-media.service";
+import { createValidExcessivePixelPng, validTwoFrameApng } from "./fixtures/content-images";
 
 const validPng = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.from("needo-public-content")
 ]);
 
-const createFixture = async (hasPermission = true) => {
+const createFixture = async (hasPermission = true, useRealService = false) => {
   const directory = await mkdtemp(join(tmpdir(), "needo-content-media-api-"));
   const permissions = hasPermission ? ["button:backoffice-content-media-upload"] : [];
   const user = {
@@ -52,7 +59,7 @@ const createFixture = async (hasPermission = true) => {
       }
     ]
   };
-  const contentMediaService = {
+  const mockedContentMediaService = {
     upload: jest.fn(async () => ({
       publicId: "a".repeat(64),
       mediaAssetId: 101,
@@ -63,6 +70,27 @@ const createFixture = async (hasPermission = true) => {
       checksumSha256: "a".repeat(64)
     }))
   };
+  const contentMediaRepository: ContentMediaRepositoryPort = {
+    async withChecksumLock<T>(
+      _checksumSha256: string,
+      operation: (locked: ContentMediaLockedRepositoryPort) => Promise<T>
+    ): Promise<T> {
+      return operation({
+        create: jest.fn(async (input) => ({
+          publicId: input.checksumSha256,
+          mediaAssetId: 101,
+          url: input.url,
+          mimeType: input.mimeType,
+          width: null,
+          height: null,
+          checksumSha256: input.checksumSha256
+        }))
+      });
+    }
+  };
+  const contentMediaService = useRealService
+    ? new ContentMediaService(contentMediaRepository, new ContentMediaFileStorage(directory))
+    : mockedContentMediaService;
   const app = createApp({ ...env, CONTENT_MEDIA_STORAGE_DIR: directory }, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -147,6 +175,25 @@ describe("content media HTTP API", () => {
         now: expect.any(Date)
       })
     );
+  });
+
+  it("accepts APNG and valid large-dimension images under the existing content route contract", async () => {
+    const fixture = await createFixture(true, true);
+    const validLargePng = await createValidExcessivePixelPng();
+
+    expect(validLargePng.length).toBeLessThanOrEqual(8 * 1024 * 1024);
+    await request(fixture.app)
+      .post("/api/v1/backoffice/content/media")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "image/png")
+      .send(validTwoFrameApng)
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/backoffice/content/media")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "image/png")
+      .send(validLargePng)
+      .expect(201);
   });
 
   it("rejects empty, unsupported, and oversized uploads with stable content errors", async () => {

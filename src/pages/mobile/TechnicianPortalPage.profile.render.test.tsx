@@ -136,6 +136,23 @@ const technician: CoreTechnicianDetail = {
   updatedAt: "2026-09-03T00:00:00.000Z"
 };
 
+const employedTechnician: CoreTechnicianDetail = {
+  ...technician,
+  shop: {
+    id: 71,
+    publicId: "shop0000000071",
+    name: "港区店",
+    city: "東京都",
+    address: "東京都港区",
+    coverUrl: null,
+    reviewSummary: { ratingAverage: "4.90", reviewCount: 88, latestReviewAt: null, highlights: [] },
+    favoriteCount: 0,
+    shareCount: 0,
+    serviceCategories: [],
+    businessKeywords: []
+  }
+};
+
 const independentProfile: TechnicianSelfProfile = {
   ...profile,
   shopId: null,
@@ -170,6 +187,68 @@ async function renderPortal() {
   });
 }
 
+function setTextareaValue(textarea: HTMLTextAreaElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textarea, value);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function findButton(label: string) {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.textContent?.trim() === label);
+}
+
+function findInput(label: string) {
+  const field = Array.from(container.querySelectorAll<HTMLLabelElement>("label"))
+    .find((candidate) => candidate.textContent?.includes(label));
+  return field?.querySelector<HTMLInputElement>('input:not([type="file"])');
+}
+
+async function selectServiceCover(file: File) {
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+  expect(input).not.toBeNull();
+  Object.defineProperty(input, "files", { configurable: true, value: [file] });
+  await act(async () => input?.dispatchEvent(new Event("change", { bubbles: true })));
+}
+
+function mockServiceEditorContext(initialServices: TechnicianServicePayload[]) {
+  vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+  vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue({
+    ...employedTechnician,
+    services: [{ category: { id: 8 } } as CoreTechnicianDetail["services"][number]]
+  });
+  vi.mocked(pricingModeApi.listMyTechnicianServices).mockResolvedValue({
+    list: initialServices,
+    total: initialServices.length,
+    page: 1,
+    page_size: 5
+  });
+  vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+    shopId: 71,
+    pricingMode: "technician",
+    technicianPricingRatePercent: 100,
+    entry: "technician_list",
+    technicians: { list: [], total: 0, page: 1, page_size: 1 }
+  });
+}
+
+async function openNewServiceEditor() {
+  await renderPortal();
+  await flushUntil(() => expect(findButton("添加服务 0/5")).toBeDefined());
+  await act(async () => findButton("添加服务 0/5")?.click());
+  const name = findInput("服务名称");
+  const price = findInput("价格");
+  expect(name).toBeDefined();
+  expect(price).toBeDefined();
+  await act(async () => {
+    if (name) setInputValue(name, "新增封面服务");
+    if (price) setInputValue(price, "9800");
+  });
+}
 function renderProfile() {
   const model = fromTechnicianSelfProfile(profile, technician, [service]);
   return renderToStaticMarkup(
@@ -191,6 +270,8 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     document.body.appendChild(container);
     root = null;
     vi.spyOn(pricingModeApi, "listMyTechnicianServices").mockResolvedValue({ list: [], total: 0, page: 1, page_size: 5 });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:service-cover") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
   });
 
   afterEach(async () => {
@@ -231,6 +312,85 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(serviceCardTag).toContain("border");
   });
 
+  it("renders formal technician services without requesting the merchant-scoped pricing endpoint", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.mocked(pricingModeApi.listMyTechnicianServices).mockResolvedValue({
+      list: [service],
+      total: 1,
+      page: 1,
+      page_size: 5
+    });
+    const merchantPricingRequest = vi
+      .spyOn(pricingModeApi, "getShopPricingMode")
+      .mockRejectedValue(new Error("error.identity.forbidden"));
+    const publicPricingRequest = vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+      shopId: 71,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 100,
+      entry: "service_menu",
+      services: { list: [], total: 0, page: 1, page_size: 1 }
+    });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+
+    expect(publicPricingRequest).toHaveBeenCalledWith(71, { page: 1, pageSize: 1 });
+    expect(merchantPricingRequest).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("店铺当前定价模式：店铺定价");
+    expect(container.textContent).not.toContain("error.identity.forbidden");
+  });
+
+  it("discards an edited draft on close and exits edit mode after a successful save", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    const updateRequest = vi.spyOn(technicianProfileApi, "updateMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+      shopId: 71,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 100,
+      entry: "service_menu",
+      services: { list: [], total: 0, page: 1, page_size: 1 }
+    });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("语言能力日本語中文"));
+
+    const editButton = container.querySelector<HTMLButtonElement>('button[aria-label="编辑信息卡"]');
+    expect(editButton).not.toBeNull();
+    await act(async () => editButton?.click());
+
+    const languageDraft = Array.from(container.querySelectorAll<HTMLTextAreaElement>("textarea"))
+      .find((textarea) => textarea.value === "日本語、中文");
+    expect(languageDraft).toBeDefined();
+    await act(async () => languageDraft && setTextareaValue(languageDraft, "QA-DRAFT-NOT-SAVED"));
+    expect(container.textContent).toContain("QA-DRAFT-NOT-SAVED");
+
+    const closeButton = container.querySelector<HTMLButtonElement>('button[aria-label="取消编辑"]');
+    expect(closeButton).not.toBeNull();
+    await act(async () => closeButton?.click());
+    expect(container.textContent).not.toContain("QA-DRAFT-NOT-SAVED");
+    expect(container.textContent).toContain("语言能力日本語中文");
+    expect(updateRequest).not.toHaveBeenCalled();
+
+    await act(async () => editButton?.click());
+    const saveButton = container.querySelector<HTMLButtonElement>('[data-testid="technician-profile-save-action"]');
+    expect(saveButton?.textContent).toContain("保存并退出编辑模式");
+    await act(async () => saveButton?.click());
+    await flushUntil(() => expect(updateRequest).toHaveBeenCalledTimes(1));
+
+    expect(updateRequest).toHaveBeenCalledWith({
+      gender: "female",
+      age: 29,
+      heightCm: 168,
+      languages: ["日本語", "中文"],
+      bio: "预约前请联系。",
+      visibility: "limited"
+    });
+    expect(container.querySelector('[data-testid="technician-profile-save-action"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="编辑信息卡"]')).not.toBeNull();
+  });
+
   it("requests and renders formal metrics for an independent technician without a shop", async () => {
     vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
     const detailRequest = vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technician);
@@ -255,7 +415,6 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.textContent).toContain("评价未读取");
     expect(container.textContent).toContain("完成订单数未读取");
   });
-
   it("shows an honest retry state when formal technician metrics fail to load", async () => {
     vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockRejectedValue(new Error("formal technician detail unavailable"));
@@ -292,5 +451,274 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.textContent).toContain("接单率98%");
     expect(container.textContent).toContain("评价4.8/5");
     expect(container.textContent).toContain("完成订单数1,281");
+  });
+  it("creates a service first and then uploads its selected cover", async () => {
+    mockServiceEditorContext([]);
+    const created = { ...service, id: 902, publicId: "service0000000902", name: "新增封面服务", coverImageUrl: null };
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService").mockResolvedValue(created);
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockResolvedValue({ ...created, coverImageUrl: "/uploaded-cover.jpg" });
+
+    await openNewServiceEditor();
+    const file = new File([new Uint8Array([0xff, 0xd8])], "cover.jpg", { type: "image/jpeg" });
+    await selectServiceCover(file);
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(1));
+
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).toHaveBeenCalledWith(71, 902, file);
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it("uses the authenticated technician service category when public detail services are unavailable", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
+    vi.mocked(pricingModeApi.listMyTechnicianServices).mockResolvedValue({
+      list: [service],
+      total: 1,
+      page: 1,
+      page_size: 5
+    });
+    vi.spyOn(pricingModeApi, "getBookingNavigation").mockResolvedValue({
+      shopId: 71,
+      pricingMode: "technician",
+      technicianPricingRatePercent: 100,
+      entry: "technician_list",
+      technicians: { list: [], total: 0, page: 1, page_size: 1 }
+    });
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService")
+      .mockResolvedValue({ ...service, id: 902, publicId: "service0000000902", name: "正式新增服务" });
+
+    await renderPortal();
+    await flushUntil(() => expect(findButton("添加服务 1/5")).toBeDefined());
+    await act(async () => findButton("添加服务 1/5")?.click());
+    const name = findInput("服务名称");
+    const price = findInput("价格");
+    expect(name).toBeDefined();
+    expect(price).toBeDefined();
+    await act(async () => {
+      if (name) setInputValue(name, "正式新增服务");
+      if (price) setInputValue(price, "9800");
+    });
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(createRequest).toHaveBeenCalledTimes(1));
+
+    expect(createRequest).toHaveBeenCalledWith(71, expect.objectContaining({
+      categoryId: 8,
+      name: "正式新增服务",
+      priceAmount: 9800
+    }));
+    expect(container.textContent).not.toContain("当前没有可用的正式服务分类");
+  });
+
+  it("updates service text before replacing an existing cover", async () => {
+    mockServiceEditorContext([service]);
+    const updated = { ...service, name: "肩颈调理" };
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(updated);
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockResolvedValue({ ...updated, coverImageUrl: "/replacement-cover.jpg" });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click());
+    const file = new File([new Uint8Array([1, 2, 3])], "replacement.webp", { type: "image/webp" });
+    await selectServiceCover(file);
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(1));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).toHaveBeenCalledWith(71, 901, file);
+  });
+
+  it("updates service text before removing an existing cover", async () => {
+    mockServiceEditorContext([service]);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(service);
+    const removeCoverRequest = vi.spyOn(pricingModeApi, "removeTechnicianServiceCover")
+      .mockResolvedValue({ ...service, coverImageUrl: null });
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click());
+    await act(async () => findButton("移除图片")?.click());
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(removeCoverRequest).toHaveBeenCalledTimes(1));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(removeCoverRequest).toHaveBeenCalledWith(71, 901);
+  });
+
+  it("keeps a removal draft after partial success and retries only the failed removal", async () => {
+    mockServiceEditorContext([service]);
+    const persisted = { ...service, name: "服务端已保存名称" };
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(persisted);
+    const removeCoverRequest = vi
+      .spyOn(pricingModeApi, "removeTechnicianServiceCover")
+      .mockRejectedValueOnce(new Error("remove unavailable"))
+      .mockResolvedValue({ ...persisted, coverImageUrl: null });
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover");
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click()
+    );
+    await act(async () => findButton("移除图片")?.click());
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "服务已保存，封面移除失败，请重试"
+      )
+    );
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(removeCoverRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).not.toHaveBeenCalled();
+    expect(findButton("重试移除封面")).toBeDefined();
+
+    await act(async () => findButton("重试移除封面")?.click());
+    await flushUntil(() => expect(removeCoverRequest).toHaveBeenCalledTimes(2));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).not.toHaveBeenCalled();
+  });
+
+  it("cancels a selected cover without issuing a service or cover request", async () => {
+    mockServiceEditorContext([]);
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService");
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover");
+
+    await openNewServiceEditor();
+    await selectServiceCover(new File([new Uint8Array([1])], "cancel.png", { type: "image/png" }));
+    await act(async () => findButton("取消")?.click());
+
+    expect(createRequest).not.toHaveBeenCalled();
+    expect(uploadRequest).not.toHaveBeenCalled();
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it("keeps a cover draft after partial success and retries only the failed upload", async () => {
+    mockServiceEditorContext([]);
+    const created = {
+      ...service,
+      id: 902,
+      publicId: "service0000000902",
+      name: "服务端规范名称",
+      description: "服务端说明",
+      priceAmount: 10800,
+      durationMinutes: 75,
+      coverImageUrl: null
+    };
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService").mockResolvedValue(created);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService");
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockRejectedValueOnce(new Error("upload unavailable"))
+      .mockResolvedValue({ ...created, coverImageUrl: "/retry-cover.jpg" });
+    const deleteRequest = vi.spyOn(pricingModeApi, "deleteTechnicianService");
+
+    await openNewServiceEditor();
+    const file = new File([new Uint8Array([0xff, 0xd8])], "retry.jpg", { type: "image/jpeg" });
+    await selectServiceCover(file);
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("服务已保存，封面上传失败，请重试"));
+
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(updateRequest).not.toHaveBeenCalled();
+    expect(deleteRequest).not.toHaveBeenCalled();
+    expect(uploadRequest).toHaveBeenCalledTimes(1);
+    expect(findButton("重试上传封面")).toBeDefined();
+    expect(findInput("服务名称")).toMatchObject({ disabled: true, value: "服务端规范名称" });
+    expect(findInput("价格")).toMatchObject({ disabled: true, value: "10800" });
+    expect(findInput("时长（分钟）")).toMatchObject({ disabled: true, value: "75" });
+    expect(container.querySelector<HTMLTextAreaElement>('[data-testid="technician-service-card"] textarea'))
+      .toMatchObject({ disabled: true, value: "服务端说明" });
+    expect(findButton("删除该服务")).toBeUndefined();
+
+    await act(async () => findButton("重试上传封面")?.click());
+    await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(2));
+
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(updateRequest).not.toHaveBeenCalled();
+    expect(deleteRequest).not.toHaveBeenCalled();
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it("clears stale cover failure copy and offers a neutral completion after discarding the retry", async () => {
+    mockServiceEditorContext([]);
+    const created = {
+      ...service,
+      id: 902,
+      publicId: "service0000000902",
+      coverImageUrl: null
+    };
+    const createRequest = vi
+      .spyOn(pricingModeApi, "createTechnicianService")
+      .mockResolvedValue(created);
+    const uploadRequest = vi
+      .spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockRejectedValue(new Error("upload unavailable"));
+
+    await openNewServiceEditor();
+    await selectServiceCover(
+      new File([new Uint8Array([0xff, 0xd8])], "discarded-retry.jpg", { type: "image/jpeg" })
+    );
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "服务已保存，封面上传失败，请重试"
+      )
+    );
+
+    await act(async () => findButton("移除图片")?.click());
+
+    expect(container.querySelector('[role="alert"]')?.textContent ?? "").not.toContain("封面上传失败");
+    expect(findButton("重试上传封面")).toBeUndefined();
+    expect(findButton("重试移除封面")).toBeUndefined();
+    expect(findButton("完成并关闭")).toBeDefined();
+
+    await act(async () => findButton("完成并关闭")?.click());
+    await flushUntil(() => expect(container.querySelector('input[type="file"]')).toBeNull());
+
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries an existing service cover without updating its persisted text twice", async () => {
+    mockServiceEditorContext([service]);
+    const persisted = {
+      ...service,
+      name: "服务端已保存名称",
+      description: "服务端已保存说明",
+      priceAmount: 9200,
+      durationMinutes: 70
+    };
+    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(persisted);
+    const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockRejectedValueOnce(new Error("upload unavailable"))
+      .mockResolvedValue({ ...persisted, coverImageUrl: "/retry-existing-cover.jpg" });
+    const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService");
+
+    await renderPortal();
+    await flushUntil(() => expect(container.textContent).toContain("肩颈调理"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑"]')?.click());
+    const name = findInput("服务名称");
+    expect(name).toBeDefined();
+    await act(async () => name && setInputValue(name, "客户端编辑名称"));
+    const file = new File([new Uint8Array([1, 2, 3])], "retry-existing.webp", { type: "image/webp" });
+    await selectServiceCover(file);
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("服务已保存，封面上传失败，请重试"));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(createRequest).not.toHaveBeenCalled();
+    expect(uploadRequest).toHaveBeenCalledTimes(1);
+    expect(findInput("服务名称")).toMatchObject({ disabled: true, value: "服务端已保存名称" });
+    expect(findButton("重试上传封面")).toBeDefined();
+    expect(findButton("删除该服务")).toBeUndefined();
+
+    await act(async () => findButton("重试上传封面")?.click());
+    await flushUntil(() => expect(uploadRequest).toHaveBeenCalledTimes(2));
+
+    expect(updateRequest).toHaveBeenCalledTimes(1);
+    expect(createRequest).not.toHaveBeenCalled();
   });
 });
