@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { stat, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import {
@@ -28,7 +28,7 @@ export const ACCOUNT_EXPORT_QUERIES = {
   merchant_identity_profiles: "SELECT * FROM merchant_identity_profiles WHERE deleted_at IS NULL AND user_id IN (?)",
   user_roles: "SELECT ur.*, r.code AS role_code FROM user_roles ur JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL WHERE ur.deleted_at IS NULL AND ur.user_id IN (?)",
   merchant_shop_memberships: "SELECT * FROM merchant_shop_memberships WHERE deleted_at IS NULL AND merchant_account_id IN (?) AND shop_id IN (?)",
-  technician_shop_affiliations: "SELECT * FROM technician_shop_affiliations WHERE deleted_at IS NULL AND shop_id IN (?)",
+  technician_shop_affiliations: "SELECT * FROM technician_shop_affiliations WHERE deleted_at IS NULL AND technician_profile_id IN (?) AND shop_id IN (?)",
   public_identifiers: "SELECT * FROM public_identifiers WHERE deleted_at IS NULL AND customer_support_account_id IS NULL AND (user_identity_id IN (?) OR shop_id IN (?) OR merchant_account_id IN (?))",
   migrations: "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at ASC"
 } as const;
@@ -56,6 +56,7 @@ export interface SelectiveAccountExportPort {
   sourceDatabaseUrl: string;
   outputPath: string;
   query: (query: string, parameters?: readonly unknown[]) => Promise<Array<Record<string, unknown>>>;
+  readArchive?: (outputPath: string) => Promise<Buffer>;
 }
 
 export interface ExportSummary {
@@ -104,7 +105,7 @@ export function parseLocalSourceDatabaseUrl(value: string): URL {
   try {
     const url = new URL(value);
     const database = url.pathname.replace(/^\/+/, "");
-    if (url.protocol !== "mysql:" || !["127.0.0.1", "localhost", "::1"].includes(url.hostname) || database !== "needo_dev") {
+    if (url.protocol !== "mysql:" || !["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname) || database !== "needo_dev") {
       throw new Error("ACCOUNT_SYNC_SOURCE_BOUNDARY_REJECTED");
     }
     return url;
@@ -146,26 +147,28 @@ const assertSelected = (value: JsonScalar | undefined, selected: readonly number
 };
 
 interface ExportReferences {
-  closure: AccountClosure;
+  userIds: readonly number[];
+  shopIds: readonly number[];
+  merchantAccountIds: readonly number[];
   customerProfileIds: readonly number[];
   technicianProfileIds: readonly number[];
   identityIds: readonly number[];
 }
 
 const mapRow = (table: (typeof ACCOUNT_SYNC_TABLES)[number], row: Record<string, unknown>, references: ExportReferences): SyncRow => {
-  const { closure, technicianProfileIds, identityIds } = references;
+  const { userIds, shopIds, merchantAccountIds, technicianProfileIds, identityIds } = references;
   const mapped = sourceRow(row);
   for (const field of nullableUserReferences) {
-    if (field in mapped.values) mapped.values[field] = assertSelected(mapped.values[field], closure.userIds, "USER", true) as JsonScalar;
+    if (field in mapped.values) mapped.values[field] = assertSelected(mapped.values[field], userIds, "USER", true) as JsonScalar;
   }
   if (table === "users") {
     mapped.values.is_test_account = 1;
     mapped.values.session_generation = 0;
   }
   if (table === "merchant_accounts") mapped.values.settlement_bank_account_id = null;
-  if (table === "shops") assertSelected(mapped.values.owner_user_id, closure.userIds, "USER");
-  if (table === "merchant_accounts") assertSelected(mapped.values.owner_user_id, closure.userIds, "USER");
-  if (table === "technician_profiles") assertSelected(mapped.values.shop_id, closure.shopIds, "SHOP");
+  if (table === "shops") assertSelected(mapped.values.owner_user_id, userIds, "USER");
+  if (table === "merchant_accounts") assertSelected(mapped.values.owner_user_id, userIds, "USER");
+  if (table === "technician_profiles") assertSelected(mapped.values.shop_id, shopIds, "SHOP");
   if (table === "merchant_identity_profiles") assertSelected(mapped.values.identity_id, identityIds, "IDENTITY");
   if (table === "user_roles") {
     const roleCode = mapped.values.role_code;
@@ -173,29 +176,29 @@ const mapRow = (table: (typeof ACCOUNT_SYNC_TABLES)[number], row: Record<string,
     delete mapped.values.role_id;
   }
   if (["customer_profiles", "technician_profiles", "user_identities", "merchant_identity_profiles", "user_roles"].includes(table)) {
-    assertSelected(mapped.values.user_id, closure.userIds, "USER");
+    assertSelected(mapped.values.user_id, userIds, "USER");
   }
   if (table === "user_identities" && mapped.values.scope_id !== null && mapped.values.scope_id !== undefined) {
     const scopeType = mapped.values.scope_type;
     if (typeof scopeType !== "string" || !allowedIdentityScopes.has(scopeType)) throw new Error("ACCOUNT_SYNC_IDENTITY_SCOPE_INVALID");
     const selected = scopeType === "shop"
-      ? closure.shopIds
+      ? shopIds
       : scopeType === "merchant_account"
-        ? closure.merchantAccountIds
+        ? merchantAccountIds
       : scopeType === "technician_profile"
           ? technicianProfileIds
           : references.customerProfileIds;
     assertSelected(mapped.values.scope_id, selected, "IDENTITY_SCOPE");
   }
   if (["merchant_shop_memberships", "technician_shop_affiliations"].includes(table)) {
-    assertSelected(mapped.values.shop_id, closure.shopIds, "SHOP");
+    assertSelected(mapped.values.shop_id, shopIds, "SHOP");
   }
-  if (table === "merchant_shop_memberships") assertSelected(mapped.values.merchant_account_id, closure.merchantAccountIds, "MERCHANT");
+  if (table === "merchant_shop_memberships") assertSelected(mapped.values.merchant_account_id, merchantAccountIds, "MERCHANT");
   if (table === "technician_shop_affiliations") assertSelected(mapped.values.technician_profile_id, technicianProfileIds, "TECHNICIAN_PROFILE");
   if (table === "public_identifiers") {
     assertSelected(mapped.values.user_identity_id, identityIds, "IDENTITY", true);
-    assertSelected(mapped.values.shop_id, closure.shopIds, "SHOP", true);
-    assertSelected(mapped.values.merchant_account_id, closure.merchantAccountIds, "MERCHANT", true);
+    assertSelected(mapped.values.shop_id, shopIds, "SHOP", true);
+    assertSelected(mapped.values.merchant_account_id, merchantAccountIds, "MERCHANT", true);
     if (mapped.values.customer_support_account_id !== null && mapped.values.customer_support_account_id !== undefined) {
       throw new Error("ACCOUNT_SYNC_PUBLIC_IDENTIFIER_SCOPE_INVALID");
     }
@@ -203,9 +206,37 @@ const mapRow = (table: (typeof ACCOUNT_SYNC_TABLES)[number], row: Record<string,
   return mapped;
 };
 
-const rowsFor = async (port: SelectiveAccountExportPort, query: string, parameters: readonly unknown[], table: (typeof ACCOUNT_SYNC_TABLES)[number], references: ExportReferences): Promise<SyncRow[]> => {
-  if (parameters.some((value) => Array.isArray(value) && value.length === 0)) return [];
-  return (await queryRows(port, query, parameters)).map((row) => mapRow(table, row, references));
+const assertRoleScope = (row: SyncRow, references: ExportReferences): void => {
+  const scopeType = row.values.scope_type;
+  const scopeId = row.values.scope_id;
+  if (scopeType === null || scopeType === undefined) {
+    if (scopeId === null || scopeId === undefined) return;
+    throw new Error("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  }
+  if (typeof scopeType !== "string") throw new Error("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  if (scopeType === "global" || scopeType === "platform") {
+    if (scopeId === null || scopeId === undefined) return;
+    throw new Error("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  }
+  const selected = scopeType === "customer_profile"
+    ? references.customerProfileIds
+    : scopeType === "technician_profile"
+      ? references.technicianProfileIds
+      : scopeType === "shop"
+        ? references.shopIds
+        : ["merchant", "merchant_account", "merchant-account", "merchantAccount"].includes(scopeType)
+          ? references.merchantAccountIds
+          : undefined;
+  if (!selected) throw new Error("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  assertSelected(scopeId, selected, "ROLE_SCOPE");
+};
+
+const assertRowsUseSelectedSourceIds = (rows: readonly Record<string, unknown>[], selected: readonly number[], label: string): void => {
+  for (const row of rows) {
+    if (!isPositiveSafeId(row.id) || !selected.includes(row.id)) {
+      throw new Error(`ACCOUNT_SYNC_REFERENCE_${label}_INVALID`);
+    }
+  }
 };
 
 export const buildSelectiveAccountExportSuccessOutput = (summary: ExportSummary): string =>
@@ -223,30 +254,56 @@ export const exportSelectiveAccounts = async (port: SelectiveAccountExportPort, 
     idsFrom(await queryRows(port, ACCOUNT_EXPORT_QUERIES.shopIdentityScopes, [activeUserIds]), "scope_id")
   ]);
   const technicianProfileIds = idsFrom(await queryRows(port, ACCOUNT_EXPORT_QUERIES.technician_profiles, [activeUserIds]), "id");
-  const merchantAccountIds = sortedIds([...ownedMerchantAccountIds, ...merchantAccountIdentityScopeIds]);
+  const candidateMerchantAccountIds = sortedIds([...ownedMerchantAccountIds, ...merchantAccountIdentityScopeIds]);
   const [shopsForSelectedMerchantAccounts, shopsForSelectedTechnicianProfiles] = await Promise.all([
-    idsFrom(await queryRows(port, ACCOUNT_EXPORT_QUERIES.shopsForSelectedMerchantAccounts, [merchantAccountIds]), "shop_id"),
+    idsFrom(await queryRows(port, ACCOUNT_EXPORT_QUERIES.shopsForSelectedMerchantAccounts, [candidateMerchantAccountIds]), "shop_id"),
     idsFrom(await queryRows(port, ACCOUNT_EXPORT_QUERIES.shopsForSelectedTechnicianProfiles, [technicianProfileIds]), "shop_id")
   ]);
   const closure = resolveAccountClosure({ activeUserIds, ownedMerchantAccountIds, merchantAccountIdentityScopeIds, ownedShopIds, technicianProfileShopIds, shopIdentityScopeIds, shopsForSelectedMerchantAccounts, shopsForSelectedTechnicianProfiles });
-  const customerProfileRows = await queryRows(port, ACCOUNT_EXPORT_QUERIES.customer_profiles, [closure.userIds]);
+  const [userRows, shopRows, merchantAccountRows] = await Promise.all([
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.users, [closure.userIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.shops, [closure.shopIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.merchant_accounts, [closure.merchantAccountIds])
+  ]);
+  assertRowsUseSelectedSourceIds(userRows, closure.userIds, "USER");
+  assertRowsUseSelectedSourceIds(shopRows, closure.shopIds, "SHOP");
+  assertRowsUseSelectedSourceIds(merchantAccountRows, closure.merchantAccountIds, "MERCHANT");
+  const userIds = idsFrom(userRows, "id");
+  const shopIds = idsFrom(shopRows, "id");
+  const merchantAccountIds = idsFrom(merchantAccountRows, "id");
+  const [customerProfileRows, technicianProfileRows, userIdentityRows] = await Promise.all([
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.customer_profiles, [userIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.technician_profiles, [userIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.user_identities, [userIds])
+  ]);
   const customerProfileIds = idsFrom(customerProfileRows, "id");
-  const userIdentityRows = await queryRows(port, ACCOUNT_EXPORT_QUERIES.user_identities, [closure.userIds]);
+  const finalTechnicianProfileIds = idsFrom(technicianProfileRows, "id");
   const identityIds = idsFrom(userIdentityRows, "id");
-  const references: ExportReferences = { closure, customerProfileIds, technicianProfileIds, identityIds };
+  const references: ExportReferences = { userIds, shopIds, merchantAccountIds, customerProfileIds, technicianProfileIds: finalTechnicianProfileIds, identityIds };
   const nonemptyIds = (ids: readonly number[]): readonly number[] => ids.length === 0 ? [-1] : ids;
+  const [merchantIdentityProfileRows, userRoleRows, merchantShopMembershipRows, technicianShopAffiliationRows, publicIdentifierRows] = await Promise.all([
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.merchant_identity_profiles, [userIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.user_roles, [userIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.merchant_shop_memberships, [merchantAccountIds, shopIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.technician_shop_affiliations, [finalTechnicianProfileIds, shopIds]),
+    queryRows(port, ACCOUNT_EXPORT_QUERIES.public_identifiers, [nonemptyIds(identityIds), nonemptyIds(shopIds), nonemptyIds(merchantAccountIds)])
+  ]);
   const tableRows: Record<(typeof ACCOUNT_SYNC_TABLES)[number], SyncRow[]> = {
-    users: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.users, [closure.userIds], "users", references),
-    shops: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.shops, [closure.shopIds], "shops", references),
-    merchant_accounts: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.merchant_accounts, [closure.merchantAccountIds], "merchant_accounts", references),
+    users: userRows.map((row) => mapRow("users", row, references)),
+    shops: shopRows.map((row) => mapRow("shops", row, references)),
+    merchant_accounts: merchantAccountRows.map((row) => mapRow("merchant_accounts", row, references)),
     customer_profiles: customerProfileRows.map((row) => mapRow("customer_profiles", row, references)),
-    technician_profiles: (await queryRows(port, ACCOUNT_EXPORT_QUERIES.technician_profiles, [closure.userIds])).map((row) => mapRow("technician_profiles", row, references)),
+    technician_profiles: technicianProfileRows.map((row) => mapRow("technician_profiles", row, references)),
     user_identities: userIdentityRows.map((row) => mapRow("user_identities", row, references)),
-    merchant_identity_profiles: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.merchant_identity_profiles, [closure.userIds], "merchant_identity_profiles", references),
-    user_roles: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.user_roles, [closure.userIds], "user_roles", references),
-    merchant_shop_memberships: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.merchant_shop_memberships, [closure.merchantAccountIds, closure.shopIds], "merchant_shop_memberships", references),
-    technician_shop_affiliations: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.technician_shop_affiliations, [closure.shopIds], "technician_shop_affiliations", references),
-    public_identifiers: await rowsFor(port, ACCOUNT_EXPORT_QUERIES.public_identifiers, [nonemptyIds(identityIds), nonemptyIds(closure.shopIds), nonemptyIds(closure.merchantAccountIds)], "public_identifiers", references)
+    merchant_identity_profiles: merchantIdentityProfileRows.map((row) => mapRow("merchant_identity_profiles", row, references)),
+    user_roles: userRoleRows.map((row) => {
+      const mapped = mapRow("user_roles", row, references);
+      assertRoleScope(mapped, references);
+      return mapped;
+    }),
+    merchant_shop_memberships: merchantShopMembershipRows.map((row) => mapRow("merchant_shop_memberships", row, references)),
+    technician_shop_affiliations: technicianShopAffiliationRows.map((row) => mapRow("technician_shop_affiliations", row, references)),
+    public_identifiers: publicIdentifierRows.map((row) => mapRow("public_identifiers", row, references))
   };
   const migrations = await queryRows(port, ACCOUNT_EXPORT_QUERIES.migrations);
   const verificationKey = randomBytes(32).toString("hex");
@@ -257,6 +314,8 @@ export const exportSelectiveAccounts = async (port: SelectiveAccountExportPort, 
   await writeFile(port.outputPath, archive, { flag: "wx", mode: 0o600 });
   const fileMode = (await stat(port.outputPath)).mode & 0o777;
   if (fileMode !== 0o600) throw new Error("ACCOUNT_SYNC_ARCHIVE_MODE_INVALID");
-  const archiveSha256 = createHash("sha256").update(archive).digest("hex");
-  return { counts, archiveSha256, archiveBytes: archive.byteLength };
+  const finalArchive = await (port.readArchive ?? readFile)(port.outputPath);
+  if (!finalArchive.equals(archive)) throw new Error("ACCOUNT_SYNC_ARCHIVE_VERIFICATION_INVALID");
+  const archiveSha256 = createHash("sha256").update(finalArchive).digest("hex");
+  return { counts, archiveSha256, archiveBytes: finalArchive.byteLength };
 };

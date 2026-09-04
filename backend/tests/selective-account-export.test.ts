@@ -3,6 +3,7 @@ import { readFile, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
+import type { Connection } from "mariadb";
 import {
   ACCOUNT_EXPORT_QUERIES,
   buildSelectiveAccountExportSuccessOutput,
@@ -11,7 +12,10 @@ import {
   resolveAccountClosure,
   type SelectiveAccountExportPort
 } from "../src/staging/selective-account-export";
-import { parseSelectiveAccountExportCliArgs } from "../src/staging/selective-account-export.cli";
+import {
+  parseSelectiveAccountExportCliArgs,
+  runSelectiveAccountExportCli
+} from "../src/staging/selective-account-export.cli";
 
 const fixtureDirectories = new Set<string>();
 
@@ -48,6 +52,8 @@ describe("selective staging account exporter", () => {
     }
     expect(parseLocalSourceDatabaseUrl("mysql://user:password@localhost:3306/needo_dev").hostname)
       .toBe("localhost");
+    expect(parseLocalSourceDatabaseUrl("mysql://user:password@[::1]:3306/needo_dev").hostname)
+      .toBe("[::1]");
   });
 
   it("accepts exactly one absolute CLI output path", () => {
@@ -56,6 +62,28 @@ describe("selective staging account exporter", () => {
     for (const args of [[], ["--output"], ["--output", "relative.json.gz"], ["--output", "/tmp/a", "extra"]]) {
       expect(() => parseSelectiveAccountExportCliArgs(args)).toThrow("ACCOUNT_SYNC_CLI_ARGUMENT_INVALID");
     }
+  });
+
+  it("creates its local MariaDB connection with date strings enabled", async () => {
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
+    fixtureDirectories.add(outputDirectory);
+    let connectionInput: unknown;
+    const connection = {
+      query: async () => [] as Array<Record<string, unknown>>,
+      end: async () => undefined
+    } as unknown as Connection;
+
+    await runSelectiveAccountExportCli({
+      args: ["--output", path.join(outputDirectory, "bundle.json.gz")],
+      env: { DEPLOY_ENV: "local", DATABASE_URL: "mysql://user:password@127.0.0.1:3306/needo_dev" },
+      createConnection: async (input) => {
+        connectionInput = input;
+        return connection;
+      },
+      writeOutput: () => undefined
+    });
+
+    expect(connectionInput).toEqual(expect.objectContaining({ dateStrings: true }));
   });
 
   it("uses fixed allowlisted queries that exclude deleted graph rows", () => {
@@ -85,6 +113,67 @@ describe("selective staging account exporter", () => {
       if (name !== "migrations") expect(query).toContain("deleted_at IS NULL");
       expect(query).not.toMatch(/\$\{|\+\s*table|FROM\s+\?/u);
     }
+    expect(ACCOUNT_EXPORT_QUERIES.technician_shop_affiliations)
+      .toContain("technician_profile_id IN (?) AND shop_id IN (?)");
+  });
+
+  it("rejects a role scope that is not part of the final exported graph", async () => {
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
+    fixtureDirectories.add(outputDirectory);
+    const rowsByQuery = new Map<string, Array<Record<string, unknown>>>([
+      [ACCOUNT_EXPORT_QUERIES.activeUsers, [{ id: 1 }]],
+      [ACCOUNT_EXPORT_QUERIES.merchantAccounts, [{ id: 20 }]],
+      [ACCOUNT_EXPORT_QUERIES.merchant_accounts, []],
+      [ACCOUNT_EXPORT_QUERIES.users, [{ id: 1, is_test_account: 1, session_generation: 0 }]],
+      [ACCOUNT_EXPORT_QUERIES.user_roles, [{ id: 2, user_id: 1, role_id: 99, role_code: "merchant_owner", scope_type: "merchant", scope_id: 20 }]],
+      [ACCOUNT_EXPORT_QUERIES.migrations, []]
+    ]);
+    const port: SelectiveAccountExportPort = {
+      deployEnv: "local",
+      outputPath: path.join(outputDirectory, "bundle.json.gz"),
+      sourceDatabaseUrl: "mysql://user:password@127.0.0.1:3306/needo_dev",
+      query: async (query) => rowsByQuery.get(query) ?? []
+    };
+
+    await expect(exportSelectiveAccounts(port, new Date("2026-09-05T00:00:00.000Z")))
+      .rejects.toThrow("ACCOUNT_SYNC_REFERENCE_ROLE_SCOPE_INVALID");
+  });
+
+  it("rejects a candidate shop missing from the final exported rows", async () => {
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
+    fixtureDirectories.add(outputDirectory);
+    const rowsByQuery = new Map<string, Array<Record<string, unknown>>>([
+      [ACCOUNT_EXPORT_QUERIES.activeUsers, [{ id: 1 }]],
+      [ACCOUNT_EXPORT_QUERIES.ownedShops, [{ id: 30 }]],
+      [ACCOUNT_EXPORT_QUERIES.users, [{ id: 1, is_test_account: 1, session_generation: 0 }]],
+      [ACCOUNT_EXPORT_QUERIES.shops, []],
+      [ACCOUNT_EXPORT_QUERIES.technician_profiles, [{ id: 2, user_id: 1, shop_id: 30 }]],
+      [ACCOUNT_EXPORT_QUERIES.migrations, []]
+    ]);
+    const port: SelectiveAccountExportPort = {
+      deployEnv: "local",
+      outputPath: path.join(outputDirectory, "bundle.json.gz"),
+      sourceDatabaseUrl: "mysql://user:password@127.0.0.1:3306/needo_dev",
+      query: async (query) => rowsByQuery.get(query) ?? []
+    };
+
+    await expect(exportSelectiveAccounts(port, new Date("2026-09-05T00:00:00.000Z")))
+      .rejects.toThrow("ACCOUNT_SYNC_REFERENCE_SHOP_INVALID");
+  });
+
+  it("rejects an archive whose final on-disk bytes differ after writing", async () => {
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "needo-selective-account-export-"));
+    fixtureDirectories.add(outputDirectory);
+    const port = {
+      deployEnv: "local",
+      outputPath: path.join(outputDirectory, "bundle.json.gz"),
+      sourceDatabaseUrl: "mysql://user:password@127.0.0.1:3306/needo_dev",
+      query: async () => [] as Array<Record<string, unknown>>,
+      readArchive: async () => Buffer.from("tampered", "utf8")
+    } as SelectiveAccountExportPort & { readArchive: (outputPath: string) => Promise<Buffer> };
+
+    await expect(exportSelectiveAccounts(port, new Date("2026-09-05T00:00:00.000Z")))
+      .rejects.toThrow("ACCOUNT_SYNC_ARCHIVE_VERIFICATION_INVALID");
   });
 
   it("maps only active account rows, resets sessions, and writes a deterministic private archive", async () => {

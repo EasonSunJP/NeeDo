@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
-import { createConnection, type Connection } from "mariadb";
+import { createConnection, type Connection, type ConnectionConfig } from "mariadb";
 import {
   buildSelectiveAccountExportSuccessOutput,
   exportSelectiveAccounts,
@@ -11,7 +11,7 @@ import {
 interface SelectiveAccountExportCliOptions {
   args?: readonly string[];
   env?: NodeJS.ProcessEnv;
-  createConnection?: (databaseUrl: string) => Promise<Connection>;
+  createConnection?: (config: ConnectionConfig) => Promise<Connection>;
   writeOutput?: (value: string) => void;
 }
 
@@ -31,6 +31,15 @@ const assertOutputDoesNotExist = async (outputPath: string): Promise<void> => {
   throw new Error("ACCOUNT_SYNC_OUTPUT_EXISTS");
 };
 
+const createLocalConnectionConfig = (url: URL): ConnectionConfig => ({
+  host: url.hostname.replace(/^\[|\]$/gu, ""),
+  port: url.port ? Number(url.port) : 3306,
+  user: decodeURIComponent(url.username),
+  password: decodeURIComponent(url.password),
+  database: url.pathname.replace(/^\/+/, ""),
+  dateStrings: true
+});
+
 export const runSelectiveAccountExportCli = async (
   options: SelectiveAccountExportCliOptions = {}
 ): Promise<void> => {
@@ -38,12 +47,12 @@ export const runSelectiveAccountExportCli = async (
   const outputPath = parseSelectiveAccountExportCliArgs(options.args ?? process.argv.slice(2));
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl || env.DEPLOY_ENV !== "local") throw new Error("ACCOUNT_SYNC_SOURCE_BOUNDARY_REJECTED");
-  parseLocalSourceDatabaseUrl(databaseUrl);
+  const sourceDatabaseUrl = parseLocalSourceDatabaseUrl(databaseUrl);
   await assertOutputDoesNotExist(outputPath);
 
   let connection: Connection | undefined;
   try {
-    connection = await (options.createConnection ?? createConnection)(databaseUrl);
+    connection = await (options.createConnection ?? createConnection)(createLocalConnectionConfig(sourceDatabaseUrl));
     const currentConnection = connection;
     const port: SelectiveAccountExportPort = {
       deployEnv: env.DEPLOY_ENV,
