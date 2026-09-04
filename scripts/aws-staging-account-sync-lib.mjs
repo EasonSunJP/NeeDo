@@ -67,6 +67,14 @@ export const parseImportSummary = (stdout) => {
   return Object.freeze({ ...value, tableCounts: Object.freeze({ ...value.tableCounts }), verificationDigests: Object.freeze({ ...value.verificationDigests }) });
 };
 
+const hostResultKeys = ["importSummary", "backupKey", "backupVersionId", "backupSha256"];
+export const parseHostResult = (stdout, expectedBackupKey) => {
+  let value;
+  try { value = JSON.parse(typeof stdout === "string" ? stdout.trim() : ""); } catch { fail("ACCOUNT_SYNC_SSM_SUMMARY_REJECTED"); }
+  if (!exactKeys(value, hostResultKeys) || value.backupKey !== expectedBackupKey || !VERSION_ID.test(value.backupVersionId ?? "") || !SHA256.test(value.backupSha256 ?? "")) fail("ACCOUNT_SYNC_SSM_SUMMARY_REJECTED");
+  return Object.freeze({ importSummary: parseImportSummary(JSON.stringify(value.importSummary)), backupKey: value.backupKey, backupVersionId: value.backupVersionId, backupSha256: value.backupSha256 });
+};
+
 export const buildHostCommand = ({ region, transferBucket, transferKey, transferVersionId, backupBucket, backupKey, sourceRevision, bundleSha256 }) => {
   requireBucket(transferBucket); requireBucket(backupBucket);
   if (region !== APPROVED.region || !FULL_REVISION.test(sourceRevision ?? "") || !SHA256.test(bundleSha256 ?? "") || !VERSION_ID.test(transferVersionId ?? "") || transferKey !== transferObjectKey(sourceRevision, bundleSha256) || !new RegExp(`^staging/pre-account-sync/${sourceRevision}/[0-9]+-${bundleSha256}\\.sql\\.gz$`).test(backupKey ?? "")) fail("ACCOUNT_SYNC_COMMAND_VALUE_REJECTED");
@@ -83,7 +91,7 @@ export const buildHostCommand = ({ region, transferBucket, transferKey, transfer
     `backup_version_id=$(aws s3api put-object --region ${shellQuote(region)} --bucket ${shellQuote(backupBucket)} --key ${shellQuote(backupKey)} --body \"$backup_path\" --metadata sha256=\"$backup_sha256\" --query VersionId --output text --only-show-errors)`, "test \"$backup_version_id\" != None", `aws s3api head-object --region ${shellQuote(region)} --bucket ${shellQuote(backupBucket)} --key ${shellQuote(backupKey)} --version-id \"$backup_version_id\" --query 'Metadata.sha256' --output text --only-show-errors | grep -Fx \"$backup_sha256\" >/dev/null`,
     `import_summary=$(docker compose --env-file /srv/needo/config/staging.env --project-name needo-staging --file \"$current_release/deploy/staging/docker-compose.yml\" run --rm --no-deps --volume \"$bundle_path:/run/needo/account-sync.json.gz:ro\" backend node dist/staging/selective-account-import.cli.js --input /run/needo/account-sync.json.gz --sha256 ${shellQuote(bundleSha256)})`, "test \"$(printf '%s\\n' \"$import_summary\" | wc -l | tr -d ' ')\" = 1",
     `aws s3api delete-object --region ${shellQuote(region)} --bucket ${shellQuote(transferBucket)} --key ${shellQuote(transferKey)} --version-id ${shellQuote(transferVersionId)} --only-show-errors >/dev/null`, "transfer_deleted=1",
-    "rm -f -- \"$bundle_path\" \"$backup_path\"", "bundle_path=''", "backup_path=''", "trap - EXIT", "printf '%s\\n' \"$import_summary\""
+    "rm -f -- \"$bundle_path\" \"$backup_path\"", "bundle_path=''", "backup_path=''", "trap - EXIT", `node -e 'const summary=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({importSummary:summary,backupKey:process.argv[2],backupVersionId:process.argv[3],backupSha256:process.argv[4]})+"\\n")' \"$import_summary\" ${shellQuote(backupKey)} \"$backup_version_id\" \"$backup_sha256\"`
   ].join("\n");
 };
 
@@ -120,10 +128,10 @@ export const waitForSnapshot = async (aws, snapshotId, volumeId, attempts = 80, 
   fail("ACCOUNT_SYNC_SNAPSHOT_STATE_REJECTED");
 };
 
-export const waitForCommand = async (aws, commandId, instanceId, attempts = 361, wait = delay) => {
+export const waitForCommand = async (aws, commandId, instanceId, expectedBackupKey, attempts = 361, wait = delay) => {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const invocation = await aws.json(["ssm", "get-command-invocation", "--command-id", commandId, "--instance-id", instanceId], { allowInvocationDelay: true });
-    if (invocation?.Status === "Success" && invocation.ResponseCode === 0) return parseImportSummary(invocation.StandardOutputContent);
+    if (invocation?.Status === "Success" && invocation.ResponseCode === 0) return parseHostResult(invocation.StandardOutputContent, expectedBackupKey);
     if (invocation?.Status === "Success") fail("ACCOUNT_SYNC_SSM_STATUS_REJECTED");
     if (["Cancelled", "Cancelling", "Failed", "TimedOut", "Undeliverable", "Terminated"].includes(invocation?.Status)) fail("ACCOUNT_SYNC_SSM_STATUS_REJECTED");
     await wait(10_000);
@@ -154,10 +162,10 @@ export const orchestrateStagingAccountSync = async ({ aws, input, localSha256, l
   const sent = await aws.json(["ssm", "send-command", "--document-name", "AWS-RunShellScript", "--instance-ids", environment.instanceId, "--timeout-seconds", "3600", "--comment", `NeeDo staging account sync ${approvedInput.sourceRevision.slice(0, 12)}`, "--parameters", JSON.stringify({ commands: [hostCommand], executionTimeout: ["3600"] })]);
   const commandId = sent?.Command?.CommandId;
   if (!COMMAND_ID.test(commandId ?? "")) fail("ACCOUNT_SYNC_SSM_STATUS_REJECTED");
-  const summary = await waitForCommand(aws, commandId, environment.instanceId);
-  const backup = await aws.json(["s3api", "head-object", "--bucket", environment.backupBucket, "--key", backupKey]);
-  if (!VERSION_ID.test(backup?.VersionId ?? "") || !SHA256.test(backup?.Metadata?.sha256 ?? "")) fail("ACCOUNT_SYNC_BACKUP_REJECTED");
-  const evidence = createRedactedSyncEvidence({ timestamp, accountId: approvedInput.accountId, region: approvedInput.region, instanceId: environment.instanceId, dataVolumeId: environment.volumeId, sourceRevision: approvedInput.sourceRevision, bundleSha256: approvedInput.bundleSha256, bundleBytes, transferBucket: environment.releaseBucket, transferKey, transferVersionId: transfer.versionId, snapshotId: snapshot.snapshotId, backupBucket: environment.backupBucket, backupKey, backupVersionId: backup.VersionId, backupSha256: backup.Metadata.sha256, commandId, summary });
+  const result = await waitForCommand(aws, commandId, environment.instanceId, backupKey);
+  const backup = await aws.json(["s3api", "head-object", "--bucket", environment.backupBucket, "--key", result.backupKey, "--version-id", result.backupVersionId]);
+  if (backup?.VersionId !== result.backupVersionId || !Number.isSafeInteger(backup?.ContentLength) || backup.ContentLength <= 0 || backup?.Metadata?.sha256 !== result.backupSha256) fail("ACCOUNT_SYNC_BACKUP_REJECTED");
+  const evidence = createRedactedSyncEvidence({ timestamp, accountId: approvedInput.accountId, region: approvedInput.region, instanceId: environment.instanceId, dataVolumeId: environment.volumeId, sourceRevision: approvedInput.sourceRevision, bundleSha256: approvedInput.bundleSha256, bundleBytes, transferBucket: environment.releaseBucket, transferKey, transferVersionId: transfer.versionId, snapshotId: snapshot.snapshotId, backupBucket: environment.backupBucket, backupKey: result.backupKey, backupVersionId: result.backupVersionId, backupSha256: result.backupSha256, commandId, summary: result.importSummary });
   await writeEvidence(evidence);
   return evidence;
   } finally {

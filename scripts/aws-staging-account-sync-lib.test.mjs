@@ -9,6 +9,7 @@ import {
   buildHostCommand,
   createRedactedSyncEvidence,
   orchestrateStagingAccountSync,
+  parseHostResult,
   parseImportSummary,
   transferObjectKey,
   validateSnapshot,
@@ -25,6 +26,9 @@ const input = { profile: "needo-staging-bootstrap", accountId: "430611185505", r
 const tableCounts = Object.fromEntries(["users", "shops", "merchant_accounts", "customer_profiles", "technician_profiles", "user_identities", "merchant_identity_profiles", "user_roles", "merchant_shop_memberships", "technician_shop_affiliations", "public_identifiers"].map((table) => [table, table === "users" ? 261 : 0]));
 const verificationDigests = Object.fromEntries(Object.keys(tableCounts).map((table) => [table, sha]));
 const validLive = Object.freeze({ accountId: input.accountId, region: input.region, callerKind: "assumed-role", stackName: "needo-staging-infrastructure", stackStatus: "CREATE_COMPLETE", instanceId: "i-0123456789abcdef0", volumeId: "vol-0123456789abcdef0", releaseBucket: "needo-transfer", backupBucket: "needo-backup", releaseRevision: input.sourceRevision, ssmOnline: true, registrationCode: 40313, applicationDeployment: { sourceRevision: input.sourceRevision, status: "passed" } });
+const backupKey = `staging/pre-account-sync/${input.sourceRevision}/1-${sha}.sql.gz`;
+const importSummary = { gate: "staging-selective-account-import", status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1, tableCounts, verificationDigests };
+const hostResult = (versionId = "v-backup", resultBackupKey = backupKey) => JSON.stringify({ importSummary, backupKey: resultBackupKey, backupVersionId: versionId, backupSha256: sha });
 
 test("rejects every target or digest mismatch", () => {
   assert.throws(() => validateSyncInput({ ...input, region: "ap-northeast-1" }, sha), /ACCOUNT_SYNC_TARGET_REJECTED/);
@@ -91,6 +95,7 @@ test("builds a bounded, non-disclosing host command", () => {
   assert.match(command, /sha256sum --check[^\n]+>\/dev\/null/);
   assert.match(command, /backup_version_id=\$\(aws s3api put-object/);
   assert.match(command, /head-object[^\n]+--version-id "\$backup_version_id"/);
+  assert.match(command, /backupVersionId/);
   assert.match(command, /wc -l/);
   assert.match(command, /trap cleanup/);
   assert.ok(command.indexOf("trap cleanup EXIT") < command.indexOf("flock -n 9"));
@@ -110,12 +115,13 @@ test("accepts only the redacted importer summary and evidence fields", () => {
   const evidence = createRedactedSyncEvidence({ timestamp: "2026-09-05T00:00:00.000Z", accountId: input.accountId, region: input.region, instanceId: "i-0123456789abcdef0", dataVolumeId: "vol-0123456789abcdef0", sourceRevision: input.sourceRevision, bundleSha256: sha, bundleBytes: 5, transferBucket: "needo-transfer", transferKey: transferObjectKey(input.sourceRevision, sha), transferVersionId: "v1", snapshotId: "snap-0123456789abcdef0", backupBucket: "needo-backup", backupKey: `staging/pre-account-sync/${input.sourceRevision}/1-${sha}.sql.gz`, backupVersionId: "v2", backupSha256: sha, commandId: "12345678-1234-1234-1234-123456789012", summary });
   assert.equal(evidence.status, "passed");
   assert.doesNotMatch(JSON.stringify(evidence), /bundle_path|stdout|password|token|secret/i);
+  assert.equal(parseHostResult(hostResult(), backupKey).backupVersionId, "v-backup");
+  assert.throws(() => parseHostResult(JSON.stringify({ importSummary, backupKey, backupVersionId: "v-backup", backupSha256: sha, latestVersionId: "other" }), backupKey), /ACCOUNT_SYNC_SSM_SUMMARY_REJECTED/);
 });
 
 test("rejects a failed SSM invocation and writes evidence atomically with mode 0600", async () => {
   await assert.rejects(() => waitForCommand({ json: async () => ({ Status: "Failed" }) }, "12345678-1234-1234-1234-123456789012", validLive.instanceId, 1), /ACCOUNT_SYNC_SSM_STATUS_REJECTED/);
-  const failedSummary = JSON.stringify({ gate: "staging-selective-account-import", status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1, tableCounts, verificationDigests });
-  await assert.rejects(() => waitForCommand({ json: async () => ({ Status: "Success", ResponseCode: 1, StandardOutputContent: failedSummary }) }, "12345678-1234-1234-1234-123456789012", validLive.instanceId, 1), /ACCOUNT_SYNC_SSM_STATUS_REJECTED/);
+  await assert.rejects(() => waitForCommand({ json: async () => ({ Status: "Success", ResponseCode: 1, StandardOutputContent: hostResult() }) }, "12345678-1234-1234-1234-123456789012", validLive.instanceId, backupKey, 1), /ACCOUNT_SYNC_SSM_STATUS_REJECTED/);
   const summary = { gate: "staging-selective-account-import", status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1, tableCounts, verificationDigests };
   const evidence = createRedactedSyncEvidence({ timestamp: "2026-09-05T00:00:00.000Z", accountId: input.accountId, region: input.region, instanceId: validLive.instanceId, dataVolumeId: validLive.volumeId, sourceRevision: input.sourceRevision, bundleSha256: sha, bundleBytes: 5, transferBucket: validLive.releaseBucket, transferKey: transferObjectKey(input.sourceRevision, sha), transferVersionId: "v1", snapshotId: "snap-0123456789abcdef0", backupBucket: validLive.backupBucket, backupKey: `staging/pre-account-sync/${input.sourceRevision}/1-${sha}.sql.gz`, backupVersionId: "v2", backupSha256: sha, commandId: "12345678-1234-1234-1234-123456789012", summary });
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "needo-account-sync-"));
@@ -127,14 +133,14 @@ test("rejects a failed SSM invocation and writes evidence atomically with mode 0
 });
 
 test("retries transient SSM lookup and cleans the exact uploaded version after every later failure", async () => {
-  const summary = JSON.stringify({ gate: "staging-selective-account-import", status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1, tableCounts, verificationDigests });
+  const summary = hostResult();
   let attempts = 0;
   const waits = [];
   const parsed = await waitForCommand({ json: async () => {
     attempts += 1;
     return attempts === 1 ? null : { Status: "Success", ResponseCode: 0, StandardOutputContent: summary };
-  } }, "12345678-1234-1234-1234-123456789012", validLive.instanceId, 3, async (milliseconds) => { waits.push(milliseconds); });
-  assert.equal(parsed.userCount, 262);
+  } }, "12345678-1234-1234-1234-123456789012", validLive.instanceId, backupKey, 3, async (milliseconds) => { waits.push(milliseconds); });
+  assert.equal(parsed.importSummary.userCount, 262);
   assert.deepEqual(waits, [10_000]);
 
   for (const stage of ["snapshot", "send", "command-id"]) {
@@ -161,19 +167,28 @@ test("retries transient SSM lookup and cleans the exact uploaded version after e
   }
 });
 
-test("orchestrates only versioned upload, completed snapshot, successful SSM, and redacted evidence", async () => {
-  const summary = { gate: "staging-selective-account-import", status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1, tableCounts, verificationDigests };
+test("orchestrates with the host backup VersionId even when a newer concurrent version exists", async () => {
   const live = validLive;
   const calls = [];
+  let expectedBackupKey;
+  const newerConcurrentVersionId = "v-backup-newer";
   const aws = { json: async (args) => {
     calls.push(args);
     if (args[0] === "s3api" && args[1] === "put-object") return { VersionId: "v-transfer" };
     if (args[0] === "s3api" && args[1] === "head-object" && args.includes("needo-transfer")) return { VersionId: "v-transfer", ContentLength: 5, Metadata: { sha256: sha, "source-revision": input.sourceRevision } };
     if (args[0] === "ec2" && args[1] === "create-snapshot") return { SnapshotId: "snap-0123456789abcdef0", VolumeId: live.volumeId };
     if (args[0] === "ec2" && args[1] === "describe-snapshots") return { Snapshots: [{ SnapshotId: "snap-0123456789abcdef0", VolumeId: live.volumeId, State: "completed" }] };
-    if (args[0] === "ssm" && args[1] === "send-command") return { Command: { CommandId: "12345678-1234-1234-1234-123456789012" } };
-    if (args[0] === "ssm" && args[1] === "get-command-invocation") return { Status: "Success", ResponseCode: 0, StandardOutputContent: JSON.stringify(summary) };
-    if (args[0] === "s3api" && args[1] === "head-object") return { VersionId: "v-backup", ContentLength: 6, Metadata: { sha256: sha } };
+    if (args[0] === "ssm" && args[1] === "send-command") {
+      expectedBackupKey = String(args.at(-1)).match(/staging\/pre-account-sync\/[a-f0-9]{40}\/[0-9]+-[a-f0-9]{64}\.sql\.gz/)?.[0];
+      return { Command: { CommandId: "12345678-1234-1234-1234-123456789012" } };
+    }
+    if (args[0] === "ssm" && args[1] === "get-command-invocation") return { Status: "Success", ResponseCode: 0, StandardOutputContent: hostResult("v-backup-exact", expectedBackupKey) };
+    if (args[0] === "s3api" && args[1] === "head-object") {
+      assert.ok(args.includes("--version-id"));
+      assert.ok(args.includes("v-backup-exact"));
+      assert.ok(!args.includes(newerConcurrentVersionId));
+      return { VersionId: "v-backup-exact", ContentLength: 6, Metadata: { sha256: sha } };
+    }
     if (args[0] === "s3api" && args[1] === "delete-object") return {};
     throw new Error(`unexpected ${args.join(" ")}`);
   } };
@@ -181,6 +196,7 @@ test("orchestrates only versioned upload, completed snapshot, successful SSM, an
   const evidence = await orchestrateStagingAccountSync({ aws, input: { ...input, bundleBytes: 5 }, localSha256: sha, live, timestamp: "2026-09-05T00:00:00.000Z", writeEvidence: async (value) => { written = value; } });
   assert.equal(evidence.status, "passed");
   assert.equal(written.commandId, evidence.commandId);
+  assert.equal(evidence.logicalBackup.versionId, "v-backup-exact");
   assert.ok(calls.some((args) => args[0] === "s3api" && args[1] === "put-object" && args.includes(input.bundlePath)));
   assert.ok(calls.some((args) => args[0] === "ec2" && args[1] === "create-snapshot"));
   assert.ok(calls.some((args) => args[0] === "ssm" && args[1] === "send-command"));
