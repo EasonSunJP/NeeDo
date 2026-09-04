@@ -1695,12 +1695,25 @@ describe("AWS Staging preflight", () => {
       .rejects.toThrow(stackState);
   });
 
+  it("accepts the exact enhanced AWS CLI absent-stack error", async () => {
+    const aws = successfulAws({
+      stack: new Error(
+        "AWS CLI failed (254): aws: [ERROR]: An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist"
+      )
+    });
+
+    await expect(runAwsStagingPreflight({ aws, config, resolveDns: async () => [] }))
+      .resolves.toMatchObject({ stackState: "ABSENT" });
+  });
+
   it.each([
     new Error("AWS CLI failed (254): ValidationError"),
     new Error("AWS CLI failed (254): Stack with id needo-staging-infrastructure does not exist"),
     new Error("AWS CLI failed (254): AccessDenied"),
     new Error("AWS CLI failed (255): connection timed out"),
     new Error("AWS CLI failed (254): AccessDenied: An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist"),
+    new Error("AWS CLI failed (254): aws: [ERROR]: AccessDenied: An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist"),
+    new Error("AWS CLI failed (254): aws: [ERROR]: aws: [ERROR]: An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist"),
     new Error("AWS CLI failed (254): An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist; AccessDenied"),
     new Error("Wrapper: AWS CLI failed (254): An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id needo-staging-infrastructure does not exist"),
     new Error("AWS CLI failed (254): An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id another-stack does not exist")

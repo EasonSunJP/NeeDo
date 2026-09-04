@@ -94,7 +94,7 @@ function isExactAbsentStackError(error, stackName) {
   const message = error instanceof Error ? error.message : "";
   const escapedStackName = stackName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const absentStackPattern = new RegExp(
-    `^AWS CLI failed \\([^()\\r\\n]+\\): An error occurred \\(ValidationError\\) when calling the DescribeStacks operation: Stack with id ${escapedStackName} does not exist$`
+    `^AWS CLI failed \\([^()\\r\\n]+\\): (?:aws: \\[ERROR\\]: )?An error occurred \\(ValidationError\\) when calling the DescribeStacks operation: Stack with id ${escapedStackName} does not exist$`
   );
   return absentStackPattern.test(message);
 }
