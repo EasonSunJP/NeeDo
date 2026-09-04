@@ -275,8 +275,8 @@ A technician may have at most five non-deleted services across all shops. The li
 ### Technician service cover
 
 - `PUT /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
-  accepts one authenticated raw JPEG/PNG/WebP body up to 8 MiB and at most
-  25,000,000 decoded pixels, then returns the updated `TechnicianService`.
+  accepts one authenticated, single-frame raw JPEG/PNG/WebP body up to 8 MiB and
+  at most 25,000,000 decoded pixels, then returns the updated `TechnicianService`.
 - `DELETE /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
   removes the current public cover association and returns the updated service.
 
@@ -287,6 +287,8 @@ the current service without creating duplicate media rows or audit entries.
 Before persistence, `sharp` performs an asynchronous full decode through libvips;
 header-only, truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded
 pixel-limit violations fail with the existing cover-invalid HTTP 400 contract.
+Animated and other multi-page images are also invalid; Sharp metadata must report no
+more than one page before the accepted single frame is fully decoded.
 
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 

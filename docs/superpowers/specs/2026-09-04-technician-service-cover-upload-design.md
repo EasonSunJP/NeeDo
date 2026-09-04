@@ -51,6 +51,7 @@ PUT /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover
 Content-Type: image/jpeg | image/png | image/webp
 Body: raw binary, 1 byte to 8 MiB
 Decoded pixels: at most 25,000,000
+Frames/pages: exactly 1; animation and multi-page content are invalid
 Permission: technician:services:write
 ```
 
@@ -69,14 +70,14 @@ Permission: technician:services:write
 
 - `shopId`、`serviceId` 使用 Zod 正整数参数校验。
 - 只接受三种明确的图片 `Content-Type`；其他类型返回 HTTP 415 和稳定 i18n 错误键。
-- 空 body、声明 MIME 与解码格式不匹配、仅有头部而无完整像素、损坏文件，以及超过 25,000,000 解码像素时返回 HTTP 400。
+- 空 body、声明 MIME 与解码格式不匹配、仅有头部而无完整像素、损坏文件、多帧/动画内容，以及超过 25,000,000 解码像素时返回 HTTP 400。
 - 超过 8 MiB 返回 HTTP 413。
 - 服务不存在、已软删除或不属于当前技师作用域时返回同一个安全的 not-found 错误，不能泄露其他技师的服务是否存在。
 - 未登录返回 401；无 `technician:services:write` 权限返回 403。
 - Controller 只解析请求和响应；作用域、文件持久化、事务和审计均位于 Service/Repository。
 - OpenAPI 必须描述二进制 request body、三种 MIME、成功响应和全部稳定错误。
 
-文件字节数与声明 MIME 先进行低成本校验；随后由维护中的 `sharp`/libvips 在主 JavaScript 事件循环之外异步执行完整解码。只有能够完整解码为声明的 JPEG、PNG 或 WebP 且不超过 25,000,000 像素的图片才进入 checksum、存储和数据库事务阶段。
+文件字节数与声明 MIME 先进行低成本校验；随后由维护中的 `sharp`/libvips 读取完整容器元数据。只有元数据明确显示至多一个 frame/page 时，才在主 JavaScript 事件循环之外异步完整解码该单帧。能够完整解码为声明的 JPEG、PNG 或 WebP 且不超过 25,000,000 像素的单帧图片才进入 checksum、存储和数据库事务阶段。
 
 ## 5. 身份、作用域与权限
 

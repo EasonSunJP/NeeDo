@@ -12,12 +12,14 @@ import {
   type ContentMediaRepositoryPort
 } from "../src/services/content-media.service";
 import {
+  corruptedSecondFrameWebp,
   emptyImageDataPng,
   excessivePixelPng,
   headerOnlyJpeg,
   headerOnlyWebp,
   validJpeg,
   validPng,
+  validTwoFrameWebp,
   validWebp
 } from "./fixtures/content-images";
 
@@ -157,6 +159,17 @@ describe("ContentMediaFileStorage", () => {
     await expect(
       Promise.resolve().then(() => storage.prepare({ bytes: validPng, mimeType: "image/jpeg" }))
     ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
+  });
+
+  it.each([
+    ["valid two-frame", validTwoFrameWebp],
+    ["corrupted second-frame", corruptedSecondFrameWebp]
+  ])("rejects %s animated WebP content", async (_name, bytes) => {
+    const storage = new ContentMediaFileStorage("/unused");
+
+    await expect(storage.prepare({ bytes, mimeType: "image/webp" })).rejects.toEqual(
+      expect.objectContaining({ message: "error.content.media_invalid" })
+    );
   });
 
   it("rejects empty and oversized files with stable content errors", async () => {

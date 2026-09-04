@@ -125,6 +125,7 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
         decoded.format !== metadata.decodedFormat ||
         !decoded.width ||
         !decoded.height ||
+        (decoded.pages ?? 1) > 1 ||
         decoded.width * decoded.height > CONTENT_MEDIA_MAX_DECODED_PIXELS
       ) {
         throw this.invalid();
