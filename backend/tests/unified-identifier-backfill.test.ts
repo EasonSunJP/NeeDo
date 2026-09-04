@@ -22,6 +22,7 @@ const fixture = (): UnifiedIdentifierBackfillBatch => ({
   users: [
     {
       id: 1,
+      email: "customer-one@example.com",
       needoId: "n0000000237",
       accountNo: null,
       primaryIdentityType: null,
@@ -42,6 +43,7 @@ const fixture = (): UnifiedIdentifierBackfillBatch => ({
     },
     {
       id: 2,
+      email: "operator@example.com",
       needoId: "n0000000002",
       accountNo: null,
       primaryIdentityType: null,
@@ -62,6 +64,7 @@ const fixture = (): UnifiedIdentifierBackfillBatch => ({
     },
     {
       id: 3,
+      email: "technician@example.com",
       needoId: "n0000000003",
       accountNo: null,
       primaryIdentityType: null,
@@ -94,6 +97,7 @@ const fixture = (): UnifiedIdentifierBackfillBatch => ({
     },
     {
       id: 4,
+      email: "merchant-staff@example.com",
       needoId: "n0000000004",
       accountNo: null,
       primaryIdentityType: null,
@@ -126,6 +130,7 @@ const fixture = (): UnifiedIdentifierBackfillBatch => ({
     },
     {
       id: 5,
+      email: "merchant-owner@example.com",
       needoId: "n0000000005",
       accountNo: null,
       primaryIdentityType: null,
@@ -331,6 +336,7 @@ describe("unified identifier backfill", () => {
     batch.users = [
       {
         id: 6,
+        email: "technician-only@example.com",
         needoId: "n0000000006",
         accountNo: null,
         primaryIdentityType: null,
@@ -345,9 +351,7 @@ describe("unified identifier backfill", () => {
             publicIdentifier: null
           }
         ],
-        roleAssignments: [
-          { code: "technician", scopeType: "technician_profile", scopeId: 206 }
-        ],
+        roleAssignments: [{ code: "technician", scopeType: "technician_profile", scopeId: 206 }],
         hasActiveTechnicianProfile: true,
         ownedMerchantAccountIds: []
       }
@@ -382,6 +386,7 @@ describe("unified identifier backfill", () => {
     batch.users = [
       {
         id: 6,
+        email: "technician-only@example.com",
         needoId: "n0000000006",
         accountNo: null,
         primaryIdentityType: null,
@@ -396,9 +401,7 @@ describe("unified identifier backfill", () => {
             publicIdentifier: null
           }
         ],
-        roleAssignments: [
-          { code: "technician", scopeType: "technician_profile", scopeId: 206 }
-        ],
+        roleAssignments: [{ code: "technician", scopeType: "technician_profile", scopeId: 206 }],
         hasActiveTechnicianProfile: true,
         ownedMerchantAccountIds: []
       }
@@ -514,9 +517,39 @@ describe("unified identifier backfill", () => {
     expect(runtime.applyCalls).toBe(0);
   });
 
-  it("rejects conflicting explicit U classification for a platform-company account", () => {
+  it("honors an explicit U primary kind independently from platform authorization", () => {
     const batch = fixture();
-    batch.users[1]!.primaryIdentityType = "U";
+    const operator = batch.users[1]!;
+    operator.email = "operator@example.com";
+    operator.needoId = "u3141592653";
+    operator.accountNo = "3141592653";
+    operator.primaryIdentityType = "U";
+    operator.identities[0]!.isDefault = false;
+    operator.identities.push({
+      id: 22,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 102,
+      isDefault: true,
+      isActive: true,
+      publicIdentifier: {
+        kind: "U",
+        numberPart: "3141592653",
+        publicId: "u3141592653"
+      }
+    });
+
+    const plan = buildUnifiedIdentifierBackfillPlan(batch);
+
+    expect(plan.issues).not.toContainEqual(expect.objectContaining({ entityId: 2 }));
+    expect(plan.operations).not.toContainEqual(expect.objectContaining({ userId: 2 }));
+  });
+
+  it("rejects an explicit U primary kind for an official lifedance.com account", () => {
+    const batch = fixture();
+    const officialOperator = batch.users[1]!;
+    officialOperator.email = "operator@lifedance.com";
+    officialOperator.primaryIdentityType = "U";
 
     expect(buildUnifiedIdentifierBackfillPlan(batch).issues).toContainEqual(
       expect.objectContaining({
