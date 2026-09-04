@@ -70,14 +70,14 @@ Permission: technician:services:write
 
 - `shopId`、`serviceId` 使用 Zod 正整数参数校验。
 - 只接受三种明确的图片 `Content-Type`；其他类型返回 HTTP 415 和稳定 i18n 错误键。
-- 空 body、声明 MIME 与解码格式不匹配、仅有头部而无完整像素、损坏文件、多帧/动画内容，以及超过 25,000,000 解码像素时返回 HTTP 400。
+- 空 body、声明 MIME 与解码格式不匹配、仅有头部而无完整像素、损坏文件、APNG、JPEG MPF、多帧/动画内容，以及超过 25,000,000 解码像素时返回 HTTP 400。
 - 超过 8 MiB 返回 HTTP 413。
 - 服务不存在、已软删除或不属于当前技师作用域时返回同一个安全的 not-found 错误，不能泄露其他技师的服务是否存在。
 - 未登录返回 401；无 `technician:services:write` 权限返回 403。
 - Controller 只解析请求和响应；作用域、文件持久化、事务和审计均位于 Service/Repository。
 - OpenAPI 必须描述二进制 request body、三种 MIME、成功响应和全部稳定错误。
 
-文件字节数与声明 MIME 先进行低成本校验；随后由维护中的 `sharp`/libvips 读取完整容器元数据。只有元数据明确显示至多一个 frame/page 时，才在主 JavaScript 事件循环之外异步完整解码该单帧。能够完整解码为声明的 JPEG、PNG 或 WebP 且不超过 25,000,000 像素的单帧图片才进入 checksum、存储和数据库事务阶段。
+文件字节数与声明 MIME 先进行低成本校验。PNG 通过有明确条目上限的 chunk-header walk 拒绝 `acTL`、`fcTL`、`fdAT`；JPEG 通过有明确条目和 marker-padding 上限的 marker walk 拒绝 APP2 `MPF`。这些容器检查不计算 CRC、不解码像素，扫描预算耗尽时 fail closed。随后由维护中的 `sharp`/libvips 读取容器元数据，拒绝其他报告多个 frame/page 的输入，并在主 JavaScript 事件循环之外异步完整解码被接受的单帧。能够完整解码为声明的 JPEG、PNG 或 WebP 且不超过 25,000,000 像素的单帧图片才进入 checksum、存储和数据库事务阶段。
 
 ## 5. 身份、作用域与权限
 

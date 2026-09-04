@@ -21,7 +21,8 @@ describe("translations", () => {
       "重试上传封面": { "zh-Hant": "重試上傳封面", ja: "カバーのアップロードを再試行", en: "Retry cover upload", ko: "커버 업로드 다시 시도" },
       "服务已保存，封面移除失败，请重试": { "zh-Hant": "服務已儲存，封面移除失敗，請重試", ja: "サービスは保存されましたが、カバーの削除に失敗しました。再試行してください", en: "Service saved, but cover removal failed. Please retry", ko: "서비스는 저장되었지만 커버 삭제에 실패했습니다. 다시 시도해 주세요" },
       "封面移除失败，请重试": { "zh-Hant": "封面移除失敗，請重試", ja: "カバーの削除に失敗しました。再試行してください", en: "Cover removal failed. Please retry", ko: "커버 삭제에 실패했습니다. 다시 시도해 주세요" },
-      "重试移除封面": { "zh-Hant": "重試移除封面", ja: "カバーの削除を再試行", en: "Retry cover removal", ko: "커버 삭제 다시 시도" }
+      "重试移除封面": { "zh-Hant": "重試移除封面", ja: "カバーの削除を再試行", en: "Retry cover removal", ko: "커버 삭제 다시 시도" },
+      "完成并关闭": { "zh-Hant": "完成並關閉", ja: "完了して閉じる", en: "Finish and close", ko: "완료 후 닫기" }
     } as const;
 
     for (const [source, localized] of Object.entries(expected)) {

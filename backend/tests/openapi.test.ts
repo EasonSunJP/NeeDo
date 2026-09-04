@@ -1345,6 +1345,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(coverPath.put.description).toContain("25,000,000 decoded pixels");
     expect(coverPath.put.description).toContain("asynchronous image decode");
     expect(coverPath.put.description).toContain("single-frame images only");
+    expect(coverPath.put.description).toContain("APNG and JPEG MPF");
     expect(coverPath.put.responses["200"]).toBeDefined();
     expect(coverPath.delete.responses["200"]).toBeDefined();
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");

@@ -284,11 +284,12 @@ Both routes require `technician:services:write` and derive actor scope from the
 session. Effective mutations persist the `MediaAsset` lifecycle change and audit
 evidence. An exact-image `PUT` retry or a `DELETE` when no cover is active returns
 the current service without creating duplicate media rows or audit entries.
-Before persistence, `sharp` performs an asynchronous full decode through libvips;
-header-only, truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded
-pixel-limit violations fail with the existing cover-invalid HTTP 400 contract.
-Animated and other multi-page images are also invalid; Sharp metadata must report no
-more than one page before the accepted single frame is fully decoded.
+Before persistence, bounded header walks reject PNG `acTL`/`fcTL`/`fdAT` animation
+chunks and JPEG APP2 `MPF` multi-picture containers without calculating CRCs or
+decoding pixels. Sharp metadata then rejects any other image reporting more than one
+page, and libvips asynchronously fully decodes the accepted single frame. Header-only,
+truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded pixel-limit
+violations all fail with the existing cover-invalid HTTP 400 contract.
 
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 

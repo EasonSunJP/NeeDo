@@ -8,6 +8,89 @@ import { AppError } from "../utils/app-error";
 
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 export const CONTENT_MEDIA_MAX_DECODED_PIXELS = 25_000_000;
+const MAX_CONTAINER_HEADER_ENTRIES = 4_096;
+const MAX_JPEG_MARKER_PADDING_BYTES = 16;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_ANIMATION_CHUNKS = new Set(
+  ["acTL", "fcTL", "fdAT"].map((chunkType) => Buffer.from(chunkType).readUInt32BE(0))
+);
+const PNG_END_CHUNK = Buffer.from("IEND").readUInt32BE(0);
+
+const hasUnsupportedPngAnimation = (bytes: Buffer): boolean => {
+  if (bytes.length < PNG_SIGNATURE.length || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return false;
+  }
+
+  let offset = 8;
+  for (let chunkCount = 0; chunkCount < MAX_CONTAINER_HEADER_ENTRIES; chunkCount += 1) {
+    if (offset + 12 > bytes.length) {
+      return false;
+    }
+    const dataLength = bytes.readUInt32BE(offset);
+    const chunkType = bytes.readUInt32BE(offset + 4);
+    const nextOffset = offset + 12 + dataLength;
+    if (nextOffset > bytes.length) {
+      return false;
+    }
+    if (PNG_ANIMATION_CHUNKS.has(chunkType)) {
+      return true;
+    }
+    if (chunkType === PNG_END_CHUNK) {
+      return false;
+    }
+    offset = nextOffset;
+  }
+
+  return true;
+};
+
+const hasUnsupportedJpegMultiPicture = (bytes: Buffer): boolean => {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return false;
+  }
+
+  let offset = 2;
+  for (let segmentCount = 0; segmentCount < MAX_CONTAINER_HEADER_ENTRIES; segmentCount += 1) {
+    if (offset + 1 >= bytes.length || bytes[offset] !== 0xff) {
+      return false;
+    }
+    offset += 1;
+    let paddingBytes = 0;
+    while (offset < bytes.length && bytes[offset] === 0xff) {
+      paddingBytes += 1;
+      if (paddingBytes > MAX_JPEG_MARKER_PADDING_BYTES) {
+        return true;
+      }
+      offset += 1;
+    }
+    if (offset >= bytes.length) {
+      return false;
+    }
+
+    const marker = bytes[offset]!;
+    offset += 1;
+    if (marker === 0xda || marker === 0xd9) {
+      return false;
+    }
+    if (marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+      continue;
+    }
+    if (marker === 0x00 || offset + 2 > bytes.length) {
+      return false;
+    }
+
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+      return false;
+    }
+    if (marker === 0xe2 && segmentLength >= 6 && bytes.readUInt32BE(offset + 2) === 0x4d504600) {
+      return true;
+    }
+    offset += segmentLength;
+  }
+
+  return true;
+};
 
 const imageMetadata = {
   "image/jpeg": {
@@ -112,6 +195,12 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     }
     const metadata = imageMetadata[input.mimeType];
     if (!metadata) {
+      throw this.invalid();
+    }
+    if (
+      (input.mimeType === "image/png" && hasUnsupportedPngAnimation(input.bytes)) ||
+      (input.mimeType === "image/jpeg" && hasUnsupportedJpegMultiPicture(input.bytes))
+    ) {
       throw this.invalid();
     }
     try {

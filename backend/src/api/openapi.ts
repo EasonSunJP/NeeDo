@@ -16428,7 +16428,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Pricing Mode"],
         summary: "Replace technician owned service cover image",
         description:
-          "Accepts single-frame images only as one raw JPEG, PNG, or WebP body up to 8 MiB. Animated or multi-page content is invalid. A maintained asynchronous image decode must confirm the declared format, complete pixel payload, and a maximum of 25,000,000 decoded pixels; violations return error.technician_service.cover_invalid.",
+          "Accepts single-frame images only as one raw JPEG, PNG, or WebP body up to 8 MiB. APNG and JPEG MPF containers, animated WebP, and other multi-page content are invalid. Bounded container-header checks plus a maintained asynchronous image decode must confirm the declared format, complete pixel payload, and a maximum of 25,000,000 decoded pixels; violations return error.technician_service.cover_invalid.",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:services:write",
         parameters: [

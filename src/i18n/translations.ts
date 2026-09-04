@@ -9702,6 +9702,7 @@ export const translations: TranslationMap = {
   "服务已保存，封面移除失败，请重试": { "zh-Hant": "服務已儲存，封面移除失敗，請重試", ja: "サービスは保存されましたが、カバーの削除に失敗しました。再試行してください", en: "Service saved, but cover removal failed. Please retry", ko: "서비스는 저장되었지만 커버 삭제에 실패했습니다. 다시 시도해 주세요" },
   "封面移除失败，请重试": { "zh-Hant": "封面移除失敗，請重試", ja: "カバーの削除に失敗しました。再試行してください", en: "Cover removal failed. Please retry", ko: "커버 삭제에 실패했습니다. 다시 시도해 주세요" },
   "重试移除封面": { "zh-Hant": "重試移除封面", ja: "カバーの削除を再試行", en: "Retry cover removal", ko: "커버 삭제 다시 시도" },
+  "完成并关闭": { "zh-Hant": "完成並關閉", ja: "完了して閉じる", en: "Finish and close", ko: "완료 후 닫기" },
   "重试图片": { "zh-Hant": "重試圖片", ja: "画像を再試行", en: "Retry image", ko: "이미지 다시 시도" },
   "已选位置": { "zh-Hant": "已選位置", ja: "選択した場所", en: "Selected location", ko: "선택한 위치" },
   "移除位置": { "zh-Hant": "移除位置", ja: "場所を削除", en: "Remove location", ko: "위치 삭제" },

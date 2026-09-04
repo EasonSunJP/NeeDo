@@ -12,13 +12,17 @@ import {
   type ContentMediaRepositoryPort
 } from "../src/services/content-media.service";
 import {
+  corruptedLaterFrameApng,
   corruptedSecondFrameWebp,
   emptyImageDataPng,
   excessivePixelPng,
   headerOnlyJpeg,
   headerOnlyWebp,
+  multiPictureJpeg,
   validJpeg,
   validPng,
+  validProgressiveJpeg,
+  validTwoFrameApng,
   validTwoFrameWebp,
   validWebp
 } from "./fixtures/content-images";
@@ -99,6 +103,14 @@ describe("ContentMediaFileStorage", () => {
     await expect(storage.read(stored.fileKey)).resolves.toEqual(bytes);
   });
 
+  it("accepts an ordinary progressive JPEG", async () => {
+    const storage = new ContentMediaFileStorage("/unused");
+
+    await expect(
+      storage.prepare({ bytes: validProgressiveJpeg, mimeType: "image/jpeg" })
+    ).resolves.toMatchObject({ mimeType: "image/jpeg" });
+  });
+
   it("validates content independently of the claimed MIME type", async () => {
     const directory = await mkdtemp(join(tmpdir(), "needo-content-media-"));
     const storage = new ContentMediaFileStorage(directory);
@@ -170,6 +182,28 @@ describe("ContentMediaFileStorage", () => {
     await expect(storage.prepare({ bytes, mimeType: "image/webp" })).rejects.toEqual(
       expect.objectContaining({ message: "error.content.media_invalid" })
     );
+  });
+
+  it.each([
+    ["valid two-frame", validTwoFrameApng],
+    ["corrupted later-frame", corruptedLaterFrameApng]
+  ])(
+    "rejects %s APNG content when Sharp reports only the first PNG frame",
+    async (_name, bytes) => {
+      const storage = new ContentMediaFileStorage("/unused");
+
+      await expect(storage.prepare({ bytes, mimeType: "image/png" })).rejects.toEqual(
+        expect.objectContaining({ message: "error.content.media_invalid" })
+      );
+    }
+  );
+
+  it("rejects a JPEG carrying a genuine multi-picture MPF APP2 container", async () => {
+    const storage = new ContentMediaFileStorage("/unused");
+
+    await expect(
+      storage.prepare({ bytes: multiPictureJpeg, mimeType: "image/jpeg" })
+    ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
   });
 
   it("rejects empty and oversized files with stable content errors", async () => {

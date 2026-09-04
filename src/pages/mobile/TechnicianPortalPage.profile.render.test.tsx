@@ -591,6 +591,46 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(container.querySelector('input[type="file"]')).toBeNull();
   });
 
+  it("clears stale cover failure copy and offers a neutral completion after discarding the retry", async () => {
+    mockServiceEditorContext([]);
+    const created = {
+      ...service,
+      id: 902,
+      publicId: "service0000000902",
+      coverImageUrl: null
+    };
+    const createRequest = vi
+      .spyOn(pricingModeApi, "createTechnicianService")
+      .mockResolvedValue(created);
+    const uploadRequest = vi
+      .spyOn(pricingModeApi, "uploadTechnicianServiceCover")
+      .mockRejectedValue(new Error("upload unavailable"));
+
+    await openNewServiceEditor();
+    await selectServiceCover(
+      new File([new Uint8Array([0xff, 0xd8])], "discarded-retry.jpg", { type: "image/jpeg" })
+    );
+    await act(async () => findButton("保存")?.click());
+    await flushUntil(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "服务已保存，封面上传失败，请重试"
+      )
+    );
+
+    await act(async () => findButton("移除图片")?.click());
+
+    expect(container.querySelector('[role="alert"]')?.textContent ?? "").not.toContain("封面上传失败");
+    expect(findButton("重试上传封面")).toBeUndefined();
+    expect(findButton("重试移除封面")).toBeUndefined();
+    expect(findButton("完成并关闭")).toBeDefined();
+
+    await act(async () => findButton("完成并关闭")?.click());
+    await flushUntil(() => expect(container.querySelector('input[type="file"]')).toBeNull());
+
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(uploadRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("retries an existing service cover without updating its persisted text twice", async () => {
     mockServiceEditorContext([service]);
     const persisted = {
