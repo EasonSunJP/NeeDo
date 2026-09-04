@@ -371,8 +371,10 @@ official AWS ARM64 RPM, detached signature, and public key over TLS, verifies
 the documented AWS key fingerprint and package signature, then performs the
 supported uninstall/reinstall update. The verification path uses AL2023's
 default `curl-minimal` and `gnupg2-minimal` packages and does not swap in their
-conflicting full-package variants. A host already at or above the minimum
-version skips the download and reinstall path.
+conflicting full-package variants. GPG runs with `--no-autostart`, so public-key
+loading and detached-signature verification do not require the full package's
+`gpg-agent`. A host already at or above the minimum version skips the download
+and reinstall path.
 
 ```bash
 needo_aws_staging bootstrap-host \

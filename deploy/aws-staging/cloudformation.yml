@@ -881,8 +881,8 @@ Resources:
                       --output "$cloudwatch_agent_tmpdir/amazon-cloudwatch-agent.gpg"
                     cloudwatch_agent_fingerprint="$(gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --show-keys --with-colons "$cloudwatch_agent_tmpdir/amazon-cloudwatch-agent.gpg" | awk -F: '$1 == "fpr" { print $10; exit }')"
                     test "$cloudwatch_agent_fingerprint" = "937616F3450B7D806CBD9725D58167303B789C72"
-                    gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --import "$cloudwatch_agent_tmpdir/amazon-cloudwatch-agent.gpg" >/dev/null
-                    gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --verify \
+                    gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --no-autostart --import "$cloudwatch_agent_tmpdir/amazon-cloudwatch-agent.gpg" >/dev/null
+                    gpg --homedir "$cloudwatch_agent_gnupg_home" --batch --no-autostart --verify \
                       "$cloudwatch_agent_tmpdir/amazon-cloudwatch-agent.rpm.sig" \
                       "$cloudwatch_agent_tmpdir/amazon-cloudwatch-agent.rpm"
                     systemctl stop amazon-cloudwatch-agent 2>/dev/null || true
