@@ -3,10 +3,7 @@ import { resolve } from "node:path";
 
 const schema = readFileSync(resolve(__dirname, "../prisma/schema.prisma"), "utf8");
 const migration = readFileSync(
-  resolve(
-    __dirname,
-    "../prisma/migrations/20260830110000_personal_identity_scope/migration.sql"
-  ),
+  resolve(__dirname, "../prisma/migrations/20260830110000_personal_identity_scope/migration.sql"),
   "utf8"
 );
 
@@ -20,21 +17,13 @@ describe("personal identity data schema", () => {
     expect(modelSource("ConversationParticipant")).toContain(
       "@@unique([conversationId, identityId])"
     );
-    expect(modelSource("Contact")).toContain(
-      "@@unique([ownerIdentityId, contactIdentityId])"
-    );
+    expect(modelSource("Contact")).toContain("@@unique([ownerIdentityId, contactIdentityId])");
     expect(modelSource("FriendRequest")).toContain("requesterIdentityId");
     expect(modelSource("FriendRequest")).toContain("targetIdentityId");
-    expect(modelSource("MessageReaction")).toContain(
-      "@@unique([messageId, identityId, emoji])"
-    );
-    expect(modelSource("MessageUserDeletion")).toContain(
-      "@@unique([identityId, messageId])"
-    );
+    expect(modelSource("MessageReaction")).toContain("@@unique([messageId, identityId, emoji])");
+    expect(modelSource("MessageUserDeletion")).toContain("@@unique([identityId, messageId])");
     expect(modelSource("SocialPost")).toContain("authorIdentityId");
-    expect(modelSource("Follow")).toContain(
-      "@@unique([followerIdentityId, followingIdentityId])"
-    );
+    expect(modelSource("Follow")).toContain("@@unique([followerIdentityId, followingIdentityId])");
     expect(modelSource("Notification")).toContain("recipientIdentityId");
     expect(modelSource("MediaAsset")).toContain("ownerIdentityId");
   });

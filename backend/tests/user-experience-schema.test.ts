@@ -4,10 +4,7 @@ import { resolve } from "node:path";
 describe("user experience persistence contract", () => {
   const schema = readFileSync(resolve(process.cwd(), "prisma/schema.prisma"), "utf8");
   const migration = readFileSync(
-    resolve(
-      process.cwd(),
-      "prisma/migrations/20260901200000_user_experience_core/migration.sql"
-    ),
+    resolve(process.cwd(), "prisma/migrations/20260901200000_user_experience_core/migration.sql"),
     "utf8"
   );
 

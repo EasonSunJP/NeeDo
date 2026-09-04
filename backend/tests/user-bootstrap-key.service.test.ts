@@ -24,9 +24,7 @@ describe("UserBootstrapKeyAllocator", () => {
       return key;
     });
 
-    await expect(allocator.withNewKey(create)).resolves.toBe(
-      "pending:89abcdef0123456701234567"
-    );
+    await expect(allocator.withNewKey(create)).resolves.toBe("pending:89abcdef0123456701234567");
     expect(create).toHaveBeenCalledTimes(2);
   });
 
@@ -53,6 +51,10 @@ describe("UserBootstrapKeyAllocator", () => {
     });
     const allocator = new UserBootstrapKeyAllocator(() => "0123456789abcdef01234567");
 
-    await expect(allocator.withNewKey(async () => { throw error; })).rejects.toBe(error);
+    await expect(
+      allocator.withNewKey(async () => {
+        throw error;
+      })
+    ).rejects.toBe(error);
   });
 });

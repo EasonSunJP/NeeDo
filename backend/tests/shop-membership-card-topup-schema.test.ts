@@ -34,18 +34,24 @@ describe("shop membership card top-up schema contract", () => {
     ]) {
       expect(schema).toContain(token);
     }
-    expect(schema).toMatch(/idempotencyKey\s+String\s+@unique\(map: "shop_membership_card_topups_idempotency_key"\)/);
+    expect(schema).toMatch(
+      /idempotencyKey\s+String\s+@unique\(map: "shop_membership_card_topups_idempotency_key"\)/
+    );
   });
 
   it("ships an additive constrained migration without NDP wallet mutations", () => {
     expect(migration).toContain("CREATE TABLE `shop_membership_card_topups`");
     expect(migration).toContain("CHECK (`amount_jpy` > 0)");
-    expect(migration).toContain("`principal_balance_after_jpy` = `principal_balance_before_jpy` + `amount_jpy`");
+    expect(migration).toContain(
+      "`principal_balance_after_jpy` = `principal_balance_before_jpy` + `amount_jpy`"
+    );
     expect(migration).toContain("shop_membership_card_topups_card_id_fkey");
     expect(migration).toContain("shop_membership_card_topups_shop_id_fkey");
     expect(migration).toContain("shop_membership_card_topups_created_by_id_fkey");
     expect(migration).not.toMatch(/UPDATE\s+`?(wallets|ledger_transactions|wallet_ledgers)/i);
-    expect(migration).not.toMatch(/INSERT\s+INTO\s+`?(wallets|ledger_transactions|wallet_ledgers)/i);
+    expect(migration).not.toMatch(
+      /INSERT\s+INTO\s+`?(wallets|ledger_transactions|wallet_ledgers)/i
+    );
   });
 
   it("grants top-up creation to admins and merchant owners but not staff", () => {

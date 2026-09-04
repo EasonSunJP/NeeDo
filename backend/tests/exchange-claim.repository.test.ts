@@ -76,7 +76,9 @@ describe("ExchangeClaimRepository option projection", () => {
     const queryRaw = jest.fn(async (query: SqlQuery) =>
       query.sql?.includes("COUNT(*)") ? [{ total: 1n }] : [optionRow]
     );
-    const repository = new ExchangeClaimRepository({ $queryRaw: queryRaw } as unknown as PrismaClient);
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: queryRaw
+    } as unknown as PrismaClient);
 
     await expect(
       repository.listOptions({
@@ -131,7 +133,9 @@ describe("ExchangeClaimRepository option projection", () => {
         ? [{ total: 1n }]
         : [{ ...optionRow, serviceId: null, technicianServiceId: 701 }]
     );
-    const repository = new ExchangeClaimRepository({ $queryRaw: queryRaw } as unknown as PrismaClient);
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: queryRaw
+    } as unknown as PrismaClient);
 
     const result = await repository.listOptions({
       postId: 41,
@@ -214,9 +218,9 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     } as unknown as PrismaClient);
     const startsAt = new Date("2026-09-02T01:00:00.000Z");
     const endsAt = new Date("2026-09-02T02:00:00.000Z");
-    await expect(
-      repository.hasOverlappingMatchParticipant(81, startsAt, endsAt)
-    ).resolves.toBe(true);
+    await expect(repository.hasOverlappingMatchParticipant(81, startsAt, endsAt)).resolves.toBe(
+      true
+    );
     expect(findFirst).toHaveBeenCalledWith({
       where: {
         technicianProfileId: 81,
@@ -284,7 +288,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         events.push("create-claim");
         return {
           ...claimRow,
-          ...data,
+          ...data
         };
       })
     };
@@ -331,11 +335,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         technicianServiceId: null
       });
       await expect(
-        lockedRepository.hasOverlappingActiveClaim(
-          81,
-          option!.startsAt,
-          option!.endsAt
-        )
+        lockedRepository.hasOverlappingActiveClaim(81, option!.startsAt, option!.endsAt)
       ).resolves.toBe(false);
       await expect(
         lockedRepository.hasConflictingBooking(81, option!.startsAt, option!.endsAt)
@@ -433,11 +433,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     } as unknown as PrismaClient);
 
     await expect(
-      repository.lockOption(
-        91,
-        { kind: "technician", technicianProfileId: 81 },
-        now
-      )
+      repository.lockOption(91, { kind: "technician", technicianProfileId: 81 }, now)
     ).resolves.toBeNull();
   });
 
@@ -458,9 +454,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         technicianProfileId: 81
       })
     ).resolves.toEqual({ technicianProfileId: 81 });
-    await expect(
-      repository.hasActiveClaimForRequestTechnician(41, 81)
-    ).resolves.toBe(true);
+    await expect(repository.hasActiveClaimForRequestTechnician(41, 81)).resolves.toBe(true);
     expect(slotFindFirst).toHaveBeenNthCalledWith(1, {
       where: { id: 91, shopId: 11, technicianProfileId: { not: null }, deletedAt: null },
       select: { technicianProfileId: true }
@@ -507,9 +501,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       auditLog: { create: auditCreate }
     } as unknown as PrismaClient);
 
-    await expect(
-      repository.findIdempotent("claim-key-00000001")
-    ).resolves.toMatchObject({
+    await expect(repository.findIdempotent("claim-key-00000001")).resolves.toMatchObject({
       claim: { id: 301, status: "active" },
       fingerprint: "a".repeat(64)
     });
@@ -521,9 +513,9 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       id: 301,
       exchangePostId: 41
     });
-    await expect(
-      repository.listReceived(41, 21, { page: 1, pageSize: 20 })
-    ).resolves.toMatchObject({ total: 1, page: 1, page_size: 20 });
+    await expect(repository.listReceived(41, 21, { page: 1, pageSize: 20 })).resolves.toMatchObject(
+      { total: 1, page: 1, page_size: 20 }
+    );
     await expect(repository.lockClaim(301)).resolves.toMatchObject({
       id: 301,
       exchangePostId: 41,
@@ -531,13 +523,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       status: "active"
     });
     await expect(
-      repository.withdraw(
-        301,
-        17,
-        now,
-        "claim-withdraw-key-0001",
-        "b".repeat(64)
-      )
+      repository.withdraw(301, 17, now, "claim-withdraw-key-0001", "b".repeat(64))
     ).resolves.toMatchObject({
       id: 301,
       status: "withdrawn"

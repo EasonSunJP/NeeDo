@@ -19,12 +19,18 @@ describe("membership and ranking acceptance command", () => {
       "utf8"
     );
 
-    expect(packageJson.scripts["check:membership-ranking"])
-      .toBe("tsx scripts/check-membership-ranking-flow.ts");
+    expect(packageJson.scripts["check:membership-ranking"]).toBe(
+      "tsx scripts/check-membership-ranking-flow.ts"
+    );
     for (const evidence of ["gift", "trial", "renewal", "readBaseline"]) {
       expect(membershipIntegration).toContain(evidence);
     }
-    for (const evidence of ["fullyReversed", "createdAt", "result.list.map((item) => item.rank)", "readBaseline"]) {
+    for (const evidence of [
+      "fullyReversed",
+      "createdAt",
+      "result.list.map((item) => item.rank)",
+      "readBaseline"
+    ]) {
       expect(rankingIntegration).toContain(evidence);
     }
     expect(source).toContain("membership-analytics.repository.integration.test.ts");

@@ -144,7 +144,9 @@ describe("chat-record OpenAPI contract", () => {
         parameters: Array<{ name: string; schema: unknown }>;
       }
     ).parameters;
-    expect(itemPageParameters.find((parameter) => parameter.name === "pageSize")?.schema).toMatchObject({
+    expect(
+      itemPageParameters.find((parameter) => parameter.name === "pageSize")?.schema
+    ).toMatchObject({
       type: "integer",
       minimum: 1,
       maximum: 50
@@ -176,7 +178,17 @@ describe("chat-record OpenAPI contract", () => {
     const media =
       api.paths["/api/v1/im/chat-records/{publicId}/media/{checksumSha256}"].get.responses["200"];
     expect(Object.keys(media.content).sort()).toEqual(
-      ["application/pdf", "audio/mp4", "audio/ogg", "audio/webm", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"].sort()
+      [
+        "application/pdf",
+        "audio/mp4",
+        "audio/ogg",
+        "audio/webm",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "video/mp4",
+        "video/webm"
+      ].sort()
     );
     for (const response of Object.values(media.content))
       expect(response.schema).toEqual({ type: "string", format: "binary" });

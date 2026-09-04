@@ -18,7 +18,9 @@ describe("formal Exchange source policy", () => {
       .join("\n");
     const router = readFileSync(resolve(sourceRoot, "routes/exchange.routes.ts"), "utf8");
 
-    expect(exchangeSources).not.toMatch(/Math\.random|localStorage|needoExchangeBridge|hashSystemId|getSeedPosts|getExtraPosts/iu);
+    expect(exchangeSources).not.toMatch(
+      /Math\.random|localStorage|needoExchangeBridge|hashSystemId|getSeedPosts|getExtraPosts/iu
+    );
     expect(router).not.toMatch(/offers|matches|bookings|orders|payments/iu);
     expect(router).toContain('"/exchange/posts"');
     expect(router).toContain('"/exchange/posts/:id/comments"');

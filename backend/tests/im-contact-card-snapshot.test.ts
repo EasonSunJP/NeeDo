@@ -29,60 +29,102 @@ describe("formal IM contact-card snapshots", () => {
   });
 
   it.each([1, 100, null])("accepts customer level %s", (level) => {
-    expect(parseContactCardSnapshot({
-      ...validV2Metadata,
-      contactCard: { ...validV2Metadata.contactCard, level }
-    })).toMatchObject({ kind: "v2" });
+    expect(
+      parseContactCardSnapshot({
+        ...validV2Metadata,
+        contactCard: { ...validV2Metadata.contactCard, level }
+      })
+    ).toMatchObject({ kind: "v2" });
   });
 
   it("accepts nullable public display fields for non-customer identities", () => {
-    expect(parseContactCardSnapshot({
-      ...validV2Metadata,
-      contactCard: {
-        ...validV2Metadata.contactCard,
-        avatarUrl: null,
-        bio: null,
-        entityKind: "technician",
-        level: null,
-        tierCode: null,
-        themeVersionPublicId: null,
-        simpleTopColor: null,
-        simpleBottomColor: null
-      }
-    })).toMatchObject({ kind: "v2" });
+    expect(
+      parseContactCardSnapshot({
+        ...validV2Metadata,
+        contactCard: {
+          ...validV2Metadata.contactCard,
+          avatarUrl: null,
+          bio: null,
+          entityKind: "technician",
+          level: null,
+          tierCode: null,
+          themeVersionPublicId: null,
+          simpleTopColor: null,
+          simpleBottomColor: null
+        }
+      })
+    ).toMatchObject({ kind: "v2" });
   });
 
   it.each([
     ["unknown top-level key", { ...validV2Metadata, privateEmail: "hidden@example.com" }],
-    ["unknown card key", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, phone: "090" } }],
-    ["level below range", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, level: 0 } }],
-    ["level above range", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, level: 101 } }],
-    ["unsafe avatar URL", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, avatarUrl: "javascript:alert(1)" } }],
-    ["invalid top color", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, simpleTopColor: "green" } }],
-    ["invalid bottom color", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, simpleBottomColor: "#1234" } }],
-    ["oversized nickname", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, nickname: "名".repeat(161) } }],
-    ["oversized bio", { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, bio: "自".repeat(501) } }]
+    [
+      "unknown card key",
+      { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, phone: "090" } }
+    ],
+    [
+      "level below range",
+      { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, level: 0 } }
+    ],
+    [
+      "level above range",
+      { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, level: 101 } }
+    ],
+    [
+      "unsafe avatar URL",
+      {
+        ...validV2Metadata,
+        contactCard: { ...validV2Metadata.contactCard, avatarUrl: "javascript:alert(1)" }
+      }
+    ],
+    [
+      "invalid top color",
+      {
+        ...validV2Metadata,
+        contactCard: { ...validV2Metadata.contactCard, simpleTopColor: "green" }
+      }
+    ],
+    [
+      "invalid bottom color",
+      {
+        ...validV2Metadata,
+        contactCard: { ...validV2Metadata.contactCard, simpleBottomColor: "#1234" }
+      }
+    ],
+    [
+      "oversized nickname",
+      {
+        ...validV2Metadata,
+        contactCard: { ...validV2Metadata.contactCard, nickname: "名".repeat(161) }
+      }
+    ],
+    [
+      "oversized bio",
+      { ...validV2Metadata, contactCard: { ...validV2Metadata.contactCard, bio: "自".repeat(501) } }
+    ]
   ])("rejects %s", (_label, metadata) => {
     expect(parseContactCardSnapshot(metadata)).toEqual({ kind: "invalid" });
   });
 
   it("recognizes and sanitizes the current legacy contact-card shape", () => {
-    expect(parseContactCardSnapshot({
-      needoMessageType: "contact-card",
-      needoMessageExt: {
-        contactCard: {
-          userId: "41",
-          displayName: "旧名片",
-          avatar: "/legacy.jpg",
-          profileKind: "person",
-          entityType: "user",
-          entityId: "41",
-          userIdLabel: "u0000000041",
-          headline: "旧简介",
-          ignored: "not copied"
+    expect(
+      parseContactCardSnapshot({
+        needoMessageType: "contact-card",
+        needoMessageExt: {
+          contactCard: {
+            userId: "41",
+            displayName: "旧名片",
+            avatar: "/legacy.jpg",
+            profileKind: "person",
+            entityType: "user",
+            entityId: "41",
+            userIdLabel: "u0000000041",
+            headline: "旧简介",
+            ignored: "not copied"
+          }
         }
-      }
-    })).toEqual({
+      })
+    ).toEqual({
       kind: "legacy",
       contactCard: {
         userId: "41",

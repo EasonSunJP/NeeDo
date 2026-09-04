@@ -48,16 +48,10 @@ describe("dashboard reporting windows", () => {
 
   it("accepts an inclusive 366-day custom window and rejects 367 days", () => {
     expect(
-      resolveDashboardWindow(
-        { period: "custom", from: "2024-02-29", to: "2025-02-28" },
-        now
-      )
+      resolveDashboardWindow({ period: "custom", from: "2024-02-29", to: "2025-02-28" }, now)
     ).toMatchObject({ fromDate: "2024-02-29", toDate: "2025-02-28" });
     expect(() =>
-      resolveDashboardWindow(
-        { period: "custom", from: "2024-02-29", to: "2025-03-01" },
-        now
-      )
+      resolveDashboardWindow({ period: "custom", from: "2024-02-29", to: "2025-03-01" }, now)
     ).toThrow(`Custom period must not exceed ${MAX_DASHBOARD_CUSTOM_RANGE_DAYS} days`);
   });
 

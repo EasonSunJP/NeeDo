@@ -190,12 +190,7 @@ describe("TechnicianShopAffiliationService", () => {
     };
 
     await expect(
-      service.getCurrentShopEmployeeSchedule(
-        actorForShop(16),
-        context,
-        "s0000000047",
-        input
-      )
+      service.getCurrentShopEmployeeSchedule(actorForShop(16), context, "s0000000047", input)
     ).resolves.toEqual({
       employee: {
         needoId: "s0000000047",
@@ -236,11 +231,10 @@ describe("TechnicianShopAffiliationService", () => {
     const { service, repository, audit } = setup();
 
     await expect(
-      service.getCurrentShopEmployeeTimeline(
-        actorForShop(16),
-        "s0000000047",
-        { page: 1, pageSize: 20 }
-      )
+      service.getCurrentShopEmployeeTimeline(actorForShop(16), "s0000000047", {
+        page: 1,
+        pageSize: 20
+      })
     ).resolves.toMatchObject({
       list: [{ actorRole: "基本资料", message: "更新了姓名、城市" }],
       total: 1

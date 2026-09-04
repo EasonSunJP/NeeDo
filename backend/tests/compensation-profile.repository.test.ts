@@ -59,9 +59,10 @@ describe("CompensationProfileRepository employee scope", () => {
       technicianShopAffiliation: { findFirst }
     } as never);
 
-    await expect(
-      repository.findCurrentEmployeeAffiliation(16, "s0000000047")
-    ).resolves.toEqual({ id: 47, technicianProfileId: 71 });
+    await expect(repository.findCurrentEmployeeAffiliation(16, "s0000000047")).resolves.toEqual({
+      id: 47,
+      technicianProfileId: 71
+    });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

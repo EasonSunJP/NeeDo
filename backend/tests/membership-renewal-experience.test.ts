@@ -100,7 +100,7 @@ const membershipRepository = (
         multiplier,
         benefits: benefitEnabled
           ? [
-            {
+              {
                 code: "ndp_experience"
               }
             ]
@@ -130,48 +130,51 @@ describe("Membership entitlement experience", () => {
     ["monthly silver value", 300, 2, 60_000n],
     ["annual gold value uses ten configured months", 19_990, 5, 9_995_000n],
     ["annual black value uses ten configured months", 49_990, 10, 49_990_000n]
-  ])("awards %s once without campaign or extra bonus", async (_label, value, multiplier, expected) => {
-    const expRepo = experienceRepository();
-    const experienceService = new UserExperienceService(
-      expRepo,
-      membershipResolver,
-      policyResolver,
-      campaignResolver
-    );
-    const membershipService = new PlatformMembershipService(
-      membershipRepository(value, multiplier),
-      audit,
-      () => now,
-      experienceService
-    );
+  ])(
+    "awards %s once without campaign or extra bonus",
+    async (_label, value, multiplier, expected) => {
+      const expRepo = experienceRepository();
+      const experienceService = new UserExperienceService(
+        expRepo,
+        membershipResolver,
+        policyResolver,
+        campaignResolver
+      );
+      const membershipService = new PlatformMembershipService(
+        membershipRepository(value, multiplier),
+        audit,
+        () => now,
+        experienceService
+      );
 
-    await membershipService.changeEntitlement(actor, context, 41, {
-      kind: "renew",
-      targetTierCode: "black_diamond",
-      billingCycle: "annual",
-      expectedCurrentLockVersion: 1,
-      source: "offline_transfer",
-      sourceReference: `renew-${value}`
-    });
+      await membershipService.changeEntitlement(actor, context, 41, {
+        kind: "renew",
+        targetTierCode: "black_diamond",
+        billingCycle: "annual",
+        expectedCurrentLockVersion: 1,
+        source: "offline_transfer",
+        sourceReference: `renew-${value}`
+      });
 
-    expect(expRepo.recordCalculatedEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: "membership_renewed",
-        idempotencyKey: "membership-renewal:00000000-0000-4000-8000-000000000801",
-        entitlementId: 801,
-        ndpAmount: value,
-        ndpPerBaseExp: 100,
-        campaignFactorBps: 10_000,
-        membershipMultiplierBps: multiplier * 10_000,
-        extraUnits: 0n,
-        finalUnits: expected,
-        policyVersionId: "policy-version-1",
-        campaignVersionId: null
-      }),
-      { transactionClient: { entitlementTransaction: true } }
-    );
-    expect(campaignResolver.resolveCampaignAt).not.toHaveBeenCalled();
-  });
+      expect(expRepo.recordCalculatedEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: "membership_renewed",
+          idempotencyKey: "membership-renewal:00000000-0000-4000-8000-000000000801",
+          entitlementId: 801,
+          ndpAmount: value,
+          ndpPerBaseExp: 100,
+          campaignFactorBps: 10_000,
+          membershipMultiplierBps: multiplier * 10_000,
+          extraUnits: 0n,
+          finalUnits: expected,
+          policyVersionId: "policy-version-1",
+          campaignVersionId: null
+        }),
+        { transactionClient: { entitlementTransaction: true } }
+      );
+      expect(campaignResolver.resolveCampaignAt).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["zero-value downgrade", 0, true],

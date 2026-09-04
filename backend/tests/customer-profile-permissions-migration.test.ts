@@ -22,7 +22,9 @@ describe("customer profile permissions deployment migration", () => {
     expect(migration).toContain("ON DUPLICATE KEY UPDATE");
     expect(migration).toContain("`deleted_at` = NULL");
     expect(migration).toContain("`roles`.`code` IN ('customer', 'admin')");
-    expect(migration).toContain("`permissions`.`code` IN ('customer-profile:read', 'customer-profile:write')");
+    expect(migration).toContain(
+      "`permissions`.`code` IN ('customer-profile:read', 'customer-profile:write')"
+    );
     expect(migration).toContain("INSERT INTO `role_permissions`");
   });
 });

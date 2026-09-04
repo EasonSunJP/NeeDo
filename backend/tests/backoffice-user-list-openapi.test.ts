@@ -8,6 +8,8 @@ describe("backoffice all-user OpenAPI", () => {
 
     expect(response.body.paths["/api/v1/backoffice/users"].get).toBeDefined();
     expect(response.body.paths["/api/v1/backoffice/users/{userId}"].get).toBeDefined();
-    expect(response.body.components.schemas.BackofficeManagedUser.properties.experience.nullable).toBe(true);
+    expect(
+      response.body.components.schemas.BackofficeManagedUser.properties.experience.nullable
+    ).toBe(true);
   });
 });

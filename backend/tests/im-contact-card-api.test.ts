@@ -108,8 +108,9 @@ const createFixture = (permissionCodes = ["message:create"]) => {
 
 describe("formal contact-card HTTP contract", () => {
   it("strictly validates bounded candidate queries and server-authoritative send commands", () => {
-    expect(contactCardCandidateListQuerySchema.parse({ page: "2", pageSize: "10", query: " 花子 " }))
-      .toEqual({ page: 2, pageSize: 10, query: "花子" });
+    expect(
+      contactCardCandidateListQuerySchema.parse({ page: "2", pageSize: "10", query: " 花子 " })
+    ).toEqual({ page: 2, pageSize: 10, query: "花子" });
     expect(contactCardSendBodySchema.parse({ targetUserId })).toEqual({ targetUserId });
     expect(contactCardIdempotencyKeySchema.parse(idempotencyKey)).toBe(idempotencyKey);
 
@@ -154,7 +155,9 @@ describe("formal contact-card HTTP contract", () => {
     const authorization = { Authorization: `Bearer ${fixture.token}` };
 
     const candidates = await request(fixture.app)
-      .get("/api/v1/im/conversations/91/contact-card-candidates?page=2&pageSize=10&query=%E8%8A%B1%E5%AD%90")
+      .get(
+        "/api/v1/im/conversations/91/contact-card-candidates?page=2&pageSize=10&query=%E8%8A%B1%E5%AD%90"
+      )
       .set(authorization)
       .expect(200);
     expect(candidates.body.data).toEqual({
@@ -163,11 +166,11 @@ describe("formal contact-card HTTP contract", () => {
       page: 2,
       page_size: 10
     });
-    expect(fixture.service.listContactCardCandidates).toHaveBeenCalledWith(
-      expect.anything(),
-      91,
-      { page: 2, pageSize: 10, query: "花子" }
-    );
+    expect(fixture.service.listContactCardCandidates).toHaveBeenCalledWith(expect.anything(), 91, {
+      page: 2,
+      pageSize: 10,
+      query: "花子"
+    });
 
     const sent = await request(fixture.app)
       .post("/api/v1/im/conversations/91/contact-cards")
@@ -214,7 +217,8 @@ describe("formal contact-card HTTP contract", () => {
       paths: Record<string, Record<string, unknown>>;
       components: { schemas: Record<string, unknown> };
     };
-    const candidatePath = document.paths["/api/v1/im/conversations/{conversationId}/contact-card-candidates"];
+    const candidatePath =
+      document.paths["/api/v1/im/conversations/{conversationId}/contact-card-candidates"];
     const sendPath = document.paths["/api/v1/im/conversations/{conversationId}/contact-cards"];
 
     expect(candidatePath).toBeDefined();

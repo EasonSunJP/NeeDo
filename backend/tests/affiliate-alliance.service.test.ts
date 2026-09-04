@@ -239,9 +239,7 @@ describe("AffiliateAllianceService invitation workflow", () => {
     });
     const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
 
-    await expect(
-      service.listMembers(actor, { page: 1, pageSize: 20 })
-    ).rejects.toMatchObject({
+    await expect(service.listMembers(actor, { page: 1, pageSize: 20 })).rejects.toMatchObject({
       message: "error.affiliate_alliance.owner_required",
       statusCode: 403
     });
@@ -309,19 +307,22 @@ describe("AffiliateAllianceService invitation workflow", () => {
     ["duplicate", "error.affiliate_alliance.invitation_duplicate", 409],
     ["parent_invalid", "error.affiliate_alliance.parent_invalid", 409],
     ["already_joined", "error.affiliate_alliance.already_joined", 409]
-  ] as const)("maps create result %s to a stable domain error", async (kind, message, statusCode) => {
-    const repository = createRepository();
-    repository.findMine.mockResolvedValue(alliance);
-    repository.createInvitation.mockResolvedValue({ kind });
-    const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
+  ] as const)(
+    "maps create result %s to a stable domain error",
+    async (kind, message, statusCode) => {
+      const repository = createRepository();
+      repository.findMine.mockResolvedValue(alliance);
+      repository.createInvitation.mockResolvedValue({ kind });
+      const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
 
-    await expect(
-      service.createInvitation(actor, context, {
-        inviteeNeedoId: "u0000000008",
-        role: "partner"
-      })
-    ).rejects.toMatchObject({ message, statusCode });
-  });
+      await expect(
+        service.createInvitation(actor, context, {
+          inviteeNeedoId: "u0000000008",
+          role: "partner"
+        })
+      ).rejects.toMatchObject({ message, statusCode });
+    }
+  );
 
   it("lists received invitations by the authenticated Affiliate user only", async () => {
     const repository = createRepository();
@@ -393,16 +394,19 @@ describe("AffiliateAllianceService invitation workflow", () => {
     ["invitee_not_eligible", "error.affiliate_alliance.invitee_not_eligible", 403],
     ["parent_invalid", "error.affiliate_alliance.parent_invalid", 409],
     ["already_joined", "error.affiliate_alliance.already_joined", 409]
-  ] as const)("maps accept result %s without leaking persistence errors", async (kind, message, statusCode) => {
-    const repository = createRepository();
-    repository.acceptInvitation.mockResolvedValue({ kind });
-    const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
+  ] as const)(
+    "maps accept result %s without leaking persistence errors",
+    async (kind, message, statusCode) => {
+      const repository = createRepository();
+      repository.acceptInvitation.mockResolvedValue({ kind });
+      const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
 
-    await expect(service.acceptInvitation(actor, context, 999)).rejects.toMatchObject({
-      message,
-      statusCode
-    });
-  });
+      await expect(service.acceptInvitation(actor, context, 999)).rejects.toMatchObject({
+        message,
+        statusCode
+      });
+    }
+  );
 
   it("rejects only the authenticated invitee's invitation and maps terminal conflicts", async () => {
     const repository = createRepository();
@@ -449,7 +453,10 @@ describe("AffiliateAllianceService invitation workflow", () => {
   it("requires current Affiliate identity for received invitation actions", async () => {
     const repository = createRepository();
     const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
-    const customerActor = { ...actor, currentIdentityType: "customer" } as AuthenticatedAccessContext;
+    const customerActor = {
+      ...actor,
+      currentIdentityType: "customer"
+    } as AuthenticatedAccessContext;
 
     await expect(
       service.listReceivedInvitations(customerActor, { page: 1, pageSize: 20 })

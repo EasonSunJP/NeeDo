@@ -6,9 +6,7 @@ describe("technician employment schema", () => {
     const schema = readFileSync(resolve(__dirname, "../prisma/schema.prisma"), "utf8");
 
     expect(schema).toContain("enum TechnicianEmploymentType");
-    expect(schema).toContain(
-      "employmentType      TechnicianEmploymentType @default(INDEPENDENT)"
-    );
+    expect(schema).toContain("employmentType      TechnicianEmploymentType @default(INDEPENDENT)");
     expect(schema).toContain("employmentStartedAt DateTime?");
     expect(schema).toContain("@@index([shopId, employmentType])");
   });

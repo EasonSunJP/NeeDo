@@ -78,8 +78,10 @@ type OpenApiShape = {
 const document = createOpenApiDocument(env) as unknown as OpenApiShape;
 const schemas = document.components.schemas;
 const emptyOperation: OpenApiOperation = { description: "", parameters: [], responses: {} };
-const overviewOperation = document.paths["/api/v1/backoffice/dashboard/overview"]?.get ?? emptyOperation;
-const detailOperation = document.paths["/api/v1/backoffice/dashboard/metrics/{metricKey}"]?.get ?? emptyOperation;
+const overviewOperation =
+  document.paths["/api/v1/backoffice/dashboard/overview"]?.get ?? emptyOperation;
+const detailOperation =
+  document.paths["/api/v1/backoffice/dashboard/metrics/{metricKey}"]?.get ?? emptyOperation;
 
 describe("dashboard analytics OpenAPI contract", () => {
   it("publishes only the two formal operations with exact IDs, bearer security and RBAC", () => {
@@ -94,7 +96,9 @@ describe("dashboard analytics OpenAPI contract", () => {
       "x-required-permission": "backoffice:dashboard-detail:read"
     });
     expect(document.paths).not.toHaveProperty("/api/v1/merchant-admin/dashboard/overview");
-    expect(document.paths).not.toHaveProperty("/api/v1/merchant-admin/dashboard/metrics/{metricKey}");
+    expect(document.paths).not.toHaveProperty(
+      "/api/v1/merchant-admin/dashboard/metrics/{metricKey}"
+    );
   });
 
   it("documents the strict query and exact ordered 17-key path contract", () => {
@@ -141,7 +145,14 @@ describe("dashboard analytics OpenAPI contract", () => {
       type: "object",
       additionalProperties: false,
       required: [
-        "period", "from", "to", "previousFrom", "previousTo", "timeZone", "granularity", "city"
+        "period",
+        "from",
+        "to",
+        "previousFrom",
+        "previousTo",
+        "timeZone",
+        "granularity",
+        "city"
       ],
       properties: {
         period: { $ref: "#/components/schemas/DashboardPeriod" },
@@ -175,7 +186,9 @@ describe("dashboard analytics OpenAPI contract", () => {
     });
     expect(metric.required).toHaveLength(10);
     expect(metric.allOf[0].oneOf.map((branch) => branch.properties.dataStatus.const)).toEqual([
-      "ready", "not_connected", "not_available"
+      "ready",
+      "not_connected",
+      "not_available"
     ]);
     expect(metric.allOf[0].oneOf[0]).toMatchObject({
       properties: {
@@ -208,9 +221,10 @@ describe("dashboard analytics OpenAPI contract", () => {
         metricKey: { type: "string", const: metricKey },
         detailRoute: {
           type: "string",
-          const: metricKey === "new_paid_members"
-            ? "/admin/analytics/members"
-            : `/admin/analytics/metrics/${metricKey}`
+          const:
+            metricKey === "new_paid_members"
+              ? "/admin/analytics/members"
+              : `/admin/analytics/metrics/${metricKey}`
         }
       });
     }
@@ -238,8 +252,9 @@ describe("dashboard analytics OpenAPI contract", () => {
       expect(group.minItems).toBe(expectedKeys.length);
       expect(group.maxItems).toBe(expectedKeys.length);
       expect(group.items).toBe(false);
-      expect(group.prefixItems.map((item) => item.allOf[1].properties.metricKey.const))
-        .toEqual(expectedKeys);
+      expect(group.prefixItems.map((item) => item.allOf[1].properties.metricKey.const)).toEqual(
+        expectedKeys
+      );
     }
   });
 
@@ -254,8 +269,9 @@ describe("dashboard analytics OpenAPI contract", () => {
         series: { type: "array", minItems: 1, maxItems: 1, items: false }
       }
     });
-    expect(schemas.DashboardAnalyticsMetricDetail.properties.series.prefixItems)
-      .toEqual([{ $ref: "#/components/schemas/AnalyticsMetricSeries" }]);
+    expect(schemas.DashboardAnalyticsMetricDetail.properties.series.prefixItems).toEqual([
+      { $ref: "#/components/schemas/AnalyticsMetricSeries" }
+    ]);
     expect(schemas.AnalyticsMetricSeries).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -265,8 +281,11 @@ describe("dashboard analytics OpenAPI contract", () => {
         points: { type: "array", minItems: 2, maxItems: 2, items: false }
       }
     });
-    expect(schemas.AnalyticsMetricSeries.properties.points.prefixItems
-      .map((item) => item.allOf[1].properties.key.const)).toEqual(["previous", "current"]);
+    expect(
+      schemas.AnalyticsMetricSeries.properties.points.prefixItems.map(
+        (item) => item.allOf[1].properties.key.const
+      )
+    ).toEqual(["previous", "current"]);
     expect(schemas.AnalyticsMetricSeriesPoint).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -284,10 +303,12 @@ describe("dashboard analytics OpenAPI contract", () => {
   });
 
   it("references the formal schemas from success envelopes and canonical ApiError envelopes", () => {
-    expect(overviewOperation.responses["200"].content["application/json"].schema.properties.data)
-      .toEqual({ $ref: "#/components/schemas/DashboardAnalyticsOverview" });
-    expect(detailOperation.responses["200"].content["application/json"].schema.properties.data)
-      .toEqual({ $ref: "#/components/schemas/DashboardAnalyticsMetricDetail" });
+    expect(
+      overviewOperation.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/DashboardAnalyticsOverview" });
+    expect(
+      detailOperation.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/DashboardAnalyticsMetricDetail" });
 
     for (const operation of [overviewOperation, detailOperation]) {
       for (const [status, message] of [
@@ -297,8 +318,9 @@ describe("dashboard analytics OpenAPI contract", () => {
       ]) {
         const response = operation.responses[status];
         expect(response.description).toContain(message);
-        expect(response.content["application/json"].schema)
-          .toEqual({ $ref: "#/components/schemas/ApiError" });
+        expect(response.content["application/json"].schema).toEqual({
+          $ref: "#/components/schemas/ApiError"
+        });
         expect(response.content["application/json"].example).toEqual({
           code: status === "400" ? 40001 : status === "401" ? 40105 : 40301,
           message,
@@ -311,46 +333,50 @@ describe("dashboard analytics OpenAPI contract", () => {
   });
 
   it("includes the required comparison, availability, route and chronology examples", () => {
-    expect(schemas.AnalyticsMetricPayload.examples).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        metricKey: "gross_revenue",
-        currentValue: 1200,
-        previousValue: 0,
-        comparisonPercent: 100,
-        comparisonDirection: "up",
-        dataStatus: "ready"
-      }),
-      expect.objectContaining({
-        metricKey: "discount_amount",
-        currentValue: 100,
-        previousValue: 100,
-        comparisonPercent: 0,
-        comparisonDirection: "flat",
-        dataStatus: "ready"
-      }),
-      expect.objectContaining({
-        metricKey: "travel_fare",
-        currentValue: null,
-        dataStatus: "not_connected",
-        comparisonDirection: "unavailable"
-      }),
-      expect.objectContaining({
-        metricKey: "supplier_onboarding",
-        currentValue: null,
-        dataStatus: "not_available",
-        detailRoute: null
-      })
-    ]));
+    expect(schemas.AnalyticsMetricPayload.examples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          metricKey: "gross_revenue",
+          currentValue: 1200,
+          previousValue: 0,
+          comparisonPercent: 100,
+          comparisonDirection: "up",
+          dataStatus: "ready"
+        }),
+        expect.objectContaining({
+          metricKey: "discount_amount",
+          currentValue: 100,
+          previousValue: 100,
+          comparisonPercent: 0,
+          comparisonDirection: "flat",
+          dataStatus: "ready"
+        }),
+        expect.objectContaining({
+          metricKey: "travel_fare",
+          currentValue: null,
+          dataStatus: "not_connected",
+          comparisonDirection: "unavailable"
+        }),
+        expect.objectContaining({
+          metricKey: "supplier_onboarding",
+          currentValue: null,
+          dataStatus: "not_available",
+          detailRoute: null
+        })
+      ])
+    );
 
     expect(schemas.DashboardAnalyticsMetricDetail.example).toMatchObject({
       metric: { metricKey: "new_users" },
-      series: [{
-        seriesKey: "new_users",
-        points: [
-          { key: "previous", label: "2026-08-19 - 2026-08-25" },
-          { key: "current", label: "2026-08-26 - 2026-09-01" }
-        ]
-      }]
+      series: [
+        {
+          seriesKey: "new_users",
+          points: [
+            { key: "previous", label: "2026-08-19 - 2026-08-25" },
+            { key: "current", label: "2026-08-26 - 2026-09-01" }
+          ]
+        }
+      ]
     });
   });
 });

@@ -26,9 +26,7 @@ describe("Exchange selective exact matching persistence contract", () => {
     expect(enumBlock("ExchangePostStatus")).toMatch(/CLOSED\s+@map\("closed"\)/);
     expect(enumBlock("ExchangeClaimStatus")).toMatch(/MATCHED\s+@map\("matched"\)/);
     expect(enumBlock("ExchangeClaimStatus")).toMatch(/NOT_SELECTED\s+@map\("not_selected"\)/);
-    expect(enumBlock("ExchangeClaimStatus")).toMatch(
-      /MATCHING_CLOSED\s+@map\("matching_closed"\)/
-    );
+    expect(enumBlock("ExchangeClaimStatus")).toMatch(/MATCHING_CLOSED\s+@map\("matching_closed"\)/);
   });
 
   it("defines one matching aggregate per request with optimistic versioning", () => {

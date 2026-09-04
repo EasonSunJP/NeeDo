@@ -33,35 +33,39 @@ const user = async (): Promise<AuthUserRecord> => ({
   accessState: { disabled: false, restricted: false },
   lastLoginAt: null,
   deletedAt: null,
-  identities: [{
-    id: 410,
-    userId: 41,
-    type: "customer",
-    scopeType: "customer_profile",
-    scopeId: 41,
-    displayName: "Member",
-    isDefault: true,
-    isActive: true,
-    deletedAt: null,
-    publicIdentifier: {
-      publicId: "u0000000041",
-      kind: "U",
-      loginAllowed: true,
-      status: "ACTIVE",
-      deletedAt: null
-    }
-  }],
-  userRoles: [{
-    deletedAt: null,
-    role: {
-      code: "customer",
+  identities: [
+    {
+      id: 410,
+      userId: 41,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 41,
+      displayName: "Member",
+      isDefault: true,
+      isActive: true,
       deletedAt: null,
-      rolePermissions: ["auth:me", "auth:logout"].map((code) => ({
-        deletedAt: null,
-        permission: { code, type: "api", deletedAt: null }
-      }))
+      publicIdentifier: {
+        publicId: "u0000000041",
+        kind: "U",
+        loginAllowed: true,
+        status: "ACTIVE",
+        deletedAt: null
+      }
     }
-  }]
+  ],
+  userRoles: [
+    {
+      deletedAt: null,
+      role: {
+        code: "customer",
+        deletedAt: null,
+        rolePermissions: ["auth:me", "auth:logout"].map((code) => ({
+          deletedAt: null,
+          permission: { code, type: "api", deletedAt: null }
+        }))
+      }
+    }
+  ]
 });
 
 const restrictedDecision = (): UserPolicyComplianceDecision => ({
@@ -143,7 +147,9 @@ async function fixture() {
     repository,
     service,
     refreshTokens,
-    setDecision: (next: UserPolicyComplianceDecision) => { decision = next; }
+    setDecision: (next: UserPolicyComplianceDecision) => {
+      decision = next;
+    }
   };
 }
 
@@ -178,11 +184,9 @@ describe("auth global-policy enforcement", () => {
         permittedNextRoutes: allowedRoutes
       }
     });
-    const limited = await service.authenticateAccessToken(
-      tokens.accessToken,
-      undefined,
-      { allowDuringCompliance: true }
-    );
+    const limited = await service.authenticateAccessToken(tokens.accessToken, undefined, {
+      allowDuringCompliance: true
+    });
     expect(limited.complianceRequirements).toEqual(["phone_binding_required"]);
     await expect(service.getMe(limited)).resolves.toMatchObject({
       complianceRequirements: ["phone_binding_required"],
@@ -193,7 +197,9 @@ describe("auth global-policy enforcement", () => {
   it("re-evaluates a published policy on the next protected action without revoking refresh", async () => {
     const state = await fixture();
     state.setDecision(compliantDecision());
-    const tokens = await state.service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" });
+    const tokens = await state.service.login("member@example.com", "Abcd@1234", {
+      ip: "127.0.0.1"
+    });
     await expect(state.service.authenticateAccessToken(tokens.accessToken)).resolves.toMatchObject({
       userId: 41,
       complianceRequirements: []
@@ -214,22 +220,24 @@ describe("auth global-policy enforcement", () => {
     const state = await fixture();
     state.setDecision(compliantDecision());
 
-    await expect(state.service.bindCompliancePhone(
-      "+819012345678",
-      {
-        userId: 41,
-        email: "member@example.com",
-        accessTokenJti: "access-41",
-        accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
-        currentIdentityId: 410,
-        currentIdentityType: "customer",
-        currentIdentityScopeType: "customer_profile",
-        currentIdentityScopeId: 41,
-        roles: ["customer"],
-        permissions: ["auth:me"]
-      },
-      { ip: "127.0.0.1" }
-    )).resolves.toEqual({
+    await expect(
+      state.service.bindCompliancePhone(
+        "+819012345678",
+        {
+          userId: 41,
+          email: "member@example.com",
+          accessTokenJti: "access-41",
+          accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
+          currentIdentityId: 410,
+          currentIdentityType: "customer",
+          currentIdentityScopeType: "customer_profile",
+          currentIdentityScopeId: 41,
+          roles: ["customer"],
+          permissions: ["auth:me"]
+        },
+        { ip: "127.0.0.1" }
+      )
+    ).resolves.toEqual({
       phone: "+819012345678",
       complianceRequirements: [],
       smsVerified: false

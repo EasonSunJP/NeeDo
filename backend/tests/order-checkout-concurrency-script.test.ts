@@ -51,10 +51,12 @@ describe("formal TEST_NDP checkout concurrency checker", () => {
     ["duplicate transaction", { paymentTransactionCount: 2 }],
     ["production reconciliation", { reconciliationCount: 1 }]
   ])("rejects invalid concurrency evidence: %s", (_label, mutation) => {
-    expect(() => assertConcurrentCheckoutEvidence({
-      ...validEvidence(),
-      ...mutation
-    } as ConcurrentCheckoutEvidence)).toThrow("Formal checkout concurrency assertion failed");
+    expect(() =>
+      assertConcurrentCheckoutEvidence({
+        ...validEvidence(),
+        ...mutation
+      } as ConcurrentCheckoutEvidence)
+    ).toThrow("Formal checkout concurrency assertion failed");
   });
 
   it("keeps safety validation before dynamic database imports and performs exact cleanup", () => {

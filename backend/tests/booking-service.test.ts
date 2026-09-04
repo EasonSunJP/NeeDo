@@ -37,11 +37,12 @@ const technicianActor: AuthenticatedAccessContext = {
 
 type Assert<T extends true> = T;
 type IsEqual<TLeft, TRight> =
-  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
-    ? true
-    : false;
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
 type BookingCreationPaymentBoundary = Assert<
-  IsEqual<NonNullable<BookingCreateRepositoryInput["paymentMethod"]>, LegacyServicePaymentMethodPayload>
+  IsEqual<
+    NonNullable<BookingCreateRepositoryInput["paymentMethod"]>,
+    LegacyServicePaymentMethodPayload
+  >
 >;
 type ManualConfirmationPaymentBoundary = Assert<
   IsEqual<ConfirmManualPaymentRepositoryInput["method"], LegacyServicePaymentMethodPayload>

@@ -49,7 +49,13 @@ describe("IM chat-record authoritative snapshot type contract", () => {
       {
         needoMessageType: "service-card",
         needoMessageExt: {
-          serviceCard: { serviceId: "s1", name: "护理", cover: "/c.jpg", summary: "介绍", priceLabel: "¥1" }
+          serviceCard: {
+            serviceId: "s1",
+            name: "护理",
+            cover: "/c.jpg",
+            summary: "介绍",
+            priceLabel: "¥1"
+          }
         }
       }
     ],
@@ -58,7 +64,12 @@ describe("IM chat-record authoritative snapshot type contract", () => {
       {
         needoMessageType: "schedule-invite",
         needoMessageExt: {
-          scheduleInvite: { scheduleId: "sc1", title: "会面", date: "2026-09-01", timeRange: "10:00" }
+          scheduleInvite: {
+            scheduleId: "sc1",
+            title: "会面",
+            date: "2026-09-01",
+            timeRange: "10:00"
+          }
         }
       }
     ]
@@ -86,11 +97,13 @@ describe("IM chat-record authoritative snapshot type contract", () => {
       simpleBottomColor: "#10242D"
     };
 
-    expect(parseChatRecordSourcePolicy("text", {
-      snapshotVersion: 2,
-      type: "contact-card",
-      contactCard
-    })).toEqual({
+    expect(
+      parseChatRecordSourcePolicy("text", {
+        snapshotVersion: 2,
+        type: "contact-card",
+        contactCard
+      })
+    ).toEqual({
       kind: "content",
       messageType: "contact-card",
       snapshotMetadata: {
@@ -108,25 +121,35 @@ describe("IM chat-record authoritative snapshot type contract", () => {
     ["file", "application/pdf"]
   ];
 
-  it.each(mediaCases)("accepts protected %s media without copying its source locator into snapshot metadata", (type, mimeType) => {
-    const policy = parseChatRecordSourcePolicy("text", {
-      needoMessageType: type,
-      needoMessageExt: {
-        caption: "说明",
-        fileName: `safe-${type}`,
-        fileSize: 16,
-        mimeType,
-        url: `/media/im/private-${type}`
-      }
-    });
-    expect(policy).toMatchObject({ kind: "media", messageType: type, media: { mimeType, fileSize: 16 } });
-    expect(JSON.stringify(policy?.snapshotMetadata)).not.toContain("/media/im/");
-  });
+  it.each(mediaCases)(
+    "accepts protected %s media without copying its source locator into snapshot metadata",
+    (type, mimeType) => {
+      const policy = parseChatRecordSourcePolicy("text", {
+        needoMessageType: type,
+        needoMessageExt: {
+          caption: "说明",
+          fileName: `safe-${type}`,
+          fileSize: 16,
+          mimeType,
+          url: `/media/im/private-${type}`
+        }
+      });
+      expect(policy).toMatchObject({
+        kind: "media",
+        messageType: type,
+        media: { mimeType, fileSize: 16 }
+      });
+      expect(JSON.stringify(policy?.snapshotMetadata)).not.toContain("/media/im/");
+    }
+  );
 
   it.each([
     { needoMessageType: "chat-record", needoMessageExt: {} },
     { needoMessageType: "system" },
-    { needoMessageType: "image", needoMessageExt: { fileSize: 16, mimeType: "application/pdf", url: "/media/im/a.png" } },
+    {
+      needoMessageType: "image",
+      needoMessageExt: { fileSize: 16, mimeType: "application/pdf", url: "/media/im/a.png" }
+    },
     { needoMessageType: "location", needoMessageExt: { location: { title: "x" } } }
   ])("rejects recursive, system, mismatched-media, or incomplete rich metadata", (metadata) => {
     expect(parseChatRecordSourcePolicy("text", metadata)).toBeNull();

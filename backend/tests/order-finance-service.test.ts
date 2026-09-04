@@ -301,13 +301,15 @@ describe("OrderFinanceService", () => {
       paymentChannel: "platform_online",
       confirmNow: true
     } as never);
-    expect(repository.upsertServiceIncomeReport).toHaveBeenCalledWith(expect.objectContaining({
-      baseServiceAmountJpy: 10_000,
-      extensionAmountJpy: 4_000,
-      nominationChargeAmountJpy: 1_500,
-      wasTechnicianNominated: true,
-      compensationBasisVersion: "shop_default:1"
-    }));
+    expect(repository.upsertServiceIncomeReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseServiceAmountJpy: 10_000,
+        extensionAmountJpy: 4_000,
+        nominationChargeAmountJpy: 1_500,
+        wasTechnicianNominated: true,
+        compensationBasisVersion: "shop_default:1"
+      })
+    );
   });
 
   it("rejects merchant finance order access outside the current shop scope", async () => {

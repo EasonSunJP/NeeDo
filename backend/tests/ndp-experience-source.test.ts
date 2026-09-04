@@ -51,12 +51,24 @@ describe("NDP experience settlement source classification", () => {
   it.each([
     ["pending transaction", transaction({ status: "pending" }), userDebit()],
     ["freeze", transaction({ type: "booking_accept_freeze" }), userDebit({ direction: "freeze" })],
-    ["unfreeze", transaction({ type: "booking_cancel_unfreeze" }), userDebit({ direction: "unfreeze" })],
+    [
+      "unfreeze",
+      transaction({ type: "booking_cancel_unfreeze" }),
+      userDebit({ direction: "unfreeze" })
+    ],
     ["platform fee", transaction(), userDebit({ walletOwnerType: "platform" })],
     ["affiliate transfer", transaction({ type: "affiliate_reward_settlement" }), userDebit()],
     ["unmarked fee debit", transaction({ metadata: null }), userDebit()],
-    ["top-up", transaction({ type: "manual_topup_approved" }), userDebit({ direction: "available_credit", availableDelta: 12_345 })],
-    ["test currency", transaction({ currency: "TEST_NDP" }), userDebit({ walletCurrency: "TEST_NDP" })],
+    [
+      "top-up",
+      transaction({ type: "manual_topup_approved" }),
+      userDebit({ direction: "available_credit", availableDelta: 12_345 })
+    ],
+    [
+      "test currency",
+      transaction({ currency: "TEST_NDP" }),
+      userDebit({ walletCurrency: "TEST_NDP" })
+    ],
     ["mismatched amount", transaction(), userDebit({ availableDelta: -100 })]
   ])("rejects %s", (_label, sourceTransaction, sourceEntry) => {
     expect(classifyExperienceSource(sourceTransaction, sourceEntry).kind).toBe("ineligible");

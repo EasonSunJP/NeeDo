@@ -14,30 +14,59 @@ const authorityError =
 const allowedHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export const membershipAnalyticsIntegrationRequiredColumns = [
-  "users.id", "users.needo_id", "users.email", "users.username", "users.is_active",
-  "users.is_test_account", "users.deleted_at",
-  "shops.id", "shops.shop_no", "shops.name", "shops.city", "shops.address", "shops.deleted_at",
-  "customer_profiles.id", "customer_profiles.user_id", "customer_profiles.display_name",
-  "customer_profiles.city", "customer_profiles.deleted_at",
-  "shop_customer_memberships.id", "shop_customer_memberships.public_id",
-  "shop_customer_memberships.shop_id", "shop_customer_memberships.customer_profile_id",
-  "shop_customer_memberships.status", "shop_customer_memberships.started_at",
-  "shop_customer_memberships.ended_at", "shop_customer_memberships.deleted_at",
-  "shop_membership_cards.id", "shop_membership_cards.public_id",
-  "shop_membership_cards.membership_id", "shop_membership_cards.plan_version_id",
-  "shop_membership_cards.issued_by_id", "shop_membership_cards.card_no",
-  "shop_membership_cards.name", "shop_membership_cards.type", "shop_membership_cards.status",
-  "shop_membership_cards.issuance_source", "shop_membership_cards.issued_at",
-  "shop_membership_cards.expires_at", "shop_membership_cards.frozen_at",
+  "users.id",
+  "users.needo_id",
+  "users.email",
+  "users.username",
+  "users.is_active",
+  "users.is_test_account",
+  "users.deleted_at",
+  "shops.id",
+  "shops.shop_no",
+  "shops.name",
+  "shops.city",
+  "shops.address",
+  "shops.deleted_at",
+  "customer_profiles.id",
+  "customer_profiles.user_id",
+  "customer_profiles.display_name",
+  "customer_profiles.city",
+  "customer_profiles.deleted_at",
+  "shop_customer_memberships.id",
+  "shop_customer_memberships.public_id",
+  "shop_customer_memberships.shop_id",
+  "shop_customer_memberships.customer_profile_id",
+  "shop_customer_memberships.status",
+  "shop_customer_memberships.started_at",
+  "shop_customer_memberships.ended_at",
+  "shop_customer_memberships.deleted_at",
+  "shop_membership_cards.id",
+  "shop_membership_cards.public_id",
+  "shop_membership_cards.membership_id",
+  "shop_membership_cards.plan_version_id",
+  "shop_membership_cards.issued_by_id",
+  "shop_membership_cards.card_no",
+  "shop_membership_cards.name",
+  "shop_membership_cards.type",
+  "shop_membership_cards.status",
+  "shop_membership_cards.issuance_source",
+  "shop_membership_cards.issued_at",
+  "shop_membership_cards.expires_at",
+  "shop_membership_cards.frozen_at",
   "shop_membership_cards.deleted_at",
-  "shop_membership_card_status_events.id", "shop_membership_card_status_events.card_id",
-  "shop_membership_card_status_events.from_status", "shop_membership_card_status_events.to_status",
-  "shop_membership_card_status_events.source", "shop_membership_card_status_events.occurred_at",
+  "shop_membership_card_status_events.id",
+  "shop_membership_card_status_events.card_id",
+  "shop_membership_card_status_events.from_status",
+  "shop_membership_card_status_events.to_status",
+  "shop_membership_card_status_events.source",
+  "shop_membership_card_status_events.occurred_at",
   "shop_membership_card_status_events.reason_code",
   "shop_membership_card_status_events.actor_user_id",
-  "shop_membership_card_status_events.metadata", "shop_membership_card_status_events.event_key",
+  "shop_membership_card_status_events.metadata",
+  "shop_membership_card_status_events.event_key",
   "shop_membership_card_status_events.deleted_at",
-  "shop_membership_card_plan_versions.id", "shop_membership_card_plan_versions.name"
+  "shop_membership_card_plan_versions.id",
+  "shop_membership_card_plan_versions.name"
 ] as const;
 
 export const membershipAnalyticsIntegrationRequiredIndexes = [
@@ -99,7 +128,9 @@ export function requireMembershipAnalyticsIntegrationAuthority(input: {
   }
   const databaseUrl = input.parsed.DATABASE_URL?.trim();
   if (!databaseUrl) {
-    throw new Error("FORMAL_BACKEND_ENV_FILE must define DATABASE_URL; inherited values are forbidden");
+    throw new Error(
+      "FORMAL_BACKEND_ENV_FILE must define DATABASE_URL; inherited values are forbidden"
+    );
   }
   const deploymentValues = [
     input.parsed.NODE_ENV,
@@ -107,7 +138,9 @@ export function requireMembershipAnalyticsIntegrationAuthority(input: {
     input.runtime?.NODE_ENV,
     input.runtime?.DEPLOY_ENV
   ];
-  if (deploymentValues.some((value) => value !== undefined && /prod|production|staging/iu.test(value))) {
+  if (
+    deploymentValues.some((value) => value !== undefined && /prod|production|staging/iu.test(value))
+  ) {
     throw new Error("Membership analytics MySQL integration requires a non-production environment");
   }
 
@@ -118,7 +151,11 @@ export function requireMembershipAnalyticsIntegrationAuthority(input: {
     throw new Error(authorityError);
   }
   const database = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
-  if (parsed.protocol !== "mysql:" || !allowedHosts.has(parsed.hostname) || database !== "needo_test") {
+  if (
+    parsed.protocol !== "mysql:" ||
+    !allowedHosts.has(parsed.hostname) ||
+    database !== "needo_test"
+  ) {
     throw new Error(authorityError);
   }
   return databaseUrl;
@@ -150,9 +187,9 @@ export function assertMembershipAnalyticsIntegrationSchema(
       (left, right) => Number(left.seqInIndex) - Number(right.seqInIndex)
     );
     const exactSequence = ordered.every((row, index) => Number(row.seqInIndex) === index + 1);
-    const exactColumns = ordered.length === required.columns.length && ordered.every(
-      (row, index) => row.columnName === required.columns[index]
-    );
+    const exactColumns =
+      ordered.length === required.columns.length &&
+      ordered.every((row, index) => row.columnName === required.columns[index]);
     if (!exactSequence || !exactColumns) {
       return [`index column/order mismatch ${required.indexName}`];
     }

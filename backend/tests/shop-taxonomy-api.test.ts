@@ -49,7 +49,9 @@ describe("shop taxonomy public catalog API", () => {
 
     for (const locale of ["zh-CN", "zh-TW", "ja", "en", "ko"]) {
       await request(fixture.app)
-        .get(`/api/v1/service-categories/1/keywords?locale=${encodeURIComponent(locale)}&page=1&pageSize=20`)
+        .get(
+          `/api/v1/service-categories/1/keywords?locale=${encodeURIComponent(locale)}&page=1&pageSize=20`
+        )
         .expect(200);
     }
 
@@ -114,10 +116,7 @@ describe("shop taxonomy public catalog API", () => {
       scopeType: "shop",
       scopeId: 1
     };
-    fixture.replaceAdminPermissions([
-      "auth:me",
-      "merchant-admin:shop:service-taxonomy:read"
-    ]);
+    fixture.replaceAdminPermissions(["auth:me", "merchant-admin:shop:service-taxonomy:read"]);
     const readToken = await fixture.loginAsAdmin();
 
     await request(fixture.app)

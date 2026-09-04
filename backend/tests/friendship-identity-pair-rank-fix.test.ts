@@ -13,13 +13,9 @@ describe("friendship identity pair rank repair", () => {
 
     expect(migration).toContain("ROW_NUMBER() OVER");
     expect(migration).toContain("`conversation`.`type` = 'direct'");
-    expect(migration).toContain(
-      "`conversation`.`access_policy` = 'friendship_required'"
-    );
+    expect(migration).toContain("`conversation`.`access_policy` = 'friendship_required'");
     expect(migration).toContain("`pair_rank` = 1");
     expect(migration).toContain("`conversation`.`friendship_pair_key` IS NULL");
-    expect(migration).not.toMatch(
-      /SET\s+`conversation`\.`friendship_pair_key`\s*=\s*NULL/
-    );
+    expect(migration).not.toMatch(/SET\s+`conversation`\.`friendship_pair_key`\s*=\s*NULL/);
   });
 });

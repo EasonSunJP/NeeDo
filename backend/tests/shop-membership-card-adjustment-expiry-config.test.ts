@@ -4,7 +4,9 @@ describe("membership card adjustment expiry environment configuration", () => {
   const originalEnv = { ...process.env };
   const importEnv = async (): Promise<AppConfig> => {
     let imported: AppConfig | undefined;
-    await jest.isolateModulesAsync(async () => { imported = (await import("../src/config/env")).env; });
+    await jest.isolateModulesAsync(async () => {
+      imported = (await import("../src/config/env")).env;
+    });
     return imported as AppConfig;
   };
 

@@ -13,11 +13,7 @@ import { BOOKING_ROUTE_PERMISSIONS, createBookingRoutes } from "../src/routes/bo
 import * as authServiceFactory from "../src/routes/auth-service.factory";
 
 const now = new Date("2026-09-01T10:00:00.000Z");
-const fulfillmentPermissions = [
-  "order:service:start",
-  "order:add-on:write",
-  "order:service:end"
-];
+const fulfillmentPermissions = ["order:service:start", "order:add-on:write", "order:service:end"];
 const fixturePermissions = ["order:read", ...fulfillmentPermissions];
 
 const order: BookingOrderPayload = {
@@ -172,10 +168,7 @@ describe("formal order fulfillment API", () => {
   it("requires authentication and the exact fulfillment permission", async () => {
     const fixture = createFixture();
     const body = { actor: "customer", idempotencyKey: "api-auth-start0001" };
-    await request(fixture.app)
-      .post("/api/v1/orders/41/service/start")
-      .send(body)
-      .expect(401);
+    await request(fixture.app).post("/api/v1/orders/41/service/start").send(body).expect(401);
     await request(fixture.app)
       .post("/api/v1/orders/41/service/start")
       .set("Authorization", "Bearer no-permission")

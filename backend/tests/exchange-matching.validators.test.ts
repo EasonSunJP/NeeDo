@@ -86,8 +86,7 @@ describe("Exchange selective exact matching validators", () => {
 
   it("rejects duplicates, empty selections, unknown fields and invalid versions", () => {
     expect(
-      selectExchangeMatchSchema.safeParse({ selectedClaimIds: [9, 9], expectedVersion: 3 })
-        .success
+      selectExchangeMatchSchema.safeParse({ selectedClaimIds: [9, 9], expectedVersion: 3 }).success
     ).toBe(false);
     expect(
       selectExchangeMatchSchema.safeParse({ selectedClaimIds: [], expectedVersion: 3 }).success
@@ -128,10 +127,7 @@ describe("Exchange selective exact matching validators", () => {
       matchingSelectOwn: "exchange:matching:select-own"
     });
     const assignments = buildRolePermissionAssignments();
-    for (const permission of [
-      "exchange:matching:read-own",
-      "exchange:matching:select-own"
-    ]) {
+    for (const permission of ["exchange:matching:read-own", "exchange:matching:select-own"]) {
       expect(SYSTEM_PERMISSION_CODES.filter((code) => code === permission)).toHaveLength(1);
       expect(assignments.customer).toContain(permission);
       expect(assignments.merchant_owner).toContain(permission);

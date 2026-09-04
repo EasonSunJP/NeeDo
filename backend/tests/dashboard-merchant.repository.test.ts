@@ -236,13 +236,14 @@ describe("DashboardRepository merchant finance and current shop snapshot", () =>
     });
 
     expect(result?.wallet).toBeNull();
-    expect(new DashboardMerchantSnapshotService(undefined, () => now).compose(result)?.wallet)
-      .toEqual({
-        status: "not_opened",
-        currency: "NDP",
-        availableBalance: null,
-        frozenBalance: null
-      });
+    expect(
+      new DashboardMerchantSnapshotService(undefined, () => now).compose(result)?.wallet
+    ).toEqual({
+      status: "not_opened",
+      currency: "NDP",
+      availableBalance: null,
+      frozenBalance: null
+    });
     expect(fixture.queryRaw).toHaveBeenCalledTimes(1);
   });
 });

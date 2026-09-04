@@ -31,9 +31,7 @@ describe("formal social simulation plan", () => {
     expect(mediaItems.some((item) => item.url.startsWith("blob:"))).toBe(false);
     expect(
       posts.every(
-        (post) =>
-          post.media.namespace === SIMULATION_NAMESPACE &&
-          post.media.dataset === "social"
+        (post) => post.media.namespace === SIMULATION_NAMESPACE && post.media.dataset === "social"
       )
     ).toBe(true);
   });

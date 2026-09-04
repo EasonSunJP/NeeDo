@@ -66,13 +66,15 @@ function createdMessage(metadata: unknown) {
   };
 }
 
-function createTransaction(input: {
-  target?: typeof targetCustomer | null;
-  reciprocalFriend?: boolean;
-  replay?: null | { requestFingerprint: string; message: ReturnType<typeof createdMessage> };
-  activeEntitlement?: typeof activeGoldEntitlement | null;
-  publishedFree?: typeof publishedFreeTier | null;
-} = {}) {
+function createTransaction(
+  input: {
+    target?: typeof targetCustomer | null;
+    reciprocalFriend?: boolean;
+    replay?: null | { requestFingerprint: string; message: ReturnType<typeof createdMessage> };
+    activeEntitlement?: typeof activeGoldEntitlement | null;
+    publishedFree?: typeof publishedFreeTier | null;
+  } = {}
+) {
   let storedMetadata: unknown;
   const tx = {
     imContactCardSendCommand: {
@@ -80,23 +82,23 @@ function createTransaction(input: {
       create: jest.fn(async () => ({ id: 1 }))
     },
     user: {
-      findFirst: jest.fn(async () => input.target === undefined ? targetCustomer : input.target)
+      findFirst: jest.fn(async () => (input.target === undefined ? targetCustomer : input.target))
     },
     contact: {
-      findFirst: jest.fn(async () => input.reciprocalFriend === false ? null : ({ id: 1 }))
+      findFirst: jest.fn(async () => (input.reciprocalFriend === false ? null : { id: 1 }))
     },
     userExperienceAccount: {
       upsert: jest.fn(async () => ({ currentLevel: 38 }))
     },
     platformMembershipEntitlement: {
-      findFirst: jest.fn(async () => input.activeEntitlement === undefined
-        ? activeGoldEntitlement
-        : input.activeEntitlement)
+      findFirst: jest.fn(async () =>
+        input.activeEntitlement === undefined ? activeGoldEntitlement : input.activeEntitlement
+      )
     },
     platformMembershipTierVersion: {
-      findFirst: jest.fn(async () => input.publishedFree === undefined
-        ? publishedFreeTier
-        : input.publishedFree)
+      findFirst: jest.fn(async () =>
+        input.publishedFree === undefined ? publishedFreeTier : input.publishedFree
+      )
     },
     conversationParticipant: {
       findFirst: jest.fn(async () => ({
@@ -168,31 +170,40 @@ describe("persistImContactCardInTransaction", () => {
         simpleBottomColor: "#241B0A"
       }
     });
-    expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { needoId: "u0000000052", isActive: true, deletedAt: null }
-    }));
-    expect(tx.userExperienceAccount.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: 52 },
-      create: expect.objectContaining({ userId: 52, currentLevel: 1, totalExpUnits: 0n })
-    }));
-    expect(tx.platformMembershipEntitlement.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ userId: 52 })
-    }));
+    expect(tx.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { needoId: "u0000000052", isActive: true, deletedAt: null }
+      })
+    );
+    expect(tx.userExperienceAccount.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 52 },
+        create: expect.objectContaining({ userId: 52, currentLevel: 1, totalExpUnits: 0n })
+      })
+    );
+    expect(tx.platformMembershipEntitlement.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 52 })
+      })
+    );
     expect(tx.platformMembershipTierVersion.findFirst).not.toHaveBeenCalled();
-    expect(tx.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      select: expect.objectContaining({
-        ekycVerifications: expect.objectContaining({
-          where: expect.objectContaining({ verifiedAt: { not: null, lte: transactionNow } })
+    expect(tx.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          ekycVerifications: expect.objectContaining({
+            where: expect.objectContaining({ verifiedAt: { not: null, lte: transactionNow } })
+          })
         })
       })
-    }));
+    );
   });
 
   it("uses the current published free tier when the customer has no active paid entitlement", async () => {
     const { tx, storedMetadata } = createTransaction({ activeEntitlement: null });
 
-    await expect(persistImContactCardInTransaction(tx as never, command))
-      .resolves.toMatchObject({ status: "created" });
+    await expect(persistImContactCardInTransaction(tx as never, command)).resolves.toMatchObject({
+      status: "created"
+    });
     expect(storedMetadata()).toMatchObject({
       contactCard: {
         tierCode: "free",
@@ -207,8 +218,9 @@ describe("persistImContactCardInTransaction", () => {
   it("rejects a nonfriend target without creating a message", async () => {
     const { tx } = createTransaction({ reciprocalFriend: false });
 
-    await expect(persistImContactCardInTransaction(tx as never, command))
-      .resolves.toEqual({ status: "target_not_allowed" });
+    await expect(persistImContactCardInTransaction(tx as never, command)).resolves.toEqual({
+      status: "target_not_allowed"
+    });
     expect(tx.message.create).not.toHaveBeenCalled();
     expect(tx.imContactCardSendCommand.create).not.toHaveBeenCalled();
   });
@@ -222,10 +234,12 @@ describe("persistImContactCardInTransaction", () => {
     };
     const { tx } = createTransaction({ target: selfTarget });
 
-    await expect(persistImContactCardInTransaction(tx as never, {
-      ...command,
-      targetUserPublicId: "u0000000041"
-    })).resolves.toMatchObject({ status: "created" });
+    await expect(
+      persistImContactCardInTransaction(tx as never, {
+        ...command,
+        targetUserPublicId: "u0000000041"
+      })
+    ).resolves.toMatchObject({ status: "created" });
     expect(tx.contact.findFirst).not.toHaveBeenCalled();
   });
 
@@ -238,8 +252,9 @@ describe("persistImContactCardInTransaction", () => {
     };
     const { tx, storedMetadata } = createTransaction({ target: technician as never });
 
-    await expect(persistImContactCardInTransaction(tx as never, command))
-      .resolves.toMatchObject({ status: "created" });
+    await expect(persistImContactCardInTransaction(tx as never, command)).resolves.toMatchObject({
+      status: "created"
+    });
     expect(tx.userExperienceAccount.upsert).not.toHaveBeenCalled();
     expect(tx.platformMembershipEntitlement.findFirst).not.toHaveBeenCalled();
     expect(tx.platformMembershipTierVersion.findFirst).not.toHaveBeenCalled();
@@ -258,10 +273,12 @@ describe("persistImContactCardInTransaction", () => {
     const replayedMessage = createdMessage({ snapshotVersion: 2 });
     const { tx } = createTransaction({ replay: { requestFingerprint, message: replayedMessage } });
 
-    await expect(persistImContactCardInTransaction(tx as never, {
-      ...command,
-      requestFingerprint
-    })).resolves.toEqual({ status: "replayed", message: replayedMessage });
+    await expect(
+      persistImContactCardInTransaction(tx as never, {
+        ...command,
+        requestFingerprint
+      })
+    ).resolves.toEqual({ status: "replayed", message: replayedMessage });
     expect(tx.user.findFirst).not.toHaveBeenCalled();
     expect(tx.message.create).not.toHaveBeenCalled();
   });
@@ -274,10 +291,12 @@ describe("persistImContactCardInTransaction", () => {
       }
     });
 
-    await expect(persistImContactCardInTransaction(tx as never, {
-      ...command,
-      requestFingerprint: "b".repeat(64)
-    })).resolves.toEqual({ status: "idempotency_conflict" });
+    await expect(
+      persistImContactCardInTransaction(tx as never, {
+        ...command,
+        requestFingerprint: "b".repeat(64)
+      })
+    ).resolves.toEqual({ status: "idempotency_conflict" });
   });
 });
 
@@ -294,13 +313,15 @@ describe("RealtimeRepository concurrent contact-card commands", () => {
       }
     };
 
-    await expect(new RealtimeRepository(client as never).sendContactCard({
-      conversationId: command.conversationId,
-      senderUserId: command.senderUserId,
-      senderIdentityId: command.senderIdentityId,
-      targetUserPublicId: command.targetUserPublicId,
-      idempotencyKey: command.idempotencyKey
-    })).resolves.toMatchObject({
+    await expect(
+      new RealtimeRepository(client as never).sendContactCard({
+        conversationId: command.conversationId,
+        senderUserId: command.senderUserId,
+        senderIdentityId: command.senderIdentityId,
+        targetUserPublicId: command.targetUserPublicId,
+        idempotencyKey: command.idempotencyKey
+      })
+    ).resolves.toMatchObject({
       status: "replayed",
       message: { id: 801, metadata: { snapshotVersion: 2, type: "contact-card" } }
     });

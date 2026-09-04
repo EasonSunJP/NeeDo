@@ -287,14 +287,16 @@ describe("BookingRepository order list scope", () => {
     const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
     expect(where).not.toHaveProperty("status");
     expect(where).not.toHaveProperty("bookedCount");
-    expect(where).toEqual(expect.objectContaining({
-      deletedAt: null,
-      serviceId: 12,
-      startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
-      endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
-      service: { deletedAt: null, status: "published" },
-      shop: expect.objectContaining({ deletedAt: null, status: "published" })
-    }));
+    expect(where).toEqual(
+      expect.objectContaining({
+        deletedAt: null,
+        serviceId: 12,
+        startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
+        endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
+        service: { deletedAt: null, status: "published" },
+        shop: expect.objectContaining({ deletedAt: null, status: "published" })
+      })
+    );
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
   });
 
@@ -331,7 +333,8 @@ describe("BookingRepository order list scope", () => {
         bookedCount: 0,
         status: "AVAILABLE"
       };
-      const scheduleFindFirst = jest.fn()
+      const scheduleFindFirst = jest
+        .fn()
         .mockResolvedValueOnce(pastSlot)
         .mockResolvedValueOnce(null);
       const cancelPending = jest.fn().mockResolvedValue({ count: 1 });
@@ -339,7 +342,9 @@ describe("BookingRepository order list scope", () => {
       const createOrder = jest.fn();
       const tx = {
         $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
-        customerProfile: { findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" }) },
+        customerProfile: {
+          findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
+        },
         shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
         scheduleSlot: {
           findFirst: scheduleFindFirst,
@@ -355,20 +360,28 @@ describe("BookingRepository order list scope", () => {
         $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
       } as never);
 
-      await expect(repository.createBooking({
-        customerUserId: 101,
-        serviceId: 31,
-        scheduleSlotId: 701,
-        fulfillmentMode: "store"
-      })).resolves.toBeNull();
+      await expect(
+        repository.createBooking({
+          customerUserId: 101,
+          serviceId: 31,
+          scheduleSlotId: 701,
+          fulfillmentMode: "store"
+        })
+      ).resolves.toBeNull();
 
       const expectedFutureGuard = { gt: new Date("2026-09-03T01:00:00.000Z") };
-      expect(scheduleFindFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        where: expect.objectContaining({ startsAt: expectedFutureGuard })
-      }));
-      expect(scheduleFindFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        where: expect.objectContaining({ startsAt: expectedFutureGuard })
-      }));
+      expect(scheduleFindFirst).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: expect.objectContaining({ startsAt: expectedFutureGuard })
+        })
+      );
+      expect(scheduleFindFirst).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({ startsAt: expectedFutureGuard })
+        })
+      );
       expect(cancelPending).toHaveBeenCalledTimes(1);
       expect(releasePendingSlot).toHaveBeenCalledTimes(1);
       expect(createOrder).not.toHaveBeenCalled();
@@ -640,7 +653,10 @@ describe("BookingRepository order list scope", () => {
       endsAt: new Date("2026-08-29T15:00:00.000Z")
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 16 }]).mockResolvedValueOnce([]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 16 }])
+        .mockResolvedValueOnce([]),
       bookingOrder: {
         findFirst: jest.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(null),
         updateMany

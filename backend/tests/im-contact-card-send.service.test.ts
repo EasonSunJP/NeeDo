@@ -33,12 +33,14 @@ describe("RealtimeService formal contact-card sending", () => {
     const gateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, gateway as never);
 
-    await expect(service.sendContactCard(
-      { userId: 41, currentIdentityId: 410 } as never,
-      91,
-      "u0000000052",
-      "contact-card-send-1"
-    )).resolves.toEqual({ message, replayed: false });
+    await expect(
+      service.sendContactCard(
+        { userId: 41, currentIdentityId: 410 } as never,
+        91,
+        "u0000000052",
+        "contact-card-send-1"
+      )
+    ).resolves.toEqual({ message, replayed: false });
     expect(repository.sendContactCard).toHaveBeenCalledWith({
       conversationId: 91,
       senderUserId: 41,
@@ -47,10 +49,12 @@ describe("RealtimeService formal contact-card sending", () => {
       idempotencyKey: "contact-card-send-1"
     });
     expect(gateway.publish).toHaveBeenCalledTimes(2);
-    expect(gateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      type: "message.created",
-      payload: message
-    }));
+    expect(gateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "message.created",
+        payload: message
+      })
+    );
   });
 
   it("returns an idempotent replay without publishing a duplicate event", async () => {
@@ -61,12 +65,14 @@ describe("RealtimeService formal contact-card sending", () => {
     const gateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, gateway as never);
 
-    await expect(service.sendContactCard(
-      { userId: 41, currentIdentityId: 410 } as never,
-      91,
-      "u0000000052",
-      "contact-card-send-1"
-    )).resolves.toEqual({ message, replayed: true });
+    await expect(
+      service.sendContactCard(
+        { userId: 41, currentIdentityId: 410 } as never,
+        91,
+        "u0000000052",
+        "contact-card-send-1"
+      )
+    ).resolves.toEqual({ message, replayed: true });
     expect(gateway.publish).not.toHaveBeenCalled();
     expect(repository.listConversationRecipients).not.toHaveBeenCalled();
   });
@@ -80,12 +86,14 @@ describe("RealtimeService formal contact-card sending", () => {
       { publish: jest.fn(), subscribe: jest.fn() } as never
     );
 
-    await expect(service.sendContactCard(
-      { userId: 41, currentIdentityId: 410 } as never,
-      91,
-      "u0000000099",
-      "contact-card-send-2"
-    )).rejects.toMatchObject({
+    await expect(
+      service.sendContactCard(
+        { userId: 41, currentIdentityId: 410 } as never,
+        91,
+        "u0000000099",
+        "contact-card-send-2"
+      )
+    ).rejects.toMatchObject({
       statusCode: 403,
       message: "error.im.contact_card_target_not_allowed"
     });
@@ -98,9 +106,8 @@ describe("RealtimeService formal contact-card sending", () => {
       { publish: jest.fn(), subscribe: jest.fn() } as never
     );
 
-    await expect(service.createMessage(
-      { userId: 41, currentIdentityId: 410 } as never,
-      {
+    await expect(
+      service.createMessage({ userId: 41, currentIdentityId: 410 } as never, {
         conversationId: 91,
         type: "text",
         content: "伪造名片",
@@ -108,8 +115,8 @@ describe("RealtimeService formal contact-card sending", () => {
           needoMessageType: "contact-card",
           needoMessageExt: { contactCard: { displayName: "伪造" } }
         }
-      }
-    )).rejects.toMatchObject({
+      })
+    ).rejects.toMatchObject({
       statusCode: 400,
       message: "error.im.contact_card_requires_dedicated_endpoint"
     });

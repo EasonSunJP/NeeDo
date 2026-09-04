@@ -36,7 +36,9 @@ describe("BookingUserRewardExpiryWorker", () => {
   });
 
   it("does not overlap runs and permits retry after failure", async () => {
-    let resolveRun: ((value: { scanned: number; expired: number; failed: number }) => void) | undefined;
+    let resolveRun:
+      | ((value: { scanned: number; expired: number; failed: number }) => void)
+      | undefined;
     const expireDue = jest
       .fn()
       .mockImplementationOnce(
@@ -69,7 +71,9 @@ describe("BookingUserRewardExpiryWorker", () => {
     const logger = { info: jest.fn(), error: jest.fn() };
     const timer = { unref: jest.fn() } as unknown as NodeJS.Timeout;
     jest.spyOn(global, "setInterval").mockReturnValue(timer);
-    const clearIntervalSpy = jest.spyOn(global, "clearInterval").mockImplementation(() => undefined);
+    const clearIntervalSpy = jest
+      .spyOn(global, "clearInterval")
+      .mockImplementation(() => undefined);
     const worker = new BookingUserRewardExpiryWorker(
       { expireDue: jest.fn().mockResolvedValue({ scanned: 0, expired: 0, failed: 0 }) },
       logger,

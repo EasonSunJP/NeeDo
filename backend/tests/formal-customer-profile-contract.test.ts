@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("formal customer profile seed contract", () => {
-  const userManagementSeedSource = readFileSync(
-    resolve(__dirname, "../prisma/seed.ts"),
-    "utf8"
-  );
+  const userManagementSeedSource = readFileSync(resolve(__dirname, "../prisma/seed.ts"), "utf8");
   const socialSeedSource = readFileSync(
     resolve(__dirname, "../scripts/seed-formal-social-test.ts"),
     "utf8"

@@ -91,10 +91,9 @@ describe("formal Exchange simulation plan", () => {
     const alternatePlan = buildExchangeSimulationPlan(actors, "exchange-integration-seed");
     const originalKeys = new Map(
       plan.posts.flatMap((post) =>
-        post.shares.map((share) => [
-          `${post.key}:${share.actor.userId}`,
-          share.idempotencyKey
-        ] as const)
+        post.shares.map(
+          (share) => [`${post.key}:${share.actor.userId}`, share.idempotencyKey] as const
+        )
       )
     );
     const overlappingShares = alternatePlan.posts.flatMap((post) =>
@@ -114,9 +113,7 @@ describe("formal Exchange simulation plan", () => {
 
   it("never selects two identities of the same account for one like or share set", () => {
     const actorsWithDuplicateIdentities = actors.flatMap((actor, index) =>
-      index < 40
-        ? [actor, { ...actor, identityId: actor.identityId + 10_000 }]
-        : [actor]
+      index < 40 ? [actor, { ...actor, identityId: actor.identityId + 10_000 }] : [actor]
     );
     const duplicateIdentityPlan = buildExchangeSimulationPlan(
       actorsWithDuplicateIdentities,
@@ -125,9 +122,7 @@ describe("formal Exchange simulation plan", () => {
 
     for (const post of duplicateIdentityPlan.posts) {
       expect(new Set(post.likes.map((like) => like.actor.userId)).size).toBe(post.likes.length);
-      expect(new Set(post.shares.map((share) => share.actor.userId)).size).toBe(
-        post.shares.length
-      );
+      expect(new Set(post.shares.map((share) => share.actor.userId)).size).toBe(post.shares.length);
     }
   });
 

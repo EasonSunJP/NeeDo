@@ -18,8 +18,12 @@ const cardPublicId = "00000000-0000-4000-8000-000000000801";
 const redemptionPublicId = "00000000-0000-4000-8000-000000000802";
 const createBody = { orderNo: "B202609010001", idempotencyKey: "redemption-api-request-001" };
 const scope = {
-  servicePublicIds: [], categoryCodes: [], excludedServicePublicIds: [], excludedCategoryCodes: [],
-  activeFrom: null, activeTo: null
+  servicePublicIds: [],
+  categoryCodes: [],
+  excludedServicePublicIds: [],
+  excludedCategoryCodes: [],
+  activeFrom: null,
+  activeTo: null
 };
 
 const candidate = (): ShopMembershipCardRedemptionCandidateContext => ({
@@ -59,7 +63,9 @@ const candidate = (): ShopMembershipCardRedemptionCandidateContext => ({
   }
 });
 
-const record = (overrides: Partial<ShopMembershipCardRedemptionRecord> = {}): ShopMembershipCardRedemptionRecord => ({
+const record = (
+  overrides: Partial<ShopMembershipCardRedemptionRecord> = {}
+): ShopMembershipCardRedemptionRecord => ({
   internalId: 191,
   publicId: redemptionPublicId,
   requestFingerprint: "fingerprint",
@@ -115,7 +121,9 @@ const record = (overrides: Partial<ShopMembershipCardRedemptionRecord> = {}): Sh
   ...overrides
 });
 
-const refundRecord = (overrides: Partial<ShopMembershipCardRefundRecord> = {}): ShopMembershipCardRefundRecord => ({
+const refundRecord = (
+  overrides: Partial<ShopMembershipCardRefundRecord> = {}
+): ShopMembershipCardRefundRecord => ({
   internalId: 301,
   publicId: "00000000-0000-4000-8000-000000000803",
   requestFingerprint: "fingerprint",
@@ -171,17 +179,23 @@ const refundRepository = (): jest.Mocked<ShopMembershipCardRefundRepositoryPort>
   })
 });
 
-const repository = (overrides: Partial<ShopMembershipCardRedemptionRepositoryPort> = {}) => ({
-  findByIdempotencyKey: jest.fn(async () => null),
-  listCandidates: jest.fn(async () => ({ list: [candidate()], total: 1, page: 1, page_size: 20 })),
-  createWithEvaluationAndSettlement: jest.fn(async (input) => ({
-    kind: "created" as const,
-    value: record({ requestFingerprint: input.requestFingerprint })
-  })),
-  listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  ...overrides
-}) as jest.Mocked<ShopMembershipCardRedemptionRepositoryPort>;
+const repository = (overrides: Partial<ShopMembershipCardRedemptionRepositoryPort> = {}) =>
+  ({
+    findByIdempotencyKey: jest.fn(async () => null),
+    listCandidates: jest.fn(async () => ({
+      list: [candidate()],
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
+    createWithEvaluationAndSettlement: jest.fn(async (input) => ({
+      kind: "created" as const,
+      value: record({ requestFingerprint: input.requestFingerprint })
+    })),
+    listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    ...overrides
+  }) as jest.Mocked<ShopMembershipCardRedemptionRepositoryPort>;
 
 function makeUser(kind: "merchant" | "customer", permissions: string[]) {
   const merchant = kind === "merchant";
@@ -200,29 +214,33 @@ function makeUser(kind: "merchant" | "customer", permissions: string[]) {
     sessionGeneration: 0,
     lastLoginAt: null,
     deletedAt: null,
-    identities: [{
-      id: merchant ? 900 : 410,
-      userId: merchant ? 90 : 41,
-      type: merchant ? "merchant_staff" : "customer",
-      scopeType: merchant ? "shop" : "customer_profile",
-      scopeId: merchant ? 71 : 51,
-      displayName: merchant ? "核销店员" : "王小美",
-      isDefault: true,
-      isActive: true,
-      deletedAt: null
-    }],
-    identityApplications: [],
-    userRoles: [{
-      deletedAt: null,
-      role: {
-        code: merchant ? "merchant_staff" : "customer",
-        deletedAt: null,
-        rolePermissions: permissions.map((code) => ({
-          deletedAt: null,
-          permission: { code, type: "api", deletedAt: null }
-        }))
+    identities: [
+      {
+        id: merchant ? 900 : 410,
+        userId: merchant ? 90 : 41,
+        type: merchant ? "merchant_staff" : "customer",
+        scopeType: merchant ? "shop" : "customer_profile",
+        scopeId: merchant ? 71 : 51,
+        displayName: merchant ? "核销店员" : "王小美",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
       }
-    }]
+    ],
+    identityApplications: [],
+    userRoles: [
+      {
+        deletedAt: null,
+        role: {
+          code: merchant ? "merchant_staff" : "customer",
+          deletedAt: null,
+          rolePermissions: permissions.map((code) => ({
+            deletedAt: null,
+            permission: { code, type: "api", deletedAt: null }
+          }))
+        }
+      }
+    ]
   };
 }
 
@@ -232,7 +250,7 @@ function fixture(kind: "merchant" | "customer", permissions: string[]) {
   const cardRefundRepository = refundRepository();
   const app = createApp(env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-    authRepository: { findUserById: jest.fn(async (id: number) => id === user.id ? user : null) },
+    authRepository: { findUserById: jest.fn(async (id: number) => (id === user.id ? user : null)) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository({ shopId: 71 }),
@@ -262,16 +280,26 @@ describe("shop membership card redemption API", () => {
   it("requires authentication and the exact daily redemption permission", async () => {
     const merchant = fixture("merchant", []);
     await request(merchant.app).post(createPath).send(createBody).expect(401);
-    await request(merchant.app).post(createPath).set("Authorization", `Bearer ${merchant.token}`).send(createBody).expect(403);
+    await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send(createBody)
+      .expect(403);
     expect(merchant.repository.createWithEvaluationAndSettlement).not.toHaveBeenCalled();
   });
 
   it("rejects client financial fields and returns only safe immutable evidence", async () => {
     const merchant = fixture("merchant", ["shop.member.card.redeem"]);
-    await request(merchant.app).post(createPath).set("Authorization", `Bearer ${merchant.token}`)
-      .send({ ...createBody, shopId: 999, amountJpy: 1, rewardNdp: 999999 }).expect(400);
-    const response = await request(merchant.app).post(createPath)
-      .set("Authorization", `Bearer ${merchant.token}`).send(createBody).expect(201);
+    await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send({ ...createBody, shopId: 999, amountJpy: 1, rewardNdp: 999999 })
+      .expect(400);
+    const response = await request(merchant.app)
+      .post(createPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .send(createBody)
+      .expect(201);
     expect(response.body.data).toMatchObject({
       publicId: redemptionPublicId,
       consumedPrincipalJpy: 10_000,
@@ -286,34 +314,46 @@ describe("shop membership card redemption API", () => {
 
   it("serves merchant candidate/history scope and customer-owned history", async () => {
     const merchant = fixture("merchant", ["shop.member.card.redeem", "shop.member.view"]);
-    const candidates = await request(merchant.app).get(`${candidatesPath}?page=1&pageSize=20`)
-      .set("Authorization", `Bearer ${merchant.token}`).expect(200);
+    const candidates = await request(merchant.app)
+      .get(`${candidatesPath}?page=1&pageSize=20`)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .expect(200);
     expect(candidates.body.data.list[0]).toMatchObject({
       orderNo: createBody.orderNo,
       consumption: { principalJpy: 10_000 },
       reward: { totalShopDebitNdp: 1_100 }
     });
-    await request(merchant.app).get(merchantListPath)
-      .set("Authorization", `Bearer ${merchant.token}`).expect(200);
+    await request(merchant.app)
+      .get(merchantListPath)
+      .set("Authorization", `Bearer ${merchant.token}`)
+      .expect(200);
 
     const customer = fixture("customer", ["customer-profile:read"]);
-    const history = await request(customer.app).get(customerListPath)
-      .set("Authorization", `Bearer ${customer.token}`).expect(200);
+    const history = await request(customer.app)
+      .get(customerListPath)
+      .set("Authorization", `Bearer ${customer.token}`)
+      .expect(200);
     expect(history.body.data.list[0]).toMatchObject({ publicId: redemptionPublicId });
     expect(customer.repository.listCustomer).toHaveBeenCalledWith(41, expect.any(Object));
   });
 
   it("requires the owner-only refund permission and returns safe exact reversal evidence", async () => {
     const denied = fixture("merchant", ["shop.member.card.redeem", "shop.member.view"]);
-    await request(denied.app).post(refundPath).set("Authorization", `Bearer ${denied.token}`)
-      .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001" }).expect(403);
+    await request(denied.app)
+      .post(refundPath)
+      .set("Authorization", `Bearer ${denied.token}`)
+      .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001" })
+      .expect(403);
     expect(denied.refundRepository.refundWithReversalAuditAndNotification).not.toHaveBeenCalled();
 
     const owner = fixture("merchant", ["shop.member.card.refund"]);
-    await request(owner.app).post(refundPath).set("Authorization", `Bearer ${owner.token}`)
+    await request(owner.app)
+      .post(refundPath)
+      .set("Authorization", `Bearer ${owner.token}`)
       .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001", shopId: 999 })
       .expect(400);
-    const response = await request(owner.app).post(refundPath)
+    const response = await request(owner.app)
+      .post(refundPath)
       .set("Authorization", `Bearer ${owner.token}`)
       .send({ reason: "订单退款", idempotencyKey: "membership-refund-api-001" })
       .expect(201);

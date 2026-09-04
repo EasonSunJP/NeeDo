@@ -26,11 +26,13 @@ describe("RealtimeRepository contact-card candidates", () => {
     };
     const repository = new RealtimeRepository(client as never);
 
-    await expect(repository.listContactCardCandidates(41, 410, {
-      page: 1,
-      pageSize: 20,
-      query: ""
-    })).resolves.toEqual({
+    await expect(
+      repository.listContactCardCandidates(41, 410, {
+        page: 1,
+        pageSize: 20,
+        query: ""
+      })
+    ).resolves.toEqual({
       list: [
         {
           targetUserId: "u0000000041",
@@ -114,16 +116,15 @@ describe("RealtimeRepository contact-card candidates", () => {
         relationship: "friend"
       }
     ]);
-    expect(client.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      skip: 1,
-      take: 2,
-      where: expect.objectContaining({
-        OR: [
-          { username: { contains: "u000" } },
-          { needoId: { contains: "u000" } }
-        ]
+    expect(client.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 1,
+        take: 2,
+        where: expect.objectContaining({
+          OR: [{ username: { contains: "u000" } }, { needoId: { contains: "u000" } }]
+        })
       })
-    }));
+    );
   });
 
   it("does not reserve a page slot when self does not match the search", async () => {
@@ -135,14 +136,19 @@ describe("RealtimeRepository contact-card candidates", () => {
       }
     };
 
-    const page = await new RealtimeRepository(client as never)
-      .listContactCardCandidates(41, 410, { page: 1, pageSize: 1, query: "佐藤" });
+    const page = await new RealtimeRepository(client as never).listContactCardCandidates(41, 410, {
+      page: 1,
+      pageSize: 1,
+      query: "佐藤"
+    });
 
     expect(page.total).toBe(1);
     expect(page.list).toHaveLength(1);
-    expect(client.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      skip: 0,
-      take: 1
-    }));
+    expect(client.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 1
+      })
+    );
   });
 });

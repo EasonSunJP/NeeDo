@@ -187,12 +187,14 @@ describe("booking completion experience", () => {
       () => completedAt
     );
 
-    await expect(service.confirmCheckoutReceipt(
-      actor,
-      7,
-      { reason: "cash received", idempotencyKey: "experience-completion-1" },
-      context
-    )).resolves.toMatchObject({
+    await expect(
+      service.confirmCheckoutReceipt(
+        actor,
+        7,
+        { reason: "cash received", idempotencyKey: "experience-completion-1" },
+        context
+      )
+    ).resolves.toMatchObject({
       status: "completed"
     });
     expect(experienceService.recordEvent).toHaveBeenCalledWith(
@@ -234,12 +236,14 @@ describe("booking completion experience", () => {
       undefined,
       completedExperience as Pick<UserExperienceService, "recordEvent">
     );
-    await expect(completedService.confirmCheckoutReceipt(
-      actor,
-      7,
-      { reason: "cash received", idempotencyKey: "experience-replay-1" },
-      context
-    )).rejects.toMatchObject({
+    await expect(
+      completedService.confirmCheckoutReceipt(
+        actor,
+        7,
+        { reason: "cash received", idempotencyKey: "experience-replay-1" },
+        context
+      )
+    ).rejects.toMatchObject({
       statusCode: 409
     });
     expect(completedExperience.recordEvent).not.toHaveBeenCalled();
@@ -262,12 +266,14 @@ describe("booking completion experience", () => {
       experienceService
     );
 
-    await expect(service.confirmCheckoutReceipt(
-      actor,
-      7,
-      { reason: "cash received", idempotencyKey: "experience-rollback-1" },
-      context
-    )).rejects.toThrow("experience write failed");
+    await expect(
+      service.confirmCheckoutReceipt(
+        actor,
+        7,
+        { reason: "cash received", idempotencyKey: "experience-rollback-1" },
+        context
+      )
+    ).rejects.toThrow("experience write failed");
     expect(current().status).toBe("awaitingPaymentConfirmation");
   });
 });
