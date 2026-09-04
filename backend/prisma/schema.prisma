@@ -551,6 +551,36 @@ enum NotificationType {
   @@map("notification_type")
 }
 
+enum OfficialNoticeLevel {
+  GENERAL   @map("general")
+  IMPORTANT @map("important")
+  URGENT    @map("urgent")
+}
+
+enum OfficialNoticeStatus {
+  DRAFT          @map("draft")
+  PENDING_REVIEW @map("pending_review")
+  APPROVED       @map("approved")
+  SCHEDULED      @map("scheduled")
+  SENDING        @map("sending")
+  SENT           @map("sent")
+  CANCELLED      @map("cancelled")
+  ARCHIVED       @map("archived")
+}
+
+enum OfficialNoticeAudienceType {
+  ALL            @map("all")
+  IDENTITY_TYPES @map("identity_types")
+  EXACT_USERS    @map("exact_users")
+}
+
+enum NoticeDeliveryStatus {
+  PENDING   @map("pending")
+  DELIVERED @map("delivered")
+  FAILED    @map("failed")
+  CANCELLED @map("cancelled")
+}
+
 enum PrimaryIdentityType {
   U     @map("u")
   NEEDO @map("needo")
@@ -1165,6 +1195,14 @@ model User {
   exchangeShares                        ExchangeShare[]                     @relation("ExchangeShareActor")
   receivedNotifications                 Notification[]                      @relation("NotificationRecipient")
   actedNotifications                    Notification[]                      @relation("NotificationActor")
+  createdOfficialNotices                OfficialNotice[]                    @relation("OfficialNoticeCreatedBy")
+  updatedOfficialNotices                OfficialNotice[]                    @relation("OfficialNoticeUpdatedBy")
+  submittedOfficialNotices              OfficialNotice[]                    @relation("OfficialNoticeSubmittedBy")
+  approvedOfficialNotices               OfficialNotice[]                    @relation("OfficialNoticeApprovedBy")
+  cancelledOfficialNotices              OfficialNotice[]                    @relation("OfficialNoticeCancelledBy")
+  archivedOfficialNotices               OfficialNotice[]                    @relation("OfficialNoticeArchivedBy")
+  officialNoticeAudiences               NoticeAudience[]                    @relation("NoticeAudienceRecipient")
+  officialNoticeDeliveries              NoticeDelivery[]                    @relation("NoticeDeliveryRecipient")
   ownedMerchantAccounts                 MerchantAccount[]                   @relation("MerchantAccountOwner")
   createdMerchantMemberships            MerchantShopMembership[]            @relation("MerchantMembershipCreatedBy")
   removedMerchantMemberships            MerchantShopMembership[]            @relation("MerchantMembershipRemovedBy")
@@ -3362,6 +3400,135 @@ model OfficialAnnouncementTranslation {
   @@map("official_announcement_translations")
 }
 
+model OfficialNotice {
+  id                 Int                        @id @default(autoincrement())
+  publicId           String                     @unique @map("public_id") @db.Char(36)
+  level              OfficialNoticeLevel        @default(IMPORTANT)
+  status             OfficialNoticeStatus       @default(DRAFT)
+  sourceLocale       ContentLocale              @map("source_locale")
+  audienceType       OfficialNoticeAudienceType @map("audience_type")
+  audienceCriteria   Json                       @map("audience_criteria")
+  targetSummary      String                     @map("target_summary") @db.VarChar(255)
+  scheduledAt        DateTime?                  @map("scheduled_at")
+  submittedAt        DateTime?                  @map("submitted_at")
+  approvedAt         DateTime?                  @map("approved_at")
+  sentAt             DateTime?                  @map("sent_at")
+  cancelledAt        DateTime?                  @map("cancelled_at")
+  archivedAt         DateTime?                  @map("archived_at")
+  lockVersion        Int                        @default(1) @map("lock_version")
+  idempotencyKey     String                     @unique @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint String                     @map("request_fingerprint") @db.Char(64)
+  createdById        Int                        @map("created_by_id")
+  updatedById        Int?                       @map("updated_by_id")
+  submittedById      Int?                       @map("submitted_by_id")
+  approvedById       Int?                       @map("approved_by_id")
+  cancelledById      Int?                       @map("cancelled_by_id")
+  archivedById       Int?                       @map("archived_by_id")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  deletedAt          DateTime?                  @map("deleted_at")
+
+  createdBy    User                        @relation("OfficialNoticeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User?                       @relation("OfficialNoticeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  submittedBy  User?                       @relation("OfficialNoticeSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+  approvedBy   User?                       @relation("OfficialNoticeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  cancelledBy  User?                       @relation("OfficialNoticeCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  archivedBy   User?                       @relation("OfficialNoticeArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  translations OfficialNoticeTranslation[]
+  audiences    NoticeAudience[]
+  deliveries   NoticeDelivery[]
+
+  @@index([status, scheduledAt, deletedAt])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([submittedById])
+  @@index([approvedById])
+  @@index([cancelledById])
+  @@index([archivedById])
+  @@index([deletedAt])
+  @@map("official_notices")
+}
+
+model OfficialNoticeTranslation {
+  id            Int           @id @default(autoincrement())
+  noticeId      Int           @map("notice_id")
+  locale        ContentLocale
+  title         String        @db.VarChar(160)
+  summary       String        @db.VarChar(500)
+  blocks        Json
+  sourceLocale  ContentLocale @map("source_locale")
+  isInitialCopy Boolean       @default(false) @map("is_initial_copy")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  notice OfficialNotice @relation(fields: [noticeId], references: [id], onDelete: Restrict)
+
+  @@unique([noticeId, locale])
+  @@index([locale, deletedAt])
+  @@index([deletedAt])
+  @@map("official_notice_translations")
+}
+
+model NoticeAudience {
+  id                   Int       @id @default(autoincrement())
+  noticeId             Int       @map("notice_id")
+  recipientUserId      Int       @map("recipient_user_id")
+  recipientIdentityId  Int       @map("recipient_identity_id")
+  snapshotNeedoId      String?   @map("snapshot_needo_id") @db.VarChar(32)
+  snapshotIdentityType String    @map("snapshot_identity_type") @db.VarChar(50)
+  snapshotDisplayName  String?   @map("snapshot_display_name") @db.VarChar(100)
+  snapshotScopeType    String?   @map("snapshot_scope_type") @db.VarChar(50)
+  snapshotScopeId      Int?      @map("snapshot_scope_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  notice            OfficialNotice @relation(fields: [noticeId], references: [id], onDelete: Restrict)
+  recipient         User           @relation("NoticeAudienceRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientIdentity UserIdentity   @relation("NoticeAudienceRecipientIdentity", fields: [recipientIdentityId], references: [id], onDelete: Restrict)
+  delivery          NoticeDelivery?
+
+  @@unique([noticeId, recipientIdentityId])
+  @@index([recipientUserId])
+  @@index([recipientIdentityId])
+  @@index([deletedAt])
+  @@map("notice_audiences")
+}
+
+model NoticeDelivery {
+  id                  Int                  @id @default(autoincrement())
+  noticeId            Int                  @map("notice_id")
+  audienceId          Int                  @unique @map("audience_id")
+  recipientUserId     Int                  @map("recipient_user_id")
+  recipientIdentityId Int                  @map("recipient_identity_id")
+  notificationId      Int?                 @unique @map("notification_id")
+  idempotencyKey      String               @unique @map("idempotency_key") @db.VarChar(191)
+  status              NoticeDeliveryStatus @default(PENDING)
+  attemptCount        Int                  @default(0) @map("attempt_count")
+  nextAttemptAt       DateTime?            @map("next_attempt_at")
+  lastAttemptAt       DateTime?            @map("last_attempt_at")
+  deliveredAt         DateTime?            @map("delivered_at")
+  failedAt            DateTime?            @map("failed_at")
+  readAt              DateTime?            @map("read_at")
+  lastError           String?              @map("last_error") @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  deletedAt           DateTime?            @map("deleted_at")
+
+  notice            OfficialNotice @relation(fields: [noticeId], references: [id], onDelete: Restrict)
+  audience          NoticeAudience @relation(fields: [audienceId], references: [id], onDelete: Restrict)
+  recipient         User           @relation("NoticeDeliveryRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientIdentity UserIdentity   @relation("NoticeDeliveryRecipientIdentity", fields: [recipientIdentityId], references: [id], onDelete: Restrict)
+  notification      Notification?  @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+
+  @@index([noticeId, status, nextAttemptAt, deletedAt], map: "notice_deliveries_dispatch_idx")
+  @@index([recipientUserId])
+  @@index([recipientIdentityId, status, readAt, deletedAt], map: "notice_deliveries_inbox_idx")
+  @@index([deletedAt])
+  @@map("notice_deliveries")
+}
+
 model CarouselRelease {
   id                      Int                  @id @default(autoincrement())
   scene                   CarouselScene
@@ -4652,6 +4819,7 @@ model Notification {
   recipientIdentity UserIdentity  @relation("NotificationRecipientIdentity", fields: [recipientIdentityId], references: [id], onDelete: Restrict)
   actor             User?         @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorIdentity     UserIdentity? @relation("NotificationActorIdentity", fields: [actorIdentityId], references: [id], onDelete: SetNull)
+  noticeDelivery    NoticeDelivery?
 
   @@index([recipientUserId])
   @@index([recipientIdentityId])
@@ -4712,6 +4880,8 @@ model UserIdentity {
   followers                  Follow[]                      @relation("FollowFollowingIdentity")
   receivedNotifications      Notification[]                @relation("NotificationRecipientIdentity")
   actedNotifications         Notification[]                @relation("NotificationActorIdentity")
+  officialNoticeAudiences    NoticeAudience[]              @relation("NoticeAudienceRecipientIdentity")
+  officialNoticeDeliveries   NoticeDelivery[]              @relation("NoticeDeliveryRecipientIdentity")
   ownedMediaAssets           MediaAsset[]                  @relation("MediaAssetOwnerIdentity")
   createdEntityShareEvents   EntityShareEvent[]            @relation("EntityShareActorIdentity")
   receivedEntityShareEvents  EntityShareEvent[]            @relation("EntityShareRecipientIdentity")
