@@ -157,7 +157,7 @@ export const importSelectiveAccounts = async (port: SelectiveAccountImportPort, 
       administratorId: Number(administrator[0].id),
       administratorEmail: config.adminDefaultEmail
     });
-    if (postcondition.userCount !== 262 || postcondition.nonTestUserCount !== 0 || postcondition.administratorCount !== 1) throw new Error("ACCOUNT_SYNC_POSTCONDITION_INVALID");
+    if (postcondition.userCount !== 252 || postcondition.nonTestUserCount !== 0 || postcondition.administratorCount !== 1) throw new Error("ACCOUNT_SYNC_POSTCONDITION_INVALID");
     await port.commit(); started = false;
     return { userCount: postcondition.userCount, nonTestUserCount: postcondition.nonTestUserCount, administratorCount: postcondition.administratorCount, tableCounts: bundle.counts, verificationDigests: bundle.digests };
   } catch (error) {

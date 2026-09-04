@@ -12,11 +12,10 @@
 
 本设计基于 2026-09-05 的实时只读预检：
 
-- 本地共有 262 条 `users` 记录，其中 261 条未软删除且全部启用。
-- 261 个有效本地账号全部具有密码哈希和邮箱验证时间。
-- 251 个有效账号已标记 `is_test_account=true`，剩余 10 个将在导入时统一标记为测试账号。
+- 当前执行基线：本地共有 252 条 `users` 记录，其中 251 条未软删除且全部启用；此前 261/262 为历史快照。
+- 251 个有效本地账号全部具有密码哈希和邮箱验证时间，并已标记 `is_test_account=true`。
 - Staging 当前只有 1 个未软删除、已启用的 bootstrap 管理员账号 `yisun0316@gmail.com`。
-- Staging bootstrap 管理员的标准化邮箱与本地 261 个有效账号无冲突。
+- Staging bootstrap 管理员的标准化邮箱与本地 251 个有效账号无冲突。
 - 两端均有 125 个已完成且未回滚的 Prisma migration，最新记录均为 `20260903170000_order_review_shop_summary`。
 
 该预检不等于写入授权。实施前必须重新执行同样的身份、数量、schema 和冲突检查。
@@ -28,8 +27,8 @@
 ### 3.1 保留对象
 
 - 保留 Staging `users` 账号表中的 bootstrap 管理员 `yisun0316@gmail.com`，沿用其现有主键、密码哈希、身份和管理员角色，不创建同邮箱重复账号。
-- 将本地 261 个未软删除账号全部新增到 Staging `users` 账号表。
-- 同步后 Staging `users` 账号表预期共有 262 个未软删除有效账号：261 个本地测试账号加 1 个既有 `yisun0316@gmail.com` 管理员账号；262 个账号全部标记为测试账号。
+- 将本地 251 个未软删除账号全部新增到 Staging `users` 账号表。
+- 同步后 Staging `users` 账号表预期共有 252 个未软删除有效账号：251 个本地测试账号加 1 个既有 `yisun0316@gmail.com` 管理员账号；252 个账号全部标记为测试账号。
 - 本地那 1 条已软删除账号不进入 Staging。
 
 ### 3.2 同步数据范围
@@ -109,7 +108,7 @@
 - 公网用户登录页不显示注册入口。
 - 两个注册 API 在功能关闭时均返回 `403` / `error.auth.registration_disabled`，且不创建验证 challenge 或用户。
 - `/api/v1/health`、`/api/v1/ready` 和用户、商户、运营入口的 readiness 全部通过。
-- Staging `users` 账号表未软删除账号数为 262，且 `is_test_account=false` 计数为 0；`yisun0316@gmail.com` 恰好 1 条、仍为启用状态并保有管理员角色。
+- Staging `users` 账号表未软删除账号数为 252，且 `is_test_account=false` 计数为 0；`yisun0316@gmail.com` 恰好 1 条、仍为启用状态并保有管理员角色。
 - 导入用户邮箱、NeeDo ID、账号编号的去标识化集合与源数据集合相等，Staging bootstrap 管理员为唯一额外账号。
 - `user_identities`、`user_roles`、三类基础资料和直接范围关系的源/目标去标识化计数和组合校验一致。
 - 抽取客户、技师、商户、联盟与运营角色各至少 1 个账号，用原本地密码经正式 `/auth/login` 和 `/auth/me` 验证登录与身份权限。测试输出不显示密码或完整 Token。

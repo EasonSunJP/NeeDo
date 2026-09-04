@@ -20,7 +20,7 @@ const requiredRoles = [{ id: 7, code: "admin", deleted_at: null }];
 const verificationKey = "b".repeat(64);
 
 const validBundle = (): SelectiveAccountSyncBundle => {
-  const users = Array.from({ length: 261 }, (_, index) => ({
+  const users = Array.from({ length: 251 }, (_, index) => ({
     sourceId: index + 1,
     values: { email: `sync-${index + 1}@example.test`, needo_id: `N${index + 1}`, is_test_account: 1, session_generation: 0 }
   }));
@@ -103,7 +103,7 @@ const createImportHarness = (state: {
       expect(maps.users.get(1)).not.toBe(1);
       expect(users.find((user) => user.id === administratorId)?.is_test_account).toBe(true);
       expect(working.rows.user_roles?.[0]?.user_id).toBe(maps.users.get(1));
-      expect(bundle.counts.users).toBe(261);
+      expect(bundle.counts.users).toBe(251);
       return {
         userCount: users.length,
         nonTestUserCount: users.filter((user) => user.is_test_account !== true && user.is_test_account !== 1).length,
@@ -133,7 +133,7 @@ describe("selective staging account importer", () => {
     }
     const harness = createImportHarness();
     await importSelectiveAccounts(harness, validBundle());
-    expect(harness.occupiedCalls).toContainEqual({ field: "email", values: ["sync-1@example.test", "sync-2@example.test", "sync-3@example.test", ...Array.from({ length: 258 }, (_, index) => `sync-${index + 4}@example.test`)] });
+    expect(harness.occupiedCalls).toContainEqual({ field: "email", values: ["sync-1@example.test", "sync-2@example.test", "sync-3@example.test", ...Array.from({ length: 248 }, (_, index) => `sync-${index + 4}@example.test`)] });
   });
 
   it("separates physical active-key collision collections and allows an absent scope", async () => {
@@ -151,7 +151,7 @@ describe("selective staging account importer", () => {
       bundle.digests[table] = collectionDigest(verificationKey, bundle.tables[table]);
     }
     const harness = createImportHarness();
-    await expect(importSelectiveAccounts(harness, bundle)).resolves.toMatchObject({ userCount: 262 });
+    await expect(importSelectiveAccounts(harness, bundle)).resolves.toMatchObject({ userCount: 252 });
     expect(harness.occupiedCalls).toEqual(expect.arrayContaining([
       { field: "user_identity_active_key" as never, values: ["identity-key"] },
       { field: "merchant_shop_membership_active_key" as never, values: ["membership-key"] },
@@ -176,10 +176,10 @@ describe("selective staging account importer", () => {
 
   it("maps source IDs, marks only the administrator, and returns verified target counts", async () => {
     const result = await importSelectiveAccounts(createImportHarness(), validBundle());
-    expect(result.userCount).toBe(262);
+    expect(result.userCount).toBe(252);
     expect(result.nonTestUserCount).toBe(0);
     expect(result.administratorCount).toBe(1);
-    expect(result.tableCounts.users).toBe(261);
+    expect(result.tableCounts.users).toBe(251);
   });
 
   it("verifies gzip bytes and sha before parsing", () => {
@@ -280,7 +280,7 @@ describe("selective staging account importer", () => {
           return { insertId: nextId - 1 };
         }
         if (sql.startsWith("UPDATE users SET is_test_account")) return { affectedRows: 1 };
-        if (sql.includes("user_count")) return [{ user_count: 262, non_test_count: 0 }];
+        if (sql.includes("user_count")) return [{ user_count: 252, non_test_count: 0 }];
         if (sql === "SELECT id, code FROM roles WHERE deleted_at IS NULL") return requiredRoles;
         if (sql.startsWith("SELECT * FROM ")) {
           const table = sql.match(/^SELECT \* FROM ([a-z_]+)/u)?.[1];
@@ -322,6 +322,6 @@ describe("selective staging account importer", () => {
     ]));
     expect(queries.some((query) => query.includes("type = 'platform' AND scope_type = 'global' AND scope_id IS NULL"))).toBe(true);
     expect(queries.some((query) => query.includes("LEFT JOIN merchant_accounts"))).toBe(true);
-    expect(JSON.parse(output[0] ?? "{}")).toMatchObject({ status: "passed", userCount: 262, nonTestUserCount: 0, administratorCount: 1 });
+    expect(JSON.parse(output[0] ?? "{}")).toMatchObject({ status: "passed", userCount: 252, nonTestUserCount: 0, administratorCount: 1 });
   });
 });

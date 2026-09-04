@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Import all 261 current local NeeDo test accounts and their login/identity graph into AWS Staging while preserving the existing `yisun0316@gmail.com` administrator, producing exactly 262 active test accounts and no business-history copy.
+**Goal:** Import all 251 current local NeeDo test accounts and their login/identity graph into AWS Staging while preserving the existing `yisun0316@gmail.com` administrator, producing exactly 252 active test accounts and no business-history copy. The former 261/262 counts are historical snapshots.
 
 **Architecture:** Build a fixed-allowlist exporter and importer around the MariaDB driver. The exporter computes the minimal account graph and writes one owner-only, content-addressed gzip bundle; the importer validates schema, target identity, collisions, roles, and keyed collection digests before inserting all rows and marking the existing administrator inside one MySQL transaction. A separate AWS orchestrator uploads the exact bundle to the encrypted versioned release bucket, completes an EBS snapshot and logical backup, executes the importer through SSM, deletes transient copies, and emits redacted evidence only.
 
@@ -12,8 +12,8 @@
 
 - Execute only after the registration-disabled Staging release has passed public API, UI, readiness, and existing-login acceptance.
 - Source is local `needo_dev` on loopback; target is `needo_staging` inside the approved Staging Compose network in AWS account `430611185505`, region `ap-southeast-2`.
-- Import 261 source `users` rows where `deleted_at IS NULL`; preserve the one existing Staging administrator and finish with exactly 262 undeleted users.
-- Set `is_test_account=1` for all 262 accounts; preserve the administrator's existing ID, password hash, identity, and admin role.
+- Import 251 source `users` rows where `deleted_at IS NULL`; preserve the one existing Staging administrator and finish with exactly 252 undeleted users.
+- Set `is_test_account=1` for all 252 accounts; preserve the administrator's existing ID, password hash, identity, and admin role.
 - Preserve imported password hashes without printing, decrypting, resetting, or transferring them outside the owner-only encrypted path; imported `session_generation` is reset to `0`, and Redis sessions/OTP/challenges are never copied.
 - Copy only `users`, `user_identities`, `user_roles`, `customer_profiles`, `technician_profiles`, `merchant_identity_profiles`, `public_identifiers`, `shops`, `merchant_accounts`, `merchant_shop_memberships`, and `technician_shop_affiliations` within the defined active account closure.
 - Do not copy soft-deleted rows, external auth, login/audit logs, identity applications, protected bank data, media files, Booking, orders, schedules, wallet/ledger/payment, membership transactions, IM, Social, notifications, exchange, analytics, or operating history.
@@ -274,7 +274,7 @@ await expect(importSelectiveAccounts(targetFailingAfterUsers, validBundle))
 expect(targetFailingAfterUsers.committedRows("users")).toEqual([administrator]);
 ```
 
-The success fixture must prove source IDs are remapped, all foreign keys point to target IDs, the administrator row is not inserted or rehashed, all 262 users are test accounts, and target collection digests/counts match the bundle.
+The success fixture must prove source IDs are remapped, all foreign keys point to target IDs, the administrator row is not inserted or rehashed, all 252 users are test accounts, and target collection digests/counts match the bundle.
 
 - [ ] **Step 2: Run importer tests and prove they fail**
 
@@ -331,7 +331,7 @@ WHERE id = ? AND deleted_at IS NULL
 
 - [ ] **Step 6: Validate postconditions before commit**
 
-Within the same transaction, require: 262 undeleted users, zero undeleted non-test users, one matching administrator with active admin role, exact imported row counts, zero orphan references, one default active identity per imported user where present in source, and matching keyed collection digests calculated from target rows normalized back to source natural keys. Only then call `commit`; on every error call `rollback`. Release the named lock in `finally`.
+Within the same transaction, require: 252 undeleted users, zero undeleted non-test users, one matching administrator with active admin role, exact imported row counts, zero orphan references, one default active identity per imported user where present in source, and matching keyed collection digests calculated from target rows normalized back to source natural keys. Only then call `commit`; on every error call `rollback`. Release the named lock in `finally`.
 
 - [ ] **Step 7: Implement a non-disclosing CLI**
 
@@ -341,7 +341,7 @@ Read an owner-only absolute input path, verify the passed SHA-256 before decompr
 {
   gate: "staging-selective-account-import",
   status: "passed",
-  userCount: 262,
+  userCount: 252,
   nonTestUserCount: 0,
   administratorCount: 1,
   tableCounts: summary.tableCounts,
@@ -509,11 +509,11 @@ Expected: deployment passes, active release equals the clean revision, registrat
 
 **Interfaces:**
 - Consumes: local `.env.dev`, clean implementation revision, and the AWS orchestrator.
-- Produces: one completed account import with exactly 262 test users.
+- Produces: one completed account import with exactly 252 test users.
 
 - [ ] **Step 1: Re-run local and Staging read-only preflight**
 
-Verify source database/listener identity, 261 current users, password-hash and verified-email counts, source migration count/latest name, relationship counts, Staging account/region/instance/current release, SSM Online, one existing administrator, Staging migration parity, and zero unique-key collisions. Do not print email/phone/hash lists. Stop on any drift from the approved design.
+Verify source database/listener identity, 251 current users, password-hash and verified-email counts, source migration count/latest name, relationship counts, Staging account/region/instance/current release, SSM Online, one existing administrator, Staging migration parity, and zero unique-key collisions. Do not print email/phone/hash lists. Stop on any drift from the approved design.
 
 - [ ] **Step 2: Export to an owner-only temporary bundle**
 
@@ -528,7 +528,7 @@ bundle_sha256="$(shasum -a 256 "$sync_tmp/accounts.json.gz" | awk '{print $1}')"
 cd ..
 ```
 
-Expected: redacted export summary reports 261 users and the approved relationship counts; the file owner is the current user and mode is `0600`.
+Expected: redacted export summary reports 251 users and the approved relationship counts; the file owner is the current user and mode is `0600`.
 
 - [ ] **Step 3: Execute the bounded AWS account-sync command**
 
@@ -569,7 +569,7 @@ Expected: only the redacted evidence remains; no local or remote plaintext migra
 
 - [ ] **Step 1: Verify final database invariants through a read-only SSM command**
 
-Require: 262 undeleted enabled users; zero undeleted `is_test_account=0`; exactly one normalized `ADMIN_DEFAULT_EMAIL`; that administrator still has an active platform identity and `admin` role; exact table counts from import evidence; zero orphans; no migration change; and keyed set digests matching the export/import evidence. Return only counts and digests.
+Require: 252 undeleted enabled users; zero undeleted `is_test_account=0`; exactly one normalized `ADMIN_DEFAULT_EMAIL`; that administrator still has an active platform identity and `admin` role; exact table counts from import evidence; zero orphans; no migration change; and keyed set digests matching the export/import evidence. Return only counts and digests.
 
 - [ ] **Step 2: Verify representative formal logins without exposing credentials**
 
@@ -590,4 +590,4 @@ git commit -m "docs: record staging account sync acceptance"
 
 - [ ] **Step 5: Report completion states separately**
 
-Report: implementation commits; importer release revision; deployment and active release; schema migration unchanged; EBS snapshot complete; logical backup complete; account transaction committed; 262-account database acceptance; representative authenticated API acceptance; registration API/UI closure; and browser acceptance. If any one is missing, report it as incomplete rather than calling the whole task finished.
+Report: implementation commits; importer release revision; deployment and active release; schema migration unchanged; EBS snapshot complete; logical backup complete; account transaction committed; 252-account database acceptance; representative authenticated API acceptance; registration API/UI closure; and browser acceptance. If any one is missing, report it as incomplete rather than calling the whole task finished.
