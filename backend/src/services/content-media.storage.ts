@@ -8,6 +8,10 @@ import { AppError } from "../utils/app-error";
 
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 export const CONTENT_MEDIA_MAX_DECODED_PIXELS = 25_000_000;
+export const CONTENT_MEDIA_VALIDATION_PROFILES = {
+  signature: "signature",
+  decodedSingleFrame: "decoded-single-frame"
+} as const;
 const MAX_CONTAINER_HEADER_ENTRIES = 4_096;
 const MAX_JPEG_MARKER_PADDING_BYTES = 16;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -95,19 +99,32 @@ const hasUnsupportedJpegMultiPicture = (bytes: Buffer): boolean => {
 const imageMetadata = {
   "image/jpeg": {
     extension: "jpg",
-    decodedFormat: "jpeg"
+    decodedFormat: "jpeg",
+    matches: (bytes: Buffer) => bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
   },
   "image/png": {
     extension: "png",
-    decodedFormat: "png"
+    decodedFormat: "png",
+    matches: (bytes: Buffer) => bytes.subarray(0, 8).equals(PNG_SIGNATURE)
   },
   "image/webp": {
     extension: "webp",
-    decodedFormat: "webp"
+    decodedFormat: "webp",
+    matches: (bytes: Buffer) =>
+      bytes.subarray(0, 4).equals(Buffer.from("RIFF")) &&
+      bytes.subarray(8, 12).equals(Buffer.from("WEBP"))
   }
 } as const;
 
 export type ContentMediaMimeType = keyof typeof imageMetadata;
+export type ContentMediaValidationProfile =
+  (typeof CONTENT_MEDIA_VALIDATION_PROFILES)[keyof typeof CONTENT_MEDIA_VALIDATION_PROFILES];
+
+export interface ContentMediaStorageInput {
+  bytes: Buffer;
+  mimeType: ContentMediaMimeType;
+  validationProfile?: ContentMediaValidationProfile;
+}
 
 export interface PreparedContentMedia {
   fileKey: string;
@@ -120,8 +137,8 @@ export interface StoredContentMedia extends PreparedContentMedia {
 }
 
 export interface ContentMediaStoragePort {
-  prepare(input: { bytes: Buffer; mimeType: ContentMediaMimeType }): Promise<PreparedContentMedia>;
-  save(input: { bytes: Buffer; mimeType: ContentMediaMimeType }): Promise<StoredContentMedia>;
+  prepare(input: ContentMediaStorageInput): Promise<PreparedContentMedia>;
+  save(input: ContentMediaStorageInput): Promise<StoredContentMedia>;
   read(fileKey: string): Promise<Buffer>;
   delete(fileKey: string): Promise<void>;
 }
@@ -183,10 +200,7 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     }
   }
 
-  public async prepare(input: {
-    bytes: Buffer;
-    mimeType: ContentMediaMimeType;
-  }): Promise<PreparedContentMedia> {
+  public async prepare(input: ContentMediaStorageInput): Promise<PreparedContentMedia> {
     if (input.bytes.length === 0) {
       throw this.invalid();
     }
@@ -194,37 +208,41 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
       throw this.tooLarge();
     }
     const metadata = imageMetadata[input.mimeType];
-    if (!metadata) {
+    if (!metadata || !metadata.matches(input.bytes)) {
       throw this.invalid();
     }
-    if (
-      (input.mimeType === "image/png" && hasUnsupportedPngAnimation(input.bytes)) ||
-      (input.mimeType === "image/jpeg" && hasUnsupportedJpegMultiPicture(input.bytes))
-    ) {
-      throw this.invalid();
-    }
-    try {
-      const decoder = sharp(input.bytes, {
-        failOn: "warning",
-        limitInputPixels: CONTENT_MEDIA_MAX_DECODED_PIXELS,
-        sequentialRead: true
-      });
-      const decoded = await decoder.metadata();
+    const validationProfile =
+      input.validationProfile ?? CONTENT_MEDIA_VALIDATION_PROFILES.signature;
+    if (validationProfile === CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame) {
       if (
-        decoded.format !== metadata.decodedFormat ||
-        !decoded.width ||
-        !decoded.height ||
-        (decoded.pages ?? 1) > 1 ||
-        decoded.width * decoded.height > CONTENT_MEDIA_MAX_DECODED_PIXELS
+        (input.mimeType === "image/png" && hasUnsupportedPngAnimation(input.bytes)) ||
+        (input.mimeType === "image/jpeg" && hasUnsupportedJpegMultiPicture(input.bytes))
       ) {
         throw this.invalid();
       }
-      await decoder.clone().stats();
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
+      try {
+        const decoder = sharp(input.bytes, {
+          failOn: "warning",
+          limitInputPixels: CONTENT_MEDIA_MAX_DECODED_PIXELS,
+          sequentialRead: true
+        });
+        const decoded = await decoder.metadata();
+        if (
+          decoded.format !== metadata.decodedFormat ||
+          !decoded.width ||
+          !decoded.height ||
+          (decoded.pages ?? 1) > 1 ||
+          decoded.width * decoded.height > CONTENT_MEDIA_MAX_DECODED_PIXELS
+        ) {
+          throw this.invalid();
+        }
+        await decoder.clone().stats();
+      } catch (error) {
+        if (error instanceof AppError) {
+          throw error;
+        }
+        throw this.invalid();
       }
-      throw this.invalid();
     }
     const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
     return {
@@ -234,10 +252,7 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     };
   }
 
-  public async save(input: {
-    bytes: Buffer;
-    mimeType: ContentMediaMimeType;
-  }): Promise<StoredContentMedia> {
+  public async save(input: ContentMediaStorageInput): Promise<StoredContentMedia> {
     const prepared = await this.prepare(input);
     const canonicalPath = this.pathFor(prepared.fileKey);
     await mkdir(this.directory, { recursive: true });

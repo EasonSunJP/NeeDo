@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 export const validJpeg = Buffer.from(
   "/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjI4LjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABMAAEBAAAAAAAAAAAAAAAAAAAABgEBAQAAAAAAAAAAAAAAAAAABgcQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCAACAAIDASIAAhEAAxEA/9oADAMBAAIRAxEAPwCLAE1/f//Z",
   "base64"
@@ -62,3 +64,15 @@ export const excessivePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAF3AAABdwCAIAAABsNhAUAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==",
   "base64"
 );
+
+export const createValidExcessivePixelPng = (): Promise<Buffer> =>
+  sharp({
+    create: {
+      width: 5_001,
+      height: 5_000,
+      channels: 3,
+      background: { r: 1, g: 2, b: 3 }
+    }
+  })
+    .png({ compressionLevel: 9, palette: true })
+    .toBuffer();

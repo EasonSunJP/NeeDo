@@ -3,7 +3,11 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { ContentMediaRepositoryPort } from "./content-media.service";
-import type { ContentMediaMimeType, ContentMediaStoragePort } from "./content-media.storage";
+import {
+  CONTENT_MEDIA_VALIDATION_PROFILES,
+  type ContentMediaMimeType,
+  type ContentMediaStoragePort
+} from "./content-media.storage";
 import type {
   PricingModeRepositoryPort,
   TechnicianServiceCoverTarget,
@@ -27,7 +31,11 @@ export class TechnicianServiceCoverService {
     const { technicianId } = await this.getOwnedTarget(actor, shopId, serviceId);
     let prepared: Awaited<ReturnType<ContentMediaStoragePort["prepare"]>>;
     try {
-      prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+      prepared = await this.storage.prepare({
+        bytes: input.bytes,
+        mimeType: input.mimeType,
+        validationProfile: CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame
+      });
     } catch (error) {
       throw this.normalizeStorageError(error);
     }

@@ -9,6 +9,7 @@ import type {
   PreparedContentMedia,
   StoredContentMedia
 } from "../src/services/content-media.storage";
+import { ContentMediaFileStorage } from "../src/services/content-media.storage";
 import {
   type PricingModeRepositoryPort,
   type TechnicianServiceCoverTarget,
@@ -16,7 +17,11 @@ import {
 } from "../src/services/pricing-mode.service";
 import { TechnicianServiceCoverService } from "../src/services/technician-service-cover.service";
 import { AppError } from "../src/utils/app-error";
-import { validJpeg } from "./fixtures/content-images";
+import {
+  createValidExcessivePixelPng,
+  validJpeg,
+  validTwoFrameApng
+} from "./fixtures/content-images";
 
 const jpeg = validJpeg;
 const now = new Date("2026-09-04T00:00:00.000Z");
@@ -193,6 +198,34 @@ describe("TechnicianServiceCoverService", () => {
         action: "technician.service.cover.updated"
       })
     );
+    expect(storage.prepare).toHaveBeenCalledWith({
+      bytes: jpeg,
+      mimeType: "image/jpeg",
+      validationProfile: "decoded-single-frame"
+    });
+  });
+
+  it("rejects APNG and valid images above the decoded-pixel limit before persistence", async () => {
+    const repository = createRepository();
+    const storage = new ContentMediaFileStorage("/unused");
+    const service = new TechnicianServiceCoverService(repository, storage, createChecksumLock());
+    const validLargePng = await createValidExcessivePixelPng();
+
+    await expect(
+      service.uploadCover(actor, context, 1, 11, {
+        bytes: validTwoFrameApng,
+        mimeType: "image/png",
+        now
+      })
+    ).rejects.toMatchObject({ message: "error.technician_service.cover_invalid" });
+    await expect(
+      service.uploadCover(actor, context, 1, 11, {
+        bytes: validLargePng,
+        mimeType: "image/png",
+        now
+      })
+    ).rejects.toMatchObject({ message: "error.technician_service.cover_invalid" });
+    expect(repository.replaceTechnicianServiceCover).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid active identity before resolving technician scope", async () => {

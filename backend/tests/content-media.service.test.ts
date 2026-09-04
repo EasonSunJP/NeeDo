@@ -14,8 +14,8 @@ import {
 import {
   corruptedLaterFrameApng,
   corruptedSecondFrameWebp,
+  createValidExcessivePixelPng,
   emptyImageDataPng,
-  excessivePixelPng,
   headerOnlyJpeg,
   headerOnlyWebp,
   multiPictureJpeg,
@@ -103,6 +103,19 @@ describe("ContentMediaFileStorage", () => {
     await expect(storage.read(stored.fileKey)).resolves.toEqual(bytes);
   });
 
+  it("keeps the legacy signature profile for APNG and valid images above the cover pixel limit", async () => {
+    const storage = new ContentMediaFileStorage("/unused");
+    const validLargePng = await createValidExcessivePixelPng();
+
+    expect(validLargePng.length).toBeLessThanOrEqual(8 * 1024 * 1024);
+    await expect(
+      storage.prepare({ bytes: validTwoFrameApng, mimeType: "image/png" })
+    ).resolves.toMatchObject({ mimeType: "image/png" });
+    await expect(
+      storage.prepare({ bytes: validLargePng, mimeType: "image/png" })
+    ).resolves.toMatchObject({ mimeType: "image/png" });
+  });
+
   it("accepts an ordinary progressive JPEG", async () => {
     const storage = new ContentMediaFileStorage("/unused");
 
@@ -134,7 +147,9 @@ describe("ContentMediaFileStorage", () => {
       const storage = new ContentMediaFileStorage("/unused");
 
       await expect(
-        Promise.resolve().then(() => storage.prepare({ bytes, mimeType }))
+        Promise.resolve().then(() =>
+          storage.prepare({ bytes, mimeType, validationProfile: "decoded-single-frame" })
+        )
       ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
     }
   );
@@ -149,27 +164,46 @@ describe("ContentMediaFileStorage", () => {
       const storage = new ContentMediaFileStorage("/unused");
 
       await expect(
-        Promise.resolve().then(() => storage.prepare({ bytes, mimeType }))
+        Promise.resolve().then(() =>
+          storage.prepare({ bytes, mimeType, validationProfile: "decoded-single-frame" })
+        )
       ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
     }
   );
 
   it("rejects a decoded image above the 25,000,000-pixel cover bound", async () => {
     const storage = new ContentMediaFileStorage("/unused");
+    const validLargePng = await createValidExcessivePixelPng();
 
     await expect(
       Promise.resolve().then(() =>
-        storage.prepare({ bytes: excessivePixelPng, mimeType: "image/png" })
+        storage.prepare({
+          bytes: validLargePng,
+          mimeType: "image/png",
+          validationProfile: "decoded-single-frame"
+        })
       )
     ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
   });
 
-  it("prepares valid content asynchronously and rejects a decoded-format MIME mismatch", async () => {
+  it("prepares strict valid content asynchronously and rejects a decoded-format MIME mismatch", async () => {
     const storage = new ContentMediaFileStorage("/unused");
 
-    expect(storage.prepare({ bytes: validPng, mimeType: "image/png" })).toBeInstanceOf(Promise);
+    expect(
+      storage.prepare({
+        bytes: validPng,
+        mimeType: "image/png",
+        validationProfile: "decoded-single-frame"
+      })
+    ).toBeInstanceOf(Promise);
     await expect(
-      Promise.resolve().then(() => storage.prepare({ bytes: validPng, mimeType: "image/jpeg" }))
+      Promise.resolve().then(() =>
+        storage.prepare({
+          bytes: validPng,
+          mimeType: "image/jpeg",
+          validationProfile: "decoded-single-frame"
+        })
+      )
     ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
   });
 
@@ -179,9 +213,13 @@ describe("ContentMediaFileStorage", () => {
   ])("rejects %s animated WebP content", async (_name, bytes) => {
     const storage = new ContentMediaFileStorage("/unused");
 
-    await expect(storage.prepare({ bytes, mimeType: "image/webp" })).rejects.toEqual(
-      expect.objectContaining({ message: "error.content.media_invalid" })
-    );
+    await expect(
+      storage.prepare({
+        bytes,
+        mimeType: "image/webp",
+        validationProfile: "decoded-single-frame"
+      })
+    ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
   });
 
   it.each([
@@ -192,9 +230,13 @@ describe("ContentMediaFileStorage", () => {
     async (_name, bytes) => {
       const storage = new ContentMediaFileStorage("/unused");
 
-      await expect(storage.prepare({ bytes, mimeType: "image/png" })).rejects.toEqual(
-        expect.objectContaining({ message: "error.content.media_invalid" })
-      );
+      await expect(
+        storage.prepare({
+          bytes,
+          mimeType: "image/png",
+          validationProfile: "decoded-single-frame"
+        })
+      ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
     }
   );
 
@@ -202,7 +244,11 @@ describe("ContentMediaFileStorage", () => {
     const storage = new ContentMediaFileStorage("/unused");
 
     await expect(
-      storage.prepare({ bytes: multiPictureJpeg, mimeType: "image/jpeg" })
+      storage.prepare({
+        bytes: multiPictureJpeg,
+        mimeType: "image/jpeg",
+        validationProfile: "decoded-single-frame"
+      })
     ).rejects.toEqual(expect.objectContaining({ message: "error.content.media_invalid" }));
   });
 

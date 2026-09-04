@@ -291,6 +291,12 @@ page, and libvips asynchronously fully decodes the accepted single frame. Header
 truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded pixel-limit
 violations all fail with the existing cover-invalid HTTP 400 contract.
 
+This decoded single-frame profile is cover-specific. The shared storage default used
+by `/api/v1/social/media` and `/api/v1/backoffice/content/media` retains their existing
+contract: at most 8 MiB, one of the three declared MIME types, and the corresponding
+magic signature. Those generic endpoints do not inherit the cover-only frame/page or
+decoded-pixel restrictions.
+
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 
 `GET /api/v1/im/directory/:userId` may include `technicianContactDetails` only when the caller owns an active, non-deleted, unblocked contact pointing to that technician identity. Reverse-only contacts, pending requests, deleted contacts, blocked contacts, self lookups without that relationship, and public lookups omit the entire key. The optional object contains integer bid-budget bounds, payment methods, active non-expired operations tags, technician profile tags, up to five active approved services, completed-order count, and acceptance rate in basis points (`10000` = 100%). It never contains `baseLatitude`, `baseLongitude`, `serviceBase`, or other precise coordinates.
