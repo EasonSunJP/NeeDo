@@ -240,6 +240,10 @@ export function requiresFormalFrontendLogin(_portal: PortalScope, _redirectPath:
   return true;
 }
 
+export function isGoogleAuthEnabled(value = import.meta.env.VITE_AUTH_GOOGLE_ENABLED) {
+  return value?.trim().toLowerCase() !== "false";
+}
+
 function AppMark() {
   return (
     <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
@@ -255,8 +259,10 @@ function AppMark() {
 }
 
 export function LoginPage({
+  googleAuthEnabled = isGoogleAuthEnabled(),
   navigateToPortal = openPortalEntry
 }: {
+  googleAuthEnabled?: boolean;
   navigateToPortal?: (portal: PortalScope, route: string) => void;
 }) {
   const { portal } = useParams();
@@ -356,7 +362,13 @@ export function LoginPage({
 
   useEffect(() => {
     const container = googleContainerRef.current;
-    if (!container || panelMode !== "welcome" || hasActiveAccess || generatedNeedoId) {
+    if (
+      !googleAuthEnabled ||
+      !container ||
+      panelMode !== "welcome" ||
+      hasActiveAccess ||
+      generatedNeedoId
+    ) {
       return;
     }
 
@@ -422,6 +434,7 @@ export function LoginPage({
     activePortal,
     generatedNeedoId,
     googleFlowKey,
+    googleAuthEnabled,
     hasActiveAccess,
     language,
     authenticateWithGoogleCredential,
@@ -868,32 +881,36 @@ export function LoginPage({
               </div>
             )}
 
-            <div
-              className={
-                panelMode === "welcome" && !hasActiveAccess && !generatedNeedoId ? "mt-4" : "hidden"
-              }
-            >
-              <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
-                <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
-                  {copy.googlePrompt}
-                </p>
-                <div
-                  aria-label={copy.googleLogin}
-                  className="flex min-h-11 items-center justify-center"
-                  data-testid="google-identity-button"
-                  ref={googleContainerRef}
-                />
-                {googleState === "error" ? (
-                  <button
-                    className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
-                    onClick={() => setGoogleFlowKey((current) => current + 1)}
-                    type="button"
-                  >
-                    {copy.googleRestart}
-                  </button>
-                ) : null}
+            {googleAuthEnabled ? (
+              <div
+                className={
+                  panelMode === "welcome" && !hasActiveAccess && !generatedNeedoId
+                    ? "mt-4"
+                    : "hidden"
+                }
+              >
+                <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
+                  <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
+                    {copy.googlePrompt}
+                  </p>
+                  <div
+                    aria-label={copy.googleLogin}
+                    className="flex min-h-11 items-center justify-center"
+                    data-testid="google-identity-button"
+                    ref={googleContainerRef}
+                  />
+                  {googleState === "error" ? (
+                    <button
+                      className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
+                      onClick={() => setGoogleFlowKey((current) => current + 1)}
+                      type="button"
+                    >
+                      {copy.googleRestart}
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             {feedback ? (
               <p

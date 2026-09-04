@@ -44,7 +44,12 @@ function parseArgs(argv) {
 async function run(file, args, cwd = repositoryRoot) {
   await execFileAsync(file, args, {
     cwd,
-    env: { ...process.env, CI: "1", NEEDO_BUILD_TARGET: "production" },
+    env: {
+      ...process.env,
+      CI: "1",
+      NEEDO_BUILD_TARGET: "production",
+      VITE_AUTH_GOOGLE_ENABLED: "false"
+    },
     maxBuffer: 16 * 1024 * 1024
   });
 }
@@ -225,4 +230,3 @@ main().catch(() => {
   process.stderr.write('{"gate":"aws-staging-application-package","status":"failed"}\n');
   process.exitCode = 1;
 });
-

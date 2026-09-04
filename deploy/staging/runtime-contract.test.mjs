@@ -51,3 +51,9 @@ test("runtime Dockerfiles consume only locked dependencies and prebuilt outputs"
   assert.match(frontend, /FROM nginx:1\.27-alpine/);
   assert.match(frontend, /COPY dist\/ \/usr\/share\/nginx\/html\//);
 });
+
+test("immutable staging packaging explicitly disables Google auth in the frontend build", () => {
+  const packager = read("../../scripts/aws-staging-package-application.mjs");
+
+  assert.match(packager, /VITE_AUTH_GOOGLE_ENABLED:\s*"false"/);
+});
