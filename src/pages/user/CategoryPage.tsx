@@ -11,7 +11,6 @@ import {
   floatingHeaderSearchInputClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useOptionalAuth } from "../../auth/AuthProvider";
 import {
@@ -32,12 +31,11 @@ import { resolveSearchOrigin } from "../../features/location/searchOrigin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategories";
-import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { shareContent } from "../../lib/share";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { useHomeLayoutStore } from "../../state/homeLayoutStore";
 import { useHomeLocationPreference } from "../../state/homeLocationStore";
-import { cn, yen } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import type { ServiceCategory, ServiceItem, Technician } from "../../types/domain";
 import {
   EntitySearchCardActions,
@@ -45,6 +43,7 @@ import {
   TechnicianShowcaseCard,
   type SocialProfileMiniData
 } from "../../shared/profile-card";
+import { mapServiceItemToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
 
 const categoryDescriptionMap: Record<HomeCategoryId, string> = {
@@ -319,38 +318,7 @@ function ChevronDownIcon({ open }: { open: boolean }) {
 }
 
 function ServicePreviewCard({ service }: { service: ServiceItem }) {
-  return (
-    <Link
-      className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] shadow-[0_18px_36px_rgba(0,0,0,0.06)]"
-      to={`/services/${service.id}`}
-    >
-      <div className="relative h-[126px] overflow-hidden bg-black">
-        <img alt={service.name} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(service.cover)} />
-      </div>
-      <div className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="line-clamp-1 text-[15px] font-black text-[color:var(--client-text)]">{service.name}</h3>
-            <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[color:var(--client-muted)]">{service.summary}</p>
-          </div>
-          <Badge className="shrink-0 whitespace-nowrap" tone="green">{service.fastestArrival}</Badge>
-        </div>
-        <div className="flex items-end justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap gap-2">
-            {service.tags.slice(0, 2).map((tag) => (
-              <span
-                className="inline-flex rounded-full bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
-                key={tag}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-          <strong className="shrink-0 text-[15px] font-black text-[color:var(--client-text)]">{yen(service.priceFrom)} 起</strong>
-        </div>
-      </div>
-    </Link>
-  );
+  return <UnifiedServiceInfoCard data={mapServiceItemToUnifiedData(service)} detailTo={`/services/${service.id}`} />;
 }
 
 export function CategoryPage() {
@@ -1182,7 +1150,7 @@ export function CategoryPage() {
                         const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
                         const shareCount = shareCounts[entityTargetKey(target)] ?? normalizeMetric(item.profile.shareCount);
                         const hasEngagementMetrics = isFiniteMetric(item.profile.favoriteCount) && isFiniteMetric(item.profile.shareCount);
-                        const detailPath = `/profiles/technician/${item.profile.id}`;
+                        const detailPath = `/profiles/technician/${item.profile.publicId}`;
 
                         return (
                           <TechnicianShowcaseCard

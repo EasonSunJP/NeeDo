@@ -44,8 +44,23 @@ describe("Step 08 core read API", () => {
     publicId: "s5831047296",
     displayName: "Mika Tanaka",
     city: "Tokyo",
+    age: 28,
     avatarUrl: "https://cdn.example.test/technicians/mika.jpg",
-    reviewSummary
+    reviewSummary,
+    favoriteCount: 12,
+    shareCount: 3,
+    completedOrderCount: 128,
+    acceptanceRatePercent: 98,
+    primaryService: null
+  };
+  const reviewTagSummary = {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 3 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: [{ label: "手法细致", count: 2 }]
   };
   const serviceCard = {
     id: 1,
@@ -59,11 +74,15 @@ describe("Step 08 core read API", () => {
     priceAmount: "8800.00",
     currency: "JPY",
     durationMinutes: 60,
+    usageCount: 18,
     coverUrl: "https://cdn.example.test/services/shiatsu-cover.jpg",
     reviewSummary
   };
 
   const createFixture = () => {
+    const searchQueryRecorder = {
+      recordSuccessfulSearch: jest.fn(async () => undefined)
+    };
     const coreReadRepository = {
       listCategories: jest.fn(async () => paginated([category])),
       listServices: jest.fn(async () => paginated([serviceCard])),
@@ -137,7 +156,11 @@ describe("Step 08 core read API", () => {
         shop: shopCard,
         bio: "Certified body care technician.",
         serviceArea: "Minato, Shibuya",
+        gender: "female",
+        heightCm: 164,
+        languages: ["日本語", "English"],
         yearsExperience: 8,
+        reviewTagSummary,
         mediaAssets: [],
         services: [serviceCard],
         createdAt: nowIso,
@@ -158,10 +181,11 @@ describe("Step 08 core read API", () => {
     };
     const app = createApp(undefined, {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-      coreReadRepository
+      coreReadRepository,
+      searchQueryRecorder
     } as never);
 
-    return { app, coreReadRepository };
+    return { app, coreReadRepository, searchQueryRecorder };
   };
 
   it("lists categories and service cards from the core read repository", async () => {
@@ -198,6 +222,7 @@ describe("Step 08 core read API", () => {
 
     const searchResponse = await request(fixture.app)
       .get("/api/v1/search?keyword=shiatsu&categoryId=1&city=Tokyo&page=1&pageSize=20")
+      .set("X-Search-Session", "session-20260903")
       .expect(200);
     expect(searchResponse.body.data).toEqual(paginated([serviceCard]));
     expect(fixture.coreReadRepository.search).toHaveBeenCalledWith(
@@ -207,6 +232,27 @@ describe("Step 08 core read API", () => {
         city: "Tokyo"
       })
     );
+    expect(fixture.searchQueryRecorder.recordSuccessfulSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ keyword: "shiatsu", city: "Tokyo" }),
+        resultCount: 1,
+        anonymousSessionId: "session-20260903"
+      })
+    );
+  });
+
+  it("records only actual submitted keywords after a successful search", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .get("/api/v1/search?keyword=shiatsu&city=Tokyo")
+      .set("X-Search-Session", "session-20260903")
+      .expect(200);
+    expect(fixture.searchQueryRecorder.recordSuccessfulSearch).toHaveBeenCalledTimes(1);
+
+    fixture.searchQueryRecorder.recordSuccessfulSearch.mockClear();
+    await request(fixture.app).get("/api/v1/search?city=Tokyo").expect(200);
+    expect(fixture.searchQueryRecorder.recordSuccessfulSearch).not.toHaveBeenCalled();
   });
 
   it("dispatches typed shop and technician searches with repeated OR inputs", async () => {
@@ -337,7 +383,14 @@ describe("Step 08 core read API", () => {
       publicId: "s5831047296",
       displayName: "Mika Tanaka",
       shop: shopCard,
+      gender: "female",
+      age: 28,
+      heightCm: 164,
+      languages: ["日本語", "English"],
       yearsExperience: 8,
+      completedOrderCount: 128,
+      acceptanceRatePercent: 98,
+      reviewTagSummary,
       services: [serviceCard]
     });
 
@@ -387,6 +440,40 @@ describe("Step 08 core read API", () => {
     expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(
       shopCard.publicId
     );
+  });
+
+  it("resolves formal technician identifiers to the same complete public detail", async () => {
+    const fixture = createFixture();
+
+    const numericResponse = await request(fixture.app).get("/api/v1/technicians/1").expect(200);
+    const publicResponse = await request(fixture.app)
+      .get(`/api/v1/technicians/${technicianCard.publicId}`)
+      .expect(200);
+
+    expect(publicResponse.body.data).toEqual(numericResponse.body.data);
+    expect(publicResponse.body.data).toMatchObject({
+      gender: "female",
+      age: 28,
+      heightCm: 164,
+      languages: ["日本語", "English"],
+      yearsExperience: 8,
+      completedOrderCount: 128,
+      acceptanceRatePercent: 98,
+      reviewTagSummary
+    });
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(1, 1);
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(
+      2,
+      technicianCard.publicId
+    );
+  });
+
+  it("rejects malformed formal technician identifiers", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/technicians/s123").expect(400);
+    await request(fixture.app).get("/api/v1/technicians/not-a-technician").expect(400);
+    expect(fixture.coreReadRepository.findTechnicianDetail).not.toHaveBeenCalled();
   });
 
   it("rejects malformed public Shop identifiers", async () => {

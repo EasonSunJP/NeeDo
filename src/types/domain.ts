@@ -285,6 +285,13 @@ export interface Technician extends Staff {
   gallery?: string[];
   infoCardVisibility?: InfoCardVisibilitySettings;
   visible?: boolean;
+  primaryService?: {
+    id?: number;
+    name: string;
+    priceAmount: string;
+    currency: string;
+    durationMinutes: number;
+  } | null;
 }
 
 export interface ServiceCategory {
@@ -321,6 +328,14 @@ export interface ServiceItem {
   packages: ServicePackage[];
   notice: string[];
   flow: string[];
+  formal?: {
+    publicId: string;
+    usageCount: number;
+    currency: string;
+    durationMinutes: number;
+    shopPublicId: string;
+    shopAddress: string;
+  };
 }
 
 export interface Schedule {

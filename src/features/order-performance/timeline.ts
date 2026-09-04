@@ -30,6 +30,19 @@ export function buildFormalOrderTimelineEvents(
     .map((event) => {
       const actorName = event.actorUserId ? `#${event.actorUserId}` : "系统";
 
+      if (event.type === "ORDER_COMMENT_ADDED") {
+        return {
+          actorAvatarSrc: event.actorAvatarUrl ?? undefined,
+          actorName: event.actorDisplayName,
+          actorRole: "评论",
+          atLabel: formatApiOrderDateTime(event.createdAt),
+          id: event.id,
+          message: event.body,
+          title: "评论",
+          tone: "green" as const
+        };
+      }
+
       if (event.type === "ORDER_STATUS_CHANGED") {
         return {
           actorName,

@@ -7,6 +7,10 @@ import {
   type AuditLogCreateInput
 } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import {
+  loadTechnicianReviewTagSummary,
+  type TechnicianReviewTagSummaryPayload
+} from "./technician-review-tag-summary.repository";
 
 export type TechnicianPaymentMethod =
   | "platform"
@@ -18,17 +22,18 @@ export type TechnicianPaymentMethod =
   | "wechatpay"
   | "alipay";
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
+export type TechnicianProfileGender = "female" | "male" | "private";
 export type TechnicianEmploymentTypePayload = "independent" | "full_time" | "temporary";
 export type TechnicianServiceBase = { latitude: number; longitude: number } | null;
 
 export interface TechnicianProfileMutation {
   displayName?: string;
+  gender?: TechnicianProfileGender;
   age?: number | null;
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
   serviceAreas?: string[];
-  profileTags?: string[];
   canServeForeigners?: boolean;
   bidBudgetMinJpy?: number | null;
   bidBudgetMaxJpy?: number | null;
@@ -47,12 +52,14 @@ export interface TechnicianProfilePayload {
   avatarUrl: string | null;
   bio: string | null;
   city: string;
+  gender: TechnicianProfileGender;
   age: number | null;
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
   specialTags: string[];
   profileTags: string[];
+  reviewTagSummary: TechnicianReviewTagSummaryPayload;
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
@@ -77,11 +84,6 @@ export interface TechnicianProfileRepositoryPort {
 }
 
 const profileInclude = {
-  backofficeProfileTags: {
-    where: { isActive: true, deletedAt: null },
-    select: { id: true, label: true, isActive: true, expiresAt: true },
-    orderBy: { id: "asc" as const }
-  },
   mediaAssets: {
     where: { usageType: "avatar", isActive: true, deletedAt: null },
     orderBy: { id: "desc" as const },
@@ -110,11 +112,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     userId: number,
     profileId: number
   ): Promise<TechnicianProfilePayload | null> {
-    const profile = await this.client.technicianProfile.findFirst({
-      where: { id: profileId, userId, deletedAt: null },
-      include: profileInclude
-    });
-    return profile ? this.mapProfile(profile) : null;
+    const [profile, reviewTagSummary] = await Promise.all([
+      this.client.technicianProfile.findFirst({
+        where: { id: profileId, userId, deletedAt: null },
+        include: profileInclude
+      }),
+      loadTechnicianReviewTagSummary(this.client, profileId)
+    ]);
+    return profile ? this.mapProfile(profile, reviewTagSummary) : null;
   }
 
   public async updateMine(
@@ -152,12 +157,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
     });
 
-    return this.mapProfile(profile);
+    const reviewTagSummary = await loadTechnicianReviewTagSummary(this.client, profile.id);
+    return this.mapProfile(profile, reviewTagSummary);
   }
 
   private profileData(mutation: TechnicianProfileMutation): Prisma.TechnicianProfileUpdateInput {
     return {
       ...(mutation.displayName !== undefined ? { displayName: mutation.displayName } : {}),
+      ...(mutation.gender !== undefined ? { gender: mutation.gender } : {}),
       ...(mutation.age !== undefined ? { age: mutation.age } : {}),
       ...(mutation.heightCm !== undefined ? { heightCm: mutation.heightCm } : {}),
       ...(mutation.languages !== undefined ? { languages: mutation.languages } : {}),
@@ -168,7 +175,6 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
             serviceArea: mutation.serviceAreas.join(", ") || null
           }
         : {}),
-      ...(mutation.profileTags !== undefined ? { profileTags: mutation.profileTags } : {}),
       ...(mutation.canServeForeigners !== undefined
         ? { canServeForeigners: mutation.canServeForeigners }
         : {}),
@@ -189,7 +195,10 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     };
   }
 
-  private mapProfile(profile: TechnicianProfileRecord): TechnicianProfilePayload {
+  private mapProfile(
+    profile: TechnicianProfileRecord,
+    reviewTagSummary: TechnicianReviewTagSummaryPayload
+  ): TechnicianProfilePayload {
     const publicId = profile.user.identities
       .map((identity) => identity.publicIdentifier)
       .find((identifier) => identifier?.kind === "S" && identifier.status === "ACTIVE" && !identifier.deletedAt)
@@ -211,14 +220,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       avatarUrl: profile.mediaAssets[0]?.url ?? profile.user.avatarBootstrapUrl ?? null,
       bio: profile.bio,
       city: profile.city,
+      gender: this.gender(profile.gender),
       age: profile.age,
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.stringArray(profile.languages, "languages"),
       serviceAreas: this.stringArray(profile.serviceAreasJson, "service_areas"),
-      specialTags: profile.backofficeProfileTags
-        .filter((tag) => tag.expiresAt === null || tag.expiresAt.getTime() > Date.now())
-        .map((tag) => tag.label),
-      profileTags: this.stringArray(profile.profileTags, "profile_tags"),
+      specialTags: [],
+      profileTags: [],
+      reviewTagSummary,
       canServeForeigners: profile.canServeForeigners,
       bidBudgetMinJpy: profile.bidBudgetMinJpy,
       bidBudgetMaxJpy: profile.bidBudgetMaxJpy,
@@ -278,6 +287,10 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     return value === "privateAll" || value === "limited" || value === "network"
       ? value
       : "public";
+  }
+
+  private gender(value: string): TechnicianProfileGender {
+    return value === "female" || value === "male" ? value : "private";
   }
 
   private notFound(): AppError {

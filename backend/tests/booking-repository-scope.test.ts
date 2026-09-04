@@ -44,6 +44,28 @@ const makeTransitionOrderRecord = (
   service: null,
   technicianService: null,
   shop: { name: "LifeDance" },
+  customer: {
+    id: 101,
+    needoId: "u0000000101",
+    username: "预约用户 山田",
+    avatarUrl: "/uploads/customers/101.jpg",
+    avatarBootstrapUrl: null,
+    customerProfile: {
+      id: 17,
+      displayName: "预约用户 山田",
+      membershipLevel: "premium",
+      membershipGrantMode: "SELF_SERVICE",
+      membershipStartsAt: null,
+      membershipExpiresAt: null,
+      mediaAssets: [],
+      reviewSummary: {
+        ratingAverage: 4.8,
+        reviewCount: 12,
+        latestReviewAt: new Date("2026-08-31T04:00:00.000Z"),
+        highlights: []
+      }
+    }
+  },
   technicianProfile: { id: 31, userId: 707, displayName: "Misaki" },
   statusHistory: [],
   performanceAssessment: null,
@@ -1096,6 +1118,16 @@ describe("BookingRepository order list scope", () => {
       expect.objectContaining({ id: 11, toStatus: "pending" }),
       expect.objectContaining({ id: 12, toStatus: "cancelled" })
     ]);
+    expect(result?.customer).toEqual({
+      userId: 101,
+      profileId: 17,
+      publicId: "u0000000101",
+      displayName: "预约用户 山田",
+      avatarUrl: "/uploads/customers/101.jpg",
+      membershipLevel: "premium",
+      ratingAverage: "4.80",
+      reviewCount: 12
+    });
     expect(result?.performanceAssessment).toMatchObject({
       outcome: "technician_cancelled",
       treatment: "counted",

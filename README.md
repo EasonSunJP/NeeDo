@@ -12,7 +12,7 @@ npm run dev
 当前仓库只保留正式运行方式：
 
 ```bash
-# 默认：同时启动前端 + 正式 backend（MySQL / Redis / /api/v1）
+# 默认：启动前端、兼容 client API、运营 API 与商户 API
 npm run dev
 
 # 同上，名称更明确
@@ -28,7 +28,9 @@ npm run dev:frontend
 - 当前仓库已包含正式 `backend/` 工程；登录、Auth、RBAC、User Management 必须走真实 `/api/v1` 后端。
 - 所有正式页面必须通过 `/api/v1`、Prisma 与真实数据库读取数据；禁止新增或启用浏览器 mock、静态演示 API、免登录账号。
 - 首次运行前把 `backend/.env.dev.example` 复制为未跟踪的 `backend/.env.dev`，并启动本地 MySQL/Redis、应用 migration 与 seed。
-- `npm run dev:formal` 会检查端口上是否已经是 NeeDo 正式后端/前端，安全复用正确服务，拒绝覆盖无关进程；可用 `FORMAL_BACKEND_PORT`、`FRONTEND_PORT`、`FORMAL_BACKEND_ENV_FILE` 覆盖本地配置。
+- `npm run dev:formal` 会检查并启动四个独立监听：兼容 client API `3000`、运营 `ops-api` `3001`、商户 `merchant-api` `3002`、前端 `5180`。端口上若不是预期 NeeDo 服务会拒绝覆盖。
+- 本地端口可分别用 `FORMAL_BACKEND_PORT`、`FORMAL_OPS_API_PORT`、`FORMAL_MERCHANT_API_PORT`、`FRONTEND_PORT` 覆盖；后端环境文件继续用 `FORMAL_BACKEND_ENV_FILE` 指定。
+- 三个 API 进程共享 `DATABASE_URL` 指向的唯一 MySQL 数据源。运营与商户 API 默认分别使用 Redis logical DB `/1`、`/2`，可用 `FORMAL_OPS_API_REDIS_URL` 和 `FORMAL_MERCHANT_API_REDIS_URL` 配置，但两者不得相同。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。
@@ -81,7 +83,9 @@ verifier and capture-only OTP delivery seam; it does not add a route, auth
 bypass, or fake application API. See `docs/api.md` and `docs/environment.md`
 for the public contract and provider configuration.
 
-Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3000` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
+Set `VITE_API_BASE_URL` when the client API is served from a different origin. Operations admin uses `VITE_OPS_API_BASE_URL` (default `/ops-api/v1`) and merchant admin uses `VITE_MERCHANT_API_BASE_URL` (default `/merchant-api/v1`). Local Vite dev/preview proxies those prefixes to ports `3001` and `3002`, while other portals keep `/api/v1` on port `3000`; proxy targets can be overridden with `NEEDO_OPS_API_PROXY_TARGET`, `NEEDO_MERCHANT_API_PROXY_TARGET`, and `NEEDO_API_PROXY_TARGET`.
+
+`ops-api` and `merchant-api` expose different administration route manifests and fail closed with the normal 404 envelope for the other administration namespace. Their access and refresh tokens carry different JWT audiences, so a token issued by one service is rejected by the other. Audience-less tokens created before this split remain accepted only by the compatibility `needo-backend` service until they expire; they cannot enter either new administration service. Portal-local browser auth envelopes remain separate, so signing in or out of one portal does not terminate another portal's ordinary session.
 
 The shared Apifox login/register/captcha endpoints are legacy pre-login routes, not formal `/api/v1/auth/*` routes. Local development keeps the formal backend on `/api/v1` and routes only legacy captcha traffic through `VITE_LEGACY_AUTH_BASE_URL=/legacy-auth`; Vite proxies that prefix to `VITE_LEGACY_AUTH_PROXY_TARGET`. Formal password login must use `POST /api/v1/auth/login` so the returned access token can pass `/api/v1/auth/me`. The Apifox public pre-login bearer belongs in `VITE_API_PUBLIC_AUTHORIZATION` when legacy Apifox traffic needs it; keep the real value in local or deployment env files, not source.
 
@@ -329,6 +333,14 @@ Contact identity cards normalize stored language aliases to full labels such as 
 Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail/profile/affiliation routes derive the shop only from the active authenticated identity; profile edits are field-limited and audited, while affiliation writes enforce exclusive-versus-partner rules inside a locked database transaction and preserve ended relationships as history.
 
 The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page. The same employee card reads, edits, and previews the current shop-scoped compensation rule through `/api/v1/merchant-admin/employees/:needoId/compensation-profile`, and shows the latest persisted payslip totals without exposing internal shop, technician, or actor IDs. Actual payment is still a manual finance record; this workflow never initiates a bank transfer.
+
+All new user-, merchant-, and technician-facing public profile links use the
+technician's canonical lowercase `s##########` NeeDoID. Numeric
+`TechnicianProfile.id` values remain internal relation keys for services,
+bookings, schedules, and compatibility lookups; they must not be displayed as
+the technician account identifier or used to construct a new public profile
+URL. A legacy numeric profile URL remains readable and is replaced with the
+canonical scoped URL after the formal detail API resolves the entity.
 
 ## Operations Technician Ranking
 

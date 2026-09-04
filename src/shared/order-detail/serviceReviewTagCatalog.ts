@@ -33,23 +33,39 @@ export const serviceReviewStampVisuals: ServiceReviewStampVisual[] = [
 ];
 
 export const serviceReviewSpecialTags: Required<Pick<ServiceReviewTagOption, "label" | "count" | "kind" | "tone">>[] = [
-  { label: "魅力值MAX", count: 13, kind: "stamp", tone: "appeal" },
-  { label: "服务精神MAX", count: 2, kind: "stamp", tone: "service" },
-  { label: "情绪价值MAX", count: 1, kind: "stamp", tone: "empathy" },
-  { label: "元气MAX", count: 1, kind: "stamp", tone: "energy" }
+  { label: "魅力max", count: 0, kind: "stamp", tone: "appeal" },
+  { label: "服务max", count: 0, kind: "stamp", tone: "service" },
+  { label: "情绪max", count: 0, kind: "stamp", tone: "empathy" },
+  { label: "元气max", count: 0, kind: "stamp", tone: "energy" }
 ];
 
-export const serviceReviewSpecialLabelSet = new Set(serviceReviewSpecialTags.map((tag) => tag.label));
+export const serviceReviewSpecialTagAliases = [
+  "魅力值",
+  "魅力值MAX",
+  "魅力MAX",
+  "服务精神",
+  "服务精神MAX",
+  "服务MAX",
+  "情绪价值",
+  "情绪价值MAX",
+  "情绪MAX",
+  "元气",
+  "元气MAX"
+] as const;
+
+export const serviceReviewSpecialLabelSet = new Set([
+  ...serviceReviewSpecialTags.map((tag) => tag.label),
+  ...serviceReviewSpecialTagAliases
+]);
 
 export function getServiceReviewStampVisual(tag: Pick<ServiceReviewTagOption, "tone">, index: number) {
   return serviceReviewStampVisuals.find((visual) => visual.tone === tag.tone) ?? serviceReviewStampVisuals[index % serviceReviewStampVisuals.length]!;
 }
 
 export function splitMaxReviewStampLabel(label: string) {
-  const marker = "MAX";
-  const markerIndex = label.lastIndexOf(marker);
+  const markerMatch = label.match(/max$/i);
 
-  if (markerIndex <= 0 || markerIndex !== label.length - marker.length) {
+  if (!markerMatch || markerMatch.index === undefined || markerMatch.index === 0) {
     return {
       title: label,
       marker: ""
@@ -57,7 +73,7 @@ export function splitMaxReviewStampLabel(label: string) {
   }
 
   return {
-    title: label.slice(0, markerIndex),
-    marker
+    title: label.slice(0, markerMatch.index),
+    marker: "max"
   };
 }

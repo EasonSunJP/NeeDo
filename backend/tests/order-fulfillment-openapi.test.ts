@@ -47,6 +47,7 @@ const operations = [
   ["post", "/api/v1/backoffice/orders/{id}/checkout/confirm-receipt", "backoffice:order:checkout:receipt-override", "200"],
   ["post", "/api/v1/orders/{id}/reviews", "order:review:create", "200"],
   ["get", "/api/v1/orders/{id}/reviews/mine", "order:review:create", "200"],
+  ["post", "/api/v1/orders/{id}/timeline/comments", "order:read", "201"],
   ["get", "/api/v1/backoffice/ndp-exchange-rates", "backoffice:ndp-exchange-rate:read", "200"],
   ["post", "/api/v1/backoffice/ndp-exchange-rates", "backoffice:ndp-exchange-rate:write", "201"]
 ] as const;
@@ -63,10 +64,12 @@ function resolveSchema(schema: Schema): Schema {
 const responseDescription = (method: string, path: string, status: string): string =>
   (paths[path][method].responses[status] as { description: string }).description;
 
-const mutationOperations = operations.filter(([method]) => method === "post");
+const idempotentMutationOperations = operations.filter(
+  ([method, path]) => method === "post" && path !== "/api/v1/orders/{id}/timeline/comments"
+);
 
 describe("formal order fulfillment OpenAPI contract", () => {
-  it("documents all 14 authenticated operations with exact permissions and unique operation IDs", () => {
+  it("documents all 15 authenticated operations with exact permissions and unique operation IDs", () => {
     const operationIds: string[] = [];
     for (const [method, path, permission, success] of operations) {
       const operation = paths[path]?.[method];
@@ -183,6 +186,23 @@ describe("formal order fulfillment OpenAPI contract", () => {
     );
     expect(review.description).toMatch(/Unicode 16 default case fold/i);
     expect(review.description).toMatch(/reviewer.*target|target.*reviewer/i);
+  });
+
+  it("documents the strict participant timeline comment body", () => {
+    expect(bodySchema("post", "/api/v1/orders/{id}/timeline/comments")).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["body"],
+      properties: {
+        body: {
+          type: "string",
+          minLength: 1,
+          maxLength: 1000,
+          "x-normalization": "NFKC+trim",
+          "x-requires-visible-code-point": true
+        }
+      }
+    });
   });
 
   it("publishes complete safe fulfillment projections and a customer-only code extension", () => {
@@ -343,7 +363,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
     expect(idempotency.description).toMatch(/JavaScript UTF-16 code units/i);
     expect(idempotency.description).toMatch(/whitespace-only.*invalid/i);
 
-    for (const [method, path] of mutationOperations) {
+    for (const [method, path] of idempotentMutationOperations) {
       const request = bodySchema(method, path);
       const variants = request.oneOf?.length ? request.oneOf : [request];
       for (const variant of variants) {

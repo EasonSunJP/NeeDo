@@ -1,4 +1,5 @@
 import express, { Router, type Express } from "express";
+import { compatibilityApiRouteManifest, type ApiRouteOwnership } from "./apps/api-route-manifest";
 import { createOpenApiRoutes } from "./api/openapi";
 import { env, type AppConfig } from "./config/env";
 import { checkRedisHealth, type RedisHealthStatus } from "./config/redis";
@@ -38,6 +39,9 @@ import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { NdpExchangeRateRepositoryPort } from "./repositories/ndp-exchange-rate.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
+import type { SearchQueryRecorderRepositoryPort } from "./repositories/search-query-recorder.repository";
+import type { ServiceSearchAnalyticsRepositoryPort } from "./repositories/service-search-analytics.repository";
+import type { SearchQueryRecorderPort } from "./services/search-query-recorder.service";
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
@@ -125,6 +129,7 @@ import type { PricingModeRepositoryPort } from "./services/pricing-mode.service"
 import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
 import type { PlatformPartnerRepositoryPort } from "./services/platform-partner.service";
 import type { TechnicianShopAffiliationRepositoryPort } from "./services/technician-shop-affiliation.service";
+import type { ShopEmployeeDirectoryRepositoryPort } from "./services/shop-employee-directory.service";
 import {
   RealtimeRepository,
   type RealtimeRepositoryPort
@@ -196,9 +201,11 @@ import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes"
 import { createExchangeBookingConversionRoutes } from "./routes/exchange-booking-conversion.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
+import { createShopEmployeeDirectoryRoutes } from "./routes/shop-employee-directory.routes";
 import { createPlatformPartnerRoutes } from "./routes/platform-partner.routes";
 import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.routes";
 import { createOperatingCostRoutes } from "./routes/operating-cost.routes";
+import { createServiceSearchAnalyticsRoutes } from "./routes/service-search-analytics.routes";
 import { createAgentSettlementRoutes } from "./routes/agent-settlement.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
@@ -258,10 +265,14 @@ export interface AppDependencies {
   publicIdentifierRepository?: PublicIdentifierRepositoryPort;
   platformPartnerRepository?: PlatformPartnerRepositoryPort;
   technicianShopAffiliationRepository?: TechnicianShopAffiliationRepositoryPort;
+  shopEmployeeDirectoryRepository?: ShopEmployeeDirectoryRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
+  searchQueryRecorderRepository?: SearchQueryRecorderRepositoryPort;
+  searchQueryRecorder?: SearchQueryRecorderPort;
+  serviceSearchAnalyticsRepository?: ServiceSearchAnalyticsRepositoryPort;
   shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
   entityEngagementRepository?: EntityEngagementRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
@@ -415,6 +426,10 @@ export interface AppDependencies {
   ledgerService?: LedgerService;
 }
 
+export interface CreateAppOptions {
+  routeManifest?: readonly ApiRouteOwnership[];
+}
+
 const createDefaultAppDependencies = (): AppDependencies => ({
   redisHealthCheck: checkRedisHealth,
   databaseHealthCheck: checkDatabaseHealth
@@ -422,7 +437,8 @@ const createDefaultAppDependencies = (): AppDependencies => ({
 
 export const createApp = (
   config: AppConfig = env,
-  dependencies: AppDependencies = createDefaultAppDependencies()
+  dependencies: AppDependencies = createDefaultAppDependencies(),
+  options: CreateAppOptions = {}
 ): Express => {
   assertContentMediaStorageIsolationSync(
     config.CONTENT_MEDIA_STORAGE_DIR,
@@ -430,6 +446,17 @@ export const createApp = (
   );
   const app = express();
   const apiRouter = Router();
+  const routeManifest = new Set(options.routeManifest ?? compatibilityApiRouteManifest);
+  const mounts = (ownership: ApiRouteOwnership | readonly ApiRouteOwnership[]): boolean => {
+    const allowed = Array.isArray(ownership) ? ownership : [ownership];
+    return allowed.some((item) => routeManifest.has(item));
+  };
+  const mount = (
+    ownership: ApiRouteOwnership | readonly ApiRouteOwnership[],
+    router: Router
+  ): void => {
+    if (mounts(ownership)) apiRouter.use(router);
+  };
   const metricsService = dependencies.metricsService ?? new ObservabilityMetricsService(config);
 
   if (config.TRUST_PROXY) {
@@ -473,76 +500,101 @@ export const createApp = (
     personalIdentityScopeService
   };
 
-  apiRouter.use(createHealthRoutes(config, resolvedDependencies));
-  apiRouter.use(createObservabilityRoutes(config, metricsService));
-  apiRouter.use(createAuthRoutes(config, resolvedDependencies));
-  apiRouter.use(createPermissionRoutes(config, resolvedDependencies));
-  apiRouter.use(createRoleRoutes(config, resolvedDependencies));
-  apiRouter.use(createUserRoutes(config, resolvedDependencies));
-  apiRouter.use(createCoreReadRoutes(resolvedDependencies));
-  apiRouter.use(createShopTaxonomyRoutes(config, resolvedDependencies));
-  apiRouter.use(createEntityEngagementRoutes(config, resolvedDependencies));
-  apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
-  apiRouter.use(createShopMembershipRoutes(config, resolvedDependencies));
-  apiRouter.use(createShopMembershipCardPlanRoutes(config, resolvedDependencies));
-  apiRouter.use(createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
-  apiRouter.use(createMembershipAnalyticsRoutes(config, resolvedDependencies));
-  apiRouter.use(createShopMembershipCardAdjustmentRoutes(config, resolvedDependencies));
-  apiRouter.use(createShopMembershipCardTopUpRoutes(config, resolvedDependencies));
-  apiRouter.use(createShopMembershipCardRedemptionRoutes(config, resolvedDependencies));
-  apiRouter.use(createAnalyticsRankingRoutes(config, resolvedDependencies));
-  apiRouter.use(createTechnicianProfileRoutes(config, resolvedDependencies));
-  apiRouter.use(createTechnicianDataCenterRoutes(config, resolvedDependencies));
-  apiRouter.use(createMerchantProfileRoutes(config, resolvedDependencies));
-  apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
-  apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
-  apiRouter.use(createPlatformFeePolicyRoutes(config, resolvedDependencies));
-  apiRouter.use(createPlatformMembershipRoutes(config, resolvedDependencies));
-  apiRouter.use(createUserExperienceRoutes(config, resolvedDependencies));
-  apiRouter.use(createBackofficeUserGroupRoutes(config, resolvedDependencies));
-  apiRouter.use(createUserGlobalPolicyRoutes(config, resolvedDependencies));
-  apiRouter.use(createOrderAcceptancePauseRoutes(config, resolvedDependencies));
-  apiRouter.use(createOrderPerformanceRoutes(config, resolvedDependencies));
-  apiRouter.use(createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
-  apiRouter.use(createNdpExchangeRateRoutes(config, resolvedDependencies));
-  apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
-  apiRouter.use(createOrderFinanceRoutes(config, resolvedDependencies));
-  apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
-  apiRouter.use(createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
-  apiRouter.use(createCompensationProfileRoutes(config, resolvedDependencies));
-  apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
-  apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
-  apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
-  apiRouter.use(createContentMediaRoutes(config, resolvedDependencies));
-  apiRouter.use(createOfficialAnnouncementRoutes(config, resolvedDependencies));
-  apiRouter.use(createCarouselPublicationRoutes(config, resolvedDependencies));
-  apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
-  apiRouter.use(createAffiliateProfileRoutes(config, resolvedDependencies));
-  apiRouter.use(createAffiliateAllianceRoutes(config, resolvedDependencies));
-  apiRouter.use(createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
-  apiRouter.use(createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
-  apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));
-  apiRouter.use(createAffiliateMarketplaceRoutes(config, resolvedDependencies));
-  apiRouter.use(createBookingRoutes(config, resolvedDependencies));
-  apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
-  apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
-  apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
-  apiRouter.use(createImVoiceMessageRoutes(config, resolvedDependencies));
-  apiRouter.use(createSocialMediaRoutes(config, resolvedDependencies));
-  apiRouter.use(createImChatRecordRoutes(config, resolvedDependencies));
-  apiRouter.use(createImMessageTranslationRoutes(config, resolvedDependencies));
-  apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
-  apiRouter.use(createExchangeRoutes(config, resolvedDependencies));
-  apiRouter.use(createExchangeClaimRoutes(config, resolvedDependencies));
-  apiRouter.use(createExchangeMatchingRoutes(config, resolvedDependencies));
-  apiRouter.use(createExchangeBookingConversionRoutes(config, resolvedDependencies));
-  apiRouter.use(createExchangeRequestFeeRoutes(config, resolvedDependencies));
-  apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
-  apiRouter.use(createPlatformPartnerRoutes(config, resolvedDependencies));
-  apiRouter.use(createAgentCommissionRuleRoutes(config, resolvedDependencies));
-  apiRouter.use(createOperatingCostRoutes(config, resolvedDependencies));
-  apiRouter.use(createAgentSettlementRoutes(config, resolvedDependencies));
-  if (config.OPENAPI_ENABLED) {
+  apiRouter.use((request, response, next) => {
+    const isBackoffice = request.path === "/backoffice" || request.path.startsWith("/backoffice/");
+    const isMerchantAdmin =
+      request.path === "/merchant-admin" || request.path.startsWith("/merchant-admin/");
+    if ((!mounts("backoffice") && isBackoffice) || (!mounts("merchant-admin") && isMerchantAdmin)) {
+      notFoundMiddleware(request, response, next);
+      return;
+    }
+    next();
+  });
+
+  mount("shared", createHealthRoutes(config, resolvedDependencies));
+  mount("shared", createObservabilityRoutes(config, metricsService));
+  mount("shared", createAuthRoutes(config, resolvedDependencies));
+  mount("backoffice", createPermissionRoutes(config, resolvedDependencies));
+  mount("backoffice", createRoleRoutes(config, resolvedDependencies));
+  mount("backoffice", createUserRoutes(config, resolvedDependencies));
+  mount("shared", createCoreReadRoutes(config, resolvedDependencies));
+  mount(["shared", "merchant-admin"], createShopTaxonomyRoutes(config, resolvedDependencies));
+  mount("shared", createEntityEngagementRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createCustomerProfileRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopMembershipRoutes(config, resolvedDependencies));
+  mount(
+    ["backoffice", "merchant-admin"],
+    createShopMembershipCardPlanRoutes(config, resolvedDependencies)
+  );
+  mount("merchant-admin", createShopMembershipCardIssuanceRoutes(config, resolvedDependencies));
+  mount(
+    ["backoffice", "merchant-admin"],
+    createMembershipAnalyticsRoutes(config, resolvedDependencies)
+  );
+  mount("merchant-admin", createShopMembershipCardAdjustmentRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopMembershipCardTopUpRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopMembershipCardRedemptionRoutes(config, resolvedDependencies));
+  mount("backoffice", createAnalyticsRankingRoutes(config, resolvedDependencies));
+  mount("shared", createTechnicianProfileRoutes(config, resolvedDependencies));
+  mount("shared", createTechnicianDataCenterRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createMerchantProfileRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createPricingModeRoutes(config, resolvedDependencies));
+  mount("shared", createFeeRuleRoutes(config, resolvedDependencies));
+  mount(
+    ["backoffice", "merchant-admin"],
+    createPlatformFeePolicyRoutes(config, resolvedDependencies)
+  );
+  mount("backoffice", createPlatformMembershipRoutes(config, resolvedDependencies));
+  mount("backoffice", createUserExperienceRoutes(config, resolvedDependencies));
+  mount("backoffice", createBackofficeUserGroupRoutes(config, resolvedDependencies));
+  mount("backoffice", createUserGlobalPolicyRoutes(config, resolvedDependencies));
+  mount(
+    ["backoffice", "merchant-admin"],
+    createOrderAcceptancePauseRoutes(config, resolvedDependencies)
+  );
+  mount("backoffice", createOrderPerformanceRoutes(config, resolvedDependencies));
+  mount("backoffice", createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
+  mount("backoffice", createNdpExchangeRateRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createMerchantFinanceRulesRoutes(config, resolvedDependencies));
+  mount(["backoffice", "merchant-admin"], createOrderFinanceRoutes(config, resolvedDependencies));
+  mount(["backoffice", "merchant-admin"], createPayrollRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createCompensationProfileRoutes(config, resolvedDependencies));
+  mount(["shared", "backoffice"], createLedgerRoutes(config, resolvedDependencies));
+  mount("backoffice", createIdentityApplicationRoutes(config, resolvedDependencies));
+  mount("backoffice", createIdentityApplicationMediaRoutes(config, resolvedDependencies));
+  mount("backoffice", createContentMediaRoutes(config, resolvedDependencies));
+  mount("backoffice", createOfficialAnnouncementRoutes(config, resolvedDependencies));
+  mount("backoffice", createCarouselPublicationRoutes(config, resolvedDependencies));
+  mount("shared", createIdentityActivationRoutes(config, resolvedDependencies));
+  mount("shared", createAffiliateProfileRoutes(config, resolvedDependencies));
+  mount("shared", createAffiliateAllianceRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
+  mount("backoffice", createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
+  mount(["backoffice", "merchant-admin"], createAffiliateTaskRoutes(config, resolvedDependencies));
+  mount("shared", createAffiliateMarketplaceRoutes(config, resolvedDependencies));
+  mount(["backoffice", "merchant-admin"], createBookingRoutes(config, resolvedDependencies));
+  mount(["backoffice", "merchant-admin"], createBackofficeRoutes(config, resolvedDependencies));
+  mount("backoffice", createMerchantSaasBillingRoutes(config, resolvedDependencies));
+  mount("shared", createImMediaRoutes(config, resolvedDependencies));
+  mount("shared", createImVoiceMessageRoutes(config, resolvedDependencies));
+  mount("shared", createSocialMediaRoutes(config, resolvedDependencies));
+  mount("shared", createImChatRecordRoutes(config, resolvedDependencies));
+  mount("shared", createImMessageTranslationRoutes(config, resolvedDependencies));
+  mount("shared", createRealtimeRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeBookingConversionRoutes(config, resolvedDependencies));
+  mount("backoffice", createExchangeRequestFeeRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopEmployeeDirectoryRoutes(config, resolvedDependencies));
+  mount("backoffice", createPlatformPartnerRoutes(config, resolvedDependencies));
+  mount("backoffice", createAgentCommissionRuleRoutes(config, resolvedDependencies));
+  mount("backoffice", createOperatingCostRoutes(config, resolvedDependencies));
+  mount("backoffice", createServiceSearchAnalyticsRoutes(config, resolvedDependencies));
+  mount("backoffice", createAgentSettlementRoutes(config, resolvedDependencies));
+  if (config.OPENAPI_ENABLED && options.routeManifest === undefined) {
     apiRouter.use(createOpenApiRoutes(config));
   }
 

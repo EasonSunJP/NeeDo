@@ -72,9 +72,10 @@ export function resolveAuthPersistenceScope(input: {
   hash?: string;
   pathname?: string;
 } = {}): AuthPersistenceScope {
+  const browserLocation = typeof window === "undefined" ? undefined : window.location;
   const pathname =
-    input.pathname ?? (typeof window === "undefined" ? "/" : window.location.pathname);
-  const hash = input.hash ?? (typeof window === "undefined" ? "" : window.location.hash);
+    input.pathname ?? browserLocation?.pathname ?? "/";
+  const hash = input.hash ?? browserLocation?.hash ?? "";
   const fileScope = entryScope.get(entryFileName(pathname));
 
   return fileScope ?? resolveRouteScope(pathname) ?? resolveRouteScope(hash) ?? "user";

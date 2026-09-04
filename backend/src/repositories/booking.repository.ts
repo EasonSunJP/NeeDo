@@ -12,6 +12,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
+import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
@@ -90,6 +91,17 @@ export type ServicePaymentMethodPayload =
   | "ndp"
   | "other";
 export type ServicePaymentStatusPayload = "pending" | "confirmed" | "refundPending" | "refunded";
+
+export interface BookingOrderCustomerPayload {
+  userId: number;
+  profileId: number | null;
+  publicId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  membershipLevel: string;
+  ratingAverage: string;
+  reviewCount: number;
+}
 
 const BOOKING_ORDER_STATUS_FROM_DB = {
   [DatabaseBookingOrderStatus.PENDING]: "pending",
@@ -454,6 +466,15 @@ export interface OrderCheckoutPayload {
 
 export type OrderTimelineEventPayload =
   | {
+      type: "ORDER_COMMENT_ADDED";
+      id: string;
+      createdAt: Date;
+      actorUserId: number;
+      actorDisplayName: string;
+      actorAvatarUrl: string | null;
+      body: string;
+    }
+  | {
       type: "ORDER_STATUS_CHANGED";
       id: string;
       createdAt: Date;
@@ -562,6 +583,7 @@ export interface CheckoutReceiptOptions {
 }
 
 export type OrderReviewTargetTypePayload = "customer" | "technician";
+type ReviewSummaryTargetTypePayload = OrderReviewTargetTypePayload | "shop";
 export interface OrderReviewPayload {
   targetType: OrderReviewTargetTypePayload;
   rating: number;
@@ -613,6 +635,7 @@ export interface BookingOrderPayload {
   paymentRefundReference: string | null;
   paymentRefundReason: string | null;
   customerUserId: number;
+  customer?: BookingOrderCustomerPayload;
   serviceId: number | null;
   technicianServiceId: number | null;
   shopId: number;
@@ -730,6 +753,14 @@ export interface BookingRepositoryPort {
   isShopSuspended?: (shopId: number) => Promise<boolean>;
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
+  findOrderRealtimeRecipients?: (
+    id: number
+  ) => Promise<Array<{ identityId: number; userId: number }>>;
+  createOrderTimelineComment?: (input: {
+    actorUserId: number;
+    body: string;
+    orderId: number;
+  }) => Promise<BookingOrderPayload | null>;
   getServiceVerificationCode: (orderId: number) => Promise<string>;
   startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
   createOrderAddOn: (
@@ -792,6 +823,16 @@ type SlotRecord = Prisma.ScheduleSlotGetPayload<{
 
 type OrderRecord = Prisma.BookingOrderGetPayload<{
   include: {
+    customer: {
+      include: {
+        customerProfile: {
+          include: {
+            mediaAssets: true;
+            reviewSummary: true;
+          };
+        };
+      };
+    };
     service: true;
     technicianService: true;
     shop: true;
@@ -808,6 +849,10 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       orderBy: {
         createdAt: "asc";
       };
+    };
+    timelineComments: {
+      include: { actor: true };
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }];
     };
     performanceAssessment: {
       select: {
@@ -1607,6 +1652,75 @@ export class BookingRepository implements BookingRepositoryPort {
     });
 
     return order ? this.mapOrder(order) : null;
+  }
+
+  public async findOrderRealtimeRecipients(
+    id: number
+  ): Promise<Array<{ identityId: number; userId: number }>> {
+    const order = await this.client.bookingOrder.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        customerUserId: true,
+        technicianProfile: { select: { id: true, userId: true } }
+      }
+    });
+    if (!order) return [];
+
+    const customerIdentity = await this.client.userIdentity.findFirst({
+      where: {
+        userId: order.customerUserId,
+        type: { in: ["customer", "user", "u"] },
+        isActive: true,
+        deletedAt: null
+      },
+      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      select: { id: true, userId: true }
+    });
+    const technicianIdentity = order.technicianProfile
+      ? await this.client.userIdentity.findFirst({
+          where: {
+            userId: order.technicianProfile.userId,
+            type: "technician",
+            scopeType: "technician_profile",
+            scopeId: order.technicianProfile.id,
+            isActive: true,
+            deletedAt: null
+          },
+          orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+          select: { id: true, userId: true }
+        })
+      : null;
+
+    return [customerIdentity, technicianIdentity]
+      .filter((identity): identity is NonNullable<typeof identity> => identity !== null)
+      .map((identity) => ({ identityId: identity.id, userId: identity.userId }));
+  }
+
+  public async createOrderTimelineComment(input: {
+    actorUserId: number;
+    body: string;
+    orderId: number;
+  }): Promise<BookingOrderPayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const order = await transaction.bookingOrder.findFirst({
+        where: { id: input.orderId, deletedAt: null },
+        select: { id: true }
+      });
+      if (!order) return null;
+      await transaction.orderTimelineComment.create({
+        data: {
+          actorUserId: input.actorUserId,
+          body: input.body,
+          bookingOrderId: input.orderId,
+          visibility: "participants"
+        }
+      });
+      const updated = await transaction.bookingOrder.findFirst({
+        where: { id: input.orderId, deletedAt: null },
+        include: this.orderInclude()
+      });
+      return updated ? this.mapOrder(updated) : null;
+    });
   }
 
   public async getServiceVerificationCode(orderId: number): Promise<string> {
@@ -2425,6 +2539,15 @@ export class BookingRepository implements BookingRepositoryPort {
       }
       const target = await this.resolveAndLockReviewTarget(tx, current, input);
       if (!target || target.userId === input.actorUserId) return { outcome: "not_found" };
+      if (input.targetType === "technician") {
+        if (current.shop.deletedAt) return { outcome: "not_found" };
+        const lockedShops = await tx.$queryRaw<Array<{ id: number }>>`
+          SELECT id FROM shops
+          WHERE id = ${current.shopId} AND deleted_at IS NULL
+          FOR UPDATE
+        `;
+        if (lockedShops.length !== 1) return { outcome: "not_found" };
+      }
       const checkout = await tx.orderCheckout.findUnique({ where: { bookingOrderId: current.id } });
       if (!checkout || checkout.deletedAt) return { outcome: "invalid_evidence" };
       try {
@@ -2486,6 +2609,9 @@ export class BookingRepository implements BookingRepositoryPort {
         });
       }
       await this.recomputeReviewSummary(tx, input.targetType, target.id, now);
+      if (input.targetType === "technician") {
+        await this.recomputeReviewSummary(tx, "shop", current.shopId, now);
+      }
       await tx.auditLog.create({ data: toAuditLogCreateData(input.audit) });
       const created = await tx.orderReview.findUnique({
         where: { id: review.id },
@@ -3871,16 +3997,18 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private async recomputeReviewSummary(
     transaction: Prisma.TransactionClient,
-    targetType: OrderReviewTargetTypePayload,
+    targetType: ReviewSummaryTargetTypePayload,
     targetId: number,
     now: Date
   ): Promise<void> {
     const reviews = await transaction.orderReview.findMany({
       where: {
-        targetType: this.reviewTargetTypeToDb(targetType),
-        ...(targetType === "technician"
-          ? { technicianProfileId: targetId }
-          : { customerProfileId: targetId }),
+        targetType: targetType === "shop" ? "TECHNICIAN" : this.reviewTargetTypeToDb(targetType),
+        ...(targetType === "shop"
+          ? { bookingOrder: { shopId: targetId, deletedAt: null } }
+          : targetType === "technician"
+            ? { technicianProfileId: targetId }
+            : { customerProfileId: targetId }),
         deletedAt: null
       },
       include: { tags: { where: { deletedAt: null } } },
@@ -3909,7 +4037,7 @@ export class BookingRepository implements BookingRepositoryPort {
       create: {
         targetType,
         targetId,
-        shopId: null,
+        shopId: targetType === "shop" ? targetId : null,
         serviceId: null,
         technicianProfileId: targetType === "technician" ? targetId : null,
         customerProfileId: targetType === "customer" ? targetId : null,
@@ -3921,7 +4049,7 @@ export class BookingRepository implements BookingRepositoryPort {
         updatedAt: now
       },
       update: {
-        shopId: null,
+        shopId: targetType === "shop" ? targetId : null,
         serviceId: null,
         technicianProfileId: targetType === "technician" ? targetId : null,
         customerProfileId: targetType === "customer" ? targetId : null,
@@ -3966,6 +4094,20 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private orderInclude() {
     return {
+      customer: {
+        include: {
+          customerProfile: {
+            include: {
+              mediaAssets: {
+                where: { usageType: "avatar", isActive: true, deletedAt: null },
+                orderBy: { id: "desc" as const },
+                take: 1
+              },
+              reviewSummary: true
+            }
+          }
+        }
+      },
       service: true,
       technicianService: true,
       shop: true,
@@ -3981,6 +4123,11 @@ export class BookingRepository implements BookingRepositoryPort {
       statusHistory: {
         where: { deletedAt: null },
         orderBy: { createdAt: "asc" as const }
+      },
+      timelineComments: {
+        where: { visibility: "participants", deletedAt: null },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+        include: { actor: true }
       },
       performanceAssessment: {
         select: {
@@ -4081,6 +4228,15 @@ export class BookingRepository implements BookingRepositoryPort {
         createdAt: revision.createdAt,
         actorUserId: revision.actorUserId,
         publicReason: revision.publicReason
+      })),
+      ...(order.timelineComments ?? []).map((comment) => ({
+        type: "ORDER_COMMENT_ADDED" as const,
+        id: `comment:${comment.id}`,
+        createdAt: comment.createdAt,
+        actorUserId: comment.actorUserId,
+        actorDisplayName: comment.actor.username,
+        actorAvatarUrl: comment.actor.avatarUrl ?? comment.actor.avatarBootstrapUrl ?? null,
+        body: comment.body
       }))
     ].sort(
       (left, right) =>
@@ -4104,6 +4260,7 @@ export class BookingRepository implements BookingRepositoryPort {
       paymentRefundReference: order.paymentRefundReference,
       paymentRefundReason: order.paymentRefundReason,
       customerUserId: order.customerUserId,
+      customer: order.customer ? this.mapOrderCustomer(order) : undefined,
       serviceId: order.serviceId,
       technicianServiceId: order.technicianServiceId,
       shopId: order.shopId,
@@ -4219,6 +4376,30 @@ export class BookingRepository implements BookingRepositoryPort {
     };
   }
 
+  private mapOrderCustomer(order: OrderRecord): BookingOrderCustomerPayload {
+    const profile = order.customer.customerProfile;
+    const reviewSummary = profile?.reviewSummary;
+
+    return {
+      userId: order.customer.id,
+      profileId: profile?.id ?? null,
+      publicId: order.customer.needoId,
+      displayName: profile?.displayName ?? order.customer.username,
+      avatarUrl:
+        order.customer.avatarUrl ??
+        profile?.mediaAssets[0]?.url ??
+        order.customer.avatarBootstrapUrl ??
+        null,
+      membershipLevel: profile
+        ? resolveEffectiveCustomerMembershipLevel(profile)
+        : "standard",
+      ratingAverage: reviewSummary
+        ? this.formatDecimal(reviewSummary.ratingAverage, 2)
+        : "0.00",
+      reviewCount: reviewSummary?.reviewCount ?? 0
+    };
+  }
+
   private fulfillmentParticipantForUser(
     order: OrderRecord,
     userId: number | null
@@ -4231,7 +4412,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private performanceTimelineType(
     action: OrderPerformanceRevisionAction
-  ): Exclude<OrderTimelineEventPayload, { type: "ORDER_STATUS_CHANGED" }>["type"] {
+  ): Exclude<OrderTimelineEventPayload["type"], "ORDER_STATUS_CHANGED" | "ORDER_COMMENT_ADDED"> {
     switch (action) {
       case OrderPerformanceRevisionAction.CLASSIFY_TECHNICIAN_CANCELLED:
         return "TECHNICIAN_CANCEL_CLASSIFIED";

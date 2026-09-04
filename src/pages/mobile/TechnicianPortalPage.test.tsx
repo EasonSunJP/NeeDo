@@ -7,8 +7,11 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain("getFormalTechnicianProfileId(session)");
     expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");
     expect(source).toContain("technicianProfileApi.getMine()");
-    expect(source).toContain("formalTechnicianSelfProfileQuery.data?.shopId");
-    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile)");
+    expect(source).toContain("() => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null");
+    expect(source).not.toContain("formalTechnicianSelfProfileQuery.data?.shopId");
+    expect(source).toContain("formalTechnicianProfileQuery.error");
+    expect(source).toContain('const publicDetailHidden = formalTechnicianProfileQuery.error === "error.technician.not_found"');
+    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden))");
     expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
     expect(source).toContain("technician: CoreTechnicianDetail | null");
     expect(source).toContain("当前没有可用的正式店铺，暂时无法新增服务");
@@ -103,24 +106,39 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('data-testid="technician-info-card"');
     expect(source).toContain('data-testid="technician-profile-privacy-control"');
     expect(source).toContain('data-testid="technician-privacy-options"');
-    expect(source).toContain('data-testid="technician-info-tags"');
+    expect(source).toContain("<TechnicianReviewTagSummaryView");
     expect(source).toContain("<PrivacyModeConfirmDialog");
-    expect(source).toContain("年龄 / 身高");
+    expect(source).toContain("性别");
+    expect(source).toContain("年龄");
+    expect(source).toContain("身高");
     expect(source).toContain("语言能力");
-    expect(source).toContain("接单预算");
-    expect(source).toContain("支持支付方式");
     expect(source).toContain("自我介绍");
-    expect(source).toContain("服务外国人");
+    expect(source).not.toContain("接单预算下限");
+    expect(source).not.toContain("支持支付方式");
+    expect(source).not.toContain("服务外国人");
   });
 
-  it("persists every profile and privacy edit through the technician self API", () => {
+  it("persists only the approved personal-center fields through the technician self API", () => {
     expect(source).toContain("technicianProfileApi.updateMine(input)");
-    expect(source).toContain("serviceAreas: splitList(draft.serviceAreasText)");
-    expect(source).toContain("profileTags: splitList(draft.profileTagsText)");
-    expect(source).toContain("paymentMethods: draft.paymentMethods");
-    expect(source).toContain('persistVisibility("public")');
-    expect(source).toContain('persistVisibility("privateAll", true)');
+    expect(source).toContain("gender: draft.gender");
+    expect(source).toContain("age: draft.age");
+    expect(source).toContain("heightCm: draft.heightCm");
+    expect(source).toContain("languages: splitList(draft.languagesText)");
+    expect(source).toContain("bio: draft.bio || null");
+    expect(source).toContain("visibility: draft.visibility");
+    expect(source).not.toContain("profileTags: splitList");
+    expect(source).not.toContain("serviceAreas: splitList");
+    expect(source).not.toContain("paymentMethods: draft.paymentMethods");
     expect(source).toContain('role="alert">技师资料保存失败：{error}');
+  });
+
+  it("matches the customer edit controls and keeps failed drafts in edit mode", () => {
+    expect(source).toContain('data-testid="technician-profile-save-action"');
+    expect(source).toContain("保存并退出编辑模式");
+    expect(source).toContain("setDraft(profileDraft(profile))");
+    expect(source).toContain("if (saved) setEditing(false)");
+    expect(source).toContain("onSaved(saved)");
+    expect(source).toContain('icon={editing ? "close" : "edit"}');
   });
 
   it("shows actionable profile mutation errors instead of backend error keys", () => {
@@ -140,24 +158,39 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).toContain("pricingModeApi.createTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.updateTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.deleteTechnicianService");
+    expect(servicesSource).toContain("pricingModeApi.uploadTechnicianServiceCover");
+    expect(servicesSource).toContain("pricingModeApi.removeTechnicianServiceCover");
+    expect(servicesSource).toContain("<TechnicianServiceCoverField");
+    expect(servicesSource).toContain("persistedAfterPartialSave");
+    expect(servicesSource).toContain(
+      'const pendingCoverOperation: "upload" | "remove" | "none"'
+    );
+    expect(servicesSource.indexOf("if (persistedAfterPartialSave)")).toBeLessThan(servicesSource.indexOf("const priceAmount"));
+    expect(servicesSource).toContain(
+      'pendingCoverOperation === "remove" ? "重试移除封面" : pendingCoverOperation === "upload" ? "重试上传封面" : "完成并关闭"'
+    );
     expect(servicesSource).toContain('setError("服务数量已达到 5 个上限")');
     expect(servicesSource).toContain("service.shopId");
     expect(servicesSource).toContain("当前没有已保存的正式技师服务");
+    expect(servicesSource).toContain("<UnifiedServiceInfoCard");
+    expect(servicesSource).toContain('label="上移"');
+    expect(servicesSource).toContain('label="下移"');
+    expect(servicesSource).toContain('label="编辑"');
     expect(servicesSource).not.toContain('"default"');
     expect(servicesSource).not.toContain("fake");
   });
 
-  it("mounts the single service editor below special and normal tags", () => {
+  it("mounts the single service editor below read-only review tags and privacy", () => {
     const infoStart = source.indexOf("function TechnicianInfoCard");
     const infoEnd = source.indexOf("function describeServiceError", infoStart);
     const infoSource = source.slice(infoStart, infoEnd);
-    const specialTags = infoSource.indexOf('data-testid="technician-info-special-tags"');
-    const normalTags = infoSource.indexOf('data-testid="technician-info-tags"');
+    const reviewTags = infoSource.indexOf("<TechnicianReviewTagSummaryView");
+    const privacy = infoSource.indexOf('data-testid="technician-profile-privacy-control"', reviewTags);
     const services = infoSource.indexOf('id="technician-service-information"');
 
-    expect(specialTags).toBeGreaterThan(-1);
-    expect(normalTags).toBeGreaterThan(specialTags);
-    expect(services).toBeGreaterThan(normalTags);
+    expect(reviewTags).toBeGreaterThan(-1);
+    expect(privacy).toBeGreaterThan(reviewTags);
+    expect(services).toBeGreaterThan(privacy);
     expect(infoSource.match(/<FormalTechnicianServicesPanel/g)).toHaveLength(1);
     expect(source.match(/<FormalTechnicianServicesPanel/g)).toHaveLength(1);
   });
@@ -173,7 +206,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(dataSource).toContain("onPeriodChange={onPeriodChange}");
     expect(source).toContain('const dataCenterPeriod = getDataCenterPeriod(searchParams.get("period"))');
     expect(source).toContain('next.set("period", period)');
-    expect(source).toContain('showBottomNav={!(activeView === "me" && meTab === "data")}');
+    expect(source).toContain('showBottomNav={activeView !== "me"}');
     expect(source).toContain("确认详细排班记录");
     expect(source).toContain('period=${dataCenterPeriod}');
     expect(source).toContain("onRangeLoaded={setDataCenterRange}");
@@ -187,6 +220,12 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('label="打开技师设置"');
     expect(source).toContain("footer={");
     expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
+  });
+
+  it("builds the personal-center view only from formal profile, detail, and service payloads", () => {
+    expect(source).toContain("fromTechnicianSelfProfile(profile, technician, services)");
+    expect(source).toContain("<TechnicianProfileInfoView");
+    expect(source).not.toContain('data-testid="technician-profile-ndp-card"');
   });
 
   it("permanently excludes the simplified and mock production implementations", () => {

@@ -6,7 +6,7 @@ const decimal = (value: number) => ({
   toFixed: (places = 0) => value.toFixed(places)
 });
 
-const createHarness = (failure?: "tag" | "summary" | "audit") => {
+const createHarness = (failure?: "tag" | "summary" | "shopSummary" | "audit") => {
   const now = new Date("2026-09-01T12:00:00.000Z");
   const order: any = {
     id: 41, orderNo: "ND41", orderType: "BOOKING", status: "COMPLETED",
@@ -40,7 +40,7 @@ const createHarness = (failure?: "tag" | "summary" | "audit") => {
   const withTags = (review: any) => ({ ...review, tags: tags.filter((tag) => tag.orderReviewId === review.id && !tag.deletedAt) });
   const tx: any = {
     $queryRaw: jest.fn(async (parts: TemplateStringsArray) => {
-      locks.push(String(parts[0]).includes("technician_profiles") ? "technician" : String(parts[0]).includes("customer_profiles") ? "customer" : "order");
+      locks.push(String(parts[0]).includes("technician_profiles") ? "technician" : String(parts[0]).includes("customer_profiles") ? "customer" : String(parts[0]).includes("shops") ? "shop" : "order");
       return [{ id: 1 }];
     }),
     bookingOrder: { findFirst: jest.fn(async ({ where }: any) => where.id === order.id && !order.deletedAt ? order : null) },
@@ -63,7 +63,15 @@ const createHarness = (failure?: "tag" | "summary" | "audit") => {
         const found = reviews.find((review) => review.bookingOrderId === where.bookingOrderId && review.reviewerUserId === where.reviewerUserId && review.targetType === where.targetType && !review.deletedAt);
         return found ? withTags(found) : null;
       }),
-      findMany: jest.fn(async ({ where }: any) => reviews.filter((review) => review.targetType === where.targetType && !review.deletedAt && (where.technicianProfileId ? review.technicianProfileId === where.technicianProfileId : review.customerProfileId === where.customerProfileId)).map(withTags)),
+      findMany: jest.fn(async ({ where }: any) => reviews.filter((review) =>
+        review.targetType === where.targetType &&
+        !review.deletedAt &&
+        (where.bookingOrder
+          ? review.bookingOrderId === order.id && order.shopId === where.bookingOrder.shopId && !order.deletedAt
+          : where.technicianProfileId
+            ? review.technicianProfileId === where.technicianProfileId
+            : review.customerProfileId === where.customerProfileId)
+      ).map(withTags)),
       create: jest.fn(async ({ data }: any) => {
         if (reviews.some((review) => collate(review.idempotencyKey) === collate(data.idempotencyKey))) throw Object.assign(new Error("unique"), { code: "P2002" });
         const review = { id: nextReviewId++, deletedAt: null, ...data };
@@ -72,7 +80,7 @@ const createHarness = (failure?: "tag" | "summary" | "audit") => {
       })
     },
     orderReviewTag: { create: jest.fn(async ({ data }: any) => { if (failure === "tag") throw new Error("tag failed"); const tag = { id: tags.length + 1, deletedAt: null, ...data }; tags.push(tag); return tag; }) },
-    reviewSummary: { upsert: jest.fn(async ({ where, create, update }: any) => { if (failure === "summary") throw new Error("summary failed"); const found = summaries.find((summary) => summary.targetType === where.targetType_targetId.targetType && summary.targetId === where.targetType_targetId.targetId); if (found) Object.assign(found, update); else summaries.push({ id: summaries.length + 1, ...create }); return found ?? summaries.at(-1); }) },
+    reviewSummary: { upsert: jest.fn(async ({ where, create, update }: any) => { if (failure === "summary") throw new Error("summary failed"); if (failure === "shopSummary" && create.targetType === "shop") throw new Error("shop summary failed"); const found = summaries.find((summary) => summary.targetType === where.targetType_targetId.targetType && summary.targetId === where.targetType_targetId.targetId); if (found) Object.assign(found, update); else summaries.push({ id: summaries.length + 1, ...create }); return found ?? summaries.at(-1); }) },
     auditLog: { create: jest.fn(async ({ data }: any) => { if (failure === "audit") throw new Error("audit failed"); audits.push({ id: audits.length + 1, ...data }); return data; }) }
   };
   const client: any = {
@@ -98,14 +106,25 @@ const createHarness = (failure?: "tag" | "summary" | "audit") => {
 };
 
 describe("formal completed-order review repository", () => {
-  it("creates both participant directions, locks the exact target, and recomputes independent summaries", async () => {
+  it("applies one customer service review to both the technician and shop summaries in one transaction", async () => {
     const h = createHarness();
     await expect(h.repository.createOrderReview(h.input())).resolves.toMatchObject({ outcome: "ok", applied: true, review: { targetType: "technician", rating: 5, tags: ["服务精神", "魅力值"] } });
+    expect(h.reviews).toHaveLength(1);
+    expect(h.summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ targetType: "technician", targetId: 702, reviewCount: 1 }),
+      expect.objectContaining({ targetType: "shop", targetId: 12, shopId: 12, reviewCount: 1 })
+    ]));
+    expect(h.locks).toEqual(expect.arrayContaining(["order", "technician", "shop"]));
+    expect(h.audits).toHaveLength(1);
+  });
+
+  it("keeps the technician-to-customer direction independent from shop scoring", async () => {
+    const h = createHarness();
     await expect(h.repository.createOrderReview(h.input({ actorUserId: 202, actor: "technician", technicianProfileId: 702, targetType: "customer", rating: 4, tags: ["准时到达"], idempotencyKey: "review-command-key-0002", requestFingerprint: "b".repeat(64), audit: { actorId: 202, action: "order.review.create", targetType: "BookingOrder", targetId: 41 } }))).resolves.toMatchObject({ outcome: "ok", applied: true, review: { targetType: "customer" } });
-    expect(h.reviews).toHaveLength(2);
-    expect(h.summaries).toEqual(expect.arrayContaining([expect.objectContaining({ targetType: "technician", targetId: 702, reviewCount: 1 }), expect.objectContaining({ targetType: "customer", targetId: 501, reviewCount: 1 })]));
-    expect(h.locks).toEqual(expect.arrayContaining(["order", "technician", "customer"]));
-    expect(h.audits).toHaveLength(2);
+    expect(h.reviews).toHaveLength(1);
+    expect(h.summaries).toEqual([expect.objectContaining({ targetType: "customer", targetId: 501, reviewCount: 1 })]);
+    expect(h.locks).toEqual(expect.arrayContaining(["order", "customer"]));
+    expect(h.audits).toHaveLength(1);
   });
 
   it.each(["PENDING", "CONFIRMED", "IN_SERVICE", "AWAITING_CHECKOUT", "AWAITING_PAYMENT_CONFIRMATION", "CANCELLED"])("rejects ineligible state %s with zero writes", async (status) => {
@@ -148,9 +167,9 @@ describe("formal completed-order review repository", () => {
     await expect(h.repository.createOrderReview(h.input({ idempotencyKey: "review-command-key-9999", requestFingerprint: "c".repeat(64) }))).resolves.toEqual({ outcome: "already_submitted" });
   });
 
-  it.each(["tag", "summary", "audit"] as const)("rolls back review, tags, summary and audit when %s persistence fails", async (failure) => {
+  it.each(["tag", "summary", "shopSummary", "audit"] as const)("rolls back review, tags, both summaries and audit when %s persistence fails", async (failure) => {
     const h = createHarness(failure);
-    await expect(h.repository.createOrderReview(h.input())).rejects.toThrow(`${failure} failed`);
+    await expect(h.repository.createOrderReview(h.input())).rejects.toThrow(failure === "shopSummary" ? "shop summary failed" : `${failure} failed`);
     expect([h.reviews, h.tags, h.summaries, h.audits].map((items) => items.length)).toEqual([0, 0, 0, 0]);
   });
 

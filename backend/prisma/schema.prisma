@@ -192,6 +192,15 @@ enum TechnicianShopWorkStatus {
   @@map("technician_shop_work_status")
 }
 
+enum ShopEmployeeStatus {
+  ACTIVE    @map("active")
+  ON_LEAVE  @map("on_leave")
+  SUSPENDED @map("suspended")
+  ENDED     @map("ended")
+
+  @@map("shop_employee_status")
+}
+
 enum WalletOwnerType {
   USER             @map("user")
   SHOP             @map("shop")
@@ -1181,6 +1190,13 @@ model User {
   externalAccounts                      ExternalAuthAccount[]
   createdTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationCreatedBy")
   updatedTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationUpdatedBy")
+  shopEmployees                         ShopEmployee[]                      @relation("ShopEmployeeUser")
+  createdShopEmployees                  ShopEmployee[]                      @relation("ShopEmployeeCreatedBy")
+  updatedShopEmployees                  ShopEmployee[]                      @relation("ShopEmployeeUpdatedBy")
+  createdShopEmployeeRoles              ShopEmployeeRole[]                  @relation("ShopEmployeeRoleCreatedBy")
+  updatedShopEmployeeRoles              ShopEmployeeRole[]                  @relation("ShopEmployeeRoleUpdatedBy")
+  createdShopEmployeeRoleAssignments    ShopEmployeeRoleAssignment[]        @relation("ShopEmployeeRoleAssignmentCreatedBy")
+  updatedShopEmployeeRoleAssignments    ShopEmployeeRoleAssignment[]        @relation("ShopEmployeeRoleAssignmentUpdatedBy")
   createdShopPayrollSchedulePolicies    ShopPayrollSchedulePolicy[]         @relation("ShopPayrollSchedulePolicyCreatedBy")
   updatedShopPayrollSchedulePolicies    ShopPayrollSchedulePolicy[]         @relation("ShopPayrollSchedulePolicyUpdatedBy")
   createdTechnicianPayrollOverrides     TechnicianPayrollScheduleOverride[] @relation("TechnicianPayrollScheduleOverrideCreatedBy")
@@ -1286,6 +1302,7 @@ model Category {
   qualificationPolicy BusinessQualificationPolicy    @default(OPEN) @map("qualification_policy")
   sortOrder           Int                            @default(0) @map("sort_order")
   isActive            Boolean                        @default(true) @map("is_active")
+  configurationVersion Int @default(1) @map("configuration_version")
   createdAt           DateTime                       @default(now()) @map("created_at")
   updatedAt           DateTime                       @updatedAt @map("updated_at")
   deletedAt           DateTime?                      @map("deleted_at")
@@ -1297,6 +1314,8 @@ model Category {
   mediaAssets        MediaAsset[]
   translations       CategoryTranslation[]
   businessKeywords   BusinessKeyword[]
+  searchKeywordAliases SearchKeywordAlias[]
+  searchQueryEvents SearchQueryEvent[]
   shopSelections     ShopServiceCategory[]
   qualifications     ShopServiceQualification[]
   applicationSelections MerchantApplicationServiceCategory[]
@@ -1332,6 +1351,7 @@ model BusinessKeyword {
   qualificationPolicy BusinessQualificationPolicy @default(OPEN) @map("qualification_policy")
   sortOrder           Int                         @default(0) @map("sort_order")
   isActive            Boolean                     @default(true) @map("is_active")
+  configurationVersion Int @default(1) @map("configuration_version")
   createdAt           DateTime                    @default(now()) @map("created_at")
   updatedAt           DateTime                    @updatedAt @map("updated_at")
   deletedAt           DateTime?                   @map("deleted_at")
@@ -1341,6 +1361,8 @@ model BusinessKeyword {
   shopSelections        ShopBusinessKeyword[]
   qualifications        ShopServiceQualification[]
   applicationSelections MerchantApplicationBusinessKeyword[]
+  searchAliases SearchKeywordAlias[]
+  searchQueryEvents SearchQueryEvent[]
 
   @@index([categoryId, isActive, sortOrder], map: "business_keywords_category_active_sort_idx")
   @@index([deletedAt])
@@ -1362,6 +1384,51 @@ model BusinessKeywordTranslation {
   @@index([locale, label, deletedAt], map: "business_keyword_translations_locale_label_deleted_idx")
   @@index([deletedAt])
   @@map("business_keyword_translations")
+}
+
+model SearchKeywordAlias {
+  id                   Int       @id @default(autoincrement())
+  alias                String    @db.VarChar(191)
+  normalizedAlias      String    @map("normalized_alias") @db.VarChar(191)
+  categoryId           Int       @map("category_id")
+  businessKeywordId    Int       @map("business_keyword_id")
+  isActive             Boolean   @default(true) @map("is_active")
+  configurationVersion Int       @default(1) @map("configuration_version")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  category        Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  businessKeyword BusinessKeyword @relation(fields: [businessKeywordId], references: [id], onDelete: Restrict)
+
+  @@index([normalizedAlias, isActive, deletedAt], map: "search_keyword_aliases_normalized_active_deleted_idx")
+  @@index([categoryId, businessKeywordId, deletedAt], map: "search_keyword_aliases_taxonomy_deleted_idx")
+  @@map("search_keyword_aliases")
+}
+
+model SearchQueryEvent {
+  id                   Int       @id @default(autoincrement())
+  originalKeyword      String    @map("original_keyword") @db.VarChar(191)
+  normalizedKeyword    String    @map("normalized_keyword") @db.VarChar(191)
+  city                 String?   @db.VarChar(120)
+  entityType           String    @map("entity_type") @db.VarChar(32)
+  categoryId           Int?      @map("category_id")
+  businessKeywordId    Int?      @map("business_keyword_id")
+  resultCount          Int       @map("result_count")
+  anonymousSessionHash String?   @map("anonymous_session_hash") @db.Char(64)
+  searchedAt           DateTime  @default(now()) @map("searched_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  businessKeyword BusinessKeyword? @relation(fields: [businessKeywordId], references: [id], onDelete: SetNull)
+
+  @@index([searchedAt, city, categoryId, deletedAt], map: "search_query_events_window_city_category_idx")
+  @@index([normalizedKeyword, searchedAt, deletedAt], map: "search_query_events_keyword_window_idx")
+  @@index([businessKeywordId, searchedAt, deletedAt], map: "search_query_events_business_keyword_window_idx")
+  @@index([anonymousSessionHash, searchedAt], map: "search_query_events_session_window_idx")
+  @@map("search_query_events")
 }
 
 model ShopServiceCategory {
@@ -1558,6 +1625,8 @@ model Shop {
   affiliatePlatformFeeRules  AffiliatePlatformFeeRule[]
   technicianApplications     TechnicianApplicationDetail[]
   technicianShopAffiliations TechnicianShopAffiliation[]
+  shopEmployees              ShopEmployee[]
+  shopEmployeeRoles          ShopEmployeeRole[]
   payrollSchedulePolicies    ShopPayrollSchedulePolicy[]
   carouselSlides             CarouselSlide[]
   publicIdentifier           PublicIdentifier?
@@ -1907,6 +1976,7 @@ model TechnicianProfile {
   serviceAreasJson    Json?                    @map("service_areas")
   baseLatitude        Decimal?                 @map("base_latitude") @db.Decimal(10, 7)
   baseLongitude       Decimal?                 @map("base_longitude") @db.Decimal(10, 7)
+  gender              String                   @default("private") @db.VarChar(20)
   age                 Int?
   heightCm            Decimal?                 @map("height_cm") @db.Decimal(5, 2)
   languages           Json?
@@ -2042,6 +2112,7 @@ model TechnicianShopAffiliation {
   shop                     Shop                                @relation(fields: [shopId], references: [id], onDelete: Restrict)
   createdBy                User?                               @relation("TechnicianShopAffiliationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy                User?                               @relation("TechnicianShopAffiliationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  shopEmployee             ShopEmployee?                       @relation("ShopEmployeeTechnicianAffiliation")
   payrollScheduleOverrides TechnicianPayrollScheduleOverride[]
 
   @@index([technicianProfileId, workStatus, deletedAt], map: "tech_shop_affiliation_profile_status_deleted_idx")
@@ -2051,6 +2122,93 @@ model TechnicianShopAffiliation {
   @@index([updatedById], map: "tech_shop_affiliation_updated_by_idx")
   @@index([deletedAt], map: "tech_shop_affiliation_deleted_idx")
   @@map("technician_shop_affiliations")
+}
+
+model ShopEmployee {
+  id                          Int                @id @default(autoincrement())
+  shopId                      Int                @map("shop_id")
+  userId                      Int                @map("user_id")
+  status                      ShopEmployeeStatus @default(ACTIVE)
+  startsAt                    DateTime           @default(now()) @map("starts_at")
+  endsAt                      DateTime?          @map("ends_at")
+  technicianShopAffiliationId Int?               @unique(map: "shop_employees_tech_affiliation_key") @map("technician_shop_affiliation_id")
+  activeKey                   String?            @unique(map: "shop_employees_active_key_key") @map("active_key") @db.VarChar(191)
+  createdById                 Int?               @map("created_by_id")
+  updatedById                 Int?               @map("updated_by_id")
+  createdAt                   DateTime           @default(now()) @map("created_at")
+  updatedAt                   DateTime           @updatedAt @map("updated_at")
+  deletedAt                   DateTime?          @map("deleted_at")
+
+  shop                      Shop                       @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  user                      User                       @relation("ShopEmployeeUser", fields: [userId], references: [id], onDelete: Restrict)
+  technicianShopAffiliation TechnicianShopAffiliation? @relation("ShopEmployeeTechnicianAffiliation", fields: [technicianShopAffiliationId], references: [id], onDelete: Restrict)
+  createdBy                 User?                      @relation("ShopEmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy                 User?                      @relation("ShopEmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  roleAssignments           ShopEmployeeRoleAssignment[]
+
+  @@index([shopId, status, deletedAt], map: "shop_employees_shop_status_deleted_idx")
+  @@index([userId, status, deletedAt], map: "shop_employees_user_status_deleted_idx")
+  @@index([createdById], map: "shop_employees_created_by_idx")
+  @@index([updatedById], map: "shop_employees_updated_by_idx")
+  @@index([deletedAt], map: "shop_employees_deleted_idx")
+  @@map("shop_employees")
+}
+
+model ShopEmployeeRole {
+  id               Int       @id @default(autoincrement())
+  shopId           Int?      @map("shop_id")
+  code             String    @db.VarChar(64)
+  nameZhHans       String    @map("name_zh_hans") @db.VarChar(160)
+  nameZhHant       String    @map("name_zh_hant") @db.VarChar(160)
+  nameJa           String    @map("name_ja") @db.VarChar(160)
+  nameEn           String    @map("name_en") @db.VarChar(160)
+  nameKo           String    @map("name_ko") @db.VarChar(160)
+  isSystem         Boolean   @default(false) @map("is_system")
+  isTechnicianRole Boolean   @default(false) @map("is_technician_role")
+  activeKey        String?   @unique(map: "shop_employee_roles_active_key_key") @map("active_key") @db.VarChar(191)
+  createdById      Int?      @map("created_by_id")
+  updatedById      Int?      @map("updated_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  shop        Shop?                        @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy   User?                        @relation("ShopEmployeeRoleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?                        @relation("ShopEmployeeRoleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  assignments ShopEmployeeRoleAssignment[]
+
+  @@index([shopId, deletedAt], map: "shop_employee_roles_shop_deleted_idx")
+  @@index([code, deletedAt], map: "shop_employee_roles_code_deleted_idx")
+  @@index([createdById], map: "shop_employee_roles_created_by_idx")
+  @@index([updatedById], map: "shop_employee_roles_updated_by_idx")
+  @@index([deletedAt], map: "shop_employee_roles_deleted_idx")
+  @@map("shop_employee_roles")
+}
+
+model ShopEmployeeRoleAssignment {
+  id                 Int       @id @default(autoincrement())
+  shopEmployeeId     Int       @map("shop_employee_id")
+  shopEmployeeRoleId Int       @map("shop_employee_role_id")
+  startsAt           DateTime  @default(now()) @map("starts_at")
+  endsAt             DateTime? @map("ends_at")
+  activeKey          String?   @unique(map: "shop_employee_role_assignments_active_key_key") @map("active_key") @db.VarChar(191)
+  createdById        Int?      @map("created_by_id")
+  updatedById        Int?      @map("updated_by_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  shopEmployee     ShopEmployee     @relation(fields: [shopEmployeeId], references: [id], onDelete: Restrict)
+  shopEmployeeRole ShopEmployeeRole @relation(fields: [shopEmployeeRoleId], references: [id], onDelete: Restrict)
+  createdBy        User?            @relation("ShopEmployeeRoleAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy        User?            @relation("ShopEmployeeRoleAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([shopEmployeeId, startsAt, endsAt, deletedAt], map: "shop_employee_role_assignments_employee_range_idx")
+  @@index([shopEmployeeRoleId, startsAt, endsAt, deletedAt], map: "shop_employee_role_assignments_role_range_idx")
+  @@index([createdById], map: "shop_employee_role_assignments_created_by_idx")
+  @@index([updatedById], map: "shop_employee_role_assignments_updated_by_idx")
+  @@index([deletedAt], map: "shop_employee_role_assignments_deleted_idx")
+  @@map("shop_employee_role_assignments")
 }
 
 model ShopPayrollSchedulePolicy {

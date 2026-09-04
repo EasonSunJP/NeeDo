@@ -29,7 +29,8 @@ describe("rollback-only formal order fulfillment flow checker", () => {
 
     expect(existsSync(scriptPath)).toBe(true);
     expect(packageJson.scripts["check:order-fulfillment-checkout"]).toBe(
-      "tsx scripts/check-order-fulfillment-checkout-flow.ts"
+      "tsx scripts/check-order-fulfillment-checkout-flow.ts && " +
+        "tsx scripts/check-order-checkout-concurrency.ts"
     );
   });
 
@@ -44,6 +45,17 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(source.match(/runExpectedFailureRollbackTransaction\(/g)).toHaveLength(1);
     expect(source).not.toContain("needoId: `${marker}-customer`");
     expect(source).not.toContain("needoId: `${marker}-technician`");
+  });
+
+  it("keeps technician review fixtures inside the formal special-tag plus one-custom-tag contract", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).not.toContain('tags: ["ＳＰＡ", "ı", "i"]');
+    expect(source).toContain('tags: ["服务精神", "ＳＰＡ"]');
+    expect(source).toContain('tags: ["服务精神"]');
+    expect(source.match(/orderReviewCreateBodySchema\.parse\(/g)).toHaveLength(2);
+    expect(source).toContain('JSON.stringify(["SPA", "服务max"].sort())');
+    expect(source).toContain('const expectedTechnicianHighlights = ["服务max", "SPA"];');
   });
 
   it("requires one explicit existing FORMAL_BACKEND_ENV_FILE and validates its database target", () => {

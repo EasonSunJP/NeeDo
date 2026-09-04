@@ -62,10 +62,15 @@ import {
 import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUiDecoration } from "../../lib/storeUiDecoration";
 import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
-import { TechnicianShowcaseCard } from "../../shared/profile-card";
-import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";
+import { getScopedTechnicianDynamicPath, TechnicianShowcaseCard } from "../../shared/profile-card";
 import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
-import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import { getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import {
+  mapCoreServiceCardToUnifiedData,
+  mapStoreMenuConfigToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
@@ -97,6 +102,7 @@ type StoreDetailExperienceProps = {
   technicianPricingRatePercent?: number;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
+  serviceCardsOverride?: UnifiedServiceInfoCardData[];
   store: Store;
   techniciansOverride?: Technician[];
   presentationOverride?: StorePresentationConfig;
@@ -134,7 +140,9 @@ type SeatCard = {
   cover: string;
 };
 
-type MenuCard = StoreMenuConfig;
+type MenuCard = StoreMenuConfig & {
+  serviceInfo?: UnifiedServiceInfoCardData;
+};
 
 type OfferCard = StoreOfferConfig;
 type StoreProfileConfig = StorePresentationConfig;
@@ -1301,7 +1309,6 @@ function StoreTechnicianServiceListRow({
   technicianVisible?: boolean;
   unavailable?: boolean;
 }) {
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
   const displayName = getStoreTechnicianDisplayName(technician);
   const recommendedService = getStoreRecommendedServiceForTechnician(technician, fallbackServices);
   const packageInfo = recommendedService?.packages[0];
@@ -1319,7 +1326,6 @@ function StoreTechnicianServiceListRow({
   const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
 
   return (
-    <>
     <article
       className={cn(
         "relative grid grid-cols-[118px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] p-2.5 shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
@@ -1348,12 +1354,11 @@ function StoreTechnicianServiceListRow({
           onSelect={onSelect}
         />
       ) : null}
-      <button
+      <Link
         aria-label={`查看${displayName}信息卡`}
         className="group relative min-h-[158px] overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
-        onClick={() => setTechnicianInfoCardOpen(true)}
         title="查看技师信息卡"
-        type="button"
+        to={profileTo}
       >
         <img
           alt={displayName}
@@ -1364,7 +1369,7 @@ function StoreTechnicianServiceListRow({
         <div className="absolute left-2 top-2 z-20">
           <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
         </div>
-      </button>
+      </Link>
       <div className={cn("pointer-events-none absolute top-2 z-20 flex items-start gap-1", (isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2")}>
         <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
         <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
@@ -1402,14 +1407,6 @@ function StoreTechnicianServiceListRow({
         </div>
       </Link>
     </article>
-    <TechnicianPublicInfoCardModal
-      dynamicTo={profileTo}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={isMerchantEditable ? "merchant" : "user"}
-    />
-    </>
   );
 }
 
@@ -2557,9 +2554,18 @@ function CompactMenuCard({
   onReplaceImage?: (files: FileList | null) => void;
 }) {
   const solidTags = cardUi?.tagStyle === "实心";
+  const serviceData = item.serviceInfo;
   const updateField = <Key extends keyof MenuCard>(key: Key, value: MenuCard[Key]) => {
     onChange?.({ ...item, [key]: value });
   };
+
+  if (serviceData && !editing) {
+    const actionSlot = showSelectAction ? (
+      <StoreSelectionIconButton active={selected} activeIcon={activeIcon} inactiveIcon={inactiveIcon} label={selectLabel} onSelect={onSelect} />
+    ) : editor;
+
+    return <UnifiedServiceInfoCard actionSlot={actionSlot} data={serviceData} />;
+  }
 
   return (
     <FlatCard className="p-2.5" editor={editor}>
@@ -2689,6 +2695,7 @@ export function StoreDetailExperience({
   pricingMode = "store",
   privacyControl,
   scope = "user",
+  serviceCardsOverride,
   store,
   technicianPricingRatePercent,
   techniciansOverride,
@@ -2777,7 +2784,17 @@ export function StoreDetailExperience({
     () => (formalApiOnly ? [] : buildMenuCards(store, industry)),
     [formalApiOnly, industry, store]
   );
-  const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
+  const serviceInfoById = useMemo(
+    () => new Map((serviceCardsOverride ?? []).map((service) => [service.id, service])),
+    [serviceCardsOverride]
+  );
+  const menuCards = useMemo(
+    () => mergeMenuCardOverrides(baseMenuCards, config.menuCards).map((menuCard) => ({
+      ...menuCard,
+      serviceInfo: serviceInfoById.get(menuCard.sourceServiceId) ?? menuCard.serviceInfo ?? mapStoreMenuConfigToUnifiedData(menuCard, store)
+    })),
+    [baseMenuCards, config.menuCards, serviceInfoById, store]
+  );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
   const mapDetailCopy = storeMapDetailCopyByIndustry[industry];
@@ -3197,7 +3214,7 @@ export function StoreDetailExperience({
                 setSelectedTechnicianId(active ? "" : technician.id);
               } : undefined}
               onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}
-              profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+              profileTo={getScopedTechnicianDynamicPath(scope, technician)}
               quoteRatePercent={effectiveTechnicianPricingRatePercent}
               selected={selectable ? active : undefined}
               serviceListTo={getTechnicianServiceListTo(technician.id)}
@@ -3619,7 +3636,7 @@ export function StoreDetailExperience({
 
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
-                          profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+                          profileTo={getScopedTechnicianDynamicPath(scope, technician)}
                           rankIndex={index}
                           technician={technician}
                           technicianVisible={technicianVisible}
@@ -4278,6 +4295,7 @@ function UnifiedFormalStoreDetail({
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
+      serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}
       store={store}
       techniciansOverride={technicians}
     />

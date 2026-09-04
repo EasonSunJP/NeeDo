@@ -13,6 +13,7 @@ import {
 
 const backendRoot = resolve(__dirname, "..");
 const scriptPath = resolve(backendRoot, "scripts/check-agent-settlement-flow.ts");
+const runnerPath = resolve(backendRoot, "scripts/check-agent-settlement-flow-runner.ts");
 
 describe("rollback-only agent settlement flow checker", () => {
   it("is wired as the explicit package command", () => {
@@ -24,6 +25,30 @@ describe("rollback-only agent settlement flow checker", () => {
     expect(packageJson.scripts["check:agent-settlement"]).toBe(
       "tsx scripts/check-agent-settlement-flow.ts"
     );
+  });
+
+  it("creates the rollback shop identifier with the canonical shop prefix", () => {
+    const runnerSource = readFileSync(runnerPath, "utf8");
+
+    expect(runnerSource).toContain('publicId: `shop${numericSuffix}`');
+    expect(runnerSource).not.toContain('publicId: `S${numericSuffix}`');
+  });
+
+  it("preserves the unique active exchange-rate sentinel inside the rollback transaction", () => {
+    const runnerSource = readFileSync(runnerPath, "utf8");
+
+    expect(runnerSource).toContain(
+      'data: { status: "SUPERSEDED", activeKey: null, effectiveTo: rateEffectiveFrom }'
+    );
+    expect(runnerSource).toContain('activeKey: "ndp_exchange_rate"');
+  });
+
+  it("temporarily supplies canonical identifiers for legacy published shops", () => {
+    const runnerSource = readFileSync(runnerPath, "utf8");
+
+    expect(runnerSource).toContain("const publishedShops = await transaction.shop.findMany");
+    expect(runnerSource).toContain("if (!publishedShop.publicIdentifier)");
+    expect(runnerSource).toContain("shopId: publishedShop.id");
   });
 
   it("validates the formal environment before loading Prisma or the flow runner", async () => {
@@ -127,6 +152,10 @@ describe("rollback-only agent settlement flow checker", () => {
       totalAmountJpy: 2_000
     });
     expect(() => assertSettlementSnapshotUnchanged(snapshot, { ...snapshot })).not.toThrow();
+    const persistedSettlement = { ...snapshot, publicId: "settlement-record" };
+    expect(() =>
+      assertSettlementSnapshotUnchanged(snapshot, persistedSettlement)
+    ).not.toThrow();
     expect(() =>
       assertSettlementSnapshotUnchanged(snapshot, { ...snapshot, totalAmountJpy: 2_001 })
     ).toThrow("Confirmed agent settlement snapshot changed");

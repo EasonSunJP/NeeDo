@@ -237,4 +237,10 @@ describe("isNonFatalBrowserRuntimeError", () => {
       expect(isNonFatalBrowserRuntimeError(new Error(message))).toBe(true);
     }
   });
+
+  it("keeps superseded authentication operations out of the global recovery page", () => {
+    expect(
+      isNonFatalBrowserRuntimeError(new Error("error.auth.operation_superseded"))
+    ).toBe(true);
+  });
 });

@@ -22,6 +22,7 @@ import {
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician
 } from "../../features/core-read/api";
+import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { useCustomerSelfProfile } from "../../features/core-read/useCustomerSelfProfile";
@@ -31,9 +32,7 @@ import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
-import { useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
-import { useUserOrders } from "../../state/userOrderStore";
 import { SocialProfileMiniCard, TechnicianShowcaseCard, buildServiceMiniCardData, getTechnicianDynamicPath } from "../../shared/profile-card";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import {
@@ -46,14 +45,21 @@ import { syncHomeDeviceLocationForAppOpen } from "../../state/homeLocationStore"
 import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
 
 const reminderDismissStorageKey = "needo.home.reminder.dismiss.v1";
-const currentAppointmentStatuses: Order["status"][] = ["pending", "unpaid", "confirmed", "scheduled", "inService"];
+const currentAppointmentStatuses: Order["status"][] = [
+  "pending",
+  "unpaid",
+  "confirmed",
+  "scheduled",
+  "inService",
+  "awaitingCheckout",
+  "awaitingPaymentConfirmation"
+];
 
 type ServiceRecommendationCardData = {
   kind: "service";
   id: string;
   to: string;
   service: ServiceItem;
-  provider?: Store | Technician;
 };
 
 type StoreRecommendationCardData = {
@@ -118,47 +124,6 @@ function formatDateTimeLabel(date: Date) {
 
 function sortByLocation<T>(items: T[], getLocationValues: (item: T) => string[], location: HomeLocationOption) {
   return [...items].sort((left, right) => getLocationScore(getLocationValues(right), location) - getLocationScore(getLocationValues(left), location));
-}
-
-function getTextOverlapScore(values: string[], targets: string[]) {
-  const haystack = values.filter(Boolean).map(normalizeText).join("|");
-
-  if (!haystack) {
-    return 0;
-  }
-
-  return targets.filter(Boolean).map(normalizeText).reduce((total, token) => {
-    if (!token) {
-      return total;
-    }
-
-    return haystack.includes(token) || token.includes(haystack) ? total + 1 : total;
-  }, 0);
-}
-
-function getServiceProviderScore(values: string[], service: ServiceItem, location: HomeLocationOption) {
-  const serviceTerms = [service.name, service.summary, ...service.tags, ...service.serviceAreas];
-
-  return getLocationScore(values, location) * 4 + getTextOverlapScore(values, serviceTerms);
-}
-
-function resolveServiceProvider(service: ServiceItem, storeList: Store[], technicianList: Technician[], location: HomeLocationOption) {
-  const providers: Array<Store | Technician> = service.mode === "store" ? storeList : technicianList;
-  const scored = providers
-    .map((provider) => {
-      const values =
-        "address" in provider
-          ? [provider.name, provider.area, provider.address, provider.description, ...provider.tags]
-          : [provider.name, provider.nickname ?? "", provider.bio ?? "", ...provider.skills, ...provider.serviceAreas, ...provider.languages];
-
-      return {
-        provider,
-        score: getServiceProviderScore(values, service, location)
-      };
-    })
-    .sort((left, right) => right.score - left.score);
-
-  return scored[0]?.provider ?? storeList[0] ?? technicianList[0];
 }
 
 function getQuickActionTitleClassName(title: string) {
@@ -363,7 +328,7 @@ function RecommendationCard({ data }: { data: RecommendationCardData }) {
     return <SocialProfileMiniCard detailTo={data.to} showShareAction technician={data.technician} />;
   }
 
-  return <SocialProfileMiniCard data={buildServiceMiniCardData(data.service, data.provider)} detailTo={data.to} />;
+  return <SocialProfileMiniCard data={buildServiceMiniCardData(data.service)} detailTo={data.to} />;
 }
 
 function ReminderMiniCard({
@@ -524,16 +489,14 @@ function getOrderTimeValue(order: Order) {
 }
 
 function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: number; latestOrder?: Order }) {
-  if (count <= 0 || !latestOrder) {
-    return null;
-  }
-
-  const timeLabel = latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt;
+  const timeLabel = latestOrder
+    ? latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt
+    : "预约一览";
 
   return (
     <FloatingActionButton
       ariaLabel="查看预约记录"
-      badge={count}
+      badge={count > 0 ? count : undefined}
       srText={timeLabel}
       storageKey="needo.fab.current-appointment"
       title="查看预约记录"
@@ -647,12 +610,10 @@ export function HomePage() {
   const userPortalConfig = roleBasedTabConfig.user;
   const { theme } = useClientTheme();
   const { language } = useI18n();
-  const { session } = useAuth();
+  const { isAuthenticated, session } = useAuth();
   const { customer: currentCustomer } = useCustomerSelfProfile();
   const { config } = useHomeLayoutStore();
-  const petSettings = useNeedoPetSettings();
-  const userOrders = useUserOrders();
-  const currentCustomerId = currentCustomer?.id ?? "";
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
   const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
   const homeRecommendationsQuery = useCoreReadQuery(
@@ -702,6 +663,30 @@ export function HomePage() {
   useEffect(() => {
     setRecommendationTab(config.recommendation.defaultTab);
   }, [config.recommendation.defaultTab]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setUserOrders([]);
+      return undefined;
+    }
+
+    let active = true;
+    bookingApi.listOrders({ page: 1, pageSize: 100 })
+      .then((data) => {
+        if (active) {
+          setUserOrders(data.list.map(mapBookingOrderToDomainOrder));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUserOrders([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     saveDismissedReminder(dismissedReminder);
@@ -826,11 +811,10 @@ export function HomePage() {
         kind: "service" as const,
         id: service.id,
         to: `/services/${service.id}`,
-        service,
-        provider: resolveServiceProvider(service, apiStores, apiTechnicians, selectedLocation)
+        service
       }))
     }),
-    [apiStores, apiTechnicians, recommendationServices, recommendationStores, recommendationTechnicians, selectedLocation]
+    [recommendationServices, recommendationStores, recommendationTechnicians]
   );
 
   const currentRecommendationList = recommendationCards[recommendationTab];
@@ -871,10 +855,9 @@ export function HomePage() {
   const activeAppointmentOrders = useMemo(
     () =>
       userOrders
-        .filter((order) => order.customerId === currentCustomerId)
         .filter((order) => currentAppointmentStatuses.includes(order.status))
         .sort((left, right) => getOrderTimeValue(right) - getOrderTimeValue(left)),
-    [currentCustomerId, userOrders]
+    [userOrders]
   );
   const latestActiveAppointment = activeAppointmentOrders[0];
 
@@ -884,7 +867,6 @@ export function HomePage() {
     }
 
     const candidates = userOrders
-      .filter((order) => order.customerId === currentCustomerId)
       .filter((order) => order.status === "confirmed" || order.status === "scheduled")
       .map((order) => {
         const start = parseDateTime(order.bookedAt);
@@ -912,7 +894,7 @@ export function HomePage() {
       store: resolveStoreForOrder(closest.order, apiStores, apiTechnicians),
       service: resolveServiceForOrder(closest.order, apiServices)
     };
-  }, [apiServices, apiStores, apiTechnicians, config.reminder.enabled, config.reminder.triggerWindowMinutes, currentCustomerId, now, userOrders]);
+  }, [apiServices, apiStores, apiTechnicians, config.reminder.enabled, config.reminder.triggerWindowMinutes, now, userOrders]);
 
   useEffect(() => {
     if (!reminderState) {
@@ -1130,7 +1112,7 @@ export function HomePage() {
         ) : null}
       </div>
 
-      {petSettings.enabled ? null : <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />}
+      <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />
 
     </MobileShell>
   );

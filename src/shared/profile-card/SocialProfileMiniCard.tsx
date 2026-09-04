@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { IconMetricAction } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
@@ -10,9 +10,10 @@ import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Customer, ServiceItem, Store, Technician } from "../../types/domain";
 import type { InfoCardData } from "../info-card";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
+import { mapServiceItemToUnifiedData, UnifiedServiceInfoCard, type UnifiedServiceInfoCardData } from "../service-card";
 import { CustomerMembershipIcon } from "./CustomerMembershipIcon";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
-import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
+import { getScopedTechnicianDynamicPath } from "./TechnicianShowcaseCard";
 import { getCustomerLevelLabel, resolveCustomerMembership, type SocialProfileMiniMembershipKind } from "./customerMembership";
 
 export type SocialProfileMiniActionLabel = "关注" | "关注中" | "好友";
@@ -42,6 +43,7 @@ export type SocialProfileMiniData = {
   followingCount: number;
   shareCount?: number;
   usageCount?: number;
+  serviceInfo?: UnifiedServiceInfoCardData;
   actionLabel?: SocialProfileMiniActionLabel;
   detailPath?: string;
 };
@@ -186,6 +188,7 @@ function isStoreProvider(provider?: Store | Technician): provider is Store {
 }
 
 export function buildServiceMiniCardData(service: ServiceItem, provider?: Store | Technician): SocialProfileMiniData {
+  const serviceInfo = mapServiceItemToUnifiedData(service, provider);
   const providerAddress = provider
     ? isStoreProvider(provider)
       ? {
@@ -216,7 +219,8 @@ export function buildServiceMiniCardData(service: ServiceItem, provider?: Store 
     scoreValue: "",
     followerCount: 0,
     followingCount: 0,
-    usageCount: service.sales,
+    usageCount: serviceInfo.usageCount ?? undefined,
+    serviceInfo,
     detailPath: `/services/${service.id}`
   };
 }
@@ -780,11 +784,9 @@ function ScoreMetricBadge({
 }
 
 export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
-  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showLevel = true, showSocialStats = true, showShareAction = false, shareCount, topTags } = props;
+  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showLevel, showSocialStats, showShareAction = false, shareCount, topTags } = props;
   const { isNight, theme } = useClientTheme();
   const location = useLocation();
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
-  const sourceTechnician = "technician" in props ? props.technician : null;
   const data = buildSocialProfileMiniCardData(
     "data" in props ? props.data : "customer" in props ? props.customer : "technician" in props ? props.technician : props.store,
     {
@@ -793,12 +795,22 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
       followingCount: "followingCount" in props ? props.followingCount : undefined
     }
   );
-  const resolvedDetailTo = detailTo ?? data.detailPath;
+  const resolvedShowLevel = showLevel ?? data.entityType !== "technician";
+  const resolvedShowSocialStats = showSocialStats ?? data.entityType !== "technician";
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
-  const technicianDynamicPath = sourceTechnician ? getScopedProfileDetailPath(currentScope, "technician", sourceTechnician.id) : "";
-  const shouldOpenTechnicianInfoCard = Boolean(sourceTechnician && !onOpenDetails);
-  const avatarOnOpenDetails = onOpenDetails ?? (shouldOpenTechnicianInfoCard ? () => setTechnicianInfoCardOpen(true) : undefined);
-  const avatarDetailTo = avatarOnOpenDetails ? undefined : resolvedDetailTo;
+  const resolvedDetailTo = detailTo ?? ("technician" in props ? getScopedTechnicianDynamicPath(currentScope, props.technician) : data.entityType === "technician" ? getScopedProfileDetailPath(currentScope, "technician", data.id) : data.detailPath);
+  if (data.entityType === "service" && data.serviceInfo) {
+    return (
+      <UnifiedServiceInfoCard
+        actionSlot={showAction ? actionSlot : undefined}
+        className={className}
+        data={data.serviceInfo}
+        detailTo={resolvedDetailTo}
+        onOpenDetails={onOpenDetails}
+      />
+    );
+  }
+  const avatarDetailTo = resolvedDetailTo;
   const scoreParts = splitScoreValue(data.scoreValue);
   const isService = data.entityType === "service";
   const usesSimpleScorePill = data.scoreLabel === "服务评价";
@@ -832,13 +844,12 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
   };
 
   return (
-    <>
     <article className={cn("overflow-hidden rounded-[24px] border shadow-panel", cardClassName, className)}>
       <div className="relative h-[92px] bg-ink">
         <InteractiveArea className="focus-ring absolute inset-0 block overflow-hidden text-left" detailTo={resolvedDetailTo} onOpenDetails={onOpenDetails}>
           <SystemCoverBackdrop dark={coverDark} seed={`${data.entityType}-${data.id}`} theme={theme} />
         </InteractiveArea>
-        <InteractiveArea className="focus-ring absolute top-11 left-3.5 z-10 block h-36 w-36 text-left" detailTo={avatarDetailTo} onOpenDetails={avatarOnOpenDetails}>
+        <InteractiveArea className="focus-ring absolute top-11 left-3.5 z-10 block h-36 w-36 text-left" detailTo={avatarDetailTo} onOpenDetails={onOpenDetails}>
           <div className="relative h-full w-full">
             {data.avatar ? (
               <AvatarImage
@@ -893,7 +904,7 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
           <h3 className={cn("flex min-w-0 items-center gap-1.5 text-[18px] font-black leading-6", coverDark ? "text-white [text-shadow:0_1px_5px_rgba(0,0,0,0.74)]" : "text-[#25282d] [text-shadow:0_1px_0_rgba(255,255,255,0.72)]")}>
             <span className={cn("min-w-0 truncate", data.entityType === "shop" ? "max-w-[calc(100%-48px)]" : data.entityType === "service" ? "max-w-full" : "max-w-[calc(100%-92px)]")}>{data.displayName}</span>
             {data.entityType !== "shop" && data.entityType !== "service" ? <KycVerifiedMark verified={data.kycVerified ?? true} /> : null}
-            <InlineIdentityMeta coverDark={coverDark} data={data} onCover showLevel={showLevel} />
+            <InlineIdentityMeta coverDark={coverDark} data={data} onCover showLevel={resolvedShowLevel} />
           </h3>
         </InteractiveArea>
       </div>
@@ -901,7 +912,7 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
       <div className="px-3.5 pb-3 pt-2">
         <div className="ml-[156px] min-h-[90px]">
           <InteractiveArea className="block min-w-0 text-left" detailTo={resolvedDetailTo} onOpenDetails={onOpenDetails}>
-            {showSocialStats ? (
+            {resolvedShowSocialStats ? (
               <div className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-black leading-4", mutedClassName)}>
                 <SocialStatsLine data={data} valueClassName={cn(dark ? "text-white" : "text-[color:var(--client-text)]")} />
               </div>
@@ -935,13 +946,5 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
         </div>
       </div>
     </article>
-    <TechnicianPublicInfoCardModal
-      dynamicTo={technicianDynamicPath}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={sourceTechnician}
-      themeScope={currentScope}
-    />
-    </>
   );
 }

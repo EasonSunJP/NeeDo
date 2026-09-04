@@ -45,7 +45,11 @@ import type {
   BookingLedgerSettlementPort,
   CheckoutPaymentLedgerPort
 } from "./ledger.service";
-import type { OrderStatusNotificationInput, OrderStatusNotificationPort } from "./realtime.service";
+import type {
+  OrderRealtimeChangeType,
+  OrderStatusNotificationInput,
+  OrderStatusNotificationPort
+} from "./realtime.service";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import {
@@ -430,6 +434,7 @@ export class BookingService {
         serviceName: mutation.order.serviceName,
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
     }
     return mutation.order;
   }
@@ -449,7 +454,11 @@ export class BookingService {
       idempotencyKey: input.idempotencyKey,
       requestContext: this.fulfillmentRequestContext(context)
     });
-    return this.requireFulfillmentMutation(result).order;
+    const mutation = this.requireFulfillmentMutation(result);
+    if (mutation.applied) {
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+    }
+    return mutation.order;
   }
 
   public async acceptOrderAddOn(
@@ -498,6 +507,7 @@ export class BookingService {
         serviceName: mutation.order.serviceName,
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
     }
     return mutation.order;
   }
@@ -527,7 +537,7 @@ export class BookingService {
         comment
       }))
       .digest("hex");
-    return this.requireOrderReviewMutation(
+    const mutation = this.requireOrderReviewMutation(
       await this.repository.createOrderReview({
         ...reviewActor,
         orderId,
@@ -546,12 +556,18 @@ export class BookingService {
           metadata: {
             orderId,
             reviewTargetType: permittedTarget,
+            reviewTargets: permittedTarget === "technician" ? ["technician", "shop"] : ["customer"],
             rating: input.rating,
             tagCount: tags.length
           }
         })
       })
     );
+    if (mutation.applied) {
+      const order = await this.repository.findOrderById(orderId);
+      if (order) await this.notifyOrderChangedBestEffort(actor, order, "review");
+    }
+    return mutation;
   }
 
   public async getOwnOrderReview(
@@ -568,6 +584,24 @@ export class BookingService {
     });
     if (result.outcome === "not_found") throw this.notFoundError();
     return { review: result.review };
+  }
+
+  public async createOrderTimelineComment(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    body: string
+  ): Promise<BookingOrderPayload> {
+    const participant = this.getFulfillmentActor(actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, participant.actor);
+    if (!this.repository.createOrderTimelineComment) throw this.dependencyUnavailableError();
+    const order = await this.repository.createOrderTimelineComment({
+      actorUserId: actor.userId,
+      body: body.normalize("NFKC").trim(),
+      orderId
+    });
+    if (!order) throw this.notFoundError();
+    await this.notifyOrderChangedBestEffort(actor, order, "timeline_comment");
+    return order;
   }
 
   public async getCheckout(
@@ -978,6 +1012,7 @@ export class BookingService {
       serviceName: next.serviceName,
       recipientUserIds: this.resolveOrderNotificationRecipients(actor, next)
     });
+    await this.notifyOrderChangedBestEffort(actor, next, "status");
 
     return next;
   }
@@ -1000,7 +1035,11 @@ export class BookingService {
       idempotencyKey: input.idempotencyKey,
       requestContext: this.fulfillmentRequestContext(context)
     });
-    return this.requireFulfillmentMutation(result).order;
+    const mutation = this.requireFulfillmentMutation(result);
+    if (mutation.applied) {
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+    }
+    return mutation.order;
   }
 
   private getFulfillmentActor(
@@ -1143,6 +1182,32 @@ export class BookingService {
           toStatus: input.toStatus
         },
         "Order status notification failed after booking commit"
+      );
+    }
+  }
+
+  private async notifyOrderChangedBestEffort(
+    actor: AuthenticatedBookingActor,
+    order: BookingOrderPayload,
+    changeType: OrderRealtimeChangeType
+  ): Promise<void> {
+    if (!this.notificationService?.notifyOrderChanged || !this.repository.findOrderRealtimeRecipients) {
+      return;
+    }
+    try {
+      const recipients = await this.repository.findOrderRealtimeRecipients(order.id);
+      await this.notificationService.notifyOrderChanged({
+        actorIdentityId: actor.currentIdentityId,
+        actorUserId: actor.userId,
+        changeType,
+        orderId: order.id,
+        orderNo: order.orderNo,
+        recipients
+      });
+    } catch (error) {
+      logger.error(
+        { error, orderId: order.id, changeType },
+        "Order realtime change delivery failed after booking commit"
       );
     }
   }

@@ -12,7 +12,7 @@ describe("TechnicianServicesPage social header", () => {
     expect(pageSource).toContain("getActorForScope(scope)");
     expect(pageSource).toContain("navItems={navItemsForSocialScope(scope)}");
     expect(pageSource).toContain("scope={scope}");
-    expect(pageSource).toContain('getScopedProfileDetailPath(scope, "technician", technician.id)');
+    expect(pageSource).toContain("getScopedTechnicianDynamicPath(scope, technician)");
     expect(pageSource).toContain("getTechnicianServiceFallbackPath(scope)");
     expect(pageSource).toContain('scope === "user" ? (');
     expect(pageSource).toContain("profileKey({ entityType: \"technician\", id: technician.id })");

@@ -9,13 +9,16 @@ vi.mock("../../api/httpClient", () => ({
 describe("technicianProfileApi", () => {
   beforeEach(() => vi.mocked(httpClient.request).mockReset());
 
-  it("reads and patches the authenticated technician profile without a client-selected id", async () => {
+  it("reads and patches the approved authenticated technician fields without a client-selected id", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 
     await technicianProfileApi.getMine();
     await technicianProfileApi.updateMine({
-      displayName: "彩",
-      serviceBase: { latitude: 35.6762, longitude: 139.6503 },
+      gender: "female",
+      age: 29,
+      heightCm: 168,
+      languages: ["日本語", "中文"],
+      bio: "预约前请联系。",
       visibility: "network"
     });
 
@@ -23,8 +26,11 @@ describe("technicianProfileApi", () => {
     expect(httpClient.request).toHaveBeenNthCalledWith(2, "/technician-profile/me", {
       method: "PATCH",
       body: {
-        displayName: "彩",
-        serviceBase: { latitude: 35.6762, longitude: 139.6503 },
+        gender: "female",
+        age: 29,
+        heightCm: 168,
+        languages: ["日本語", "中文"],
+        bio: "预约前请联系。",
         visibility: "network"
       }
     });

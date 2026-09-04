@@ -35,6 +35,7 @@ import {
   orderIdParamSchema,
   orderListQuerySchema,
   orderReviewCreateBodySchema,
+  orderTimelineCommentBodySchema,
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
@@ -206,6 +207,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.reviewCreate),
     validateRequest({ params: orderIdParamSchema }),
     controller.getOwnOrderReview
+  );
+  router.post(
+    "/orders/:id/timeline/comments",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.getOrder),
+    validateRequest({ params: orderIdParamSchema, body: orderTimelineCommentBodySchema }),
+    controller.createOrderTimelineComment
   );
   router.get(
     "/orders/:id/checkout",

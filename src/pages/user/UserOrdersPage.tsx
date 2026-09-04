@@ -10,6 +10,7 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
+import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order } from "../../types/domain";
 
@@ -160,6 +161,17 @@ export function UserOrdersPage() {
   const loadMoreOrders = useCallback(() => {
     setRenderedOrderLimit((current) => Math.min(current + orderRenderBatchSize, visibleOrders.length));
   }, [visibleOrders.length]);
+
+  const refreshOrders = useCallback(async () => {
+    if (!isAuthenticated) return;
+    const data = await bookingApi.listOrders({ page: 1, pageSize: 100 });
+    setOrders(data.list.map(mapBookingOrderToDomainOrder));
+  }, [isAuthenticated]);
+
+  useOrderRealtimeRefresh({
+    enabled: isAuthenticated,
+    onRefresh: refreshOrders
+  });
 
   useEffect(() => {
     if (!isAuthenticated) {

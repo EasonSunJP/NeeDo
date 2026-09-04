@@ -16,13 +16,23 @@ const profile: TechnicianProfilePayload = {
   avatarUrl: null,
   bio: "肩颈护理",
   city: "Tokyo",
+  gender: "female",
   age: 28,
   heightCm: 164,
   languages: ["日本語"],
   serviceAreas: ["銀座"],
   serviceBase: null,
-  specialTags: ["准时"],
-  profileTags: ["肩颈调理"],
+  specialTags: [],
+  profileTags: [],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   canServeForeigners: true,
   bidBudgetMinJpy: 12_000,
   bidBudgetMaxJpy: 28_000,
@@ -68,7 +78,8 @@ describe("TechnicianProfileService", () => {
 
     await expect(service.getMine(actor)).resolves.toBe(profile);
     await service.updateMine(actor, { ip: "127.0.0.1", userAgent: "jest" }, {
-      displayName: "彩"
+      displayName: "彩",
+      gender: "female"
     });
 
     expect(repo.findMine).toHaveBeenCalledWith(9, 31);
@@ -76,10 +87,10 @@ describe("TechnicianProfileService", () => {
       9,
       31,
       19,
-      { displayName: "彩" },
+      { displayName: "彩", gender: "female" },
       expect.objectContaining({
         action: "technician_profile.self_update",
-        metadata: { changedFields: ["displayName"] }
+        metadata: { changedFields: ["displayName", "gender"] }
       })
     );
   });

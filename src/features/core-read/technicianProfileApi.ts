@@ -1,6 +1,8 @@
 import { httpClient } from "../../api/httpClient";
+import type { TechnicianReviewTagSummary } from "./api";
 
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
+export type TechnicianProfileGender = "female" | "male" | "private";
 export type TechnicianProfilePaymentMethod =
   | "platform"
   | "offline"
@@ -20,12 +22,14 @@ export type TechnicianSelfProfile = {
   avatarUrl: string | null;
   bio: string | null;
   city: string;
+  gender: TechnicianProfileGender;
   age: number | null;
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
   specialTags: string[];
   profileTags: string[];
+  reviewTagSummary: TechnicianReviewTagSummary;
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
@@ -41,12 +45,12 @@ export type TechnicianSelfProfile = {
 export type TechnicianSelfProfileUpdate = Partial<Pick<
   TechnicianSelfProfile,
   | "displayName"
+  | "gender"
   | "age"
   | "heightCm"
   | "languages"
   | "bio"
   | "serviceAreas"
-  | "profileTags"
   | "canServeForeigners"
   | "bidBudgetMinJpy"
   | "bidBudgetMaxJpy"
@@ -54,6 +58,11 @@ export type TechnicianSelfProfileUpdate = Partial<Pick<
   | "serviceBase"
   | "visibility"
 >> & { avatarDataUrl?: string };
+
+export type TechnicianPersonalCenterUpdate = Pick<
+  TechnicianSelfProfile,
+  "gender" | "age" | "heightCm" | "languages" | "bio" | "visibility"
+>;
 
 export const technicianProfileApi = {
   getMine() {

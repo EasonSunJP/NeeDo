@@ -124,7 +124,27 @@ export type BookingOrderPerformanceAssessment = {
   updatedAt: string;
 };
 
+export type BookingOrderCustomer = {
+  userId: number;
+  profileId: number | null;
+  publicId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  membershipLevel: string;
+  ratingAverage: string;
+  reviewCount: number;
+};
+
 export type BookingOrderTimelineEvent =
+  | {
+      type: "ORDER_COMMENT_ADDED";
+      id: string;
+      createdAt: string;
+      actorUserId: number;
+      actorDisplayName: string;
+      actorAvatarUrl: string | null;
+      body: string;
+    }
   | {
       type: "ORDER_STATUS_CHANGED";
       id: string;
@@ -182,6 +202,7 @@ export type BookingOrder = {
   paymentRefundReference: string | null;
   paymentRefundReason: string | null;
   customerUserId: number;
+  customer?: BookingOrderCustomer;
   serviceId: number | null;
   technicianServiceId: number | null;
   shopId: number;
@@ -442,6 +463,12 @@ export const bookingApi = {
   },
   getOwnReview(id: number) {
     return httpClient.request<{ review: OrderReview | null }>(`/orders/${id}/reviews/mine`);
+  },
+  createTimelineComment(id: number, input: { body: string }) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/timeline/comments`, {
+      body: input,
+      method: "POST"
+    });
   },
   createReview(id: number, input: CreateOrderReviewInput) {
     return httpClient.request<{ applied: boolean; review: OrderReview }>(`/orders/${id}/reviews`, {

@@ -2283,6 +2283,43 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(mocked.authApi.logout).not.toHaveBeenCalled();
   });
 
+  it("keeps the current session when another tab commits the same portal authorization", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(
+      formalLoginPayload(customerMe, "access-user", "refresh-user")
+    );
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+    const committed = readPersistedAuthEnvelope();
+    expect(committed?.state).toBe("committed");
+    if (!committed || committed.state !== "committed") {
+      throw new Error("expected committed envelope");
+    }
+    const siblingTabCommit = createCommittedAuthEnvelope({
+      authInstanceId: committed.authInstanceId,
+      credentialVersion: committed.credentialVersion + 1,
+      refreshToken: committed.refreshToken,
+      session: committed.session,
+      rememberedByPortal: committed.rememberedByPortal
+    });
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: persistedAuthEnvelopeStorageKey,
+          newValue: JSON.stringify(siblingTabCommit),
+          storageArea: window.localStorage
+        })
+      );
+    });
+
+    expect(auth.session).toEqual(committed.session);
+    expect(mocked.tokenState).toMatchObject({
+      accessToken: "access-user",
+      refreshToken: "refresh-user"
+    });
+    expect(mocked.authApi.logout).not.toHaveBeenCalled();
+  });
+
   it("uses a remote tombstone event as authority, revokes R2, and does not reread storage", async () => {
     mocked.authApi.loginFormal.mockResolvedValue(
       formalLoginPayload(customerMe, "access-r2", "refresh-r2")

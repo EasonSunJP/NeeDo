@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
+vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
 vi.mock("../../theme/ClientThemeProvider", async () => {
   const actual = await vi.importActual<typeof import("../../theme/ClientThemeProvider")>("../../theme/ClientThemeProvider");
   return { ...actual, useClientTheme: () => ({ isNight: false, theme: "whiteGreen" }) };
@@ -145,7 +146,19 @@ const profile = {
   },
   bio: null,
   serviceArea: "东京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 4,
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   mediaAssets: [],
   services: [],
   createdAt: "2026-08-01T00:00:00.000Z",
@@ -154,6 +167,7 @@ const profile = {
 
 const service: TechnicianServicePayload = {
   id: 102,
+  publicId: "00000000-0000-4000-8000-000000000102",
   shopId: 11,
   technicianId: 31,
   sourceShopServiceId: null,
@@ -163,10 +177,12 @@ const service: TechnicianServicePayload = {
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: { publicId: "shop0000000011", name: "正式店铺", address: "东京都港区" },
   isActive: true,
   isBookable: true,
   isRecommended: false,
@@ -214,6 +230,16 @@ function makeOrder(status: BookingOrderStatus, id = 29): BookingOrder {
     paymentRefundReference: null,
     paymentRefundReason: null,
     customerUserId: 71,
+    customer: {
+      userId: 71,
+      profileId: 17,
+      publicId: "u0000000071",
+      displayName: "预约用户 山田",
+      avatarUrl: "/images/formal/customer-71.jpg",
+      membershipLevel: "premium",
+      ratingAverage: "4.8",
+      reviewCount: 12
+    },
     serviceId: null,
     technicianServiceId: 102,
     shopId: 11,
@@ -586,6 +612,18 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("请准备无香精用品");
     expect(container.textContent).toContain("用户提交");
     expect(container.textContent).toContain("正式状态记录");
+    expect(container.textContent).toContain("订单追踪信息");
+  });
+
+  it("renders the formal customer as the shared simple profile card with a NeeDoID", async () => {
+    await renderOrder(makeOrder("confirmed"));
+
+    expect(container.textContent).toContain("用户");
+    expect(container.textContent).toContain("预约用户 山田");
+    expect(container.textContent).toContain("u0000000071");
+    expect(container.textContent).not.toContain("客户账号");
+    expect(container.querySelector("dl")?.textContent).not.toContain("#71");
+    expect(container.querySelector('a[href="/technician/profiles/user/17"]')).not.toBeNull();
   });
 
   it("keeps the existing formal pending confirmation transition", async () => {

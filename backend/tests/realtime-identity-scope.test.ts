@@ -112,6 +112,36 @@ describe("RealtimeService personal identity scope", () => {
     expect(eventGateway.subscribe).not.toHaveBeenCalledWith(7, response);
   });
 
+  it("publishes order changes to the exact participant identity, including another identity on the same account", async () => {
+    const service = new RealtimeService({} as never, eventGateway as never, scopeResolver as never);
+
+    await service.notifyOrderChanged({
+      actorUserId: 7,
+      actorIdentityId: 70,
+      orderId: 41,
+      orderNo: "ND202609030041",
+      changeType: "add_on",
+      recipients: [
+        { userId: 7, identityId: 70 },
+        { userId: 7, identityId: 71 },
+        { userId: 8, identityId: 80 },
+        { userId: 8, identityId: 80 }
+      ]
+    });
+
+    expect(eventGateway.publish).toHaveBeenCalledTimes(2);
+    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: "booking.order_changed",
+      recipientUserId: 7,
+      recipientIdentityId: 71,
+      payload: { orderId: 41, orderNo: "ND202609030041", changeType: "add_on" }
+    }));
+    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      recipientUserId: 8,
+      recipientIdentityId: 80
+    }));
+  });
+
   it("owns social posts, follows, notifications, and unread counts by canonical identity", async () => {
     const post = { id: 12, authorUserId: 7, authorIdentityId: 70 };
     const notifications = { list: [], total: 0, page: 1, page_size: 20 };

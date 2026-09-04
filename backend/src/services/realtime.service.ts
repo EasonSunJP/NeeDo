@@ -59,8 +59,25 @@ export interface OrderStatusNotificationInput {
   recipientIdentities?: Array<{ userId: number; identityId: number }>;
 }
 
+export type OrderRealtimeChangeType =
+  | "status"
+  | "add_on"
+  | "checkout"
+  | "review"
+  | "timeline_comment";
+
+export interface OrderChangedRealtimeInput {
+  actorIdentityId?: number;
+  actorUserId: number;
+  changeType: OrderRealtimeChangeType;
+  orderId: number;
+  orderNo: string;
+  recipients: Array<{ identityId: number; userId: number }>;
+}
+
 export interface OrderStatusNotificationPort {
   notifyOrderStatusChanged: (input: OrderStatusNotificationInput) => Promise<void>;
+  notifyOrderChanged?: (input: OrderChangedRealtimeInput) => Promise<void>;
 }
 
 export class RealtimeService implements OrderStatusNotificationPort {
@@ -1291,6 +1308,29 @@ export class RealtimeService implements OrderStatusNotificationPort {
         recipientIdentityId: notification.recipientIdentityId,
         payload: notification,
         createdAt: notification.createdAt.toISOString()
+      });
+    }
+  }
+
+  public async notifyOrderChanged(input: OrderChangedRealtimeInput): Promise<void> {
+    const recipients = new Map<number, { identityId: number; userId: number }>();
+    for (const recipient of input.recipients) {
+      if (recipient.identityId === input.actorIdentityId) continue;
+      recipients.set(recipient.identityId, recipient);
+    }
+
+    for (const recipient of recipients.values()) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "booking.order_changed",
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
+        payload: {
+          orderId: input.orderId,
+          orderNo: input.orderNo,
+          changeType: input.changeType
+        },
+        createdAt: new Date().toISOString()
       });
     }
   }

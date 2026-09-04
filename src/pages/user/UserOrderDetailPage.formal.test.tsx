@@ -58,6 +58,7 @@ vi.mock("../../features/core-read/api", async () => {
   };
 });
 vi.mock("../../state/userOrderStore", () => ({ useUserOrders: () => [{ id: "legacy-1", itemName: "历史服务", storeName: "历史店铺", bookedAt: "2026-08-01 10:00", status: "completed", amount: 5000, serviceId: "12" }] }));
+vi.mock("../../features/booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
   AppTopBar: ({ title }: { title: string }) => <header>{title}</header>,
   PageScaffold: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
@@ -71,17 +72,26 @@ vi.mock("../../components/mobile/ContactEventTimeline", () => ({
     </section>
   )
 }));
+vi.mock("../../shared/profile-card/SocialProfileMiniCard", () => ({
+  buildServiceMiniCardData: (service: unknown) => service,
+  SocialProfileMiniCard: ({ data, store, technician }: { data?: { name?: string }; store?: { name?: string }; technician?: { name?: string } }) => (
+    <article>{data?.name ?? store?.name ?? technician?.name}</article>
+  )
+}));
 vi.mock("../../shared/order-detail/ServiceSessionUi", () => ({
   ServiceCountdownPill: ({ seconds }: { seconds: number }) => <output data-testid="countdown">{seconds}</output>,
-  ServiceReviewPrompt: ({ error, onSkip, onSubmit, pending, tagOptions }: { error?: string; onSkip: () => void; onSubmit: (input: { rating: number; tags: string[]; comment: string | null }) => void; pending?: boolean; tagOptions: string[] }) => (
-    <section data-testid="review-prompt">
-      <p>{tagOptions.join("/")}</p>
-      {error ? <p>{error}</p> : null}
-      <button disabled={pending} onClick={onSkip} type="button">跳过不评价</button>
-      <button disabled={pending} onClick={() => onSubmit({ rating: 5, tags: [tagOptions[0]], comment: "很好" })} type="button">提交评价</button>
-      <button disabled={pending} onClick={() => onSubmit({ rating: 4, tags: [tagOptions[1]], comment: "修改后" })} type="button">修改后提交</button>
-    </section>
-  )
+  ServiceReviewPrompt: ({ error, onSkip, onSubmit, pending, tagOptions }: { error?: string; onSkip: () => void; onSubmit: (input: { rating: number; tags: string[]; comment: string | null }) => void; pending?: boolean; tagOptions: Array<string | { label: string }> }) => {
+    const labels = tagOptions.map((tag) => typeof tag === "string" ? tag : tag.label);
+    return (
+      <section data-testid="review-prompt">
+        <p>{labels.join("/")}</p>
+        {error ? <p>{error}</p> : null}
+        <button disabled={pending} onClick={onSkip} type="button">跳过不评价</button>
+        <button disabled={pending} onClick={() => onSubmit({ rating: 5, tags: [labels[0]!], comment: "很好" })} type="button">提交评价</button>
+        <button disabled={pending} onClick={() => onSubmit({ rating: 4, tags: [labels[1]!], comment: "修改后" })} type="button">修改后提交</button>
+      </section>
+    );
+  }
 }));
 
 import { UserOrderDetailPage } from "./UserOrderDetailPage";
@@ -190,6 +200,38 @@ const coreService = {
   durationMinutes: 30,
   coverUrl: null,
   reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] }
+};
+
+const coreTechnicianDetail = {
+  id: 9,
+  publicId: "s0000000009",
+  displayName: "正式技师",
+  city: "东京",
+  avatarUrl: null,
+  reviewSummary: coreService.reviewSummary,
+  age: 28,
+  favoriteCount: 0,
+  shareCount: 0,
+  completedOrderCount: 12,
+  acceptanceRatePercent: 98,
+  primaryService: null,
+  shop: coreService.shop,
+  bio: "正式技师介绍",
+  serviceArea: "港区",
+  yearsExperience: 8,
+  mediaAssets: [],
+  services: [coreService],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 3 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: [{ label: "手法细致", count: 2 }]
+  },
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z"
 };
 
 let container: HTMLDivElement;
@@ -356,19 +398,29 @@ describe("formal user order detail", () => {
   it("loads review eligibility only after formal evidence and submits the technician direction", async () => {
     mocks.getOrder.mockResolvedValue(makeOrder("completed"));
     mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
-    mocks.createReview.mockResolvedValue({ applied: true, review: { targetType: "technician", rating: 5, tags: ["魅力值"], comment: "很好", createdAt: "2026-09-01T12:00:00.000Z" } });
+    mocks.createReview.mockResolvedValue({ applied: true, review: { targetType: "technician", rating: 5, tags: ["魅力max"], comment: "很好", createdAt: "2026-09-01T12:00:00.000Z" } });
     await render();
-    await waitFor(() => expect(container.textContent).toContain("魅力值/服务精神/情绪价值/元气"));
+    await waitFor(() => expect(container.textContent).toContain("魅力max/服务max/情绪max/元气max"));
     expect(mocks.getOwnReview).toHaveBeenCalledWith(88);
     await click("提交评价");
     await waitFor(() => expect(mocks.createReview).toHaveBeenCalledWith(88, {
       targetType: "technician",
       rating: 5,
-      tags: ["魅力值"],
+      tags: ["魅力max"],
       comment: "很好",
       idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
     }));
     await waitFor(() => expect(container.textContent).not.toContain("提交评价"));
+  });
+
+  it("offers existing formal custom review labels after the four fixed stamps", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("completed"));
+    mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
+    mocks.getTechnicianDetail.mockResolvedValue(coreTechnicianDetail);
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("魅力max/服务max/情绪max/元气max/手法细致"));
   });
 
   it("retains the review key for unchanged ambiguous retry and replaces it after editing", async () => {

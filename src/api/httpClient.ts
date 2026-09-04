@@ -14,6 +14,8 @@ import {
   type AuthCredentialSnapshot
 } from "../auth/authCredentialCoordinator";
 import { formalAccessTokenTtlSeconds } from "../auth/authContract";
+import { resolveAuthPersistenceScope } from "../auth/authPersistenceScope";
+import { resolvePortalApiBaseUrl } from "./portalApiBaseUrl";
 
 export type ApiSuccessResponse<TData> = {
   code: 0;
@@ -67,7 +69,6 @@ export class ApiClientError extends Error {
   }
 }
 
-const defaultApiPrefix = "/api/v1";
 const fallbackApiRequestTimeoutMs = 10_000;
 const configuredApiRequestTimeoutMs = Number.parseInt(
   import.meta.env.VITE_API_REQUEST_TIMEOUT_MS ?? "",
@@ -140,9 +141,7 @@ function normalizePath(path: string) {
 }
 
 function getApiBaseUrl() {
-  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
-
-  return configured ? trimTrailingSlash(configured) : defaultApiPrefix;
+  return resolvePortalApiBaseUrl(resolveAuthPersistenceScope(), import.meta.env);
 }
 
 function getRequestBaseUrl(baseUrl?: string) {

@@ -5,6 +5,11 @@ const paginationQuerySchema = {
   pageSize: z.coerce.number().int().positive().max(100).optional()
 };
 
+const booleanQueryValueSchema = z.union([
+  z.boolean(),
+  z.enum(["true", "false"]).transform((value) => value === "true")
+]);
+
 export const shopIdParamSchema = z.object({
   shopId: z.coerce.number().int().positive()
 });
@@ -24,7 +29,7 @@ export const pricingModeBodySchema = z.object({
 
 export const technicianServiceListQuerySchema = z.object({
   ...paginationQuerySchema,
-  activeOnly: z.coerce.boolean().optional()
+  activeOnly: booleanQueryValueSchema.optional()
 });
 
 export const technicianServiceOrderBodySchema = z

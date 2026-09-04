@@ -19,6 +19,7 @@ export type PaginatedPricingData<TItem> = {
 
 export type TechnicianServicePayload = {
   id: number;
+  publicId: string;
   shopId: number;
   technicianId: number;
   sourceShopServiceId: number | null;
@@ -28,10 +29,12 @@ export type TechnicianServicePayload = {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
+  shop: { publicId: string | null; name: string; address: string };
   isActive: boolean;
   isBookable: boolean;
   isRecommended: boolean;
@@ -158,6 +161,20 @@ export const pricingModeApi = {
     return httpClient.request<{ deleted: true }>(`/technicians/me/shops/${shopId}/services/${serviceId}`, {
       method: "DELETE"
     });
+  },
+
+  uploadTechnicianServiceCover(shopId: number, serviceId: number, file: File) {
+    return httpClient.request<TechnicianServicePayload>(
+      `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
+      { body: file, headers: { "Content-Type": file.type }, method: "PUT" }
+    );
+  },
+
+  removeTechnicianServiceCover(shopId: number, serviceId: number) {
+    return httpClient.request<TechnicianServicePayload>(
+      `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
+      { method: "DELETE" }
+    );
   },
 
   listPublicTechnicianServices(shopId: number, technicianId: number, query: { page?: number; pageSize?: number } = {}) {

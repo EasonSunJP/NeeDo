@@ -5084,11 +5084,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           acceptanceRateBps: { type: "integer", minimum: 0, maximum: 10000 }
         }
       },
+      TechnicianServiceShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name", "address"],
+        properties: {
+          publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$" },
+          name: { type: "string" },
+          address: { type: "string" }
+        }
+      },
       TechnicianService: {
         type: "object",
         additionalProperties: false,
         required: [
           "id",
+          "publicId",
           "shopId",
           "technicianId",
           "sourceShopServiceId",
@@ -5098,10 +5109,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "priceAmount",
           "currency",
           "durationMinutes",
+          "usageCount",
           "taxIncluded",
           "coverImageUrl",
           "images",
           "tags",
+          "shop",
           "isActive",
           "isBookable",
           "isRecommended",
@@ -5113,6 +5126,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", format: "uuid" },
           shopId: { type: "integer", minimum: 1 },
           technicianId: { type: "integer", minimum: 1 },
           sourceShopServiceId: { type: ["integer", "null"], minimum: 1 },
@@ -5122,10 +5136,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           priceAmount: { type: "integer", minimum: 0 },
           currency: { type: "string", minLength: 3, maxLength: 3 },
           durationMinutes: { type: "integer", minimum: 1 },
+          usageCount: { type: "integer", minimum: 0 },
           taxIncluded: { type: "boolean", enum: [true] },
           coverImageUrl: { type: ["string", "null"] },
           images: { type: "array", items: { type: "string" } },
           tags: { type: "array", items: { type: "string" } },
+          shop: { $ref: "#/components/schemas/TechnicianServiceShop" },
           isActive: { type: "boolean" },
           isBookable: { type: "boolean" },
           isRecommended: { type: "boolean" },
@@ -7930,6 +7946,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "priceAmount",
           "currency",
           "durationMinutes",
+          "usageCount",
           "coverUrl",
           "reviewSummary"
         ],
@@ -7947,6 +7964,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           priceAmount: { type: "string", example: "8800.00" },
           currency: { type: "string", example: "JPY" },
           durationMinutes: { type: "integer" },
+          usageCount: { type: "integer", minimum: 0 },
           coverUrl: { type: ["string", "null"] },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" }
         }
@@ -8032,6 +8050,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      TechnicianReviewSpecialTagCount: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "label", "count"],
+        properties: {
+          code: {
+            type: "string",
+            enum: ["appeal_max", "service_max", "emotion_max", "energy_max"]
+          },
+          label: {
+            type: "string",
+            enum: ["魅力max", "服务max", "情绪max", "元气max"]
+          },
+          count: { type: "integer", minimum: 0 }
+        }
+      },
+      TechnicianReviewCustomTagCount: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "count"],
+        properties: {
+          label: { type: "string", minLength: 1, maxLength: 50 },
+          count: { type: "integer", minimum: 1 }
+        }
+      },
+      TechnicianReviewTagSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["special", "custom"],
+        properties: {
+          special: {
+            type: "array",
+            minItems: 4,
+            maxItems: 4,
+            items: { $ref: "#/components/schemas/TechnicianReviewSpecialTagCount" }
+          },
+          custom: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/TechnicianReviewCustomTagCount" }
+          }
+        }
+      },
       TechnicianDetail: {
         allOf: [
           { $ref: "#/components/schemas/TechnicianCard" },
@@ -8041,7 +8102,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "shop",
               "bio",
               "serviceArea",
+              "gender",
+              "heightCm",
+              "languages",
               "yearsExperience",
+              "reviewTagSummary",
               "mediaAssets",
               "services",
               "createdAt",
@@ -8053,7 +8118,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               },
               bio: { type: ["string", "null"] },
               serviceArea: { type: ["string", "null"] },
+              gender: { type: "string", enum: ["female", "male", "private"] },
+              heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+              languages: { type: "array", items: { type: "string" } },
               yearsExperience: { type: "integer" },
+              reviewTagSummary: { $ref: "#/components/schemas/TechnicianReviewTagSummary" },
               mediaAssets: { type: "array", items: { $ref: "#/components/schemas/MediaAsset" } },
               services: { type: "array", items: { $ref: "#/components/schemas/ServiceCard" } },
               createdAt: { type: "string", format: "date-time" },
@@ -8170,12 +8239,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "avatarUrl",
           "bio",
           "city",
+          "gender",
           "age",
           "heightCm",
           "languages",
           "serviceAreas",
           "specialTags",
           "profileTags",
+          "reviewTagSummary",
           "canServeForeigners",
           "bidBudgetMinJpy",
           "bidBudgetMaxJpy",
@@ -8195,6 +8266,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           avatarUrl: { type: ["string", "null"] },
           bio: { type: ["string", "null"], maxLength: 2000 },
           city: { type: "string" },
+          gender: { type: "string", enum: ["female", "male", "private"] },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
           languages: { type: "array", items: { type: "string" } },
@@ -8202,10 +8274,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           specialTags: {
             type: "array",
             readOnly: true,
-            description: "Active, non-expired operations-assigned technician tags.",
+            description: "Deprecated compatibility field. Fixed review labels are returned by reviewTagSummary.",
             items: { type: "string" }
           },
-          profileTags: { type: "array", items: { type: "string" } },
+          profileTags: {
+            type: "array",
+            readOnly: true,
+            description: "Deprecated compatibility field. Review-derived labels are returned by reviewTagSummary.",
+            items: { type: "string" }
+          },
+          reviewTagSummary: { $ref: "#/components/schemas/TechnicianReviewTagSummary" },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0 },
@@ -8243,6 +8321,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxLength: 900000,
             pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
           },
+          gender: { type: "string", enum: ["female", "male", "private"] },
           age: { type: ["integer", "null"], minimum: 18, maximum: 150 },
           heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
           languages: {
@@ -8258,7 +8337,6 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxItems: 20,
             items: { type: "string", maxLength: 80 }
           },
-          profileTags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } },
           canServeForeigners: { type: "boolean" },
           bidBudgetMinJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
           bidBudgetMaxJpy: { type: ["integer", "null"], minimum: 0, maximum: 100000000 },
@@ -8669,6 +8747,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publicReason: { type: ["string", "null"] }
         }
       },
+      OrderTimelineCommentEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "id",
+          "createdAt",
+          "actorUserId",
+          "actorDisplayName",
+          "actorAvatarUrl",
+          "body"
+        ],
+        properties: {
+          type: { type: "string", const: "ORDER_COMMENT_ADDED" },
+          id: { type: "string", pattern: "^comment:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: "integer", minimum: 1 },
+          actorDisplayName: { type: "string", minLength: 1 },
+          actorAvatarUrl: { type: ["string", "null"] },
+          body: { type: "string", minLength: 1, maxLength: 1000 }
+        }
+      },
       OperationsOrderTimelinePerformanceEvent: {
         type: "object",
         additionalProperties: false,
@@ -8695,16 +8795,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      OperationsOrderTimelineAddOnEvent: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Authorized operations view of a persisted add-on proposal or decision using immutable service snapshots.",
+        required: [
+          "type",
+          "id",
+          "createdAt",
+          "actorUserId",
+          "publicReason",
+          "addOnId",
+          "serviceId",
+          "serviceName",
+          "priceAmountJpy",
+          "currency",
+          "durationMinutes"
+        ],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["ADD_ON_PROPOSED", "ADD_ON_ACCEPTED", "ADD_ON_REJECTED"]
+          },
+          id: { type: "string", pattern: "^service:[1-9][0-9]*$" },
+          createdAt: { type: "string", format: "date-time" },
+          actorUserId: { type: ["integer", "null"] },
+          publicReason: { type: ["string", "null"], maxLength: 500 },
+          addOnId: { type: "integer", minimum: 1 },
+          serviceId: { type: "integer", minimum: 1 },
+          serviceName: { type: "string", minLength: 1, maxLength: 160 },
+          priceAmountJpy: { type: "integer", minimum: 0 },
+          currency: { type: "string", const: "JPY" },
+          durationMinutes: { type: "integer", minimum: 1 }
+        }
+      },
       OperationsOrderTimelineEvent: {
         oneOf: [
           { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
-          { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+          { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" },
+          { $ref: "#/components/schemas/OperationsOrderTimelineAddOnEvent" }
         ],
         discriminator: { propertyName: "type" }
       },
       OrderTimelineEvent: {
         oneOf: [
           { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+          { $ref: "#/components/schemas/OrderTimelineCommentEvent" },
           { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
         ],
         discriminator: { propertyName: "type" }
@@ -8754,6 +8891,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      BookingOrderCustomerSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "userId",
+          "profileId",
+          "publicId",
+          "displayName",
+          "avatarUrl",
+          "membershipLevel",
+          "ratingAverage",
+          "reviewCount"
+        ],
+        properties: {
+          userId: { type: "integer", minimum: 1 },
+          profileId: { type: ["integer", "null"], minimum: 1 },
+          publicId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"] },
+          membershipLevel: { type: "string" },
+          ratingAverage: { type: "string", pattern: "^[0-9]+(?:\\.[0-9]{2})$" },
+          reviewCount: { type: "integer", minimum: 0 }
+        }
+      },
       BookingOrder: {
         type: "object",
         required: [
@@ -8773,6 +8934,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "paymentRefundReference",
           "paymentRefundReason",
           "customerUserId",
+          "customer",
           "serviceId",
           "technicianServiceId",
           "shopId",
@@ -8826,6 +8988,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           paymentRefundReference: { type: ["string", "null"], maxLength: 120 },
           paymentRefundReason: { type: ["string", "null"], maxLength: 500 },
           customerUserId: { type: "integer" },
+          customer: { $ref: "#/components/schemas/BookingOrderCustomerSummary" },
           serviceId: { type: ["integer", "null"], minimum: 1 },
           technicianServiceId: { type: ["integer", "null"], minimum: 1 },
           shopId: { type: "integer" },
@@ -11342,6 +11505,93 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           list: {
             type: "array",
             items: { $ref: "#/components/schemas/MerchantEmployee" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      ShopEmployeeDirectoryRole: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "names", "isTechnicianRole"],
+        properties: {
+          code: { type: "string", minLength: 1, maxLength: 64 },
+          names: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zhHans", "zhHant", "ja", "en", "ko"],
+            properties: {
+              zhHans: { type: "string" },
+              zhHant: { type: "string" },
+              ja: { type: "string" },
+              en: { type: "string" },
+              ko: { type: "string" }
+            }
+          },
+          isTechnicianRole: { type: "boolean" }
+        }
+      },
+      ShopEmployeeDirectoryTechnician: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "relationshipType", "workStatus"],
+        properties: {
+          needoId: { type: "string", pattern: "^s[0-9]{10}$" },
+          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          workStatus: {
+            type: "string",
+            enum: ["active", "on_leave", "suspended"]
+          }
+        }
+      },
+      ShopEmployeeDirectoryItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "needoId",
+          "displayName",
+          "avatarUrl",
+          "email",
+          "phone",
+          "status",
+          "startsAt",
+          "endsAt",
+          "roles",
+          "technician"
+        ],
+        properties: {
+          needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"], format: "uri-reference" },
+          email: { type: "string", format: "email" },
+          phone: { type: ["string", "null"] },
+          status: {
+            type: "string",
+            enum: ["active", "on_leave", "suspended"]
+          },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: ["string", "null"], format: "date-time" },
+          roles: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopEmployeeDirectoryRole" }
+          },
+          technician: {
+            anyOf: [
+              { $ref: "#/components/schemas/ShopEmployeeDirectoryTechnician" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      ShopEmployeeDirectoryPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopEmployeeDirectoryItem" }
           },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
@@ -13940,6 +14190,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/employee-directory`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "List all employees of the authenticated shop",
+        description:
+          "Returns owners, administrators, staff, technicians and other formal employees. The shop scope is taken only from the authenticated identity; shopId is not accepted.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:employee-affiliation:read",
+        parameters: [
+          {
+            name: "page",
+            in: "query",
+            schema: { type: "integer", minimum: 1, default: 1 }
+          },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "keyword",
+            in: "query",
+            schema: { type: "string", maxLength: 100 }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "on_leave", "suspended"] }
+          },
+          {
+            name: "roleCode",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 64 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-shop employee directory", {
+            $ref: "#/components/schemas/ShopEmployeeDirectoryPage"
+          }),
+          "400": jsonErrorResponse("error.validation — strict directory query validation failed"),
+          "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+          "403": jsonErrorResponse(
+            "error.identity.forbidden — missing permission or authenticated shop scope"
+          )
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/employees/{needoId}`]: {
       get: {
         tags: ["Merchant Employees"],
@@ -16399,6 +16696,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "Repeated keywords and categoryIds use OR semantics. Shop and technician names use substring matching. Omitting entityType preserves the legacy service result page. When a technician origin pair is supplied, ranking starts at 3 km and expands exactly 1 km until three eligible technicians are found or all eligible candidates are exhausted; precise technician coordinates are never returned.",
         parameters: [
           {
+            name: "X-Search-Session",
+            in: "header",
+            description: "Optional anonymous client identifier; the server stores only a domain-separated HMAC.",
+            schema: { type: "string", minLength: 8, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" }
+          },
+          {
             name: "entityType",
             in: "query",
             schema: {
@@ -16962,13 +17265,95 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/technicians/me/shops/{shopId}/services/{serviceId}/cover`]: {
+      put: {
+        tags: ["Pricing Mode"],
+        summary: "Replace technician owned service cover image",
+        description:
+          "Accepts single-frame images only as one raw JPEG, PNG, or WebP body up to 8 MiB. APNG and JPEG MPF containers, animated WebP, and other multi-page content are invalid. Bounded container-header checks plus a maintained asynchronous image decode must confirm the declared format, complete pixel payload, and a maximum of 25,000,000 decoded pixels; violations return error.technician_service.cover_invalid.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "serviceId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: Object.fromEntries(
+            ["image/jpeg", "image/png", "image/webp"].map((mimeType) => [
+              mimeType,
+              {
+                schema: {
+                  type: "string",
+                  format: "binary",
+                  maxLength: 8 * 1024 * 1024
+                }
+              }
+            ])
+          )
+        },
+        responses: {
+          "200": jsonDataResponse("Technician service with replaced cover", {
+            $ref: "#/components/schemas/TechnicianService"
+          }),
+          "400": jsonErrorResponse("error.technician_service.cover_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.technician_service.not_found"),
+          "413": jsonErrorResponse("error.technician_service.cover_too_large"),
+          "415": jsonErrorResponse("error.technician_service.cover_invalid"),
+          "500": jsonErrorResponse("error.internal_server_error")
+        }
+      },
+      delete: {
+        tags: ["Pricing Mode"],
+        summary: "Remove technician owned service cover image",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "serviceId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Technician service with removed cover", {
+            $ref: "#/components/schemas/TechnicianService"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.technician_service.not_found"),
+          "500": jsonErrorResponse("error.internal_server_error")
+        }
+      }
+    },
     [`${config.API_PREFIX}/technicians/{id}`]: {
       get: {
         tags: ["Core Read"],
         summary: "Public technician detail",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+        parameters: [{
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {
+            oneOf: [
+              { type: "integer", minimum: 1 },
+              { type: "string", pattern: "^s[0-9]{10}$" }
+            ]
+          }
+        }],
         responses: {
-          "200": { description: "Technician detail" },
+          "200": jsonDataResponse("Technician detail", {
+            $ref: "#/components/schemas/TechnicianDetail"
+          }),
           "404": { description: "Technician not found" }
         }
       }
@@ -17723,6 +18108,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...formalOrderCommonErrorResponses,
           "403": fulfillmentForbiddenResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/timeline/comments`]: {
+      post: {
+        operationId: "createOrderTimelineComment",
+        tags: ["Booking Fulfillment"],
+        summary: "Add a participant-visible order tracking comment",
+        description:
+          "The server derives the customer or assigned-technician participant and returns the updated formal order timeline.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:read",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            body: {
+              type: "string",
+              minLength: 1,
+              maxLength: 1000,
+              "x-normalization": "NFKC+trim",
+              "x-requires-visible-code-point": true
+            }
+          },
+          ["body"]
+        ),
+        responses: {
+          "201": jsonDataResponse("Updated participant order projection", {
+            $ref: "#/components/schemas/BookingOrder"
+          }),
+          ...formalOrderCommonErrorResponses,
+          "403": fulfillmentForbiddenResponse,
+          "503": dependencyUnavailableResponse("the order timeline repository is unavailable")
         }
       }
     },
@@ -19602,6 +20019,172 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "409": jsonErrorResponse("error.operating_cost.conflict"),
           "422": jsonErrorResponse("error.operating_cost.allocation_invalid")
         }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/categories`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "List versioned formal service types",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 120 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated formal service types", { type: "object" }),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Service Search Analytics"],
+        summary: "Create an audited formal service type",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        requestBody: authJsonBody(
+          {
+            code: { type: "string", pattern: "^[a-z0-9][a-z0-9._-]*$", maxLength: 120 },
+            sortOrder: { type: "integer", minimum: 0 },
+            isActive: { type: "boolean" },
+            translations: { type: "array", minItems: 1, maxItems: 5, items: { type: "object" } },
+            reason: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          ["code", "sortOrder", "isActive", "translations", "reason"]
+        ),
+        responses: {
+          "201": jsonDataResponse("Service type created", { type: "object" }),
+          "400": jsonErrorResponse("error.validation"),
+          "409": jsonErrorResponse("error.service_taxonomy.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/categories/{id}`]: {
+      patch: {
+        tags: ["Service Search Analytics"],
+        summary: "Update a service type with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            code: { type: "string", pattern: "^[a-z0-9][a-z0-9._-]*$", maxLength: 120 },
+            sortOrder: { type: "integer", minimum: 0 },
+            isActive: { type: "boolean" },
+            translations: { type: "array", minItems: 1, maxItems: 5, items: { type: "object" } },
+            expectedVersion: { type: "integer", minimum: 1 },
+            reason: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          ["code", "sortOrder", "isActive", "translations", "expectedVersion", "reason"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Service type updated", { type: "object" }),
+          "404": jsonErrorResponse("error.service_taxonomy.not_found"),
+          "409": jsonErrorResponse("error.service_taxonomy.conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/categories/{categoryId}/keywords`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "List paginated search tags under a service type",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:read",
+        parameters: [
+          { name: "categoryId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 120 } }
+        ],
+        responses: { "200": jsonDataResponse("Paginated formal search tags", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/keywords`]: {
+      post: {
+        tags: ["Service Search Analytics"],
+        summary: "Create an audited search tag",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "201": jsonDataResponse("Search tag created", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/keywords/{id}`]: {
+      patch: {
+        tags: ["Service Search Analytics"],
+        summary: "Update a search tag with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        parameters: [idPathParameter()],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "200": jsonDataResponse("Search tag updated", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/keywords/{keywordId}/aliases`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "List paginated normalized search synonyms",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:read",
+        parameters: [
+          { name: "keywordId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": jsonDataResponse("Paginated keyword synonyms", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/aliases`]: {
+      post: {
+        tags: ["Service Search Analytics"],
+        summary: "Create an audited normalized keyword synonym",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "201": jsonDataResponse("Keyword synonym created", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/service-taxonomy/aliases/{id}`]: {
+      patch: {
+        tags: ["Service Search Analytics"],
+        summary: "Update a keyword synonym with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:service-taxonomy:write",
+        parameters: [idPathParameter()],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        responses: { "200": jsonDataResponse("Keyword synonym updated", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/search-analytics/top-keywords`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "Read actual submitted-search TOP10 by city, time and service type",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:search-analytics:read",
+        parameters: [
+          { name: "startAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "endAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": jsonDataResponse("Search keyword TOP10", { type: "object" }) }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/search-analytics/trends`]: {
+      get: {
+        tags: ["Service Search Analytics"],
+        summary: "Compare up to five search keywords using raw counts and a labelled 0-100 index",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:search-analytics:read",
+        parameters: [
+          { name: "startAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "endAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "keywords", in: "query", required: true, description: "Comma-separated or repeated keywords; maximum five.", schema: { type: "array", maxItems: 5, items: { type: "string" } } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 120 } },
+          { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": jsonDataResponse("Raw and normalized Tokyo-day trend series", { type: "object" }) }
       }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}`]: {

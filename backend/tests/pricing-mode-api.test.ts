@@ -1,6 +1,11 @@
 import request from "supertest";
 import { createApp } from "../src/app";
+import { ERROR_CODES } from "../src/constants/error-codes";
+import type { ContentMediaRepositoryPort } from "../src/services/content-media.service";
+import type { ContentMediaStoragePort } from "../src/services/content-media.storage";
 import type { PricingModeRepositoryPort } from "../src/services/pricing-mode.service";
+import { AppError } from "../src/utils/app-error";
+import { validJpeg } from "./fixtures/content-images";
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
 const now = new Date("2026-06-02T00:00:00.000Z");
@@ -30,6 +35,10 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
     createTechnicianService: jest.fn(),
     updateTechnicianService: jest.fn(),
     deleteTechnicianService: jest.fn(),
+    findTechnicianServiceCoverTarget: jest.fn(),
+    replaceTechnicianServiceCover: jest.fn(),
+    removeTechnicianServiceCover: jest.fn(),
+    hasActiveMediaUrl: jest.fn(),
     listBookingNavigationShopServices: jest.fn(),
     listBookingNavigationTechnicians: jest.fn(async () =>
       paginated([
@@ -40,6 +49,7 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       paginated([
         {
           id: 11,
+          publicId: "00000000-0000-4000-8000-000000000011",
           shopId: 1,
           technicianId: 3,
           sourceShopServiceId: null,
@@ -49,9 +59,11 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
           priceAmount: 8800,
           currency: "JPY",
           durationMinutes: 60,
+          usageCount: 7,
           coverImageUrl: null,
           images: [],
           tags: [],
+          shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
           isActive: true,
           isBookable: true,
           isRecommended: false,
@@ -170,7 +182,16 @@ describe("pricing mode public API", () => {
       .expect(200);
     expect(listResponse.body.data).toMatchObject({
       total: 2,
-      list: [{ id: 11, shopId: 1 }, { id: 12, shopId: 2 }]
+      list: [
+        { id: 11, shopId: 1 },
+        { id: 12, shopId: 2 }
+      ]
+    });
+    expect(pricingModeRepository.listTechnicianServicesByProfile).toHaveBeenCalledWith({
+      technicianId: 3,
+      page: 1,
+      pageSize: 20,
+      activeOnly: false
     });
 
     const reorderResponse = await request(fixture.app)
@@ -199,10 +220,136 @@ describe("pricing mode public API", () => {
       .expect(400);
     expect(pricingModeRepository.reorderTechnicianServices).toHaveBeenCalledTimes(1);
   });
+
+  it("protects raw cover writes before parsing and supports the authenticated upload/remove flow", async () => {
+    const pricingModeRepository = createRepository();
+    let coverImageUrl: string | null = null;
+    const baseService = serviceRecordForApi(11, 1);
+    pricingModeRepository.findTechnicianShopScope.mockResolvedValue({ technicianId: 3, shopId: 1 });
+    pricingModeRepository.findTechnicianServiceCoverTarget.mockImplementation(async () => ({
+      service: { ...baseService, coverImageUrl },
+      activeMediaAssetId: coverImageUrl ? 101 : null,
+      checksumSha256: coverImageUrl ? "a".repeat(64) : null,
+      mimeType: coverImageUrl ? "image/jpeg" : null
+    }));
+    pricingModeRepository.replaceTechnicianServiceCover.mockImplementation(async (input) => {
+      coverImageUrl = input.url;
+      return { ...baseService, coverImageUrl };
+    });
+    pricingModeRepository.removeTechnicianServiceCover.mockImplementation(async () => {
+      coverImageUrl = null;
+      return { ...baseService, coverImageUrl };
+    });
+    const contentMediaStorage: jest.Mocked<ContentMediaStoragePort> = {
+      prepare: jest.fn(async ({ bytes, mimeType }) => {
+        if (!bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.content.media_invalid",
+            statusCode: 400
+          });
+        }
+        return { fileKey: "cover.jpg", checksumSha256: "a".repeat(64), mimeType };
+      }),
+      save: jest.fn(async ({ mimeType }) => ({
+        fileKey: "cover.jpg",
+        checksumSha256: "a".repeat(64),
+        mimeType,
+        created: true
+      })),
+      read: jest.fn(),
+      delete: jest.fn()
+    };
+    const contentMediaRepository = {
+      withChecksumLock: jest.fn(
+        async (_checksum: string, operation: (locked: unknown) => Promise<unknown>) => operation({})
+      )
+    } as unknown as jest.Mocked<ContentMediaRepositoryPort>;
+    const fixture = await createStep06Fixture({
+      pricingModeRepository,
+      contentMediaStorage,
+      contentMediaRepository
+    });
+    fixture.users[0].identities[0] = {
+      ...fixture.users[0].identities[0],
+      type: "technician",
+      scopeType: "technician_profile",
+      scopeId: 3
+    };
+
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Content-Type", "image/jpeg")
+      .send(validJpeg)
+      .expect(401);
+    expect(pricingModeRepository.findTechnicianShopScope).not.toHaveBeenCalled();
+    expect(contentMediaStorage.prepare).not.toHaveBeenCalled();
+    expect(contentMediaRepository.withChecksumLock).not.toHaveBeenCalled();
+
+    fixture.replaceAdminPermissions(["auth:me"]);
+    const accessToken = await fixture.loginAsAdmin();
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("Content-Type", "image/jpeg")
+      .send(validJpeg)
+      .expect(403);
+    expect(pricingModeRepository.findTechnicianShopScope).not.toHaveBeenCalled();
+    expect(contentMediaStorage.prepare).not.toHaveBeenCalled();
+    expect(contentMediaRepository.withChecksumLock).not.toHaveBeenCalled();
+
+    fixture.replaceAdminPermissions(["auth:me", "technician:services:write"]);
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("Content-Type", "text/plain")
+      .send("not-an-image")
+      .expect(415);
+    expect(pricingModeRepository.findTechnicianShopScope).not.toHaveBeenCalled();
+    expect(contentMediaStorage.prepare).not.toHaveBeenCalled();
+    expect(contentMediaRepository.withChecksumLock).not.toHaveBeenCalled();
+
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("Content-Type", "image/jpeg")
+      .send(Buffer.alloc(0))
+      .expect(400);
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("Content-Type", "image/jpeg")
+      .send(Buffer.from([0x00, 0x01, 0x02]))
+      .expect(400);
+    await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("Content-Type", "image/jpeg")
+      .send(Buffer.alloc(8 * 1024 * 1024 + 1))
+      .expect(413);
+
+    const upload = await request(fixture.app)
+      .put("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .set("Content-Type", "image/jpeg")
+      .send(validJpeg)
+      .expect(200);
+    expect(upload.body.data).toMatchObject({
+      id: 11,
+      coverImageUrl: "/media/content/cover.jpg"
+    });
+
+    await request(fixture.app)
+      .delete("/api/v1/technicians/me/shops/1/services/11/cover")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => expect(response.body.data.coverImageUrl).toBeNull());
+  });
 });
 
 const serviceRecordForApi = (id: number, shopId: number) => ({
   id,
+  publicId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
   shopId,
   technicianId: 3,
   sourceShopServiceId: null,
@@ -212,10 +359,16 @@ const serviceRecordForApi = (id: number, shopId: number) => ({
   priceAmount: 8_800,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true as const,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: {
+    publicId: `shop${String(shopId).padStart(10, "0")}`,
+    name: `Shop ${shopId}`,
+    address: `Address ${shopId}`
+  },
   isActive: true,
   isBookable: true,
   isRecommended: false,

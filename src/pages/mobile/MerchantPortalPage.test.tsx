@@ -47,7 +47,9 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf('{activeView === "contacts" && (')
     );
 
-    expect(schedulePanelSource).toContain('<UnifiedUserCalendar currentStore={store}');
+    expect(schedulePanelSource).toContain("<UnifiedUserCalendar");
+    expect(schedulePanelSource).toContain("currentStore={store}");
+    expect(schedulePanelSource).toContain("technicians={storeTechnicians}");
     expect(schedulePanelSource).not.toContain("<FormalScheduleInventoryPanel");
     expect(schedulePanelSource).not.toContain('className="space-y-4"');
   });

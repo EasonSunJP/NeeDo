@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
@@ -8,6 +8,8 @@ import { technicianNavItems } from "../../components/mobile/navItems";
 import { Button } from "../../components/ui/Button";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import { SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail/paths";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
@@ -18,6 +20,7 @@ import {
   type OrderCheckout,
   type OrderReview
 } from "../booking/api";
+import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
@@ -32,6 +35,29 @@ const panelClass =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-4 shadow-[var(--client-shadow)]";
 const fieldClass =
   "mt-2 h-11 w-full rounded-[16px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none";
+
+function bookingCustomerMiniCardData(order: BookingOrder): SocialProfileMiniData | null {
+  if (!order.customer) return null;
+  const rating = Number(order.customer.ratingAverage);
+
+  return {
+    id: String(order.customer.profileId ?? order.customer.userId),
+    entityType: "user",
+    displayName: order.customer.displayName,
+    avatar: order.customer.avatarUrl ?? "",
+    coverImage: order.customer.avatarUrl ?? "",
+    regionLabel: `ID ${order.customer.publicId}`,
+    addressLabel: "ID",
+    addressValue: order.customer.publicId,
+    primaryLabel: order.customer.membershipLevel,
+    kycVerified: true,
+    levelLabel: "",
+    scoreLabel: "信用度",
+    scoreValue: `${Number.isFinite(rating) ? rating.toFixed(1) : "0.0"}/5`,
+    followerCount: 0,
+    followingCount: 0
+  };
+}
 
 function TechnicianSchedulePageShell({
   title,
@@ -654,6 +680,13 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
     setOrder(resource.data);
   }, [resource.data]);
 
+  const refreshOrder = useCallback(async () => {
+    const latestOrder = await bookingApi.getOrder(orderId);
+    setOrder(latestOrder);
+  }, [orderId]);
+
+  useOrderRealtimeRefresh({ onRefresh: refreshOrder, orderId });
+
   useEffect(() => {
     if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
       setCheckout(null);
@@ -713,6 +746,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   }
 
   const canCancel = order.status === "pending" || order.status === "confirmed";
+  const customerCard = bookingCustomerMiniCardData(order);
 
   const retainedMutationKey = (slot: string, semantics: string) => {
     const retained = mutationKeys.current.get(slot);
@@ -874,8 +908,26 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
             <DetailRow label="店铺" value={order.shopName} />
             <DetailRow label="预约时间" value={`${localDateLabel(order.startsAt)} · ${timeRangeLabel(order.startsAt, order.endsAt)}`} />
             <DetailRow label="支付" value={orderPaymentLabel(order)} />
-            <DetailRow label="客户账号" value={`#${order.customerUserId}`} />
           </dl>
+          <div className="mt-4">
+            <h3 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">用户</h3>
+            {customerCard ? (
+              <SocialProfileMiniCard
+                data={customerCard}
+                detailTo={order.customer?.profileId
+                  ? getScopedProfileDetailPath("technician", "user", String(order.customer.profileId))
+                  : undefined}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+                topTags={[{ label: "预约者", tone: "purple" }]}
+              />
+            ) : (
+              <div className="rounded-[18px] bg-[color:var(--client-elevated)] px-3 py-4 text-sm font-bold text-[color:var(--client-muted)]">
+                用户资料暂不可用
+              </div>
+            )}
+          </div>
           {order.note ? (
             <div className="mt-3 rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3 text-sm">
               <strong>备注：</strong>{order.note}
@@ -884,8 +936,13 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
         </section>
 
         <ContactEventTimelinePanel
-          title="状态记录"
+          title="订单追踪信息"
           events={buildFormalOrderTimelineEvents(order)}
+          onCommentSubmit={(body) => {
+            void runFormalMutation("timeline-comment", () =>
+              bookingApi.createTimelineComment(order.id, { body })
+            );
+          }}
         />
 
         {order.status === "confirmed" ? (

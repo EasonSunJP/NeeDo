@@ -73,7 +73,11 @@ const publishedTechnicianWithoutServices = {
   id: 41,
   displayName: "橘 ひかり",
   city: "Tokyo",
+  visibility: "public",
+  gender: "female",
   age: 25,
+  heightCm: { toString: () => "164.00" },
+  languages: ["日本語", "中文"],
   baseLatitude: { toString: () => "35.6762000" },
   baseLongitude: { toString: () => "139.6503000" },
   mediaAssets: [],
@@ -351,11 +355,13 @@ describe("CoreReadRepository multi-entity search", () => {
       },
       technicianProfile: unpublishedTechnician,
       mediaAssets: [],
-      reviewSummary: null
+      reviewSummary: null,
+      _count: { bookingOrders: 18 }
     };
+    const findMany = jest.fn(async () => [service]);
     const repository = new CoreReadRepository({
       service: {
-        findMany: jest.fn(async () => [service]),
+        findMany,
         count: jest.fn(async () => 1)
       }
     } as never);
@@ -367,8 +373,19 @@ describe("CoreReadRepository multi-entity search", () => {
       page: 1,
       pageSize: 20
     })).resolves.toMatchObject({
-      list: [{ technician: null }]
+      list: [{ technician: null, usageCount: 18 }]
     });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        _count: {
+          select: {
+            bookingOrders: {
+              where: { status: "COMPLETED", deletedAt: null }
+            }
+          }
+        }
+      })
+    }));
   });
 
   it("combines keywords and category IDs as one OR group", async () => {
@@ -522,6 +539,82 @@ describe("CoreReadRepository multi-entity search", () => {
     expect(result.get(41)).not.toHaveProperty("baseLatitude");
     expect(fixture.technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: { in: [41] } })
+    }));
+  });
+
+  it("adds the formal review tag summary only to technician detail", async () => {
+    const technician = {
+      ...publishedTechnicianWithoutServices,
+      bio: "肩颈护理",
+      serviceArea: "港区",
+      yearsExperience: 8,
+      shop: null,
+      services: [],
+      status: "published",
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    const findFirst = jest.fn(async () => technician);
+    const client = {
+      technicianProfile: { findFirst },
+      orderReviewTag: {
+        groupBy: jest.fn(async () => [
+          { label: "服务精神", _count: { _all: 4 }, _min: { createdAt: now } },
+          { label: "手法细致", _count: { _all: 2 }, _min: { createdAt: now } }
+        ])
+      }
+    };
+    const repository = new CoreReadRepository(client as never);
+
+    await expect(repository.findTechnicianDetail(41)).resolves.toMatchObject({
+      id: 41,
+      gender: "female",
+      heightCm: 164,
+      languages: ["日本語", "中文"],
+      yearsExperience: 8,
+      completedOrderCount: 1280,
+      acceptanceRatePercent: 98,
+      reviewTagSummary: {
+        special: [
+          { code: "appeal_max", label: "魅力max", count: 0 },
+          { code: "service_max", label: "服务max", count: 4 },
+          { code: "emotion_max", label: "情绪max", count: 0 },
+          { code: "energy_max", label: "元气max", count: 0 }
+        ],
+        custom: [{ label: "手法细致", count: 2 }]
+      }
+    });
+
+    expect(findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({
+        id: 41,
+        visibility: "public"
+      })
+    }));
+
+    await expect(repository.findTechnicianDetail("s5831047296")).resolves.toMatchObject({
+      id: 41,
+      publicId: "s5831047296"
+    });
+    expect(findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({
+        visibility: "public",
+        user: {
+          identities: {
+            some: expect.objectContaining({
+              publicIdentifier: {
+                is: expect.objectContaining({
+                  publicId: "s5831047296",
+                  kind: "S",
+                  status: "ACTIVE",
+                  deletedAt: null
+                })
+              }
+            })
+          }
+        }
+      })
     }));
   });
 });

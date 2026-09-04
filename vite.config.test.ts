@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  createPortalApiProxyConfig,
   createLegacyAuthProxyConfig,
   createNeedoApiProxyConfig,
   rewritePortalEntryRequest,
@@ -10,6 +11,20 @@ import {
 } from "./vite.config";
 
 describe("Needo API proxy config", () => {
+  it("proxies operations and merchant API prefixes to different listeners", () => {
+    const proxy = createPortalApiProxyConfig(
+      "http://127.0.0.1:3001",
+      "http://127.0.0.1:3002"
+    );
+
+    expect(proxy["/ops-api/v1"]).toMatchObject({ target: "http://127.0.0.1:3001" });
+    expect(proxy["/merchant-api/v1"]).toMatchObject({ target: "http://127.0.0.1:3002" });
+    expect(proxy["/ops-api/v1"].rewrite?.("/ops-api/v1/health")).toBe("/api/v1/health");
+    expect(proxy["/merchant-api/v1"].rewrite?.("/merchant-api/v1/health")).toBe(
+      "/api/v1/health"
+    );
+  });
+
   it("defaults local dev API traffic to the formal backend port", () => {
     expect(resolveNeedoApiProxyTarget({})).toBe("http://127.0.0.1:3000");
   });

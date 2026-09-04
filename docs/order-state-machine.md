@@ -13,6 +13,7 @@ Implemented:
 - Booking order state transitions: pending, confirmed, inService, completed, cancelled.
 - Slot capacity and active-order conflict checks to prevent oversell.
 - Order status history records for every creation and transition.
+- Operations order detail projects persisted add-on proposal, acceptance, and rejection events into the auditable order timeline with immutable service name, price, and duration snapshots.
 - Order list/detail/transition access is scoped from the active authenticated identity: customers by `customer_user_id`, merchants by `shop_id`, technicians by `technician_profile_id`, and platform identities by their global operations role. Client-supplied filters cannot widen this scope. Out-of-scope detail or transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 - Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.

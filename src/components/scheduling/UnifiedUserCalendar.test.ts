@@ -5,6 +5,16 @@ import source from "./UnifiedUserCalendar.tsx?raw";
 const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("UnifiedUserCalendar event detail page", () => {
+  it("uses canonical public technician IDs for participant and self-profile links", () => {
+    expect(source).toContain("getScopedTechnicianDynamicPath(scope, technician)");
+    expect(source).toContain(
+      'getScopedTechnicianDynamicPath("technician", currentTechnician)'
+    );
+    expect(source).not.toContain(
+      'getScopedProfileDetailPath(scope, "technician", technician.id)'
+    );
+  });
+
   it("shows event creator details, participant list entry, and creator chat wiring", () => {
     expect(source).toContain("UnifiedCalendarEventDetailPage");
     expect(source).toContain("创建者");
@@ -148,6 +158,17 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(filterSource).toContain('event.sourceId !== "merchant" || matchesMerchantAppointmentStatusFilter(event, appointmentStatusFilter)');
     expect(floatingActionSource).toContain("<FloatingActionButton");
     expect(floatingActionSource).not.toContain("!isMerchantAppointmentStatusMode");
+  });
+
+  it("keeps technician avatar lanes visible in the merchant appointment overview", () => {
+    const laneSource = source.slice(
+      source.indexOf("const parallelCalendarLanes = useMemo"),
+      source.indexOf("const allEvents = useMemo")
+    );
+
+    expect(laneSource).toContain('getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, "technician")');
+    expect(laneSource).not.toContain("&& !isMerchantAppointmentStatusMode");
+    expect(source).toContain('const assigned = event.calendarId?.startsWith("technician:") ?? false');
   });
 
   it("centers day, three-day, and week timelines on the first timed event", () => {

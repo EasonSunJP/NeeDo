@@ -92,7 +92,19 @@ const profile = {
   },
   bio: null,
   serviceArea: "東京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 4,
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   mediaAssets: [],
   services: [],
   createdAt: "2026-08-01T00:00:00.000Z",
@@ -108,12 +120,22 @@ const selfProfile = {
   avatarUrl: null,
   bio: null,
   city: "東京",
+  gender: "private",
   age: null,
   heightCm: null,
   languages: ["日本語"],
   serviceAreas: ["東京"],
   specialTags: [],
   profileTags: [],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   canServeForeigners: false,
   bidBudgetMinJpy: null,
   bidBudgetMaxJpy: null,
@@ -132,6 +154,7 @@ const makeService = (
   overrides: Partial<TechnicianServicePayload> = {}
 ): TechnicianServicePayload => ({
   id,
+  publicId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
   shopId: 11,
   technicianId: 31,
   sourceShopServiceId: null,
@@ -141,10 +164,12 @@ const makeService = (
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: { publicId: "shop0000000011", name: "Formal Shop", address: "東京都港区" },
   isActive: true,
   isBookable: true,
   isRecommended: false,

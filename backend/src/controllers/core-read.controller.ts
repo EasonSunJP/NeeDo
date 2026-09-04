@@ -6,6 +6,7 @@ import {
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
+  coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
   serviceListQuerySchema
@@ -96,13 +97,21 @@ export class CoreReadController {
         .status(200)
         .json(
           successResponse(
-            await this.coreReadService.search(coreSearchQuerySchema.parse(request.query))
+            await this.coreReadService.search(
+              coreSearchQuerySchema.parse(request.query),
+              this.getSearchSessionId(request)
+            )
           )
         );
     } catch (error) {
       next(error);
     }
   };
+
+  private getSearchSessionId(request: Request): string | undefined {
+    const value = request.get("X-Search-Session")?.trim();
+    return value && /^[A-Za-z0-9_-]{8,128}$/u.test(value) ? value : undefined;
+  }
 
   public getShopDetail = async (
     request: Request,
@@ -126,7 +135,11 @@ export class CoreReadController {
     try {
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getTechnicianDetail(this.getId(request))));
+        .json(
+          successResponse(
+            await this.coreReadService.getTechnicianDetail(this.getTechnicianId(request))
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -156,5 +169,9 @@ export class CoreReadController {
 
   private getShopId(request: Request): number | string {
     return coreReadShopIdParamSchema.parse(request.params).id;
+  }
+
+  private getTechnicianId(request: Request): number | string {
+    return coreReadTechnicianIdParamSchema.parse(request.params).id;
   }
 }

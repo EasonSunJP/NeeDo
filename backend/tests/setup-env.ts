@@ -78,6 +78,7 @@ process.env.REDIS_RECONNECT_BASE_DELAY_MS = "100";
 process.env.REDIS_RECONNECT_MAX_DELAY_MS = "3000";
 process.env.AUTH_ACCESS_TOKEN_SECRET = "test-access-token-secret-with-at-least-32-chars";
 process.env.AUTH_REFRESH_TOKEN_SECRET = "test-refresh-token-secret-with-at-least-32-chars";
+process.env.AUTH_TOKEN_AUDIENCE = "needo-backend";
 process.env.AUTH_VERIFICATION_SECRET = "test-verification-secret-with-at-least-32-chars";
 process.env.AUTH_VERIFICATION_MAX_ATTEMPTS = "5";
 process.env.AUTH_ACTION_RATE_LIMIT_WINDOW_MS = "60000";

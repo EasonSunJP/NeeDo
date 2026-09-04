@@ -723,6 +723,27 @@ export const SYSTEM_PERMISSIONS = [
     "依据结算规则登记付款凭证并完成结算"
   ),
   createPermission(
+    "backoffice:service-taxonomy:read",
+    "运营服务类型读取",
+    "api",
+    "backoffice",
+    "分页读取正式服务类型、搜索标签与同义词配置"
+  ),
+  createPermission(
+    "backoffice:service-taxonomy:write",
+    "运营服务类型管理",
+    "api",
+    "backoffice",
+    "创建和修改带版本及审计保护的服务类型、搜索标签与同义词"
+  ),
+  createPermission(
+    "backoffice:search-analytics:read",
+    "搜索关键词分析读取",
+    "api",
+    "backoffice",
+    "按城市、时间和服务类型读取真实搜索关键词排行与趋势"
+  ),
+  createPermission(
     "backoffice:membership-tier:publish",
     "平台会员等级发布",
     "api",
@@ -1900,6 +1921,8 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:agent:read",
   "backoffice:operating-cost:read",
   "backoffice:agent-settlement:read",
+  "backoffice:service-taxonomy:read",
+  "backoffice:search-analytics:read",
   "backoffice:membership-benefit:read",
   "backoffice:user-experience:read",
   "backoffice:user-group:read",
@@ -2035,6 +2058,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:agent:write",
   "backoffice:operating-cost:write",
   "backoffice:agent-settlement:write",
+  "backoffice:service-taxonomy:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
   "backoffice:user-group:write",

@@ -98,7 +98,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("{serviceMenuHomePackageSection}");
     expect(pageSource).toContain("{serviceMenuTabOrderedSections}");
     expect(pageSource).toContain("<StoreTechnicianServiceListRow");
-    expect(pageSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(pageSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(pageSource).toContain("getScopedTechnicianServiceListPath");
     expect(pageSource).toContain("const getTechnicianServiceListTo = (technicianId: string)");
     expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
@@ -120,7 +120,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
     expect(homeTechnicianSource).toContain(") : storeTechnicians.length > 0 ? (");
     expect(homeTechnicianSource).toContain("<StoreTechnicianSelectableCard");
-    expect(homeTechnicianSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(homeTechnicianSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(homeTechnicianSource).toContain("setSelectedTechnicianId(active ? \"\" : technician.id);");
     expect(homeTechnicianSource).not.toContain("onServiceSelect");
   });
@@ -200,17 +200,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).not.toContain("查看店铺服务项目");
   });
 
-  it("opens the technician public info card from technician-list row avatars", () => {
+  it("opens technician-list row avatars on the scoped full detail page", () => {
     const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
 
-    expect(pageSource).toContain('import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";');
-    expect(technicianRowSource).toContain("const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);");
+    expect(technicianRowSource).toContain("<Link");
     expect(technicianRowSource).toContain('aria-label={`查看${displayName}信息卡`}');
-    expect(technicianRowSource).toContain("onClick={() => setTechnicianInfoCardOpen(true)}");
-    expect(technicianRowSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(technicianRowSource).toContain("open={technicianInfoCardOpen}");
-    expect(technicianRowSource).toContain("technician={technician}");
-    expect(technicianRowSource).toContain("themeScope={isMerchantEditable ? \"merchant\" : \"user\"}");
+    expect(technicianRowSource).toContain("to={profileTo}");
+    expect(pageSource).not.toContain(retiredModalName);
   });
 
   it("keeps merchant technician visibility as an outer top-right eye action", () => {

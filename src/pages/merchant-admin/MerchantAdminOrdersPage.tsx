@@ -12,11 +12,22 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
-import { bookingApi, type ManualPaymentMethod } from "../../features/booking/api";
+import {
+  bookingApi,
+  createBookingIdempotencyKey,
+  type ManualPaymentMethod,
+} from "../../features/booking/api";
 import { statusLabel, yen } from "../../lib/utils";
 
 type StatusFilter = "all" | "pending" | "confirmed" | "inService" | "completed" | "cancelled";
 type ConfirmIntent = "cancel" | "payment-confirm" | "payment-refund" | null;
+type PlatformFeeAcceptanceWarning = {
+  availableBalanceNdp: number;
+  feeAmountNdp: number;
+  idempotencyKey: string;
+  previewVersion: string;
+  shortfallNdp: number;
+};
 
 const pageSize = 20;
 const statusFilters: Array<{ label: string; value: StatusFilter }> = [
@@ -37,6 +48,30 @@ function describeOrderError(error: unknown) {
     if (error.status >= 500) return "本店订单服务暂时不可用，请稍后重试";
   }
   return "本店订单操作失败，请检查网络后重试";
+}
+
+function readPlatformFeeAcceptanceWarning(
+  error: unknown
+): Omit<PlatformFeeAcceptanceWarning, "idempotencyKey"> | null {
+  if (!(error instanceof ApiClientError) || error.code !== 40936 || !error.data || typeof error.data !== "object") {
+    return null;
+  }
+  const data = error.data as Record<string, unknown>;
+  if (
+    typeof data.availableBalanceNdp !== "number" ||
+    typeof data.feeAmountNdp !== "number" ||
+    typeof data.shortfallNdp !== "number" ||
+    typeof data.previewVersion !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/.test(data.previewVersion)
+  ) {
+    return null;
+  }
+  return {
+    availableBalanceNdp: data.availableBalanceNdp,
+    feeAmountNdp: data.feeAmountNdp,
+    previewVersion: data.previewVersion,
+    shortfallNdp: data.shortfallNdp
+  };
 }
 
 function paymentLabel(status: BackofficeOrderPayload["paymentStatus"]) {
@@ -65,6 +100,7 @@ export function MerchantAdminOrdersPage() {
   const [revision, setRevision] = useState(0);
   const [mutationStatus, setMutationStatus] = useState<"idle" | "saving">("idle");
   const [mutationError, setMutationError] = useState("");
+  const [acceptanceWarning, setAcceptanceWarning] = useState<PlatformFeeAcceptanceWarning | null>(null);
   const [confirmIntent, setConfirmIntent] = useState<ConfirmIntent>(null);
   const [cancelReason, setCancelReason] = useState("店铺无法按预约内容提供服务");
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
@@ -101,6 +137,7 @@ export function MerchantAdminOrdersPage() {
     setSelectedOrder(order);
     setParticipant(null);
     setMutationError("");
+    setAcceptanceWarning(null);
     setConfirmIntent(null);
     setPaymentReference("");
   };
@@ -109,6 +146,7 @@ export function MerchantAdminOrdersPage() {
     setParticipant(null);
     setSelectedOrder(null);
     setMutationError("");
+    setAcceptanceWarning(null);
     setConfirmIntent(null);
   };
   const finishMutation = () => {
@@ -116,6 +154,7 @@ export function MerchantAdminOrdersPage() {
     setSelectedOrder(null);
     setConfirmIntent(null);
     setMutationError("");
+    setAcceptanceWarning(null);
     setRevision((value) => value + 1);
   };
 
@@ -128,14 +167,37 @@ export function MerchantAdminOrdersPage() {
     setMutationStatus("saving");
     setMutationError("");
     try {
-      if (action === "confirm") await bookingApi.confirmOrder(selectedOrder.id);
-      else if (action === "start") await bookingApi.startOrder(selectedOrder.id);
+      if (action === "confirm") {
+        await bookingApi.confirmOrder(
+          selectedOrder.id,
+          acceptanceWarning
+            ? {
+                insufficientBalanceConfirmation: {
+                  confirmed: true,
+                  idempotencyKey: acceptanceWarning.idempotencyKey,
+                  previewVersion: acceptanceWarning.previewVersion
+                }
+              }
+            : undefined
+        );
+      } else if (action === "start") await bookingApi.startOrder(selectedOrder.id);
       else if (action === "complete") await bookingApi.completeOrder(selectedOrder.id);
       else await bookingApi.cancelOrder(selectedOrder.id, cancelReason.trim() || "店铺取消正式预约");
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOrderError(error));
-      setConfirmIntent(null);
+      const warning = action === "confirm" ? readPlatformFeeAcceptanceWarning(error) : null;
+      if (warning) {
+        setAcceptanceWarning((current) => ({
+          ...warning,
+          idempotencyKey:
+            current?.previewVersion === warning.previewVersion
+              ? current.idempotencyKey
+              : createBookingIdempotencyKey()
+        }));
+      } else {
+        setMutationError(describeOrderError(error));
+        setConfirmIntent(null);
+      }
     } finally {
       setMutationStatus("idle");
     }
@@ -309,12 +371,20 @@ export function MerchantAdminOrdersPage() {
               { label: "备注", value: selectedOrder.note ?? selectedOrder.cancelReason ?? "无备注" }
             ]} />
 
+            {acceptanceWarning ? (
+              <section className="rounded-lg border border-amber-400/45 bg-amber-400/10 px-4 py-3" role="alert">
+                <h3 className="text-sm font-black text-amber-600">店铺平台费余额不足</h3>
+                <p className="mt-1 text-sm font-bold leading-6 text-ink/65">
+                  本次确认需冻结 {acceptanceWarning.feeAmountNdp.toLocaleString("ja-JP")} NDP，店铺可用余额 {acceptanceWarning.availableBalanceNdp.toLocaleString("ja-JP")} NDP，还差 {acceptanceWarning.shortfallNdp.toLocaleString("ja-JP")} NDP。再次确认后将记录欠费并继续预约。
+                </p>
+              </section>
+            ) : null}
             {mutationError ? <p className="rounded-lg border border-coral/30 bg-coral/5 px-4 py-3 text-sm font-black text-coral" role="alert">{mutationError}</p> : null}
 
             <section className="rounded-lg border border-line bg-white p-4">
               <h3 className="font-black text-ink">订单状态</h3>
               <div className="mt-3 flex flex-wrap gap-2">
-                {selectedOrder.status === "pending" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("confirm")}>确认预约</Button> : null}
+                {selectedOrder.status === "pending" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("confirm")}>{acceptanceWarning ? "余额不足，仍确认预约" : "确认预约"}</Button> : null}
                 {selectedOrder.status === "confirmed" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("start")}>开始服务</Button> : null}
                 {selectedOrder.status === "inService" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("complete")}>完成服务</Button> : null}
                 {selectedOrder.status === "pending" || selectedOrder.status === "confirmed" ? (

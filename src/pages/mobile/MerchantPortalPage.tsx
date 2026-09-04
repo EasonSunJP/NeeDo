@@ -152,7 +152,12 @@ function getMerchantStoreApiId(storeId: string | number | null | undefined) {
 }
 
 function getMerchantTechnicianApiId(technicianId: string) {
-  const match = /^tech-(\d+)$/.exec(technicianId.trim());
+  const normalized = technicianId.trim();
+  if (/^[1-9]\d*$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  const match = /^tech-(\d+)$/.exec(normalized);
   return match ? Number(match[1]) : null;
 }
 
@@ -569,12 +574,13 @@ function MerchantStaffRoleSection({
   const addButtonClassName = "focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]";
 
   return (
-    <section className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_52%,var(--client-surface)_48%)] p-3">
+    <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           {editing ? (
             <div className="flex min-w-0 items-center gap-2">
               <input
+                aria-label={`编辑${group.roleName}职务名`}
                 className="h-9 min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-surface)] px-3 text-sm font-black text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)]"
                 onChange={(event) => setRoleNameDraft(event.target.value)}
                 onKeyDown={(event) => {
@@ -593,7 +599,7 @@ function MerchantStaffRoleSection({
             </div>
           ) : (
             <div className="flex min-w-0 items-center gap-2">
-              <h3 className="truncate text-base font-black text-[color:var(--client-text)]">{group.roleName}</h3>
+              <h2 className="truncate text-lg font-black text-[color:var(--client-text)]">{group.roleName}</h2>
               <button
                 aria-label={`编辑${group.roleName}职务名`}
                 className="focus-ring inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-muted)]"
@@ -604,9 +610,9 @@ function MerchantStaffRoleSection({
               </button>
             </div>
           )}
-          <p className="mt-1 text-[11px] font-bold text-[color:var(--client-muted)]">
+          <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">
             {group.count} 人{group.monthlyCost > 0 ? ` · ${yen(group.monthlyCost)}/月` : ""}
-          </p>
+          </span>
         </div>
         {addTo ? (
           <Link
@@ -627,7 +633,7 @@ function MerchantStaffRoleSection({
           </button>
         )}
       </div>
-      <div className="mt-3 space-y-3">{children}</div>
+      <div className="mt-4 space-y-3">{children}</div>
     </section>
   );
 }
@@ -1581,7 +1587,7 @@ function MerchantPortalDataGate() {
   return <MerchantPortalContent store={store} technicians={technicians} />;
 }
 
-function MerchantPortalContent({
+export function MerchantPortalContent({
   store,
   technicians
 }: {
@@ -2619,9 +2625,7 @@ function MerchantPortalContent({
               </div>
             </section>
 
-            <section className="mt-3 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
-              <SectionTitle caption="职务名支持自定义；总务、财务、司机、厨师可一键选择。" title="职务与员工" />
-              <div className="mt-4 space-y-3">
+            <div className="mt-3 space-y-3">
                 {staffRoleGroups.map((group) => (
                   <MerchantStaffRoleSection
                     addTo={group.roleName === technicianRoleName ? getMerchantAddStaffPath(merchantStaffTab === "partTime" ? "partTime" : "fullTime", group.roleName) : undefined}
@@ -2668,11 +2672,14 @@ function MerchantPortalContent({
                     )}
                   </MerchantStaffRoleSection>
                 ))}
-              </div>
+            </div>
 
-              <div className="mt-4 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_58%,var(--client-surface)_42%)] p-3">
-                <div className="relative">
+            <section aria-labelledby="merchant-staff-employee-form-title" className="mt-3 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
+              <h2 className="sr-only" id="merchant-staff-employee-form-title">添加员工</h2>
+              <div className="relative">
+                <label className="sr-only" htmlFor="merchant-staff-role-input">职务名</label>
                   <input
+                    id="merchant-staff-role-input"
                     className="h-11 w-full min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_86%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,var(--client-surface)_22%)] px-4 pr-12 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
                     onChange={(event) => {
                       setCustomEmployeeRoleDraft(event.target.value);
@@ -2722,13 +2729,17 @@ function MerchantPortalContent({
                   ) : null}
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="sr-only" htmlFor="merchant-staff-name-input">员工姓名</label>
                   <input
+                    id="merchant-staff-name-input"
                     className="h-11 min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_86%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,var(--client-surface)_22%)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
                     onChange={(event) => setEmployeeNameDraft(event.target.value)}
                     placeholder="员工姓名"
                     value={employeeNameDraft}
                   />
+                  <label className="sr-only" htmlFor="merchant-staff-salary-input">月人件费（日元）</label>
                   <input
+                    id="merchant-staff-salary-input"
                     className="h-11 min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_86%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,var(--client-surface)_22%)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
                     inputMode="numeric"
                     onChange={(event) => setEmployeeSalaryDraft(event.target.value)}
@@ -2744,7 +2755,6 @@ function MerchantPortalContent({
                   <AppIcon className="h-5 w-5" name="plus" />
                   添加员工
                 </button>
-              </div>
             </section>
           </>
         )}
@@ -2768,7 +2778,14 @@ function MerchantPortalContent({
               />
             ) : null}
             {merchantSchedulePrimaryTab === "appointments" ? (
-              <UnifiedUserCalendar currentStore={store} displayMode="parallel" merchantLaneMode="appointmentStatus" scope="merchant" searchQuery={merchantAppointmentSearchQuery} />
+              <UnifiedUserCalendar
+                currentStore={store}
+                displayMode="parallel"
+                merchantLaneMode="appointmentStatus"
+                scope="merchant"
+                searchQuery={merchantAppointmentSearchQuery}
+                technicians={storeTechnicians}
+              />
             ) : null}
             {merchantSchedulePrimaryTab === "planning" ? (
               <AutomationWizard operatorId={store.id} storeId={store.id} surface="mobile" />

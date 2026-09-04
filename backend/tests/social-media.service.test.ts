@@ -7,11 +7,11 @@ import {
   SocialMediaService,
   type SocialMediaRepositoryPort
 } from "../src/services/social-media.service";
-
-const validPng = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("needo-social-media")
-]);
+import {
+  createValidExcessivePixelPng,
+  validPng,
+  validTwoFrameApng
+} from "./fixtures/content-images";
 
 const actor = {
   userId: 41,
@@ -46,19 +46,15 @@ describe("SocialMediaService", () => {
         fileSize: input.fileSize
       }))
     };
-    const service = new SocialMediaService(
-      repository,
-      new ContentMediaFileStorage(directory),
-      {
-        resolve: jest.fn(async () => ({
-          identityId: 71,
-          userId: 41,
-          identityType: "technician",
-          scopeType: "technician_profile",
-          scopeId: 17
-        }))
-      }
-    );
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory), {
+      resolve: jest.fn(async () => ({
+        identityId: 71,
+        userId: 41,
+        identityType: "technician",
+        scopeType: "technician_profile",
+        scopeId: 17
+      }))
+    });
 
     const result = await service.upload(actor, context, {
       bytes: validPng,
@@ -89,6 +85,38 @@ describe("SocialMediaService", () => {
     await expect(readFile(join(directory, fileKey))).resolves.toEqual(validPng);
   });
 
+  it("retains Social's signature-only contract for APNG and large decoded dimensions", async () => {
+    const repository: SocialMediaRepositoryPort = {
+      createUpload: jest.fn(async (input) => ({
+        publicId: input.checksumSha256,
+        url: `/media/content/${input.fileKey}`,
+        mimeType: input.mimeType,
+        fileSize: input.fileSize
+      }))
+    };
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory));
+    const validLargePng = await createValidExcessivePixelPng();
+
+    expect(validLargePng.length).toBeLessThanOrEqual(8 * 1024 * 1024);
+    await expect(
+      service.upload(actor, context, {
+        bytes: validTwoFrameApng,
+        fileName: "animated.png",
+        mimeType: "image/png",
+        now
+      })
+    ).resolves.toMatchObject({ mimeType: "image/png", fileSize: validTwoFrameApng.length });
+    await expect(
+      service.upload(actor, context, {
+        bytes: validLargePng,
+        fileName: "large-dimensions.png",
+        mimeType: "image/png",
+        now
+      })
+    ).resolves.toMatchObject({ mimeType: "image/png", fileSize: validLargePng.length });
+    expect(repository.createUpload).toHaveBeenCalledTimes(2);
+  });
+
   it("removes a newly created file when persistence fails", async () => {
     const repository: SocialMediaRepositoryPort = {
       createUpload: jest.fn(async () => {
@@ -115,10 +143,7 @@ describe("SocialMediaService", () => {
     const repository: SocialMediaRepositoryPort = {
       createUpload: jest.fn()
     };
-    const service = new SocialMediaService(
-      repository,
-      new ContentMediaFileStorage(directory)
-    );
+    const service = new SocialMediaService(repository, new ContentMediaFileStorage(directory));
 
     await expect(
       service.upload(actor, context, {

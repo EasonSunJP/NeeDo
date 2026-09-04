@@ -14,7 +14,7 @@ describe("order review validator", () => {
   it("normalizes the strict command and accepts integer rating boundaries", () => {
     expect(orderReviewCreateBodySchema.parse(validInput)).toEqual({
       ...validInput,
-      tags: ["服务精神", "元气"],
+      tags: ["服务max", "元气max"],
       comment: "很满意"
     });
     expect(orderReviewCreateBodySchema.parse({ ...validInput, rating: 1 }).rating).toBe(1);
@@ -30,7 +30,7 @@ describe("order review validator", () => {
       orderReviewCreateBodySchema.parse({ ...validInput, tags: ["ＡＢＣ"] }).tags
     ).toEqual(["ABC"]);
     expect(() =>
-      orderReviewCreateBodySchema.parse({ ...validInput, tags: Array.from({ length: 9 }, (_, i) => `标签${i}`) })
+      orderReviewCreateBodySchema.parse({ ...validInput, targetType: "customer", tags: Array.from({ length: 9 }, (_, i) => `标签${i}`) })
     ).toThrow();
     expect(() => orderReviewCreateBodySchema.parse({ ...validInput, tags: ["\u200B"] })).toThrow();
     expect(() => orderReviewCreateBodySchema.parse({ ...validInput, tags: ["好".repeat(41)] })).toThrow();
@@ -42,11 +42,38 @@ describe("order review validator", () => {
     [["Σ", "ς"], "final sigma folding"],
     [["ẞ", "ss"], "capital sharp-s expansion"]
   ])("rejects Unicode full-fold duplicates for %s (%s)", (tags) => {
-    expect(() => orderReviewCreateBodySchema.parse({ ...validInput, tags })).toThrow();
+    expect(() => orderReviewCreateBodySchema.parse({ ...validInput, targetType: "customer", tags })).toThrow();
   });
 
   it("keeps dotless i distinct from latin i under Unicode default case folding", () => {
-    expect(orderReviewCreateBodySchema.parse({ ...validInput, tags: ["ı", "i"] }).tags).toEqual(["ı", "i"]);
+    expect(orderReviewCreateBodySchema.parse({ ...validInput, targetType: "customer", tags: ["ı", "i"] }).tags).toEqual(["ı", "i"]);
+  });
+
+  it("canonicalizes four fixed technician labels and permits one custom label", () => {
+    expect(orderReviewCreateBodySchema.parse({
+      ...validInput,
+      tags: ["魅力值", "服务精神", "情绪价值", "元气", "手法细致"]
+    }).tags).toEqual(["魅力max", "服务max", "情绪max", "元气max", "手法细致"]);
+  });
+
+  it("rejects a second custom technician label without changing customer review rules", () => {
+    expect(() => orderReviewCreateBodySchema.parse({
+      ...validInput,
+      tags: ["魅力max", "手法细致", "沟通耐心"]
+    })).toThrow("technician review accepts at most one custom tag");
+
+    expect(orderReviewCreateBodySchema.parse({
+      ...validInput,
+      targetType: "customer",
+      tags: ["礼貌友好", "准时到达"]
+    }).tags).toEqual(["礼貌友好", "准时到达"]);
+  });
+
+  it("rejects aliases that canonicalize to the same fixed technician label", () => {
+    expect(() => orderReviewCreateBodySchema.parse({
+      ...validInput,
+      tags: ["魅力值", "魅力max"]
+    })).toThrow("review tags must be unique after Unicode normalization and case folding");
   });
 
   it("normalizes blank comments to null and rejects invisible or oversized comments", () => {

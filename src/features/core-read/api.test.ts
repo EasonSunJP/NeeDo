@@ -30,6 +30,7 @@ const reviewSummary = {
 
 const coreService = {
   id: 7,
+  publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   name: "Shiatsu Recovery",
   description: "60 minute recovery session for shoulders, back, and legs.",
   category: {
@@ -84,6 +85,7 @@ const coreService = {
   priceAmount: "8800.00",
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 18,
   coverUrl: "/images/generated/service-shiatsu-recovery.jpg",
   reviewSummary,
   serviceMode: "store",
@@ -114,6 +116,13 @@ describe("core read API adapter", () => {
   });
 
   it("calls the Step 08 public search endpoint without auth", async () => {
+    const sessionValues = new Map<string, string>();
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => sessionValues.get(key) ?? null,
+        setItem: (key: string, value: string) => sessionValues.set(key, value)
+      }
+    });
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({
         code: 0,
@@ -127,7 +136,9 @@ describe("core read API adapter", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/search?keyword=shiatsu&page=2&pageSize=8&sort=rating_desc&entityType=service",
       expect.objectContaining({
-        headers: expect.not.objectContaining({ Authorization: expect.any(String) })
+        headers: expect.objectContaining({
+          "X-Search-Session": expect.stringMatching(/^[a-f0-9]{32}$/)
+        })
       })
     );
   });
@@ -192,7 +203,15 @@ describe("core read API adapter", () => {
       name: "Shiatsu Recovery",
       priceFrom: 8800,
       rating: 4.8,
-      sales: 72,
+      sales: 18,
+      formal: {
+        publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        usageCount: 18,
+        currency: "JPY",
+        durationMinutes: 60,
+        shopPublicId: "shop5831047296",
+        shopAddress: "3-1 Kita Aoyama, Minato-ku"
+      },
       cover: "/images/generated/service-shiatsu-recovery.jpg"
     });
     expect(service.packages[0]).toMatchObject({
@@ -245,7 +264,19 @@ describe("core read API adapter", () => {
       shop: coreService.shop,
       bio: "Certified body care technician.",
       serviceArea: "Minato, Shibuya",
+      gender: "female",
+      heightCm: 164,
+      languages: ["日本語", "English"],
       yearsExperience: 8,
+      reviewTagSummary: {
+        special: [
+          { code: "appeal_max", label: "魅力max", count: 0 },
+          { code: "service_max", label: "服务max", count: 0 },
+          { code: "emotion_max", label: "情绪max", count: 0 },
+          { code: "energy_max", label: "元气max", count: 0 }
+        ],
+        custom: []
+      },
       mediaAssets: [],
       services: [],
       createdAt: coreService.createdAt,
@@ -271,7 +302,19 @@ describe("core read API adapter", () => {
       rating: 4.8,
       tags: ["スパケア"]
     });
-    expect(technician).toMatchObject({ id: "5", systemId: "s5831047296", name: "Mika Tanaka", storeId: "3", rating: 4.8 });
+    expect(technician).toMatchObject({
+      id: "5",
+      systemId: "s5831047296",
+      name: "Mika Tanaka",
+      storeId: "3",
+      rating: 4.8,
+      primaryService: {
+        name: "肩颈调理",
+        priceAmount: "8800",
+        currency: "JPY",
+        durationMinutes: 60
+      }
+    });
     expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
   });
 });

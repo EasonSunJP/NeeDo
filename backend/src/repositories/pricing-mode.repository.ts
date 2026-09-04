@@ -8,7 +8,10 @@ import {
   type PricingModePayload,
   type PricingModeRepositoryPort,
   type ShopPricingModePayload,
+  type TechnicianServiceCoverTarget,
+  type TechnicianServiceCoverWriteInput,
   type TechnicianServiceCreateRepositoryInput,
+  type TechnicianServiceDeleteRepositoryInput,
   type TechnicianServicePayload,
   type TechnicianServiceReorderRepositoryInput,
   type TechnicianServiceUpdateRepositoryInput,
@@ -34,7 +37,26 @@ type ShopPricingModeRecord = {
 
 const legacyShopTechnicianPricingRatePercent = new Map<number, number>();
 
-type TechnicianServiceRecord = Prisma.TechnicianServiceGetPayload<Record<string, never>>;
+const technicianServiceCardInclude = {
+  shop: {
+    select: {
+      name: true,
+      address: true,
+      publicIdentifier: {
+        select: { publicId: true, kind: true, status: true, deletedAt: true }
+      }
+    }
+  },
+  _count: {
+    select: {
+      bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+    }
+  }
+} satisfies Prisma.TechnicianServiceInclude;
+
+type TechnicianServiceRecord = Prisma.TechnicianServiceGetPayload<{
+  include: typeof technicianServiceCardInclude;
+}>;
 
 type ShopServiceRecord = Prisma.ServiceGetPayload<{
   include: {
@@ -126,6 +148,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
         where,
+        include: technicianServiceCardInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
@@ -152,6 +175,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
         where,
+        include: technicianServiceCardInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
@@ -176,10 +200,216 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
         isActive: true,
         reviewStatus: "APPROVED"
       },
+      include: technicianServiceCardInclude,
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
     });
 
     return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async findTechnicianServiceCoverTarget(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+  }): Promise<TechnicianServiceCoverTarget | null> {
+    const service = await this.client.technicianService.findFirst({
+      where: {
+        id: input.serviceId,
+        shopId: input.shopId,
+        technicianId: input.technicianId,
+        deletedAt: null
+      },
+      include: technicianServiceCardInclude
+    });
+    if (!service) {
+      return null;
+    }
+
+    const cover = await this.client.mediaAsset.findFirst({
+      where: {
+        entityType: "technician_service",
+        entityId: input.serviceId,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true, checksumSha256: true, mimeType: true }
+    });
+
+    return {
+      service: this.mapTechnicianService(service),
+      activeMediaAssetId: cover?.id ?? null,
+      checksumSha256: cover?.checksumSha256 ?? null,
+      mimeType: cover?.mimeType ?? null
+    };
+  }
+
+  public async replaceTechnicianServiceCover(
+    input: TechnicianServiceCoverWriteInput
+  ): Promise<TechnicianServicePayload | null> {
+    const service = await this.client.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM technician_services
+          WHERE id = ${input.serviceId}
+            AND shop_id = ${input.shopId}
+            AND technician_id = ${input.technicianId}
+            AND deleted_at IS NULL
+          FOR UPDATE`
+      );
+      if (locked.length !== 1) {
+        return null;
+      }
+
+      const oldAsset = await this.findActiveTechnicianServiceCover(transaction, input.serviceId);
+      const oldByteCount = oldAsset
+        ? await this.findTechnicianServiceCoverByteCount(transaction, input.serviceId, oldAsset)
+        : null;
+
+      await transaction.mediaAsset.updateMany({
+        where: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          usageType: "cover",
+          isActive: true,
+          deletedAt: null
+        },
+        data: { isActive: false, deletedAt: input.now }
+      });
+      const newAsset = await transaction.mediaAsset.create({
+        data: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          shopId: input.shopId,
+          technicianProfileId: input.technicianId,
+          ownerUserId: input.ownerUserId,
+          ownerIdentityId: input.ownerIdentityId,
+          url: input.url,
+          mimeType: input.mimeType,
+          usageType: "cover",
+          checksumSha256: input.checksumSha256,
+          isActive: true,
+          createdAt: input.now
+        }
+      });
+      const updated = await transaction.technicianService.update({
+        where: { id: input.serviceId },
+        data: { coverImageUrl: input.url, updatedBy: input.ownerUserId },
+        include: technicianServiceCardInclude
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          actorId: input.ownerUserId,
+          action: input.action,
+          targetType: "technician_service",
+          targetId: input.serviceId,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent,
+          metadata: {
+            shopId: input.shopId,
+            technicianProfileId: input.technicianId,
+            oldMediaAssetId: oldAsset?.id ?? null,
+            newMediaAssetId: newAsset.id,
+            oldChecksumSha256: oldAsset?.checksumSha256 ?? null,
+            newChecksumSha256: newAsset.checksumSha256,
+            oldMimeType: oldAsset?.mimeType ?? null,
+            newMimeType: newAsset.mimeType,
+            oldByteCount,
+            newByteCount: input.fileSize
+          }
+        })
+      });
+
+      return updated;
+    });
+
+    return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async removeTechnicianServiceCover(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+    ownerUserId: number;
+    ownerIdentityId: number;
+    now: Date;
+    action: "technician.service.cover.removed";
+    context: { ip: string; userAgent?: string };
+  }): Promise<TechnicianServicePayload | null> {
+    const service = await this.client.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM technician_services
+          WHERE id = ${input.serviceId}
+            AND shop_id = ${input.shopId}
+            AND technician_id = ${input.technicianId}
+            AND deleted_at IS NULL
+          FOR UPDATE`
+      );
+      if (locked.length !== 1) {
+        return null;
+      }
+
+      const oldAsset = await this.findActiveTechnicianServiceCover(transaction, input.serviceId);
+      const oldByteCount = oldAsset
+        ? await this.findTechnicianServiceCoverByteCount(transaction, input.serviceId, oldAsset)
+        : null;
+
+      await transaction.mediaAsset.updateMany({
+        where: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          usageType: "cover",
+          isActive: true,
+          deletedAt: null
+        },
+        data: { isActive: false, deletedAt: input.now }
+      });
+      const updated = await transaction.technicianService.update({
+        where: { id: input.serviceId },
+        data: { coverImageUrl: null, updatedBy: input.ownerUserId },
+        include: technicianServiceCardInclude
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          actorId: input.ownerUserId,
+          action: input.action,
+          targetType: "technician_service",
+          targetId: input.serviceId,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent,
+          metadata: {
+            shopId: input.shopId,
+            technicianProfileId: input.technicianId,
+            oldMediaAssetId: oldAsset?.id ?? null,
+            newMediaAssetId: null,
+            oldChecksumSha256: oldAsset?.checksumSha256 ?? null,
+            newChecksumSha256: null,
+            oldMimeType: oldAsset?.mimeType ?? null,
+            newMimeType: null,
+            oldByteCount,
+            newByteCount: null
+          }
+        })
+      });
+
+      return updated;
+    });
+
+    return service ? this.mapTechnicianService(service) : null;
+  }
+
+  public async hasActiveMediaUrl(url: string): Promise<boolean> {
+    const asset = await this.client.mediaAsset.findFirst({
+      where: {
+        url,
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true }
+    });
+
+    return asset !== null;
   }
 
   public async reorderTechnicianServices(
@@ -211,6 +441,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
 
         return transaction.technicianService.findMany({
           where: { technicianId: input.technicianId, deletedAt: null },
+          include: technicianServiceCardInclude,
           orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
         });
       }
@@ -237,6 +468,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
 
       const reordered = await transaction.technicianService.findMany({
         where: { technicianId: input.technicianId, deletedAt: null },
+        include: technicianServiceCardInclude,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
       });
       await transaction.auditLog.create({
@@ -291,7 +523,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           reviewStatus: "APPROVED",
           createdBy: input.createdBy,
           updatedBy: input.createdBy
-        }
+        },
+        include: technicianServiceCardInclude
       });
       await transaction.auditLog.create({
         data: toAuditLogCreateData({ ...input.auditLog, targetId: created.id })
@@ -337,34 +570,55 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     }
 
     const service = await this.client.technicianService.findFirst({
-      where: { id: input.serviceId, deletedAt: null }
+      where: { id: input.serviceId, deletedAt: null },
+      include: technicianServiceCardInclude
     });
 
     return service ? this.mapTechnicianService(service) : null;
   }
 
-  public async deleteTechnicianService(input: {
-    shopId: number;
-    technicianId: number;
-    serviceId: number;
-    updatedBy: number;
-  }): Promise<boolean> {
-    const update = await this.client.technicianService.updateMany({
-      where: {
-        id: input.serviceId,
-        shopId: input.shopId,
-        technicianId: input.technicianId,
-        deletedAt: null
-      },
-      data: {
-        isActive: false,
-        isBookable: false,
-        updatedBy: input.updatedBy,
-        deletedAt: new Date()
+  public async deleteTechnicianService(
+    input: TechnicianServiceDeleteRepositoryInput
+  ): Promise<boolean> {
+    return this.client.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM technician_services
+          WHERE id = ${input.serviceId}
+            AND shop_id = ${input.shopId}
+            AND technician_id = ${input.technicianId}
+            AND deleted_at IS NULL
+          FOR UPDATE`
+      );
+      if (locked.length !== 1) {
+        return false;
       }
-    });
 
-    return update.count === 1;
+      await transaction.mediaAsset.updateMany({
+        where: {
+          entityType: "technician_service",
+          entityId: input.serviceId,
+          usageType: "cover",
+          isActive: true,
+          deletedAt: null
+        },
+        data: { isActive: false, deletedAt: input.now }
+      });
+      await transaction.technicianService.update({
+        where: { id: input.serviceId },
+        data: {
+          coverImageUrl: null,
+          isActive: false,
+          isBookable: false,
+          updatedBy: input.updatedBy,
+          deletedAt: input.now
+        }
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData(input.auditLog)
+      });
+
+      return true;
+    });
   }
 
   public async listBookingNavigationShopServices(
@@ -439,6 +693,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
         where,
+        include: technicianServiceCardInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }]
@@ -456,6 +711,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   private mapTechnicianService(service: TechnicianServiceRecord): TechnicianServicePayload {
     return {
       id: service.id,
+      publicId: service.publicId,
       shopId: service.shopId,
       technicianId: service.technicianId,
       sourceShopServiceId: service.sourceShopServiceId,
@@ -465,10 +721,16 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       priceAmount: service.priceAmount,
       currency: service.currency,
       durationMinutes: service.durationMinutes,
+      usageCount: service._count.bookingOrders,
       taxIncluded: true,
       coverImageUrl: service.coverImageUrl,
       images: this.stringArrayFromJson(service.imagesJson),
       tags: this.stringArrayFromJson(service.tagsJson),
+      shop: {
+        publicId: this.activeShopPublicId(service.shop.publicIdentifier),
+        name: service.shop.name,
+        address: service.shop.address
+      },
       isActive: service.isActive,
       isBookable: service.isBookable,
       isRecommended: service.isRecommended,
@@ -478,6 +740,51 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       createdAt: service.createdAt.toISOString(),
       updatedAt: service.updatedAt.toISOString()
     };
+  }
+
+  private findActiveTechnicianServiceCover(
+    transaction: Pick<Prisma.TransactionClient, "mediaAsset">,
+    serviceId: number
+  ) {
+    return transaction.mediaAsset.findFirst({
+      where: {
+        entityType: "technician_service",
+        entityId: serviceId,
+        usageType: "cover",
+        isActive: true,
+        deletedAt: null,
+        purgedAt: null
+      },
+      select: { id: true, checksumSha256: true, mimeType: true }
+    });
+  }
+
+  private async findTechnicianServiceCoverByteCount(
+    transaction: Pick<Prisma.TransactionClient, "auditLog">,
+    serviceId: number,
+    asset: { id: number; checksumSha256: string | null }
+  ): Promise<number> {
+    const audit = await transaction.auditLog.findFirst({
+      where: {
+        action: "technician.service.cover.updated",
+        targetType: "technician_service",
+        targetId: serviceId,
+        OR: [
+          { metadata: { path: "$.newMediaAssetId", equals: asset.id } },
+          ...(asset.checksumSha256
+            ? [{ metadata: { path: "$.checksumSha256", equals: asset.checksumSha256 } }]
+            : [])
+        ]
+      },
+      orderBy: { id: "desc" },
+      select: { metadata: true }
+    });
+    const metadata = this.metadataObject(audit?.metadata);
+    const byteCount = metadata.newByteCount ?? metadata.fileSize;
+    if (!Number.isInteger(byteCount) || (byteCount as number) <= 0) {
+      throw new Error("error.technician_service.cover_lifecycle_incomplete");
+    }
+    return byteCount as number;
   }
 
   private mapShopService(service: ShopServiceRecord): BookingNavigationServicePayload {
@@ -622,6 +929,16 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
 
   private reviewStatusFromDb(value: string): string {
     return value.toLowerCase();
+  }
+
+  private activeShopPublicId(
+    identifier: TechnicianServiceRecord["shop"]["publicIdentifier"]
+  ): string | null {
+    return identifier?.kind === "SHOP" &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null
+      ? identifier.publicId
+      : null;
   }
 
   private stringArrayFromJson(value: unknown): string[] {
