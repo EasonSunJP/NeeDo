@@ -50,6 +50,7 @@ const order: BookingOrderPayload = {
   serviceNameSnapshot: "舒缓 60 分钟",
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
+  fulfillmentAddressSnapshot: null,
   serviceSnapshot: { serviceId: 11, durationMinutes: 60 },
   shopName: "銀座店",
   technicianName: "Misaki",

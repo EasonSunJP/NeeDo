@@ -64,7 +64,13 @@ const post: ExchangePostPayload = {
     avatarUrl: actor.avatarUrl
   },
   counts: { comments: 0, likes: 0, shares: 0 },
-  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
+  viewer: {
+    liked: false,
+    canWithdraw: true,
+    canClaim: false,
+    canViewClaims: false,
+    canViewMatching: true
+  },
   demand: {
     serviceMode: "store",
     targetProviderCount: 1,
@@ -341,7 +347,13 @@ describe("ExchangeService", () => {
 
     repository.findPostById.mockResolvedValueOnce({
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: false
+      }
     });
     await expect(service.getPost(access, 41)).rejects.toMatchObject({
       message: "error.exchange.post_not_found",
@@ -356,7 +368,13 @@ describe("ExchangeService", () => {
     const repository = createRepository();
     const selectivePost = {
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: true,
+        canViewClaims: false,
+        canViewMatching: false
+      },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
     repository.resolveActor.mockResolvedValue({
@@ -384,7 +402,15 @@ describe("ExchangeService", () => {
       service.listPosts(technicianAccess, { type: "demand", page: 1, pageSize: 20 })
     ).resolves.toMatchObject({
       list: [
-        { viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false } }
+        {
+          viewer: {
+            liked: false,
+            canWithdraw: false,
+            canClaim: true,
+            canViewClaims: false,
+            canViewMatching: false
+          }
+        }
       ]
     });
     expect(repository.listPosts).toHaveBeenCalledWith(
@@ -394,10 +420,22 @@ describe("ExchangeService", () => {
     repository.resolveActor.mockResolvedValue(actor);
     repository.findPostById.mockResolvedValue({
       ...selectivePost,
-      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false }
+      viewer: {
+        liked: false,
+        canWithdraw: true,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: true
+      }
     });
     await expect(service.getPost(access, 41)).resolves.toMatchObject({
-      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true }
+      viewer: {
+        liked: false,
+        canWithdraw: true,
+        canClaim: false,
+        canViewClaims: true,
+        canViewMatching: true
+      }
     });
   });
 
@@ -407,7 +445,13 @@ describe("ExchangeService", () => {
     const matchedPost = {
       ...post,
       status: "matched" as const,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: true },
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: true,
+        canViewMatching: true
+      },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
     repository.findPostById.mockResolvedValue(matchedPost);
@@ -419,7 +463,13 @@ describe("ExchangeService", () => {
     const repository = createRepository();
     repository.findPostById.mockResolvedValue({
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: false
+      }
     });
     const service = new ExchangeService(repository, () => now);
 
