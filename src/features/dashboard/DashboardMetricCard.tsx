@@ -168,7 +168,9 @@ export function DashboardMetricCard({
           </strong>
           <span className="text-xs font-black text-ink/45">{formatted?.unit ?? (resolvedUnit === "people" ? "人" : "")}</span>
         </div>
-        {sparkline ? <DashboardMetricSparkline points={sparkline} /> : null}
+        {sparkline ? (
+          <DashboardMetricSparkline points={sparkline} title={title} unit={resolvedUnit} />
+        ) : null}
       </div>
 
       {statusMessage && (!metric || metric.currentValue === null) ? (
