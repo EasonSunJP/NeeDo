@@ -69,6 +69,7 @@ import {
   type TechnicianProfilePaymentMethod
 } from "../core-read/technicianProfileApi";
 import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
+import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -3465,6 +3466,9 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
           )}
         </SettingsSection>
         {session ? <FormalAccountSecurityPanel autoFocus={searchParams.get("section") === "google-account"} language={language} onSessionRefresh={handleSessionRefresh} onSignedOut={handleSignedOut} session={session} /> : null}
+        {portal !== "business" && session ? (
+          <ImOpenedMediaCacheSettingsSection accountId={String(session.id)} />
+        ) : null}
       </SettingsDetailPage>
     </PortalScopedSettingsPage>
   );

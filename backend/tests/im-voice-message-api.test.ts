@@ -353,7 +353,8 @@ describe("IM voice message HTTP API", () => {
     const fileName = `${"b".repeat(64)}.ogg`;
     await writeFile(join(fixture.directory, fileName), Buffer.from("OggS"));
 
-    await request(fixture.app).get(`/media/im/${fileName}`).expect(200);
+    const media = await request(fixture.app).get(`/media/im/${fileName}`).expect(200);
+    expect(media.headers["cache-control"]).toBe("private, no-store");
     await request(fixture.app).get(`/media/customer-avatars/${fileName}`).expect(404);
     await request(fixture.app).get(`/media/content/${fileName}`).expect(404);
     await request(fixture.app).get(`/media/im/${fileName}/extra`).expect(404);

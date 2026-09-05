@@ -961,6 +961,27 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("preserves content-free privacy deletion identity for local cache eviction", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-deleted-44",
+        type: "message.deleted",
+        payload: {
+          action: "privacy_expired",
+          conversationId: 91,
+          id: 44,
+          messageId: 702,
+          occurredAt: "2026-09-05T00:00:00.000Z",
+        },
+      }),
+    ).toEqual({
+      type: "message.deleted",
+      conversationId: "91",
+      messageId: "702",
+      reason: "privacy_expired",
+    });
+  });
+
   it("maps server-authoritative group privacy expiry into a visible sent-time countdown", () => {
     expect(
       toFormalImStoreUpdate({
