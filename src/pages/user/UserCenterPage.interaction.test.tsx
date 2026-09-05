@@ -455,6 +455,22 @@ describe("UserCenterPage inline profile editing", () => {
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
   });
 
+  it("refreshes the authoritative account session when only the display name changes", async () => {
+    testState.updateMine.mockResolvedValue({
+      ...savedProfile,
+      displayName: "服务端新姓名"
+    });
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
+    expect(nickname).not.toBeNull();
+    await inputValue(nickname!, "服务端新姓名");
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
+  });
+
   it("keeps the formal draft and fixed save action when the API rejects", async () => {
     testState.updateMine.mockRejectedValue(new Error("network"));
     await renderUserCenter();
