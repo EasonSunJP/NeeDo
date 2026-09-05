@@ -6,9 +6,9 @@ import { PlatformPartnerRangeEditor } from "./PlatformPartnerRangeEditor";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const state = vi.hoisted(() => ({ markPartnerProfile: vi.fn() }));
+const state = vi.hoisted(() => ({ markPartnerProfile: vi.fn(), listUserPartnerProfiles: vi.fn() }));
 vi.mock("../../api/platformPartners", () => ({
-  platformPartnersApi: { markPartnerProfile: state.markPartnerProfile }
+  platformPartnersApi: { markPartnerProfile: state.markPartnerProfile, listUserPartnerProfiles: state.listUserPartnerProfiles }
 }));
 
 describe("PlatformPartnerRangeEditor", () => {
@@ -17,6 +17,7 @@ describe("PlatformPartnerRangeEditor", () => {
 
   beforeEach(() => {
     state.markPartnerProfile.mockReset().mockResolvedValue({});
+    state.listUserPartnerProfiles.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });
     window.localStorage.setItem("needo.language", "zh");
     window.localStorage.setItem("needo.language.mode", "manual");
     container = document.createElement("div");

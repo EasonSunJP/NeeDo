@@ -334,9 +334,11 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
       refund: {
         exists: refundExists,
         displayReference: refundExists
-          ? (amendment?.displayReference ?? order.paymentRefundReference)
+          ? amendment
+            ? amendment.displayReference
+            : order.paymentRefundReference
           : null,
-        note: refundExists ? (amendment?.note ?? order.paymentRefundReason) : null,
+        note: refundExists ? (amendment ? amendment.note : order.paymentRefundReason) : null,
         amendmentVersion: amendment?.version ?? 0
       }
     };
@@ -394,7 +396,7 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
           order.createdAt
         ).toISOString(),
         actorName: null,
-        body: amendment?.note ?? order.paymentRefundReason
+        body: amendment ? amendment.note : order.paymentRefundReason
       });
     }
     return entries.sort(

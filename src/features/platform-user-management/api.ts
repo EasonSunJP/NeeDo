@@ -368,6 +368,18 @@ const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
     tags: array(raw.tags).map(string),
     createdAt: timestamp(raw.createdAt),
     amendmentVersion: integer(raw.amendmentVersion),
+    amendmentHistory: array(raw.amendmentHistory).map((item) => {
+      const amendment = record(item);
+      return {
+        version: integer(amendment.version),
+        rating: amendment.rating === null ? null : integer(amendment.rating),
+        comment: nullableString(amendment.comment),
+        tags: array(amendment.tags).map(string),
+        reason: string(amendment.reason),
+        revisedAt: timestamp(amendment.revisedAt),
+        revisedBy: string(amendment.revisedBy)
+      };
+    }),
     order: {
       id: integer(order.id),
       orderNo: string(order.orderNo),

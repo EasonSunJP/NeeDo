@@ -48,6 +48,13 @@ export const platformPartnerProfileBodySchema = z
     }
   });
 
+export const platformPartnerHistoryQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20)
+  })
+  .strict();
+
 export const agentListQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().optional(),
@@ -77,6 +84,7 @@ export const agentShopReferralBodySchema = z
   .strict();
 
 export type PlatformPartnerProfileBody = z.output<typeof platformPartnerProfileBodySchema>;
+export type PlatformPartnerHistoryQuery = z.output<typeof platformPartnerHistoryQuerySchema>;
 export type AgentListQuery = z.output<typeof agentListQuerySchema>;
 export type AgentShopReferralListQuery = z.output<typeof agentShopReferralListQuerySchema>;
 export type AgentShopReferralBody = z.output<typeof agentShopReferralBodySchema>;

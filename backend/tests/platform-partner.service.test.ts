@@ -6,6 +6,7 @@ import {
   type PlatformPartnerRepositoryPort
 } from "../src/services/platform-partner.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { AuditLogRecordInput } from "../src/services/audit-log.service";
 
 const actor: AuthenticatedAccessContext = {
   userId: 1,
@@ -73,6 +74,9 @@ const referral = (overrides: Partial<AgentShopReferralRecord> = {}): AgentShopRe
 const setup = () => {
   const repository: jest.Mocked<PlatformPartnerRepositoryPort> = {
     markPartnerProfile: jest.fn().mockResolvedValue({ kind: "created", profile: profile() }),
+    listUserProfiles: jest.fn().mockResolvedValue({
+      list: [profile()], total: 1, page: 1, page_size: 20
+    }),
     listAgents: jest.fn().mockResolvedValue({
       list: [
         {
@@ -110,7 +114,17 @@ const setup = () => {
     }),
     linkAgentShop: jest.fn().mockResolvedValue({ kind: "created", referral: referral() })
   };
-  const audit = { record: jest.fn().mockResolvedValue(undefined) };
+  const audit = {
+    record: jest.fn().mockResolvedValue(undefined),
+    createInput: jest.fn((input: AuditLogRecordInput) => ({
+      actorId: input.actor.userId,
+      action: input.action,
+      targetType: input.targetType,
+      ip: input.context.ip,
+      userAgent: input.context.userAgent,
+      metadata: input.metadata
+    }))
+  };
   const service = new PlatformPartnerService(repository, audit);
   return { service, repository, audit };
 };
@@ -143,27 +157,15 @@ describe("PlatformPartnerService", () => {
       startsAt: activatedAt,
       endsAt: null,
       markedById: 1,
-      reason: "线下代理协议已审核"
-    });
-    expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({
+      reason: "线下代理协议已审核",
+      audit: expect.objectContaining({
+        actorId: 1,
         action: "backoffice.partner_profile.create",
         targetType: "platform_partner_profile",
-        targetId: 41,
-        metadata: {
-          before: null,
-          after: {
-            publicId: "11111111-1111-4111-8111-111111111111",
-            userId: 88,
-            partnerType: "agent",
-            startsAt: "2026-09-01T00:00:00.000Z",
-            endsAt: null,
-            permanent: true
-          },
-          reason: "线下代理协议已审核"
-        }
+        metadata: { reason: "线下代理协议已审核" }
       })
-    );
+    });
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects missing users and duplicate active partner markers", async () => {

@@ -17,6 +17,15 @@ export interface ReceivedUserReview {
   tags: string[];
   createdAt: string;
   amendmentVersion: number;
+  amendmentHistory: Array<{
+    version: number;
+    rating: number | null;
+    comment: string | null;
+    tags: string[];
+    reason: string;
+    revisedAt: string;
+    revisedBy: string;
+  }>;
   order: { id: number; orderNo: string; serviceName: string; startsAt: string };
   reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
 }
@@ -67,11 +76,13 @@ const reviewSelect = Prisma.validator<Prisma.OrderReviewSelect>()({
   amendments: {
     where: { deletedAt: null },
     orderBy: [{ version: "desc" }, { id: "desc" }],
-    take: 1,
     select: {
       version: true,
       rating: true,
       comment: true,
+      reason: true,
+      createdAt: true,
+      revisedBy: { select: { username: true } },
       tags: {
         where: { deletedAt: null },
         orderBy: [{ id: "asc" }],
@@ -177,6 +188,8 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
           },
           select: {
             id: true,
+            customerProfile: { select: { userId: true } },
+            bookingOrder: { select: { shopId: true } },
             rating: true,
             comment: true,
             tags: {
@@ -201,7 +214,7 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
             }
           }
         });
-        if (!review) return { kind: "not_found" as const };
+        if (!review || !review.customerProfile) return { kind: "not_found" as const };
         const current = review.amendments[0] ?? null;
         const currentVersion = current?.version ?? 0;
         if (currentVersion !== input.expectedVersion) {
@@ -228,6 +241,8 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
             targetId: amendment.id,
             metadata: {
               ...this.metadataObject(input.audit.metadata),
+              userId: review.customerProfile.userId,
+              shopId: review.bookingOrder.shopId,
               reviewId: review.id,
               version,
               reason: input.reason
@@ -253,6 +268,15 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
       tags: tags.map((tag) => tag.label),
       createdAt: row.createdAt.toISOString(),
       amendmentVersion: amendment?.version ?? 0,
+      amendmentHistory: row.amendments.map((item) => ({
+        version: item.version,
+        rating: item.rating,
+        comment: item.comment,
+        tags: item.tags.map((tag) => tag.label),
+        reason: item.reason,
+        revisedAt: item.createdAt.toISOString(),
+        revisedBy: item.revisedBy.username
+      })),
       order: {
         id: row.bookingOrder.id,
         orderNo: row.bookingOrder.orderNo,

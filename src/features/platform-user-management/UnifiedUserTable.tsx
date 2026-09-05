@@ -50,12 +50,18 @@ function ServerColumnHeader({
   setOpenKey,
   options = [],
   value,
+  values,
   searchValue = "",
   sortKey,
   query,
   onQueryChange,
   filterPatch,
+  multiFilterPatch,
   searchPatch
+  ,dateFrom = ""
+  ,dateTo = ""
+  ,datePatch
+  ,language
 }: {
   title: string;
   columnKey: string;
@@ -63,33 +69,53 @@ function ServerColumnHeader({
   setOpenKey: (value: string | null) => void;
   options?: FilterOption[];
   value?: string;
+  values?: string[];
   searchValue?: string;
   sortKey?: UserListQuery["sortBy"];
   query: UserListQuery;
   onQueryChange: (next: UserListQuery) => void;
   filterPatch?: (value: string | undefined) => Partial<UserListQuery>;
+  multiFilterPatch?: (values: string[] | undefined) => Partial<UserListQuery>;
   searchPatch?: (value: string) => Partial<UserListQuery>;
+  dateFrom?: string;
+  dateTo?: string;
+  datePatch?: (from: string, to: string) => Partial<UserListQuery>;
+  language: Language;
 }) {
   const labels = options.map((option) => option.label);
-  const selectedLabels = value
-    ? options.filter((option) => option.value === value).map((option) => option.label)
-    : labels;
+  const selectedLabels = values?.length
+    ? options.filter((option) => values.includes(option.value)).map((option) => option.label)
+    : value
+      ? options.filter((option) => option.value === value).map((option) => option.label)
+      : labels;
+  const selectedValues = (selected: string[]) => options
+    .filter((option) => selected.includes(option.label))
+    .map((option) => option.value);
   const selectedValue = (selected: string[]) => selected.length === 1
       ? options.find((option) => option.label === selected[0])?.value
       : undefined;
   const commit = (next: Partial<UserListQuery>) => onQueryChange({ ...query, ...next, page: 1 });
   const toggleValue = (label: string) => {
-    const next = selectedLabels.includes(label)
-      ? selectedLabels.filter((item) => item !== label)
-      : [...selectedLabels, label];
-    if (filterPatch) commit(filterPatch(selectedValue(next)));
+    if (multiFilterPatch) {
+      const next = selectedLabels.includes(label)
+        ? selectedLabels.filter((item) => item !== label)
+        : [...selectedLabels, label];
+      const mapped = selectedValues(next);
+      commit(multiFilterPatch(mapped.length === labels.length ? undefined : mapped));
+    } else if (filterPatch) {
+      const selected = options.find((option) => option.label === label)?.value;
+      commit(filterPatch(value === selected ? undefined : selected));
+    }
   };
   const toggleAll = (visible: string[]) => {
     const allSelected = visible.every((item) => selectedLabels.includes(item));
     const next = allSelected
       ? selectedLabels.filter((item) => !visible.includes(item))
       : Array.from(new Set([...selectedLabels, ...visible]));
-    if (filterPatch) commit(filterPatch(selectedValue(next)));
+    if (multiFilterPatch) {
+      const mapped = selectedValues(next);
+      commit(multiFilterPatch(mapped.length === labels.length ? undefined : mapped));
+    } else if (filterPatch) commit(filterPatch(undefined));
   };
   const sortPatch = (direction: TableSortDirection | undefined): Partial<UserListQuery> => ({
     sortBy: direction ? sortKey : undefined,
@@ -105,17 +131,28 @@ function ServerColumnHeader({
       onApply={(payload) => {
         commit({
           ...(filterPatch?.(selectedValue(payload.selectedValues)) ?? {}),
+          ...(multiFilterPatch?.(
+            payload.selectedValues.length === labels.length
+              ? undefined
+              : selectedValues(payload.selectedValues)
+          ) ?? {}),
           ...(searchPatch?.(payload.searchValue) ?? {}),
           ...(sortKey ? sortPatch(payload.sortDirection) : {})
+          ,...(datePatch?.(payload.dateFrom ?? "", payload.dateTo ?? "") ?? {})
         });
       }}
       onClearFilter={() => {
         commit({
           ...(filterPatch?.(undefined) ?? {}),
+          ...(multiFilterPatch?.(undefined) ?? {}),
           ...(searchPatch?.("") ?? {}),
           ...(query.sortBy === sortKey ? sortPatch(undefined) : {})
+          ,...(datePatch?.("", "") ?? {})
         });
       }}
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      onDateRangeChange={(from, to) => datePatch && commit(datePatch(from, to))}
       onOpenChange={() => setOpenKey(openKey === columnKey ? null : columnKey)}
       onSearchChange={(next) => searchPatch && commit(searchPatch(next))}
       onSort={setSort}
@@ -125,6 +162,7 @@ function ServerColumnHeader({
       selectedValues={selectedLabels}
       sortDirection={query.sortBy === sortKey ? query.sortDirection : undefined}
       title={title}
+      uiLanguage={language}
     />
   );
 }
@@ -132,13 +170,20 @@ function ServerColumnHeader({
 export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelect }: UnifiedUserTableProps) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const copy = platformUserManagementCopy[language];
-  const headerProps = { openKey, setOpenKey, query, onQueryChange };
+  const headerProps = { openKey, setOpenKey, query, onQueryChange, language };
   const tierOptions = (["free", "silver", "gold", "black_diamond"] as const)
     .map((value) => ({ value, label: membershipTierText(value, language) }));
   const privacyOptions = [
     { value: "enabled", label: privacyModeText(true, language) },
-    { value: "disabled", label: privacyModeText(false, language) }
+    { value: "disabled", label: privacyModeText(false, language) },
+    { value: "public", label: privacyScopeText("public", language) },
+    { value: "privateAll", label: privacyScopeText("privateAll", language) },
+    { value: "limited", label: privacyScopeText("limited", language) },
+    { value: "network", label: privacyScopeText("network", language) }
   ];
+  const cityOptions = Array.from(new Set(rows.map((row) => row.city).filter((city): city is string => Boolean(city))))
+    .sort((left, right) => left.localeCompare(right, language))
+    .map((value) => ({ value, label: value }));
   const activeRange = <TMin extends keyof UserListQuery, TMax extends keyof UserListQuery>(
     ranges: Record<string, Pick<UserListQuery, TMin | TMax>>,
     minKey: TMin,
@@ -150,21 +195,21 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
       <table className="w-full min-w-[1560px] text-left text-sm">
         <thead className="bg-paper text-xs text-ink/55"><tr>
           <ServerColumnHeader {...headerProps} columnKey="user" searchPatch={(keyword) => ({ keyword: keyword.trim() || undefined })} searchValue={query.keyword ?? ""} sortKey="displayName" title={copy.user} />
-          <ServerColumnHeader {...headerProps} columnKey="email" filterPatch={(emailState) => ({ emailState: emailState as UserListQuery["emailState"] })} options={[{ value: "set", label: copy.bound }, { value: "unset", label: copy.unbound }]} sortKey="email" title={translateText("邮箱", language)} value={query.emailState} />
-          <ServerColumnHeader {...headerProps} columnKey="city" searchPatch={(city) => ({ city: city.trim() || undefined })} searchValue={query.city ?? ""} sortKey="city" title={translateText("城市", language)} />
-          <ServerColumnHeader {...headerProps} columnKey="identities" filterPatch={(identityType) => ({ identityType })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "shop_owner", label: translateText("商户", language) }, { value: "admin", label: translateText("运营", language) }]} title={copy.identities} value={query.identityType} />
-          <ServerColumnHeader {...headerProps} columnKey="membership" filterPatch={(tier) => ({ tier: tier as UserListQuery["tier"] })} options={tierOptions} title={copy.membership} value={query.tier} />
+          <ServerColumnHeader {...headerProps} columnKey="email" multiFilterPatch={(emailStates) => ({ emailStates: emailStates as UserListQuery["emailStates"] })} options={[{ value: "set", label: copy.bound }, { value: "unset", label: copy.unbound }]} sortKey="email" title={translateText("邮箱", language)} values={query.emailStates} />
+          <ServerColumnHeader {...headerProps} columnKey="city" multiFilterPatch={(cities) => ({ cities })} options={cityOptions} searchPatch={(city) => ({ city: city.trim() || undefined })} searchValue={query.city ?? ""} sortKey="city" title={translateText("城市", language)} values={query.cities} />
+          <ServerColumnHeader {...headerProps} columnKey="identities" multiFilterPatch={(identityTypes) => ({ identityTypes })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "shop_owner", label: translateText("商户", language) }, { value: "admin", label: translateText("运营", language) }]} title={copy.identities} values={query.identityTypes} />
+          <ServerColumnHeader {...headerProps} columnKey="membership" multiFilterPatch={(tiers) => ({ tiers: tiers as UserListQuery["tiers"] })} options={tierOptions} title={copy.membership} values={query.tiers} />
           <ServerColumnHeader {...headerProps} columnKey="bookings" filterPatch={(range) => ({ minBookings: range ? bookingRanges[range]?.minBookings : undefined, maxBookings: range ? bookingRanges[range]?.maxBookings : undefined })} options={Object.keys(bookingRanges).map((value) => ({ value, label: value }))} title={copy.bookings} value={activeBookingRange(query)} />
-          <ServerColumnHeader {...headerProps} columnKey="privacy" filterPatch={(privacy) => ({ privacy: privacy as UserListQuery["privacy"] })} options={privacyOptions} title={translateText("隐私模式", language)} value={query.privacy} />
-          <ServerColumnHeader {...headerProps} columnKey="ekyc" filterPatch={(ekyc) => ({ ekyc: ekyc as UserListQuery["ekyc"] })} options={[{ value: "verified", label: copy.verified }, { value: "unverified", label: copy.unverified }]} title={copy.ekyc} value={query.ekyc} />
+          <ServerColumnHeader {...headerProps} columnKey="privacy" multiFilterPatch={(privacyScopes) => ({ privacyScopes: privacyScopes as UserListQuery["privacyScopes"] })} options={privacyOptions} title={translateText("隐私模式", language)} values={query.privacyScopes} />
+          <ServerColumnHeader {...headerProps} columnKey="ekyc" multiFilterPatch={(ekycStates) => ({ ekycStates: ekycStates as UserListQuery["ekycStates"] })} options={[{ value: "verified", label: copy.verified }, { value: "unverified", label: copy.unverified }]} title={copy.ekyc} values={query.ekycStates} />
           <ServerColumnHeader {...headerProps} columnKey="ndp" filterPatch={(range) => ({ minNdpBalance: range ? ndpRanges[range]?.minNdpBalance : undefined, maxNdpBalance: range ? ndpRanges[range]?.maxNdpBalance : undefined })} options={Object.keys(ndpRanges).map((value) => ({ value, label: value }))} title={copy.ndpBalance} value={activeRange(ndpRanges, "minNdpBalance", "maxNdpBalance")} />
-          <ServerColumnHeader {...headerProps} columnKey="state" filterPatch={(state) => ({ state: state as UserListQuery["state"] })} options={[{ value: "active", label: copy.active }, { value: "inactive", label: copy.inactive }]} title={copy.status} value={query.state} />
-          <ServerColumnHeader {...headerProps} columnKey="createdAt" sortKey="createdAt" title={copy.registeredAt} />
+          <ServerColumnHeader {...headerProps} columnKey="state" multiFilterPatch={(states) => ({ states: states as UserListQuery["states"] })} options={[{ value: "active", label: copy.active }, { value: "inactive", label: copy.inactive }]} title={copy.status} values={query.states} />
+          <ServerColumnHeader {...headerProps} columnKey="createdAt" dateFrom={query.registeredFrom?.slice(0, 10) ?? ""} datePatch={(from, to) => ({ registeredFrom: from ? new Date(`${from}T00:00:00`).toISOString() : undefined, registeredTo: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined })} dateTo={query.registeredTo?.slice(0, 10) ?? ""} sortKey="createdAt" title={copy.registeredAt} />
           <th className="px-4 py-3 font-black">{copy.details}</th>
         </tr></thead>
         <tbody className="divide-y divide-line">{rows.map((row) => (
           <tr className="hover:bg-paper/70" key={row.id}>
-            <td className="px-4 py-3"><div className="flex items-center gap-3"><img alt="" className="h-10 w-10 rounded-full border border-line object-cover" src={row.avatarUrl || "/images/generated/profiles/profile-03.jpg"} /><div><p className="font-black text-ink">{row.displayName}</p><p className="text-xs text-ink/45">{row.needoId}</p></div></div></td>
+            <td className="px-4 py-3"><div className="flex items-center gap-3">{row.avatarUrl ? <img alt="" className="h-10 w-10 rounded-full border border-line object-cover" src={row.avatarUrl} /> : <div aria-label={row.displayName} className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-moss/10 text-sm font-black text-moss">{row.displayName.trim().slice(0, 1).toUpperCase() || "?"}</div>}<div><p className="font-black text-ink">{row.displayName}</p><p className="text-xs text-ink/45">{row.needoId}</p></div></div></td>
             <td className="max-w-[220px] truncate px-4 py-3 font-bold">{row.email || "—"}</td>
             <td className="px-4 py-3">{row.city || "—"}</td>
             <td className="px-4 py-3"><div className="flex max-w-[220px] flex-wrap gap-1">{row.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`}>{identity.displayName || identity.type}</Badge>)}</div></td>

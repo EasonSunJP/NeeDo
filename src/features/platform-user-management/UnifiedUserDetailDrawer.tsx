@@ -67,7 +67,7 @@ export function UnifiedUserDetailDrawer({
           reviewContent={<UserReceivedReviews canAmend={scope === "operations" && user.capabilities.reviewAmend} scope={scope} userId={user.id} />}
           usageContent={<UserUsageList canComment={scope === "operations" && user.capabilities.timelineCommentWrite} canRefundAmend={scope === "operations" && user.capabilities.refundAmend} scope={scope} userId={user.id} />}
         />
-        {scope === "operations" && user.capabilities.partnerWrite ? <PlatformPartnerRangeEditor userId={user.id} /> : null}
+        {scope === "operations" ? <PlatformPartnerRangeEditor canWrite={user.capabilities.partnerWrite} userId={user.id} /> : null}
       </div> : null}
     </Drawer>
   );

@@ -22,6 +22,17 @@ const review = {
   tags: ["punctual", "polite"],
   createdAt: "2026-09-05T10:00:00.000Z",
   amendmentVersion: 1,
+  amendmentHistory: [
+    {
+      version: 1,
+      rating: 4,
+      comment: "Service was good",
+      tags: ["punctual", "polite"],
+      reason: "Evidence confirmed",
+      revisedAt: "2026-09-06T10:00:00.000Z",
+      revisedBy: "Operator"
+    }
+  ],
   order: {
     id: 88,
     orderNo: "B-88",

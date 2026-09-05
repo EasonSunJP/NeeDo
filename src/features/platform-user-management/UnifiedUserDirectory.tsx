@@ -17,12 +17,19 @@ export function userDirectoryQuery(params: URLSearchParams): UserListQuery {
     page_size: pageSize,
     keyword: params.get("keyword") || undefined,
     tier: (params.get("tier") as PlatformTierCode | null) ?? undefined,
+    tiers: params.getAll("tiers") as PlatformTierCode[],
     identityType: params.get("identityType") || undefined,
+    identityTypes: params.getAll("identityTypes"),
     state: (params.get("state") as UserListQuery["state"]) || undefined,
+    states: params.getAll("states") as NonNullable<UserListQuery["states"]>,
     ekyc: (params.get("ekyc") as UserListQuery["ekyc"]) || undefined,
+    ekycStates: params.getAll("ekycStates") as NonNullable<UserListQuery["ekycStates"]>,
     city: params.get("city") || undefined,
+    cities: params.getAll("cities"),
     emailState: (params.get("emailState") as UserListQuery["emailState"]) || undefined,
+    emailStates: params.getAll("emailStates") as NonNullable<UserListQuery["emailStates"]>,
     privacy: (params.get("privacy") as UserListQuery["privacy"]) || undefined,
+    privacyScopes: params.getAll("privacyScopes") as NonNullable<UserListQuery["privacyScopes"]>,
     minBookings: optionalNumber(params.get("minBookings")),
     maxBookings: optionalNumber(params.get("maxBookings")),
     minNdpBalance: optionalNumber(params.get("minNdpBalance")),
@@ -54,7 +61,9 @@ export function UnifiedUserDirectory({ scope, onSelect }: { scope: UserDirectory
     const module = searchParams.get("module");
     if (module) params.set("module", module);
     Object.entries(next).forEach(([key, value]) => {
-      if (key !== "page_size" && value !== undefined && value !== "" && !(key === "page" && value === 1)) params.set(key, String(value));
+      if (key === "page_size" || value === undefined || value === "" || (key === "page" && value === 1)) return;
+      if (Array.isArray(value)) value.forEach((item) => params.append(key, String(item)));
+      else params.set(key, String(value));
     });
     setSearchParams(params, { replace: true });
   };

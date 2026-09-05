@@ -77,4 +77,56 @@ describe("BackofficeUserUsageRepository", () => {
     expect(transaction.orderTimelineComment).not.toHaveProperty("delete");
     expect(transaction.orderRefundAmendment).not.toHaveProperty("delete");
   });
+
+  it("keeps explicitly cleared refund fields null in later reads", async () => {
+    const repository = new BackofficeUserUsageRepository({
+      bookingOrder: {
+        findMany: jest.fn(async () => [
+          {
+            id: 88,
+            orderNo: "ORDER-88",
+            status: "COMPLETED",
+            paymentStatus: "REFUNDED",
+            paymentRefundedAt: new Date("2026-09-01T00:00:00.000Z"),
+            paymentRefundReference: "RF-ORIGINAL",
+            paymentRefundReason: "Original reason",
+            priceAmount: 5000,
+            currency: "JPY",
+            startsAt: new Date("2026-09-01T01:00:00.000Z"),
+            endsAt: new Date("2026-09-01T02:00:00.000Z"),
+            createdAt: new Date("2026-08-31T00:00:00.000Z"),
+            serviceNameSnapshot: "Service",
+            service: null,
+            shop: { name: "Shop" },
+            technicianProfile: null,
+            refundAmendments: [
+              {
+                version: 1,
+                displayReference: null,
+                note: null,
+                createdAt: new Date("2026-09-02T00:00:00.000Z")
+              }
+            ]
+          }
+        ]),
+        count: jest.fn(async () => 1)
+      }
+    } as never);
+
+    const page = await repository.listUsage({
+      scope: "platform",
+      userId: 41,
+      page: 1,
+      pageSize: 10,
+      from: new Date("2026-08-01T00:00:00.000Z"),
+      to: new Date("2026-10-01T00:00:00.000Z")
+    });
+
+    expect(page.list[0]?.refund).toEqual({
+      exists: true,
+      displayReference: null,
+      note: null,
+      amendmentVersion: 1
+    });
+  });
 });

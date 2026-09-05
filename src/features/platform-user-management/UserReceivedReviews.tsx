@@ -22,6 +22,9 @@ const copy: Record<Language, Record<string, string>> = {
     serviceAt: "服务时间",
     reviewedAt: "评价时间",
     corrected: "已修订",
+    history: "修订历史",
+    reason: "理由",
+    revisedBy: "修订人",
     previous: "上一页",
     next: "下一页",
   },
@@ -36,6 +39,9 @@ const copy: Record<Language, Record<string, string>> = {
     serviceAt: "服務時間",
     reviewedAt: "評價時間",
     corrected: "已修訂",
+    history: "修訂歷史",
+    reason: "理由",
+    revisedBy: "修訂人",
     previous: "上一頁",
     next: "下一頁",
   },
@@ -50,6 +56,9 @@ const copy: Record<Language, Record<string, string>> = {
     serviceAt: "サービス日時",
     reviewedAt: "評価日時",
     corrected: "修正済み",
+    history: "修正履歴",
+    reason: "理由",
+    revisedBy: "修正者",
     previous: "前へ",
     next: "次へ",
   },
@@ -64,6 +73,9 @@ const copy: Record<Language, Record<string, string>> = {
     serviceAt: "Service time",
     reviewedAt: "Reviewed",
     corrected: "Corrected",
+    history: "Amendment history",
+    reason: "Reason",
+    revisedBy: "Revised by",
     previous: "Previous",
     next: "Next",
   },
@@ -78,6 +90,9 @@ const copy: Record<Language, Record<string, string>> = {
     serviceAt: "서비스 시간",
     reviewedAt: "평가 시간",
     corrected: "수정됨",
+    history: "수정 이력",
+    reason: "사유",
+    revisedBy: "수정자",
     previous: "이전",
     next: "다음",
   },
@@ -223,6 +238,24 @@ export function UserReceivedReviews({
                   </span>
                 ))}
               </div>
+            ) : null}
+            {review.amendmentHistory.length > 0 ? (
+              <details className="mt-3 rounded-lg border border-line bg-white p-3">
+                <summary className="cursor-pointer text-xs font-black text-ink/65">
+                  {text.history} ({review.amendmentHistory.length})
+                </summary>
+                <div className="mt-3 grid gap-2">
+                  {review.amendmentHistory.map((amendment) => (
+                    <div className="rounded-lg bg-paper p-3 text-xs text-ink/65" key={amendment.version}>
+                      <p className="font-black text-ink">v{amendment.version} · {amendment.rating ?? "—"}/5</p>
+                      {amendment.comment ? <p className="mt-1 whitespace-pre-wrap">{amendment.comment}</p> : null}
+                      {amendment.tags.length > 0 ? <p className="mt-1">{amendment.tags.map((tag) => receivedReviewTagText(tag, language)).join(" · ")}</p> : null}
+                      <p className="mt-1">{text.reason}: {amendment.reason}</p>
+                      <p className="mt-1">{text.revisedBy}: {amendment.revisedBy} · {new Date(amendment.revisedAt).toLocaleString(language)}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
             ) : null}
             <dl className="mt-3 grid gap-1 text-xs font-bold text-ink/45 sm:grid-cols-2 lg:grid-cols-4">
               <div>

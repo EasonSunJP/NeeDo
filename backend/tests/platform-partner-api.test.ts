@@ -59,6 +59,7 @@ const agentListProfile = {
 const createRepository = (): jest.Mocked<PlatformPartnerRepositoryPort> =>
   ({
     markPartnerProfile: jest.fn(async () => ({ kind: "created", profile })),
+    listUserProfiles: jest.fn(async () => ({ list: [profile], total: 1, page: 1, page_size: 20 })),
     listAgents: jest.fn(async () => ({
       list: [agentListProfile],
       total: 1,
@@ -75,6 +76,7 @@ const createRepository = (): jest.Mocked<PlatformPartnerRepositoryPort> =>
 const createFixture = (
   permissions: string[] = [
     "backoffice:partner-profile:write",
+    "backoffice:users:read",
     "backoffice:agent:read",
     "backoffice:agent:write"
   ]
@@ -200,6 +202,21 @@ describe("platform partner HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .send({ partnerType: "invalid", startsAt: "not-a-date", endsAt: null, permanent: true, reason: "" })
       .expect(400);
+  });
+
+  it("lists one user's immutable partner validity history", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/users/88/partner-profiles?page=1&pageSize=20")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({ total: 1, page: 1, page_size: 20 });
+    expect(fixture.repository.listUserProfiles).toHaveBeenCalledWith({
+      userId: 88,
+      page: 1,
+      pageSize: 20
+    });
   });
 
   it("returns a paginated agent list filtered by NeeDo ID, nickname, and status", async () => {

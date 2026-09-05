@@ -2676,7 +2676,7 @@ model UserMembershipAdjustment {
   deletedAt           DateTime? @map("deleted_at")
 
   user        User                               @relation("UserMembershipAdjustmentOwner", fields: [userId], references: [id], onDelete: Restrict)
-  tierVersion PlatformMembershipTierVersion?     @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
+  tierVersion PlatformMembershipTierVersion?     @relation(fields: [tierVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdBy   User                               @relation("UserMembershipAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([userId, effectiveFrom, supersededAt, deletedAt], map: "user_membership_adjustments_active_idx")

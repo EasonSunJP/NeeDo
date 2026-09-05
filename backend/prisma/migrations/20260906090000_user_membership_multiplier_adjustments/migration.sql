@@ -27,7 +27,7 @@ CREATE TABLE `user_membership_adjustments` (
 ALTER TABLE `user_membership_adjustments` ADD CONSTRAINT `user_membership_adjustments_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `user_membership_adjustments` ADD CONSTRAINT `user_membership_adjustments_tier_version_id_fkey` FOREIGN KEY (`tier_version_id`) REFERENCES `platform_membership_tier_versions`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `user_membership_adjustments` ADD CONSTRAINT `user_membership_adjustments_tier_version_id_fkey` FOREIGN KEY (`tier_version_id`) REFERENCES `platform_membership_tier_versions`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `user_membership_adjustments` ADD CONSTRAINT `user_membership_adjustments_created_by_id_fkey` FOREIGN KEY (`created_by_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

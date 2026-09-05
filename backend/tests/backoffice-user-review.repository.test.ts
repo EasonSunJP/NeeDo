@@ -14,6 +14,9 @@ const review = {
       version: 1,
       rating: 4,
       comment: "Corrected",
+      reason: "Complaint evidence confirmed",
+      createdAt: new Date("2026-09-06T10:00:00.000Z"),
+      revisedBy: { username: "Operator" },
       tags: [{ label: "punctual" }, { label: "polite" }]
     }
   ],
@@ -60,6 +63,17 @@ describe("BackofficeUserReviewRepository", () => {
           tags: ["punctual", "polite"],
           createdAt: createdAt.toISOString(),
           amendmentVersion: 1,
+          amendmentHistory: [
+            {
+              version: 1,
+              rating: 4,
+              comment: "Corrected",
+              tags: ["punctual", "polite"],
+              reason: "Complaint evidence confirmed",
+              revisedAt: "2026-09-06T10:00:00.000Z",
+              revisedBy: "Operator"
+            }
+          ],
           order: {
             id: 88,
             orderNo: "B-88",
@@ -117,6 +131,8 @@ describe("BackofficeUserReviewRepository", () => {
       orderReview: {
         findFirst: jest.fn(async () => ({
           id: 77,
+          customerProfile: { userId: 41 },
+          bookingOrder: { shopId: 11 },
           rating: 5,
           comment: "Original",
           tags: [{ label: "polite" }],
@@ -156,5 +172,10 @@ describe("BackofficeUserReviewRepository", () => {
     );
     expect(transaction.orderReview).not.toHaveProperty("update");
     expect(auditCreate).toHaveBeenCalledTimes(1);
+    expect(auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadata: expect.objectContaining({ userId: 41, shopId: 11, reviewId: 77 })
+      })
+    });
   });
 });

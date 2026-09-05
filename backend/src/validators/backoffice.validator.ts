@@ -11,6 +11,11 @@ const paginationQuerySchema = {
 };
 
 const isoDateSchema = z.coerce.date();
+const repeated = <TSchema extends z.ZodTypeAny>(schema: TSchema) =>
+  z.preprocess(
+    (value) => (value === undefined ? undefined : Array.isArray(value) ? value : [value]),
+    z.array(schema).min(1).max(20).optional()
+  );
 
 export const manageableMerchantShopsQuerySchema = z
   .object({
@@ -37,16 +42,25 @@ export const backofficeManagedUserListQuerySchema = z
     pageSize: z.coerce.number().int().positive().max(100).default(20),
     keyword: z.string().trim().max(100).optional(),
     tier: z.enum(["free", "silver", "gold", "black_diamond"]).optional(),
+    tiers: repeated(z.enum(["free", "silver", "gold", "black_diamond"])),
     groupCode: z.string().trim().min(1).max(80).optional(),
     identityType: z.string().trim().min(1).max(50).optional(),
+    identityTypes: repeated(z.string().trim().min(1).max(50)),
     source: z.string().trim().min(1).max(32).optional(),
     state: z.enum(["active", "inactive"]).optional(),
+    states: repeated(z.enum(["active", "inactive"])),
     ekyc: z.enum(["verified", "unverified"]).optional(),
+    ekycStates: repeated(z.enum(["verified", "unverified"])),
     city: z.string().trim().min(1).max(100).optional(),
+    cities: repeated(z.string().trim().min(1).max(100)),
     emailState: z.enum(["set", "unset"]).optional(),
+    emailStates: repeated(z.enum(["set", "unset"])),
     privacy: z
       .enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
       .optional(),
+    privacyScopes: repeated(
+      z.enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
+    ),
     minBookings: z.coerce.number().int().nonnegative().optional(),
     maxBookings: z.coerce.number().int().nonnegative().optional(),
     sortBy: z.enum(["displayName", "email", "city", "createdAt"]).default("createdAt"),

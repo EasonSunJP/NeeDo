@@ -6789,6 +6789,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "tags",
           "createdAt",
           "amendmentVersion",
+          "amendmentHistory",
           "order",
           "reviewer"
         ],
@@ -6800,6 +6801,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           tags: { type: "array", items: { type: "string" } },
           createdAt: { type: "string", format: "date-time" },
           amendmentVersion: { type: "integer", minimum: 0 },
+          amendmentHistory: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["version", "rating", "comment", "tags", "reason", "revisedAt", "revisedBy"],
+              properties: {
+                version: { type: "integer", minimum: 1 },
+                rating: { type: ["integer", "null"], minimum: 1, maximum: 5 },
+                comment: { type: ["string", "null"] },
+                tags: { type: "array", items: { type: "string" } },
+                reason: { type: "string" },
+                revisedAt: { type: "string", format: "date-time" },
+                revisedBy: { type: "string" }
+              }
+            }
+          },
           order: {
             type: "object",
             required: ["id", "orderNo", "serviceName", "startsAt"],
@@ -21151,15 +21169,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
           },
+          { name: "tiers", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] } } },
           { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
           { name: "identityType", in: "query", schema: { type: "string", maxLength: 50 } },
+          { name: "identityTypes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } } },
           { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
           { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
+          { name: "states", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["active", "inactive"] } } },
           {
             name: "ekyc",
             in: "query",
             schema: { type: "string", enum: ["verified", "unverified"] }
           },
+          { name: "ekycStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["verified", "unverified"] } } },
           { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
@@ -21169,11 +21191,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "cities", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } } },
           {
             name: "emailState",
             in: "query",
             schema: { type: "string", enum: ["set", "unset"] }
           },
+          { name: "emailStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["set", "unset"] } } },
           {
             name: "privacy",
             in: "query",
@@ -21182,6 +21206,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
             }
           },
+          { name: "privacyScopes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"] } } },
           { name: "minBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           { name: "maxBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           {
@@ -21349,6 +21374,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/backoffice/users/{userId}/partner-profiles`]: {
+      get: {
+        tags: ["Platform Partners"],
+        summary: "List one user's immutable platform partner validity history",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [
+          idPathParameter("userId"),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Platform partner validity history", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: { type: "array", items: { $ref: "#/components/schemas/PlatformPartnerProfile" } },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1 }
+            }
+          }),
+          "401": jsonErrorResponse("error.auth.token_invalid"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
       post: {
         tags: ["Platform Partners"],
         summary: "Mark a formal user as a platform partner",
@@ -24513,15 +24563,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
           },
+          { name: "tiers", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] } } },
           { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
           { name: "identityType", in: "query", schema: { type: "string", maxLength: 50 } },
+          { name: "identityTypes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 50 } } },
           { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
           { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
+          { name: "states", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["active", "inactive"] } } },
           {
             name: "ekyc",
             in: "query",
             schema: { type: "string", enum: ["verified", "unverified"] }
           },
+          { name: "ekycStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["verified", "unverified"] } } },
           { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
@@ -24531,11 +24585,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "cities", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } } },
           {
             name: "emailState",
             in: "query",
             schema: { type: "string", enum: ["set", "unset"] }
           },
+          { name: "emailStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["set", "unset"] } } },
           {
             name: "privacy",
             in: "query",
@@ -24544,6 +24600,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
             }
           },
+          { name: "privacyScopes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"] } } },
           { name: "minBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           { name: "maxBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           {

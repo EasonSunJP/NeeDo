@@ -25,7 +25,8 @@ function fixture(overlap: { id: number } | null) {
   const transaction = {
     $queryRaw: jest.fn(async () => [{ id: 88 }]),
     user: { findFirst: jest.fn(async () => ({ id: 88 })) },
-    platformPartnerProfile: { findFirst, create }
+    platformPartnerProfile: { findFirst, create },
+    auditLog: { create: jest.fn(async () => ({})) }
   };
   const client = {
     $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) =>
@@ -41,6 +42,23 @@ function fixture(overlap: { id: number } | null) {
 }
 
 describe("PlatformPartnerRepository validity ranges", () => {
+  it("returns paginated immutable validity history for one user", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const repository = new PlatformPartnerRepository({
+      platformPartnerProfile: { findMany, count }
+    } as never);
+
+    await expect(repository.listUserProfiles({ userId: 88, page: 1, pageSize: 20 }))
+      .resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 88, deletedAt: null },
+      skip: 0,
+      take: 20,
+      orderBy: [{ activatedAt: "desc" }, { id: "desc" }]
+    }));
+  });
+
   it("locks the user and rejects an overlapping range for the same partner type", async () => {
     const test = fixture({ id: 40 });
 
@@ -50,7 +68,12 @@ describe("PlatformPartnerRepository validity ranges", () => {
       startsAt,
       endsAt,
       markedById: 1,
-      reason: "Signed agency contract"
+      reason: "Signed agency contract",
+      audit: {
+        actorId: 1,
+        action: "backoffice.partner_profile.create",
+        targetType: "platform_partner_profile"
+      }
     })).resolves.toEqual({ kind: "overlap" });
 
     expect(test.transaction.$queryRaw).toHaveBeenCalledTimes(1);
@@ -76,7 +99,12 @@ describe("PlatformPartnerRepository validity ranges", () => {
       startsAt,
       endsAt: null,
       markedById: 1,
-      reason: "Permanent franchise agreement"
+      reason: "Permanent franchise agreement",
+      audit: {
+        actorId: 1,
+        action: "backoffice.partner_profile.create",
+        targetType: "platform_partner_profile"
+      }
     })).resolves.toMatchObject({ kind: "created" });
 
     expect(test.findFirst).toHaveBeenCalledWith(expect.objectContaining({
@@ -89,5 +117,14 @@ describe("PlatformPartnerRepository validity ranges", () => {
         endsAt: null
       })
     }));
+    expect(test.transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: 1,
+        action: "backoffice.partner_profile.create",
+        targetType: "platform_partner_profile",
+        targetId: 41,
+        metadata: expect.objectContaining({ userId: 88 })
+      })
+    });
   });
 });

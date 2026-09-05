@@ -1,5 +1,5 @@
 import {
-  type BookingOrderStatus,
+  BookingOrderStatus,
   OrderServiceEventType,
   OrderPerformanceOutcome,
   OrderPerformanceRevisionAction,
@@ -117,12 +117,19 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
     createdAt: true,
     updatedAt: true,
     identities: {
-      where: { deletedAt: null },
+      where:
+        scope.scope === "merchant"
+          ? { deletedAt: null, scopeType: "shop", scopeId: scope.shopId }
+          : { deletedAt: null },
       orderBy: [{ isDefault: "desc" }, { id: "asc" }],
       select: { type: true, displayName: true, scopeType: true, scopeId: true }
     },
     userRoles: {
-      where: { deletedAt: null, role: { deletedAt: null } },
+      where: {
+        deletedAt: null,
+        role: { deletedAt: null },
+        ...(scope.scope === "merchant" ? { scopeType: "shop", scopeId: scope.shopId } : {})
+      },
       orderBy: [{ roleId: "asc" }, { id: "asc" }],
       select: {
         scopeType: true,
@@ -210,10 +217,13 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
       }
     },
     backofficeUserGroupMemberships: {
-      where: {
-        deletedAt: null,
-        group: { status: "ACTIVE", deletedAt: null }
-      },
+      where:
+        scope.scope === "merchant"
+          ? { AND: [{ deletedAt: null }, { deletedAt: { not: null } }] }
+          : {
+              deletedAt: null,
+              group: { status: "ACTIVE", deletedAt: null }
+            },
       select: { group: { select: { code: true } } }
     },
     ekycVerifications: {
@@ -467,7 +477,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     ]);
     const balances = await this.managedUserBalances(rows.map((row) => row.id));
     return buildPaginatedResponse(
-      rows.map((row) => this.mapManagedUser(row, balances.get(row.id))),
+      rows.map((row) => this.mapManagedUser(row, balances.get(row.id), input)),
       total,
       input
     );
@@ -495,22 +505,59 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       deletedAt: null
     };
     const auditWhere = {
-      targetType: "User",
-      targetId: userId,
       deletedAt: null,
       ...(input.scope === "merchant"
-        ? { metadata: { path: "$.shopId", equals: input.shopId } }
-        : {})
+        ? {
+            targetType: "User",
+            targetId: userId,
+            metadata: { path: "$.shopId", equals: input.shopId }
+          }
+        : {
+            OR: [
+              { targetType: "User", targetId: userId },
+              {
+                targetType: {
+                  in: [
+                    "UserMembershipAdjustment",
+                    "OrderReviewAmendment",
+                    "OrderRefundAmendment",
+                    "OrderTimelineComment",
+                    "platform_partner_profile"
+                  ]
+                },
+                metadata: { path: "$.userId", equals: userId }
+              }
+            ]
+          })
     } satisfies Prisma.AuditLogWhereInput;
-    const reviewWhere = user.customerProfile
+    const reviewWhere: Prisma.OrderReviewWhereInput | null = user.customerProfile
       ? {
           customerProfileId: user.customerProfile.id,
           deletedAt: null,
-          ...(input.scope === "merchant"
-            ? { bookingOrder: { shopId: input.shopId } }
-            : {})
+          bookingOrder: {
+            status: BookingOrderStatus.COMPLETED,
+            deletedAt: null,
+            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+          }
         }
       : null;
+    const creditPromise: Promise<
+      Array<{ rating: number; createdAt: Date; amendments: Array<{ rating: number | null }> }>
+    > = reviewWhere
+      ? this.client.orderReview.findMany({
+          where: reviewWhere,
+          select: {
+            rating: true,
+            createdAt: true,
+            amendments: {
+              where: { deletedAt: null },
+              orderBy: [{ version: "desc" }, { id: "desc" }],
+              take: 1,
+              select: { rating: true }
+            }
+          }
+        })
+      : Promise.resolve([]);
     const [balances, totalBookings, completedBookings, completedSpend, credit, auditTotal, auditRows] =
       await Promise.all([
         this.managedUserBalances([userId]),
@@ -526,14 +573,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           },
           _sum: { paymentAmountJpy: true }
         }),
-        reviewWhere
-          ? this.client.orderReview.aggregate({
-              where: reviewWhere,
-              _avg: { rating: true },
-              _count: { _all: true },
-              _max: { createdAt: true }
-            })
-          : Promise.resolve({ _avg: { rating: null }, _count: { _all: 0 }, _max: { createdAt: null } }),
+        creditPromise,
         this.client.auditLog.count({ where: auditWhere }),
         this.client.auditLog.findMany({
           where: auditWhere,
@@ -542,7 +582,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       ]);
-    const summary = this.mapManagedUser(user, balances.get(userId));
+    const summary = this.mapManagedUser(user, balances.get(userId), input);
+    const effectiveRatings = credit.map((review) => review.amendments[0]?.rating ?? review.rating);
+    const latestReviewAt = credit.reduce<Date | null>(
+      (latest, review) => (!latest || review.createdAt > latest ? review.createdAt : latest),
+      null
+    );
     const customer = user.customerProfile?.deletedAt ? null : user.customerProfile;
     return {
       ...summary,
@@ -558,7 +603,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           }
         : null,
       account: {
-        roles: user.userRoles.map((assignment) => ({
+        roles: this.visibleRoleAssignments(user, input).map((assignment) => ({
           code: assignment.role.code,
           name: assignment.role.name,
           scopeType: assignment.scopeType,
@@ -575,9 +620,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         ndpAvailable: summary.ndpBalance.available,
         usageCount: totalBookings,
         credit: {
-          ratingAverage: Number(credit._avg.rating ?? 0),
-          reviewCount: credit._count._all,
-          latestReviewAt: credit._max.createdAt?.toISOString() ?? null
+          ratingAverage:
+            effectiveRatings.length > 0
+              ? effectiveRatings.reduce((total, rating) => total + rating, 0) /
+                effectiveRatings.length
+              : 0,
+          reviewCount: effectiveRatings.length,
+          latestReviewAt: latestReviewAt?.toISOString() ?? null
         }
       },
       audit: {
@@ -855,7 +904,6 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     if (input.city) {
       filters.push(Prisma.sql`profile.city = ${input.city}`);
     }
-
     const orderDirection = input.sortOrder === "asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
     const orderBy = {
       revenue: Prisma.sql`revenue_jpy ${orderDirection}, completed_orders DESC, working_days DESC, technician_profile_id ASC`,
@@ -1843,8 +1891,19 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         ]
       });
     }
+    if (input.cities?.length) {
+      conditions.push({
+        OR: [
+          { customerProfile: { is: { city: { in: input.cities }, deletedAt: null } } },
+          { technicianProfile: { is: { city: { in: input.cities }, deletedAt: null } } }
+        ]
+      });
+    }
     if (input.emailState) {
       conditions.push(input.emailState === "set" ? { email: { not: "" } } : { email: "" });
+    }
+    if (input.emailStates?.length === 1) {
+      conditions.push(input.emailStates[0] === "set" ? { email: { not: "" } } : { email: "" });
     }
     if (input.privacy) {
       const visibility =
@@ -1868,10 +1927,31 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         ]
       });
     }
+    if (input.privacyScopes?.length) {
+      const visibilities = input.privacyScopes.flatMap((privacy) =>
+        privacy === "enabled"
+          ? ["privateAll", "limited", "network"]
+          : privacy === "disabled"
+            ? ["public"]
+            : [privacy]
+      );
+      conditions.push({
+        OR: [
+          { customerProfile: { is: { visibility: { in: [...new Set(visibilities)] }, deletedAt: null } } },
+          { technicianProfile: { is: { visibility: { in: [...new Set(visibilities)] }, deletedAt: null } } }
+        ]
+      });
+    }
     if (input.state) conditions.push({ isActive: input.state === "active" });
+    if (input.states?.length === 1) conditions.push({ isActive: input.states[0] === "active" });
     if (input.identityType) {
       conditions.push({
         identities: { some: { type: input.identityType, isActive: true, deletedAt: null } }
+      });
+    }
+    if (input.identityTypes?.length) {
+      conditions.push({
+        identities: { some: { type: { in: input.identityTypes }, isActive: true, deletedAt: null } }
       });
     }
     if (input.source) {
@@ -1893,6 +1973,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       };
       conditions.push(
         input.ekyc === "verified"
+          ? { ekycVerifications: { some: verifiedWhere } }
+          : { ekycVerifications: { none: verifiedWhere } }
+      );
+    }
+    if (input.ekycStates?.length === 1) {
+      const verifiedWhere: Prisma.EkycVerificationWhereInput = {
+        status: "verified",
+        verifiedAt: { not: null },
+        deletedAt: null
+      };
+      conditions.push(
+        input.ekycStates[0] === "verified"
           ? { ekycVerifications: { some: verifiedWhere } }
           : { ekycVerifications: { none: verifiedWhere } }
       );
@@ -1934,6 +2026,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       });
     }
     if (input.tier) conditions.push(this.managedUserTierWhere(input.tier, occurredAt));
+    if (input.tiers?.length) {
+      conditions.push({ OR: input.tiers.map((tier) => this.managedUserTierWhere(tier, occurredAt)) });
+    }
     if (input.groupCode) {
       conditions.push(this.managedUserGroupWhere(input.groupCode, occurredAt));
     }
@@ -2147,7 +2242,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private mapManagedUser(
     user: ManagedUserRecord,
-    ndpBalance: { available: number; frozen: number } | undefined
+    ndpBalance: { available: number; frozen: number } | undefined,
+    scope: BackofficeScope
   ): BackofficeManagedUserPayload {
     const customerProfile = user.customerProfile?.deletedAt ? null : user.customerProfile;
     const technicianProfile = user.technicianProfile?.deletedAt ? null : user.technicianProfile;
@@ -2167,14 +2263,22 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         ? "black_diamond"
         : (effectiveTierVersion.tier.code.toLowerCase() as "free" | "silver" | "gold")
       : "free";
-    const operationMember = user.userRoles.some((assignment) =>
+    const visibleRoles = this.visibleRoleAssignments(user, scope);
+    const visibleIdentities =
+      scope.scope === "merchant"
+        ? user.identities.filter(
+            (identity) => identity.scopeType === "shop" && identity.scopeId === scope.shopId
+          )
+        : user.identities;
+    const operationMember = visibleRoles.some((assignment) =>
       OPERATIONS_ROLE_CODES.includes(assignment.role.code)
     );
     const systemGroups = customerProfile ? [`system:${tierCode}`] : [];
     if (operationMember) systemGroups.push("system:operations");
-    const customGroups = user.backofficeUserGroupMemberships.map(
-      (membership) => membership.group.code
-    );
+    const customGroups =
+      scope.scope === "platform"
+        ? user.backofficeUserGroupMemberships.map((membership) => membership.group.code)
+        : [];
     const providers = [...new Set(user.externalAccounts.map((account) => account.provider))];
     return {
       id: user.id,
@@ -2189,8 +2293,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       isActive: user.isActive,
       isTestAccount: user.isTestAccount,
       source: providers.length > 0 ? providers : ["password"],
-      identities: user.identities,
-      roles: user.userRoles.map((assignment) => ({
+      identities: visibleIdentities,
+      roles: visibleRoles.map((assignment) => ({
         code: assignment.role.code,
         name: assignment.role.name
       })),
@@ -2228,6 +2332,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString()
     };
+  }
+
+  private visibleRoleAssignments(user: ManagedUserRecord, scope: BackofficeScope) {
+    return scope.scope === "merchant"
+      ? user.userRoles.filter(
+          (assignment) => assignment.scopeType === "shop" && assignment.scopeId === scope.shopId
+        )
+      : user.userRoles;
   }
 
   private customerInclude(scope: BackofficeScope) {

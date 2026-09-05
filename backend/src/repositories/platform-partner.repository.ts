@@ -13,6 +13,7 @@ import type {
   PlatformPartnerTypeRecord
 } from "../services/platform-partner.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 const profileSelect = {
   id: true,
@@ -143,6 +144,7 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
     endsAt: Date | null;
     markedById: number;
     reason: string;
+    audit: AuditLogCreateInput;
   }): Promise<MarkPartnerProfileRepositoryResult> {
     return this.client.$transaction(async (transaction) => {
       const user = await transaction.user.findFirst({
@@ -178,8 +180,54 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
         },
         select: profileSelect
       });
+      const auditMetadata =
+        input.audit.metadata &&
+        typeof input.audit.metadata === "object" &&
+        !Array.isArray(input.audit.metadata)
+          ? input.audit.metadata
+          : {};
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.audit,
+          targetId: profile.id,
+          metadata: {
+            ...auditMetadata,
+            userId: input.userId,
+            before: null,
+            after: {
+              publicId: profile.publicId,
+              userId: input.userId,
+              partnerType: profile.partnerType.toLowerCase(),
+              startsAt: profile.activatedAt.toISOString(),
+              endsAt: profile.endsAt?.toISOString() ?? null,
+              permanent: profile.endsAt === null
+            },
+            reason: input.reason
+          }
+        })
+      });
       return { kind: "created" as const, profile: this.mapProfile(profile) };
     });
+  }
+
+  public async listUserProfiles(input: {
+    userId: number;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const pagination = toPrismaPagination(input);
+    const where = { userId: input.userId, deletedAt: null } satisfies Prisma.PlatformPartnerProfileWhereInput;
+    const [rows, total] = await Promise.all([
+      this.client.platformPartnerProfile.findMany({
+        where,
+        select: profileSelect,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ activatedAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.platformPartnerProfile.count({ where })
+    ]);
+    return buildPaginatedResponse(rows.map((row) => this.mapProfile(row)), total, pagination);
   }
 
   public async listAgents(

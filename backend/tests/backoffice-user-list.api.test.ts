@@ -46,7 +46,7 @@ describe("backoffice all-user API", () => {
 
     const response = await request(fixture.app)
       .get(
-        "/api/v1/backoffice/users?page=1&pageSize=20&identityType=customer&state=active&city=Tokyo&emailState=set&privacy=enabled&minBookings=2&maxBookings=20&sortBy=city&sortDirection=desc"
+        "/api/v1/backoffice/users?page=1&pageSize=20&identityType=customer&state=active&city=Tokyo&emailState=set&privacy=enabled&tiers=free&tiers=gold&identityTypes=customer&identityTypes=technician&cities=Tokyo&cities=Osaka&minBookings=2&maxBookings=20&sortBy=city&sortDirection=desc"
       )
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
@@ -63,6 +63,9 @@ describe("backoffice all-user API", () => {
         city: "Tokyo",
         emailState: "set",
         privacy: "enabled",
+        tiers: ["free", "gold"],
+        identityTypes: ["customer", "technician"],
+        cities: ["Tokyo", "Osaka"],
         minBookings: 2,
         maxBookings: 20,
         sortBy: "city",

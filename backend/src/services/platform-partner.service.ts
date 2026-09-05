@@ -2,6 +2,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 export type PlatformPartnerType = "agent" | "franchisee" | "supplier";
@@ -180,7 +181,9 @@ export interface PlatformPartnerRepositoryPort {
     endsAt: Date | null;
     markedById: number;
     reason: string;
+    audit: AuditLogCreateInput;
   }) => Promise<MarkPartnerProfileRepositoryResult>;
+  listUserProfiles: (input: PaginationInput & { userId: number }) => Promise<PaginatedResponse<PlatformPartnerProfileRecord>>;
   listAgents: (input: AgentListInput) => Promise<PaginatedResponse<AgentProfileListRecord>>;
   listAgentShopReferrals: (
     input: AgentShopReferralListInput
@@ -216,7 +219,7 @@ const referralStatusFromRecord = {
 export class PlatformPartnerService {
   public constructor(
     private readonly repository: PlatformPartnerRepositoryPort,
-    private readonly auditLogService: Pick<AuditLogService, "record">
+    private readonly auditLogService: Pick<AuditLogService, "record" | "createInput">
   ) {}
 
   public async markPartnerProfile(
@@ -231,7 +234,14 @@ export class PlatformPartnerService {
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       markedById: actor.userId,
-      reason: input.reason
+      reason: input.reason,
+      audit: this.auditLogService.createInput({
+        actor,
+        action: "backoffice.partner_profile.create",
+        targetType: "platform_partner_profile",
+        context,
+        metadata: { reason: input.reason }
+      })
     });
 
     if (result.kind === "user_not_found") {
@@ -249,28 +259,15 @@ export class PlatformPartnerService {
       });
     }
 
-    const payload = this.serializeProfile(result.profile);
-    await this.auditLogService.record({
-      actor,
-      action: "backoffice.partner_profile.create",
-      targetType: "platform_partner_profile",
-      targetId: result.profile.id,
-      context,
-      metadata: {
-        before: null,
-        after: {
-          publicId: payload.publicId,
-          userId: payload.user.id,
-          partnerType: payload.partnerType,
-          startsAt: payload.startsAt,
-          endsAt: payload.endsAt,
-          permanent: payload.permanent
-        },
-        reason: input.reason
-      }
-    });
+    return this.serializeProfile(result.profile);
+  }
 
-    return payload;
+  public async listUserProfiles(
+    userId: number,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<PlatformPartnerProfilePayload>> {
+    const page = await this.repository.listUserProfiles({ userId, ...input });
+    return { ...page, list: page.list.map((record) => this.serializeProfile(record)) };
   }
 
   public async listAgents(

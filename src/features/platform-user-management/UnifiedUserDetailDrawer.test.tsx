@@ -13,10 +13,18 @@ const state = vi.hoisted(() => ({
   listUsage: vi.fn(),
   getUsageTimeline: vi.fn(),
   appendUsageComment: vi.fn(),
-  amendUsageRefund: vi.fn()
+  amendUsageRefund: vi.fn(),
+  listUserPartnerProfiles: vi.fn(),
+  markPartnerProfile: vi.fn()
 }));
 
 vi.mock("./api", () => ({ platformUserManagementApi: state }));
+vi.mock("../../api/platformPartners", () => ({
+  platformPartnersApi: {
+    listUserPartnerProfiles: state.listUserPartnerProfiles,
+    markPartnerProfile: state.markPartnerProfile
+  }
+}));
 vi.mock("../../components/ui/Drawer", () => ({
   Drawer: ({ children, open, title }: { children: ReactNode; open: boolean; title: string }) => open ? <section><h1>{title}</h1>{children}</section> : null
 }));
@@ -67,6 +75,7 @@ describe("UnifiedUserDetailDrawer", () => {
   beforeEach(() => {
     state.getUser.mockReset().mockResolvedValue(detail);
     state.listReceivedReviews.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    state.listUserPartnerProfiles.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });
     state.amendReview.mockReset();
     state.listUsage.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
     state.getUsageTimeline.mockReset();

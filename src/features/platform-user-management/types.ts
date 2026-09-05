@@ -37,6 +37,15 @@ export type ReceivedUserReview = {
   tags: string[];
   createdAt: string;
   amendmentVersion: number;
+  amendmentHistory: Array<{
+    version: number;
+    rating: number | null;
+    comment: string | null;
+    tags: string[];
+    reason: string;
+    revisedAt: string;
+    revisedBy: string;
+  }>;
   order: { id: number; orderNo: string; serviceName: string; startsAt: string };
   reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
 };
@@ -187,11 +196,15 @@ export type UserListQuery = {
   page_size?: number;
   keyword?: string;
   tier?: PlatformTierCode;
+  tiers?: PlatformTierCode[];
   groupCode?: string;
   identityType?: string;
+  identityTypes?: string[];
   source?: string;
   state?: "active" | "inactive";
+  states?: Array<"active" | "inactive">;
   ekyc?: "verified" | "unverified";
+  ekycStates?: Array<"verified" | "unverified">;
   minLevel?: number;
   maxLevel?: number;
   minExpUnits?: string;
@@ -199,8 +212,11 @@ export type UserListQuery = {
   minNdpBalance?: number;
   maxNdpBalance?: number;
   city?: string;
+  cities?: string[];
   emailState?: "set" | "unset";
+  emailStates?: Array<"set" | "unset">;
   privacy?: "enabled" | "disabled" | UserPrivacyScope;
+  privacyScopes?: Array<"enabled" | "disabled" | UserPrivacyScope>;
   minBookings?: number;
   maxBookings?: number;
   sortBy?: "displayName" | "email" | "city" | "createdAt";
