@@ -1239,21 +1239,17 @@ const main = async (): Promise<void> => {
 
     const representativeAccounts = [owners[0], technicianUsers[0], customerUsers[0]];
     assert(representativeAccounts.every(Boolean), "representative login accounts are missing");
-    const passwordChecks = seedConfig.preserveExistingPasswords
-      ? representativeAccounts.map((account) => /^\$2[aby]\$/.test(account.passwordHash))
-      : await Promise.all(
-          representativeAccounts.map((account) =>
-            compare(
-              account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
-              account.passwordHash
-            )
-          )
-        );
+    const passwordChecks = await Promise.all(
+      representativeAccounts.map((account) =>
+        compare(
+          account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
+          account.passwordHash
+        )
+      )
+    );
     assert(
       passwordChecks.every(Boolean),
-      seedConfig.preserveExistingPasswords
-        ? "representative staging password hashes are missing"
-        : "representative simulation passwords do not match export"
+      "representative simulation passwords do not match export"
     );
 
     const firstSlot = scheduleSlots.reduce((earliest, slot) =>
@@ -1272,10 +1268,7 @@ const main = async (): Promise<void> => {
             merchantOwners: owners.length,
             technicians: technicianUsers.length,
             customers: customerUsers.length,
-            passwordSamplesVerified: seedConfig.preserveExistingPasswords ? 0 : passwordChecks.length,
-            existingPasswordHashesVerified: seedConfig.preserveExistingPasswords
-              ? passwordChecks.length
-              : 0
+            passwordSamplesVerified: passwordChecks.length
           },
           avatars: {
             assigned: simulationUsers.length,

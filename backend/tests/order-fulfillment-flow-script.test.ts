@@ -140,33 +140,6 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     });
   });
 
-  it("allows only the exact staging database behind the one-shot rollback-check gate", () => {
-    const allowed = {
-      ALLOW_STAGING_ORDER_ROLLBACK_CHECK: "true",
-      NODE_ENV: "production",
-      DEPLOY_ENV: "staging",
-      DATABASE_URL: "mysql://needo:secret@mysql:3306/needo_staging"
-    };
-
-    expect(loadAndValidateFormalEnvironment(allowed)).toMatchObject({
-      envFilePath: "<staging-runtime>",
-      databaseHost: "mysql",
-      databaseName: "needo_staging"
-    });
-    expect(() =>
-      loadAndValidateFormalEnvironment({ ...allowed, ALLOW_STAGING_ORDER_ROLLBACK_CHECK: "false" })
-    ).toThrow("FORMAL_BACKEND_ENV_FILE is required");
-    expect(() => loadAndValidateFormalEnvironment({ ...allowed, NODE_ENV: "test" })).toThrow(
-      "exact staging runtime environment"
-    );
-    expect(() =>
-      loadAndValidateFormalEnvironment({
-        ...allowed,
-        DATABASE_URL: "mysql://needo:secret@mysql:3306/needo_production"
-      })
-    ).toThrow("restricted to mysql/needo_staging");
-  });
-
   it.each([
     ["NODE_ENV=production", "production environment"],
     ["DEPLOY_ENV=staging", "production environment"],

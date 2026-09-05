@@ -140,33 +140,6 @@ services:
     restart: "no"
     logging: *service-logging
 
-  order-acceptance:
-    build:
-      context: ../..
-      dockerfile: deploy/staging/backend-runtime.Dockerfile
-      target: runtime
-    command:
-      - sh
-      - -c
-      - node dist/staging/order-fulfillment-check.cjs && node dist/staging/order-checkout-concurrency.cjs
-    profiles: ["order-acceptance"]
-    env_file:
-      - ${NEEDO_ENV_FILE:-/srv/needo/config/staging.env}
-    environment:
-      NODE_ENV: production
-      DEPLOY_ENV: staging
-      ALLOW_STAGING_ORDER_ROLLBACK_CHECK: "true"
-      AUTH_TOKEN_AUDIENCE: needo-staging-order-acceptance
-      DATABASE_URL: mysql://needo:${MYSQL_PASSWORD}@mysql:3306/needo_staging
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: "no"
-    logging: *service-logging
-
   bootstrap-admin:
     <<: *api-service
     command: ["npm", "run", "bootstrap:staging-admin"]

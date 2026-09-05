@@ -75,14 +75,6 @@ test("one-shot simulation sync is isolated behind an explicit compose profile", 
   assert.match(compose, /command:\s*\["node", "dist\/staging\/simulation-seed\.cjs"\]/);
 });
 
-test("one-shot order acceptance is restricted to the staging rollback-check profile", () => {
-  const compose = read("./docker-compose.yml");
-  assert.match(compose, /^\s{2}order-acceptance:\s*$/m);
-  assert.match(compose, /profiles:\s*\["order-acceptance"\]/);
-  assert.match(compose, /ALLOW_STAGING_ORDER_ROLLBACK_CHECK:\s*"true"/);
-  assert.match(compose, /order-fulfillment-check\.cjs && node dist\/staging\/order-checkout-concurrency\.cjs/);
-});
-
 test("immutable staging packaging explicitly disables Google auth in the frontend build", () => {
   const packager = read("../../scripts/aws-staging-package-application.mjs");
 
@@ -91,8 +83,6 @@ test("immutable staging packaging explicitly disables Google auth in the fronten
   assert.match(packager, /simulation-seed\.cjs/);
   assert.match(packager, /future-operations-seed\.cjs/);
   assert.match(packager, /simulation-check\.cjs/);
-  assert.match(packager, /order-fulfillment-check\.cjs/);
-  assert.match(packager, /order-checkout-concurrency\.cjs/);
   assert.doesNotMatch(packager, /^\s*"backend\/(?:src|scripts|tsconfig\.json)",?$/m);
 });
 
