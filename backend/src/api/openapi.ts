@@ -26368,6 +26368,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/social/timeline/friends`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated posts from bilateral friends",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated visible posts authored by bilateral friends" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing social-post:list permission" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/social/posts`]: {
       get: {
         tags: ["Step 13 Realtime"],

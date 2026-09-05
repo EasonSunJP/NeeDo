@@ -2605,6 +2605,22 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
     );
   });
 
+  it("serves the bilateral friends timeline through its permission-protected route", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/social/timeline/friends?page=2&pageSize=20")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200);
+
+    expect(fixture.realtimeRepository.listSocialPosts).toHaveBeenLastCalledWith(
+      1,
+      { friendsOnly: true, page: 2, pageSize: 20 },
+      1
+    );
+  });
+
   it("wires formal like, bookmark, unique-view, and friend-share endpoints", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");

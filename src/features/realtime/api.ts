@@ -544,6 +544,11 @@ export const realtimeApi = {
       signal: options.signal
     });
   },
+  listFriendSocialPosts(query: PageQuery = {}) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/timeline/friends", {
+      query
+    });
+  },
   getSocialActivityStatus(userId: number) {
     return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`);
   },

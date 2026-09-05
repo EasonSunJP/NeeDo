@@ -203,6 +203,10 @@ export const socialPostListQuerySchema = z.object({
   bookmarked: booleanQuerySchema.optional()
 });
 
+export const socialTimelineListQuerySchema = z.object({
+  ...paginationQuerySchema
+});
+
 export const socialPostShareBodySchema = z
   .object({
     targetUserIds: z

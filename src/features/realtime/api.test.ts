@@ -53,6 +53,18 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("loads the server-paginated bilateral friends timeline", async () => {
+    const emptyPage = { list: [], total: 0, page: 1, page_size: 100 };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(emptyPage));
+
+    await realtimeApi.listFriendSocialPosts({ page: 1, pageSize: 100 });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/social/timeline/friends?page=1&pageSize=100",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("loads a safe profile and submits a verified friend request", async () => {
     const friendRequest = {
       id: 19,

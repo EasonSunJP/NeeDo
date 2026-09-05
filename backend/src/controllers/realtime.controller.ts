@@ -35,6 +35,7 @@ import {
   socialPostIdempotencyKeySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialTimelineListQuerySchema,
   socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialUserIdParamSchema
@@ -295,6 +296,13 @@ export class RealtimeController {
       getAuthenticatedAccess(response),
       socialPostListQuerySchema.parse(request.query)
     )
+  );
+
+  public listFriendSocialPosts = this.createHandler((request, response) =>
+    this.service.listSocialPosts(getAuthenticatedAccess(response), {
+      ...socialTimelineListQuerySchema.parse(request.query),
+      friendsOnly: true
+    })
   );
 
   public createSocialPost = this.createHandler(

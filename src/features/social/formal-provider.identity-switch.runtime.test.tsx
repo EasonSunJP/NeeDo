@@ -11,6 +11,7 @@ const authMock = vi.hoisted(() => ({
 }));
 const realtimeMock = vi.hoisted(() => ({
   getSocialPost: vi.fn(),
+  listFriendSocialPosts: vi.fn(),
   listNotifications: vi.fn(),
   listSocialPosts: vi.fn()
 }));
@@ -96,6 +97,9 @@ describe("formal Social exact identity isolation", () => {
   beforeEach(() => {
     authMock.value = { isRestoring: false, session: makeSession(70) };
     realtimeMock.getSocialPost.mockReset();
+    realtimeMock.listFriendSocialPosts.mockReset().mockResolvedValue({
+      list: [], page: 1, page_size: 100, total: 0
+    });
     realtimeMock.listSocialPosts.mockReset();
     realtimeMock.listNotifications.mockReset().mockResolvedValue({
       list: [], page: 1, page_size: 100, total: 0

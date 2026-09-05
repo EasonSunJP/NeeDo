@@ -652,6 +652,7 @@ export interface SocialPostListInput extends PaginationInput {
   authorIdentityId?: number;
   replyToPostId?: number;
   bookmarked?: boolean;
+  friendsOnly?: boolean;
 }
 
 export interface SocialActivityStatusInput {
@@ -3835,7 +3836,23 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const where: Prisma.SocialPostWhereInput = {
       deletedAt: null,
       ...(input.authorUserId ? { authorUserId: input.authorUserId } : {}),
-      ...(input.authorIdentityId ? { authorIdentityId: input.authorIdentityId } : {}),
+      ...(input.authorIdentityId
+        ? { authorIdentityId: input.authorIdentityId }
+        : input.friendsOnly
+          ? { authorIdentityId: { not: identityId } }
+          : {}),
+      ...(input.friendsOnly
+        ? {
+            authorIdentity: {
+              contactTargets: {
+                some: { ownerIdentityId: identityId, blockedAt: null, deletedAt: null }
+              },
+              ownedContacts: {
+                some: { contactIdentityId: identityId, blockedAt: null, deletedAt: null }
+              }
+            }
+          }
+        : {}),
       ...(input.replyToPostId ? { replyToPostId: input.replyToPostId } : {}),
       ...(input.bookmarked
         ? {

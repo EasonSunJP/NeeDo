@@ -41,6 +41,7 @@ import {
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialTimelineListQuerySchema,
   socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialUserIdParamSchema
@@ -315,6 +316,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.respondFriendRequest),
     validateRequest({ params: friendRequestIdParamSchema }),
     controller.rejectFriendRequest
+  );
+  router.get(
+    "/social/timeline/friends",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.listSocialPosts),
+    validateRequest({ query: socialTimelineListQuerySchema }),
+    controller.listFriendSocialPosts
   );
   router.get(
     "/social/posts",

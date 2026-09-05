@@ -80,6 +80,7 @@ describe("formal social provider gate", () => {
 
   it("loads formal posts through the realtime API without formal localStorage business data", () => {
     expect(source).toContain("realtimeApi.listSocialPosts");
+    expect(source).toContain("realtimeApi.listFriendSocialPosts");
     expect(source).toContain("subscribeRealtimeEvents");
     expect(source).toContain("mapFormalSocialPost");
     expect(source).not.toContain("formalSocialUnavailableState");

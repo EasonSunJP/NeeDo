@@ -544,8 +544,9 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
   const loadFormalSocial = useCallback(async () => {
     if (sessionUserId === null || isRestoring) return;
-    const [timelinePage, minePage, bookmarkedPage, notificationPage] = await Promise.all([
+    const [timelinePage, friendPage, minePage, bookmarkedPage, notificationPage] = await Promise.all([
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
+      realtimeApi.listFriendSocialPosts({ page: 1, pageSize: 100 }),
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: sessionUserId }),
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, bookmarked: true }),
       realtimeApi.listNotifications({ page: 1, pageSize: 100 })
@@ -556,7 +557,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     )) {
       return;
     }
-    const rawPosts = [...timelinePage.list, ...minePage.list, ...bookmarkedPage.list].filter(
+    const rawPosts = [...timelinePage.list, ...friendPage.list, ...minePage.list, ...bookmarkedPage.list].filter(
       (post, index, posts) => posts.findIndex((candidate) => candidate.id === post.id) === index
     );
     const nextPosts = sortPostsByNewest(rawPosts.map(mapFormalSocialPost));

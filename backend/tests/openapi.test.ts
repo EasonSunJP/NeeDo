@@ -126,6 +126,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths["/api/v1/social/posts"].get.parameters).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "bookmarked", in: "query" })])
     );
+    expect(response.body.paths).toHaveProperty("/api/v1/social/timeline/friends");
     expect(response.body.paths["/api/v1/social/posts/{id}/shares"].post.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "Idempotency-Key", in: "header", required: true })

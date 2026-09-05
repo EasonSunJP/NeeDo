@@ -47,7 +47,7 @@ describe("RealtimeRepository Social friends", () => {
 
     const result = await new RealtimeRepository(client as unknown as PrismaClient).listSocialPosts(
       787,
-      { page: 1, pageSize: 20 }
+      { friendsOnly: true, page: 1, pageSize: 20 }
     );
 
     expect(result.list[0]).toMatchObject({
@@ -67,6 +67,21 @@ describe("RealtimeRepository Social friends", () => {
       },
       select: { ownerIdentityId: true, contactIdentityId: true }
     });
+    expect(client.socialPost.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          authorIdentityId: { not: 787 },
+          authorIdentity: {
+            contactTargets: {
+              some: { ownerIdentityId: 787, blockedAt: null, deletedAt: null }
+            },
+            ownedContacts: {
+              some: { contactIdentityId: 787, blockedAt: null, deletedAt: null }
+            }
+          }
+        })
+      })
+    );
   });
 
   it("does not treat a one-way contact as a friend", async () => {
