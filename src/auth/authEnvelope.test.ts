@@ -22,7 +22,8 @@ function session(portal: AuthSession["portal"] = "user"): AuthSession {
     publicId: portal === "merchant" ? "o0000000017" : "u0000000007",
     scopeId: portal === "merchant" ? 91 : 41,
     scopeType: portal === "merchant" ? "merchant_account" : "customer_profile",
-    type: portal === "merchant" ? "merchant_organization" : "customer"
+    type: portal === "merchant" ? "merchant_organization" : "customer",
+    displayName: portal === "merchant" ? "店铺负责人" : "用户"
   };
   return {
     authVersion: 7,
@@ -36,6 +37,7 @@ function session(portal: AuthSession["portal"] = "user"): AuthSession {
     emailVerifiedAt: "2026-08-27T00:00:00.000Z",
     hasPassword: true,
     avatarUrl: null,
+    profileDisplayName: "Envelope User",
     portal,
     allowedPortals: [portal],
     loginMethod: "password",
@@ -65,6 +67,65 @@ describe("PersistedAuthEnvelopeV8", () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     setAuthEnvelopeLockAdapter(immediateLockAdapter);
+  });
+
+  it("parses and preserves the formal profile and identity display names", () => {
+    const envelope = createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000108",
+      credentialVersion: 108,
+      refreshToken: "profile-refresh",
+      session: session()
+    });
+    const withProfile = {
+      ...envelope,
+      session: {
+        ...envelope.session,
+        profileDisplayName: "运营者用户端姓名",
+        currentIdentity: {
+          ...envelope.session.currentIdentity,
+          displayName: "东京运营组"
+        },
+        identities: envelope.session.identities.map((identity) => ({
+          ...identity,
+          displayName: "东京运营组"
+        }))
+      }
+    };
+    window.localStorage.setItem(persistedAuthEnvelopeStorageKey, JSON.stringify(withProfile));
+
+    expect(readPersistedAuthEnvelope()?.session).toMatchObject({
+      profileDisplayName: "运营者用户端姓名",
+      currentIdentity: { displayName: "东京运营组" }
+    });
+  });
+
+  it("upgrades an existing V8 session without profile display fields", () => {
+    const legacyEnvelope: {
+      session: Record<string, unknown> & {
+        currentIdentity: Record<string, unknown>;
+        identities: Array<Record<string, unknown>>;
+      };
+    } & Record<string, unknown> = JSON.parse(JSON.stringify(createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000109",
+      credentialVersion: 109,
+      refreshToken: "legacy-profile-refresh",
+      session: session()
+    })));
+    delete legacyEnvelope.session.profileDisplayName;
+    delete legacyEnvelope.session.currentIdentity.displayName;
+    legacyEnvelope.session.identities.forEach((identity) => {
+      delete identity.displayName;
+    });
+    window.localStorage.setItem(
+      persistedAuthEnvelopeStorageKey,
+      JSON.stringify(legacyEnvelope)
+    );
+
+    expect(readPersistedAuthEnvelope()?.session).toMatchObject({
+      profileDisplayName: null,
+      currentIdentity: { displayName: null },
+      identities: [expect.objectContaining({ displayName: null })]
+    });
   });
 
   it("ignores every distributed legacy auth key and reads only a strict V8 envelope", async () => {
