@@ -2592,11 +2592,11 @@ const dashboardAnalyticsMetricExamples = [
     detailRoute: "/admin/analytics/metrics/discount_amount"
   }),
   dashboardAnalyticsMetricExample("travel_fare", {
-    currentValue: null,
-    previousValue: null,
-    comparisonPercent: null,
-    comparisonDirection: "unavailable",
-    dataStatus: "not_connected",
+    currentValue: 700,
+    previousValue: 300,
+    comparisonPercent: 133.33,
+    comparisonDirection: "up",
+    dataStatus: "ready",
     unit: "jpy",
     detailRoute: "/admin/analytics/metrics/travel_fare"
   }),
@@ -3341,10 +3341,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       DashboardAnalyticsMetricDetail: {
         type: "object",
         additionalProperties: false,
-        required: ["filter", "metric", "series"],
+        required: ["filter", "metric", "series", "details"],
         properties: {
           filter: { $ref: "#/components/schemas/DashboardAnalyticsFilter" },
           metric: { $ref: "#/components/schemas/AnalyticsMetricPayload" },
+          details: {
+            type: "array",
+            maxItems: 100,
+            description: "Redacted completed-order rows populated only for travel_fare; complete customer addresses are never returned.",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["orderNo", "shopId", "shopName", "completedAt", "distanceMeters", "policyVersionPublicId", "policyVersion", "bandMaximumDistanceMeters", "fareAmountJpy", "paymentEvidence", "reversalState"],
+              properties: {
+                orderNo: { type: "string" },
+                shopId: { type: "integer", minimum: 1 },
+                shopName: { type: "string" },
+                completedAt: { type: "string", format: "date-time" },
+                distanceMeters: { type: "integer", minimum: 1 },
+                policyVersionPublicId: { type: "string", format: "uuid" },
+                policyVersion: { type: "integer", minimum: 1 },
+                bandMaximumDistanceMeters: { type: "integer", minimum: 1 },
+                fareAmountJpy: { type: "integer", minimum: 0 },
+                paymentEvidence: { type: "string", enum: ["ndp_ledger", "technician_receipt_confirmation", "operations_receipt_override"] },
+                reversalState: { type: "string", const: "none" }
+              }
+            }
+          },
           series: {
             type: "array",
             minItems: 1,
@@ -3373,6 +3396,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             unit: "people",
             detailRoute: "/admin/analytics/metrics/new_users"
           }),
+          details: [],
           series: [
             {
               seriesKey: "new_users",

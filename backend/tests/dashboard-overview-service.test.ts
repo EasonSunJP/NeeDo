@@ -16,7 +16,7 @@ const actor = {
 const analyticsFacts = () => ({
   operations: {
     grossRevenue: { current: 100, previous: 0, dataStatus: "ready" as const },
-    travelFare: { current: null, previous: null, dataStatus: "not_connected" as const },
+    travelFare: { current: 0, previous: 0, dataStatus: "ready" as const },
     discountAmount: { current: 100, previous: 100, dataStatus: "ready" as const },
     consumablesSales: { current: null, previous: null, dataStatus: "not_connected" as const }
   },
@@ -116,11 +116,11 @@ describe("BackofficeService comprehensive dashboard analytics", () => {
       detailRoute: "/admin/analytics/metrics/gross_revenue"
     });
     expect(result.operationsFinance[1]).toMatchObject({
-      currentValue: null,
-      previousValue: null,
-      comparisonPercent: null,
-      comparisonDirection: "unavailable",
-      dataStatus: "not_connected"
+      currentValue: 0,
+      previousValue: 0,
+      comparisonPercent: 0,
+      comparisonDirection: "flat",
+      dataStatus: "ready"
     });
     expect(result.operationsFinance[2]).toMatchObject({
       comparisonPercent: 0,

@@ -12,7 +12,7 @@ import { AuthTokenService } from "../src/services/auth-token.service";
 const now = new Date("2026-08-31T03:00:00.000Z");
 const operations = {
   grossRevenue: { current: 100, previous: 80, dataStatus: "ready" as const },
-  travelFare: { current: null, previous: null, dataStatus: "not_connected" as const },
+  travelFare: { current: 700, previous: 300, dataStatus: "ready" as const },
   discountAmount: { current: 10, previous: 5, dataStatus: "ready" as const },
   consumablesSales: { current: null, previous: null, dataStatus: "not_connected" as const }
 };
@@ -91,6 +91,15 @@ const createFixture = () => {
   const growthSpy = jest
     .spyOn(DashboardRepository.prototype, "getGrowthFacts")
     .mockResolvedValue(growth);
+  const travelDetailSpy = jest
+    .spyOn(DashboardRepository.prototype, "getTravelFareDetails")
+    .mockResolvedValue([{
+      orderNo: "46493", shopId: 11, shopName: "NeeDo Shinjuku",
+      completedAt: "2026-08-30T03:00:00.000Z", distanceMeters: 7_500,
+      policyVersionPublicId: "00000000-0000-4000-8000-000000000031",
+      policyVersion: 2, bandMaximumDistanceMeters: 10_000, fareAmountJpy: 500,
+      paymentEvidence: "ndp_ledger", reversalState: "none"
+    }]);
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -117,7 +126,7 @@ const createFixture = () => {
       }).token
     ])
   ) as Record<number, string>;
-  return { app, auditLogs, operationSpy, commissionSpy, growthSpy, tokens };
+  return { app, auditLogs, operationSpy, commissionSpy, growthSpy, travelDetailSpy, tokens };
 };
 
 afterEach(() => jest.restoreAllMocks());
@@ -201,6 +210,20 @@ describe("comprehensive dashboard analytics HTTP API", () => {
         metadata: expect.objectContaining({ metricKey: "new_users" })
       })
     ]);
+  });
+
+  it("returns ready travel-fare totals and redacted order detail rows", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/metrics/travel_fare?period=last7days&city=Tokyo")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .expect(200);
+    expect(response.body.data).toMatchObject({
+      metric: { metricKey: "travel_fare", currentValue: 700, previousValue: 300, dataStatus: "ready" },
+      details: [{ orderNo: "46493", distanceMeters: 7_500, fareAmountJpy: 500, paymentEvidence: "ndp_ledger", reversalState: "none" }]
+    });
+    expect(JSON.stringify(response.body.data.details)).not.toMatch(/address|customer/i);
+    expect(fixture.travelDetailSpy).toHaveBeenCalledTimes(1);
   });
 
   it("rejects strict query/path input before any focused reader executes", async () => {
