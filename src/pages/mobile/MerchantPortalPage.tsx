@@ -2427,7 +2427,7 @@ export function MerchantPortalContent({
           footer={<FeatureSegmentedTabs
             items={[
               { label: "信息卡", value: "info" },
-              { label: "服务展示", value: "service" },
+              { label: "店铺展示", value: "service" },
               { label: "数据中心", value: "data" }
             ]}
             onChange={(value) => updateMerchantMeTab(value as MerchantMeTab)}
@@ -2962,6 +2962,7 @@ export function MerchantPortalContent({
           />
         ) : activeView !== "schedule" ? (
           <MerchantHomeContactStatusPanel
+            className={activeView === "me" ? "mx-4 !w-auto" : undefined}
             emptyDetail={contactLog}
             filter={generalContactStatusFilter}
             items={generalContactStatusItems}
