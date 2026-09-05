@@ -71,9 +71,7 @@ describe("GET /api/v1/openapi.json", () => {
         "error.administrative_region.verifier_required"
       );
     }
-    expect(updateShop.responses["400"].description).toContain(
-      "error.shop.public_number_required"
-    );
+    expect(updateShop.responses["400"].description).toContain("error.shop.public_number_required");
   });
 
   it("documents Exchange matching adjustment confirmations and previews", () => {
