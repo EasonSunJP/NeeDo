@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   officialNoticesApi,
@@ -20,6 +20,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { platformUserManagementApi } from "../platform-user-management/api";
 import type { PlatformManagedUser } from "../platform-user-management/types";
+import { contentPublicationApi } from "../../api/contentPublication";
 
 const inputClass = "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none focus:border-moss";
 const textareaClass = "min-h-32 w-full rounded-lg border border-line bg-white px-3 py-3 text-sm font-bold outline-none focus:border-moss";
@@ -50,6 +51,36 @@ const statusTone: Record<OfficialNoticeStatus, BadgeTone> = {
   cancelled: "red",
   archived: "dark"
 };
+const blockOptions: Array<{ type: OfficialNoticeBlock["type"]; label: string; icon: string }> = [
+  { type: "paragraph", label: "正文", icon: "文" },
+  { type: "heading", label: "大段落标题", icon: "H2" },
+  { type: "subheading", label: "小段落标题", icon: "H3" },
+  { type: "bullet", label: "项目符号", icon: "•" },
+  { type: "numbered", label: "编号段落", icon: "1." },
+  { type: "quote", label: "引用", icon: "引" },
+  { type: "callout", label: "提示块", icon: "!" },
+  { type: "divider", label: "分隔线", icon: "─" },
+  { type: "image", label: "图片", icon: "图" },
+  { type: "video", label: "视频", icon: "影" },
+  { type: "file", label: "文件", icon: "档" }
+];
+
+function createNoticeBlock(type: OfficialNoticeBlock["type"] = "paragraph"): OfficialNoticeBlock {
+  return { id: makeKey("block"), type, content: "" };
+}
+
+function blockPlaceholder(type: OfficialNoticeBlock["type"]) {
+  if (type === "heading") return "输入这一段的主标题";
+  if (type === "subheading") return "输入小段落标题";
+  if (type === "bullet") return "输入一个要点";
+  if (type === "numbered") return "输入步骤或顺序内容";
+  if (type === "quote") return "输入需要强调引用的说明";
+  if (type === "callout") return "输入重要提示、注意事项或行动要求";
+  if (type === "image") return "粘贴正式图片 URL，或使用媒体上传";
+  if (type === "video") return "粘贴正式视频 URL";
+  if (type === "file") return "粘贴正式文件下载 URL";
+  return "输入通知正文";
+}
 
 export function describeOfficialNoticeError(error: unknown, language: Language) {
   let message = "通知服务暂时不可用，请稍后重试";
@@ -244,7 +275,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const [level, setLevel] = useState<OfficialNoticeLevel>("general");
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
-  const [body, setBody] = useState("");
+  const [blocks, setBlocks] = useState<OfficialNoticeBlock[]>(() => [createNoticeBlock()]);
   const [audienceType, setAudienceType] = useState(scope === "merchant" ? "shop_card_holders" : "all");
   const [identityTypes, setIdentityTypes] = useState<string[]>(["customer"]);
   const [accountQuery, setAccountQuery] = useState("");
@@ -252,11 +283,83 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const [selectedAccounts, setSelectedAccounts] = useState<PlatformManagedUser[]>([]);
   const [accountSearching, setAccountSearching] = useState(false);
   const [accountSearchError, setAccountSearchError] = useState("");
+  const [uploadingBlockId, setUploadingBlockId] = useState<string | null>(null);
   const [sendMode, setSendMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [idempotencyKey] = useState(() => makeKey("create"));
+  const normalizedBlocks = useMemo(
+    () => blocks
+      .filter((block) => block.type === "divider" || block.content.trim())
+      .map((block) => ({
+        ...block,
+        content: block.content.trim(),
+        ...(block.caption?.trim() ? { caption: block.caption.trim() } : {})
+      })),
+    [blocks]
+  );
+
+  const updateBlock = (id: string, patch: Partial<OfficialNoticeBlock>) => {
+    setBlocks((current) => current.map((block) => block.id === id ? { ...block, ...patch } : block));
+  };
+  const addBlock = (type: OfficialNoticeBlock["type"]) => {
+    setBlocks((current) => [...current, createNoticeBlock(type)]);
+  };
+  const moveBlock = (id: string, direction: -1 | 1) => {
+    setBlocks((current) => {
+      const index = current.findIndex((block) => block.id === id);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      const [block] = next.splice(index, 1);
+      next.splice(nextIndex, 0, block);
+      return next;
+    });
+  };
+  const duplicateBlock = (block: OfficialNoticeBlock) => {
+    setBlocks((current) => {
+      const index = current.findIndex((candidate) => candidate.id === block.id);
+      const copy = { ...block, id: makeKey("block") };
+      return index < 0
+        ? [...current, copy]
+        : [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
+    });
+  };
+  const removeBlock = (id: string) => {
+    setBlocks((current) => {
+      const next = current.filter((block) => block.id !== id);
+      return next.length > 0 ? next : [createNoticeBlock()];
+    });
+  };
+
+  const uploadImage = async (block: OfficialNoticeBlock, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("请选择图片文件");
+      return;
+    }
+    setUploadingBlockId(block.id);
+    setError("");
+    try {
+      const media = await contentPublicationApi.uploadContentImage(file, block.caption || file.name);
+      updateBlock(block.id, {
+        content: media.url,
+        caption: block.caption || file.name,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: media.mimeType,
+        source: "media",
+        mediaAssetId: media.mediaAssetId
+      });
+    } catch (nextError) {
+      setError(describeOfficialNoticeError(nextError, language));
+    } finally {
+      setUploadingBlockId(null);
+    }
+  };
 
   const searchAccounts = async () => {
     const keyword = accountQuery.trim();
@@ -281,7 +384,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim() || !summary.trim() || !body.trim() || (sendMode === "scheduled" && !scheduledAt)) return;
+    if (!title.trim() || !summary.trim() || normalizedBlocks.length === 0 || (sendMode === "scheduled" && !scheduledAt)) return;
     setSubmitting(true);
     setError("");
     try {
@@ -294,7 +397,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
             : { type: "identity_types" as const, identityTypes: identityTypes as Array<"customer" | "technician" | "merchant_owner" | "merchant_staff" | "platform" | "platform_admin" | "scout"> };
       await officialNoticesApi.createManaged(scope, {
         sourceLocale, level, title: title.trim(), summary: summary.trim(),
-        blocks: [{ id: "body", type: "paragraph", content: body.trim() }],
+        blocks: normalizedBlocks,
         audience,
         sendMode,
         scheduledAt: sendMode === "scheduled" ? new Date(scheduledAt).toISOString() : null,
@@ -318,7 +421,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
       <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">源语言<select className={`${inputClass} mt-2`} onChange={(event) => setSourceLocale(event.target.value as OfficialNoticeLocale)} value={sourceLocale}>{["ja", "zh-CN", "zh-TW", "en", "ko"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-sm font-black">级别<select className={`${inputClass} mt-2`} onChange={(event) => setLevel(event.target.value as OfficialNoticeLevel)} value={level}>{Object.entries(levelLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
       <label className="block text-sm font-black">标题<input className={`${inputClass} mt-2`} maxLength={160} onChange={(event) => setTitle(event.target.value)} required value={title} /></label>
       <label className="block text-sm font-black">摘要<input className={`${inputClass} mt-2`} maxLength={500} onChange={(event) => setSummary(event.target.value)} required value={summary} /></label>
-      <label className="block text-sm font-black">正文<textarea className={`${textareaClass} mt-2`} maxLength={20000} onChange={(event) => setBody(event.target.value)} required value={body} /></label>
+      <section className="overflow-hidden rounded-lg border border-line"><div className="border-b border-line bg-paper px-4 py-3"><h2 className="text-base font-black">通知正文</h2><p className="mt-1 text-xs font-bold text-ink/50">按顺序编辑结构化内容块；图片上传使用正式媒体接口，视频和文件只接受正式 URL。</p></div><div className="divide-y divide-line">{blocks.map((block, index) => <article className="space-y-3 p-4" key={block.id}><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><select aria-label={`内容块 ${index + 1} 类型`} className="h-9 rounded-lg border border-line bg-paper px-3 text-xs font-black" onChange={(event) => updateBlock(block.id, { type: event.target.value as OfficialNoticeBlock["type"], content: "", caption: undefined, fileName: undefined, fileSize: undefined, mimeType: undefined, source: undefined, mediaAssetId: undefined })} value={block.type}>{blockOptions.map((option) => <option key={option.type} value={option.type}>{option.label}</option>)}</select><Badge tone="neutral">Block {index + 1}</Badge></div><div className="flex gap-2"><Button disabled={index === 0} onClick={() => moveBlock(block.id, -1)} size="sm" type="button" variant="secondary">↑</Button><Button disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)} size="sm" type="button" variant="secondary">↓</Button><Button onClick={() => duplicateBlock(block)} size="sm" type="button" variant="secondary">复制</Button><Button onClick={() => removeBlock(block.id)} size="sm" type="button" variant="danger">删除</Button></div></div>{block.type === "divider" ? <hr className="border-line" /> : block.type === "image" || block.type === "video" || block.type === "file" ? <div className="space-y-3"><label className="block text-sm font-black">{blockOptions.find((option) => option.type === block.type)?.label} URL<input className={`${inputClass} mt-2`} onChange={(event) => updateBlock(block.id, { content: event.target.value, source: "url", mediaAssetId: undefined, fileName: block.type === "file" ? block.fileName : undefined, fileSize: undefined, mimeType: undefined })} placeholder={blockPlaceholder(block.type)} type="url" value={block.source === "media" ? "" : block.content} /></label><label className="block text-sm font-black">说明文字<input className={`${inputClass} mt-2`} onChange={(event) => updateBlock(block.id, { caption: event.target.value, ...(block.type === "file" ? { fileName: event.target.value } : {}) })} value={block.caption ?? ""} /></label>{block.type === "image" && scope === "platform" ? <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black">{uploadingBlockId === block.id ? "上传中…" : "上传图片"}<input accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploadingBlockId === block.id} onChange={(event) => void uploadImage(block, event)} type="file" /></label> : <p className="text-xs font-bold text-ink/50">当前只保存正式 HTTPS 媒体地址，不会把文件写入浏览器缓存。</p>}{block.content ? <div className="rounded-lg border border-line bg-paper p-3"><NoticeBlocks blocks={[block]} /></div> : null}</div> : <label className="block text-sm font-black">{blockOptions.find((option) => option.type === block.type)?.label}<textarea className={`${textareaClass} mt-2`} maxLength={20000} onChange={(event) => updateBlock(block.id, { content: event.target.value })} placeholder={blockPlaceholder(block.type)} required value={block.content} /></label>}</article>)}</div><div className="flex gap-2 overflow-x-auto border-t border-line bg-paper p-3">{blockOptions.map((option) => <button className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-line bg-white px-3 text-xs font-black hover:border-moss" key={option.type} onClick={() => addBlock(option.type)} type="button"><span className="grid h-6 min-w-6 place-items-center rounded bg-paper px-1">{option.icon}</span>{option.label}</button>)}</div></section>
       <fieldset><legend className="text-sm font-black">发送对象</legend><div className="mt-2 grid gap-2 md:grid-cols-3">{audienceOptions.map(([value, label]) => <label className="rounded-lg border border-line p-3 text-sm font-bold" key={value}><input checked={audienceType === value} className="mr-2" name="audience" onChange={() => setAudienceType(value)} type="radio" />{label}</label>)}</div></fieldset>
       {scope === "platform" && audienceType === "identity_types" ? <fieldset><legend className="text-sm font-black">身份类型</legend><div className="mt-2 flex flex-wrap gap-2">{identityOptions.map((value) => <label className="rounded-lg border border-line px-3 py-2 text-xs font-bold" key={value}><input checked={identityTypes.includes(value)} className="mr-2" onChange={(event) => setIdentityTypes((current) => event.target.checked ? [...current, value] : current.filter((item) => item !== value))} type="checkbox" />{value}</label>)}</div></fieldset> : null}
       {scope === "platform" && audienceType === "exact_users" ? <fieldset className="space-y-3 rounded-lg border border-line bg-paper p-4"><legend className="px-1 text-sm font-black">{translateText("全局搜索账号", language)}</legend><div className="flex flex-col gap-2 md:flex-row"><label className="min-w-0 flex-1 text-sm font-black">{translateText("邮箱、手机号或 NeeDoID", language)}<input className={`${inputClass} mt-2`} onChange={(event) => setAccountQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchAccounts(); } }} placeholder={translateText("输入邮箱、手机号或 NeeDoID", language)} value={accountQuery} /></label><Button disabled={accountSearching || !accountQuery.trim()} onClick={() => void searchAccounts()} type="button" variant="secondary">{accountSearching ? translateText("正在搜索账号", language) : translateText("搜索账号", language)}</Button></div>{accountSearchError ? <p className="text-sm font-bold text-coral">{accountSearchError}</p> : null}{selectedAccounts.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAccounts.map((account) => <button aria-label={`${translateText("移除账号", language)} ${account.needoId}`} className="rounded-full border border-moss/30 bg-white px-3 py-2 text-xs font-black text-moss" key={account.needoId} onClick={() => setSelectedAccounts((current) => current.filter((item) => item.needoId !== account.needoId))} type="button">{account.username} · {account.needoId} ×</button>)}</div> : null}<div className="grid gap-2">{accountResults.map((account) => { const selected = selectedAccounts.some((item) => item.needoId === account.needoId); return <button aria-label={`${selected ? translateText("已选择账号", language) : translateText("选择账号", language)} ${account.needoId}`} className="grid gap-1 rounded-lg border border-line bg-white p-3 text-left text-sm disabled:opacity-60 md:grid-cols-[minmax(0,1fr)_auto]" disabled={selected} key={account.needoId} onClick={() => setSelectedAccounts((current) => current.some((item) => item.needoId === account.needoId) ? current : [...current, account])} type="button"><span><strong className="block text-ink">{account.username} · {account.needoId}</strong><span className="mt-1 block text-xs font-bold text-ink/55">{account.email}{account.phone ? ` · ${account.phone}` : ""}</span></span><span className="text-xs font-black text-moss">{selected ? translateText("已选择账号", language) : translateText("选择账号", language)}</span></button>; })}</div></fieldset> : null}

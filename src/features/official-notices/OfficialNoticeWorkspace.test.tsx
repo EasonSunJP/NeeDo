@@ -25,7 +25,8 @@ const state = vi.hoisted(() => ({
   retryManaged: vi.fn(),
   listInbox: vi.fn(),
   markRead: vi.fn(),
-  listUsers: vi.fn()
+  listUsers: vi.fn(),
+  uploadContentImage: vi.fn()
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -48,6 +49,9 @@ vi.mock("../../api/officialNotices", async (importOriginal) => ({
 }));
 vi.mock("../platform-user-management/api", () => ({
   platformUserManagementApi: { listUsers: state.listUsers }
+}));
+vi.mock("../../api/contentPublication", () => ({
+  contentPublicationApi: { uploadContentImage: state.uploadContentImage }
 }));
 
 const notice = {
@@ -152,6 +156,15 @@ describe("official notice formal API interactions", () => {
       page: 1,
       page_size: 20
     });
+    state.uploadContentImage.mockResolvedValue({
+      publicId: "a".repeat(64),
+      mediaAssetId: 41,
+      url: `/media/content/${"a".repeat(64)}.webp`,
+      mimeType: "image/webp",
+      width: 800,
+      height: 600,
+      checksumSha256: "a".repeat(64)
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -206,6 +219,43 @@ describe("official notice formal API interactions", () => {
     expect(JSON.stringify(state.createManaged.mock.calls[0]?.[1])).not.toMatch(/userIds|shopId|issuer/);
     expect(container.textContent).not.toMatch(/NeeDoID|指定アカウント/);
     await waitFor(() => expect(container.textContent).toContain("done"));
+  });
+
+  it("builds and submits the approved structured notice blocks", async () => {
+    act(() => root.render(<MemoryRouter initialEntries={["/compose"]}><Routes><Route path="/compose" element={<OfficialNoticeComposer returnPath="/done" scope="merchant" />} /><Route path="/done" element={<p>done</p>} /></Routes></MemoryRouter>));
+    setField("标题", "结构化通知");
+    setField("摘要", "检查内容块");
+    setField("正文", "第一段正文");
+    await click("大段落标题");
+    const textareas = document.querySelectorAll<HTMLTextAreaElement>("textarea");
+    expect(textareas).toHaveLength(2);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textareas[1], "重要事项");
+      textareas[1].dispatchEvent(new Event("input", { bubbles: true }));
+      textareas[1].dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await click("确认创建");
+    await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
+    expect(state.createManaged.mock.calls[0]?.[1].blocks).toEqual([
+      expect.objectContaining({ type: "paragraph", content: "第一段正文" }),
+      expect.objectContaining({ type: "heading", content: "重要事项" })
+    ]);
+  });
+
+  it("uploads image blocks through the formal content media API", async () => {
+    act(() => root.render(<MemoryRouter><OfficialNoticeComposer returnPath="/done" scope="platform" /></MemoryRouter>));
+    await click("图片");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept*="image/jpeg"]');
+    expect(input).not.toBeNull();
+    const file = new File(["formal-image"], "notice.webp", { type: "image/webp" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => {
+      input?.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(state.uploadContentImage).toHaveBeenCalledWith(file, "notice.webp"));
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(`/media/content/${"a".repeat(64)}.webp`);
+    expect(container.innerHTML).not.toMatch(/data:image|blob:/);
   });
 
   it("searches the formal global account directory and submits selected public NeeDo IDs", async () => {
