@@ -104,7 +104,7 @@
 - [x] **Step 3: Implement the minimal accept transaction** with conditional order/slot updates followed by supplied LedgerService callbacks on the same Prisma transaction client.
 - [x] **Step 4: Rerun unit tests** and confirm green.
 - [x] **Step 5: Add guarded real-MySQL integration tests** for concurrent request serialization, publication capture once across two accepted orders, reject/withdraw zero-finance effects, settlement rollback, and cleanup. Confirmed Request hold release and races against the separate service/payment transition APIs remain part of the live-database gate expansion rather than being simulated.
-- [ ] **Step 6: Run the integration test only against an isolated non-production database**; if no safe database is configured, report the gate as unproven rather than mutating the shared app database.
+- [x] **Step 6: Run the integration test only against an isolated non-production database**. The checker applied all 130 migrations to a generated scratch database and passed 8 real-MySQL scenarios, then removed the dedicated database and principal with `cleanupVerified=true` and `existingDatabaseModified=false`; the shared app database was not mutated.
 
 ### Task 5: OpenAPI, documentation, and regression gate
 
@@ -119,6 +119,8 @@
 
 - [x] **Step 1: Write a failing OpenAPI contract test** for all paths, security, schemas, idempotency header, and error responses.
 - [x] **Step 2: Run the OpenAPI test** and confirm the paths are missing.
-- [x] **Step 3: Add the exact OpenAPI definitions and update docs** with completed versus deferred scope; explicitly retain the Affiliate pause and note that UI/browser acceptance remains a later microstep.
+- [x] **Step 3: Add the exact OpenAPI definitions and update docs** with completed versus deferred scope; explicitly retain the Affiliate pause. The subsequent shared-panel microstep connected the formal customer, technician, and merchant order details plus Exchange cards to the API.
 - [x] **Step 4: Run focused tests**, then `npm --prefix backend run prisma:generate`, `npm --prefix backend run lint`, the four-shard backend regression suite, and `npm --prefix backend run build`.
 - [x] **Step 5: Inspect `git diff --check`, `git status`, and the complete diff**; commit only after fresh verification and do not merge `main`.
+
+Post-implementation acceptance completed on 2026-09-05 against an isolated clone of the local formal data with all current migrations: a real customer exercised request/withdraw/request/reject/request, a real technician exercised reject and accept, and customer, technician, and merchant reload paths retained the final accepted state. The 320/440-pixel checks also covered an ordinary-order fallback and found no horizontal overflow or unexempted application errors. The isolated database and grant were removed after database evidence was recorded. The two cancellation migrations are applied to local `needo_dev`, but no acceptance business rows were written there; remote push, authorized-environment migration, deployment, and post-release smoke remain separate gates.
