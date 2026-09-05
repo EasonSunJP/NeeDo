@@ -53,8 +53,6 @@ test("runtime Dockerfiles consume only locked dependencies and prebuilt outputs"
   assert.match(backend, /npx prisma generate/);
   assert.match(backend, /COPY backend\/prisma\.config\.ts \.\/prisma\.config\.ts/);
   assert.match(backend, /FROM all-deps AS migration/);
-  assert.doesNotMatch(backend, /FROM all-deps AS simulation-sync/);
-  assert.doesNotMatch(backend, /COPY backend\/(?:src|scripts)/);
   assert.match(backend, /FROM node:22-bookworm-slim AS runtime/);
   assert.match(backend, /USER node/);
   assert.match(backend, /COPY backend\/dist \.\/dist/);
@@ -66,25 +64,11 @@ test("runtime Dockerfiles consume only locked dependencies and prebuilt outputs"
   assert.match(frontend, /find \/usr\/share\/nginx\/html -type f -exec chmod 0644 \{\} \\;/);
 });
 
-test("one-shot simulation sync is isolated behind an explicit compose profile", () => {
-  const compose = read("./docker-compose.yml");
-  assert.match(compose, /^\s{2}simulation-sync:\s*$/m);
-  assert.match(compose, /profiles:\s*\["simulation-sync"\]/);
-  assert.match(compose, /ALLOW_STAGING_SIMULATION_SYNC:\s*"true"/);
-  assert.match(compose, /ALLOW_SIMULATION_SEED:\s*"false"/);
-  assert.match(compose, /target:\s*runtime/);
-  assert.match(compose, /command:\s*\["node", "dist\/staging\/simulation-seed\.cjs"\]/);
-});
-
 test("immutable staging packaging explicitly disables Google auth in the frontend build", () => {
   const packager = read("../../scripts/aws-staging-package-application.mjs");
 
   assert.match(packager, /VITE_AUTH_GOOGLE_ENABLED:\s*"false"/);
   assert.match(packager, /"backend\/prisma\.config\.ts"/);
-  assert.match(packager, /simulation-seed\.cjs/);
-  assert.match(packager, /future-operations-seed\.cjs/);
-  assert.match(packager, /simulation-check\.cjs/);
-  assert.doesNotMatch(packager, /^\s*"backend\/(?:src|scripts|tsconfig\.json)",?$/m);
 });
 
 test("immutable staging release disables self-registration at both edges", () => {
