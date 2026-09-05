@@ -117,6 +117,13 @@ export const CONTENT_PUBLICATION_PERMISSIONS = {
   contentMediaUpload: "button:backoffice-content-media-upload"
 } as const;
 
+export const OFFICIAL_NOTICE_PERMISSIONS = {
+  read: "page:backoffice-official-notice",
+  create: "button:backoffice-official-notice-create",
+  review: "button:backoffice-official-notice-review",
+  send: "button:backoffice-official-notice-send"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -139,6 +146,7 @@ export const EXCHANGE_PERMISSIONS = {
   claimWithdrawOwn: "exchange:claims:withdraw-own",
   matchingReadOwn: "exchange:matching:read-own",
   matchingSelectOwn: "exchange:matching:select-own",
+  matchingBookOwn: "exchange:matching:book-own",
   commentList: "exchange:comments:list",
   commentCreate: "exchange:comments:create",
   likeWrite: "exchange:likes:write",
@@ -457,11 +465,41 @@ export const SYSTEM_PERMISSIONS = [
     "order",
     "订单顾客或指派技师在正式结算完成后提交一次评价"
   ),
-  createPermission("order:checkout:read", "查看订单结账", "api", "order", "订单顾客或指派技师查看正式结账证据"),
-  createPermission("order:checkout:payment-method:write", "选择结账方式", "api", "order", "订单顾客选择现金、NDP 或其他支付方式"),
-  createPermission("order:checkout:ndp:pay", "NDP 结账", "api", "order", "订单顾客使用快照汇率完成 NDP 支付"),
-  createPermission("order:checkout:receipt:confirm", "确认线下收款", "api", "order", "指派技师确认现金或其他方式已收款"),
-  createPermission("backoffice:order:checkout:receipt-override", "运营确认线下收款", "api", "order", "平台运营以独立审计路径确认线下收款"),
+  createPermission(
+    "order:checkout:read",
+    "查看订单结账",
+    "api",
+    "order",
+    "订单顾客或指派技师查看正式结账证据"
+  ),
+  createPermission(
+    "order:checkout:payment-method:write",
+    "选择结账方式",
+    "api",
+    "order",
+    "订单顾客选择现金、NDP 或其他支付方式"
+  ),
+  createPermission(
+    "order:checkout:ndp:pay",
+    "NDP 结账",
+    "api",
+    "order",
+    "订单顾客使用快照汇率完成 NDP 支付"
+  ),
+  createPermission(
+    "order:checkout:receipt:confirm",
+    "确认线下收款",
+    "api",
+    "order",
+    "指派技师确认现金或其他方式已收款"
+  ),
+  createPermission(
+    "backoffice:order:checkout:receipt-override",
+    "运营确认线下收款",
+    "api",
+    "order",
+    "平台运营以独立审计路径确认线下收款"
+  ),
   createPermission(
     "merchant-admin:order-payment:write",
     "商户线下收款维护",
@@ -1693,6 +1731,34 @@ export const SYSTEM_PERMISSIONS = [
     "上传正式内容发布媒体资源"
   ),
   createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.read,
+    "官方通知读取",
+    "page",
+    "official-notice",
+    "分页查看平台官方通知及投递回执"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.create,
+    "官方通知创建",
+    "button",
+    "official-notice",
+    "创建官方通知草稿并选择正式受众"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.review,
+    "官方通知审核",
+    "button",
+    "official-notice",
+    "审核、取消与归档平台官方通知"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.send,
+    "官方通知发送",
+    "button",
+    "official-notice",
+    "立即或定时发送并重试失败的官方通知"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.postList,
     "需求情报列表",
     "api",
@@ -1777,6 +1843,13 @@ export const SYSTEM_PERMISSIONS = [
     "为本人发布的选配需求选择准确人数的有效抢单"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.matchingBookOwn,
+    "创建匹配预约",
+    "api",
+    "exchange",
+    "将本人已匹配的需求原子转换为正式待接单预约"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.commentList,
     "需求情报评论列表",
     "api",
@@ -1852,10 +1925,15 @@ const EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimWithdrawOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
+const EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES = [
+  EXCHANGE_PERMISSIONS.matchingReadOwn
+] as const satisfies readonly SystemPermissionCode[];
+
 const EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimListOwnedRequest,
-  EXCHANGE_PERMISSIONS.matchingReadOwn,
-  EXCHANGE_PERMISSIONS.matchingSelectOwn
+  ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
+  EXCHANGE_PERMISSIONS.matchingSelectOwn,
+  EXCHANGE_PERMISSIONS.matchingBookOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [
@@ -2213,7 +2291,11 @@ const CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES = [
   CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementPublish,
   CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeEdit,
   CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticePublish,
-  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload
+  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload,
+  OFFICIAL_NOTICE_PERMISSIONS.read,
+  OFFICIAL_NOTICE_PERMISSIONS.create,
+  OFFICIAL_NOTICE_PERMISSIONS.review,
+  OFFICIAL_NOTICE_PERMISSIONS.send
 ] as const satisfies readonly SystemPermissionCode[];
 
 export const buildRolePermissionAssignments = (): Record<
@@ -2298,6 +2380,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
@@ -2320,6 +2403,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",

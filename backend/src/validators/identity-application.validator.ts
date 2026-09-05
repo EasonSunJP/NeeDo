@@ -83,12 +83,21 @@ export const identityApplicationVersionBodySchema = z
 export const bindMerchantBankAccountBodySchema = z
   .object({
     expectedVersion: z.number().int().positive(),
-    bankCode: z.string().trim().regex(/^\d{4}$/u),
+    bankCode: z
+      .string()
+      .trim()
+      .regex(/^\d{4}$/u),
     bankName: z.string().trim().min(1).max(120),
-    branchCode: z.string().trim().regex(/^\d{3}$/u),
+    branchCode: z
+      .string()
+      .trim()
+      .regex(/^\d{3}$/u),
     branchName: z.string().trim().min(1).max(120),
     accountType: z.enum(["ordinary", "current"]),
-    accountNumber: z.string().trim().regex(/^\d{4,12}$/u),
+    accountNumber: z
+      .string()
+      .trim()
+      .regex(/^\d{4,12}$/u),
     accountHolderName: z.string().trim().min(1).max(191)
   })
   .strict();

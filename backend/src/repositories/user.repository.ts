@@ -321,9 +321,7 @@ export class UserRepository implements UserRepositoryPort {
     return {
       deletedAt: null,
       ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
-      ...(typeof input.isTestAccount === "boolean"
-        ? { isTestAccount: input.isTestAccount }
-        : {}),
+      ...(typeof input.isTestAccount === "boolean" ? { isTestAccount: input.isTestAccount } : {}),
       ...(input.keyword
         ? {
             OR: [
@@ -343,9 +341,7 @@ export class UserRepository implements UserRepositoryPort {
     return (await this.attachBalances([user]))[0];
   }
 
-  private async attachBalances(
-    users: Array<Omit<UserRecord, "balances">>
-  ): Promise<UserRecord[]> {
+  private async attachBalances(users: Array<Omit<UserRecord, "balances">>): Promise<UserRecord[]> {
     if (users.length === 0) return [];
 
     const wallets = await this.client.wallet.findMany({

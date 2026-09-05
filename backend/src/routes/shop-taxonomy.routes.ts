@@ -26,7 +26,9 @@ export const createShopTaxonomyRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const repository = dependencies.shopTaxonomyRepository ?? new ShopTaxonomyRepository();
   const service = new ShopTaxonomyService(
     new DefaultShopTaxonomyQuotaPolicy(),
@@ -42,7 +44,10 @@ export const createShopTaxonomyRoutes = (
   );
   router.get(
     "/service-categories/:id/keywords",
-    validateRequest({ params: shopTaxonomyCategoryParamSchema, query: shopTaxonomyCatalogQuerySchema }),
+    validateRequest({
+      params: shopTaxonomyCategoryParamSchema,
+      query: shopTaxonomyCatalogQuerySchema
+    }),
     controller.listKeywords
   );
   router.get(
@@ -56,7 +61,10 @@ export const createShopTaxonomyRoutes = (
     "/merchant-admin/shop/service-taxonomy",
     authenticate(),
     createAuthorizeMiddleware(SHOP_TAXONOMY_ROUTE_PERMISSIONS.write),
-    validateRequest({ query: shopTaxonomyMerchantQuerySchema, body: shopTaxonomyReplaceBodySchema }),
+    validateRequest({
+      query: shopTaxonomyMerchantQuerySchema,
+      body: shopTaxonomyReplaceBodySchema
+    }),
     controller.replaceShopTaxonomy
   );
 

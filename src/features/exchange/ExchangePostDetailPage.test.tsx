@@ -43,6 +43,9 @@ vi.mock("./ExchangeClaimPanel", () => ({
 vi.mock("./ExchangeReceivedClaims", () => ({
   ExchangeReceivedClaims: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-received-claims" />
 }));
+vi.mock("./ExchangeMatchedBookingCard", () => ({
+  ExchangeMatchedBookingCard: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-matched-booking" />
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -267,6 +270,7 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("m0000000061");
     expect(document.body.textContent).toContain("¥9,800");
     expect(document.body.textContent).toContain("预约与支付后续开放");
+    expect(document.body.textContent).toContain("请通过平台保留沟通记录和服务凭证");
     expect(document.body.querySelector('[data-testid="exchange-detail-hero"] img')?.getAttribute("src")).toBe(
       "/simulation/shops/ginza-calm-body-lab.png"
     );
@@ -310,7 +314,8 @@ describe("ExchangePostDetailPage", () => {
       demand: { ...demandPost.demand!, matchMode: "selective" }
     });
     await renderDetail();
-    await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，预约与支付尚未开放"));
+    await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，请查看已选服务者的预约状态；支付不会自动扣款"));
+    expect(document.body.textContent).toContain("确认预约后，每位已匹配服务者各有一张独立订单；支付仍未启用");
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull();
     expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(true);
   });
@@ -366,5 +371,31 @@ describe("ExchangePostDetailPage", () => {
     expect(detailSource).toContain("ExchangeClaimPanel");
     expect(detailSource).toContain("ExchangeReceivedClaims");
     expect(detailSource).not.toMatch(/localStorage|fakeBooking|fakePayment/u);
+  });
+
+  it("renders only the provider-scoped booking panel for a matched participant", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false, canViewMatching: true }
+    });
+    await renderDetail("/technician/needo/posts/41", "technician");
+    await waitFor(() => expect(document.body.querySelector('[data-testid="formal-matched-booking"]')).not.toBeNull());
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).toBeNull();
+  });
+
+  it("does not expose a matching or booking panel to an unselected viewer", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false, canViewMatching: false }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="formal-matched-booking"]')).toBeNull();
   });
 });

@@ -9,9 +9,7 @@ import { AppError } from "../utils/app-error";
 
 const CLOSED_APPLICATION_STATUSES = ["approved", "rejected", "withdrawn"] as const;
 
-export class IdentityApplicationPurgeRepository
-  implements IdentityApplicationPurgeRepositoryPort
-{
+export class IdentityApplicationPurgeRepository implements IdentityApplicationPurgeRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async listDue(input: {
@@ -170,10 +168,7 @@ export class IdentityApplicationPurgeRepository
     });
   }
 
-  public async release(input: {
-    applicationId: number;
-    claimedVersion: number;
-  }): Promise<void> {
+  public async release(input: { applicationId: number; claimedVersion: number }): Promise<void> {
     await this.client.identityApplication.updateMany({
       where: {
         id: input.applicationId,

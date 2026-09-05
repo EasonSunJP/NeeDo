@@ -38,19 +38,26 @@ const rule = {
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "shop" as const,
   technicianNdpSharePercent: 0,
-  bonusRules: [{
-    id: "monthly-five",
-    name: "月间奖励",
-    triggerType: "monthly_order_count" as const,
-    threshold: 5,
-    amountJpy: 3_000,
-    active: true
-  }],
+  bonusRules: [
+    {
+      id: "monthly-five",
+      name: "月间奖励",
+      triggerType: "monthly_order_count" as const,
+      threshold: 5,
+      amountJpy: 3_000,
+      active: true
+    }
+  ],
   deductionRules: []
 };
 
 const source: TechnicianDataCenterSource = {
-  technician: { id: 31, userId: 9, displayName: "Misaki", employmentStartedAt: "2026-04-01T00:00:00.000Z" },
+  technician: {
+    id: 31,
+    userId: 9,
+    displayName: "Misaki",
+    employmentStartedAt: "2026-04-01T00:00:00.000Z"
+  },
   affiliation: {
     shopId: 73,
     shopName: "GINZA Calm Body Lab",
@@ -114,14 +121,20 @@ describe("technician data center period resolution", () => {
 
 describe("TechnicianDataCenterService", () => {
   it("combines payslip income and snapshotted component compensation without inventing values", async () => {
-    const repository = { load: jest.fn(async () => source) } as unknown as TechnicianDataCenterRepositoryPort;
+    const repository = {
+      load: jest.fn(async () => source)
+    } as unknown as TechnicianDataCenterRepositoryPort;
     const service = new TechnicianDataCenterService(
       repository,
       { record: jest.fn(async () => undefined) },
       () => new Date("2026-09-01T03:00:00.000Z")
     );
 
-    const result = await service.getMine(actor, { ip: "127.0.0.1", userAgent: "jest" }, "last7days");
+    const result = await service.getMine(
+      actor,
+      { ip: "127.0.0.1", userAgent: "jest" },
+      "last7days"
+    );
 
     expect(result.period).toBe("last7days");
     expect(result.series).toHaveLength(7);
@@ -138,18 +151,21 @@ describe("TechnicianDataCenterService", () => {
       hasBonus: true
     });
     expect(result.series.reduce((sum, point) => sum + point.incomeJpy, 0)).toBe(16_800);
-    expect(repository.load).toHaveBeenCalledWith(9, 31, expect.objectContaining({ period: "last7days" }));
+    expect(repository.load).toHaveBeenCalledWith(
+      9,
+      31,
+      expect.objectContaining({ period: "last7days" })
+    );
   });
 
   it("rejects non-technician identity scope", async () => {
-    const service = new TechnicianDataCenterService(
-      { load: jest.fn() },
-      { record: jest.fn() }
-    );
-    await expect(service.getMine(
-      { ...actor, currentIdentityType: "merchant_owner" },
-      { ip: "127.0.0.1" },
-      "week"
-    )).rejects.toMatchObject({ statusCode: 403, message: "error.identity.forbidden" });
+    const service = new TechnicianDataCenterService({ load: jest.fn() }, { record: jest.fn() });
+    await expect(
+      service.getMine(
+        { ...actor, currentIdentityType: "merchant_owner" },
+        { ip: "127.0.0.1" },
+        "week"
+      )
+    ).rejects.toMatchObject({ statusCode: 403, message: "error.identity.forbidden" });
   });
 });

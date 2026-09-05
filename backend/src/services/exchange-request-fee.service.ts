@@ -40,15 +40,11 @@ export type ExchangeRequestFeeVersionCreateResult =
 export interface ExchangeRequestFeeRepositoryPort {
   withTransactionClient(transactionClient: unknown): ExchangeRequestFeeRepositoryPort;
   findCurrent(at: Date): Promise<ExchangeRequestFeeSnapshot | null>;
-  listVersions(
-    input: PaginationInput
-  ): Promise<PaginatedResponse<ExchangeRequestFeeSnapshot>>;
+  listVersions(input: PaginationInput): Promise<PaginatedResponse<ExchangeRequestFeeSnapshot>>;
   createVersion(
     input: ExchangeRequestFeeVersionCreateInput
   ): Promise<ExchangeRequestFeeVersionCreateResult>;
-  recordPublicationCalculation(
-    input: ExchangeRequestPublicationCalculationInput
-  ): Promise<number>;
+  recordPublicationCalculation(input: ExchangeRequestPublicationCalculationInput): Promise<number>;
 }
 
 export class ExchangeRequestFeeConfigurationError extends Error {
@@ -62,9 +58,7 @@ export class ExchangeRequestFeeService {
   public constructor(private readonly repository: ExchangeRequestFeeRepositoryPort) {}
 
   public withTransactionClient(transactionClient: unknown): ExchangeRequestFeeService {
-    return new ExchangeRequestFeeService(
-      this.repository.withTransactionClient(transactionClient)
-    );
+    return new ExchangeRequestFeeService(this.repository.withTransactionClient(transactionClient));
   }
 
   public async resolveCurrent(at: Date): Promise<ExchangeRequestFeeSnapshot> {

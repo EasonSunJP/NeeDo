@@ -43,11 +43,7 @@ export class AffiliatePlatformFeeController {
     affiliatePlatformFeeRuleSummaryQuerySchema.parse(request.query);
     response
       .status(200)
-      .json(
-        successResponse(
-          await this.service.getGlobalSummary(getAuthenticatedAccess(response))
-        )
-      );
+      .json(successResponse(await this.service.getGlobalSummary(getAuthenticatedAccess(response))));
   });
 
   public listEligibleShops = this.handle(async (request, response) => {

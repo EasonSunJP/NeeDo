@@ -4,8 +4,7 @@ import { createApp } from "../src/app";
 describe("shop employee directory OpenAPI contract", () => {
   it("documents the current-shop directory without accepting shopId", async () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
-    const operation =
-      response.body.paths["/api/v1/merchant-admin/employee-directory"].get;
+    const operation = response.body.paths["/api/v1/merchant-admin/employee-directory"].get;
     const parameterNames = operation.parameters.map(
       (parameter: { name: string }) => parameter.name
     );
@@ -56,10 +55,7 @@ describe("shop employee directory OpenAPI contract", () => {
       pattern: "^s[0-9]{10}$"
     });
     expect(item.properties.technician).toEqual({
-      anyOf: [
-        { $ref: "#/components/schemas/ShopEmployeeDirectoryTechnician" },
-        { type: "null" }
-      ]
+      anyOf: [{ $ref: "#/components/schemas/ShopEmployeeDirectoryTechnician" }, { type: "null" }]
     });
   });
 });

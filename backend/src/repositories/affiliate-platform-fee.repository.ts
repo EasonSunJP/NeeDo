@@ -116,9 +116,7 @@ export class AffiliatePlatformFeeRepository implements AffiliatePlatformFeeRepos
     );
   }
 
-  public async getGlobalSummary(
-    evaluatedAt: Date
-  ): Promise<AffiliatePlatformFeeRuleSummary> {
+  public async getGlobalSummary(evaluatedAt: Date): Promise<AffiliatePlatformFeeRuleSummary> {
     const baseWhere = { scopeKey: "global", deletedAt: null } as const;
     const [current, nextScheduled, latest] = await Promise.all([
       this.client.affiliatePlatformFeeRule.findFirst({

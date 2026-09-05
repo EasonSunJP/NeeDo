@@ -26,7 +26,13 @@ describe("identity application permissions", () => {
   it("assigns applicant access to portal users and review access only to the responsible roles", () => {
     const assignments = buildRolePermissionAssignments();
 
-    for (const role of ["customer", "technician", "merchant_owner", "merchant_staff", "scout"] as const) {
+    for (const role of [
+      "customer",
+      "technician",
+      "merchant_owner",
+      "merchant_staff",
+      "scout"
+    ] as const) {
       expect(assignments[role]).toEqual(
         expect.arrayContaining(["identity-application:own", "contract:read", "contract:accept"])
       );

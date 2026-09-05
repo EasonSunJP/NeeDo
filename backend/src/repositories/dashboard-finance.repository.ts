@@ -90,14 +90,10 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
     const walletStock = isPlatform
       ? this.currencyPair(walletRows, (row) => row.walletStockNdp ?? row.wallet_stock_ndp)
       : null;
-    const formalWithdrawal = withdrawnRows.find(
-      (row) => this.rowCurrency(row) === "NDP"
-    );
+    const formalWithdrawal = withdrawnRows.find((row) => this.rowCurrency(row) === "NDP");
     const withdrawn: DashboardNdpPair | null = isPlatform
       ? {
-          ndp: this.toNumber(
-            formalWithdrawal?.withdrawnNdp ?? formalWithdrawal?.withdrawn_ndp
-          ),
+          ndp: this.toNumber(formalWithdrawal?.withdrawnNdp ?? formalWithdrawal?.withdrawn_ndp),
           testNdp: 0
         }
       : null;
@@ -112,15 +108,12 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
         ? null
         : {
             totalNdp: currentFlows.ndp.platformFeeActualNdp,
-            platformNdp:
-              currentFlows.ndp.platformFeeActualNdp - currentFlows.ndp.paidUserRewardNdp,
+            platformNdp: currentFlows.ndp.platformFeeActualNdp - currentFlows.ndp.paidUserRewardNdp,
             userRewardNdp: currentFlows.ndp.paidUserRewardNdp
           },
       bucketPlatformNetRevenueNdp: new Map(
         flowRows
-          .filter(
-            (row) => this.rowCurrency(row) === "NDP" && periodKey(row) !== "current"
-          )
+          .filter((row) => this.rowCurrency(row) === "NDP" && periodKey(row) !== "current")
           .map((row) => [
             periodKey(row),
             this.toNumber(row.platformFeeActualNdp ?? row.platform_fee_actual_ndp) +
@@ -130,20 +123,13 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
       ),
       bucketFrozenNdp: new Map(
         frozenRows
-          .filter(
-            (row) => this.rowCurrency(row) === "NDP" && periodKey(row) !== "current"
-          )
-          .map((row) => [
-            periodKey(row),
-            this.toNumber(row.frozenNdp ?? row.frozen_ndp)
-          ])
+          .filter((row) => this.rowCurrency(row) === "NDP" && periodKey(row) !== "current")
+          .map((row) => [periodKey(row), this.toNumber(row.frozenNdp ?? row.frozen_ndp)])
       ),
       bucketShopEstimatedGrossProfitJpy: new Map(
         profitRows.map((row) => [
           bucketKey(row),
-          this.toNumber(
-            row.shopEstimatedGrossProfitJpy ?? row.shop_estimated_gross_profit_jpy
-          )
+          this.toNumber(row.shopEstimatedGrossProfitJpy ?? row.shop_estimated_gross_profit_jpy)
         ])
       )
     };
@@ -175,9 +161,7 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
           key: bucket.key,
           cutoff: bucket.toExclusive
         }))
-      ].map(
-        (cutoff) => Prisma.sql`SELECT ${cutoff.key} AS period_key, ${cutoff.cutoff} AS cutoff`
-      ),
+      ].map((cutoff) => Prisma.sql`SELECT ${cutoff.key} AS period_key, ${cutoff.cutoff} AS cutoff`),
       " UNION ALL "
     );
   }
@@ -361,9 +345,7 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
     `);
   }
 
-  private async queryMerchantProfit(
-    input: DashboardAggregateInput
-  ): Promise<MerchantProfitRow[]> {
+  private async queryMerchantProfit(input: DashboardAggregateInput): Promise<MerchantProfitRow[]> {
     if (input.scope.kind !== "shop") return [];
 
     const buckets = this.bucketTable(input);
@@ -458,9 +440,7 @@ export class DashboardFinanceRepository implements DashboardFinanceReader {
             requestFeeActualNdp: this.toNumber(
               row.requestFeeActualNdp ?? row.request_fee_actual_ndp
             ),
-            paidUserRewardNdp: this.toNumber(
-              row.paidUserRewardNdp ?? row.paid_user_reward_ndp
-            )
+            paidUserRewardNdp: this.toNumber(row.paidUserRewardNdp ?? row.paid_user_reward_ndp)
           }
         : { ...empty };
     };

@@ -422,7 +422,9 @@ describe("IM pages", () => {
     expect(componentSource).toContain("messageIds: [mediaPreview.id]");
     expect(componentSource).toContain("sourceConversationId: conversationId");
     expect(componentSource).not.toContain("messageId: mediaPreview.id");
-    expect(componentSource).toContain("<video");
+    expect(componentSource).toContain("<MediaViewerResource");
+    expect(componentSource).toContain("kind={mediaPreview.type}");
+    expect(componentSource).toContain("expired={mediaPreview.ext?.mediaState === \"expired\"}");
   });
 
   it("anchors the long-press action menu to the selected message instead of the composer edge", () => {

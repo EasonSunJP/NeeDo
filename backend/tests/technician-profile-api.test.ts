@@ -16,8 +16,12 @@ interface StoredValue {
 class InMemoryAuthSessionStore {
   private readonly values = new Map<string, StoredValue>();
 
-  public async getLoginLock(): Promise<boolean> { return false; }
-  public async getAccountLoginLock(): Promise<boolean> { return false; }
+  public async getLoginLock(): Promise<boolean> {
+    return false;
+  }
+  public async getAccountLoginLock(): Promise<boolean> {
+    return false;
+  }
   public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
     return { count: 1, locked: false };
   }
@@ -32,7 +36,9 @@ class InMemoryAuthSessionStore {
   public async getOtp(email: string): Promise<string | null> {
     return this.getValue(`otp:${email}`);
   }
-  public async deleteOtp(email: string): Promise<void> { this.values.delete(`otp:${email}`); }
+  public async deleteOtp(email: string): Promise<void> {
+    this.values.delete(`otp:${email}`);
+  }
   public async hasOtpCooldown(email: string): Promise<boolean> {
     return this.getValue(`otp:cooldown:${email}`) !== null;
   }
@@ -144,8 +150,8 @@ const createFixture = async () => {
   };
   const withoutProfilePermissions = {
     ...permittedRole,
-    rolePermissions: permittedRole.rolePermissions.filter(({ permission }) =>
-      !permission.code.startsWith("technician-profile:")
+    rolePermissions: permittedRole.rolePermissions.filter(
+      ({ permission }) => !permission.code.startsWith("technician-profile:")
     )
   };
   const makeUser = (
@@ -169,17 +175,19 @@ const createFixture = async () => {
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
-    identities: [{
-      id: id + 100,
-      userId: id,
-      type: identityType,
-      scopeType: identityType === "technician" ? "technician_profile" : "customer_profile",
-      scopeId,
-      displayName: email,
-      isDefault: true,
-      isActive: true,
-      deletedAt: null
-    }],
+    identities: [
+      {
+        id: id + 100,
+        userId: id,
+        type: identityType,
+        scopeType: identityType === "technician" ? "technician_profile" : "customer_profile",
+        scopeId,
+        displayName: email,
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ],
     userRoles: [{ deletedAt: null, role }]
   });
   const users = [
@@ -189,12 +197,17 @@ const createFixture = async () => {
   ];
   let profile = makeProfile();
   const authRepository = {
-    findUserByEmail: jest.fn(async (email: string) => users.find((user) => user.email === email) ?? null),
-    findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
-      users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
+    findUserByEmail: jest.fn(
+      async (email: string) => users.find((user) => user.email === email) ?? null
+    ),
+    findUserByLoginIdentifier: jest.fn(
+      async (identifier: string) =>
+        users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
     ),
     findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
-    createVerifiedBaselineCustomer: jest.fn(async () => { throw new Error("unexpected registration"); }),
+    createVerifiedBaselineCustomer: jest.fn(async () => {
+      throw new Error("unexpected registration");
+    }),
     findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
@@ -204,26 +217,30 @@ const createFixture = async () => {
     findMine: jest.fn(async (userId: number, profileId: number) =>
       userId === 9 && profileId === 31 ? profile : null
     ),
-    updateMine: jest.fn(async (
-      userId: number,
-      profileId: number,
-      ownerIdentityId: number,
-      mutation: TechnicianProfileMutation
-    ) => {
-      if (userId !== 9 || profileId !== 31 || ownerIdentityId !== 109) {
-        throw new Error("unexpected technician profile scope");
+    updateMine: jest.fn(
+      async (
+        userId: number,
+        profileId: number,
+        ownerIdentityId: number,
+        mutation: TechnicianProfileMutation
+      ) => {
+        if (userId !== 9 || profileId !== 31 || ownerIdentityId !== 109) {
+          throw new Error("unexpected technician profile scope");
+        }
+        profile = {
+          ...profile,
+          ...(mutation.displayName === undefined ? {} : { displayName: mutation.displayName }),
+          ...(mutation.gender === undefined ? {} : { gender: mutation.gender }),
+          ...(mutation.languages === undefined ? {} : { languages: mutation.languages }),
+          ...(mutation.serviceBase === undefined ? {} : { serviceBase: mutation.serviceBase }),
+          ...(mutation.paymentMethods === undefined
+            ? {}
+            : { paymentMethods: mutation.paymentMethods }),
+          ...(mutation.visibility === undefined ? {} : { visibility: mutation.visibility })
+        };
+        return profile;
       }
-      profile = {
-        ...profile,
-        ...(mutation.displayName === undefined ? {} : { displayName: mutation.displayName }),
-        ...(mutation.gender === undefined ? {} : { gender: mutation.gender }),
-        ...(mutation.languages === undefined ? {} : { languages: mutation.languages }),
-        ...(mutation.serviceBase === undefined ? {} : { serviceBase: mutation.serviceBase }),
-        ...(mutation.paymentMethods === undefined ? {} : { paymentMethods: mutation.paymentMethods }),
-        ...(mutation.visibility === undefined ? {} : { visibility: mutation.visibility })
-      };
-      return profile;
-    })
+    )
   };
   const dataCenterSource: TechnicianDataCenterSource = {
     technician: {
@@ -279,11 +296,13 @@ describe("technician profile current-identity API", () => {
       .get("/api/v1/technician/data-center?period=month")
       .set("Authorization", `Bearer ${token}`)
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        period: "month",
-        affiliation: { shopName: "GINZA Calm Body Lab" },
-        recentOrders: []
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          period: "month",
+          affiliation: { shopName: "GINZA Calm Body Lab" },
+          recentOrders: []
+        })
+      );
     expect(fixture.technicianDataCenterRepository.load).toHaveBeenCalledWith(
       9,
       31,
@@ -299,12 +318,14 @@ describe("technician profile current-identity API", () => {
       .get("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${token}`)
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        id: 31,
-        displayName: "田中 彩",
-        gender: "female",
-        serviceBase: { latitude: 35.6762, longitude: 139.6503 }
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          id: 31,
+          displayName: "田中 彩",
+          gender: "female",
+          serviceBase: { latitude: 35.6762, longitude: 139.6503 }
+        })
+      );
 
     await request(fixture.app)
       .patch("/api/v1/technician-profile/me")
@@ -318,13 +339,15 @@ describe("technician profile current-identity API", () => {
         visibility: "network"
       })
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        displayName: "彩",
-        gender: "female",
-        paymentMethods: ["platform", "cash", "paypay"],
-        serviceBase: { latitude: 35.6895, longitude: 139.6917 },
-        visibility: "network"
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          displayName: "彩",
+          gender: "female",
+          paymentMethods: ["platform", "cash", "paypay"],
+          serviceBase: { latitude: 35.6895, longitude: 139.6917 },
+          visibility: "network"
+        })
+      );
 
     expect(fixture.technicianProfileRepository.updateMine).toHaveBeenCalledWith(
       9,
@@ -362,10 +385,12 @@ describe("technician profile current-identity API", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ languages: [], serviceAreas: [], paymentMethods: [] })
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        languages: [],
-        paymentMethods: []
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          languages: [],
+          paymentMethods: []
+        })
+      );
 
     expect(fixture.technicianProfileRepository.updateMine).toHaveBeenCalledWith(
       9,

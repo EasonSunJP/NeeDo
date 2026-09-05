@@ -21,16 +21,18 @@ export class PlatformPartnerController {
   ): Promise<void> => {
     try {
       const { userId } = platformPartnerUserParamSchema.parse(request.params);
-      response.status(201).json(
-        successResponse(
-          await this.service.markPartnerProfile(
-            userId,
-            platformPartnerProfileBodySchema.parse(request.body),
-            getAuthenticatedAccess(response),
-            getRequestContext(request)
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.service.markPartnerProfile(
+              userId,
+              platformPartnerProfileBodySchema.parse(request.body),
+              getAuthenticatedAccess(response),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -42,15 +44,17 @@ export class PlatformPartnerController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.service.listAgents(
-            agentListQuerySchema.parse(request.query),
-            getAuthenticatedAccess(response),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listAgents(
+              agentListQuerySchema.parse(request.query),
+              getAuthenticatedAccess(response),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -63,16 +67,18 @@ export class PlatformPartnerController {
   ): Promise<void> => {
     try {
       const { agentPublicId } = agentParamSchema.parse(request.params);
-      response.status(201).json(
-        successResponse(
-          await this.service.linkAgentShop(
-            agentPublicId,
-            agentShopReferralBodySchema.parse(request.body),
-            getAuthenticatedAccess(response),
-            getRequestContext(request)
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.service.linkAgentShop(
+              agentPublicId,
+              agentShopReferralBodySchema.parse(request.body),
+              getAuthenticatedAccess(response),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -85,16 +91,18 @@ export class PlatformPartnerController {
   ): Promise<void> => {
     try {
       const { agentPublicId } = agentParamSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.service.listAgentShopReferrals(
-            agentPublicId,
-            agentShopReferralListQuerySchema.parse(request.query),
-            getAuthenticatedAccess(response),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listAgentShopReferrals(
+              agentPublicId,
+              agentShopReferralListQuerySchema.parse(request.query),
+              getAuthenticatedAccess(response),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

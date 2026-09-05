@@ -59,9 +59,7 @@ type TechnicianReviewRow = Prisma.IdentityApplicationGetPayload<{
 const asStringArray = (value: Prisma.JsonValue | null): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
-export class TechnicianApplicationReviewRepository
-  implements TechnicianApplicationReviewRepositoryPort
-{
+export class TechnicianApplicationReviewRepository implements TechnicianApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
 
   public constructor(private readonly client: PrismaClient = prisma) {
@@ -269,9 +267,7 @@ export class TechnicianApplicationReviewRepository
 
   private async closeForReview(
     transaction: Prisma.TransactionClient,
-    input:
-      | ApproveTechnicianApplicationRepositoryInput
-      | RejectTechnicianApplicationRepositoryInput,
+    input: ApproveTechnicianApplicationRepositoryInput | RejectTechnicianApplicationRepositoryInput,
     status: "approved" | "rejected",
     rejectionReason: string | null
   ): Promise<void> {

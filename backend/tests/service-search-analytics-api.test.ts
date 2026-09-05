@@ -82,16 +82,19 @@ describe("formal service taxonomy and search analytics API", () => {
     const document = createOpenApiDocument(env) as {
       paths: Record<string, Record<string, { "x-permission"?: string; parameters?: unknown[] }>>;
     };
-    expect(document.paths["/api/v1/backoffice/service-taxonomy/categories"]?.get?.["x-permission"])
-      .toBe("backoffice:service-taxonomy:read");
-    expect(document.paths["/api/v1/backoffice/service-taxonomy/categories"]?.post?.["x-permission"])
-      .toBe("backoffice:service-taxonomy:write");
-    expect(document.paths["/api/v1/backoffice/search-analytics/top-keywords"]?.get?.["x-permission"])
-      .toBe("backoffice:search-analytics:read");
-    expect(document.paths["/api/v1/backoffice/search-analytics/trends"]?.get).toBeDefined();
     expect(
-      document.paths["/api/v1/search"]?.get?.parameters
-    ).toEqual(expect.arrayContaining([expect.objectContaining({ name: "X-Search-Session", in: "header" })]));
+      document.paths["/api/v1/backoffice/service-taxonomy/categories"]?.get?.["x-permission"]
+    ).toBe("backoffice:service-taxonomy:read");
+    expect(
+      document.paths["/api/v1/backoffice/service-taxonomy/categories"]?.post?.["x-permission"]
+    ).toBe("backoffice:service-taxonomy:write");
+    expect(
+      document.paths["/api/v1/backoffice/search-analytics/top-keywords"]?.get?.["x-permission"]
+    ).toBe("backoffice:search-analytics:read");
+    expect(document.paths["/api/v1/backoffice/search-analytics/trends"]?.get).toBeDefined();
+    expect(document.paths["/api/v1/search"]?.get?.parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "X-Search-Session", in: "header" })])
+    );
   });
 
   it("lists paginated service types and enforces read versus write permission", async () => {
@@ -174,9 +177,7 @@ describe("formal service taxonomy and search analytics API", () => {
 
   it("rejects missing auth, malformed ranges and non-platform active identity", async () => {
     const test = fixture();
-    await request(test.app)
-      .get("/api/v1/backoffice/service-taxonomy/categories")
-      .expect(401);
+    await request(test.app).get("/api/v1/backoffice/service-taxonomy/categories").expect(401);
     await request(test.app)
       .get("/api/v1/backoffice/service-taxonomy/categories")
       .set("Authorization", "Bearer none")

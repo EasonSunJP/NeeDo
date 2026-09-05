@@ -177,13 +177,20 @@ export class ShopMembershipCardRefundService {
     this.throwMutationError(result.kind);
   }
 
-  private normalizeInput(input: ShopMembershipCardRefundCreateInput): ShopMembershipCardRefundCreateInput {
+  private normalizeInput(
+    input: ShopMembershipCardRefundCreateInput
+  ): ShopMembershipCardRefundCreateInput {
     const reason = input.reason?.trim();
     const idempotencyKey = input.idempotencyKey?.trim();
     if (
-      !reason || reason.length < 2 || reason.length > 500
-      || !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 160
-    ) throw this.invalidValue();
+      !reason ||
+      reason.length < 2 ||
+      reason.length > 500 ||
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 160
+    )
+      throw this.invalidValue();
     return { reason, idempotencyKey };
   }
 
@@ -248,11 +255,53 @@ export class ShopMembershipCardRefundService {
     return `${cardNo.slice(0, 4)}${"*".repeat(cardNo.length - 8)}${cardNo.slice(-4)}`;
   }
 
-  private notFound() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_NOT_FOUND, message: "error.shop_membership_card_refund.not_found", statusCode: 404 }); }
-  private invalidValue() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_INVALID_VALUE, message: "error.shop_membership_card_refund.invalid_value", statusCode: 400 }); }
-  private invalidState() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_INVALID_STATE, message: "error.shop_membership_card_refund.invalid_state", statusCode: 409 }); }
-  private orderNotRefunded() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_ORDER_NOT_REFUNDED, message: "error.shop_membership_card_refund.order_not_refunded", statusCode: 409 }); }
-  private pendingConflict() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_PENDING_CONFLICT, message: "error.shop_membership_card_refund.pending_conflict", statusCode: 409 }); }
-  private concurrencyConflict() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_CONCURRENCY_CONFLICT, message: "error.shop_membership_card_refund.concurrency_conflict", statusCode: 409 }); }
-  private idempotencyConflict() { return new AppError({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_IDEMPOTENCY_CONFLICT, message: "error.shop_membership_card_refund.idempotency_conflict", statusCode: 409 }); }
+  private notFound() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_NOT_FOUND,
+      message: "error.shop_membership_card_refund.not_found",
+      statusCode: 404
+    });
+  }
+  private invalidValue() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_INVALID_VALUE,
+      message: "error.shop_membership_card_refund.invalid_value",
+      statusCode: 400
+    });
+  }
+  private invalidState() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_INVALID_STATE,
+      message: "error.shop_membership_card_refund.invalid_state",
+      statusCode: 409
+    });
+  }
+  private orderNotRefunded() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_ORDER_NOT_REFUNDED,
+      message: "error.shop_membership_card_refund.order_not_refunded",
+      statusCode: 409
+    });
+  }
+  private pendingConflict() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_PENDING_CONFLICT,
+      message: "error.shop_membership_card_refund.pending_conflict",
+      statusCode: 409
+    });
+  }
+  private concurrencyConflict() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_CONCURRENCY_CONFLICT,
+      message: "error.shop_membership_card_refund.concurrency_conflict",
+      statusCode: 409
+    });
+  }
+  private idempotencyConflict() {
+    return new AppError({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REFUND_IDEMPOTENCY_CONFLICT,
+      message: "error.shop_membership_card_refund.idempotency_conflict",
+      statusCode: 409
+    });
+  }
 }

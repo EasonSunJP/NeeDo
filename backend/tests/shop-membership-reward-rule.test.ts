@@ -79,11 +79,36 @@ describe("membership NDP reward rules", () => {
       rules: [
         { kind: "fixed_per_completion", rewardNdp: 100, scope: allScope },
         { kind: "first_card_use_bonus", rewardNdp: 10, scope: allScope },
-        { kind: "service_scope_bonus", rewardNdp: 20, rewardRateBps: null, scope: { ...allScope, servicePublicIds: [serviceId] } },
-        { kind: "completion_milestone_bonus", everyCompletions: 1, rewardNdp: 30, repeat: false, scope: allScope },
-        { kind: "spend_milestone_bonus", thresholdJpy: 10_000, rewardNdp: 40, repeat: false, scope: allScope },
+        {
+          kind: "service_scope_bonus",
+          rewardNdp: 20,
+          rewardRateBps: null,
+          scope: { ...allScope, servicePublicIds: [serviceId] }
+        },
+        {
+          kind: "completion_milestone_bonus",
+          everyCompletions: 1,
+          rewardNdp: 30,
+          repeat: false,
+          scope: allScope
+        },
+        {
+          kind: "spend_milestone_bonus",
+          thresholdJpy: 10_000,
+          rewardNdp: 40,
+          repeat: false,
+          scope: allScope
+        },
         { kind: "birthday_month_bonus", rewardNdp: 50, annualLimit: 1, scope: allScope },
-        { kind: "schedule_window_bonus", rewardNdp: 60, timezone: "Asia/Tokyo", daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startTime: "00:00", endTime: "23:59", scope: allScope },
+        {
+          kind: "schedule_window_bonus",
+          rewardNdp: 60,
+          timezone: "Asia/Tokyo",
+          daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+          startTime: "00:00",
+          endTime: "23:59",
+          scope: allScope
+        },
         { kind: "consecutive_month_bonus", consecutiveMonths: 3, rewardNdp: 70, scope: allScope }
       ],
       caps: {},
@@ -123,15 +148,17 @@ describe("membership NDP reward rules", () => {
 
   it("applies exclusions before inclusions and returns no fee for zero reward", () => {
     const result = evaluateMembershipRewardRules({
-      rules: [{
-        kind: "fixed_per_completion",
-        rewardNdp: 1000,
-        scope: {
-          ...allScope,
-          servicePublicIds: [serviceId],
-          excludedCategoryCodes: [categoryCode]
+      rules: [
+        {
+          kind: "fixed_per_completion",
+          rewardNdp: 1000,
+          scope: {
+            ...allScope,
+            servicePublicIds: [serviceId],
+            excludedCategoryCodes: [categoryCode]
+          }
         }
-      }],
+      ],
       caps: {},
       facts: baseFacts,
       platformFeeRateBps: 1000
@@ -190,25 +217,33 @@ describe("membership NDP reward rules", () => {
   });
 
   it("rejects missing or multiple base rules and every non-NDP reward field", () => {
-    expect(() => membershipRewardRuleListSchema.parse([
-      { kind: "first_card_use_bonus", rewardNdp: 100, scope: allScope }
-    ])).toThrow();
-    expect(() => membershipRewardRuleListSchema.parse([
-      { kind: "fixed_per_completion", rewardNdp: 100, scope: allScope },
-      { kind: "spend_block", blockAmountJpy: 100, rewardNdpPerBlock: 1, scope: allScope }
-    ])).toThrow();
-    expect(() => membershipRewardRuleSchema.parse({
-      kind: "completion_milestone_bonus",
-      everyCompletions: 5,
-      rewardNdp: 100,
-      repeat: true,
-      gift: "free_service",
-      scope: allScope
-    })).toThrow();
-    expect(() => membershipRewardRuleSchema.parse({
-      kind: "fixed_per_completion",
-      rewardNdp: Number.MAX_SAFE_INTEGER + 1,
-      scope: allScope
-    })).toThrow();
+    expect(() =>
+      membershipRewardRuleListSchema.parse([
+        { kind: "first_card_use_bonus", rewardNdp: 100, scope: allScope }
+      ])
+    ).toThrow();
+    expect(() =>
+      membershipRewardRuleListSchema.parse([
+        { kind: "fixed_per_completion", rewardNdp: 100, scope: allScope },
+        { kind: "spend_block", blockAmountJpy: 100, rewardNdpPerBlock: 1, scope: allScope }
+      ])
+    ).toThrow();
+    expect(() =>
+      membershipRewardRuleSchema.parse({
+        kind: "completion_milestone_bonus",
+        everyCompletions: 5,
+        rewardNdp: 100,
+        repeat: true,
+        gift: "free_service",
+        scope: allScope
+      })
+    ).toThrow();
+    expect(() =>
+      membershipRewardRuleSchema.parse({
+        kind: "fixed_per_completion",
+        rewardNdp: Number.MAX_SAFE_INTEGER + 1,
+        scope: allScope
+      })
+    ).toThrow();
   });
 });

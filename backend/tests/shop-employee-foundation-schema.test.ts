@@ -31,9 +31,7 @@ describe("shop employee foundation schema", () => {
     expect(model).toMatch(
       /technicianShopAffiliationId\s+Int\?\s+@unique\(map: "shop_employees_tech_affiliation_key"\)/
     );
-    expect(model).toMatch(
-      /activeKey\s+String\?\s+@unique\(map: "shop_employees_active_key_key"\)/
-    );
+    expect(model).toMatch(/activeKey\s+String\?\s+@unique\(map: "shop_employees_active_key_key"\)/);
     expect(model).toMatch(
       /@@index\(\[shopId, status, deletedAt\], map: "shop_employees_shop_status_deleted_idx"\)/
     );
@@ -107,8 +105,12 @@ describe("shop employee foundation schema", () => {
     expect(migration).toContain("`name_ja`");
     expect(migration).toContain("`name_en`");
     expect(migration).toContain("`name_ko`");
-    expect(migration).toMatch(/FOREIGN KEY \(`shop_id`\).*REFERENCES `shops`\(`id`\).*ON DELETE RESTRICT/);
-    expect(migration).toMatch(/FOREIGN KEY \(`user_id`\).*REFERENCES `users`\(`id`\).*ON DELETE RESTRICT/);
+    expect(migration).toMatch(
+      /FOREIGN KEY \(`shop_id`\).*REFERENCES `shops`\(`id`\).*ON DELETE RESTRICT/
+    );
+    expect(migration).toMatch(
+      /FOREIGN KEY \(`user_id`\).*REFERENCES `users`\(`id`\).*ON DELETE RESTRICT/
+    );
     expect(migration).toMatch(
       /FOREIGN KEY \(`technician_shop_affiliation_id`\).*REFERENCES `technician_shop_affiliations`\(`id`\).*ON DELETE RESTRICT/
     );

@@ -49,7 +49,9 @@ const listRow = {
 const createRepository = (responses: unknown[][]) => {
   const queryRaw = jest.fn<Promise<unknown[]>, [SqlQuery]>(async () => responses.shift() ?? []);
   return {
-    repository: new MembershipAnalyticsRepository({ $queryRaw: queryRaw } as unknown as PrismaClient),
+    repository: new MembershipAnalyticsRepository({
+      $queryRaw: queryRaw
+    } as unknown as PrismaClient),
     queryRaw
   };
 };
@@ -94,13 +96,21 @@ describe("MembershipAnalyticsRepository", () => {
     expect(fixture.queryRaw).toHaveBeenCalledTimes(2);
     const validation = fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery;
     const trend = fixture.queryRaw.mock.calls[1]?.[0] as SqlQuery;
-    expect(validation.values).toEqual(expect.arrayContaining([
-      "东京", evaluatedAt, "issuance", "migration_backfill", "status_transition",
-      "active", "frozen", "void"
-    ]));
-    expect(trend.values).toEqual(expect.arrayContaining([
-      "东京", window.fromInclusive, window.toExclusive, evaluatedAt
-    ]));
+    expect(validation.values).toEqual(
+      expect.arrayContaining([
+        "东京",
+        evaluatedAt,
+        "issuance",
+        "migration_backfill",
+        "status_transition",
+        "active",
+        "frozen",
+        "void"
+      ])
+    );
+    expect(trend.values).toEqual(
+      expect.arrayContaining(["东京", window.fromInclusive, window.toExclusive, evaluatedAt])
+    );
   });
 
   it("generates fail-closed lifecycle SQL for grouped card deltas rather than mutable timestamps", async () => {
@@ -119,9 +129,11 @@ describe("MembershipAnalyticsRepository", () => {
       "persisted_status",
       "latest_authoritative_status",
       "negative_member_state_count"
-    ]) expect(validationSql).toContain(fragment);
-    expect(validationSql.match(/LEFT JOIN event_evaluated AS event ON event\.card_id = card\.card_id/gu))
-      .toHaveLength(1);
+    ])
+      expect(validationSql).toContain(fragment);
+    expect(
+      validationSql.match(/LEFT JOIN event_evaluated AS event ON event\.card_id = card\.card_id/gu)
+    ).toHaveLength(1);
 
     for (const fragment of [
       "membership_analytics_trend",
@@ -133,7 +145,8 @@ describe("MembershipAnalyticsRepository", () => {
       "after_count",
       "transition_kind",
       "LEFT JOIN member_transitions"
-    ]) expect(trendSql).toContain(fragment);
+    ])
+      expect(trendSql).toContain(fragment);
     expect(`${validationSql} ${trendSql}`).not.toContain("card.updated_at");
     expect(`${validationSql} ${trendSql}`).not.toContain("membership.updated_at");
   });
@@ -175,14 +188,23 @@ describe("MembershipAnalyticsRepository", () => {
       "metadata",
       "card_public_id",
       "issued_by_id",
+      "event.actor_user_id IS NOT NULL",
       "JSON_LENGTH",
       "JSON_EXTRACT",
       "CONCAT"
-    ]) expect(sql).toContain(fragment);
-    expect(validation.values).toEqual(expect.arrayContaining([
-      "issuance", "migration_backfill", "card_issued", "historical_card_issued",
-      ":issued", ":backfill-issued", "$.issuanceSource"
-    ]));
+    ])
+      expect(sql).toContain(fragment);
+    expect(validation.values).toEqual(
+      expect.arrayContaining([
+        "issuance",
+        "migration_backfill",
+        "card_issued",
+        "historical_card_issued",
+        ":issued",
+        ":backfill-issued",
+        "$.issuanceSource"
+      ])
+    );
   });
 
   it("requires the exact Task2A frozen backfill and rejects every unrecognized transition shape", async () => {
@@ -200,21 +222,26 @@ describe("MembershipAnalyticsRepository", () => {
       "event.occurred_at = event.frozen_at",
       "event.actor_user_id IS NULL",
       "event.metadata IS NULL"
-    ]) expect(sql).toContain(fragment);
-    expect(validation.values).toEqual(expect.arrayContaining([
-      "status_transition",
-      "active",
-      "frozen",
-      "historical_card_frozen",
-      ":backfill-frozen"
-    ]));
+    ])
+      expect(sql).toContain(fragment);
+    expect(validation.values).toEqual(
+      expect.arrayContaining([
+        "status_transition",
+        "active",
+        "frozen",
+        "historical_card_frozen",
+        ":backfill-frozen"
+      ])
+    );
   });
 
   it("groups same-time replacement and overlapping-card deltas before emitting member transitions", async () => {
     const fixture = createRepository([[{ anomalyCount: 0 }], trendRows]);
     await fixture.repository.getTrend(baseInput);
     const sql = queryText(fixture.queryRaw.mock.calls[1]?.[0] as SqlQuery);
-    expect(sql.indexOf("GROUP BY shop_id, user_id, occurred_at")).toBeLessThan(sql.indexOf("transition_kind"));
+    expect(sql.indexOf("GROUP BY shop_id, user_id, occurred_at")).toBeLessThan(
+      sql.indexOf("transition_kind")
+    );
     expect(sql).toContain("before_count = 0 AND after_count > 0");
     expect(sql).toContain("before_count > 0 AND after_count = 0");
   });
@@ -243,23 +270,25 @@ describe("MembershipAnalyticsRepository", () => {
 
     const result = await fixture.repository.listAddedMembers(input);
     expect(result).toEqual({
-      list: [{
-        userNeedoId: "u0000000041",
-        nickname: "美咲",
-        city: "东京",
-        shopPublicId: "shop0000000071",
-        shopName: "青山护理店",
-        membershipPublicId: listRow.membershipPublicId,
-        planName: "月度会员",
-        cardPublicId: listRow.cardPublicId,
-        cardNoMasked: "•••• •••• •••• AABB",
-        acquisitionSource: "offline_paid",
-        addedAt: "2026-08-30T03:00:00.000Z",
-        firstPaidAt: "2026-05-01T03:00:00.000Z",
-        memberStatus: "active",
-        cardStatus: "active",
-        expiresAt: "2026-09-30T03:00:00.000Z"
-      }],
+      list: [
+        {
+          userNeedoId: "u0000000041",
+          nickname: "美咲",
+          city: "东京",
+          shopPublicId: "shop0000000071",
+          shopName: "青山护理店",
+          membershipPublicId: listRow.membershipPublicId,
+          planName: "月度会员",
+          cardPublicId: listRow.cardPublicId,
+          cardNoMasked: "•••• •••• •••• AABB",
+          acquisitionSource: "offline_paid",
+          addedAt: "2026-08-30T03:00:00.000Z",
+          firstPaidAt: "2026-05-01T03:00:00.000Z",
+          memberStatus: "active",
+          cardStatus: "active",
+          expiresAt: "2026-09-30T03:00:00.000Z"
+        }
+      ],
       total: 21,
       page: 2,
       page_size: 20
@@ -280,14 +309,16 @@ describe("MembershipAnalyticsRepository", () => {
       "ORDER BY added_at DESC, BINARY shop_public_id ASC, user_needo_id ASC, card_id ASC",
       "LIMIT",
       "OFFSET"
-    ]) expect(pageSql).toContain(fragment);
+    ])
+      expect(pageSql).toContain(fragment);
     expect(JSON.stringify(result)).not.toContain(listRow.cardNo);
   });
 
   it("returns an exact empty page without running the page query", async () => {
     const fixture = createRepository([[{ anomalyCount: 0 }], [{ total: 0 }]]);
-    await expect(fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 }))
-      .resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
+    await expect(
+      fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 })
+    ).resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(fixture.queryRaw).toHaveBeenCalledTimes(2);
   });
 
@@ -297,29 +328,47 @@ describe("MembershipAnalyticsRepository", () => {
     ["zero page", 0, 20]
   ])("rejects %s before issuing any repository query", async (_label, page, pageSize) => {
     const fixture = createRepository([]);
-    await expect(fixture.repository.listAddedMembers({ ...baseInput, page, pageSize }))
-      .rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
+    await expect(
+      fixture.repository.listAddedMembers({ ...baseInput, page, pageSize })
+    ).rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
     expect(fixture.queryRaw).not.toHaveBeenCalled();
   });
 
   it.each([
     ["missing page rows", [[{ anomalyCount: 0 }], [{ total: 2 }], [listRow]]],
-    ["duplicate shop-user identity", [[{ anomalyCount: 0 }], [{ total: 2 }], [listRow, { ...listRow, cardId: 482, cardPublicId: "00000000-0000-4000-8000-000000000482" }]]]
+    [
+      "duplicate shop-user identity",
+      [
+        [{ anomalyCount: 0 }],
+        [{ total: 2 }],
+        [listRow, { ...listRow, cardId: 482, cardPublicId: "00000000-0000-4000-8000-000000000482" }]
+      ]
+    ]
   ])("fails closed for malformed page cardinality: %s", async (_label, responses) => {
     const fixture = createRepository(responses as unknown[][]);
-    await expect(fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 }))
-      .rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
+    await expect(
+      fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 })
+    ).rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
   });
 
   it.each([
     ["duplicate validation row", [[{ anomalyCount: 0 }, { anomalyCount: 0 }]]],
     ["negative total", [[{ anomalyCount: 0 }], [{ total: -1 }]]],
-    ["unsafe trend count", [[{ anomalyCount: 0 }], trendRows.map((row, index) => index === 0 ? { ...row, addedCount: Number.MAX_SAFE_INTEGER + 1 } : row)]]
+    [
+      "unsafe trend count",
+      [
+        [{ anomalyCount: 0 }],
+        trendRows.map((row, index) =>
+          index === 0 ? { ...row, addedCount: Number.MAX_SAFE_INTEGER + 1 } : row
+        )
+      ]
+    ]
   ])("rejects malformed canonical rows: %s", async (_label, responses) => {
     const fixture = createRepository(responses as unknown[][]);
-    const operation = _label === "negative total"
-      ? fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 })
-      : fixture.repository.getTrend(baseInput);
+    const operation =
+      _label === "negative total"
+        ? fixture.repository.listAddedMembers({ ...baseInput, page: 1, pageSize: 20 })
+        : fixture.repository.getTrend(baseInput);
     await expect(operation).rejects.toBeInstanceOf(MembershipAnalyticsIncompleteHistoryError);
   });
 
@@ -330,7 +379,9 @@ describe("MembershipAnalyticsRepository", () => {
       scope: { kind: "shop", shopId: 71 },
       city: null
     });
-    const bindings = fixture.queryRaw.mock.calls.flatMap((call) => (call[0] as SqlQuery).values ?? []);
+    const bindings = fixture.queryRaw.mock.calls.flatMap(
+      (call) => (call[0] as SqlQuery).values ?? []
+    );
     expect(bindings).toContain(71);
     expect(bindings).not.toContain("东京");
   });

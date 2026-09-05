@@ -41,10 +41,7 @@ import type {
 } from "../validators/booking.validator";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
-import type {
-  BookingLedgerSettlementPort,
-  CheckoutPaymentLedgerPort
-} from "./ledger.service";
+import type { BookingLedgerSettlementPort, CheckoutPaymentLedgerPort } from "./ledger.service";
 import type {
   OrderRealtimeChangeType,
   OrderStatusNotificationInput,
@@ -109,7 +106,7 @@ const ORDER_TRANSITIONS = {
   cancel: {
     from: ["pending", "confirmed"],
     to: "cancelled"
-  },
+  }
 } as const satisfies Record<
   OrderAction,
   { from: readonly BookingOrderStatusPayload[]; to: BookingOrderStatusPayload }
@@ -126,7 +123,8 @@ export class BookingService {
 
   public constructor(
     private readonly repository: BookingRepositoryPort,
-    private readonly ledgerService?: BookingLedgerSettlementPort & Partial<CheckoutPaymentLedgerPort>,
+    private readonly ledgerService?: BookingLedgerSettlementPort &
+      Partial<CheckoutPaymentLedgerPort>,
     private readonly notificationService?: OrderStatusNotificationPort,
     private readonly auditLogService?: Pick<AuditLogService, "record"> &
       Partial<Pick<AuditLogService, "createInput">>,
@@ -137,8 +135,9 @@ export class BookingService {
       | "invalidateCancelledBooking"
       | "settleCompletedBooking"
     >,
-    rateOrExperience?: Pick<NdpExchangeRateService, "resolveEffectiveRate"> |
-      Pick<UserExperienceService, "recordEvent">,
+    rateOrExperience?:
+      | Pick<NdpExchangeRateService, "resolveEffectiveRate">
+      | Pick<UserExperienceService, "recordEvent">,
     experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">
@@ -528,14 +527,16 @@ export class BookingService {
     );
     const comment = input.comment?.normalize("NFKC").trim() || null;
     const requestFingerprint = createHash("sha256")
-      .update(JSON.stringify({
-        orderId,
-        reviewerUserId: actor.userId,
-        targetType: permittedTarget,
-        rating: input.rating,
-        tags,
-        comment
-      }))
+      .update(
+        JSON.stringify({
+          orderId,
+          reviewerUserId: actor.userId,
+          targetType: permittedTarget,
+          rating: input.rating,
+          tags,
+          comment
+        })
+      )
       .digest("hex");
     const mutation = this.requireOrderReviewMutation(
       await this.repository.createOrderReview({
@@ -610,7 +611,8 @@ export class BookingService {
   ): Promise<OrderCheckoutPayload> {
     const actorInput = this.checkoutActorInput(actor, orderId);
     const existing = await this.repository.getOrCreateCheckout({ ...actorInput, rate: null });
-    if (existing.outcome !== "rate_required") return this.requireCheckoutMutation(existing).checkout;
+    if (existing.outcome !== "rate_required")
+      return this.requireCheckoutMutation(existing).checkout;
     if (!this.ndpExchangeRateService) throw this.dependencyUnavailableError();
     const resolvedAt = this.now();
     const rate = await this.ndpExchangeRateService.resolveEffectiveRate(resolvedAt);
@@ -718,14 +720,11 @@ export class BookingService {
           idempotencyKey: input.idempotencyKey,
           evidence: "technician_receipt_confirmation" as const
         };
-    const result = await this.repository.confirmCheckoutReceipt(
-      repositoryInput,
-      {
-        settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
-        settleAffiliate: (checkoutContext) =>
-          this.settleCheckoutAffiliate(checkoutContext, actor.userId)
-      }
-    );
+    const result = await this.repository.confirmCheckoutReceipt(repositoryInput, {
+      settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
+      settleAffiliate: (checkoutContext) =>
+        this.settleCheckoutAffiliate(checkoutContext, actor.userId)
+    });
     const mutation = this.requireCheckoutMutation(result);
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
@@ -810,7 +809,9 @@ export class BookingService {
     actorUserId: number
   ): Promise<void> {
     if (!this.ledgerService) throw this.dependencyUnavailableError();
-    const confirmed = context.order.statusHistory.find((history) => history.toStatus === "confirmed");
+    const confirmed = context.order.statusHistory.find(
+      (history) => history.toStatus === "confirmed"
+    );
     await this.ledgerService.settleBookingCompletion(
       {
         bookingOrderId: context.order.id,
@@ -958,13 +959,17 @@ export class BookingService {
               reason
             };
     const transitionOptions = this.createSettlementOptions(actor, order, action, confirmInput);
-    const guardedResult =
-      action === "confirm"
-        ? await this.repository.transitionOrderWithScheduleGuard?.(
-            transitionInput,
-            transitionOptions
-          )
-        : undefined;
+    const guardedResult = await this.repository.transitionOrderWithScheduleGuard?.(
+      transitionInput,
+      transitionOptions
+    );
+    if (guardedResult?.outcome === "exchange_cancellation_required") {
+      throw new AppError({
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      });
+    }
     if (guardedResult?.outcome === "schedule_conflict") {
       throw new AppError({
         code: ERROR_CODES.SCHEDULE_CONFLICT,
@@ -1126,9 +1131,10 @@ export class BookingService {
     throw this.invalidTransitionError();
   }
 
-  private requireOrderReviewMutation(
-    result: OrderReviewMutationResult
-  ): { applied: boolean; review: OrderReviewPayload } {
+  private requireOrderReviewMutation(result: OrderReviewMutationResult): {
+    applied: boolean;
+    review: OrderReviewPayload;
+  } {
     if (result.outcome === "ok") {
       return { applied: result.applied, review: result.review };
     }
@@ -1187,7 +1193,10 @@ export class BookingService {
     order: BookingOrderPayload,
     changeType: OrderRealtimeChangeType
   ): Promise<void> {
-    if (!this.notificationService?.notifyOrderChanged || !this.repository.findOrderRealtimeRecipients) {
+    if (
+      !this.notificationService?.notifyOrderChanged ||
+      !this.repository.findOrderRealtimeRecipients
+    ) {
       return;
     }
     try {

@@ -68,7 +68,13 @@ const createHarness = (
         args.where?.effectiveFrom?.lte ? currentAt(args.where.effectiveFrom.lte) : latest()
       ),
       updateMany: jest.fn(
-        async ({ where, data }: { where: { id: number; version: number }; data: { effectiveTo: Date } }) => {
+        async ({
+          where,
+          data
+        }: {
+          where: { id: number; version: number };
+          data: { effectiveTo: Date };
+        }) => {
           const row = rows.find(
             (candidate) =>
               candidate.id === where.id &&
@@ -81,21 +87,30 @@ const createHarness = (
           return { count: 1 };
         }
       ),
-      create: jest.fn(async ({ data }: { data: Omit<StoredRule, "id" | "publicId" | "publishedAt" | "createdAt" | "updatedAt" | "deletedAt"> }) => {
-        if (options.createConflict) throw { code: "P2002" };
-        const now = new Date("2026-09-02T00:00:00.000Z");
-        const created: StoredRule = {
-          id: rows.length + 1,
-          publicId: `00000000-0000-4000-8000-${String(rows.length + 1).padStart(12, "0")}`,
-          publishedAt: now,
-          createdAt: now,
-          updatedAt: now,
-          deletedAt: null,
-          ...data
-        };
-        rows.push(created);
-        return created;
-      })
+      create: jest.fn(
+        async ({
+          data
+        }: {
+          data: Omit<
+            StoredRule,
+            "id" | "publicId" | "publishedAt" | "createdAt" | "updatedAt" | "deletedAt"
+          >;
+        }) => {
+          if (options.createConflict) throw { code: "P2002" };
+          const now = new Date("2026-09-02T00:00:00.000Z");
+          const created: StoredRule = {
+            id: rows.length + 1,
+            publicId: `00000000-0000-4000-8000-${String(rows.length + 1).padStart(12, "0")}`,
+            publishedAt: now,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+            ...data
+          };
+          rows.push(created);
+          return created;
+        }
+      )
     },
     auditLog: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -110,9 +125,7 @@ const createHarness = (
     agentCommissionRuleVersion: {
       ...tx.agentCommissionRuleVersion,
       findMany: jest.fn(async ({ skip = 0, take = 20 }: { skip?: number; take?: number }) =>
-        [...rows]
-          .sort((left, right) => right.version - left.version)
-          .slice(skip, skip + take)
+        [...rows].sort((left, right) => right.version - left.version).slice(skip, skip + take)
       ),
       count: jest.fn(async () => rows.length)
     },
@@ -158,12 +171,7 @@ const publishInput = (
 describe("AgentCommissionRuleService and repository state", () => {
   it("publishes immutable monotonically increasing versions and closes the previous window", async () => {
     const harness = createHarness();
-    const first = await harness.service.publishRule(
-      actor,
-      agentPublicId,
-      publishInput(),
-      context
-    );
+    const first = await harness.service.publishRule(actor, agentPublicId, publishInput(), context);
     const second = await harness.service.publishRule(
       actor,
       agentPublicId,
@@ -178,7 +186,11 @@ describe("AgentCommissionRuleService and repository state", () => {
       context
     );
 
-    expect(first).toMatchObject({ version: 1, fixedSuccessRewardJpy: 50_000, profitShareRateBps: 1_500 });
+    expect(first).toMatchObject({
+      version: 1,
+      fixedSuccessRewardJpy: 50_000,
+      profitShareRateBps: 1_500
+    });
     expect(second).toMatchObject({ version: 2, paymentMethod: "ndp", effectiveTo: null });
     expect(harness.rows).toMatchObject([
       { version: 1, effectiveTo: new Date("2026-11-01T00:00:00.000Z") },
@@ -220,7 +232,10 @@ describe("AgentCommissionRuleService and repository state", () => {
         pageSize: 20,
         at: new Date("2026-11-01T00:00:00.000Z")
       })
-    ).resolves.toMatchObject({ current: { version: 2 }, history: { list: [{ version: 2 }, { version: 1 }] } });
+    ).resolves.toMatchObject({
+      current: { version: 2 },
+      history: { list: [{ version: 2 }, { version: 1 }] }
+    });
   });
 
   it("rejects absent or inactive agents without rule writes", async () => {

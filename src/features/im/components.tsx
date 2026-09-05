@@ -18,6 +18,7 @@ import { floatingHeaderControlButtonClassName } from "../../components/client-ui
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { MediaLoadFeedback, useMediaLoadState } from "../../components/ui/MediaLoadFeedback";
 import { Button } from "../../components/ui/Button";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
@@ -26,6 +27,7 @@ import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
+import { useVisualViewportFrame } from "../../lib/useVisualViewportFrame";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
@@ -954,6 +956,9 @@ export function ImStandaloneShell({
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useVisualViewportFrame(shellRef);
 
   useEffect(() => {
     let frame = 0;
@@ -1015,6 +1020,7 @@ export function ImStandaloneShell({
       )}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
+      ref={shellRef}
     >
       <div className="mx-auto min-h-[100dvh] w-full min-w-0 overflow-x-hidden [overflow-x:clip] bg-transparent" style={{ maxWidth: "min(880px, 100%)" }}>
         {children}
@@ -2836,9 +2842,10 @@ function ImRichMessageText({
       {parts.map((part, index) =>
         part.type === "judgement" ? (
           <span
-            className="mx-0.5 inline-flex align-[-0.3em]"
+            className="mx-0.5 inline-flex select-none align-[-0.3em] [-webkit-touch-callout:none]"
             data-im-message-judgement={part.value}
             key={`judgement-${part.value}-${index}`}
+            onContextMenu={(event) => event.preventDefault()}
           >
             <ImReactionValue judgementDisplay="summary" value={part.value} />
           </span>
@@ -2991,6 +2998,10 @@ export function MessageBubble({
 }) {
   const i18n = useProvidedI18n();
   const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
+  const mediaSource = message.type === "image" || (message.type === "video" && !readOnly)
+    ? message.ext?.thumbnailUrl ?? message.ext?.url ?? message.content
+    : message.ext?.url ?? message.content;
+  const mediaLoad = useMediaLoadState(`${message.id}:${mediaSource}`);
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const visibleTranslation = translation.visible
     && typeof translation.content === "string"
@@ -3042,12 +3053,15 @@ export function MessageBubble({
     }
 
     if (message.type === "image" || message.type === "video") {
+      const expired = message.ext?.mediaState === "expired";
       const image = message.type === "video" && readOnly
-        ? <video aria-label={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls data-no-i18n={protectAuthoredContent ? "true" : undefined} preload="metadata" src={message.ext?.url ?? message.content} />
-        : <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" data-no-i18n={protectAuthoredContent ? "true" : undefined} src={message.ext?.thumbnailUrl ?? message.content} />;
+        ? <video aria-label={previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls key={mediaLoad.key} onError={mediaLoad.onError} onLoadedMetadata={mediaLoad.onLoad} preload="metadata" src={mediaSource} />
+        : <img alt={previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" key={mediaLoad.key} onError={mediaLoad.onError} onLoad={mediaLoad.onLoad} src={mediaSource} />;
       return (
         <div className="space-y-2">
-          {readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
+          {expired ? <MediaLoadFeedback className="w-[180px]" expired kind={message.type} /> : mediaLoad.failed ? (
+            <button className="w-[180px] rounded-2xl bg-black/10" onClick={(event) => { event.stopPropagation(); mediaLoad.retry(); }} type="button"><MediaLoadFeedback kind={message.type} /></button>
+          ) : readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
             {image}
             {message.type === "video" ? (
               <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
@@ -3075,12 +3089,15 @@ export function MessageBubble({
             <div className="h-0.5 flex-1 rounded-full bg-black/20" />
             <span className="text-sm">{message.ext?.duration ?? 0}"</span>
           </div>
-          <audio
+          {mediaLoad.failed ? <button className="block w-full max-w-[220px] rounded-2xl bg-black/10" onClick={(event) => { event.stopPropagation(); mediaLoad.retry(); }} type="button"><MediaLoadFeedback kind="voice" /></button> : <audio
             className="block h-10 w-full max-w-[220px]"
             controls
-            preload="none"
-            src={message.ext?.url ?? message.content}
-          />
+            key={mediaLoad.key}
+            onError={mediaLoad.onError}
+            onLoadedMetadata={mediaLoad.onLoad}
+            preload="metadata"
+            src={mediaSource}
+          />}
         </div>
       );
     }

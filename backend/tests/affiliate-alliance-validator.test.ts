@@ -51,9 +51,10 @@ describe("affiliate alliance invitation validators", () => {
       pageSize: 20,
       q: "山田"
     });
-    expect(
-      affiliateAllianceListQuerySchema.parse({ page: "2", pageSize: "100" })
-    ).toEqual({ page: 2, pageSize: 100 });
+    expect(affiliateAllianceListQuerySchema.parse({ page: "2", pageSize: "100" })).toEqual({
+      page: 2,
+      pageSize: 100
+    });
   });
 
   it("accepts only supported invitation status filters", () => {
@@ -107,17 +108,15 @@ describe("affiliate alliance invitation validators", () => {
     expect(affiliateAllianceInvitationIdParamSchema.parse({ id: "71" })).toEqual({ id: 71 });
     expect(affiliateAllianceInvitationRespondBodySchema.parse({})).toEqual({});
     expect(affiliateAllianceInvitationIdParamSchema.safeParse({ id: "0" }).success).toBe(false);
-    expect(
-      affiliateAllianceInvitationRespondBodySchema.safeParse({ allianceId: 42 }).success
-    ).toBe(false);
+    expect(affiliateAllianceInvitationRespondBodySchema.safeParse({ allianceId: 42 }).success).toBe(
+      false
+    );
   });
 
-  it.each([
-    { page: 0 },
-    { pageSize: 101 },
-    { q: "x".repeat(81) },
-    { page: 1, unknown: true }
-  ])("rejects invalid list input %#", (input) => {
-    expect(affiliateAllianceListQuerySchema.safeParse(input).success).toBe(false);
-  });
+  it.each([{ page: 0 }, { pageSize: 101 }, { q: "x".repeat(81) }, { page: 1, unknown: true }])(
+    "rejects invalid list input %#",
+    (input) => {
+      expect(affiliateAllianceListQuerySchema.safeParse(input).success).toBe(false);
+    }
+  );
 });

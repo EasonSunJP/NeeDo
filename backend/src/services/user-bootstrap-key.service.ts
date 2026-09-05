@@ -3,7 +3,9 @@ import { Prisma } from "@prisma/client";
 
 const formatBootstrapKey = (candidate: string): string => {
   if (!/^[a-f0-9]{24}$/.test(candidate)) {
-    throw new TypeError("User bootstrap key candidate must be 24 lowercase hexadecimal characters.");
+    throw new TypeError(
+      "User bootstrap key candidate must be 24 lowercase hexadecimal characters."
+    );
   }
   return `pending:${candidate}`;
 };

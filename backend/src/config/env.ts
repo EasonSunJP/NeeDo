@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { isAbsolute } from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { assertContentMediaStorageIsolationSync } from "../services/content-media.storage";
@@ -250,6 +251,9 @@ const envSchema = z
     CONTENT_PUBLICATION_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
     CONTENT_PUBLICATION_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
     CONTENT_PUBLICATION_MAX_ACTIVATION_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(3),
+    OFFICIAL_NOTICE_DELIVERY_INTERVAL_MS: z.coerce.number().int().min(1_000).default(60_000),
+    OFFICIAL_NOTICE_DELIVERY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+    OFFICIAL_NOTICE_MAX_DELIVERY_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(3),
     IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
     AFFILIATE_TASK_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
     AFFILIATE_TASK_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
@@ -362,6 +366,12 @@ const envSchema = z
 
     if (value.NODE_ENV !== "production") {
       return;
+    }
+
+    for (const field of ["IM_MEDIA_STORAGE_DIR", "CONTENT_MEDIA_STORAGE_DIR"] as const) {
+      if (!isAbsolute(value[field])) {
+        addProductionIssue(context, field, `${field} must be an absolute path in production`);
+      }
     }
 
     const unsafeFlags = [

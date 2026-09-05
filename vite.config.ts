@@ -261,6 +261,11 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "order-performance-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/affiliate-profile/i18n.ts") ||
+      normalizedId.endsWith("/src/features/affiliate-marketplace/i18n.ts")) {
+    return "affiliate-i18n";
+  }
+
   if (normalizedId.includes("/src/i18n/")) {
     return "i18n";
   }

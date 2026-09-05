@@ -6,12 +6,14 @@ const adminConfig = {
   password: "test-only-secret"
 };
 
-const makeCandidate = (input: Partial<{
-  id: number;
-  needoId: string;
-  email: string;
-  isActive: boolean;
-}> = {}) => ({
+const makeCandidate = (
+  input: Partial<{
+    id: number;
+    needoId: string;
+    email: string;
+    isActive: boolean;
+  }> = {}
+) => ({
   id: input.id ?? 7,
   needoId: input.needoId ?? "n0000000001",
   email: input.email ?? "admin@example.com",
@@ -21,13 +23,15 @@ const makeCandidate = (input: Partial<{
 const makeTransaction = (candidates: ReturnType<typeof makeCandidate>[]) => {
   const user = {
     findMany: jest.fn(async () => candidates),
-    update: jest.fn(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => ({
-      ...candidates.find((candidate) => candidate.id === where.id),
-      ...data,
-      id: where.id,
-      email: adminConfig.email,
-      needoId: candidates.find((candidate) => candidate.id === where.id)?.needoId ?? "n0000000001"
-    })),
+    update: jest.fn(
+      async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => ({
+        ...candidates.find((candidate) => candidate.id === where.id),
+        ...data,
+        id: where.id,
+        email: adminConfig.email,
+        needoId: candidates.find((candidate) => candidate.id === where.id)?.needoId ?? "n0000000001"
+      })
+    ),
     create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
       ...data,
       id: 99,
@@ -40,13 +44,12 @@ const makeTransaction = (candidates: ReturnType<typeof makeCandidate>[]) => {
   return { tx: { user, auditLog }, user, auditLog };
 };
 
-const runMigration = (
-  tx: ReturnType<typeof makeTransaction>["tx"]
-) => migrateAdminAccount(tx as never, {
-  adminConfig,
-  adminPasswordHash: "$2b$12$test-hash-never-exported",
-  allocateBootstrapKey: async (create) => create("pending:0123456789abcdef01234567")
-});
+const runMigration = (tx: ReturnType<typeof makeTransaction>["tx"]) =>
+  migrateAdminAccount(tx as never, {
+    adminConfig,
+    adminPasswordHash: "$2b$12$test-hash-never-exported",
+    allocateBootstrapKey: async (create) => create("pending:0123456789abcdef01234567")
+  });
 
 describe("formal administrator account seed", () => {
   it("migrates the legacy row in place and preserves its immutable identifiers", async () => {
@@ -55,18 +58,24 @@ describe("formal administrator account seed", () => {
 
     const result = await runMigration(tx);
 
-    expect(result).toMatchObject({ id: legacy.id, needoId: legacy.needoId, email: adminConfig.email });
-    expect(user.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: legacy.id },
-      data: expect.objectContaining({
-        email: adminConfig.email,
-        username: adminConfig.username,
-        passwordHash: "$2b$12$test-hash-never-exported",
-        sessionGeneration: { increment: 1 },
-        isActive: true,
-        deletedAt: null
+    expect(result).toMatchObject({
+      id: legacy.id,
+      needoId: legacy.needoId,
+      email: adminConfig.email
+    });
+    expect(user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: legacy.id },
+        data: expect.objectContaining({
+          email: adminConfig.email,
+          username: adminConfig.username,
+          passwordHash: "$2b$12$test-hash-never-exported",
+          sessionGeneration: { increment: 1 },
+          isActive: true,
+          deletedAt: null
+        })
       })
-    }));
+    );
     expect(user.create).not.toHaveBeenCalled();
     expect(auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

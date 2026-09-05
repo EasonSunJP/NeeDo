@@ -58,10 +58,7 @@ describe("Ledger NDP experience transaction bridge", () => {
       recorder
     );
 
-    await service.recordNdpExperienceForAppliedTransaction(
-      appliedTransaction(),
-      transactionClient
-    );
+    await service.recordNdpExperienceForAppliedTransaction(appliedTransaction(), transactionClient);
 
     expect(recorder.recordNdpConsumption).toHaveBeenCalledTimes(1);
     expect(recorder.recordNdpConsumption).toHaveBeenCalledWith(
@@ -90,10 +87,7 @@ describe("Ledger NDP experience transaction bridge", () => {
       recorder
     );
     await expect(
-      service.recordNdpExperienceForAppliedTransaction(
-        appliedTransaction(),
-        transactionClient
-      )
+      service.recordNdpExperienceForAppliedTransaction(appliedTransaction(), transactionClient)
     ).rejects.toBe(conflict);
   });
 

@@ -1241,6 +1241,10 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       record.meta?.driverAdapterError?.cause?.constraint?.fields
     ]
       .flatMap((value) => (Array.isArray(value) ? value : [value]))
-      .some((value) => String(value ?? "").toLowerCase().includes("phone"));
+      .some((value) =>
+        String(value ?? "")
+          .toLowerCase()
+          .includes("phone")
+      );
   }
 }

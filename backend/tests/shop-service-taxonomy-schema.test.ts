@@ -82,7 +82,9 @@ describe("shop service taxonomy persistence", () => {
       expect(migration).toMatch(tablePattern);
     }
 
-    expect((migration.match(/ADD CONSTRAINT .* FOREIGN KEY/g) ?? []).length).toBeGreaterThanOrEqual(22);
+    expect((migration.match(/ADD CONSTRAINT .* FOREIGN KEY/g) ?? []).length).toBeGreaterThanOrEqual(
+      22
+    );
   });
 
   it("uses restrictive updates for keys that feed stored active-key columns", () => {
@@ -99,9 +101,7 @@ describe("shop service taxonomy persistence", () => {
       "merchant_application_business_keywords_business_keyword_id_fkey"
     ]) {
       expect(migration).toMatch(
-        new RegExp(
-          "ADD CONSTRAINT `" + constraintName + "`[\\s\\S]*?ON UPDATE RESTRICT;"
-        )
+        new RegExp("ADD CONSTRAINT `" + constraintName + "`[\\s\\S]*?ON UPDATE RESTRICT;")
       );
     }
   });

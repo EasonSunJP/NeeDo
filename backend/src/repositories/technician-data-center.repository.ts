@@ -84,9 +84,8 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
       },
       orderBy: [{ startsAt: "desc" }, { id: "desc" }]
     });
-    const affiliation = affiliations.find((item) => item.shopId === technician.shopId)
-      ?? affiliations[0]
-      ?? null;
+    const affiliation =
+      affiliations.find((item) => item.shopId === technician.shopId) ?? affiliations[0] ?? null;
     const shopId = affiliation?.shopId ?? technician.shopId;
 
     const [periodRecords, recentRecords, upcomingOrderCount, nextRecord] = await Promise.all([
@@ -142,12 +141,14 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
         displayName: technician.displayName,
         employmentStartedAt: technician.employmentStartedAt?.toISOString() ?? null
       },
-      affiliation: affiliation ? {
-        shopId: affiliation.shopId,
-        shopName: affiliation.shop.name,
-        relationshipType: affiliation.relationshipType,
-        startsAt: affiliation.startsAt.toISOString()
-      } : null,
+      affiliation: affiliation
+        ? {
+            shopId: affiliation.shopId,
+            shopName: affiliation.shop.name,
+            relationshipType: affiliation.relationshipType,
+            startsAt: affiliation.startsAt.toISOString()
+          }
+        : null,
       incomeModel,
       compensationRulesByBasis,
       recognizedIncomeByOrderId,
@@ -176,7 +177,8 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
       select: { orderId: true, amountJpy: true }
     });
     return lines.reduce<Record<number, number>>((result, line) => {
-      if (line.orderId !== null) result[line.orderId] = (result[line.orderId] ?? 0) + line.amountJpy;
+      if (line.orderId !== null)
+        result[line.orderId] = (result[line.orderId] ?? 0) + line.amountJpy;
       return result;
     }, {});
   }
@@ -207,14 +209,15 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
         : Promise.resolve([])
     ]);
     return {
-      ...Object.fromEntries(technicianRules.map((rule) => [
-        `technician_override:${rule.id}`,
-        this.mapTechnicianRule(rule)
-      ])),
-      ...Object.fromEntries(shopRules.map((rule) => [
-        `shop_default:${rule.id}`,
-        this.mapShopRule(rule)
-      ]))
+      ...Object.fromEntries(
+        technicianRules.map((rule) => [
+          `technician_override:${rule.id}`,
+          this.mapTechnicianRule(rule)
+        ])
+      ),
+      ...Object.fromEntries(
+        shopRules.map((rule) => [`shop_default:${rule.id}`, this.mapShopRule(rule)])
+      )
     };
   }
 
@@ -237,11 +240,13 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
       where: { shopId, status: "active", deletedAt: null },
       orderBy: [{ id: "desc" }]
     });
-    return fallback ? {
-      ...this.mapShopRule(fallback),
-      version: fallback.id,
-      updatedAt: fallback.updatedAt.toISOString()
-    } : null;
+    return fallback
+      ? {
+          ...this.mapShopRule(fallback),
+          version: fallback.id,
+          updatedAt: fallback.updatedAt.toISOString()
+        }
+      : null;
   }
 
   private mapOrder(order: OrderRecord): TechnicianDataCenterOrderSource {
@@ -254,14 +259,16 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
       status: normalized === "in_service" ? "inService" : normalized,
       startsAt: order.startsAt.toISOString(),
       endsAt: order.endsAt.toISOString(),
-      financial: order.financial ? {
-        serviceIncomeStatus: order.financial.serviceIncomeStatus,
-        baseServiceAmountJpy: order.financial.baseServiceAmountJpy,
-        extensionAmountJpy: order.financial.extensionAmountJpy,
-        nominationChargeAmountJpy: order.financial.nominationChargeAmountJpy,
-        wasTechnicianNominated: order.financial.wasTechnicianNominated,
-        compensationBasisVersion: order.financial.compensationBasisVersion
-      } : null
+      financial: order.financial
+        ? {
+            serviceIncomeStatus: order.financial.serviceIncomeStatus,
+            baseServiceAmountJpy: order.financial.baseServiceAmountJpy,
+            extensionAmountJpy: order.financial.extensionAmountJpy,
+            nominationChargeAmountJpy: order.financial.nominationChargeAmountJpy,
+            wasTechnicianNominated: order.financial.wasTechnicianNominated,
+            compensationBasisVersion: order.financial.compensationBasisVersion
+          }
+        : null
     };
   }
 
@@ -333,22 +340,28 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
         typeof record.threshold !== "number" ||
         typeof record.amountJpy !== "number" ||
         typeof record.active !== "boolean"
-      ) return [];
-      if (![
-        "monthly_order_count",
-        "monthly_service_gmv",
-        "rating_average",
-        "late_cancellation_count",
-        "rating_average_below"
-      ].includes(record.triggerType)) return [];
-      return [{
-        id: record.id,
-        name: record.name,
-        triggerType: record.triggerType as CompensationAdjustmentRule["triggerType"],
-        threshold: record.threshold,
-        amountJpy: record.amountJpy,
-        active: record.active
-      }];
+      )
+        return [];
+      if (
+        ![
+          "monthly_order_count",
+          "monthly_service_gmv",
+          "rating_average",
+          "late_cancellation_count",
+          "rating_average_below"
+        ].includes(record.triggerType)
+      )
+        return [];
+      return [
+        {
+          id: record.id,
+          name: record.name,
+          triggerType: record.triggerType as CompensationAdjustmentRule["triggerType"],
+          threshold: record.threshold,
+          amountJpy: record.amountJpy,
+          active: record.active
+        }
+      ];
     });
   }
 }

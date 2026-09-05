@@ -16,6 +16,16 @@ describe("translations", () => {
     }
   });
 
+  it("localizes media expiry and retry feedback in every App language", () => {
+    for (const source of ["图片已过期", "视频已过期", "图片加载失败，点击重试", "视频加载失败，点击重试", "语音加载失败，点击重试"]) {
+      for (const { code } of languages) {
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
+      }
+    }
+  });
+
   it("localizes the technician service cover editor in all five App languages", () => {
     const expected = {
       "服务封面": { "zh-Hant": "服務封面", ja: "サービスカバー", en: "Service cover", ko: "서비스 커버" },

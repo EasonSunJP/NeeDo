@@ -25,9 +25,7 @@ describe("Exchange Request publication schema", () => {
     expect(enumBlock("ExchangeMatchMode")).toMatch(/QUICK\s+@map\("quick"\)/);
     expect(enumBlock("ExchangeMatchMode")).toMatch(/SELECTIVE\s+@map\("selective"\)/);
     expect(enumBlock("ExchangeBudgetMode")).toMatch(/TOTAL\s+@map\("total"\)/);
-    expect(enumBlock("ExchangeBudgetMode")).toMatch(
-      /PER_PROVIDER\s+@map\("per_provider"\)/
-    );
+    expect(enumBlock("ExchangeBudgetMode")).toMatch(/PER_PROVIDER\s+@map\("per_provider"\)/);
     expect(enumBlock("ExchangePublisherCapacitySource")).toMatch(
       /CUSTOMER_MEMBERSHIP\s+@map\("customer_membership"\)/
     );
@@ -60,12 +58,8 @@ describe("Exchange Request publication schema", () => {
 
   it("adds one immutable Request financial snapshot backed by existing fee and hold tables", () => {
     expect(enumBlock("ExchangeRequestFinancialState")).toMatch(/HELD\s+@map\("held"\)/);
-    expect(enumBlock("ExchangeRequestFinancialState")).toMatch(
-      /CAPTURED\s+@map\("captured"\)/
-    );
-    expect(enumBlock("ExchangeRequestFinancialState")).toMatch(
-      /RELEASED\s+@map\("released"\)/
-    );
+    expect(enumBlock("ExchangeRequestFinancialState")).toMatch(/CAPTURED\s+@map\("captured"\)/);
+    expect(enumBlock("ExchangeRequestFinancialState")).toMatch(/RELEASED\s+@map\("released"\)/);
 
     const financial = modelBlock("ExchangeRequestFinancial");
     expect(financial).toMatch(/exchangePostId\s+Int\s+@unique/);
@@ -143,8 +137,6 @@ describe("Exchange Request publication schema", () => {
       /exchange:posts:create-demand[\s\S]{0,500}roles`\.`code`\s+IN\s+\([^)]*merchant_staff/
     );
     expect(migration).not.toMatch(/DELETE\s+FROM|DROP\s+TABLE/i);
-    expect(migration).not.toMatch(
-      /UPDATE\s+`platform_fee_rules`[\s\S]*c_request_dispatch_fee/i
-    );
+    expect(migration).not.toMatch(/UPDATE\s+`platform_fee_rules`[\s\S]*c_request_dispatch_fee/i);
   });
 });

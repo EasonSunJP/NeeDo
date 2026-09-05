@@ -251,7 +251,11 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
 
     return {
       kind: "found",
-      page: buildPaginatedResponse(list.map((record) => this.mapReferral(record)), total, pagination)
+      page: buildPaginatedResponse(
+        list.map((record) => this.mapReferral(record)),
+        total,
+        pagination
+      )
     };
   }
 

@@ -15,11 +15,13 @@ describe("RealtimeService contact-card candidates", () => {
     };
     const service = new RealtimeService(repository as never, { publish: jest.fn() } as never);
 
-    await expect(service.listContactCardCandidates(
-      { userId: 41, currentIdentityId: 410 } as never,
-      91,
-      { page: 1, pageSize: 20, query: "山田" }
-    )).resolves.toBe(page);
+    await expect(
+      service.listContactCardCandidates({ userId: 41, currentIdentityId: 410 } as never, 91, {
+        page: 1,
+        pageSize: 20,
+        query: "山田"
+      })
+    ).resolves.toBe(page);
 
     expect(repository.checkMessageSendEligibility).toHaveBeenCalledWith({
       conversationId: 91,
@@ -31,8 +33,9 @@ describe("RealtimeService contact-card candidates", () => {
       pageSize: 20,
       query: "山田"
     });
-    expect(repository.checkMessageSendEligibility.mock.invocationCallOrder[0])
-      .toBeLessThan(repository.listContactCardCandidates.mock.invocationCallOrder[0] ?? 0);
+    expect(repository.checkMessageSendEligibility.mock.invocationCallOrder[0]).toBeLessThan(
+      repository.listContactCardCandidates.mock.invocationCallOrder[0] ?? 0
+    );
   });
 
   it("does not query candidates when the actor is not an active participant", async () => {
@@ -42,11 +45,13 @@ describe("RealtimeService contact-card candidates", () => {
     };
     const service = new RealtimeService(repository as never, { publish: jest.fn() } as never);
 
-    await expect(service.listContactCardCandidates(
-      { userId: 41, currentIdentityId: 410 } as never,
-      91,
-      { page: 1, pageSize: 20, query: "" }
-    )).rejects.toMatchObject({
+    await expect(
+      service.listContactCardCandidates({ userId: 41, currentIdentityId: 410 } as never, 91, {
+        page: 1,
+        pageSize: 20,
+        query: ""
+      })
+    ).rejects.toMatchObject({
       statusCode: 404,
       message: "error.realtime.conversation_not_found"
     });

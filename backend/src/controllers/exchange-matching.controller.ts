@@ -19,17 +19,19 @@ export class ExchangeMatchingController {
 
   public select = this.handle(async (request, response) => {
     const { id } = exchangeMatchingPostIdParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.selectMatching(
-          getAuthenticatedAccess(response),
-          id,
-          selectExchangeMatchSchema.parse(request.body),
-          response.locals.exchangeMatchingIdempotencyKey as string,
-          getRequestContext(request)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.selectMatching(
+            getAuthenticatedAccess(response),
+            id,
+            selectExchangeMatchSchema.parse(request.body),
+            response.locals.exchangeIdempotencyKey as string,
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
   });
 
   private handle(

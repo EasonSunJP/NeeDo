@@ -33,10 +33,10 @@ describe("ImMediaService", () => {
     const result = await service.upload(
       { userId: 41, currentIdentityId: 71, currentIdentityType: "technician" } as never,
       {
-      bytes: pngBytes,
-      conversationId: 91,
-      fileName: "album.png",
-      mimeType: "image/png"
+        bytes: pngBytes,
+        conversationId: 91,
+        fileName: "album.png",
+        mimeType: "image/png"
       }
     );
 

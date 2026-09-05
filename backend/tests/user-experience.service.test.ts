@@ -41,10 +41,7 @@ const repository = (): jest.Mocked<UserExperienceRepositoryPort> => ({
   recordNdpReversalEvent: jest.fn()
 });
 
-const membership = (
-  multiplier = 1,
-  benefitCodes: PlatformMembershipBenefitCodeValue[] = []
-) => ({
+const membership = (multiplier = 1, benefitCodes: PlatformMembershipBenefitCodeValue[] = []) => ({
   resolveMembershipAt: jest.fn(async (userId: number, occurredAt: Date) => {
     void userId;
     void occurredAt;

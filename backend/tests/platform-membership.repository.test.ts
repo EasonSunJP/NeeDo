@@ -48,7 +48,10 @@ const version = {
 
 describe("PlatformMembershipRepository", () => {
   it("queries a non-superseded entitlement covering the occurrence time", async () => {
-    const findFirst = jest.fn(async () => ({ expiresAt: new Date("2026-10-01T00:00:00.000Z"), tierVersion: version }));
+    const findFirst = jest.fn(async () => ({
+      expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+      tierVersion: version
+    }));
     const repository = new PlatformMembershipRepository({
       platformMembershipEntitlement: { findFirst },
       customerProfile: { count: jest.fn() },
@@ -60,27 +63,33 @@ describe("PlatformMembershipRepository", () => {
       tierVersionPublicId: version.publicId,
       multiplier: 5
     });
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        userId: 7,
-        deletedAt: null,
-        startsAt: { lte: at },
-        supersededAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: at } }],
-        tierVersion: expect.objectContaining({
-          status: {
-            in: [
-              PlatformMembershipVersionStatus.PUBLISHED,
-              PlatformMembershipVersionStatus.ARCHIVED
-            ]
-          }
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 7,
+          deletedAt: null,
+          startsAt: { lte: at },
+          supersededAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: at } }],
+          tierVersion: expect.objectContaining({
+            status: {
+              in: [
+                PlatformMembershipVersionStatus.PUBLISHED,
+                PlatformMembershipVersionStatus.ARCHIVED
+              ]
+            }
+          })
         })
       })
-    }));
+    );
   });
 
   it("resolves the published free version for fallback without an entitlement row", async () => {
-    const findFirst = jest.fn(async () => ({ ...version, experienceMultiplier: "1.0000", tier: { code: PlatformMembershipTierCode.FREE } }));
+    const findFirst = jest.fn(async () => ({
+      ...version,
+      experienceMultiplier: "1.0000",
+      tier: { code: PlatformMembershipTierCode.FREE }
+    }));
     const repository = new PlatformMembershipRepository({
       platformMembershipEntitlement: { findFirst: jest.fn() },
       customerProfile: { count: jest.fn() },
@@ -92,11 +101,13 @@ describe("PlatformMembershipRepository", () => {
       multiplier: 1,
       expiresAt: null
     });
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        status: PlatformMembershipVersionStatus.PUBLISHED,
-        tier: { code: PlatformMembershipTierCode.FREE, deletedAt: null }
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: PlatformMembershipVersionStatus.PUBLISHED,
+          tier: { code: PlatformMembershipTierCode.FREE, deletedAt: null }
+        })
       })
-    }));
+    );
   });
 });

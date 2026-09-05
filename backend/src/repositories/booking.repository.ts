@@ -139,10 +139,8 @@ const SERVICE_PAYMENT_METHOD_TO_DB = {
   other: DatabaseServicePaymentMethod.OTHER
 } satisfies Record<ServicePaymentMethodPayload, DatabaseServicePaymentMethod>;
 
-const hasOwnMapping = <TKey extends PropertyKey>(
-  mapping: object,
-  key: PropertyKey
-): key is TKey => Object.prototype.hasOwnProperty.call(mapping, key);
+const hasOwnMapping = <TKey extends PropertyKey>(mapping: object, key: PropertyKey): key is TKey =>
+  Object.prototype.hasOwnProperty.call(mapping, key);
 
 export const bookingOrderStatusFromDb = (
   status: DatabaseBookingOrderStatus
@@ -650,6 +648,7 @@ export interface BookingOrderPayload {
   servicePriceSnapshot: string | null;
   serviceDurationSnapshot: number | null;
   serviceSnapshot: unknown;
+  fulfillmentAddressSnapshot: FulfillmentAddressSnapshot | null;
   shopName: string;
   technicianName: string | null;
   priceAmount: string;
@@ -667,6 +666,12 @@ export interface BookingOrderPayload {
   performanceAssessment: OrderPerformanceAssessmentPublicPayload | null;
   timelineEvents: OrderTimelineEventPayload[];
 }
+
+export type FulfillmentAddressSnapshot = {
+  line1: string;
+  line2: string | null;
+  line3: string | null;
+};
 
 export interface FulfillmentRequestContext {
   ip: string;
@@ -731,7 +736,7 @@ export type ManualPaymentMutationResult =
 export type OrderTransitionGuardedResult =
   | { outcome: "ok"; order: BookingOrderPayload }
   | { outcome: "acceptance_paused"; pauses: ActiveOrderAcceptancePauseSummary[] }
-  | { outcome: "invalid_state" | "schedule_conflict" };
+  | { outcome: "invalid_state" | "schedule_conflict" | "exchange_cancellation_required" };
 
 export interface BookingRepositoryPort {
   listAvailableSlots: (
@@ -756,12 +761,8 @@ export interface BookingRepositoryPort {
   }) => Promise<BookingOrderPayload | null>;
   getServiceVerificationCode: (orderId: number) => Promise<string>;
   startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
-  createOrderAddOn: (
-    input: CreateOrderAddOnRepositoryInput
-  ) => Promise<FulfillmentMutationResult>;
-  decideOrderAddOn: (
-    input: DecideOrderAddOnRepositoryInput
-  ) => Promise<FulfillmentMutationResult>;
+  createOrderAddOn: (input: CreateOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
+  decideOrderAddOn: (input: DecideOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
   endService: (input: EndServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
   getOrCreateCheckout: (input: GetCheckoutRepositoryInput) => Promise<CheckoutMutationResult>;
   selectCheckoutPaymentMethod: (
@@ -877,6 +878,11 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
             publicCode: true;
           };
         };
+      };
+    };
+    exchangeMatchParticipant: {
+      select: {
+        id: true;
       };
     };
   };
@@ -1283,7 +1289,8 @@ export class BookingRepository implements BookingRepositoryPort {
                   where: {
                     customerUserId: input.customerUserId,
                     status: "PENDING",
-                    deletedAt: null
+                    deletedAt: null,
+                    exchangeMatchParticipant: { is: null }
                   },
                   include: this.orderInclude(),
                   orderBy: { id: "asc" }
@@ -1297,7 +1304,8 @@ export class BookingRepository implements BookingRepositoryPort {
                   id: { in: supersededOrderIds },
                   customerUserId: input.customerUserId,
                   status: "PENDING",
-                  deletedAt: null
+                  deletedAt: null,
+                  exchangeMatchParticipant: { is: null }
                 },
                 data: {
                   status: "CANCELLED",
@@ -1622,7 +1630,7 @@ export class BookingRepository implements BookingRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((order) => this.mapOrder(order)),
+      list.map((order) => ({ ...this.mapOrder(order), fulfillmentAddressSnapshot: null })),
       total,
       pagination
     );
@@ -1772,7 +1780,10 @@ export class BookingRepository implements BookingRepositoryPort {
       if (existingSession?.deletedAt || existingSession?.startedAt) {
         return { outcome: "invalid_transition" };
       }
-      if (existingSession && !this.constantTimeTextEquals(existingSession.verificationHash, verificationHash)) {
+      if (
+        existingSession &&
+        !this.constantTimeTextEquals(existingSession.verificationHash, verificationHash)
+      ) {
         return { outcome: "conflict" };
       }
 
@@ -1947,13 +1958,11 @@ export class BookingRepository implements BookingRepositoryPort {
     return this.runFulfillmentTransaction(async (tx) => {
       await this.lockFulfillmentOrder(tx, input.orderId);
       const current = await this.findFulfillmentOrder(tx, input.orderId);
-      const replay = await this.resolveFulfillmentReplay(
-        tx,
-        current,
-        input,
-        eventType,
-        { kind: "decision", addOnId: input.addOnId, decision: input.decision }
-      );
+      const replay = await this.resolveFulfillmentReplay(tx, current, input, eventType, {
+        kind: "decision",
+        addOnId: input.addOnId,
+        decision: input.decision
+      });
       if (replay) return replay;
       if (!current) return { outcome: "not_found" };
       if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
@@ -2003,9 +2012,7 @@ export class BookingRepository implements BookingRepositoryPort {
         await tx.orderServiceSession.update({
           where: { id: current.serviceSession.id },
           data: {
-            expectedEndsAt: new Date(
-              expectedEndsAt.getTime() + addOn.durationMinutes * 60_000
-            ),
+            expectedEndsAt: new Date(expectedEndsAt.getTime() + addOn.durationMinutes * 60_000),
             updatedAt: now
           }
         });
@@ -2193,7 +2200,12 @@ export class BookingRepository implements BookingRepositoryPort {
         otherMethodLabel: input.otherMethodLabel?.trim() ?? null
       });
       if (replay) return replay;
-      if (!current || !checkout || checkout.deletedAt || current.customerUserId !== input.actorUserId) {
+      if (
+        !current ||
+        !checkout ||
+        checkout.deletedAt ||
+        current.customerUserId !== input.actorUserId
+      ) {
         return { outcome: "not_found" };
       }
       if (!current.serviceSession) return { outcome: "invalid_state" };
@@ -2287,13 +2299,19 @@ export class BookingRepository implements BookingRepositoryPort {
         eventType: DatabaseOrderServiceEventType.NDP_PAYMENT_APPLIED
       });
       if (replay) return replay;
-      if (!current || !checkout || checkout.deletedAt || current.customerUserId !== input.actorUserId) {
+      if (
+        !current ||
+        !checkout ||
+        checkout.deletedAt ||
+        current.customerUserId !== input.actorUserId
+      ) {
         return { outcome: "not_found" };
       }
       if (!current.serviceSession) return { outcome: "invalid_state" };
       if (
         current.status !== DatabaseBookingOrderStatus.AWAITING_CHECKOUT ||
-        (checkout.paymentMethod !== null && checkout.paymentMethod !== DatabaseServicePaymentMethod.NDP) ||
+        (checkout.paymentMethod !== null &&
+          checkout.paymentMethod !== DatabaseServicePaymentMethod.NDP) ||
         checkout.ledgerTransactionId ||
         checkout.receiptConfirmedAt
       ) {
@@ -2399,9 +2417,9 @@ export class BookingRepository implements BookingRepositoryPort {
           ? Boolean(current)
           : Boolean(
               current?.technicianProfileId &&
-                current.technicianProfile &&
-                current.technicianProfileId === input.technicianProfileId &&
-                current.technicianProfile.userId === input.actorUserId
+              current.technicianProfile &&
+              current.technicianProfileId === input.technicianProfileId &&
+              current.technicianProfile.userId === input.actorUserId
             );
       if (!current || !checkout || checkout.deletedAt || !authorized) {
         return { outcome: "not_found" };
@@ -2487,11 +2505,7 @@ export class BookingRepository implements BookingRepositoryPort {
       if (!next) throw new CheckoutTransactionAbort("conflict");
       return {
         outcome: "ok",
-        checkout: this.mapCheckout(
-          next,
-          DatabaseBookingOrderStatus.COMPLETED,
-          input.evidence
-        ),
+        checkout: this.mapCheckout(next, DatabaseBookingOrderStatus.COMPLETED, input.evidence),
         applied: true
       };
     });
@@ -2672,6 +2686,10 @@ export class BookingRepository implements BookingRepositoryPort {
 
         if (!current || bookingOrderStatusFromDb(current.status) !== input.fromStatus) {
           return { outcome: "invalid_state" as const };
+        }
+
+        if (input.toStatus === "cancelled" && current.exchangeMatchParticipant) {
+          return { outcome: "exchange_cancellation_required" as const };
         }
 
         if (input.toStatus === "confirmed") {
@@ -3347,6 +3365,7 @@ export class BookingRepository implements BookingRepositoryPort {
           technicianProfileId,
           estimatedStartsAt: { lt: endsAt },
           estimatedEndsAt: { gt: startsAt },
+          activeReservationKey: { not: null },
           deletedAt: null
         },
         select: { id: true }
@@ -3452,8 +3471,8 @@ export class BookingRepository implements BookingRepositoryPort {
     }
     return Boolean(
       input.technicianProfileId &&
-        order.technicianProfileId === input.technicianProfileId &&
-        order.technicianProfile?.userId === input.actorUserId
+      order.technicianProfileId === input.technicianProfileId &&
+      order.technicianProfile?.userId === input.actorUserId
     );
   }
 
@@ -3527,7 +3546,10 @@ export class BookingRepository implements BookingRepositoryPort {
     ) {
       return { outcome: "conflict" };
     }
-    if (current.status !== DatabaseBookingOrderStatus.COMPLETED && expectation.eventType !== DatabaseOrderServiceEventType.PAYMENT_METHOD_SELECTED) {
+    if (
+      current.status !== DatabaseBookingOrderStatus.COMPLETED &&
+      expectation.eventType !== DatabaseOrderServiceEventType.PAYMENT_METHOD_SELECTED
+    ) {
       return { outcome: "conflict" };
     }
     return {
@@ -3695,12 +3717,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const rate = checkout.rateSnapshotJson as unknown as OrderCheckoutPayload["rate"];
     const calculation =
       checkout.calculationSnapshotJson as unknown as OrderCheckoutPayload["calculation"];
-    if (
-      !rate ||
-      typeof rate !== "object" ||
-      !calculation ||
-      typeof calculation !== "object"
-    ) {
+    if (!rate || typeof rate !== "object" || !calculation || typeof calculation !== "object") {
       throw new CheckoutTransactionAbort("invalid_snapshot");
     }
     const amounts = [
@@ -3715,9 +3732,7 @@ export class BookingRepository implements BookingRepositoryPort {
       rate.jpyUnits
     ];
     if (
-      amounts.some(
-        (value) => !Number.isInteger(value) || value < 0 || value > 2_147_483_647
-      ) ||
+      amounts.some((value) => !Number.isInteger(value) || value < 0 || value > 2_147_483_647) ||
       rate.ruleId === 0 ||
       rate.version === 0 ||
       rate.ndpUnits === 0 ||
@@ -3725,9 +3740,7 @@ export class BookingRepository implements BookingRepositoryPort {
       checkout.baseAmountJpy + checkout.addOnAmountJpy - checkout.discountAmountJpy !==
         checkout.checkoutAmountJpy ||
       BigInt(checkout.payableNdp) !==
-        (BigInt(checkout.checkoutAmountJpy) * BigInt(rate.ndpUnits) +
-          BigInt(rate.jpyUnits) -
-          1n) /
+        (BigInt(checkout.checkoutAmountJpy) * BigInt(rate.ndpUnits) + BigInt(rate.jpyUnits) - 1n) /
           BigInt(rate.jpyUnits) ||
       calculation.formula !== "base_plus_accepted_add_ons_minus_discount" ||
       calculation.rateFormula !== "ceil(jpy_times_ndp_units_divided_by_jpy_units)" ||
@@ -3816,10 +3829,7 @@ export class BookingRepository implements BookingRepositoryPort {
     });
   }
 
-  private fulfillmentActorMatches(
-    order: OrderRecord,
-    input: FulfillmentActorInput
-  ): boolean {
+  private fulfillmentActorMatches(order: OrderRecord, input: FulfillmentActorInput): boolean {
     if (!order.technicianProfileId || !order.technicianProfile) return false;
     if (input.actor === "customer") {
       return input.technicianProfileId === null && order.customerUserId === input.actorUserId;
@@ -3872,8 +3882,7 @@ export class BookingRepository implements BookingRepositoryPort {
     }
     if (
       expectation.kind === "decision" &&
-      (event.orderAddOnId !== expectation.addOnId ||
-        metadata?.decision !== expectation.decision)
+      (event.orderAddOnId !== expectation.addOnId || metadata?.decision !== expectation.decision)
     ) {
       return { outcome: "conflict" };
     }
@@ -3997,7 +4006,7 @@ export class BookingRepository implements BookingRepositoryPort {
     });
     if (reviews.length === 0) throw new ReviewTransactionAbort("conflict");
     const latestReviewAt = reviews.reduce(
-      (latest, review) => review.createdAt > latest ? review.createdAt : latest,
+      (latest, review) => (review.createdAt > latest ? review.createdAt : latest),
       reviews[0]!.createdAt
     );
     const average = reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length;
@@ -4008,8 +4017,9 @@ export class BookingRepository implements BookingRepositoryPort {
       }
     }
     const highlights = [...tagCounts.entries()]
-      .sort(([left, leftCount], [right, rightCount]) =>
-        rightCount - leftCount || this.compareUtf8Bytes(left, right)
+      .sort(
+        ([left, leftCount], [right, rightCount]) =>
+          rightCount - leftCount || this.compareUtf8Bytes(left, right)
       )
       .slice(0, 5)
       .map(([label]) => label);
@@ -4058,7 +4068,7 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   private reviewTargetTypeToDb(targetType: OrderReviewTargetTypePayload) {
-    return targetType === "technician" ? "TECHNICIAN" as const : "CUSTOMER" as const;
+    return targetType === "technician" ? ("TECHNICIAN" as const) : ("CUSTOMER" as const);
   }
 
   private compareUtf8Bytes(left: string, right: string): number {
@@ -4068,9 +4078,7 @@ export class BookingRepository implements BookingRepositoryPort {
   private constantTimeTextEquals(left: string, right: string): boolean {
     const leftBuffer = Buffer.from(left);
     const rightBuffer = Buffer.from(right);
-    return (
-      leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
-    );
+    return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
   }
 
   private orderInclude() {
@@ -4143,6 +4151,9 @@ export class BookingRepository implements BookingRepositoryPort {
             select: { publicCode: true }
           }
         }
+      },
+      exchangeMatchParticipant: {
+        select: { id: true }
       }
     };
   }
@@ -4255,6 +4266,7 @@ export class BookingRepository implements BookingRepositoryPort {
         : null,
       serviceDurationSnapshot: order.serviceDurationSnapshot,
       serviceSnapshot: order.serviceSnapshotJson,
+      fulfillmentAddressSnapshot: this.fulfillmentAddressSnapshot(order.fulfillmentAddressSnapshot),
       shopName: order.shop.name,
       technicianName: order.technicianProfile?.displayName ?? null,
       priceAmount: this.formatDecimal(order.priceAmount, 2),
@@ -4298,17 +4310,10 @@ export class BookingRepository implements BookingRepositoryPort {
                 currency: "JPY" as const,
                 durationMinutes: addOn.durationMinutes,
                 serviceSnapshot: addOn.serviceSnapshotJson,
-                proposedBy: this.fulfillmentParticipantForUser(
-                  order,
-                  addOn.proposedByUserId
-                ),
+                proposedBy: this.fulfillmentParticipantForUser(order, addOn.proposedByUserId),
                 proposedAt: addOn.proposedAt,
                 resolvedBy: this.fulfillmentParticipantForUser(order, resolvedByUserId),
-                resolvedAt: accepted
-                  ? addOn.acceptedAt
-                  : rejected
-                    ? addOn.rejectedAt
-                    : null,
+                resolvedAt: accepted ? addOn.acceptedAt : rejected ? addOn.rejectedAt : null,
                 resolutionReason: addOn.resolutionReason
               };
             })
@@ -4340,6 +4345,17 @@ export class BookingRepository implements BookingRepositoryPort {
     };
   }
 
+  private fulfillmentAddressSnapshot(value: unknown): FulfillmentAddressSnapshot | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    if (typeof record.line1 !== "string" || record.line1.trim().length === 0) return null;
+    return {
+      line1: record.line1,
+      line2: typeof record.line2 === "string" ? record.line2 : null,
+      line3: typeof record.line3 === "string" ? record.line3 : null
+    };
+  }
+
   private mapOrderCustomer(order: OrderRecord): BookingOrderCustomerPayload {
     const profile = order.customer.customerProfile;
     const reviewSummary = profile?.reviewSummary;
@@ -4354,12 +4370,8 @@ export class BookingRepository implements BookingRepositoryPort {
         profile?.mediaAssets[0]?.url ??
         order.customer.avatarBootstrapUrl ??
         null,
-      membershipLevel: profile
-        ? resolveEffectiveCustomerMembershipLevel(profile)
-        : "standard",
-      ratingAverage: reviewSummary
-        ? this.formatDecimal(reviewSummary.ratingAverage, 2)
-        : "0.00",
+      membershipLevel: profile ? resolveEffectiveCustomerMembershipLevel(profile) : "standard",
+      ratingAverage: reviewSummary ? this.formatDecimal(reviewSummary.ratingAverage, 2) : "0.00",
       reviewCount: reviewSummary?.reviewCount ?? 0
     };
   }

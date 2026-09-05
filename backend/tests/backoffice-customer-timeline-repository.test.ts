@@ -32,14 +32,16 @@ describe("BackofficeRepository customer timeline", () => {
     });
     expect(findMany).not.toHaveBeenCalled();
     expect(result).toEqual({
-      list: [{
-        id: "profile.created:2026-05-01T01:00:00.000Z",
-        action: "profile.created",
-        actorName: "System",
-        actorAvatarUrl: null,
-        createdAt: "2026-05-01T01:00:00.000Z",
-        metadata: null
-      }],
+      list: [
+        {
+          id: "profile.created:2026-05-01T01:00:00.000Z",
+          action: "profile.created",
+          actorName: "System",
+          actorAvatarUrl: null,
+          createdAt: "2026-05-01T01:00:00.000Z",
+          metadata: null
+        }
+      ],
       total: 1,
       page: 1,
       page_size: 10

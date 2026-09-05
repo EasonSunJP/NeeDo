@@ -270,12 +270,19 @@ describe("BackofficeService named dashboard contract", () => {
   it("captures one evaluatedAt clock for window resolution, membership validity, and shop projection", async () => {
     const facts = aggregateFacts();
     facts.merchant = {
-      publicId: "shop0000000011", name: "Clock Shop", city: "Tokyo", address: "1-1",
-      status: "published", activeTechnicianCount: 0, billing: null, wallet: null
+      publicId: "shop0000000011",
+      name: "Clock Shop",
+      city: "Tokyo",
+      address: "1-1",
+      status: "published",
+      activeTechnicianCount: 0,
+      billing: null,
+      wallet: null
     };
     facts.membership = { memberCount: 1, completedCustomerCount: 1 };
     const getDashboard = jest.fn(async () => facts);
-    const nowFn = jest.fn()
+    const nowFn = jest
+      .fn()
       .mockReturnValueOnce(new Date("2026-08-31T14:59:59.999Z"))
       .mockReturnValueOnce(new Date("2026-09-01T15:00:00.000Z"));
     const service = new BackofficeService(
@@ -288,10 +295,12 @@ describe("BackofficeService named dashboard contract", () => {
     await service.getMerchantDashboard(merchantActor, context, { period: "today" });
 
     expect(nowFn).toHaveBeenCalledTimes(1);
-    expect(getDashboard).toHaveBeenCalledWith(expect.objectContaining({
-      evaluatedAt: new Date("2026-08-31T14:59:59.999Z"),
-      window: expect.objectContaining({ fromDate: "2026-08-31", toDate: "2026-08-31" })
-    }));
+    expect(getDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evaluatedAt: new Date("2026-08-31T14:59:59.999Z"),
+        window: expect.objectContaining({ fromDate: "2026-08-31", toDate: "2026-08-31" })
+      })
+    );
   });
 
   it("returns zeroes for applicable empty metrics while keeping undefined map buckets complete", async () => {

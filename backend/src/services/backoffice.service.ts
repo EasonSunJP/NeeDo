@@ -21,10 +21,7 @@ import type {
   BackofficeTechnicianRankingQuery,
   TechnicianRankingPeriod as RankingPeriod
 } from "../validators/backoffice.validator";
-import {
-  DASHBOARD_METRIC_KEYS,
-  type DashboardMetricKey
-} from "../validators/backoffice.validator";
+import { DASHBOARD_METRIC_KEYS, type DashboardMetricKey } from "../validators/backoffice.validator";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
@@ -907,7 +904,9 @@ export class BackofficeService {
     private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort,
     private readonly now: () => Date = () => new Date(),
     private readonly avatarStorage?: CustomerAvatarStoragePort,
-    analyticsOrMembership?: BackofficeAnalyticsReader | Pick<PlatformMembershipService, "changeEntitlement">,
+    analyticsOrMembership?:
+      | BackofficeAnalyticsReader
+      | Pick<PlatformMembershipService, "changeEntitlement">,
     platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">
   ) {
     if (analyticsOrMembership && "getOperationsFinance" in analyticsOrMembership) {
@@ -1158,11 +1157,8 @@ export class BackofficeService {
   ): AnalyticsMetricPayload {
     const ready = fact.dataStatus === "ready";
     const coherentReadyValues =
-      ready &&
-      Number.isSafeInteger(fact.current) &&
-      Number.isSafeInteger(fact.previous);
-    const coherentUnavailableValues =
-      !ready && fact.current === null && fact.previous === null;
+      ready && Number.isSafeInteger(fact.current) && Number.isSafeInteger(fact.previous);
+    const coherentUnavailableValues = !ready && fact.current === null && fact.previous === null;
     if (!coherentReadyValues && !coherentUnavailableValues) {
       throw new RangeError("Dashboard analytics fact is incoherent");
     }
@@ -1185,11 +1181,16 @@ export class BackofficeService {
     metricKey: DashboardMetricKey
   ): DashboardAnalyticsFact {
     switch (metricKey) {
-      case "gross_revenue": return facts.grossRevenue;
-      case "travel_fare": return facts.travelFare;
-      case "discount_amount": return facts.discountAmount;
-      case "consumables_sales": return facts.consumablesSales;
-      default: throw new RangeError("Dashboard analytics metric group is invalid");
+      case "gross_revenue":
+        return facts.grossRevenue;
+      case "travel_fare":
+        return facts.travelFare;
+      case "discount_amount":
+        return facts.discountAmount;
+      case "consumables_sales":
+        return facts.consumablesSales;
+      default:
+        throw new RangeError("Dashboard analytics metric group is invalid");
     }
   }
 
@@ -1198,29 +1199,41 @@ export class BackofficeService {
     metricKey: DashboardMetricKey
   ): DashboardAnalyticsFact {
     switch (metricKey) {
-      case "dedicated_technician_commission": return facts.dedicatedTechnicianCommission;
-      case "part_time_technician_commission": return facts.partTimeTechnicianCommission;
-      case "marketing_commission": return facts.marketingCommission;
-      case "agent_commission": return facts.agentCommission;
-      case "ndp_income": return facts.ndpIncome;
-      case "affiliate_platform_income": return facts.affiliatePlatformIncome;
-      case "consumables_profit": return facts.consumablesProfit;
-      default: throw new RangeError("Dashboard analytics metric group is invalid");
+      case "dedicated_technician_commission":
+        return facts.dedicatedTechnicianCommission;
+      case "part_time_technician_commission":
+        return facts.partTimeTechnicianCommission;
+      case "marketing_commission":
+        return facts.marketingCommission;
+      case "agent_commission":
+        return facts.agentCommission;
+      case "ndp_income":
+        return facts.ndpIncome;
+      case "affiliate_platform_income":
+        return facts.affiliatePlatformIncome;
+      case "consumables_profit":
+        return facts.consumablesProfit;
+      default:
+        throw new RangeError("Dashboard analytics metric group is invalid");
     }
   }
 
-  private growthFact(
-    facts: GrowthFacts,
-    metricKey: DashboardMetricKey
-  ): DashboardAnalyticsFact {
+  private growthFact(facts: GrowthFacts, metricKey: DashboardMetricKey): DashboardAnalyticsFact {
     switch (metricKey) {
-      case "new_users": return facts.newUsers;
-      case "new_paid_members": return facts.newPaidMembers;
-      case "technician_onboarding": return facts.technicianOnboarding;
-      case "agent_onboarding": return facts.agentOnboarding;
-      case "franchisee_onboarding": return facts.franchiseeOnboarding;
-      case "supplier_onboarding": return facts.supplierOnboarding;
-      default: throw new RangeError("Dashboard analytics metric group is invalid");
+      case "new_users":
+        return facts.newUsers;
+      case "new_paid_members":
+        return facts.newPaidMembers;
+      case "technician_onboarding":
+        return facts.technicianOnboarding;
+      case "agent_onboarding":
+        return facts.agentOnboarding;
+      case "franchisee_onboarding":
+        return facts.franchiseeOnboarding;
+      case "supplier_onboarding":
+        return facts.supplierOnboarding;
+      default:
+        throw new RangeError("Dashboard analytics metric group is invalid");
     }
   }
 
@@ -1317,13 +1330,14 @@ export class BackofficeService {
         shopNdpCost
       },
       shop,
-      membership: isPlatform || !membershipFacts
-        ? null
-        : {
-            memberCount: membershipFacts.memberCount,
-            memberDataStatus: "ready",
-            completedCustomerCount: membershipFacts.completedCustomerCount
-          },
+      membership:
+        isPlatform || !membershipFacts
+          ? null
+          : {
+              memberCount: membershipFacts.memberCount,
+              memberDataStatus: "ready",
+              completedCustomerCount: membershipFacts.completedCustomerCount
+            },
       scope: merchantFacts
         ? { kind: "shop", shopPublicId: merchantFacts.publicId }
         : { kind: "platform", shopPublicId: null }

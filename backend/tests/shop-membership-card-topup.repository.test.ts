@@ -62,7 +62,8 @@ const input = {
 
 function transaction(overrides: Record<string, unknown> = {}) {
   return {
-    $queryRaw: jest.fn()
+    $queryRaw: jest
+      .fn()
       .mockResolvedValueOnce([{ id: 81 }])
       .mockResolvedValueOnce([{ now }]),
     shopMembershipCardTopUp: {
@@ -76,7 +77,9 @@ function transaction(overrides: Record<string, unknown> = {}) {
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     shopMembershipCardAdjustmentRequest: { findFirst: jest.fn().mockResolvedValue(null) },
-    userIdentity: { findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 }) },
+    userIdentity: {
+      findFirst: jest.fn().mockResolvedValueOnce({ id: 141 }).mockResolvedValueOnce({ id: 109 })
+    },
     auditLog: { create: jest.fn().mockResolvedValue({ id: 201 }) },
     notification: { create: jest.fn().mockResolvedValue({ id: 202 }) },
     ...overrides
@@ -86,12 +89,18 @@ function transaction(overrides: Record<string, unknown> = {}) {
 describe("ShopMembershipCardTopUpRepository", () => {
   it("credits principal and creates top-up, audit, and notification in one transaction", async () => {
     const tx = transaction();
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
     const repository = new ShopMembershipCardTopUpRepository(client);
 
     await expect(repository.createWithAuditAndNotification(input)).resolves.toMatchObject({
       kind: "created",
-      value: { publicId: topUpPublicId, principalBalanceBeforeJpy: 10_000, principalBalanceAfterJpy: 15_000 }
+      value: {
+        publicId: topUpPublicId,
+        principalBalanceBeforeJpy: 10_000,
+        principalBalanceAfterJpy: 15_000
+      }
     });
 
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
@@ -106,35 +115,49 @@ describe("ShopMembershipCardTopUpRepository", () => {
       },
       data: { principalBalanceJpy: 15_000, lockVersion: { increment: 1 } }
     });
-    expect(tx.shopMembershipCardTopUp.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        cardId: 81,
-        shopId: 71,
-        createdById: 9,
-        amountJpy: 5_000,
-        paymentMethod: "CASH",
-        principalBalanceBeforeJpy: 10_000,
-        principalBalanceAfterJpy: 15_000,
-        cardLockVersionBefore: 1,
-        idempotencyKey: input.idempotencyKey,
-        requestFingerprint: "fingerprint"
+    expect(tx.shopMembershipCardTopUp.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cardId: 81,
+          shopId: 71,
+          createdById: 9,
+          amountJpy: 5_000,
+          paymentMethod: "CASH",
+          principalBalanceBeforeJpy: 10_000,
+          principalBalanceAfterJpy: 15_000,
+          cardLockVersionBefore: 1,
+          idempotencyKey: input.idempotencyKey,
+          requestFingerprint: "fingerprint"
+        })
       })
-    }));
-    expect(tx.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      action: "merchant.shop_membership_card.topup.create",
-      targetId: 91,
-      metadata: expect.objectContaining({ topUpPublicId, principalBalanceBeforeJpy: 10_000, principalBalanceAfterJpy: 15_000 })
-    }) });
-    expect(tx.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      recipientUserId: 41,
-      recipientIdentityId: 141,
-      actorUserId: 9,
-      actorIdentityId: 109,
-      type: "SYSTEM",
-      title: "shop_membership.card_topup.created.title",
-      body: "shop_membership.card_topup.created.body",
-      payload: expect.objectContaining({ topUpPublicId, amountJpy: 5_000, principalBalanceAfterJpy: 15_000 })
-    }) });
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "merchant.shop_membership_card.topup.create",
+        targetId: 91,
+        metadata: expect.objectContaining({
+          topUpPublicId,
+          principalBalanceBeforeJpy: 10_000,
+          principalBalanceAfterJpy: 15_000
+        })
+      })
+    });
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        recipientUserId: 41,
+        recipientIdentityId: 141,
+        actorUserId: 9,
+        actorIdentityId: 109,
+        type: "SYSTEM",
+        title: "shop_membership.card_topup.created.title",
+        body: "shop_membership.card_topup.created.body",
+        payload: expect.objectContaining({
+          topUpPublicId,
+          amountJpy: 5_000,
+          principalBalanceAfterJpy: 15_000
+        })
+      })
+    });
   });
 
   it("returns exact transactional replay without another balance mutation", async () => {
@@ -144,9 +167,12 @@ describe("ShopMembershipCardTopUpRepository", () => {
         create: jest.fn()
       }
     });
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
-    await expect(new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input))
-      .resolves.toMatchObject({ kind: "replayed", value: { publicId: topUpPublicId } });
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
+    await expect(
+      new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input)
+    ).resolves.toMatchObject({ kind: "replayed", value: { publicId: topUpPublicId } });
     expect(tx.shopMembershipCard.updateMany).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
@@ -155,13 +181,18 @@ describe("ShopMembershipCardTopUpRepository", () => {
   it("rejects a reused key with another fingerprint", async () => {
     const tx = transaction({
       shopMembershipCardTopUp: {
-        findFirst: jest.fn().mockResolvedValue({ ...createdTopUp, requestFingerprint: "different" }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ ...createdTopUp, requestFingerprint: "different" }),
         create: jest.fn()
       }
     });
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
-    await expect(new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input))
-      .resolves.toEqual({ kind: "idempotency_conflict" });
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
+    await expect(
+      new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input)
+    ).resolves.toEqual({ kind: "idempotency_conflict" });
     expect(tx.shopMembershipCard.updateMany).not.toHaveBeenCalled();
   });
 
@@ -169,9 +200,12 @@ describe("ShopMembershipCardTopUpRepository", () => {
     const tx = transaction({
       shopMembershipCardAdjustmentRequest: { findFirst: jest.fn().mockResolvedValue({ id: 301 }) }
     });
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
-    await expect(new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input))
-      .resolves.toEqual({ kind: "pending_conflict" });
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
+    await expect(
+      new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input)
+    ).resolves.toEqual({ kind: "pending_conflict" });
     expect(tx.shopMembershipCard.updateMany).not.toHaveBeenCalled();
   });
 
@@ -182,9 +216,12 @@ describe("ShopMembershipCardTopUpRepository", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       }
     });
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
-    await expect(new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input))
-      .resolves.toEqual({ kind: "concurrency_conflict" });
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
+    await expect(
+      new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input)
+    ).resolves.toEqual({ kind: "concurrency_conflict" });
     expect(tx.shopMembershipCardTopUp.create).not.toHaveBeenCalled();
   });
 
@@ -194,10 +231,18 @@ describe("ShopMembershipCardTopUpRepository", () => {
     [{ ...card, expiresAt: now }, "invalid_state"],
     [{ ...card, membership: { ...card.membership, status: "ENDED" } }, "invalid_state"]
   ])("rejects an ineligible card before mutation", async (ineligibleCard, kind) => {
-    const tx = transaction({ shopMembershipCard: { findFirst: jest.fn().mockResolvedValue(ineligibleCard), updateMany: jest.fn() } });
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
-    await expect(new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input))
-      .resolves.toEqual({ kind });
+    const tx = transaction({
+      shopMembershipCard: {
+        findFirst: jest.fn().mockResolvedValue(ineligibleCard),
+        updateMany: jest.fn()
+      }
+    });
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
+    await expect(
+      new ShopMembershipCardTopUpRepository(client).createWithAuditAndNotification(input)
+    ).resolves.toEqual({ kind });
     expect(tx.shopMembershipCard.updateMany).not.toHaveBeenCalled();
   });
 
@@ -209,19 +254,29 @@ describe("ShopMembershipCardTopUpRepository", () => {
     const query = { page: 2, pageSize: 20, cardPublicId };
 
     await repository.listMerchant(71, query);
-    expect(findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: { shopId: 71, card: { publicId: cardPublicId, deletedAt: null }, deletedAt: null },
-      skip: 20,
-      take: 20
-    }));
+    expect(findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { shopId: 71, card: { publicId: cardPublicId, deletedAt: null }, deletedAt: null },
+        skip: 20,
+        take: 20
+      })
+    );
     await repository.listCustomer(41, query);
-    expect(findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: {
-        card: { publicId: cardPublicId, membership: { customerProfile: { userId: 41 }, deletedAt: null }, deletedAt: null },
-        deletedAt: null
-      },
-      skip: 20,
-      take: 20
-    }));
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          card: {
+            publicId: cardPublicId,
+            membership: { customerProfile: { userId: 41 }, deletedAt: null },
+            deletedAt: null
+          },
+          deletedAt: null
+        },
+        skip: 20,
+        take: 20
+      })
+    );
   });
 });

@@ -231,43 +231,45 @@ describe("chat-record HTTP API", () => {
   it.each(["9007199254740990.6", "1e3", "01", "2147483648"])(
     "rejects non-canonical or out-of-range numeric input %s across all ID boundaries",
     async (unsafe) => {
-    const fixture = createFixture();
-    const authorization = { Authorization: `Bearer ${fixture.token}` };
-    const calls = [
-      request(fixture.app)
-        .post(`/api/v1/im/conversations/${unsafe}/chat-records`)
-        .set(authorization)
-        .send(command),
-      request(fixture.app)
-        .post("/api/v1/im/conversations/99/chat-records")
-        .set(authorization)
-        .send({ ...command, sourceConversationId: unsafe }),
-      request(fixture.app)
-        .post("/api/v1/im/conversations/99/chat-records")
-        .set(authorization)
-        .send({ ...command, messageIds: [unsafe] }),
-      request(fixture.app)
-        .get(`/api/v1/im/chat-records/${publicId}/items?beforePosition=${unsafe}`)
-        .set(authorization),
-      request(fixture.app)
-        .get(`/api/v1/im/chat-record-favorites?page=${unsafe}`)
-        .set(authorization),
-      request(fixture.app).delete(`/api/v1/im/chat-record-favorites/${unsafe}`).set(authorization),
-      request(fixture.app)
-        .post(`/api/v1/im/conversations/${unsafe}/messages/delete-for-me`)
-        .set(authorization)
-        .send({ messageIds: [11], idempotencyKey: command.idempotencyKey }),
-      request(fixture.app)
-        .post("/api/v1/im/conversations/91/messages/delete-for-me")
-        .set(authorization)
-        .send({ messageIds: [unsafe], idempotencyKey: command.idempotencyKey })
-    ];
-    for (const call of calls) await call.expect(400);
-    expect(fixture.service.createDelivery).not.toHaveBeenCalled();
-    expect(fixture.service.listItems).not.toHaveBeenCalled();
-    expect(fixture.service.listFavorites).not.toHaveBeenCalled();
-    expect(fixture.service.removeFavorite).not.toHaveBeenCalled();
-    expect(fixture.realtimeService.deleteMessagesForUser).not.toHaveBeenCalled();
+      const fixture = createFixture();
+      const authorization = { Authorization: `Bearer ${fixture.token}` };
+      const calls = [
+        request(fixture.app)
+          .post(`/api/v1/im/conversations/${unsafe}/chat-records`)
+          .set(authorization)
+          .send(command),
+        request(fixture.app)
+          .post("/api/v1/im/conversations/99/chat-records")
+          .set(authorization)
+          .send({ ...command, sourceConversationId: unsafe }),
+        request(fixture.app)
+          .post("/api/v1/im/conversations/99/chat-records")
+          .set(authorization)
+          .send({ ...command, messageIds: [unsafe] }),
+        request(fixture.app)
+          .get(`/api/v1/im/chat-records/${publicId}/items?beforePosition=${unsafe}`)
+          .set(authorization),
+        request(fixture.app)
+          .get(`/api/v1/im/chat-record-favorites?page=${unsafe}`)
+          .set(authorization),
+        request(fixture.app)
+          .delete(`/api/v1/im/chat-record-favorites/${unsafe}`)
+          .set(authorization),
+        request(fixture.app)
+          .post(`/api/v1/im/conversations/${unsafe}/messages/delete-for-me`)
+          .set(authorization)
+          .send({ messageIds: [11], idempotencyKey: command.idempotencyKey }),
+        request(fixture.app)
+          .post("/api/v1/im/conversations/91/messages/delete-for-me")
+          .set(authorization)
+          .send({ messageIds: [unsafe], idempotencyKey: command.idempotencyKey })
+      ];
+      for (const call of calls) await call.expect(400);
+      expect(fixture.service.createDelivery).not.toHaveBeenCalled();
+      expect(fixture.service.listItems).not.toHaveBeenCalled();
+      expect(fixture.service.listFavorites).not.toHaveBeenCalled();
+      expect(fixture.service.removeFavorite).not.toHaveBeenCalled();
+      expect(fixture.realtimeService.deleteMessagesForUser).not.toHaveBeenCalled();
     }
   );
 

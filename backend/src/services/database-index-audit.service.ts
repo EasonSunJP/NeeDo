@@ -35,18 +35,14 @@ export interface DatabaseIndexAuditResult {
 
 const byName = (left: string, right: string): number => left.localeCompare(right);
 
-export function auditDatabaseIndexes(
-  input: DatabaseIndexAuditInput
-): DatabaseIndexAuditResult {
+export function auditDatabaseIndexes(input: DatabaseIndexAuditInput): DatabaseIndexAuditResult {
   const leadingIndexColumns = new Set(
     input.indexes
       .filter((index) => Number(index.sequenceInIndex) === 1)
       .map((index) => `${index.tableName}.${index.columnName}`)
   );
   const primaryKeyTables = new Set(
-    input.indexes
-      .filter((index) => index.indexName === "PRIMARY")
-      .map((index) => index.tableName)
+    input.indexes.filter((index) => index.indexName === "PRIMARY").map((index) => index.tableName)
   );
   const missingPrimaryKeys = input.tables
     .map((table) => table.tableName)
@@ -54,8 +50,7 @@ export function auditDatabaseIndexes(
     .sort(byName);
   const unindexedForeignKeys = input.foreignKeys
     .filter(
-      (foreignKey) =>
-        !leadingIndexColumns.has(`${foreignKey.tableName}.${foreignKey.columnName}`)
+      (foreignKey) => !leadingIndexColumns.has(`${foreignKey.tableName}.${foreignKey.columnName}`)
     )
     .map(
       (foreignKey) =>
@@ -81,17 +76,21 @@ export function auditDatabaseIndexes(
       .join(",");
     const nonUnique = Number(columns[0]?.nonUnique ?? 1);
     const signature = `${tableName}:${nonUnique}:${orderedColumns}`;
-    signatures.set(signature, [...(signatures.get(signature) ?? []), key.slice(tableName.length + 1)]);
+    signatures.set(signature, [
+      ...(signatures.get(signature) ?? []),
+      key.slice(tableName.length + 1)
+    ]);
   });
   const duplicateIndexes = Array.from(signatures.entries())
     .filter(([, names]) => names.length > 1)
     .flatMap(([signature, names]) => {
       const [tableName, , columns] = signature.split(":");
       const sortedNames = [...names].sort(byName);
-      return sortedNames.slice(1).map(
-        (name, index) =>
-          `${tableName}: ${sortedNames[index]} and ${name} both index (${columns})`
-      );
+      return sortedNames
+        .slice(1)
+        .map(
+          (name, index) => `${tableName}: ${sortedNames[index]} and ${name} both index (${columns})`
+        );
     })
     .sort(byName);
   const softDeleteIndexWarnings = (input.softDeleteTables ?? [])

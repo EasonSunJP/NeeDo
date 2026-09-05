@@ -15,7 +15,9 @@ describe("shop taxonomy public repository", () => {
     };
     const repository = new ShopTaxonomyRepository({ category } as never);
 
-    await expect(repository.listCategories({ locale: "ja", page: 1, pageSize: 20 })).resolves.toEqual({
+    await expect(
+      repository.listCategories({ locale: "ja", page: 1, pageSize: 20 })
+    ).resolves.toEqual({
       list: [
         {
           id: 1,

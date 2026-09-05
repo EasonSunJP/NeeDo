@@ -11,7 +11,9 @@ const cardPublicId = "00000000-0000-4000-8000-000000000701";
 const topUpPublicId = "00000000-0000-4000-8000-000000000702";
 const requestContext = { ip: "127.0.0.1", userAgent: "jest" };
 
-const actor = (overrides: Partial<AuthenticatedAccessContext> = {}): AuthenticatedAccessContext => ({
+const actor = (
+  overrides: Partial<AuthenticatedAccessContext> = {}
+): AuthenticatedAccessContext => ({
   userId: 9,
   email: "owner@example.com",
   accessTokenJti: "jti",
@@ -24,7 +26,9 @@ const actor = (overrides: Partial<AuthenticatedAccessContext> = {}): Authenticat
   ...overrides
 });
 
-const record = (overrides: Partial<ShopMembershipCardTopUpRecord> = {}): ShopMembershipCardTopUpRecord => ({
+const record = (
+  overrides: Partial<ShopMembershipCardTopUpRecord> = {}
+): ShopMembershipCardTopUpRecord => ({
   internalId: 91,
   publicId: topUpPublicId,
   amountJpy: 5_000,
@@ -54,22 +58,23 @@ const record = (overrides: Partial<ShopMembershipCardTopUpRecord> = {}): ShopMem
   ...overrides
 });
 
-const repository = (overrides: Partial<ShopMembershipCardTopUpRepositoryPort> = {}) => ({
-  findByIdempotencyKey: jest.fn(async () => null),
-  createWithAuditAndNotification: jest.fn(async (input) => ({
-    kind: "created" as const,
-    value: record({
-      amountJpy: input.amountJpy,
-      paymentMethod: input.paymentMethod,
-      paymentReference: input.paymentReference,
-      note: input.note,
-      requestFingerprint: input.requestFingerprint
-    })
-  })),
-  listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  ...overrides
-}) as jest.Mocked<ShopMembershipCardTopUpRepositoryPort>;
+const repository = (overrides: Partial<ShopMembershipCardTopUpRepositoryPort> = {}) =>
+  ({
+    findByIdempotencyKey: jest.fn(async () => null),
+    createWithAuditAndNotification: jest.fn(async (input) => ({
+      kind: "created" as const,
+      value: record({
+        amountJpy: input.amountJpy,
+        paymentMethod: input.paymentMethod,
+        paymentReference: input.paymentReference,
+        note: input.note,
+        requestFingerprint: input.requestFingerprint
+      })
+    })),
+    listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    ...overrides
+  }) as jest.Mocked<ShopMembershipCardTopUpRepositoryPort>;
 
 const audit = {
   createInput: jest.fn((input) => ({
@@ -95,7 +100,9 @@ describe("ShopMembershipCardTopUpService", () => {
     const repo = repository();
     const service = new ShopMembershipCardTopUpService(repo, audit);
 
-    await expect(service.create(actor(), requestContext, ` ${cardPublicId} `, validInput)).resolves.toMatchObject({
+    await expect(
+      service.create(actor(), requestContext, ` ${cardPublicId} `, validInput)
+    ).resolves.toMatchObject({
       publicId: topUpPublicId,
       amountJpy: 5_000,
       principalBalanceBeforeJpy: 10_000,
@@ -103,15 +110,17 @@ describe("ShopMembershipCardTopUpService", () => {
       replayed: false,
       card: { publicId: cardPublicId, cardNoMasked: "NMC-********************AABB" }
     });
-    expect(repo.createWithAuditAndNotification).toHaveBeenCalledWith(expect.objectContaining({
-      actorId: 9,
-      shopId: 71,
-      cardPublicId,
-      amountJpy: 5_000,
-      paymentMethod: "cash",
-      paymentReference: "POS-20260901-001",
-      audit: expect.objectContaining({ action: "merchant.shop_membership_card.topup.create" })
-    }));
+    expect(repo.createWithAuditAndNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 9,
+        shopId: 71,
+        cardPublicId,
+        amountJpy: 5_000,
+        paymentMethod: "cash",
+        paymentReference: "POS-20260901-001",
+        audit: expect.objectContaining({ action: "merchant.shop_membership_card.topup.create" })
+      })
+    );
   });
 
   it.each([
@@ -119,39 +128,77 @@ describe("ShopMembershipCardTopUpService", () => {
     [10_000_001, "reference"],
     [1.5, "reference"],
     [1000, ""]
-  ])("rejects invalid amount or evidence before repository mutation", async (amountJpy, paymentReference) => {
-    const repo = repository();
-    const service = new ShopMembershipCardTopUpService(repo, audit);
-    await expect(service.create(actor(), requestContext, cardPublicId, {
-      ...validInput,
-      amountJpy,
-      paymentReference,
-      idempotencyKey: `invalid-${String(amountJpy)}-key`
-    })).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_INVALID_VALUE });
-    expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
-  });
+  ])(
+    "rejects invalid amount or evidence before repository mutation",
+    async (amountJpy, paymentReference) => {
+      const repo = repository();
+      const service = new ShopMembershipCardTopUpService(repo, audit);
+      await expect(
+        service.create(actor(), requestContext, cardPublicId, {
+          ...validInput,
+          amountJpy,
+          paymentReference,
+          idempotencyKey: `invalid-${String(amountJpy)}-key`
+        })
+      ).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_INVALID_VALUE });
+      expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
+    }
+  );
 
   it("requires a selected merchant shop and an owning customer for history", async () => {
     const repo = repository();
     const service = new ShopMembershipCardTopUpService(repo, audit);
-    await expect(service.create(actor({ currentIdentityScopeType: "global", currentIdentityScopeId: null }), requestContext, cardPublicId, validInput))
-      .rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
-    await expect(service.listCustomer(actor(), { page: 1, pageSize: 20 }))
-      .rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
+    await expect(
+      service.create(
+        actor({ currentIdentityScopeType: "global", currentIdentityScopeId: null }),
+        requestContext,
+        cardPublicId,
+        validInput
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
+    await expect(service.listCustomer(actor(), { page: 1, pageSize: 20 })).rejects.toMatchObject({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      statusCode: 403
+    });
   });
 
   it("replays only an identical normalized request", async () => {
     const firstRepo = repository();
-    await new ShopMembershipCardTopUpService(firstRepo, audit).create(actor(), requestContext, cardPublicId, validInput);
-    const fingerprint = firstRepo.createWithAuditAndNotification.mock.calls[0][0].requestFingerprint;
-    const replayRepo = repository({ findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: fingerprint })) });
-    await expect(new ShopMembershipCardTopUpService(replayRepo, audit).create(actor(), requestContext, cardPublicId, validInput))
-      .resolves.toMatchObject({ publicId: topUpPublicId, replayed: true });
+    await new ShopMembershipCardTopUpService(firstRepo, audit).create(
+      actor(),
+      requestContext,
+      cardPublicId,
+      validInput
+    );
+    const fingerprint =
+      firstRepo.createWithAuditAndNotification.mock.calls[0][0].requestFingerprint;
+    const replayRepo = repository({
+      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: fingerprint }))
+    });
+    await expect(
+      new ShopMembershipCardTopUpService(replayRepo, audit).create(
+        actor(),
+        requestContext,
+        cardPublicId,
+        validInput
+      )
+    ).resolves.toMatchObject({ publicId: topUpPublicId, replayed: true });
     expect(replayRepo.createWithAuditAndNotification).not.toHaveBeenCalled();
 
-    const conflictRepo = repository({ findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" })) });
-    await expect(new ShopMembershipCardTopUpService(conflictRepo, audit).create(actor(), requestContext, cardPublicId, validInput))
-      .rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_IDEMPOTENCY_CONFLICT, statusCode: 409 });
+    const conflictRepo = repository({
+      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" }))
+    });
+    await expect(
+      new ShopMembershipCardTopUpService(conflictRepo, audit).create(
+        actor(),
+        requestContext,
+        cardPublicId,
+        validInput
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_TOPUP_IDEMPOTENCY_CONFLICT,
+      statusCode: 409
+    });
   });
 
   it.each([
@@ -162,8 +209,17 @@ describe("ShopMembershipCardTopUpService", () => {
     ["idempotency_conflict", "SHOP_MEMBERSHIP_CARD_TOPUP_IDEMPOTENCY_CONFLICT"]
   ] as const)("maps repository %s to its structured error", async (kind, errorKey) => {
     const repo = repository({ createWithAuditAndNotification: jest.fn(async () => ({ kind })) });
-    await expect(new ShopMembershipCardTopUpService(repo, audit).create(actor(), requestContext, cardPublicId, validInput))
-      .rejects.toMatchObject({ code: ERROR_CODES[errorKey], statusCode: kind === "not_found" ? 404 : 409 });
+    await expect(
+      new ShopMembershipCardTopUpService(repo, audit).create(
+        actor(),
+        requestContext,
+        cardPublicId,
+        validInput
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES[errorKey],
+      statusCode: kind === "not_found" ? 404 : 409
+    });
   });
 
   it("returns merchant and customer histories through their server-owned scopes", async () => {

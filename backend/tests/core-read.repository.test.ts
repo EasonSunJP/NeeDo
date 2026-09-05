@@ -137,48 +137,54 @@ describe("CoreReadRepository multi-entity search", () => {
   it("searches published shops directly without requiring a service", async () => {
     const fixture = createRepositoryFixture();
 
-    await expect(fixture.repository.searchShops({
-      entityType: "shop",
-      keywords: ["LifeDance Wellness 渋谷"],
-      categoryIds: [],
-      page: 1,
-      pageSize: 20
-    })).resolves.toMatchObject({
-      list: [{
-        name: "LifeDance Wellness 渋谷",
-        publicId: "shop5831047296",
-        favoriteCount: 1540,
-        shareCount: 29,
-        serviceCategories: [{ code: "wellness", label: "リラクゼーション" }],
-        businessKeywords: [{ code: "wellness_spa", label: "スパケア" }]
-      }],
+    await expect(
+      fixture.repository.searchShops({
+        entityType: "shop",
+        keywords: ["LifeDance Wellness 渋谷"],
+        categoryIds: [],
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          name: "LifeDance Wellness 渋谷",
+          publicId: "shop5831047296",
+          favoriteCount: 1540,
+          shareCount: 29,
+          serviceCategories: [{ code: "wellness", label: "リラクゼーション" }],
+          businessKeywords: [{ code: "wellness_spa", label: "スパケア" }]
+        }
+      ],
       total: 1
     });
 
-    expect(fixture.shopFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        deletedAt: null,
-        status: "published",
-        publicIdentifier: {
-          is: expect.objectContaining({ kind: "SHOP", status: "ACTIVE", deletedAt: null })
-        },
-        OR: expect.arrayContaining([
-          { name: { contains: "LifeDance Wellness 渋谷" } },
-          {
-            serviceCategorySelections: {
-              some: expect.objectContaining({ deletedAt: null })
-            }
+    expect(fixture.shopFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deletedAt: null,
+          status: "published",
+          publicIdentifier: {
+            is: expect.objectContaining({ kind: "SHOP", status: "ACTIVE", deletedAt: null })
           },
-          {
-            businessKeywordSelections: {
-              some: expect.objectContaining({ deletedAt: null })
+          OR: expect.arrayContaining([
+            { name: { contains: "LifeDance Wellness 渋谷" } },
+            {
+              serviceCategorySelections: {
+                some: expect.objectContaining({ deletedAt: null })
+              }
+            },
+            {
+              businessKeywordSelections: {
+                some: expect.objectContaining({ deletedAt: null })
+              }
             }
-          }
-        ])
-      }),
-      skip: 0,
-      take: 20
-    }));
+          ])
+        }),
+        skip: 0,
+        take: 20
+      })
+    );
   });
 
   it("searches published technicians directly without requiring a service", async () => {
@@ -192,78 +198,82 @@ describe("CoreReadRepository multi-entity search", () => {
       pageSize: 20
     });
     expect(result).toMatchObject({
-      list: [{
-        displayName: "橘 ひかり",
-        publicId: "s5831047296",
-        age: 25,
-        favoriteCount: 154,
-        shareCount: 8,
-        completedOrderCount: 1280,
-        acceptanceRatePercent: 98,
-        primaryService: {
-          id: 71,
-          name: "肩颈调理",
-          priceAmount: "8800",
-          currency: "JPY",
-          durationMinutes: 60
+      list: [
+        {
+          displayName: "橘 ひかり",
+          publicId: "s5831047296",
+          age: 25,
+          favoriteCount: 154,
+          shareCount: 8,
+          completedOrderCount: 1280,
+          acceptanceRatePercent: 98,
+          primaryService: {
+            id: 71,
+            name: "肩颈调理",
+            priceAmount: "8800",
+            currency: "JPY",
+            durationMinutes: 60
+          }
         }
-      }],
+      ],
       total: 1
     });
     expect(result.list[0]).not.toHaveProperty("baseLatitude");
     expect(result.list[0]).not.toHaveProperty("baseLongitude");
     expect(result.list[0]).not.toHaveProperty("serviceBase");
 
-    expect(fixture.technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        deletedAt: null,
-        status: "published",
-        user: {
-          identities: {
-            some: expect.objectContaining({ deletedAt: null, isActive: true })
-          }
-        },
-        OR: expect.arrayContaining([{ displayName: { contains: "ひかり" } }])
-      }),
-      include: expect.objectContaining({
-        _count: {
-          select: {
-            entityFavorites: { where: { deletedAt: null } },
-            entityShareEvents: { where: { deletedAt: null } }
-          }
-        },
-        performanceSummary: true,
-        technicianServices: expect.objectContaining({
-          where: {
-            deletedAt: null,
-            isActive: true,
-            isBookable: true,
-            reviewStatus: "APPROVED"
+    expect(fixture.technicianFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deletedAt: null,
+          status: "published",
+          user: {
+            identities: {
+              some: expect.objectContaining({ deletedAt: null, isActive: true })
+            }
           },
-          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-          take: 1
+          OR: expect.arrayContaining([{ displayName: { contains: "ひかり" } }])
         }),
-        user: {
-          select: expect.objectContaining({
-            identities: expect.objectContaining({
-              where: expect.objectContaining({
-                deletedAt: null,
-                isActive: true,
-                publicIdentifier: {
-                  is: expect.objectContaining({
-                    kind: "S",
-                    status: "ACTIVE",
-                    deletedAt: null
-                  })
-                }
+        include: expect.objectContaining({
+          _count: {
+            select: {
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
+            }
+          },
+          performanceSummary: true,
+          technicianServices: expect.objectContaining({
+            where: {
+              deletedAt: null,
+              isActive: true,
+              isBookable: true,
+              reviewStatus: "APPROVED"
+            },
+            orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+            take: 1
+          }),
+          user: {
+            select: expect.objectContaining({
+              identities: expect.objectContaining({
+                where: expect.objectContaining({
+                  deletedAt: null,
+                  isActive: true,
+                  publicIdentifier: {
+                    is: expect.objectContaining({
+                      kind: "S",
+                      status: "ACTIVE",
+                      deletedAt: null
+                    })
+                  }
+                })
               })
             })
-          })
-        }
-      }),
-      skip: 0,
-      take: 20
-    }));
+          }
+        }),
+        skip: 0,
+        take: 20
+      })
+    );
   });
 
   it("defaults absent technician performance and primary service without inventing metrics", async () => {
@@ -278,21 +288,25 @@ describe("CoreReadRepository multi-entity search", () => {
       }
     ]);
 
-    await expect(fixture.repository.searchTechnicians({
-      entityType: "technician",
-      keywords: ["ひかり"],
-      categoryIds: [],
-      page: 1,
-      pageSize: 20
-    })).resolves.toMatchObject({
-      list: [{
-        age: null,
-        favoriteCount: 0,
-        shareCount: 0,
-        completedOrderCount: 0,
-        acceptanceRatePercent: 100,
-        primaryService: null
-      }]
+    await expect(
+      fixture.repository.searchTechnicians({
+        entityType: "technician",
+        keywords: ["ひかり"],
+        categoryIds: [],
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          age: null,
+          favoriteCount: 0,
+          shareCount: 0,
+          completedOrderCount: 0,
+          acceptanceRatePercent: 100,
+          primaryService: null
+        }
+      ]
     });
   });
 
@@ -366,26 +380,30 @@ describe("CoreReadRepository multi-entity search", () => {
       }
     } as never);
 
-    await expect(repository.search({
-      entityType: "service",
-      keywords: ["recovery"],
-      categoryIds: [],
-      page: 1,
-      pageSize: 20
-    })).resolves.toMatchObject({
+    await expect(
+      repository.search({
+        entityType: "service",
+        keywords: ["recovery"],
+        categoryIds: [],
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
       list: [{ technician: null, usageCount: 18 }]
     });
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      include: expect.objectContaining({
-        _count: {
-          select: {
-            bookingOrders: {
-              where: { status: "COMPLETED", deletedAt: null }
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          _count: {
+            select: {
+              bookingOrders: {
+                where: { status: "COMPLETED", deletedAt: null }
+              }
             }
           }
-        }
+        })
       })
-    }));
+    );
   });
 
   it("combines keywords and category IDs as one OR group", async () => {
@@ -399,15 +417,17 @@ describe("CoreReadRepository multi-entity search", () => {
       pageSize: 20
     });
 
-    expect(fixture.serviceFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        OR: expect.arrayContaining([
-          { name: { contains: "massage" } },
-          { name: { contains: "家政" } },
-          { categoryId: { in: [3, 9] } }
-        ])
+    expect(fixture.serviceFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { name: { contains: "massage" } },
+            { name: { contains: "家政" } },
+            { categoryId: { in: [3, 9] } }
+          ])
+        })
       })
-    }));
+    );
   });
 
   it("excludes services whose shop has no active formal public identifier", async () => {
@@ -421,31 +441,35 @@ describe("CoreReadRepository multi-entity search", () => {
       pageSize: 20
     });
 
-    expect(fixture.serviceFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        shop: expect.objectContaining({
-          deletedAt: null,
-          status: "published",
-          publicIdentifier: {
-            is: expect.objectContaining({
-              kind: "SHOP",
-              status: "ACTIVE",
-              deletedAt: null
-            })
-          }
+    expect(fixture.serviceFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          shop: expect.objectContaining({
+            deletedAt: null,
+            status: "published",
+            publicIdentifier: {
+              is: expect.objectContaining({
+                kind: "SHOP",
+                status: "ACTIVE",
+                deletedAt: null
+              })
+            }
+          })
         })
       })
-    }));
+    );
   });
 
   it("counts only searchable technicians that have an eligible public location", async () => {
     const fixture = createRepositoryFixture();
 
-    await expect(fixture.repository.countEligibleLocatedTechnicians({
-      entityType: "technician",
-      keywords: ["massage"],
-      categoryIds: [3]
-    })).resolves.toBe(1);
+    await expect(
+      fixture.repository.countEligibleLocatedTechnicians({
+        entityType: "technician",
+        keywords: ["massage"],
+        categoryIds: [3]
+      })
+    ).resolves.toBe(1);
 
     expect(fixture.technicianCount).toHaveBeenCalledWith({
       where: expect.objectContaining({
@@ -455,15 +479,17 @@ describe("CoreReadRepository multi-entity search", () => {
           { displayName: { contains: "massage" } },
           { technicianServices: { some: expect.any(Object) } }
         ]),
-        AND: [{
-          OR: expect.arrayContaining([
-            expect.objectContaining({
-              baseLatitude: { not: null },
-              baseLongitude: { not: null }
-            }),
-            expect.objectContaining({ technicianShopAffiliations: { some: expect.any(Object) } })
-          ])
-        }]
+        AND: [
+          {
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                baseLatitude: { not: null },
+                baseLongitude: { not: null }
+              }),
+              expect.objectContaining({ technicianShopAffiliations: { some: expect.any(Object) } })
+            ])
+          }
+        ]
       })
     });
   });
@@ -497,11 +523,13 @@ describe("CoreReadRepository multi-entity search", () => {
       technicianProfile: { findMany: technicianFindMany }
     } as never);
 
-    await expect(repository.findEligibleTechniciansWithinBounds(
-      { entityType: "technician", keywords: ["massage"], categoryIds: [3] },
-      { latitude: 35.6762, longitude: 139.6503 },
-      3
-    )).resolves.toEqual([
+    await expect(
+      repository.findEligibleTechniciansWithinBounds(
+        { entityType: "technician", keywords: ["massage"], categoryIds: [3] },
+        { latitude: 35.6762, longitude: 139.6503 },
+        3
+      )
+    ).resolves.toEqual([
       {
         technicianProfileId: 41,
         locations: [
@@ -515,19 +543,21 @@ describe("CoreReadRepository multi-entity search", () => {
       }
     ]);
 
-    expect(technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        OR: expect.arrayContaining([{ displayName: { contains: "massage" } }]),
-        AND: [{ OR: expect.any(Array) }]
-      }),
-      select: expect.objectContaining({
-        baseLatitude: true,
-        baseLongitude: true,
-        performanceSummary: expect.any(Object),
-        technicianShopAffiliations: expect.any(Object),
-        user: expect.any(Object)
+    expect(technicianFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([{ displayName: { contains: "massage" } }]),
+          AND: [{ OR: expect.any(Array) }]
+        }),
+        select: expect.objectContaining({
+          baseLatitude: true,
+          baseLongitude: true,
+          performanceSummary: expect.any(Object),
+          technicianShopAffiliations: expect.any(Object),
+          user: expect.any(Object)
+        })
       })
-    }));
+    );
   });
 
   it("loads final card payloads by ranked IDs without exposing private coordinates", async () => {
@@ -537,9 +567,11 @@ describe("CoreReadRepository multi-entity search", () => {
 
     expect(result.get(41)).toMatchObject({ id: 41, publicId: "s5831047296" });
     expect(result.get(41)).not.toHaveProperty("baseLatitude");
-    expect(fixture.technicianFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: { in: [41] } })
-    }));
+    expect(fixture.technicianFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [41] } })
+      })
+    );
   });
 
   it("adds the formal review tag summary only to technician detail", async () => {
@@ -586,35 +618,41 @@ describe("CoreReadRepository multi-entity search", () => {
       }
     });
 
-    expect(findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: expect.objectContaining({
-        id: 41,
-        visibility: "public"
+    expect(findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 41,
+          visibility: "public"
+        })
       })
-    }));
+    );
 
     await expect(repository.findTechnicianDetail("s5831047296")).resolves.toMatchObject({
       id: 41,
       publicId: "s5831047296"
     });
-    expect(findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: expect.objectContaining({
-        visibility: "public",
-        user: {
-          identities: {
-            some: expect.objectContaining({
-              publicIdentifier: {
-                is: expect.objectContaining({
-                  publicId: "s5831047296",
-                  kind: "S",
-                  status: "ACTIVE",
-                  deletedAt: null
-                })
-              }
-            })
+    expect(findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          visibility: "public",
+          user: {
+            identities: {
+              some: expect.objectContaining({
+                publicIdentifier: {
+                  is: expect.objectContaining({
+                    publicId: "s5831047296",
+                    kind: "S",
+                    status: "ACTIVE",
+                    deletedAt: null
+                  })
+                }
+              })
+            }
           }
-        }
+        })
       })
-    }));
+    );
   });
 });

@@ -47,45 +47,49 @@ const createUser = (id: number, role: string, permissions: string[]) => ({
   createdAt: now,
   updatedAt: now,
   deletedAt: null,
-  identities: [{
-    id: 100 + id,
-    userId: id,
-    type: role === "merchant_owner" ? "merchant_owner" : "platform_admin",
-    scopeType: role === "merchant_owner" ? "shop" : "global",
-    scopeId: role === "merchant_owner" ? 91 : null,
-    displayName: `Analytics ${id}`,
-    isDefault: true,
-    isActive: true,
-    deletedAt: null
-  }],
-  userRoles: [{
-    deletedAt: null,
-    role: {
-      code: role,
-      deletedAt: null,
-      rolePermissions: permissions.map((code) => ({
-        deletedAt: null,
-        permission: { code, type: "api", deletedAt: null }
-      }))
+  identities: [
+    {
+      id: 100 + id,
+      userId: id,
+      type: role === "merchant_owner" ? "merchant_owner" : "platform_admin",
+      scopeType: role === "merchant_owner" ? "shop" : "global",
+      scopeId: role === "merchant_owner" ? 91 : null,
+      displayName: `Analytics ${id}`,
+      isDefault: true,
+      isActive: true,
+      deletedAt: null
     }
-  }]
+  ],
+  userRoles: [
+    {
+      deletedAt: null,
+      role: {
+        code: role,
+        deletedAt: null,
+        rolePermissions: permissions.map((code) => ({
+          deletedAt: null,
+          permission: { code, type: "api", deletedAt: null }
+        }))
+      }
+    }
+  ]
 });
 
 const createFixture = () => {
   const users = [
-    createUser(1, "operator", [
-      "backoffice:dashboard:read",
-      "backoffice:dashboard-detail:read"
-    ]),
+    createUser(1, "operator", ["backoffice:dashboard:read", "backoffice:dashboard-detail:read"]),
     createUser(2, "viewer", ["backoffice:dashboard:read"]),
     createUser(3, "merchant_owner", ["merchant-admin:dashboard:read"])
   ];
   const auditLogs: unknown[] = [];
-  const operationSpy = jest.spyOn(DashboardRepository.prototype, "getOperationsFinance")
+  const operationSpy = jest
+    .spyOn(DashboardRepository.prototype, "getOperationsFinance")
     .mockResolvedValue(operations);
-  const commissionSpy = jest.spyOn(DashboardRepository.prototype, "getCommissionFacts")
+  const commissionSpy = jest
+    .spyOn(DashboardRepository.prototype, "getCommissionFacts")
     .mockResolvedValue(commission);
-  const growthSpy = jest.spyOn(DashboardRepository.prototype, "getGrowthFacts")
+  const growthSpy = jest
+    .spyOn(DashboardRepository.prototype, "getGrowthFacts")
     .mockResolvedValue(growth);
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
@@ -95,18 +99,24 @@ const createFixture = () => {
     },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    auditLogRepository: { create: jest.fn(async (entry: unknown) => { auditLogs.push(entry); }) },
+    auditLogRepository: {
+      create: jest.fn(async (entry: unknown) => {
+        auditLogs.push(entry);
+      })
+    },
     backofficeRepository: {}
   } as never);
-  const tokens = Object.fromEntries(users.map((user) => [
-    user.id,
-    new AuthTokenService(env).issueAccessToken({
-      id: user.id,
-      email: user.email,
-      currentIdentityId: user.identities[0]!.id,
-      sessionGeneration: 0
-    }).token
-  ])) as Record<number, string>;
+  const tokens = Object.fromEntries(
+    users.map((user) => [
+      user.id,
+      new AuthTokenService(env).issueAccessToken({
+        id: user.id,
+        email: user.email,
+        currentIdentityId: user.identities[0]!.id,
+        sessionGeneration: 0
+      }).token
+    ])
+  ) as Record<number, string>;
   return { app, auditLogs, operationSpy, commissionSpy, growthSpy, tokens };
 };
 
@@ -143,17 +153,19 @@ describe("comprehensive dashboard analytics HTTP API", () => {
     expect(fixture.operationSpy).toHaveBeenCalledTimes(1);
     expect(fixture.commissionSpy).toHaveBeenCalledTimes(1);
     expect(fixture.growthSpy).toHaveBeenCalledTimes(1);
-    expect(fixture.auditLogs).toEqual([expect.objectContaining({
-      actorId: 1,
-      action: "backoffice.dashboard.overview.read",
-      targetType: "backoffice_dashboard_overview",
-      metadata: {
-        period: "last7days",
-        from: expect.any(String),
-        to: expect.any(String),
-        city: "Tokyo"
-      }
-    })]);
+    expect(fixture.auditLogs).toEqual([
+      expect.objectContaining({
+        actorId: 1,
+        action: "backoffice.dashboard.overview.read",
+        targetType: "backoffice_dashboard_overview",
+        metadata: {
+          period: "last7days",
+          from: expect.any(String),
+          to: expect.any(String),
+          city: "Tokyo"
+        }
+      })
+    ]);
     expect(JSON.stringify(fixture.auditLogs)).not.toMatch(/customerId|shopId|technicianId/i);
   });
 
@@ -168,23 +180,27 @@ describe("comprehensive dashboard analytics HTTP API", () => {
       code: 0,
       data: {
         metric: { metricKey: "new_users", currentValue: 8, previousValue: 4 },
-        series: [{
-          seriesKey: "new_users",
-          unit: "people",
-          points: [
-            { key: "previous", value: 4 },
-            { key: "current", value: 8 }
-          ]
-        }]
+        series: [
+          {
+            seriesKey: "new_users",
+            unit: "people",
+            points: [
+              { key: "previous", value: 4 },
+              { key: "current", value: 8 }
+            ]
+          }
+        ]
       }
     });
     expect(fixture.operationSpy).not.toHaveBeenCalled();
     expect(fixture.commissionSpy).not.toHaveBeenCalled();
     expect(fixture.growthSpy).toHaveBeenCalledTimes(1);
-    expect(fixture.auditLogs).toEqual([expect.objectContaining({
-      action: "backoffice.dashboard.metric.read",
-      metadata: expect.objectContaining({ metricKey: "new_users" })
-    })]);
+    expect(fixture.auditLogs).toEqual([
+      expect.objectContaining({
+        action: "backoffice.dashboard.metric.read",
+        metadata: expect.objectContaining({ metricKey: "new_users" })
+      })
+    ]);
   });
 
   it("rejects strict query/path input before any focused reader executes", async () => {

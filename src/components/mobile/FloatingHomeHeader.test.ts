@@ -27,7 +27,7 @@ describe("FloatingHomeHeader spacing guard", () => {
   });
 
   it("rounds every remaining floating top header to 28px on all four corners", () => {
-    expect(source).toContain("client-floating-header-glass-frame !rounded-[28px]");
+    expect(source).toContain("client-floating-header-glass-frame overflow-hidden !rounded-[28px]");
     expect(source).not.toContain("rounded-t-none");
     expect(source).not.toContain("rounded-b-[28px]");
 

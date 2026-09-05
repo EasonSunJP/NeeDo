@@ -61,8 +61,10 @@ export async function loadTechnicianReviewTagSummary(
       continue;
     }
 
-    const shouldReplaceLabel = firstSeenAt < current.firstSeenAt ||
-      (firstSeenAt.getTime() === current.firstSeenAt.getTime() && compareUtf8Bytes(row.label, current.label) < 0);
+    const shouldReplaceLabel =
+      firstSeenAt < current.firstSeenAt ||
+      (firstSeenAt.getTime() === current.firstSeenAt.getTime() &&
+        compareUtf8Bytes(row.label, current.label) < 0);
     customByKey.set(key, {
       count: current.count + count,
       firstSeenAt: shouldReplaceLabel ? firstSeenAt : current.firstSeenAt,
@@ -77,10 +79,11 @@ export async function loadTechnicianReviewTagSummary(
       count: fixedCounts.get(tag.code) ?? 0
     })),
     custom: Array.from(customByKey.values())
-      .sort((left, right) =>
-        right.count - left.count ||
-        left.firstSeenAt.getTime() - right.firstSeenAt.getTime() ||
-        compareUtf8Bytes(left.label, right.label)
+      .sort(
+        (left, right) =>
+          right.count - left.count ||
+          left.firstSeenAt.getTime() - right.firstSeenAt.getTime() ||
+          compareUtf8Bytes(left.label, right.label)
       )
       .slice(0, 20)
       .map(({ label, count }) => ({ label, count }))

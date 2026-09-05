@@ -51,6 +51,16 @@ describe("formal platform user-management routes", () => {
 });
 
 describe("formal partner finance administration routes", () => {
+  it("loads management workspaces on demand behind their permissions", () => {
+    for (const component of ["AgentsPage", "OperatingCostsPage", "ServiceSearchAnalyticsPage"]) {
+      expect(appSource).toContain(`const ${component} = lazy(() => import("./pages/admin/${component}")`);
+      expect(appSource).not.toContain(`import { ${component} } from`);
+    }
+    expect(appSource).toContain(
+      'path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)}'
+    );
+  });
+
   it("registers read-permissioned agent detail and operating-cost pages", () => {
     expect(appSource).toContain(
       'path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)}'

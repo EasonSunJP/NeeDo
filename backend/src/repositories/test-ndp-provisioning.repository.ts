@@ -83,9 +83,7 @@ export class TestNdpProvisioningRepository
     return { amount: transaction.amount, availableBalanceAfter };
   }
 
-  public async lockUser(
-    userId: number
-  ): Promise<{ id: number; isTestAccount: boolean } | null> {
+  public async lockUser(userId: number): Promise<{ id: number; isTestAccount: boolean } | null> {
     const rows = await this.client.$queryRaw<LockedUserRow[]>(
       Prisma.sql`SELECT id, is_test_account AS isTestAccount
         FROM users
@@ -289,8 +287,7 @@ export class TestNdpProvisioningRepository
       data: {
         transactionId: transaction.id,
         walletId: input.walletId,
-        direction:
-          input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
+        direction: input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
         amount: input.amount,
         availableDelta: input.availableDelta,
         frozenDelta: 0,
@@ -299,7 +296,12 @@ export class TestNdpProvisioningRepository
         reason: "test_ndp_balance_calibration"
       }
     });
-    await this.createTestOnlyReconciliation(transaction.id, "test_ndp_backfill", input.userId, input.amount);
+    await this.createTestOnlyReconciliation(
+      transaction.id,
+      "test_ndp_backfill",
+      input.userId,
+      input.amount
+    );
     await this.createAudit({
       userId: input.userId,
       walletId: input.walletId,
@@ -419,8 +421,7 @@ export class TestNdpProvisioningRepository
       data: {
         transactionId: transaction.id,
         walletId: input.walletId,
-        direction:
-          input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
+        direction: input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
         amount: input.amount,
         availableDelta: input.availableDelta,
         frozenDelta: 0,
@@ -592,7 +593,11 @@ export class TestNdpProvisioningRepository
   }
 
   private transactionNo(idempotencyKey: string): string {
-    const digest = createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 24).toUpperCase();
+    const digest = createHash("sha256")
+      .update(idempotencyKey)
+      .digest("hex")
+      .slice(0, 24)
+      .toUpperCase();
     return `LTTESTNDP${digest}`;
   }
 

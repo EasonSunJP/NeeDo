@@ -771,7 +771,7 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
     ext && typeof ext === "object" && !Array.isArray(ext)
       ? (ext as MessageExt)
       : undefined;
-  const { disappearing: _untrustedDisappearing, ...safeRawExt } = rawExt ?? {};
+  const { disappearing: _untrustedDisappearing, mediaState: _untrustedMediaState, ...safeRawExt } = rawExt ?? {};
   const safeExt =
     type === "chat-record"
       ? toChatRecordMessageExt(metadata)

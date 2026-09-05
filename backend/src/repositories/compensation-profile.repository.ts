@@ -189,11 +189,13 @@ export class CompensationProfileRepository implements CompensationProfileReposit
     });
     if (!payslip) return this.emptyPayrollSummary();
 
-    const orderIds = [...new Set(
-      payslip.lines
-        .map((line) => line.orderId)
-        .filter((orderId): orderId is number => orderId !== null)
-    )];
+    const orderIds = [
+      ...new Set(
+        payslip.lines
+          .map((line) => line.orderId)
+          .filter((orderId): orderId is number => orderId !== null)
+      )
+    ];
     const [orders, serviceIncome, payoutRecordCount] = await Promise.all([
       orderIds.length > 0
         ? this.client.bookingOrder.findMany({

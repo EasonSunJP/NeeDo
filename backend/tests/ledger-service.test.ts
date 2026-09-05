@@ -470,11 +470,7 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     return null;
   }
 
-  private walletKey(
-    ownerType: WalletOwnerType,
-    ownerId: number,
-    currency: LedgerCurrency
-  ): string {
+  private walletKey(ownerType: WalletOwnerType, ownerId: number, currency: LedgerCurrency): string {
     return `${ownerType}:${ownerId}:${currency}`;
   }
 }
@@ -541,38 +537,46 @@ describe("LedgerService wallet mutations", () => {
   it.each([
     [false, "NDP"],
     [true, "TEST_NDP"]
-  ] as const)("uses %s account classification as %s for booking freeze", async (isTestAccount, currency) => {
-    const repository = new InMemoryLedgerRepository();
-    repository.accountClassifications.set(3, isTestAccount);
-    repository.seedWallet({
-      ownerType: "shop",
-      ownerId: 10,
-      availableBalance: 1000,
-      currency
-    });
-    const service = new LedgerService(
-      repository,
-      createFeeService(),
-      undefined,
-      () => now,
-      createPolicyResolver()
-    );
+  ] as const)(
+    "uses %s account classification as %s for booking freeze",
+    async (isTestAccount, currency) => {
+      const repository = new InMemoryLedgerRepository();
+      repository.accountClassifications.set(3, isTestAccount);
+      repository.seedWallet({
+        ownerType: "shop",
+        ownerId: 10,
+        availableBalance: 1000,
+        currency
+      });
+      const service = new LedgerService(
+        repository,
+        createFeeService(),
+        undefined,
+        () => now,
+        createPolicyResolver()
+      );
 
-    await service.freezeBookingAcceptance(
-      bookingInput({ bookingOrderId: isTestAccount ? 301 : 300, shopId: 10, actorUserId: 2, customerUserId: 3 })
-    );
+      await service.freezeBookingAcceptance(
+        bookingInput({
+          bookingOrderId: isTestAccount ? 301 : 300,
+          shopId: 10,
+          actorUserId: 2,
+          customerUserId: 3
+        })
+      );
 
-    expect(repository.wallets.get(`shop:10:${currency}`)).toMatchObject({
-      availableBalance: 500,
-      frozenBalance: 500,
-      currency
-    });
-    expect(Array.from(repository.transactions.values())[0]).toMatchObject({ currency });
-    expect(repository.financials.get(isTestAccount ? 301 : 300)).toMatchObject({
-      ndpCurrency: currency
-    });
-    expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
-  });
+      expect(repository.wallets.get(`shop:10:${currency}`)).toMatchObject({
+        availableBalance: 500,
+        frozenBalance: 500,
+        currency
+      });
+      expect(Array.from(repository.transactions.values())[0]).toMatchObject({ currency });
+      expect(repository.financials.get(isTestAccount ? 301 : 300)).toMatchObject({
+        ndpCurrency: currency
+      });
+      expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
+    }
+  );
 
   it("releases a booking in its snapshotted Test NDP currency after classification changes", async () => {
     const repository = new InMemoryLedgerRepository();
@@ -981,19 +985,21 @@ describe("LedgerService wallet mutations", () => {
       customerUserId: 3
     });
 
-    const warning = await service.freezeBookingAcceptance(input).catch((error) => error) as {
+    const warning = (await service.freezeBookingAcceptance(input).catch((error) => error)) as {
       data: { previewVersion: string };
     };
     expect(repository.wallets.size).toBe(0);
 
-    await expect(service.freezeBookingAcceptance({
-      ...input,
-      insufficientBalanceConfirmation: {
-        confirmed: true,
-        idempotencyKey: "fee-confirm-order-1051",
-        previewVersion: warning.data.previewVersion
-      }
-    })).resolves.toMatchObject({
+    await expect(
+      service.freezeBookingAcceptance({
+        ...input,
+        insufficientBalanceConfirmation: {
+          confirmed: true,
+          idempotencyKey: "fee-confirm-order-1051",
+          previewVersion: warning.data.previewVersion
+        }
+      })
+    ).resolves.toMatchObject({
       idempotencyKey: "booking:1051:accept:freeze",
       type: "booking_accept_freeze"
     });

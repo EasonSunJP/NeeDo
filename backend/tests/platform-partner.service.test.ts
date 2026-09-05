@@ -48,9 +48,7 @@ const profile = (
   ...overrides
 });
 
-const referral = (
-  overrides: Partial<AgentShopReferralRecord> = {}
-): AgentShopReferralRecord => ({
+const referral = (overrides: Partial<AgentShopReferralRecord> = {}): AgentShopReferralRecord => ({
   id: 51,
   publicId: "22222222-2222-4222-8222-222222222222",
   agentProfileId: 41,
@@ -80,9 +78,7 @@ const setup = () => {
           ...profile(),
           administration: {
             referralCount: 1,
-            referredShops: [
-              { publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }
-            ],
+            referredShops: [{ publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }],
             currentRule: {
               version: 2,
               fixedSuccessRewardJpy: 50_000,
@@ -335,7 +331,10 @@ describe("PlatformPartnerService", () => {
 
     await expect(
       absentAgent.service.linkAgentShop(profile().publicId, input, actor, context)
-    ).rejects.toMatchObject({ code: ERROR_CODES.PLATFORM_PARTNER_PROFILE_NOT_FOUND, statusCode: 404 });
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.PLATFORM_PARTNER_PROFILE_NOT_FOUND,
+      statusCode: 404
+    });
     await expect(
       absentShop.service.linkAgentShop(profile().publicId, input, actor, context)
     ).rejects.toMatchObject({ code: ERROR_CODES.PLATFORM_PARTNER_SHOP_NOT_FOUND, statusCode: 404 });

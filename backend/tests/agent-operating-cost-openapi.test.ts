@@ -6,33 +6,22 @@ describe("agent settlement and operating-cost OpenAPI contract", () => {
     const document = (await request(createApp()).get("/api/v1/openapi.json").expect(200)).body;
     const paths = document.paths;
 
-    expect(paths["/api/v1/backoffice/agents"].get["x-permission"]).toBe(
-      "backoffice:agent:read"
-    );
+    expect(paths["/api/v1/backoffice/agents"].get["x-permission"]).toBe("backoffice:agent:read");
     expect(
-      paths["/api/v1/backoffice/agents/{agentPublicId}/commission-rules"].post[
-        "x-permission"
-      ]
+      paths["/api/v1/backoffice/agents/{agentPublicId}/commission-rules"].post["x-permission"]
     ).toBe("backoffice:agent:write");
     expect(
-      paths["/api/v1/backoffice/agents/{agentPublicId}/settlements/preview"].post[
-        "x-permission"
-      ]
+      paths["/api/v1/backoffice/agents/{agentPublicId}/settlements/preview"].post["x-permission"]
+    ).toBe("backoffice:agent-settlement:write");
+    expect(paths["/api/v1/backoffice/agents/{agentPublicId}/settlements"].get["x-permission"]).toBe(
+      "backoffice:agent-settlement:read"
+    );
+    expect(
+      paths["/api/v1/backoffice/agents/{agentPublicId}/settlements"].post["x-permission"]
     ).toBe("backoffice:agent-settlement:write");
     expect(
-      paths["/api/v1/backoffice/agents/{agentPublicId}/settlements"].get[
-        "x-permission"
-      ]
-    ).toBe("backoffice:agent-settlement:read");
-    expect(
-      paths["/api/v1/backoffice/agents/{agentPublicId}/settlements"].post[
-        "x-permission"
-      ]
-    ).toBe("backoffice:agent-settlement:write");
-    expect(
-      paths[
-        "/api/v1/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment"
-      ].post["x-permission"]
+      paths["/api/v1/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment"]
+        .post["x-permission"]
     ).toBe("backoffice:agent-settlement:pay");
     expect(paths["/api/v1/backoffice/operating-costs"].get["x-permission"]).toBe(
       "backoffice:operating-cost:read"
@@ -48,8 +37,8 @@ describe("agent settlement and operating-cost OpenAPI contract", () => {
     const rule = schemas.AgentCommissionRulePublish;
     const cost = schemas.OperatingCostConfiguration;
     const confirm =
-      document.paths["/api/v1/backoffice/agents/{agentPublicId}/settlements"].post
-        .requestBody.content["application/json"].schema;
+      document.paths["/api/v1/backoffice/agents/{agentPublicId}/settlements"].post.requestBody
+        .content["application/json"].schema;
 
     expect(rule.required).toEqual(
       expect.arrayContaining([

@@ -200,7 +200,10 @@ describe("IdentityApplicationService", () => {
         userId: 3,
         detail: merchantDetail({ serviceCategoryIds: [], businessKeywordIds: [] })
       })
-    ).rejects.toMatchObject({ message: "error.identity_application.service_category_limit", statusCode: 400 });
+    ).rejects.toMatchObject({
+      message: "error.identity_application.service_category_limit",
+      statusCode: 400
+    });
     expect(missingCategory.createMerchantDraft).not.toHaveBeenCalled();
 
     const repository = createRepository();
@@ -213,7 +216,9 @@ describe("IdentityApplicationService", () => {
       businessKeywordIds: [10]
     });
     expect(repository.createMerchantDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: expect.objectContaining({ serviceCategoryIds: [1], businessKeywordIds: [10] }) })
+      expect.objectContaining({
+        detail: expect.objectContaining({ serviceCategoryIds: [1], businessKeywordIds: [10] })
+      })
     );
   });
 

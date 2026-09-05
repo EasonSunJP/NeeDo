@@ -126,9 +126,7 @@ describe("DashboardRepository formal finance aggregates", () => {
     expect(flows?.sql).toContain(
       "financial.user_reward_granted_at >= period_window.from_inclusive"
     );
-    expect(flows?.sql).toContain(
-      "financial.user_reward_granted_at < period_window.to_exclusive"
-    );
+    expect(flows?.sql).toContain("financial.user_reward_granted_at < period_window.to_exclusive");
     expect(flows?.sql).toContain("financial.deleted_at IS NULL");
     expect(flows?.sql).toContain("booking.deleted_at IS NULL");
     expect(flows?.sql).toContain("financial.shop_id = booking.shop_id");
@@ -204,9 +202,7 @@ describe("DashboardRepository formal finance aggregates", () => {
       window
     });
 
-    const querySql = fixture.queryRaw.mock.calls.map(([query]) =>
-      queryText(query as SqlQuery)
-    );
+    const querySql = fixture.queryRaw.mock.calls.map(([query]) => queryText(query as SqlQuery));
     expect(querySql.some((sql) => sql.includes("dashboard_wallet_stock"))).toBe(false);
     expect(querySql.some((sql) => sql.includes("dashboard_withdrawn"))).toBe(false);
     expect(result.walletStock).toBeNull();

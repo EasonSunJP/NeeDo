@@ -1505,12 +1505,12 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       slide.target.type === "none"
         ? CarouselTargetType.NONE
         : slide.target.type === "shop"
-        ? CarouselTargetType.SHOP
-        : slide.target.type === "technician"
-          ? CarouselTargetType.TECHNICIAN
-          : slide.target.type === "service"
-            ? CarouselTargetType.SERVICE
-            : CarouselTargetType.AFFILIATE_ANNOUNCEMENT;
+          ? CarouselTargetType.SHOP
+          : slide.target.type === "technician"
+            ? CarouselTargetType.TECHNICIAN
+            : slide.target.type === "service"
+              ? CarouselTargetType.SERVICE
+              : CarouselTargetType.AFFILIATE_ANNOUNCEMENT;
     return {
       publicId: slide.publicId,
       sortOrder: slide.sortOrder,
@@ -1786,11 +1786,11 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   ): boolean {
     return Boolean(
       release &&
-        release.status === ContentReleaseStatus.SCHEDULED &&
-        release.scheduledSlotKey === scheduledSlotKey &&
-        release.publishAt &&
-        release.publishAt <= input.now &&
-        release.activationAttempts < input.maxAttempts
+      release.status === ContentReleaseStatus.SCHEDULED &&
+      release.scheduledSlotKey === scheduledSlotKey &&
+      release.publishAt &&
+      release.publishAt <= input.now &&
+      release.activationAttempts < input.maxAttempts
     );
   }
 
@@ -1806,11 +1806,11 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
   ): release is NonNullable<typeof release> {
     return Boolean(
       release &&
-        release.status === ContentReleaseStatus.SCHEDULED &&
-        release.scheduledSlotKey === scheduledSlotKey &&
-        release.publishAt &&
-        release.publishAt <= input.now &&
-        release.activationAttempts < input.maxAttempts
+      release.status === ContentReleaseStatus.SCHEDULED &&
+      release.scheduledSlotKey === scheduledSlotKey &&
+      release.publishAt &&
+      release.publishAt <= input.now &&
+      release.activationAttempts < input.maxAttempts
     );
   }
 

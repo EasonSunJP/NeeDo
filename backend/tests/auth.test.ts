@@ -1697,9 +1697,7 @@ describe("verified email registration and formal password authentication", () =>
       })
     ]);
     expect(meResponse.body.data.identities).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 11, type: "scout" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ id: 11, type: "scout" })])
     );
 
     await request(fixture.app)

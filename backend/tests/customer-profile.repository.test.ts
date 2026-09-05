@@ -94,7 +94,10 @@ describe("CustomerProfileRepository", () => {
         findUniqueOrThrow: jest.fn().mockResolvedValue(updated),
         update: jest.fn().mockResolvedValue(updated)
       },
-      mediaAsset: { create: jest.fn().mockResolvedValue({ id: 82 }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      mediaAsset: {
+        create: jest.fn().mockResolvedValue({ id: 82 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       user: {
         update: jest.fn().mockResolvedValue({ id: 11 }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
@@ -113,7 +116,10 @@ describe("CustomerProfileRepository", () => {
         17,
         {
           age: 36,
-          avatar: { mimeType: "image/png", url: "http://localhost:3000/media/customer-avatars/new.png" },
+          avatar: {
+            mimeType: "image/png",
+            url: "http://localhost:3000/media/customer-avatars/new.png"
+          },
           bio: "新资料",
           displayName: "新昵称",
           gender: "private",
@@ -162,7 +168,9 @@ describe("CustomerProfileRepository", () => {
       data: { avatarUrl: "http://localhost:3000/media/customer-avatars/new.png" }
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 }) })
+      expect.objectContaining({
+        data: expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 })
+      })
     );
     await expect(repository.findMine(11, 41)).resolves.toMatchObject({ displayName: "新昵称" });
   });
@@ -185,10 +193,16 @@ describe("CustomerProfileRepository", () => {
     const repository = new CustomerProfileRepository(client);
 
     await expect(
-      repository.updateMine(11, 41, 17, { displayName: "不会提交" }, {
-        action: "customer_profile.self_update",
-        targetType: "CustomerProfile"
-      })
+      repository.updateMine(
+        11,
+        41,
+        17,
+        { displayName: "不会提交" },
+        {
+          action: "customer_profile.self_update",
+          targetType: "CustomerProfile"
+        }
+      )
     ).rejects.toThrow("audit unavailable");
     expect(transaction.customerProfile.findUniqueOrThrow).not.toHaveBeenCalled();
   });

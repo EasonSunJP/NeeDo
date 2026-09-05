@@ -5,22 +5,36 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
 describe("formal membership acquisition source schema", () => {
   const schema = read("prisma/schema.prisma");
-  const migration = read("prisma/migrations/20260901103000_membership_acquisition_sources/migration.sql");
+  const migration = read(
+    "prisma/migrations/20260901103000_membership_acquisition_sources/migration.sql"
+  );
 
   it("declares every acquisition source without a lossy fallback", () => {
     for (const source of [
-      "OFFLINE_PAID", "ONLINE_PAID", "GIFT", "TRIAL", "RENEWAL",
-      "HISTORICAL_REPLACEMENT", "MANUAL_GRANT"
-    ]) expect(schema).toContain(source);
-    expect(migration).toContain("ENUM('offline_paid', 'online_paid', 'gift', 'trial', 'renewal', 'historical_replacement', 'manual_grant')");
+      "OFFLINE_PAID",
+      "ONLINE_PAID",
+      "GIFT",
+      "TRIAL",
+      "RENEWAL",
+      "HISTORICAL_REPLACEMENT",
+      "MANUAL_GRANT"
+    ])
+      expect(schema).toContain(source);
+    expect(migration).toContain(
+      "ENUM('offline_paid', 'online_paid', 'gift', 'trial', 'renewal', 'historical_replacement', 'manual_grant')"
+    );
   });
 
   it("creates and backfills immutable initial lifecycle evidence at issued_at", () => {
     expect(schema).toContain("model ShopMembershipCardStatusEvent");
     expect(schema).toContain("eventKey");
-    expect(schema).toContain("@@index([cardId, occurredAt, id, deletedAt], map: \"shop_membership_card_status_events_card_time_idx\")");
+    expect(schema).toContain(
+      '@@index([cardId, occurredAt, id, deletedAt], map: "shop_membership_card_status_events_card_time_idx")'
+    );
     expect(migration).toContain("CREATE TABLE `shop_membership_card_status_events`");
-    expect(migration).toContain("CONCAT('membership-card:', `card`.`public_id`, ':backfill-issued')");
+    expect(migration).toContain(
+      "CONCAT('membership-card:', `card`.`public_id`, ':backfill-issued')"
+    );
     expect(migration).toContain("`card`.`issued_at`");
     expect(migration).not.toContain("`card`.`updated_at`");
     expect(migration).toContain("'active'");
@@ -38,17 +52,26 @@ describe("formal membership acquisition source schema", () => {
   });
 
   it("allows formal status transitions and backfills only truthful frozen evidence", () => {
-    expect(schema).toContain("STATUS_TRANSITION @map(\"status_transition\")");
+    expect(schema).toContain('STATUS_TRANSITION @map("status_transition")');
     expect(migration).toContain("ENUM('issuance', 'migration_backfill', 'status_transition')");
     const frozenMarker = migration.indexOf("historical_card_frozen");
     expect(frozenMarker).toBeGreaterThan(0);
-    const frozenStart = migration.lastIndexOf("INSERT INTO `shop_membership_card_status_events`", frozenMarker);
+    const frozenStart = migration.lastIndexOf(
+      "INSERT INTO `shop_membership_card_status_events`",
+      frozenMarker
+    );
     const frozenEnd = migration.indexOf("INSERT INTO `permissions`", frozenMarker);
     const frozenBackfill = migration.slice(frozenStart, frozenEnd).replace(/\s+/gu, " ");
-    expect(frozenBackfill).toContain("`card`.`id`, 'active', 'frozen', 'status_transition', `card`.`frozen_at`, 'historical_card_frozen', NULL");
-    expect(frozenBackfill).toContain("CONCAT('membership-card:', `card`.`public_id`, ':backfill-frozen')");
+    expect(frozenBackfill).toContain(
+      "`card`.`id`, 'active', 'frozen', 'status_transition', `card`.`frozen_at`, 'historical_card_frozen', NULL"
+    );
+    expect(frozenBackfill).toContain(
+      "CONCAT('membership-card:', `card`.`public_id`, ':backfill-frozen')"
+    );
     expect(frozenBackfill).toContain("`card`.`frozen_at`, `card`.`frozen_at`, NULL");
-    expect(frozenBackfill).toContain("WHERE `card`.`status` = 'frozen' AND `card`.`frozen_at` IS NOT NULL AND `card`.`frozen_at` >= `card`.`issued_at`");
+    expect(frozenBackfill).toContain(
+      "WHERE `card`.`status` = 'frozen' AND `card`.`frozen_at` IS NOT NULL AND `card`.`frozen_at` >= `card`.`issued_at`"
+    );
     expect(frozenBackfill).toContain("ON DUPLICATE KEY UPDATE `event_key` = VALUES(`event_key`)");
     expect(frozenBackfill).not.toContain("`card`.`updated_at`");
     expect(frozenBackfill).not.toMatch(/'void'|'expired'|`card`\.`expires_at`/u);
@@ -56,11 +79,21 @@ describe("formal membership acquisition source schema", () => {
 
   it("adds acquisition history, lifecycle and future overlap lookup indexes", () => {
     const compact = migration.replace(/\s+/gu, " ");
-    expect(compact).toContain("CREATE INDEX `shop_membership_cards_source_issued_id_idx` ON `shop_membership_cards`(`issuance_source`, `issued_at`, `id`)");
-    expect(compact).toContain("CREATE INDEX `shop_membership_cards_membership_source_issued_id_idx` ON `shop_membership_cards`(`membership_id`, `issuance_source`, `issued_at`, `id`)");
-    expect(compact).toContain("CREATE INDEX `shop_membership_cards_status_issued_expiry_idx` ON `shop_membership_cards`(`status`, `issued_at`, `expires_at`, `deleted_at`, `membership_id`)");
-    expect(compact).toContain("INDEX `shop_membership_card_status_events_card_time_idx` (`card_id`, `occurred_at`, `id`, `deleted_at`)");
-    expect(compact).toContain("INDEX `shop_membership_card_status_events_status_time_idx` (`to_status`, `occurred_at`, `id`, `deleted_at`)");
+    expect(compact).toContain(
+      "CREATE INDEX `shop_membership_cards_source_issued_id_idx` ON `shop_membership_cards`(`issuance_source`, `issued_at`, `id`)"
+    );
+    expect(compact).toContain(
+      "CREATE INDEX `shop_membership_cards_membership_source_issued_id_idx` ON `shop_membership_cards`(`membership_id`, `issuance_source`, `issued_at`, `id`)"
+    );
+    expect(compact).toContain(
+      "CREATE INDEX `shop_membership_cards_status_issued_expiry_idx` ON `shop_membership_cards`(`status`, `issued_at`, `expires_at`, `deleted_at`, `membership_id`)"
+    );
+    expect(compact).toContain(
+      "INDEX `shop_membership_card_status_events_card_time_idx` (`card_id`, `occurred_at`, `id`, `deleted_at`)"
+    );
+    expect(compact).toContain(
+      "INDEX `shop_membership_card_status_events_status_time_idx` (`to_status`, `occurred_at`, `id`, `deleted_at`)"
+    );
   });
 
   it("deploys backoffice analytics permission only to platform admin and operator", () => {

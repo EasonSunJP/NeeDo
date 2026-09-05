@@ -8,9 +8,18 @@ describe("global API rate limiting", () => {
   it("isolates verified users while retaining a per-user limit across token rotation", async () => {
     const app = express();
     const tokenService = new AuthTokenService(env);
-    const userAToken = tokenService.issueAccessToken({ id: 101, email: "user-a@example.com" }).token;
-    const userASecondToken = tokenService.issueAccessToken({ id: 101, email: "user-a@example.com" }).token;
-    const userBToken = tokenService.issueAccessToken({ id: 202, email: "user-b@example.com" }).token;
+    const userAToken = tokenService.issueAccessToken({
+      id: 101,
+      email: "user-a@example.com"
+    }).token;
+    const userASecondToken = tokenService.issueAccessToken({
+      id: 101,
+      email: "user-a@example.com"
+    }).token;
+    const userBToken = tokenService.issueAccessToken({
+      id: 202,
+      email: "user-b@example.com"
+    }).token;
     app.use(
       createRateLimitMiddleware({
         ...env,
@@ -22,6 +31,9 @@ describe("global API rate limiting", () => {
 
     await request(app).get("/resource").set("Authorization", `Bearer ${userAToken}`).expect(200);
     await request(app).get("/resource").set("Authorization", `Bearer ${userBToken}`).expect(200);
-    await request(app).get("/resource").set("Authorization", `Bearer ${userASecondToken}`).expect(429);
+    await request(app)
+      .get("/resource")
+      .set("Authorization", `Bearer ${userASecondToken}`)
+      .expect(429);
   });
 });

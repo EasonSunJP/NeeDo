@@ -361,7 +361,8 @@ describe("ExchangePostRepository", () => {
             liked: true,
             canWithdraw: true,
             canClaim: false,
-            canViewClaims: false
+            canViewClaims: false,
+            canViewMatching: true
           },
           demand: {
             serviceMode: "store",
@@ -512,7 +513,8 @@ describe("ExchangePostRepository", () => {
           liked: true,
           canWithdraw: false,
           canClaim: false,
-          canViewClaims: false
+          canViewClaims: false,
+          canViewMatching: false
         },
         demand: expect.objectContaining({
           address: {
@@ -555,7 +557,8 @@ describe("ExchangePostRepository", () => {
       viewer: {
         canWithdraw: false,
         canClaim: false,
-        canViewClaims: false
+        canViewClaims: false,
+        canViewMatching: true
       }
     });
     expect(findFirst).toHaveBeenCalledWith(
@@ -608,7 +611,8 @@ describe("ExchangePostRepository", () => {
           liked: false,
           canWithdraw: false,
           canClaim: false,
-          canViewClaims: false
+          canViewClaims: false,
+          canViewMatching: true
         }
       })
     );
@@ -1023,12 +1027,10 @@ describe("ExchangePostRepository", () => {
     await expect(repository.listDuePostIds(now, 3)).resolves.toEqual([41, 42, 43]);
     await expect(repository.markWithdrawnIfPublished(41, now)).resolves.toBe(true);
     await expect(repository.markExpiredIfPublished(42, now)).resolves.toBe(true);
-    await expect(
-      repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)
-    ).resolves.toBe(2);
-    await expect(
-      repository.cancelActiveClaimsByPost(42, "request_expired", now)
-    ).resolves.toBe(1);
+    await expect(repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)).resolves.toBe(
+      2
+    );
+    await expect(repository.cancelActiveClaimsByPost(42, "request_expired", now)).resolves.toBe(1);
 
     expect(findMany).toHaveBeenCalledWith({
       where: { status: "PUBLISHED", expiresAt: { lte: now }, deletedAt: null },

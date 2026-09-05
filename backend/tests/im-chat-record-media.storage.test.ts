@@ -14,23 +14,29 @@ describe("ImChatRecordMediaFileStorage", () => {
     ["document.pdf", "application/pdf", pdf]
   ];
 
-  it.each(richMediaCases)("clones and reads protected formal %s media with MIME magic validation", async (name, mimeType, bytes) => {
-    const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-rich-media-"));
-    const source = join(parent, "im");
-    const target = join(parent, "records");
-    await mkdir(source);
-    await writeFile(join(source, name), bytes);
-    const storage = new ImChatRecordMediaFileStorage({
-      directory: target,
-      sourceRoots: [{ directory: source, publicBaseUrl: "/media/im" }]
-    });
-    try {
-      const clone = await storage.clone(`/media/im/${name}`, mimeType);
-      await expect(storage.read(clone.checksumSha256, mimeType)).resolves.toMatchObject({ bytes, mimeType });
-    } finally {
-      await rm(parent, { recursive: true, force: true });
+  it.each(richMediaCases)(
+    "clones and reads protected formal %s media with MIME magic validation",
+    async (name, mimeType, bytes) => {
+      const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-rich-media-"));
+      const source = join(parent, "im");
+      const target = join(parent, "records");
+      await mkdir(source);
+      await writeFile(join(source, name), bytes);
+      const storage = new ImChatRecordMediaFileStorage({
+        directory: target,
+        sourceRoots: [{ directory: source, publicBaseUrl: "/media/im" }]
+      });
+      try {
+        const clone = await storage.clone(`/media/im/${name}`, mimeType);
+        await expect(storage.read(clone.checksumSha256, mimeType)).resolves.toMatchObject({
+          bytes,
+          mimeType
+        });
+      } finally {
+        await rm(parent, { recursive: true, force: true });
+      }
     }
-  });
+  );
 
   it("clones only a configured NeeDo media URL into attempt-private protected storage", async () => {
     const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-media-"));

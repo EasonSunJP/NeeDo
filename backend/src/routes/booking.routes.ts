@@ -286,10 +286,34 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     controller.getScheduleSlot
   );
   ["/merchant-admin/schedule/slots", "/technician/schedule/slots"].forEach((path) => {
-    router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: scheduleSlotListQuerySchema }), controller.listScheduleSlots);
-    router.post(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ body: scheduleSlotCreateBodySchema }), controller.createScheduleSlot);
-    router.patch(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema, body: scheduleSlotUpdateBodySchema }), controller.updateScheduleSlot);
-    router.delete(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema }), controller.deleteScheduleSlot);
+    router.get(
+      path,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList),
+      validateRequest({ query: scheduleSlotListQuerySchema }),
+      controller.listScheduleSlots
+    );
+    router.post(
+      path,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
+      validateRequest({ body: scheduleSlotCreateBodySchema }),
+      controller.createScheduleSlot
+    );
+    router.patch(
+      `${path}/:id`,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
+      validateRequest({ params: orderIdParamSchema, body: scheduleSlotUpdateBodySchema }),
+      controller.updateScheduleSlot
+    );
+    router.delete(
+      `${path}/:id`,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
+      validateRequest({ params: orderIdParamSchema }),
+      controller.deleteScheduleSlot
+    );
   });
 
   return router;

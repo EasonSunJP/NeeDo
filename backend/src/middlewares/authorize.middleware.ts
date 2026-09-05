@@ -73,13 +73,10 @@ export const createAuthorizeAnyMiddleware =
     next();
   };
 
-const isAuthorizedReadOnlyMerchantPreview = (
-  request: Request,
-  auth: AuthenticatedAccessContext
-) =>
+const isAuthorizedReadOnlyMerchantPreview = (request: Request, auth: AuthenticatedAccessContext) =>
   Boolean(
     auth.isReadOnlyMerchantPreview &&
-      request.method.toUpperCase() === "GET" &&
-      request.path.startsWith("/merchant-admin") &&
-      auth.permissions.includes("backoffice:merchant-accounts:read")
+    request.method.toUpperCase() === "GET" &&
+    request.path.startsWith("/merchant-admin") &&
+    auth.permissions.includes("backoffice:merchant-accounts:read")
   );

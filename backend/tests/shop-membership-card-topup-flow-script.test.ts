@@ -6,7 +6,10 @@ describe("formal shop membership card top-up database checker", () => {
     const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
-    const source = readFileSync(join(process.cwd(), "scripts/check-shop-membership-card-topup-flow.ts"), "utf8");
+    const source = readFileSync(
+      join(process.cwd(), "scripts/check-shop-membership-card-topup-flow.ts"),
+      "utf8"
+    );
 
     expect(packageJson.scripts["check:shop-membership-card-topup-flow"]).toBe(
       "tsx scripts/check-shop-membership-card-topup-flow.ts"

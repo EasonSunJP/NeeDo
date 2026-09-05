@@ -86,6 +86,10 @@ describe("Needo production chunks", () => {
     expect(resolveNeedoManualChunk("/workspace/src/features/identity-applications/i18n.ts"))
       .toBe("identity-applications-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-profile/i18n.ts"))
+      .toBe("affiliate-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-marketplace/i18n.ts"))
+      .toBe("affiliate-i18n");
   });
 
   it("keeps service-search translations outside the base i18n budget", () => {

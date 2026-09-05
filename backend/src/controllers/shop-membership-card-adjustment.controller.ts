@@ -24,36 +24,60 @@ export class ShopMembershipCardAdjustmentController {
   });
 
   public merchantList = this.handle(async (request, response) => {
-    response.status(200).json(successResponse(await this.service.listMerchant(
-      getAuthenticatedAccess(response),
-      shopMembershipCardAdjustmentListQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listMerchant(
+            getAuthenticatedAccess(response),
+            shopMembershipCardAdjustmentListQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   public cancel = this.handle(async (request, response) => {
     const { publicId } = shopMembershipCardAdjustmentPublicIdParamSchema.parse(request.params);
-    response.status(200).json(successResponse(await this.service.cancel(
-      getAuthenticatedAccess(response),
-      getRequestContext(request),
-      publicId
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.cancel(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            publicId
+          )
+        )
+      );
   });
 
   public customerList = this.handle(async (request, response) => {
-    response.status(200).json(successResponse(await this.service.listCustomer(
-      getAuthenticatedAccess(response),
-      shopMembershipCardAdjustmentListQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listCustomer(
+            getAuthenticatedAccess(response),
+            shopMembershipCardAdjustmentListQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   public decide = this.handle(async (request, response) => {
     const { publicId } = shopMembershipCardAdjustmentPublicIdParamSchema.parse(request.params);
-    response.status(200).json(successResponse(await this.service.decide(
-      getAuthenticatedAccess(response),
-      getRequestContext(request),
-      publicId,
-      shopMembershipCardAdjustmentDecisionBodySchema.parse(request.body)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.decide(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            publicId,
+            shopMembershipCardAdjustmentDecisionBodySchema.parse(request.body)
+          )
+        )
+      );
   });
 
   private handle(handler: (request: Request, response: Response) => Promise<void>) {

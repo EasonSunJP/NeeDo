@@ -2,10 +2,7 @@ import { ShopEmployeeDirectoryRepository } from "../src/repositories/shop-employ
 
 const now = new Date("2026-09-03T04:00:00.000Z");
 
-const role = (
-  code: string,
-  isTechnicianRole = false
-) => ({
+const role = (code: string, isTechnicianRole = false) => ({
   startsAt: new Date("2026-08-28T00:00:00.000Z"),
   endsAt: null,
   activeKey: `assignment:${code}`,

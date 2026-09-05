@@ -18,11 +18,17 @@ export class MembershipAnalyticsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.service.getBackofficeTrend(
-        getAuthenticatedAccess(response),
-        getRequestContext(request),
-        backofficeMembershipTrendQuerySchema.parse(request.query)
-      )));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getBackofficeTrend(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              backofficeMembershipTrendQuerySchema.parse(request.query)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -34,11 +40,17 @@ export class MembershipAnalyticsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.service.listBackofficeMembers(
-        getAuthenticatedAccess(response),
-        getRequestContext(request),
-        backofficeMembershipListQuerySchema.parse(request.query)
-      )));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listBackofficeMembers(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              backofficeMembershipListQuerySchema.parse(request.query)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -50,11 +62,17 @@ export class MembershipAnalyticsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.service.getMerchantTrend(
-        getAuthenticatedAccess(response),
-        getRequestContext(request),
-        merchantMembershipTrendQuerySchema.parse(request.query)
-      )));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getMerchantTrend(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              merchantMembershipTrendQuerySchema.parse(request.query)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -66,11 +84,17 @@ export class MembershipAnalyticsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.service.listMerchantMembers(
-        getAuthenticatedAccess(response),
-        getRequestContext(request),
-        merchantMembershipListQuerySchema.parse(request.query)
-      )));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listMerchantMembers(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              merchantMembershipListQuerySchema.parse(request.query)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }

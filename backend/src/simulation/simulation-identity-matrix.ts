@@ -78,6 +78,10 @@ export const simulationIdentityActiveKey = (
   userId: number,
   grant: Pick<SimulationIdentityGrant, "identityType" | "scopeType" | "scopeId">
 ): string =>
-  ["simulation-identity", userId, grant.identityType, grant.scopeType, grant.scopeId ?? "global"].join(
-    ":"
-  );
+  [
+    "simulation-identity",
+    userId,
+    grant.identityType,
+    grant.scopeType,
+    grant.scopeId ?? "global"
+  ].join(":");

@@ -219,18 +219,14 @@ export interface CoreReadRepositoryPort {
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
   search: (input: CoreSearchInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   searchShops: (input: CoreSearchInput) => Promise<PaginatedResponse<ShopCardPayload>>;
-  searchTechnicians: (
-    input: CoreSearchInput
-  ) => Promise<PaginatedResponse<TechnicianCardPayload>>;
+  searchTechnicians: (input: CoreSearchInput) => Promise<PaginatedResponse<TechnicianCardPayload>>;
   countEligibleLocatedTechnicians: (input: CoreSearchInput) => Promise<number>;
   findEligibleTechniciansWithinBounds: (
     input: CoreSearchInput,
     origin: Coordinates,
     radiusKm: number
   ) => Promise<NearbyTechnicianCandidate[]>;
-  loadTechnicianCardsByRankedIds: (
-    ids: number[]
-  ) => Promise<Map<number, TechnicianCardPayload>>;
+  loadTechnicianCardsByRankedIds: (ids: number[]) => Promise<Map<number, TechnicianCardPayload>>;
   findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (id: number | string) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
@@ -439,9 +435,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return this.listServices({ ...input, sort: input.sort ?? "rating_desc" });
   }
 
-  public async searchShops(
-    input: CoreSearchInput
-  ): Promise<PaginatedResponse<ShopCardPayload>> {
+  public async searchShops(input: CoreSearchInput): Promise<PaginatedResponse<ShopCardPayload>> {
     const pagination = toPrismaPagination(input);
     const where = this.buildShopSearchWhere(input);
     const [list, total] = await Promise.all([
@@ -550,9 +544,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           ? technician.performanceSummary.completedOrderCount
           : 0,
       reviewCount:
-        technician.reviewSummary?.deletedAt === null
-          ? technician.reviewSummary.reviewCount
-          : 0,
+        technician.reviewSummary?.deletedAt === null ? technician.reviewSummary.reviewCount : 0,
       registeredAt: technician.user.createdAt
     }));
   }
@@ -833,9 +825,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private technicianServiceKeywordWhere(
-    keyword: string
-  ): Prisma.TechnicianServiceWhereInput {
+  private technicianServiceKeywordWhere(keyword: string): Prisma.TechnicianServiceWhereInput {
     return {
       deletedAt: null,
       isActive: true,
@@ -862,9 +852,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private activeTechnicianIdentityWhere(
-    publicId?: string
-  ): Prisma.UserIdentityWhereInput {
+  private activeTechnicianIdentityWhere(publicId?: string): Prisma.UserIdentityWhereInput {
     return {
       deletedAt: null,
       isActive: true,
@@ -929,11 +917,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       origin.longitude,
       longitudeDelta
     );
-    const shopLongitude = this.decimalLongitudeWhere(
-      "longitude",
-      origin.longitude,
-      longitudeDelta
-    );
+    const shopLongitude = this.decimalLongitudeWhere("longitude", origin.longitude, longitudeDelta);
 
     return [
       {
@@ -950,10 +934,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             shop: {
               deletedAt: null,
               status: PUBLISHED_STATUS,
-              AND: [
-                { latitude: latitudeRange },
-                ...(shopLongitude as Prisma.ShopWhereInput[])
-              ]
+              AND: [{ latitude: latitudeRange }, ...(shopLongitude as Prisma.ShopWhereInput[])]
             }
           }
         }
@@ -974,20 +955,14 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     if (minimum < -180) {
       return [
         {
-          OR: [
-            { [field]: { gte: minimum + 360 } },
-            { [field]: { lte: maximum } }
-          ]
+          OR: [{ [field]: { gte: minimum + 360 } }, { [field]: { lte: maximum } }]
         }
       ];
     }
     if (maximum > 180) {
       return [
         {
-          OR: [
-            { [field]: { gte: minimum } },
-            { [field]: { lte: maximum - 360 } }
-          ]
+          OR: [{ [field]: { gte: minimum } }, { [field]: { lte: maximum - 360 } }]
         }
       ];
     }
@@ -1070,38 +1045,34 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private buildTechnicianSearchWhere(
-    input: CoreSearchInput
-  ): Prisma.TechnicianProfileWhereInput {
+  private buildTechnicianSearchWhere(input: CoreSearchInput): Prisma.TechnicianProfileWhereInput {
     const keywords = this.searchKeywords(input);
-    const searchBranches: Prisma.TechnicianProfileWhereInput[] = keywords.flatMap(
-      (keyword) => [
-        { displayName: { contains: keyword } },
-        { city: { contains: keyword } },
-        { bio: { contains: keyword } },
-        { serviceArea: { contains: keyword } },
-        {
-          user: {
-            identities: { some: this.activeTechnicianIdentityWhere(keyword) }
-          }
-        },
-        { services: { some: this.publishedServiceKeywordWhere(keyword) } },
-        { technicianServices: { some: this.technicianServiceKeywordWhere(keyword) } },
-        {
-          technicianShopAffiliations: {
-            some: {
+    const searchBranches: Prisma.TechnicianProfileWhereInput[] = keywords.flatMap((keyword) => [
+      { displayName: { contains: keyword } },
+      { city: { contains: keyword } },
+      { bio: { contains: keyword } },
+      { serviceArea: { contains: keyword } },
+      {
+        user: {
+          identities: { some: this.activeTechnicianIdentityWhere(keyword) }
+        }
+      },
+      { services: { some: this.publishedServiceKeywordWhere(keyword) } },
+      { technicianServices: { some: this.technicianServiceKeywordWhere(keyword) } },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
               deletedAt: null,
-              workStatus: "ACTIVE",
-              shop: {
-                deletedAt: null,
-                status: PUBLISHED_STATUS,
-                services: { some: this.publishedServiceKeywordWhere(keyword) }
-              }
+              status: PUBLISHED_STATUS,
+              services: { some: this.publishedServiceKeywordWhere(keyword) }
             }
           }
         }
-      ]
-    );
+      }
+    ]);
 
     if (input.categoryIds.length > 0) {
       searchBranches.push(
@@ -1134,9 +1105,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private buildServiceWhere(
-    input: ServiceListInput | CoreSearchInput
-  ): Prisma.ServiceWhereInput {
+  private buildServiceWhere(input: ServiceListInput | CoreSearchInput): Prisma.ServiceWhereInput {
     const priceAmount =
       input.minPrice !== undefined || input.maxPrice !== undefined
         ? {
@@ -1146,8 +1115,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         : undefined;
     const keyword = input.keyword?.trim();
     const isCoreSearch = "keywords" in input && "categoryIds" in input;
-    const hasOrSearch =
-      isCoreSearch && (input.keywords.length > 0 || input.categoryIds.length > 0);
+    const hasOrSearch = isCoreSearch && (input.keywords.length > 0 || input.categoryIds.length > 0);
     const searchBranches = hasOrSearch
       ? [
           ...this.searchKeywords(input).flatMap((value) => this.serviceKeywordBranches(value)),
@@ -1238,9 +1206,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       description: service.description,
       category: this.mapCategory(service.category),
       shop,
-      technician: service.technicianProfile && this.isPublicTechnicianCard(service.technicianProfile)
-        ? this.mapTechnicianCard(service.technicianProfile)
-        : null,
+      technician:
+        service.technicianProfile && this.isPublicTechnicianCard(service.technicianProfile)
+          ? this.mapTechnicianCard(service.technicianProfile)
+          : null,
       city: service.city,
       priceAmount: this.formatDecimal(service.priceAmount, 2),
       currency: service.currency,
@@ -1279,12 +1248,14 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       ),
       businessKeywords: (shop.businessKeywordSelections ?? []).flatMap(({ businessKeyword }) =>
         businessKeyword.translations[0]
-          ? [{
-              id: businessKeyword.id,
-              code: businessKeyword.code,
-              categoryId: businessKeyword.categoryId,
-              label: businessKeyword.translations[0].label
-            }]
+          ? [
+              {
+                id: businessKeyword.id,
+                code: businessKeyword.code,
+                categoryId: businessKeyword.categoryId,
+                label: businessKeyword.translations[0].label
+              }
+            ]
           : []
       )
     };
@@ -1308,14 +1279,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   private mapTechnicianCard(technician: TechnicianCardRecord): TechnicianCardPayload {
-    const identifier = technician.user.identities.find(
-      (identity) => this.isActivePublicIdentifier(identity.publicIdentifier, "S")
+    const identifier = technician.user.identities.find((identity) =>
+      this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
 
     const performanceSummary =
-      technician.performanceSummary?.deletedAt === null
-        ? technician.performanceSummary
-        : null;
+      technician.performanceSummary?.deletedAt === null ? technician.performanceSummary : null;
     const primaryService = technician.technicianServices[0] ?? null;
 
     return {
@@ -1324,8 +1293,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       displayName: technician.displayName,
       city: technician.city,
       avatarUrl:
-        this.findMediaUrl(technician.mediaAssets, "avatar") ??
-        technician.user.avatarBootstrapUrl,
+        this.findMediaUrl(technician.mediaAssets, "avatar") ?? technician.user.avatarBootstrapUrl,
       reviewSummary: this.mapReviewSummary(technician.reviewSummary),
       age: technician.age,
       favoriteCount: technician._count.entityFavorites,
@@ -1379,9 +1347,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       shop: technician.shop ? this.mapShopCard(technician.shop) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,
-      gender: technician.gender === "female" || technician.gender === "male"
-        ? technician.gender
-        : "private",
+      gender:
+        technician.gender === "female" || technician.gender === "male"
+          ? technician.gender
+          : "private",
       heightCm: technician.heightCm === null ? null : Number(technician.heightCm),
       languages: this.normalizeStringArray(technician.languages),
       yearsExperience: technician.yearsExperience,

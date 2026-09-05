@@ -24,21 +24,22 @@ export interface DashboardOperationsFinanceReader {
   getOperationsFinance(input: DashboardAggregateInput): Promise<OperationsFinanceFacts>;
 }
 
-const aggregateError =
-  "Dashboard operations finance aggregate must be a non-negative safe integer";
+const aggregateError = "Dashboard operations finance aggregate must be a non-negative safe integer";
 
-export class DashboardOperationsFinanceRepository
-implements DashboardOperationsFinanceReader {
+export class DashboardOperationsFinanceRepository implements DashboardOperationsFinanceReader {
   public constructor(private readonly client: DashboardQueryClient) {}
 
   public async getOperationsFinance(
     input: DashboardAggregateInput
   ): Promise<OperationsFinanceFacts> {
     const rows = await this.queryOperationsFinance(input);
-    const periods = new Map<"current" | "previous", {
-      grossRevenue: number;
-      discountAmount: number;
-    }>();
+    const periods = new Map<
+      "current" | "previous",
+      {
+        grossRevenue: number;
+        discountAmount: number;
+      }
+    >();
 
     for (const row of rows) {
       const key = row.periodKey ?? row.period_key;
@@ -46,12 +47,8 @@ implements DashboardOperationsFinanceReader {
         throw new RangeError(aggregateError);
       }
       periods.set(key, {
-        grossRevenue: this.toSafeAggregate(
-          row.grossRevenueJpy ?? row.gross_revenue_jpy
-        ),
-        discountAmount: this.toSafeAggregate(
-          row.discountAmountJpy ?? row.discount_amount_jpy
-        )
+        grossRevenue: this.toSafeAggregate(row.grossRevenueJpy ?? row.gross_revenue_jpy),
+        discountAmount: this.toSafeAggregate(row.discountAmountJpy ?? row.discount_amount_jpy)
       });
     }
 
@@ -106,9 +103,7 @@ implements DashboardOperationsFinanceReader {
     return Prisma.join(filters, " AND ");
   }
 
-  private queryOperationsFinance(
-    input: DashboardAggregateInput
-  ): Promise<OperationsFinanceRow[]> {
+  private queryOperationsFinance(input: DashboardAggregateInput): Promise<OperationsFinanceRow[]> {
     const periods = this.periodTable(input);
     const scope = this.shopScope(input);
     return this.client.$queryRaw<OperationsFinanceRow[]>(Prisma.sql`

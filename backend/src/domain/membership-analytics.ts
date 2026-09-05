@@ -2,9 +2,7 @@ import type { DashboardGranularity, DashboardPeriod, DashboardWindow } from "./d
 
 export const MAX_MEMBERSHIP_ANALYTICS_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / 100);
 
-export type MembershipAnalyticsScope =
-  | { kind: "platform" }
-  | { kind: "shop"; shopId: number };
+export type MembershipAnalyticsScope = { kind: "platform" } | { kind: "shop"; shopId: number };
 
 export interface MembershipAnalyticsRepositoryInput {
   scope: MembershipAnalyticsScope;
@@ -40,7 +38,12 @@ export interface MembershipTrendPoint {
 
 export type MembershipTrendSeries = [
   { seriesKey: "added"; label: "Added members"; unit: "people"; points: MembershipTrendPoint[] },
-  { seriesKey: "removed"; label: "Removed members"; unit: "people"; points: MembershipTrendPoint[] },
+  {
+    seriesKey: "removed";
+    label: "Removed members";
+    unit: "people";
+    points: MembershipTrendPoint[];
+  },
   { seriesKey: "net"; label: "Net members"; unit: "people"; points: MembershipTrendPoint[] }
 ];
 

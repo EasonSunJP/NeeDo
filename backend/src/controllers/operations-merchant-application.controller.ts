@@ -16,21 +16,23 @@ export class OperationsMerchantApplicationController {
 
   public list = this.handle(async (request, response) => {
     const query = operationsMerchantApplicationListQuerySchema.parse(request.query);
-    response.status(200).json(
-      successResponse(
-        await this.service.list(
-          { page: query.page, pageSize: query.page_size, status: query.status },
-          this.canReadSensitiveDocuments(response)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.list(
+            { page: query.page, pageSize: query.page_size, status: query.status },
+            this.canReadSensitiveDocuments(response)
+          )
         )
-      )
-    );
+      );
   });
 
   public get = this.handle(async (request, response) => {
     const { id } = operationsMerchantApplicationIdParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(await this.service.get(id, this.canReadSensitiveDocuments(response)))
-    );
+    response
+      .status(200)
+      .json(successResponse(await this.service.get(id, this.canReadSensitiveDocuments(response))));
   });
 
   public approve = this.handle(async (request, response) => {

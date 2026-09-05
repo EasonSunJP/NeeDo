@@ -27,9 +27,7 @@ import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators"
 import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface ExchangeClaimRepositoryPort {
-  runInTransaction<T>(
-    handler: (repository: ExchangeClaimRepositoryPort) => Promise<T>
-  ): Promise<T>;
+  runInTransaction<T>(handler: (repository: ExchangeClaimRepositoryPort) => Promise<T>): Promise<T>;
   listOptions(input: ExchangeClaimOptionListInput): Promise<ExchangeClaimOptionPage>;
   findRequest(postId: number): Promise<ExchangeClaimRequestRecord | null>;
   findOptionCandidate(
@@ -84,10 +82,7 @@ export interface ExchangeClaimRepositoryPort {
     exchangePostId: number,
     claimantIdentityId: number
   ): Promise<ExchangeClaimPayload | null>;
-  findMineById(
-    claimId: number,
-    claimantIdentityId: number
-  ): Promise<ExchangeClaimPayload | null>;
+  findMineById(claimId: number, claimantIdentityId: number): Promise<ExchangeClaimPayload | null>;
   listReceived(
     exchangePostId: number,
     ownerIdentityId: number,
@@ -143,12 +138,8 @@ export class ExchangeClaimService {
       pageSize: input.page_size,
       now: this.now(),
       ...(input.shop_id ? { shopId: input.shop_id } : {}),
-      ...(input.technician_profile_id
-        ? { technicianProfileId: input.technician_profile_id }
-        : {}),
-      ...(input.service_ref
-        ? { serviceRef: input.service_ref as ExchangeClaimServiceRef }
-        : {})
+      ...(input.technician_profile_id ? { technicianProfileId: input.technician_profile_id } : {}),
+      ...(input.service_ref ? { serviceRef: input.service_ref as ExchangeClaimServiceRef } : {})
     });
   }
 
@@ -197,10 +188,7 @@ export class ExchangeClaimService {
         }
         this.assertOptionWithinRequest(request!, option);
         if (
-          await repository.hasActiveClaimForRequestTechnician(
-            postId,
-            option.technicianProfileId
-          )
+          await repository.hasActiveClaimForRequestTechnician(postId, option.technicianProfileId)
         ) {
           throw this.duplicate();
         }
@@ -317,10 +305,7 @@ export class ExchangeClaimService {
         if (!locked || locked.claimantIdentityId !== actor.identityId) {
           throw this.claimNotFound();
         }
-        if (
-          locked.status === "withdrawn" &&
-          locked.withdrawalIdempotencyKey === idempotencyKey
-        ) {
+        if (locked.status === "withdrawn" && locked.withdrawalIdempotencyKey === idempotencyKey) {
           if (locked.withdrawalPayloadFingerprint !== fingerprint) {
             throw this.idempotencyConflict();
           }
@@ -437,10 +422,7 @@ export class ExchangeClaimService {
     if (!request || request.type !== "demand" || !request.demand) {
       throw this.claimNotFound();
     }
-    if (
-      request.authorUserId === actor.userId ||
-      request.ownerIdentityId === actor.identityId
-    ) {
+    if (request.authorUserId === actor.userId || request.ownerIdentityId === actor.identityId) {
       throw this.notAllowed();
     }
     if (request.demand.matchMode !== "selective") throw this.selectiveOnly();

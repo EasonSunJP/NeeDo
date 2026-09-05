@@ -24,20 +24,35 @@ describe("technician ranking period resolver", () => {
 
   it.each([
     ["today", "2026-08-26", "2026-08-26", "2026-08-25T15:00:00.000Z", "2026-08-26T15:00:00.000Z"],
-    ["last7days", "2026-08-20", "2026-08-26", "2026-08-19T15:00:00.000Z", "2026-08-26T15:00:00.000Z"],
-    ["last30days", "2026-07-28", "2026-08-26", "2026-07-27T15:00:00.000Z", "2026-08-26T15:00:00.000Z"]
-  ] as const)("resolves %s using inclusive Tokyo calendar days", (period, fromDate, toDate, from, to) => {
-    expect(resolver({ period }, new Date("2026-08-25T16:30:00.000Z"))).toEqual({
-      period,
-      timeZone: "Asia/Tokyo",
-      timezone: "Asia/Tokyo",
-      fromDate,
-      toDate,
-      from: new Date(from),
-      fromInclusive: new Date(from),
-      toExclusive: new Date(to)
-    });
-  });
+    [
+      "last7days",
+      "2026-08-20",
+      "2026-08-26",
+      "2026-08-19T15:00:00.000Z",
+      "2026-08-26T15:00:00.000Z"
+    ],
+    [
+      "last30days",
+      "2026-07-28",
+      "2026-08-26",
+      "2026-07-27T15:00:00.000Z",
+      "2026-08-26T15:00:00.000Z"
+    ]
+  ] as const)(
+    "resolves %s using inclusive Tokyo calendar days",
+    (period, fromDate, toDate, from, to) => {
+      expect(resolver({ period }, new Date("2026-08-25T16:30:00.000Z"))).toEqual({
+        period,
+        timeZone: "Asia/Tokyo",
+        timezone: "Asia/Tokyo",
+        fromDate,
+        toDate,
+        from: new Date(from),
+        fromInclusive: new Date(from),
+        toExclusive: new Date(to)
+      });
+    }
+  );
 
   it("keeps both custom boundary dates inclusive", () => {
     expect(

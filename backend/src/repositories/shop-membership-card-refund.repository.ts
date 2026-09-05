@@ -168,24 +168,28 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
           });
           if (!redemption) return { kind: "not_found" as const };
           if (
-            redemption.status !== ShopMembershipCardRedemptionStatus.APPLIED
-            || redemption.refund
-            || redemption.rewardStatus === ShopMembershipCardRewardStatus.REVERSED
-          ) return { kind: "invalid_state" as const };
+            redemption.status !== ShopMembershipCardRedemptionStatus.APPLIED ||
+            redemption.refund ||
+            redemption.rewardStatus === ShopMembershipCardRewardStatus.REVERSED
+          )
+            return { kind: "invalid_state" as const };
           if (
-            redemption.bookingOrder.paymentStatus !== ServicePaymentStatus.REFUNDED
-            || !redemption.bookingOrder.paymentRefundedAt
-          ) return { kind: "order_not_refunded" as const };
+            redemption.bookingOrder.paymentStatus !== ServicePaymentStatus.REFUNDED ||
+            !redemption.bookingOrder.paymentRefundedAt
+          )
+            return { kind: "order_not_refunded" as const };
 
-          const pendingAdjustment = await transaction.shopMembershipCardAdjustmentRequest.findFirst({
-            where: {
-              cardId: redemption.cardId,
-              status: ShopMembershipCardAdjustmentStatus.PENDING,
-              expiresAt: { gt: databaseNow },
-              deletedAt: null
-            },
-            select: { id: true }
-          });
+          const pendingAdjustment = await transaction.shopMembershipCardAdjustmentRequest.findFirst(
+            {
+              where: {
+                cardId: redemption.cardId,
+                status: ShopMembershipCardAdjustmentStatus.PENDING,
+                expiresAt: { gt: databaseNow },
+                deletedAt: null
+              },
+              select: { id: true }
+            }
+          );
           if (pendingAdjustment) return { kind: "pending_conflict" as const };
 
           const restoration = this.restoration(redemption);
@@ -215,29 +219,34 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
           let reversal = null;
           if (redemption.rewardStatus === ShopMembershipCardRewardStatus.PAID) {
             if (
-              !redemption.shopWalletId
-              || !redemption.customerWalletId
-              || (redemption.platformFeeNdp > 0 && !redemption.platformWalletId)
-            ) return { kind: "invalid_state" as const };
-            reversal = await reverse({
-              redemptionId: redemption.id,
-              shopId: redemption.shopId,
-              customerUserId: redemption.customerUserId,
-              customerRewardNdp: redemption.customerRewardNdp,
-              platformFeeNdp: redemption.platformFeeNdp,
-              shopWalletId: redemption.shopWalletId,
-              customerWalletId: redemption.customerWalletId,
-              platformWalletId: redemption.platformWalletId,
-              idempotencyKey: `membership-redemption:${redemption.id}:refund:reversal`,
-              actorUserId: input.actorId
-            }, transaction);
+              !redemption.shopWalletId ||
+              !redemption.customerWalletId ||
+              (redemption.platformFeeNdp > 0 && !redemption.platformWalletId)
+            )
+              return { kind: "invalid_state" as const };
+            reversal = await reverse(
+              {
+                redemptionId: redemption.id,
+                shopId: redemption.shopId,
+                customerUserId: redemption.customerUserId,
+                customerRewardNdp: redemption.customerRewardNdp,
+                platformFeeNdp: redemption.platformFeeNdp,
+                shopWalletId: redemption.shopWalletId,
+                customerWalletId: redemption.customerWalletId,
+                platformWalletId: redemption.platformWalletId,
+                idempotencyKey: `membership-redemption:${redemption.id}:refund:reversal`,
+                actorUserId: input.actorId
+              },
+              transaction
+            );
           }
 
-          const reversalMode = redemption.rewardStatus === ShopMembershipCardRewardStatus.PAID
-            ? ShopMembershipRewardReversalMode.LEDGER_REVERSED
-            : redemption.rewardStatus === ShopMembershipCardRewardStatus.PENDING_FUNDS
-              ? ShopMembershipRewardReversalMode.CANCELLED_PENDING
-              : ShopMembershipRewardReversalMode.NONE;
+          const reversalMode =
+            redemption.rewardStatus === ShopMembershipCardRewardStatus.PAID
+              ? ShopMembershipRewardReversalMode.LEDGER_REVERSED
+              : redemption.rewardStatus === ShopMembershipCardRewardStatus.PENDING_FUNDS
+                ? ShopMembershipRewardReversalMode.CANCELLED_PENDING
+                : ShopMembershipRewardReversalMode.NONE;
           const created = await transaction.shopMembershipCardRedemptionRefund.create({
             data: {
               redemptionId: redemption.id,
@@ -281,17 +290,24 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
             },
             data: {
               status: ShopMembershipCardRedemptionStatus.REFUNDED,
-              rewardStatus: redemption.rewardStatus === ShopMembershipCardRewardStatus.NONE
-                ? ShopMembershipCardRewardStatus.NONE
-                : ShopMembershipCardRewardStatus.REVERSED,
+              rewardStatus:
+                redemption.rewardStatus === ShopMembershipCardRewardStatus.NONE
+                  ? ShopMembershipCardRewardStatus.NONE
+                  : ShopMembershipCardRewardStatus.REVERSED,
               outstandingRewardNdp: 0,
               refundedAt: databaseNow
             }
           });
           if (updatedRedemption.count !== 1) return { kind: "concurrency_conflict" as const };
 
-          const recipientIdentityId = await resolveCanonicalPersonalIdentityId(transaction, redemption.customerUserId);
-          const actorIdentityId = await resolveCanonicalPersonalIdentityId(transaction, input.actorId);
+          const recipientIdentityId = await resolveCanonicalPersonalIdentityId(
+            transaction,
+            redemption.customerUserId
+          );
+          const actorIdentityId = await resolveCanonicalPersonalIdentityId(
+            transaction,
+            input.actorId
+          );
           if (!recipientIdentityId || !actorIdentityId) {
             throw new AppError({
               code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -328,9 +344,10 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
               actorIdentityId,
               type: "SYSTEM",
               title: "shop_membership.card_refund.applied.title",
-              body: reversal && reversal.customerBalanceAfterNdp < 0
-                ? "shop_membership.card_refund.applied_negative.body"
-                : "shop_membership.card_refund.applied.body",
+              body:
+                reversal && reversal.customerBalanceAfterNdp < 0
+                  ? "shop_membership.card_refund.applied_negative.body"
+                  : "shop_membership.card_refund.applied.body",
               payload: metadata,
               createdAt: databaseNow
             }
@@ -352,9 +369,12 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
           ? { kind: "replayed" as const, value: existing }
           : { kind: "idempotency_conflict" as const };
       }
-      if (targets.some((target) =>
-        target.includes("redemption_id") || target.includes("booking_order_id")
-      )) return { kind: "invalid_state" as const };
+      if (
+        targets.some(
+          (target) => target.includes("redemption_id") || target.includes("booking_order_id")
+        )
+      )
+        return { kind: "invalid_state" as const };
       throw error;
     }
   }
@@ -362,9 +382,11 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
   private restoration(redemption: RedemptionForRefundRecord) {
     if (redemption.card.type === ShopMembershipCardType.STORED_VALUE) {
       if (
-        redemption.consumedPrincipalJpy <= 0 || redemption.consumedUses !== 0
-        || redemption.card.principalBalanceJpy === null
-      ) return null;
+        redemption.consumedPrincipalJpy <= 0 ||
+        redemption.consumedUses !== 0 ||
+        redemption.card.principalBalanceJpy === null
+      )
+        return null;
       const after = redemption.card.principalBalanceJpy + redemption.consumedPrincipalJpy;
       if (!Number.isSafeInteger(after) || after > 2_147_483_647) return null;
       return {
@@ -378,9 +400,11 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
     }
     if (redemption.card.type === ShopMembershipCardType.COUNT) {
       if (
-        redemption.consumedPrincipalJpy !== 0 || redemption.consumedUses <= 0
-        || redemption.card.remainingUses === null
-      ) return null;
+        redemption.consumedPrincipalJpy !== 0 ||
+        redemption.consumedUses <= 0 ||
+        redemption.card.remainingUses === null
+      )
+        return null;
       const after = redemption.card.remainingUses + redemption.consumedUses;
       if (!Number.isSafeInteger(after) || after > 2_147_483_647) return null;
       return {
@@ -445,14 +469,20 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
         publicId: record.card.publicId,
         cardNo: record.card.cardNo,
         name: record.card.name,
-        type: record.card.type === ShopMembershipCardType.STORED_VALUE
-          ? "stored_value"
-          : record.card.type === ShopMembershipCardType.COUNT ? "count" : "benefit",
-        status: record.card.status === ShopMembershipCardStatus.ACTIVE
-          ? "active"
-          : record.card.status === ShopMembershipCardStatus.FROZEN
-            ? "frozen"
-            : record.card.status === ShopMembershipCardStatus.EXPIRED ? "expired" : "void",
+        type:
+          record.card.type === ShopMembershipCardType.STORED_VALUE
+            ? "stored_value"
+            : record.card.type === ShopMembershipCardType.COUNT
+              ? "count"
+              : "benefit",
+        status:
+          record.card.status === ShopMembershipCardStatus.ACTIVE
+            ? "active"
+            : record.card.status === ShopMembershipCardStatus.FROZEN
+              ? "frozen"
+              : record.card.status === ShopMembershipCardStatus.EXPIRED
+                ? "expired"
+                : "void",
         principalBalanceJpy: record.card.principalBalanceJpy,
         bonusBalanceJpy: record.card.bonusBalanceJpy,
         remainingUses: record.card.remainingUses
@@ -481,20 +511,26 @@ export class ShopMembershipCardRefundRepository implements ShopMembershipCardRef
   }
 
   private reversalMode(value: ShopMembershipRewardReversalMode) {
-    if (value === ShopMembershipRewardReversalMode.CANCELLED_PENDING) return "cancelled_pending" as const;
-    if (value === ShopMembershipRewardReversalMode.LEDGER_REVERSED) return "ledger_reversed" as const;
+    if (value === ShopMembershipRewardReversalMode.CANCELLED_PENDING)
+      return "cancelled_pending" as const;
+    if (value === ShopMembershipRewardReversalMode.LEDGER_REVERSED)
+      return "ledger_reversed" as const;
     return "none" as const;
   }
 
   private metadata(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
+      ? (value as Record<string, unknown>)
       : {};
   }
 
   private isUniqueConflict(error: unknown): error is { code: string; meta?: { target?: unknown } } {
-    return Boolean(error && typeof error === "object" && "code" in error
-      && (error as { code?: unknown }).code === "P2002");
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
+    );
   }
 
   private uniqueTargets(error: { meta?: { target?: unknown } }): string[] {

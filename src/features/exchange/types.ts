@@ -27,6 +27,7 @@ export type ExchangeViewerState = {
   canWithdraw: boolean;
   canClaim: boolean;
   canViewClaims: boolean;
+  canViewMatching?: boolean;
 };
 
 export type ExchangeClaimStatus =
@@ -86,6 +87,36 @@ export type ExchangeMatchParticipant = {
   estimatedStartsAt: string;
   estimatedEndsAt: string;
   matchedAt: string;
+  booking: ExchangeParticipantBooking | null;
+};
+
+export type ExchangeParticipantBooking = {
+  orderId: number;
+  orderNo: string;
+  status:
+    | "pending"
+    | "confirmed"
+    | "inService"
+    | "awaitingCheckout"
+    | "awaitingPaymentConfirmation"
+    | "completed"
+    | "cancelled";
+};
+
+export type ExchangeBookingConversion = {
+  exchangePostId: number;
+  matchingVersion: number;
+  bookedAt: string;
+  orders: Array<{
+    exchangeClaimId: number;
+    orderId: number;
+    orderNo: string;
+    status: "pending";
+    providerPublicId: string;
+    quoteAmountJpy: number;
+    startsAt: string;
+    endsAt: string;
+  }>;
 };
 
 export type ExchangeMatching = {
@@ -97,7 +128,7 @@ export type ExchangeMatching = {
   selectedQuoteTotalJpy: number;
   matchedAt: string | null;
   participants: ExchangeMatchParticipant[];
-  viewer: { canSelect: boolean };
+  viewer: { canSelect: boolean; canCreateBookings: boolean };
 };
 
 export type ExchangeMatchAdjustmentPreview = {

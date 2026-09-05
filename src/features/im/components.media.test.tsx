@@ -1,0 +1,68 @@
+/** @vitest-environment jsdom */
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MessageBubble } from "./components";
+import type { ConversationMessage } from "./model";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+describe("IM media delivery failures", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  const message = (type: ConversationMessage["type"]): ConversationMessage => ({
+    id: "media-1", localId: "media-1", conversationId: "conversation-1", senderId: "sender-1",
+    type, content: "/media/im/a.jpg", status: "sent", sentAt: "2020-01-01T00:00:00Z", clientSeq: 1,
+    ext: { fileName: "private-name.jpeg", duration: 15 }
+  });
+  beforeEach(() => { container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
+  afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+
+  it.each(["image", "video"] as const)("shows retry rather than expiry or a filename for failed %s", async (type) => {
+    const open = vi.fn();
+    await act(async () => root.render(<MessageBubble isMine={false} message={message(type)} onPreviewMedia={open} />));
+    const image = container.querySelector('[data-im-message-bubble] img')!;
+    await act(async () => image.dispatchEvent(new Event("error")));
+    expect(container.textContent).toContain(type === "image" ? "图片加载失败，点击重试" : "视频加载失败，点击重试");
+    expect(container.textContent).not.toMatch(/已过期|private-name/);
+    expect(container.querySelector('[data-im-message-bubble] img')).toBeNull();
+    const retry = [...container.querySelectorAll("button")].find((node) => node.textContent?.includes("重试"))!;
+    await act(async () => retry.click());
+    const reloaded = container.querySelector('[data-im-message-bubble] img')!;
+    expect(reloaded).not.toBe(image);
+    expect(reloaded.getAttribute("src")).toBe("/media/im/a.jpg");
+    expect(open).not.toHaveBeenCalled();
+    await act(async () => reloaded.dispatchEvent(new Event("load")));
+    await act(async () => reloaded.closest("button")!.click());
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it.each(["image", "video"] as const)("does not request an explicitly expired %s", async (type) => {
+    const expired = message(type);
+    expired.ext = { ...expired.ext, mediaState: "expired" };
+    await act(async () => root.render(<MessageBubble isMine={false} message={expired} />));
+    expect(container.textContent).toContain(type === "image" ? "图片已过期" : "视频已过期");
+    expect(container.querySelector('[data-im-message-bubble] img, [data-im-message-bubble] video')).toBeNull();
+    expect(container.textContent).not.toContain("重试");
+  });
+
+  it("keeps the server voice duration and removes the failed audio player", async () => {
+    await act(async () => root.render(<MessageBubble isMine={false} message={message("voice")} />));
+    const audio = container.querySelector("audio")!;
+    expect(audio.preload).toBe("metadata");
+    await act(async () => audio.dispatchEvent(new Event("error")));
+    expect(container.textContent).toContain('15"');
+    expect(container.textContent).toContain("语音加载失败，点击重试");
+    expect(container.querySelector("audio")).toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+    expect(container.querySelector("audio")).not.toBeNull();
+  });
+
+  it("clears a previous failure when the message source changes", async () => {
+    await act(async () => root.render(<MessageBubble isMine={false} message={message("image")} />));
+    await act(async () => container.querySelector('[data-im-message-bubble] img')!.dispatchEvent(new Event("error")));
+    await act(async () => root.render(<MessageBubble isMine={false} message={{ ...message("image"), content: "/media/im/b.jpg" }} />));
+    expect(container.querySelector('[data-im-message-bubble] img')?.getAttribute("src")).toBe("/media/im/b.jpg");
+    expect(container.textContent).not.toContain("重试");
+  });
+});

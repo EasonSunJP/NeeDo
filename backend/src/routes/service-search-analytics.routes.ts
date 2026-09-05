@@ -36,27 +36,93 @@ export const createServiceSearchAnalyticsRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new ServiceSearchAnalyticsService(
     dependencies.serviceSearchAnalyticsRepository ?? new ServiceSearchAnalyticsRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
   );
   const controller = new ServiceSearchAnalyticsController(service);
-  const readTaxonomy = [authenticate(), createAuthorizeMiddleware(SERVICE_SEARCH_PERMISSIONS.readTaxonomy)];
-  const writeTaxonomy = [authenticate(), createAuthorizeMiddleware(SERVICE_SEARCH_PERMISSIONS.writeTaxonomy)];
-  const readAnalytics = [authenticate(), createAuthorizeMiddleware(SERVICE_SEARCH_PERMISSIONS.readAnalytics)];
+  const readTaxonomy = [
+    authenticate(),
+    createAuthorizeMiddleware(SERVICE_SEARCH_PERMISSIONS.readTaxonomy)
+  ];
+  const writeTaxonomy = [
+    authenticate(),
+    createAuthorizeMiddleware(SERVICE_SEARCH_PERMISSIONS.writeTaxonomy)
+  ];
+  const readAnalytics = [
+    authenticate(),
+    createAuthorizeMiddleware(SERVICE_SEARCH_PERMISSIONS.readAnalytics)
+  ];
 
-  router.get("/backoffice/service-taxonomy/categories", ...readTaxonomy, validateRequest({ query: taxonomyListQuerySchema }), controller.listCategories);
-  router.get("/backoffice/service-taxonomy/categories/:categoryId/keywords", ...readTaxonomy, validateRequest({ params: taxonomyCategoryIdParamSchema, query: taxonomyListQuerySchema }), controller.listKeywords);
-  router.get("/backoffice/service-taxonomy/keywords/:keywordId/aliases", ...readTaxonomy, validateRequest({ params: taxonomyKeywordIdParamSchema, query: taxonomyListQuerySchema }), controller.listAliases);
-  router.post("/backoffice/service-taxonomy/categories", ...writeTaxonomy, validateRequest({ body: categoryCreateBodySchema }), controller.createCategory);
-  router.patch("/backoffice/service-taxonomy/categories/:id", ...writeTaxonomy, validateRequest({ params: taxonomyIdParamSchema, body: categoryUpdateBodySchema }), controller.updateCategory);
-  router.post("/backoffice/service-taxonomy/keywords", ...writeTaxonomy, validateRequest({ body: keywordCreateBodySchema }), controller.createKeyword);
-  router.patch("/backoffice/service-taxonomy/keywords/:id", ...writeTaxonomy, validateRequest({ params: taxonomyIdParamSchema, body: keywordUpdateBodySchema }), controller.updateKeyword);
-  router.post("/backoffice/service-taxonomy/aliases", ...writeTaxonomy, validateRequest({ body: aliasCreateBodySchema }), controller.createAlias);
-  router.patch("/backoffice/service-taxonomy/aliases/:id", ...writeTaxonomy, validateRequest({ params: taxonomyIdParamSchema, body: aliasUpdateBodySchema }), controller.updateAlias);
-  router.get("/backoffice/search-analytics/top-keywords", ...readAnalytics, validateRequest({ query: searchAnalyticsTopQuerySchema }), controller.topKeywords);
-  router.get("/backoffice/search-analytics/trends", ...readAnalytics, validateRequest({ query: searchAnalyticsTrendQuerySchema }), controller.keywordTrend);
+  router.get(
+    "/backoffice/service-taxonomy/categories",
+    ...readTaxonomy,
+    validateRequest({ query: taxonomyListQuerySchema }),
+    controller.listCategories
+  );
+  router.get(
+    "/backoffice/service-taxonomy/categories/:categoryId/keywords",
+    ...readTaxonomy,
+    validateRequest({ params: taxonomyCategoryIdParamSchema, query: taxonomyListQuerySchema }),
+    controller.listKeywords
+  );
+  router.get(
+    "/backoffice/service-taxonomy/keywords/:keywordId/aliases",
+    ...readTaxonomy,
+    validateRequest({ params: taxonomyKeywordIdParamSchema, query: taxonomyListQuerySchema }),
+    controller.listAliases
+  );
+  router.post(
+    "/backoffice/service-taxonomy/categories",
+    ...writeTaxonomy,
+    validateRequest({ body: categoryCreateBodySchema }),
+    controller.createCategory
+  );
+  router.patch(
+    "/backoffice/service-taxonomy/categories/:id",
+    ...writeTaxonomy,
+    validateRequest({ params: taxonomyIdParamSchema, body: categoryUpdateBodySchema }),
+    controller.updateCategory
+  );
+  router.post(
+    "/backoffice/service-taxonomy/keywords",
+    ...writeTaxonomy,
+    validateRequest({ body: keywordCreateBodySchema }),
+    controller.createKeyword
+  );
+  router.patch(
+    "/backoffice/service-taxonomy/keywords/:id",
+    ...writeTaxonomy,
+    validateRequest({ params: taxonomyIdParamSchema, body: keywordUpdateBodySchema }),
+    controller.updateKeyword
+  );
+  router.post(
+    "/backoffice/service-taxonomy/aliases",
+    ...writeTaxonomy,
+    validateRequest({ body: aliasCreateBodySchema }),
+    controller.createAlias
+  );
+  router.patch(
+    "/backoffice/service-taxonomy/aliases/:id",
+    ...writeTaxonomy,
+    validateRequest({ params: taxonomyIdParamSchema, body: aliasUpdateBodySchema }),
+    controller.updateAlias
+  );
+  router.get(
+    "/backoffice/search-analytics/top-keywords",
+    ...readAnalytics,
+    validateRequest({ query: searchAnalyticsTopQuerySchema }),
+    controller.topKeywords
+  );
+  router.get(
+    "/backoffice/search-analytics/trends",
+    ...readAnalytics,
+    validateRequest({ query: searchAnalyticsTrendQuerySchema }),
+    controller.keywordTrend
+  );
 
   return router;
 };

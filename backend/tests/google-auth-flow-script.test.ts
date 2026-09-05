@@ -56,9 +56,7 @@ describe("formal auth guarded flow scripts", () => {
     expect(source).toContain("registration cleanup left marked Redis keys behind");
     expect(source).toContain("discoverMarkedUserIds");
     expect(source).toContain("cleanupErrors");
-    expect(source).toMatch(
-      /auditLog\.deleteMany\(\{[\s\S]{0,220}targetType: "User", targetId:/
-    );
+    expect(source).toMatch(/auditLog\.deleteMany\(\{[\s\S]{0,220}targetType: "User", targetId:/);
   });
 
   it("proves the complete Google first-use, setup, login, unlink, and cleanup lifecycle", () => {
@@ -94,12 +92,8 @@ describe("formal auth guarded flow scripts", () => {
     expect(source).toContain("compare(");
     expect(source).toContain("deterministicGoogleVerifier");
     expect(source).toContain("captureOnlyOtpDelivery");
-    expect(source).toMatch(
-      /auditLog\.deleteMany\(\{[\s\S]{0,220}targetType: "User", targetId:/
-    );
-    expect(source).not.toMatch(
-      /authenticateAccessToken\([\s\S]{0,120}"auth:password:setup"/
-    );
+    expect(source).toMatch(/auditLog\.deleteMany\(\{[\s\S]{0,220}targetType: "User", targetId:/);
+    expect(source).not.toMatch(/authenticateAccessToken\([\s\S]{0,120}"auth:password:setup"/);
     expect(source).not.toMatch(/authenticateAccessToken\([\s\S]{0,120}"auth:google:unlink"/);
   });
 });

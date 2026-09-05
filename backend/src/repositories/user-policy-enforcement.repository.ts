@@ -5,9 +5,7 @@ import type {
 } from "../domain/user-policy-enforcement";
 import { prisma } from "../prisma/client";
 
-export class UserPolicyEnforcementRepository
-  implements UserPolicyEnforcementRepositoryPort
-{
+export class UserPolicyEnforcementRepository implements UserPolicyEnforcementRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findAccountFactsAt(

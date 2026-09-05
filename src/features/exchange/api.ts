@@ -5,6 +5,7 @@ import type {
   ExchangeClaimMine,
   ExchangeClaimOption,
   ExchangeClaimOptionListInput,
+  ExchangeBookingConversion,
   ExchangeComment,
   ExchangeInteractionCounts,
   ExchangeListInput,
@@ -88,6 +89,18 @@ export function selectExchangeMatching(
   key: string
 ): Promise<ExchangeMatching> {
   return httpClient.request<ExchangeMatching>(`/exchange/posts/${postId}/matching/select`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function createExchangeMatchingBookings(
+  postId: string,
+  input: { expectedVersion: number },
+  key: string
+): Promise<ExchangeBookingConversion> {
+  return httpClient.request<ExchangeBookingConversion>(`/exchange/posts/${postId}/matching/bookings`, {
     body: input,
     headers: idempotencyHeaders(key),
     method: "POST"
