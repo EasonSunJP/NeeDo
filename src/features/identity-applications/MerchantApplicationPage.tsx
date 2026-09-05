@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { StoreDetailExperience } from "../../pages/user/StoreDetailPage";
 import { ShopTaxonomyRegistrationField } from "../shop-taxonomy/ShopTaxonomyRegistrationField";
+import { platformMembershipSelfApi } from "../platform-membership/api";
 import type { Store } from "../../types/domain";
 import {
   ApplicationButton,
+  ApplicationBottomAction,
   ApplicationCard,
   ApplicationField,
+  ApplicationFileUpload,
   ApplicationInput,
   ApplicationNotice,
   ApplicationSelect,
+  ApplicationSection,
   ApplicationShell,
   ApplicationSteps,
   ApplicationTextArea
@@ -23,10 +28,9 @@ import {
   type IdentityApplication
 } from "./api";
 import { getContractLanguage, validateMerchantShowcase, type MerchantShowcaseForm } from "./formModel";
+import { formatMerchantPriceRange, parseMerchantPriceRange, validateMerchantPriceRange, type MerchantPriceRange } from "./merchantPriceRange";
 
-type MerchantForm = MerchantShowcaseForm & {
-  priceLabel: string;
-};
+type MerchantForm = MerchantShowcaseForm;
 
 const emptyMerchantForm: MerchantForm = {
   applicantKind: "individual",
@@ -39,7 +43,6 @@ const emptyMerchantForm: MerchantForm = {
   contactPhone: "",
   responsiblePersonName: "",
   description: "",
-  priceLabel: "",
   serviceCategoryIds: [],
   businessKeywordIds: []
 };
@@ -63,12 +66,15 @@ function readDraftString(draft: Record<string, unknown> | null | undefined, key:
 }
 
 export function MerchantApplicationPage() {
+  const navigate = useNavigate();
   const { language } = useI18n();
   const { refreshSession } = useAuth();
   const t = (source: string) => translateText(source, language);
   const [step, setStep] = useState(0);
   const [application, setApplication] = useState<IdentityApplication | null>(null);
   const [form, setForm] = useState<MerchantForm>(emptyMerchantForm);
+  const [priceRange, setPriceRange] = useState<MerchantPriceRange>({ min: "", max: "" });
+  const [ekycVerified, setEkycVerified] = useState(false);
   const [bank, setBank] = useState<BankAccountInput>(emptyBank);
   const [showcaseImage, setShowcaseImage] = useState<File | null>(null);
   const [representativeIdentity, setRepresentativeIdentity] = useState<File | null>(null);
@@ -80,6 +86,18 @@ export function MerchantApplicationPage() {
   const [error, setError] = useState("");
   const [previewImageUrl, setPreviewImageUrl] = useState("");
   const [selectedKeywordLabels, setSelectedKeywordLabels] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    platformMembershipSelfApi.getMine()
+      .then((membership) => {
+        if (active) setEkycVerified(membership.ekycVerified);
+      })
+      .catch(() => {
+        if (active) setEkycVerified(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -101,10 +119,10 @@ export function MerchantApplicationPage() {
           contactPhone: detail.contactPhone,
           responsiblePersonName: detail.responsiblePersonName,
           description: readDraftString(detail.showcaseDraft, "description"),
-          priceLabel: readDraftString(detail.showcaseDraft, "priceLabel"),
           serviceCategoryIds: detail.serviceCategoryIds ?? [],
           businessKeywordIds: detail.businessKeywordIds ?? []
         });
+        setPriceRange(parseMerchantPriceRange(readDraftString(detail.showcaseDraft, "priceLabel")));
       }
       if (existing.status === "submitted" || existing.status === "under_review") setStep(3);
     }).catch((caught: unknown) => {
@@ -136,6 +154,7 @@ export function MerchantApplicationPage() {
     setForm((current) => ({ ...current, [key]: value }));
   const updateBank = <K extends keyof BankAccountInput>(key: K, value: BankAccountInput[K]) =>
     setBank((current) => ({ ...current, [key]: value }));
+  const priceLabel = formatMerchantPriceRange(priceRange);
 
   const draftStore = useMemo<Store>(() => ({
     id: "merchant-application-draft",
@@ -146,7 +165,7 @@ export function MerchantApplicationPage() {
     address: form.businessAddress || t("地址未填写"),
     rating: 0,
     reviewCount: 0,
-    priceLabel: form.priceLabel || t("收费规则待填写"),
+    priceLabel: priceLabel || t("收费规则待填写"),
     tags: selectedKeywordLabels,
     openStatus: "closed",
     nextSlot: t("申请审核中"),
@@ -156,12 +175,12 @@ export function MerchantApplicationPage() {
     rankLabel: t("新店申请"),
     businessHours: t("审核通过后设置"),
     mode: "store"
-  }), [application?.id, form, previewImageUrl, language, selectedKeywordLabels]);
+  }), [application?.id, form, priceLabel, previewImageUrl, language, selectedKeywordLabels]);
 
   const showcasePayload = () => ({
     applicantKind: form.applicantKind,
-    corporateLegalName: form.applicantKind === "corporate" ? form.corporateLegalName.trim() : null,
-    corporateLegalNameKana: form.applicantKind === "corporate" ? form.corporateLegalNameKana.trim() : null,
+    corporateLegalName: form.applicantKind === "corporate" ? form.representativeName.trim() : null,
+    corporateLegalNameKana: form.applicantKind === "corporate" ? form.representativeNameKana.trim() : null,
     representativeName: form.representativeName.trim(),
     representativeNameKana: form.representativeNameKana.trim(),
     shopName: form.shopName.trim(),
@@ -172,22 +191,32 @@ export function MerchantApplicationPage() {
     businessKeywordIds: form.businessKeywordIds,
     showcaseDraft: {
       description: form.description.trim(),
-      priceLabel: form.priceLabel.trim()
+      priceLabel
     }
   });
 
   const saveShowcase = async () => {
-    const validationError = validateMerchantShowcase(form);
+    const payload = showcasePayload();
+    const validationError = validateMerchantShowcase({
+      ...form,
+      corporateLegalName: payload.corporateLegalName ?? "",
+      corporateLegalNameKana: payload.corporateLegalNameKana ?? ""
+    });
     if (validationError) {
       setError(validationError);
+      return;
+    }
+    const priceError = validateMerchantPriceRange(priceRange);
+    if (priceError) {
+      setError(priceError);
       return;
     }
     setBusy(true);
     setError("");
     try {
       let working = application
-        ? await identityApplicationsApi.updateMerchantShowcase(application.id, { ...showcasePayload(), expectedVersion: application.version })
-        : await identityApplicationsApi.createMerchantDraft(showcasePayload());
+        ? await identityApplicationsApi.updateMerchantShowcase(application.id, { ...payload, expectedVersion: application.version })
+        : await identityApplicationsApi.createMerchantDraft(payload);
       if (showcaseImage) {
         const uploaded = await identityApplicationsApi.uploadMedia(working.id, "showcase", working.version, showcaseImage);
         working = { ...working, version: uploaded.applicationVersion };
@@ -267,45 +296,58 @@ export function MerchantApplicationPage() {
 
       {step === 0 ? (
         <>
-          <ApplicationCard className="space-y-4">
+          <ApplicationSection info="选择以个人或法人主体提交店铺申请。" title="名义">
             <div className="grid grid-cols-2 gap-2 rounded-full bg-[color:var(--client-elevated)] p-1">
               {(["individual", "corporate"] as const).map((kind) => (
                 <button className={`rounded-full px-4 py-3 text-sm font-black ${form.applicantKind === kind ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "text-[color:var(--client-muted)]"}`} key={kind} onClick={() => updateForm("applicantKind", kind)} type="button">{t(kind === "individual" ? "个人名义" : "法人名义")}</button>
               ))}
             </div>
-            {form.applicantKind === "corporate" ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ApplicationField label="法人名称" required><ApplicationInput onChange={(event) => updateForm("corporateLegalName", event.target.value)} value={form.corporateLegalName} /></ApplicationField>
-                <ApplicationField hint="用于银行账户名义一致校验" label="法人名称片假名" required><ApplicationInput onChange={(event) => updateForm("corporateLegalNameKana", event.target.value)} value={form.corporateLegalNameKana} /></ApplicationField>
+          </ApplicationSection>
+          <ApplicationSection info="填写申请人与店铺的正式联系资料。" title="基础信息">
+            <ApplicationField label="申请人" required>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <ApplicationInput onChange={(event) => updateForm("responsiblePersonName", event.target.value)} value={form.responsiblePersonName} />
+                <ApplicationButton onClick={() => navigate("/me/settings/verification")} tone={ekycVerified ? "secondary" : "primary"}>
+                  {t(ekycVerified ? "已本人确认" : "本人确认（eKYC）")}
+                </ApplicationButton>
               </div>
-            ) : null}
+            </ApplicationField>
             <div className="grid gap-4 sm:grid-cols-2">
               <ApplicationField label="法人或代表者姓名" required><ApplicationInput onChange={(event) => updateForm("representativeName", event.target.value)} value={form.representativeName} /></ApplicationField>
               <ApplicationField label="法人或代表者姓名片假名" required><ApplicationInput onChange={(event) => updateForm("representativeNameKana", event.target.value)} value={form.representativeNameKana} /></ApplicationField>
               <ApplicationField label="店铺名称" required><ApplicationInput onChange={(event) => updateForm("shopName", event.target.value)} value={form.shopName} /></ApplicationField>
               <ApplicationField label="店铺地址" required><ApplicationInput onChange={(event) => updateForm("businessAddress", event.target.value)} value={form.businessAddress} /></ApplicationField>
               <ApplicationField label="联系电话" required><ApplicationInput onChange={(event) => updateForm("contactPhone", event.target.value)} value={form.contactPhone} /></ApplicationField>
-              <ApplicationField label="负责人姓名" required><ApplicationInput onChange={(event) => updateForm("responsiblePersonName", event.target.value)} value={form.responsiblePersonName} /></ApplicationField>
-              <ApplicationField label="收费展示"><ApplicationInput onChange={(event) => updateForm("priceLabel", event.target.value)} placeholder={t("例如 ¥8,800 起")} value={form.priceLabel} /></ApplicationField>
             </div>
-            <ShopTaxonomyRegistrationField
-              language={language}
-              onChange={(value) => setForm((current) => ({ ...current, ...value }))}
-              onKeywordLabelsChange={setSelectedKeywordLabels}
-              value={{ serviceCategoryIds: form.serviceCategoryIds, businessKeywordIds: form.businessKeywordIds }}
-            />
-            <ApplicationField label="服务展示说明" required><ApplicationTextArea onChange={(event) => updateForm("description", event.target.value)} value={form.description} /></ApplicationField>
-            <ApplicationField hint="将在下方店铺前端预览中显示" label="服务展示主图"><ApplicationInput accept="image/jpeg,image/png" onChange={(event) => setShowcaseImage(event.target.files?.[0] ?? null)} type="file" /></ApplicationField>
-          </ApplicationCard>
-
-          <ApplicationCard className="overflow-hidden">
-            <div className="mb-4 flex items-center justify-between">
-              <div><p className="text-[11px] font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">{t("服务展示预览")}</p><h2 className="mt-1 text-lg font-black text-[color:var(--client-text)]">{t("与店铺前端一致")}</h2></div>
-              <span className="rounded-full border border-[color:var(--client-line)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-muted)]">{t("仅预览")}</span>
+          </ApplicationSection>
+          <ShopTaxonomyRegistrationField
+            language={language}
+            onChange={(value) => setForm((current) => ({ ...current, ...value }))}
+            onKeywordLabelsChange={setSelectedKeywordLabels}
+            value={{ serviceCategoryIds: form.serviceCategoryIds, businessKeywordIds: form.businessKeywordIds }}
+          />
+          <ApplicationSection info="填写主页展示的最低与最高服务费用。" title="费用区间">
+            <div className="grid grid-cols-2 gap-3">
+              <ApplicationField label="最低费用">
+                <ApplicationInput inputMode="numeric" onChange={(event) => setPriceRange((current) => ({ ...current, min: event.target.value.replace(/\D/gu, "") }))} value={priceRange.min} />
+              </ApplicationField>
+              <ApplicationField label="最高费用">
+                <ApplicationInput inputMode="numeric" onChange={(event) => setPriceRange((current) => ({ ...current, max: event.target.value.replace(/\D/gu, "") }))} value={priceRange.max} />
+              </ApplicationField>
             </div>
+          </ApplicationSection>
+          <ApplicationSection info="简介会显示在店铺主页。" title="店铺简介">
+            <ApplicationTextArea aria-label={t("店铺简介")} required onChange={(event) => updateForm("description", event.target.value)} value={form.description} />
+          </ApplicationSection>
+          <ApplicationSection info="支持 JPEG 或 PNG，并作为主页第一张展示图。" title="上传店铺第一张展示图">
+            <ApplicationFileUpload accept="image/jpeg,image/png" file={showcaseImage} label={t("选择图片")} onChange={setShowcaseImage} />
+          </ApplicationSection>
+          <ApplicationSection className="overflow-hidden" info="按照店铺主页的正式组件实时预览申请资料。" title="主页效果预览">
             <div className="pointer-events-none max-h-[760px] overflow-hidden" aria-label={t("店铺服务展示预览")}><StoreDetailExperience embedded scope="user" store={draftStore} techniciansOverride={[]} /></div>
-          </ApplicationCard>
-          <ApplicationButton className="w-full" disabled={busy} onClick={() => void saveShowcase()}>{busy ? t("保存中") : t("下一步：银行与身份")}</ApplicationButton>
+          </ApplicationSection>
+          <ApplicationBottomAction>
+            <ApplicationButton className="w-full" disabled={busy} onClick={() => void saveShowcase()}>{busy ? t("保存中") : t("下一步：银行与身份")}</ApplicationButton>
+          </ApplicationBottomAction>
         </>
       ) : null}
 
