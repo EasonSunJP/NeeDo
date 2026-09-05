@@ -18,8 +18,6 @@ export interface SimulationIdentityGrant {
   isDefault: boolean;
 }
 
-export const SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX = "simulation-identity:";
-
 const positive = (value: number | undefined, label: string): number => {
   if (!value || !Number.isInteger(value) || value <= 0) {
     throw new Error(`Simulation identity matrix requires ${label}.`);
@@ -81,7 +79,8 @@ export const simulationIdentityActiveKey = (
   grant: Pick<SimulationIdentityGrant, "identityType" | "scopeType" | "scopeId">
 ): string =>
   [
-    `${SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX}${userId}`,
+    "simulation-identity",
+    userId,
     grant.identityType,
     grant.scopeType,
     grant.scopeId ?? "global"
