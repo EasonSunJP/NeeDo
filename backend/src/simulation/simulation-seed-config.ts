@@ -8,11 +8,6 @@ export interface SimulationSeedConfig {
   preserveExistingPasswords: boolean;
 }
 
-export const shouldRunFormalSeedEntrypoint = (
-  isMainModule: boolean,
-  env: Readonly<Record<string, string | undefined>>
-): boolean => isMainModule && env.ALLOW_STAGING_SIMULATION_SYNC !== "true";
-
 const requireValue = (value: string | undefined, name: string): string => {
   const normalized = value?.trim();
   if (!normalized) {
