@@ -291,8 +291,15 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
             displayReference:
               "displayReference" in input
                 ? input.displayReference
-                : (current?.displayReference ?? order.paymentRefundReference),
-            note: "note" in input ? input.note : (current?.note ?? order.paymentRefundReason),
+                : current
+                  ? current.displayReference
+                  : order.paymentRefundReference,
+            note:
+              "note" in input
+                ? input.note
+                : current
+                  ? current.note
+                  : order.paymentRefundReason,
             reason: input.reason,
             revisedById: input.actorId
           },

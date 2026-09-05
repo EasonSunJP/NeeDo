@@ -49,10 +49,10 @@ describe("PlatformPartnerRepository validity ranges", () => {
       platformPartnerProfile: { findMany, count }
     } as never);
 
-    await expect(repository.listUserProfiles({ userId: 88, page: 1, pageSize: 20 }))
+    await expect(repository.listUserProfiles({ userId: 88, page: 1, pageSize: 20, partnerType: "AGENT" }))
       .resolves.toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: 88, deletedAt: null },
+      where: { userId: 88, deletedAt: null, partnerType: "AGENT" },
       skip: 0,
       take: 20,
       orderBy: [{ activatedAt: "desc" }, { id: "desc" }]

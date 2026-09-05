@@ -569,7 +569,7 @@ const agentPath = (agentPublicId: string) =>
   `/backoffice/agents/${encodeURIComponent(agentPublicId)}`;
 
 export const platformPartnersApi = {
-  async listUserPartnerProfiles(userId: number, input: { page?: number; pageSize?: number } = {}) {
+  async listUserPartnerProfiles(userId: number, input: { page?: number; pageSize?: number; partnerType?: PartnerType } = {}) {
     return page(
       await httpClient.request<unknown>(`/backoffice/users/${userId}/partner-profiles`, {
         query: query(input)

@@ -10,22 +10,38 @@ import { UserFilters } from "./UserFilters";
 
 const pageSize = 20;
 const optionalNumber = (value: string | null) => value !== null && value !== "" && Number.isFinite(Number(value)) ? Number(value) : undefined;
+const optionalIsoDate = (value: string | null) => value && !Number.isNaN(Date.parse(value)) ? value : undefined;
+const valuesOrLegacy = (params: URLSearchParams, valuesKey: string, legacyKey: string) => {
+  const values = params.getAll(valuesKey).filter(Boolean);
+  const legacy = params.get(legacyKey);
+  return values.length ? values : legacy ? [legacy] : [];
+};
+
+type TopFilterDraft = Pick<UserListQuery, "keyword" | "tier" | "identityType" | "state" | "ekyc">;
+
+export function canonicalTopFilterQuery(query: UserListQuery, filters: TopFilterDraft): UserListQuery {
+  const { tier: _tier, identityType: _identityType, state: _state, ekyc: _ekyc, ...canonical } = query;
+  return {
+    ...canonical,
+    page: 1,
+    keyword: filters.keyword?.trim() || undefined,
+    tiers: filters.tier ? [filters.tier] : undefined,
+    identityTypes: filters.identityType ? [filters.identityType] : undefined,
+    states: filters.state ? [filters.state] : undefined,
+    ekycStates: filters.ekyc ? [filters.ekyc] : undefined
+  };
+}
 
 export function userDirectoryQuery(params: URLSearchParams): UserListQuery {
   return {
     page: Math.max(1, optionalNumber(params.get("page")) ?? 1),
     page_size: pageSize,
     keyword: params.get("keyword") || undefined,
-    tier: (params.get("tier") as PlatformTierCode | null) ?? undefined,
-    tiers: params.getAll("tiers") as PlatformTierCode[],
-    identityType: params.get("identityType") || undefined,
-    identityTypes: params.getAll("identityTypes"),
-    state: (params.get("state") as UserListQuery["state"]) || undefined,
-    states: params.getAll("states") as NonNullable<UserListQuery["states"]>,
-    ekyc: (params.get("ekyc") as UserListQuery["ekyc"]) || undefined,
-    ekycStates: params.getAll("ekycStates") as NonNullable<UserListQuery["ekycStates"]>,
-    city: params.get("city") || undefined,
-    cities: params.getAll("cities"),
+    tiers: valuesOrLegacy(params, "tiers", "tier") as PlatformTierCode[],
+    identityTypes: valuesOrLegacy(params, "identityTypes", "identityType"),
+    states: valuesOrLegacy(params, "states", "state") as NonNullable<UserListQuery["states"]>,
+    ekycStates: valuesOrLegacy(params, "ekycStates", "ekyc") as NonNullable<UserListQuery["ekycStates"]>,
+    city: params.get("city") || params.getAll("cities")[0] || undefined,
     emailState: (params.get("emailState") as UserListQuery["emailState"]) || undefined,
     emailStates: params.getAll("emailStates") as NonNullable<UserListQuery["emailStates"]>,
     privacy: (params.get("privacy") as UserListQuery["privacy"]) || undefined,
@@ -35,7 +51,9 @@ export function userDirectoryQuery(params: URLSearchParams): UserListQuery {
     minNdpBalance: optionalNumber(params.get("minNdpBalance")),
     maxNdpBalance: optionalNumber(params.get("maxNdpBalance")),
     sortBy: (params.get("sortBy") as UserListQuery["sortBy"]) || undefined,
-    sortDirection: (params.get("sortDirection") as UserListQuery["sortDirection"]) || undefined
+    sortDirection: (params.get("sortDirection") as UserListQuery["sortDirection"]) || undefined,
+    registeredFrom: optionalIsoDate(params.get("registeredFrom")),
+    registeredTo: optionalIsoDate(params.get("registeredTo"))
   };
 }
 
@@ -77,7 +95,18 @@ export function UnifiedUserDirectory({ scope, onSelect }: { scope: UserDirectory
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1;
 
   return <div className="space-y-4">
-    <UserFilters language={language} onReset={reset} onSubmit={(filters) => updateQuery({ ...query, ...filters, page: 1 })} value={{ keyword: query.keyword, tier: query.tier, identityType: query.identityType, state: query.state, ekyc: query.ekyc }} />
+    <UserFilters
+      language={language}
+      onReset={reset}
+      onSubmit={(filters) => updateQuery(canonicalTopFilterQuery(query, filters))}
+      value={{
+        keyword: query.keyword,
+        tier: query.tiers?.[0],
+        identityType: query.identityTypes?.[0],
+        state: query.states?.[0],
+        ekyc: query.ekycStates?.[0]
+      }}
+    />
     <section className="overflow-hidden rounded-xl border border-line bg-white shadow-sm">
       {state.loading ? <div className="p-10 text-center text-sm font-bold text-ink/50">{copy.loading}</div> : null}
       {state.error ? <div className="p-10 text-center"><p className="text-sm font-bold text-coral">{state.error}</p><Button className="mt-4" onClick={() => setReloadToken((value) => value + 1)} variant="secondary">{copy.retry}</Button></div> : null}

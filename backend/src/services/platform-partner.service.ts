@@ -146,6 +146,10 @@ export interface AgentListInput extends PaginationInput {
   status?: PlatformPartnerStatus;
 }
 
+export interface PlatformPartnerHistoryInput extends PaginationInput {
+  partnerType?: PlatformPartnerType;
+}
+
 export interface LinkAgentShopInput {
   shopPublicId: string;
   source: string;
@@ -183,7 +187,7 @@ export interface PlatformPartnerRepositoryPort {
     reason: string;
     audit: AuditLogCreateInput;
   }) => Promise<MarkPartnerProfileRepositoryResult>;
-  listUserProfiles: (input: PaginationInput & { userId: number }) => Promise<PaginatedResponse<PlatformPartnerProfileRecord>>;
+  listUserProfiles: (input: PaginationInput & { userId: number; partnerType?: PlatformPartnerTypeRecord }) => Promise<PaginatedResponse<PlatformPartnerProfileRecord>>;
   listAgents: (input: AgentListInput) => Promise<PaginatedResponse<AgentProfileListRecord>>;
   listAgentShopReferrals: (
     input: AgentShopReferralListInput
@@ -264,9 +268,14 @@ export class PlatformPartnerService {
 
   public async listUserProfiles(
     userId: number,
-    input: PaginationInput
+    input: PlatformPartnerHistoryInput
   ): Promise<PaginatedResponse<PlatformPartnerProfilePayload>> {
-    const page = await this.repository.listUserProfiles({ userId, ...input });
+    const page = await this.repository.listUserProfiles({
+      userId,
+      page: input.page,
+      pageSize: input.pageSize,
+      ...(input.partnerType ? { partnerType: partnerTypeToRecord[input.partnerType] } : {})
+    });
     return { ...page, list: page.list.map((record) => this.serializeProfile(record)) };
   }
 

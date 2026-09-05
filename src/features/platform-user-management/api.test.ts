@@ -49,12 +49,14 @@ describe("platformUserManagementApi", () => {
       page: 2,
       page_size: 20,
       city: "Tokyo",
-      privacy: "enabled",
+      privacyScopes: ["enabled"],
       tiers: ["silver", "gold"],
       minBookings: 10,
       maxBookings: 50,
       sortBy: "city",
-      sortDirection: "desc"
+      sortDirection: "desc",
+      registeredFrom: "2026-09-01T00:00:00.000Z",
+      registeredTo: "2026-09-30T23:59:59.999Z"
     });
 
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users", {
@@ -62,12 +64,14 @@ describe("platformUserManagementApi", () => {
         page: 2,
         pageSize: 20,
         city: "Tokyo",
-        privacy: "enabled",
+        privacyScopes: ["enabled"],
         tiers: ["silver", "gold"],
         minBookings: 10,
         maxBookings: 50,
         sortBy: "city",
-        sortDirection: "desc"
+        sortDirection: "desc",
+        registeredFrom: "2026-09-01T00:00:00.000Z",
+        registeredTo: "2026-09-30T23:59:59.999Z"
       }
     });
   });

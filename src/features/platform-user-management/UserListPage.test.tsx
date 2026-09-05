@@ -11,6 +11,7 @@ describe("formal all-user workspace", () => {
     expect(filtersSource).toContain("onSubmit");
     expect(directorySource).toContain("setSearchParams");
     expect(directorySource).toContain("page_size: pageSize");
+    expect(source).toContain('readPositiveIntegerSearchParam(searchParams, "detailUserId")');
   });
 
   it("renders explicit loading, empty, retry and bounded account facts", () => {

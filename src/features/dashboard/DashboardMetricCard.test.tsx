@@ -110,6 +110,9 @@ describe("DashboardMetricCard", () => {
 
     expect(markup).toContain('data-dashboard-sparkline="true"');
     expect(markup.match(/data-dashboard-sparkline-node="true"/g)).toHaveLength(3);
+    expect(markup).toContain("新增用户");
+    expect(markup).toContain("09-01");
+    expect(markup).toContain("3 人");
   });
 
   it.each([

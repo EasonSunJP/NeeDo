@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   backofficeRealDataApi,
   type AnalyticsRankingKind,
+  type AnalyticsRankingItem,
   type AnalyticsRankingMetric,
   type AnalyticsRankingPayload,
   type DashboardQuery
@@ -16,6 +17,7 @@ type RankingCategory = { id: number; name: string };
 export type AnalyticsRankingPanelProps = {
   categories?: RankingCategory[];
   kind: AnalyticsRankingKind;
+  onOpenDetail: (item: AnalyticsRankingItem) => void;
   query: DashboardQuery;
   title: string;
 };
@@ -33,6 +35,7 @@ function rankingErrorSource(error: unknown) {
 export function AnalyticsRankingPanel({
   categories = [],
   kind,
+  onOpenDetail,
   query,
   title
 }: AnalyticsRankingPanelProps) {
@@ -143,32 +146,40 @@ export function AnalyticsRankingPanel({
       {payload?.list.length ? (
         <ol className="divide-y divide-line px-4">
           {payload.list.map((item) => (
-            <li className="grid grid-cols-[2rem_2.5rem_minmax(0,1fr)_auto] items-center gap-3 py-3" key={`${item.entityType}:${item.entityPublicId}`}>
-              <strong className={`text-xl font-black ${item.rank <= 3 ? "text-moss" : "text-ink/35"}`} data-no-i18n>{item.rank}</strong>
-              {item.avatarUrl ? (
-                <img alt="" className="h-10 w-10 rounded-full object-cover" src={item.avatarUrl} />
-              ) : (
-                <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full bg-paper text-sm font-black text-ink/55">{item.displayName.slice(0, 1)}</span>
-              )}
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <p className="truncate text-sm font-black text-ink" data-no-i18n>{item.displayName}</p>
-                  {item.dataComposition === "formal" ? null : (
-                    <DashboardTestBadge
-                      ariaLabel={t(
-                        item.dataComposition === "mixed"
-                          ? "排行榜合计包含测试订单"
-                          : "排行榜数据来自测试订单"
-                      )}
-                    />
-                  )}
+            <li key={`${item.entityType}:${item.entityPublicId}`}>
+              <button
+                aria-label={`${t("查看详细数据")}：${item.displayName}`}
+                className="grid w-full grid-cols-[2rem_2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg py-3 text-left transition hover:bg-paper/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/45"
+                data-ranking-detail-control="true"
+                onClick={() => onOpenDetail(item)}
+                type="button"
+              >
+                <strong className={`text-xl font-black ${item.rank <= 3 ? "text-moss" : "text-ink/35"}`} data-no-i18n>{item.rank}</strong>
+                {item.avatarUrl ? (
+                  <img alt="" className="h-10 w-10 rounded-full object-cover" src={item.avatarUrl} />
+                ) : (
+                  <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full bg-paper text-sm font-black text-ink/55">{item.displayName.slice(0, 1)}</span>
+                )}
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-black text-ink" data-no-i18n>{item.displayName}</p>
+                    {item.dataComposition === "formal" ? null : (
+                      <DashboardTestBadge
+                        ariaLabel={t(
+                          item.dataComposition === "mixed"
+                            ? "排行榜合计包含测试订单"
+                            : "排行榜数据来自测试订单"
+                        )}
+                      />
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs font-bold text-ink/40" data-no-i18n>{item.entityPublicId}</p>
                 </div>
-                <p className="mt-1 text-xs font-bold text-ink/40" data-no-i18n>{item.entityPublicId}</p>
-              </div>
-              <div className="text-right">
-                <strong className={`block text-sm font-black ${metric === "gmv" ? "text-moss" : "text-ink/55"}`} data-no-i18n>{currency.format(item.gmvJpy)}</strong>
-                <span className={`mt-1 block text-xs font-black ${metric === "completedCount" ? "text-moss" : "text-ink/45"}`} data-no-i18n>{item.completedCount} {t("单")}</span>
-              </div>
+                <div className="text-right">
+                  <strong className={`block text-sm font-black ${metric === "gmv" ? "text-moss" : "text-ink/55"}`} data-no-i18n>{currency.format(item.gmvJpy)}</strong>
+                  <span className={`mt-1 block text-xs font-black ${metric === "completedCount" ? "text-moss" : "text-ink/45"}`} data-no-i18n>{item.completedCount} {t("单")}</span>
+                </div>
+              </button>
             </li>
           ))}
         </ol>

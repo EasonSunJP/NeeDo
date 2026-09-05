@@ -155,7 +155,7 @@ function ServerColumnHeader({
       onDateRangeChange={(from, to) => datePatch && commit(datePatch(from, to))}
       onOpenChange={() => setOpenKey(openKey === columnKey ? null : columnKey)}
       onSearchChange={(next) => searchPatch && commit(searchPatch(next))}
-      onSort={setSort}
+      onSort={sortKey ? setSort : undefined}
       onToggleAll={toggleAll}
       onToggleValue={toggleValue}
       searchValue={searchValue}
@@ -181,9 +181,6 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
     { value: "limited", label: privacyScopeText("limited", language) },
     { value: "network", label: privacyScopeText("network", language) }
   ];
-  const cityOptions = Array.from(new Set(rows.map((row) => row.city).filter((city): city is string => Boolean(city))))
-    .sort((left, right) => left.localeCompare(right, language))
-    .map((value) => ({ value, label: value }));
   const activeRange = <TMin extends keyof UserListQuery, TMax extends keyof UserListQuery>(
     ranges: Record<string, Pick<UserListQuery, TMin | TMax>>,
     minKey: TMin,
@@ -196,7 +193,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
         <thead className="bg-paper text-xs text-ink/55"><tr>
           <ServerColumnHeader {...headerProps} columnKey="user" searchPatch={(keyword) => ({ keyword: keyword.trim() || undefined })} searchValue={query.keyword ?? ""} sortKey="displayName" title={copy.user} />
           <ServerColumnHeader {...headerProps} columnKey="email" multiFilterPatch={(emailStates) => ({ emailStates: emailStates as UserListQuery["emailStates"] })} options={[{ value: "set", label: copy.bound }, { value: "unset", label: copy.unbound }]} sortKey="email" title={translateText("邮箱", language)} values={query.emailStates} />
-          <ServerColumnHeader {...headerProps} columnKey="city" multiFilterPatch={(cities) => ({ cities })} options={cityOptions} searchPatch={(city) => ({ city: city.trim() || undefined })} searchValue={query.city ?? ""} sortKey="city" title={translateText("城市", language)} values={query.cities} />
+          <ServerColumnHeader {...headerProps} columnKey="city" searchPatch={(city) => ({ city: city.trim() || undefined, cities: undefined })} searchValue={query.city ?? ""} sortKey="city" title={translateText("城市", language)} />
           <ServerColumnHeader {...headerProps} columnKey="identities" multiFilterPatch={(identityTypes) => ({ identityTypes })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "shop_owner", label: translateText("商户", language) }, { value: "admin", label: translateText("运营", language) }]} title={copy.identities} values={query.identityTypes} />
           <ServerColumnHeader {...headerProps} columnKey="membership" multiFilterPatch={(tiers) => ({ tiers: tiers as UserListQuery["tiers"] })} options={tierOptions} title={copy.membership} values={query.tiers} />
           <ServerColumnHeader {...headerProps} columnKey="bookings" filterPatch={(range) => ({ minBookings: range ? bookingRanges[range]?.minBookings : undefined, maxBookings: range ? bookingRanges[range]?.maxBookings : undefined })} options={Object.keys(bookingRanges).map((value) => ({ value, label: value }))} title={copy.bookings} value={activeBookingRange(query)} />
@@ -204,7 +201,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
           <ServerColumnHeader {...headerProps} columnKey="ekyc" multiFilterPatch={(ekycStates) => ({ ekycStates: ekycStates as UserListQuery["ekycStates"] })} options={[{ value: "verified", label: copy.verified }, { value: "unverified", label: copy.unverified }]} title={copy.ekyc} values={query.ekycStates} />
           <ServerColumnHeader {...headerProps} columnKey="ndp" filterPatch={(range) => ({ minNdpBalance: range ? ndpRanges[range]?.minNdpBalance : undefined, maxNdpBalance: range ? ndpRanges[range]?.maxNdpBalance : undefined })} options={Object.keys(ndpRanges).map((value) => ({ value, label: value }))} title={copy.ndpBalance} value={activeRange(ndpRanges, "minNdpBalance", "maxNdpBalance")} />
           <ServerColumnHeader {...headerProps} columnKey="state" multiFilterPatch={(states) => ({ states: states as UserListQuery["states"] })} options={[{ value: "active", label: copy.active }, { value: "inactive", label: copy.inactive }]} title={copy.status} values={query.states} />
-          <ServerColumnHeader {...headerProps} columnKey="createdAt" dateFrom={query.registeredFrom?.slice(0, 10) ?? ""} datePatch={(from, to) => ({ registeredFrom: from ? new Date(`${from}T00:00:00`).toISOString() : undefined, registeredTo: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined })} dateTo={query.registeredTo?.slice(0, 10) ?? ""} sortKey="createdAt" title={copy.registeredAt} />
+          <ServerColumnHeader {...headerProps} columnKey="createdAt" dateFrom={query.registeredFrom?.slice(0, 10) ?? ""} datePatch={(from, to) => ({ registeredFrom: from ? `${from}T00:00:00.000Z` : undefined, registeredTo: to ? `${to}T23:59:59.999Z` : undefined })} dateTo={query.registeredTo?.slice(0, 10) ?? ""} sortKey="createdAt" title={copy.registeredAt} />
           <th className="px-4 py-3 font-black">{copy.details}</th>
         </tr></thead>
         <tbody className="divide-y divide-line">{rows.map((row) => (

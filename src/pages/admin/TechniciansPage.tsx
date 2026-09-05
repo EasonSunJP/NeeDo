@@ -25,13 +25,15 @@ import {
   hasFormalDetailRefreshFailure,
   runFormalDetailMutationSequence
 } from "./formalDetailRequest";
+import { readPositiveIntegerSearchParam } from "./adminSearchParams";
 
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 export function TechniciansPage() {
   const { language } = useOptionalI18n();
   const translate = useCallback((text: string) => translateText(text, language), [language]);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const detailTechnicianId = readPositiveIntegerSearchParam(searchParams, "detailTechnicianId");
   const isReviewMode = searchParams.get("module") === "review";
   const isRankingMode = searchParams.get("module") === "ranking";
   const languageRef = useRef(language);
@@ -108,6 +110,14 @@ export function TechniciansPage() {
     return () => technicianDetailRequest.dispose();
   }, [technicianDetailRequest]);
 
+  useEffect(() => {
+    if (detailTechnicianId === null) return;
+    setSelectedTechnicianId(detailTechnicianId);
+    setSelectedRanking(null);
+    setDraft({ displayName: "", city: "", serviceArea: "", shopId: "" });
+    void technicianDetailRequest.load(detailTechnicianId);
+  }, [detailTechnicianId, technicianDetailRequest]);
+
   const closeTechnician = useCallback(() => {
     technicianDetailRequest.invalidate();
     setSelectedTechnicianId(null);
@@ -115,7 +125,10 @@ export function TechniciansPage() {
     setTechnicianDetail(null);
     setTechnicianDetailLoading(false);
     setTechnicianDetailError("");
-  }, [technicianDetailRequest]);
+    const params = new URLSearchParams(searchParams);
+    params.delete("detailTechnicianId");
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams, technicianDetailRequest]);
 
   useEffect(() => { void load(); }, [load]);
 

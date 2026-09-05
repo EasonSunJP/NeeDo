@@ -392,7 +392,10 @@ describe("operations unified data dashboard", () => {
 
   it("renders the three formal Top10 rankings after the comprehensive overview", () => {
     expect(source).toContain('import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";');
-    expect(source).toContain("<AnalyticsRankingsSection query={committedQuery} />");
+    expect(source).toContain('import { buildAnalyticsRankingDetailLocation } from "../../features/dashboard/analyticsRankingDetailRoute";');
+    expect(source).toContain("<AnalyticsRankingsSection");
+    expect(source).toContain("onOpenDetail={(item) => navigate(buildAnalyticsRankingDetailLocation(item))}");
+    expect(source).toContain("query={committedQuery}");
   });
 
   it("renders exactly the five requested headline comparisons", () => {

@@ -119,7 +119,13 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
     identities: {
       where:
         scope.scope === "merchant"
-          ? { deletedAt: null, scopeType: "shop", scopeId: scope.shopId }
+          ? {
+              deletedAt: null,
+              OR: [
+                { scopeType: "shop", scopeId: scope.shopId },
+                { scopeType: "customer_profile", type: "customer" }
+              ]
+            }
           : { deletedAt: null },
       orderBy: [{ isDefault: "desc" }, { id: "asc" }],
       select: { type: true, displayName: true, scopeType: true, scopeId: true }
@@ -128,7 +134,14 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
       where: {
         deletedAt: null,
         role: { deletedAt: null },
-        ...(scope.scope === "merchant" ? { scopeType: "shop", scopeId: scope.shopId } : {})
+        ...(scope.scope === "merchant"
+          ? {
+              OR: [
+                { scopeType: "shop", scopeId: scope.shopId },
+                { scopeType: "customer_profile", role: { code: "customer" } }
+              ]
+            }
+          : {})
       },
       orderBy: [{ roleId: "asc" }, { id: "asc" }],
       select: {
@@ -2267,7 +2280,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const visibleIdentities =
       scope.scope === "merchant"
         ? user.identities.filter(
-            (identity) => identity.scopeType === "shop" && identity.scopeId === scope.shopId
+            (identity) =>
+              (identity.scopeType === "shop" && identity.scopeId === scope.shopId) ||
+              (identity.scopeType === "customer_profile" && identity.type === "customer")
           )
         : user.identities;
     const operationMember = visibleRoles.some((assignment) =>
@@ -2337,7 +2352,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private visibleRoleAssignments(user: ManagedUserRecord, scope: BackofficeScope) {
     return scope.scope === "merchant"
       ? user.userRoles.filter(
-          (assignment) => assignment.scopeType === "shop" && assignment.scopeId === scope.shopId
+          (assignment) =>
+            (assignment.scopeType === "shop" && assignment.scopeId === scope.shopId) ||
+            (assignment.scopeType === "customer_profile" && assignment.role.code === "customer")
         )
       : user.userRoles;
   }

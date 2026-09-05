@@ -30,6 +30,7 @@ import {
 import { useI18n } from "../../i18n/I18nProvider";
 import { startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { yen } from "../../lib/utils";
+import { readPositiveIntegerSearchParam } from "./adminSearchParams";
 
 const tabs = ["店铺列表", "入驻审核", "服务项目", "店铺分类"];
 const emptyShopForm: BackofficeShopCreateInput = {
@@ -54,9 +55,17 @@ const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 
 export function MerchantsPage() {
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const detailServiceId = readPositiveIntegerSearchParam(searchParams, "detailServiceId");
+  const detailServiceType = searchParams.get("detailServiceType");
   const navigate = useNavigate();
-  const [active, setActive] = useState(searchParams.get("module") === "categories" ? "店铺分类" : "店铺列表");
+  const [active, setActive] = useState(
+    searchParams.get("module") === "categories"
+      ? "店铺分类"
+      : searchParams.get("module") === "services"
+        ? "服务项目"
+        : "店铺列表"
+  );
   const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
   const [services, setServices] = useState<BackofficeServicePayload[]>([]);
   const [categories, setCategories] = useState<CoreCategory[]>([]);
@@ -133,7 +142,7 @@ export function MerchantsPage() {
     void mutate(async () => setSelectedShop(await backofficeRealDataApi.updateShop(selectedShop.id, shopDraft)));
   };
 
-  const openService = (service: BackofficeServicePayload) => {
+  const openService = useCallback((service: BackofficeServicePayload) => {
     setSelectedService(service);
     setServiceDraft({
       categoryId: service.categoryId,
@@ -148,6 +157,29 @@ export function MerchantsPage() {
       isRecommended: service.isRecommended,
       sortOrder: service.sortOrder
     });
+  }, []);
+
+  useEffect(() => {
+    if (detailServiceId === null) return;
+    setActive("服务项目");
+    if (detailServiceType !== "service") {
+      if (!loading) setError("当前技师服务不属于店铺服务详情范围");
+      return;
+    }
+    const service = services.find((service) => service.id === detailServiceId);
+    if (service) {
+      openService(service);
+    } else if (!loading) {
+      setError("未找到可访问的正式服务项目");
+    }
+  }, [detailServiceId, detailServiceType, loading, openService, services]);
+
+  const closeService = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("detailServiceId");
+    params.delete("detailServiceType");
+    setSearchParams(params, { replace: true });
+    setSelectedService(null);
   };
 
   const createService = (event: FormEvent<HTMLFormElement>) => {
@@ -343,7 +375,7 @@ export function MerchantsPage() {
         </div> : null}
       </Drawer>
 
-      <Drawer open={Boolean(selectedService)} title="服务项目详情" onClose={() => setSelectedService(null)}>
+      <Drawer open={Boolean(selectedService)} title="服务项目详情" onClose={closeService}>
         {selectedService ? <div className="space-y-5">
           <DetailGrid items={[{ label: "服务 ID", value: selectedService.id }, { label: "店铺 ID", value: selectedService.shopId }, { label: "创建时间", value: selectedService.createdAt }, { label: "更新时间", value: selectedService.updatedAt }]} />
           <label className="block"><span className="mb-2 block text-sm font-black">分类</span><select className={inputClassName} onChange={(event) => setServiceDraft((current) => ({ ...current, categoryId: Number(event.target.value) }))} value={serviceDraft.categoryId}><option value={0}>请选择分类</option>{categories.filter((category) => category.isActive).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
@@ -355,7 +387,7 @@ export function MerchantsPage() {
             <label className="block"><span className="mb-2 block text-sm font-black">价格（日元）</span><input className={inputClassName} min={0} onChange={(event) => setServiceDraft((current) => ({ ...current, priceAmount: Number(event.target.value) }))} type="number" value={serviceDraft.priceAmount} /></label>
             <label className="block"><span className="mb-2 block text-sm font-black">时长（分钟）</span><input className={inputClassName} min={1} onChange={(event) => setServiceDraft((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} type="number" value={serviceDraft.durationMinutes} /></label>
           </div>
-          <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={saveService}>保存服务</Button><Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteService("backoffice", selectedService.id); setSelectedService(null); })} variant="danger">软删除服务</Button></div>
+          <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={saveService}>保存服务</Button><Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteService("backoffice", selectedService.id); closeService(); })} variant="danger">软删除服务</Button></div>
         </div> : null}
       </Drawer>
     </AdminLayout>

@@ -53,4 +53,19 @@ describe("PlatformPartnerRangeEditor", () => {
     expect(ends[1]?.disabled).toBe(true);
     expect(ends[2]?.disabled).toBe(false);
   });
+
+  it("loads and paginates immutable history independently for each partner type", async () => {
+    state.listUserPartnerProfiles.mockImplementation(async (_userId, input) => ({
+      list: [], total: input.partnerType === "agent" ? 25 : 0, page: input.page ?? 1, page_size: 20
+    }));
+
+    await act(async () => root.render(<PlatformPartnerRangeEditor userId={41} />));
+
+    expect(state.listUserPartnerProfiles).toHaveBeenCalledWith(41, { partnerType: "agent", page: 1, pageSize: 20 });
+    expect(state.listUserPartnerProfiles).toHaveBeenCalledWith(41, { partnerType: "franchisee", page: 1, pageSize: 20 });
+    expect(state.listUserPartnerProfiles).toHaveBeenCalledWith(41, { partnerType: "supplier", page: 1, pageSize: 20 });
+    const next = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "下一页");
+    await act(async () => next?.click());
+    expect(state.listUserPartnerProfiles).toHaveBeenCalledWith(41, { partnerType: "agent", page: 2, pageSize: 20 });
+  });
 });

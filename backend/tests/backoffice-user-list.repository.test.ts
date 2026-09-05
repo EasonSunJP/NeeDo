@@ -190,12 +190,22 @@ describe("BackofficeRepository managed users", () => {
           name: "Current shop staff",
           rolePermissions: [{ permission: { code: "shop:customers:read" } }]
         }
+      },
+      {
+        scopeType: "customer_profile",
+        scopeId: 7,
+        role: {
+          code: "customer",
+          name: "Customer",
+          rolePermissions: [{ permission: { code: "customer:profile:read" } }]
+        }
       }
       ],
       identities: [
         { type: "operations", displayName: "Global operator", scopeType: "global", scopeId: null },
         { type: "merchant", displayName: "Other shop", scopeType: "shop", scopeId: 22 },
-        { type: "merchant", displayName: "Current shop", scopeType: "shop", scopeId: 11 }
+        { type: "merchant", displayName: "Current shop", scopeType: "shop", scopeId: 11 },
+        { type: "customer", displayName: "Mia", scopeType: "customer_profile", scopeId: 7 }
       ],
       backofficeUserGroupMemberships: [{ group: { code: "operations-secret" } }]
     };
@@ -256,14 +266,20 @@ describe("BackofficeRepository managed users", () => {
         usageCount: 3,
         credit: { ratingAverage: 4.5, reviewCount: 2 }
       },
-      identities: [expect.objectContaining({ displayName: "Current shop" })],
-      roles: [{ code: "shop_staff", name: "Current shop staff" }],
+      identities: [
+        expect.objectContaining({ displayName: "Current shop" }),
+        expect.objectContaining({ type: "customer", displayName: "Mia" })
+      ],
+      roles: [
+        { code: "shop_staff", name: "Current shop staff" },
+        { code: "customer", name: "Customer" }
+      ],
       groups: ["system:gold"],
       account: {
-        roles: [expect.objectContaining({
-          code: "shop_staff",
-          permissions: ["shop:customers:read"]
-        })]
+        roles: [
+          expect.objectContaining({ code: "shop_staff", permissions: ["shop:customers:read"] }),
+          expect.objectContaining({ code: "customer", permissions: ["customer:profile:read"] })
+        ]
       }
     });
     expect(JSON.stringify(detail)).not.toMatch(
@@ -272,10 +288,22 @@ describe("BackofficeRepository managed users", () => {
     expect(findFirstInput).toEqual(expect.objectContaining({
       select: expect.objectContaining({
         identities: expect.objectContaining({
-          where: { deletedAt: null, scopeType: "shop", scopeId: 11 }
+          where: {
+            deletedAt: null,
+            OR: [
+              { scopeType: "shop", scopeId: 11 },
+              { scopeType: "customer_profile", type: "customer" }
+            ]
+          }
         }),
         userRoles: expect.objectContaining({
-          where: expect.objectContaining({ deletedAt: null, scopeType: "shop", scopeId: 11 })
+          where: expect.objectContaining({
+            deletedAt: null,
+            OR: [
+              { scopeType: "shop", scopeId: 11 },
+              { scopeType: "customer_profile", role: { code: "customer" } }
+            ]
+          })
         })
       })
     }));

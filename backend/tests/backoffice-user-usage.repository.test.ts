@@ -129,4 +129,40 @@ describe("BackofficeUserUsageRepository", () => {
       amendmentVersion: 1
     });
   });
+
+  it("inherits an explicitly cleared reference when a later amendment only changes the note", async () => {
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 88 }]),
+      bookingOrder: {
+        findFirst: jest.fn(async () => ({
+          id: 88,
+          paymentStatus: "REFUNDED",
+          paymentRefundedAt: new Date("2026-09-01T00:00:00.000Z"),
+          paymentRefundReference: "RF-ORIGINAL",
+          paymentRefundReason: "Original reason",
+          refundAmendments: [{ version: 1, displayReference: null, note: null }]
+        }))
+      },
+      orderRefundAmendment: { create: jest.fn(async () => ({ id: 203, version: 2 })) },
+      auditLog: { create: jest.fn(async () => ({})) }
+    };
+    const repository = new BackofficeUserUsageRepository({
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
+    } as never);
+
+    await repository.createRefundAmendmentWithAudit({
+      actorId: 9,
+      orderId: 88,
+      note: "Follow-up note",
+      reason: "Customer confirmation",
+      expectedVersion: 1,
+      audit: { actorId: 9, action: "refund.amend", targetType: "OrderRefundAmendment" }
+    });
+
+    expect(transaction.orderRefundAmendment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ displayReference: null, note: "Follow-up note" })
+      })
+    );
+  });
 });

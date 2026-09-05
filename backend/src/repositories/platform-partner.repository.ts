@@ -214,9 +214,14 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
     userId: number;
     page?: number;
     pageSize?: number;
+    partnerType?: PlatformPartnerTypeRecord;
   }) {
     const pagination = toPrismaPagination(input);
-    const where = { userId: input.userId, deletedAt: null } satisfies Prisma.PlatformPartnerProfileWhereInput;
+    const where = {
+      userId: input.userId,
+      deletedAt: null,
+      ...(input.partnerType ? { partnerType: input.partnerType } : {})
+    } satisfies Prisma.PlatformPartnerProfileWhereInput;
     const [rows, total] = await Promise.all([
       this.client.platformPartnerProfile.findMany({
         where,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
 import { cn } from "../../lib/utils";
-import { translateText, type Language } from "../../i18n/translations";
+import type { Language } from "../../i18n/translations";
 
 export type TableSortDirection = "asc" | "desc";
 export type TableColumnHeaderApplyPayload = {
@@ -11,6 +11,24 @@ export type TableColumnHeaderApplyPayload = {
   sortDirection?: TableSortDirection;
   dateFrom?: string;
   dateTo?: string;
+};
+
+const tableHeaderCopy: Record<Language, {
+  control: string;
+  sort: string;
+  filter: string;
+  search: string;
+  selectAll: string;
+  noMatches: string;
+  autoApply: string;
+  apply: string;
+  clear: string;
+}> = {
+  zh: { control: "排序与筛选", sort: "排序", filter: "筛选", search: "搜索", selectAll: "全选", noMatches: "无匹配选项", autoApply: "自动应用", apply: "应用", clear: "清除筛选" },
+  "zh-Hant": { control: "排序與篩選", sort: "排序", filter: "篩選", search: "搜尋", selectAll: "全選", noMatches: "無符合選項", autoApply: "自動套用", apply: "套用", clear: "清除篩選" },
+  ja: { control: "並び替えとフィルター", sort: "並び替え", filter: "フィルター", search: "検索", selectAll: "すべて選択", noMatches: "一致する選択肢はありません", autoApply: "自動適用", apply: "適用", clear: "フィルターを解除" },
+  en: { control: "Sort and filter", sort: "Sort", filter: "Filter", search: "Search", selectAll: "Select all", noMatches: "No matching options", autoApply: "Auto apply", apply: "Apply", clear: "Clear filter" },
+  ko: { control: "정렬 및 필터", sort: "정렬", filter: "필터", search: "검색", selectAll: "모두 선택", noMatches: "일치하는 항목 없음", autoApply: "자동 적용", apply: "적용", clear: "필터 해제" }
 };
 
 function normalizeSelectedValues(values: string[], filterOptions: string[]) {
@@ -68,12 +86,13 @@ export function TableColumnHeader({
   onApply: (payload: TableColumnHeaderApplyPayload) => void;
   onOpenChange: () => void;
   onSearchChange: (value: string) => void;
-  onSort: (direction: TableSortDirection) => void;
+  onSort?: (direction: TableSortDirection) => void;
   onToggleAll: (visibleOptions: string[]) => void;
   onToggleValue: (value: string) => void;
   onDateRangeChange?: (from: string, to: string) => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const copy = tableHeaderCopy[uiLanguage];
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; maxHeight: number; top: number } | null>(null);
   const [autoApply, setAutoApply] = useState(true);
   const [draftSearchValue, setDraftSearchValue] = useState(searchValue);
@@ -89,13 +108,13 @@ export function TableColumnHeader({
   );
   const selectedVisibleCount = visibleOptions.filter((option) => selectedSet.has(option)).length;
   const allVisibleSelected = visibleOptions.length > 0 && selectedVisibleCount === visibleOptions.length;
-  const hasFilter = selectedValues.length !== filterOptions.length || Boolean(dateFrom || dateTo);
+  const hasFilter = selectedValues.length !== filterOptions.length || Boolean(searchValue || dateFrom || dateTo);
   const appliedSelectedValues = useMemo(() => normalizeSelectedValues(selectedValues, filterOptions), [filterOptions, selectedValues]);
   const normalizedDraftSelectedValues = useMemo(() => normalizeSelectedValues(draftSelectedValues, filterOptions), [draftSelectedValues, filterOptions]);
   const hasManualChanges =
     !autoApply &&
     (draftSearchValue !== searchValue ||
-      draftSortDirection !== sortDirection ||
+      (Boolean(onSort) && draftSortDirection !== sortDirection) ||
       !areSameSelectedValues(normalizedDraftSelectedValues, appliedSelectedValues));
   const hasDateChanges = !autoApply && (draftDateFrom !== dateFrom || draftDateTo !== dateTo);
   const updatePopoverPosition = useCallback(() => {
@@ -188,6 +207,7 @@ export function TableColumnHeader({
   };
 
   const handleSort = (direction: TableSortDirection) => {
+    if (!onSort) return;
     setDraftSortDirection(direction);
 
     if (autoApply) {
@@ -262,8 +282,8 @@ export function TableColumnHeader({
         width: 292
       }}
     >
-      <div className="space-y-2">
-        <p className="text-xs font-black text-ink/65">{translateText("排序", uiLanguage)}</p>
+      {onSort ? <div className="space-y-2">
+        <p className="text-xs font-black text-ink/65">{copy.sort}</p>
         <div className="grid grid-cols-2 gap-2">
           <button className={cn("needo-table-filter-sort-button", draftSortDirection === "asc" && "is-active")} onClick={() => handleSort("asc")} type="button">
             A→Z
@@ -272,22 +292,22 @@ export function TableColumnHeader({
             Z→A
           </button>
         </div>
-      </div>
+      </div> : null}
       <div className="mt-3 border-t border-line pt-3">
-        <p className="text-xs font-black text-ink/65">{translateText("筛选器", uiLanguage)}</p>
+        <p className="text-xs font-black text-ink/65">{copy.filter}</p>
         <label className="needo-table-filter-search mt-2">
           <span className="text-ink/45">⌕</span>
           <input
             className="min-w-0 flex-1 bg-transparent text-xs font-bold text-ink outline-none placeholder:text-ink/35"
             onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder={translateText("搜索", uiLanguage)}
+            placeholder={copy.search}
             value={draftSearchValue}
           />
         </label>
-        <div className="needo-table-filter-option-list mt-2">
+        {filterOptions.length ? <div className="needo-table-filter-option-list mt-2">
           <label className="needo-table-filter-option">
             <input checked={allVisibleSelected} disabled={visibleOptions.length === 0} onChange={handleToggleAll} type="checkbox" />
-            <span>（{translateText("全选", uiLanguage)}）</span>
+            <span>（{copy.selectAll}）</span>
             <span className="ml-auto text-ink/35">{selectedVisibleCount}/{visibleOptions.length}</span>
           </label>
           {visibleOptions.map((option) => (
@@ -296,27 +316,27 @@ export function TableColumnHeader({
               <span className="min-w-0 truncate">{option}</span>
             </label>
           ))}
-          {visibleOptions.length === 0 ? <div className="px-2 py-4 text-center text-xs font-bold text-ink/45">{translateText("无匹配选项", uiLanguage)}</div> : null}
-        </div>
+          {visibleOptions.length === 0 ? <div className="px-2 py-4 text-center text-xs font-bold text-ink/45">{copy.noMatches}</div> : null}
+        </div> : null}
         {onDateRangeChange ? <div className="mt-2 grid grid-cols-2 gap-2"><input aria-label="from" className="h-9 rounded-lg border border-line bg-white px-2 text-xs" onChange={(event) => handleDateChange(event.target.value, draftDateTo)} type="date" value={draftDateFrom} /><input aria-label="to" className="h-9 rounded-lg border border-line bg-white px-2 text-xs" onChange={(event) => handleDateChange(draftDateFrom, event.target.value)} type="date" value={draftDateTo} /></div> : null}
         <div className="mt-3 flex items-center justify-between gap-2">
           <label className="inline-flex items-center gap-2 text-xs font-bold text-ink/60">
             <input checked={autoApply} onChange={(event) => handleAutoApplyChange(event.target.checked)} type="checkbox" />
-            {translateText("自动应用", uiLanguage)}
+            {copy.autoApply}
           </label>
           <div className="flex items-center gap-2">
             {!autoApply ? (
               <button className="needo-table-filter-apply" disabled={!hasManualChanges && !hasDateChanges} onClick={() => { commitDraftState(); onDateRangeChange?.(draftDateFrom, draftDateTo); }} type="button">
-                {translateText("应用", uiLanguage)}
+                {copy.apply}
               </button>
             ) : null}
             <button
-              aria-label={`${translateText("取消筛选", uiLanguage)} ${title}`}
+              aria-label={`${copy.clear} ${title}`}
               className="needo-table-filter-clear"
               onClick={handleClearFilter}
               type="button"
             >
-              {translateText("取消筛选", uiLanguage)}
+              {copy.clear}
             </button>
           </div>
         </div>
@@ -330,7 +350,7 @@ export function TableColumnHeader({
         <span className="needo-table-filter-title">{title}</span>
         <button
           aria-expanded={isOpen}
-          aria-label={`${title} ${translateText("排列筛选", uiLanguage)}`}
+          aria-label={`${title} ${copy.control}`}
           className={cn("needo-table-filter-trigger", (hasFilter || sortDirection) && "is-active")}
           ref={triggerRef}
           onClick={(event) => {
@@ -339,7 +359,7 @@ export function TableColumnHeader({
           }}
           type="button"
         >
-          <span className={cn("needo-table-filter-sort-glyph", sortDirection === "asc" && "is-asc", sortDirection === "desc" && "is-desc")}>↕</span>
+          {onSort ? <span className={cn("needo-table-filter-sort-glyph", sortDirection === "asc" && "is-asc", sortDirection === "desc" && "is-desc")}>↕</span> : null}
           <span className="needo-table-filter-caret">▾</span>
         </button>
       </div>

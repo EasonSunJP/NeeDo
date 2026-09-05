@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DashboardQuery } from "../../api/backofficeRealData";
+import type { AnalyticsRankingItem, DashboardQuery } from "../../api/backofficeRealData";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
 import { coreReadApi, type CoreCategory } from "../core-read/api";
@@ -31,7 +31,13 @@ async function listAllActiveCategories(language: string) {
   return categories;
 }
 
-export function AnalyticsRankingsSection({ query }: { query: DashboardQuery }) {
+export function AnalyticsRankingsSection({
+  onOpenDetail,
+  query
+}: {
+  onOpenDetail: (item: AnalyticsRankingItem) => void;
+  query: DashboardQuery;
+}) {
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
@@ -64,9 +70,9 @@ export function AnalyticsRankingsSection({ query }: { query: DashboardQuery }) {
         ) : null}
       </div>
       <div className="grid min-w-0 gap-5 xl:grid-cols-3">
-        <AnalyticsRankingPanel kind="service" query={query} title="服务项目排行 TOP10" />
-        <AnalyticsRankingPanel categories={categories} kind="technician" query={query} title="技师排行 TOP10" />
-        <AnalyticsRankingPanel categories={categories} kind="customer" query={query} title="用户消费排行 TOP10" />
+        <AnalyticsRankingPanel kind="service" onOpenDetail={onOpenDetail} query={query} title="服务项目排行 TOP10" />
+        <AnalyticsRankingPanel categories={categories} kind="technician" onOpenDetail={onOpenDetail} query={query} title="技师排行 TOP10" />
+        <AnalyticsRankingPanel categories={categories} kind="customer" onOpenDetail={onOpenDetail} query={query} title="用户消费排行 TOP10" />
       </div>
     </section>
   );

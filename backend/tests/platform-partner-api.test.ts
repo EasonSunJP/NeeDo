@@ -207,7 +207,7 @@ describe("platform partner HTTP API", () => {
   it("lists one user's immutable partner validity history", async () => {
     const fixture = createFixture();
     const response = await request(fixture.app)
-      .get("/api/v1/backoffice/users/88/partner-profiles?page=1&pageSize=20")
+      .get("/api/v1/backoffice/users/88/partner-profiles?page=1&pageSize=20&partnerType=agent")
       .set("Authorization", `Bearer ${fixture.token}`)
       .expect(200);
 
@@ -215,7 +215,8 @@ describe("platform partner HTTP API", () => {
     expect(fixture.repository.listUserProfiles).toHaveBeenCalledWith({
       userId: 88,
       page: 1,
-      pageSize: 20
+      pageSize: 20,
+      partnerType: "AGENT"
     });
   });
 

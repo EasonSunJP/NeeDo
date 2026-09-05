@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UnifiedUserTable, bookingRangeQuery } from "./UnifiedUserTable";
 import type { PlatformManagedUser } from "./types";
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 const row: PlatformManagedUser = {
   id: 41,
   needoId: "u4083532147",
@@ -84,5 +86,43 @@ describe("UnifiedUserTable", () => {
       minBookings: 10,
       maxBookings: 50
     });
+  });
+
+  it("does not offer sorting for columns without a supported server sort key", () => {
+    act(() => {
+      root.render(
+        <UnifiedUserTable language="ja" onQueryChange={vi.fn()} onSelect={vi.fn()} query={{}} rows={[row]} />
+      );
+    });
+
+    const identityTrigger = container.querySelectorAll<HTMLButtonElement>(".needo-table-filter-trigger")[3];
+    act(() => identityTrigger?.click());
+
+    expect(document.body.querySelectorAll(".needo-table-filter-sort-button")).toHaveLength(0);
+    expect(document.body.textContent).toContain("フィルター");
+    expect(document.body.textContent).toContain("自動適用");
+    expect(document.body.textContent).toContain("フィルターを解除");
+  });
+
+  it("turns the registered-date header input into a stable server date range", () => {
+    const onQueryChange = vi.fn();
+    act(() => {
+      root.render(
+        <UnifiedUserTable language="zh" onQueryChange={onQueryChange} onSelect={vi.fn()} query={{}} rows={[row]} />
+      );
+    });
+    const createdAtTrigger = container.querySelectorAll<HTMLButtonElement>(".needo-table-filter-trigger")[10];
+    act(() => createdAtTrigger?.click());
+    const fromInput = document.body.querySelector<HTMLInputElement>('input[aria-label="from"]');
+    act(() => {
+      if (!fromInput) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(fromInput, "2026-09-01");
+      fromInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(onQueryChange).toHaveBeenCalledWith(expect.objectContaining({
+      page: 1,
+      registeredFrom: "2026-09-01T00:00:00.000Z"
+    }));
   });
 });

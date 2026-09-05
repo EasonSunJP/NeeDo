@@ -21382,7 +21382,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           idPathParameter("userId"),
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } }
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          { name: "partnerType", in: "query", schema: { type: "string", enum: ["agent", "franchisee", "supplier"] } }
         ],
         responses: {
           "200": jsonDataResponse("Platform partner validity history", {
