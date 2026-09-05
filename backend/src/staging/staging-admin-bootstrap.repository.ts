@@ -78,7 +78,7 @@ export class StagingAdminBootstrapRepository implements StagingAdminBootstrapRep
         scopeType: "global",
         scopeId: null,
         deletedAt: null,
-        user: { deletedAt: null, isTestAccount: false }
+        user: { deletedAt: null, email: input.email }
       },
       include: {
         user: {
@@ -110,7 +110,6 @@ export class StagingAdminBootstrapRepository implements StagingAdminBootstrapRep
         administrator.email === input.email &&
         administrator.username === input.username &&
         administrator.isActive &&
-        !administrator.isTestAccount &&
         platformIdentities.length === 1 &&
         readFingerprint(administrator.auditLogs[0]?.metadata ?? null) ===
           input.credentialFingerprint;
@@ -293,7 +292,7 @@ export class StagingAdminBootstrapRepository implements StagingAdminBootstrapRep
             scopeType: "global",
             scopeId: null,
             deletedAt: null,
-            user: { id: userId, isTestAccount: false, deletedAt: null }
+            user: { id: userId, deletedAt: null }
           }
         }),
         tx.userIdentity.count({

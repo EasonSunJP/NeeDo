@@ -143,6 +143,12 @@ describeIntegration("StagingAdminBootstrapRepository integration", () => {
         scopeType: "global"
       }
     });
+    const createdAdministrator = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
+    expect(createdAdministrator.isTestAccount).toBe(false);
+    await prisma.user.update({
+      where: { id: createdAdministrator.id },
+      data: { isTestAccount: true }
+    });
 
     await expect(service.bootstrap(config)).resolves.toMatchObject({ status: "already-complete" });
 
@@ -153,7 +159,7 @@ describeIntegration("StagingAdminBootstrapRepository integration", () => {
         userRoles: { where: { deletedAt: null }, include: { role: true } }
       }
     });
-    expect(user.isTestAccount).toBe(false);
+    expect(user.isTestAccount).toBe(true);
     expect(user.identities).toHaveLength(1);
     expect(user.identities[0]).toMatchObject({
       type: "platform",
