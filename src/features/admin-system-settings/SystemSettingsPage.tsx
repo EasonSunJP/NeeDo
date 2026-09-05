@@ -9,6 +9,7 @@ import { cn } from "../../lib/utils";
 import { adminSystemSettingsApi } from "./api";
 import { BasicSettingsTab } from "./BasicSettingsTab";
 import { adminSystemSettingsCopy } from "./i18n";
+import { LegalDocumentsTab } from "./LegalDocumentsTab";
 import { PaymentSettingsTab } from "./PaymentSettingsTab";
 import { RetentionSettingsTab } from "./RetentionSettingsTab";
 import type { ImRetentionSettings, OperationsPlatformSettings } from "./types";
@@ -93,7 +94,7 @@ export function SystemSettingsPage() {
 
   let content;
   if (activeTab === "legal") {
-    content = <div className="rounded-2xl border border-line bg-paper p-6 text-sm font-semibold leading-6 text-ink/60">{labels.legalPending}</div>;
+    content = <LegalDocumentsTab onDirtyChange={dirtyChanged("legal")} />;
   } else if (activeTab === "storage") {
     content = retentionState === "ready" && retention ? (
       <RetentionSettingsTab canWrite={hasPermission("backoffice:im-retention:write")} labels={labels} onDirtyChange={dirtyChanged("storage")} onSaved={(next) => setRetention(next)} settings={retention} />
@@ -117,7 +118,7 @@ export function SystemSettingsPage() {
       <div className="rounded-2xl border border-line bg-white p-2 shadow-sm">
         <div aria-label={labels.title} className="grid gap-2 md:grid-cols-4" role="tablist">
           {tabLabels.map((tab, index) => (
-            <button aria-controls={`system-settings-panel-${tab.id}`} aria-selected={activeTab === tab.id} className={cn("focus-ring relative rounded-xl px-4 py-3 text-sm font-black transition", activeTab === tab.id ? "bg-ink text-white shadow-sm" : "bg-paper text-ink/60 hover:text-ink")} key={tab.id} onClick={() => selectTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)} ref={(node) => { tabRefs.current[index] = node; }} role="tab" tabIndex={activeTab === tab.id ? 0 : -1} type="button">
+            <button aria-controls={`system-settings-panel-${tab.id}`} aria-selected={activeTab === tab.id} className={cn("focus-ring relative rounded-xl px-4 py-3 text-sm font-black transition", activeTab === tab.id ? "bg-ink text-white shadow-sm" : "bg-paper text-ink/60 hover:text-ink")} id={`system-settings-tab-${tab.id}`} key={tab.id} onClick={() => selectTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)} ref={(node) => { tabRefs.current[index] = node; }} role="tab" tabIndex={activeTab === tab.id ? 0 : -1} type="button">
               {tab.label}
               {dirtyTabs[tab.id] ? <span aria-label={labels.dirty} className="absolute right-2 top-2 h-2 w-2 rounded-full bg-coral" /> : null}
             </button>

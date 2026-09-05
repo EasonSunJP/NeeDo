@@ -68,4 +68,27 @@ describe("admin system settings API", () => {
       retryOnUnauthorized: true
     });
   });
+
+  it("keeps legal draft save and publication on distinct endpoints", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    await adminSystemSettingsApi.saveLegalDraft("doc-1", "ja", {
+      expectedLockVersion: 4,
+      title: "日本語タイトル",
+      body: "日本語本文"
+    });
+    await adminSystemSettingsApi.publishLegalDraft("doc-1", "ja", {
+      expectedDraftLockVersion: 5,
+      publishedAt: "2026-09-06T12:00:00.000Z"
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/backoffice/legal-documents/doc-1/locales/ja/draft",
+      expect.objectContaining({ method: "PUT" })
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/legal-documents/doc-1/locales/ja/publish",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
 });

@@ -4,8 +4,15 @@ import type {
   BasicSettingsInput,
   ImRetentionInput,
   ImRetentionSettings,
+  LegalDocumentCatalog,
+  LegalDocumentDraft,
+  LegalDocumentLocale,
+  LegalDocumentLocaleState,
+  LegalDocumentRelease,
   OperationsPlatformSettings,
+  Page,
   PaymentSettingsInput,
+  PublicLegalDocument,
   UploadedBrandMedia
 } from "./types";
 
@@ -101,5 +108,68 @@ export const adminSystemSettingsApi = {
       height: media.height,
       altText
     };
+  },
+  listLegalDocuments(page = 1, pageSize = 20) {
+    return httpClient.request<Page<LegalDocumentCatalog>>("/backoffice/legal-documents", {
+      auth: true,
+      method: "GET",
+      query: { page, page_size: pageSize },
+      retryOnUnauthorized: true
+    });
+  },
+  createLegalDocument(input: Pick<LegalDocumentCatalog, "slug" | "name" | "internalPath" | "displayLocations" | "isEnabled">) {
+    return httpClient.request<LegalDocumentCatalog>("/backoffice/legal-documents", {
+      auth: true,
+      body: input,
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+  },
+  updateLegalDocument(publicId: string, input: Pick<LegalDocumentCatalog, "name" | "internalPath" | "displayLocations" | "isEnabled"> & { expectedLockVersion: number }) {
+    return httpClient.request<LegalDocumentCatalog>(`/backoffice/legal-documents/${encodeURIComponent(publicId)}`, {
+      auth: true,
+      body: input,
+      method: "PATCH",
+      retryOnUnauthorized: false
+    });
+  },
+  getLegalLocale(publicId: string, locale: LegalDocumentLocale) {
+    return httpClient.request<LegalDocumentLocaleState>(`/backoffice/legal-documents/${encodeURIComponent(publicId)}/locales/${locale}`, {
+      auth: true,
+      method: "GET",
+      retryOnUnauthorized: true
+    });
+  },
+  saveLegalDraft(publicId: string, locale: LegalDocumentLocale, input: { expectedLockVersion: number | null; title: string; body: string }) {
+    return httpClient.request<LegalDocumentDraft>(`/backoffice/legal-documents/${encodeURIComponent(publicId)}/locales/${locale}/draft`, {
+      auth: true,
+      body: input,
+      method: "PUT",
+      retryOnUnauthorized: false
+    });
+  },
+  publishLegalDraft(publicId: string, locale: LegalDocumentLocale, input: { expectedDraftLockVersion: number; publishedAt: string; setEnabled?: boolean }) {
+    return httpClient.request<LegalDocumentRelease>(`/backoffice/legal-documents/${encodeURIComponent(publicId)}/locales/${locale}/publish`, {
+      auth: true,
+      body: input,
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+  },
+  listLegalReleases(publicId: string, locale: LegalDocumentLocale, page = 1, pageSize = 10) {
+    return httpClient.request<Page<LegalDocumentRelease>>(`/backoffice/legal-documents/${encodeURIComponent(publicId)}/locales/${locale}/releases`, {
+      auth: true,
+      method: "GET",
+      query: { page, page_size: pageSize },
+      retryOnUnauthorized: true
+    });
+  },
+  getPublicLegalDocument(slug: string, locale: LegalDocumentLocale) {
+    return httpClient.request<PublicLegalDocument>(`/legal-documents/${encodeURIComponent(slug)}/current`, {
+      auth: false,
+      method: "GET",
+      query: { locale },
+      retryOnUnauthorized: false
+    });
   }
 };

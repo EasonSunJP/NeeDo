@@ -70,3 +70,56 @@ export type UploadedBrandMedia = {
   height: number | null;
   altText: string | null;
 };
+
+export const legalDocumentLocales = ["zh-CN", "zh-TW", "ja", "en", "ko"] as const;
+export type LegalDocumentLocale = (typeof legalDocumentLocales)[number];
+
+export type Page<T> = { list: T[]; total: number; page: number; page_size: number };
+export type LegalDocumentCatalog = {
+  publicId: string;
+  slug: string;
+  name: string;
+  internalPath: string;
+  displayLocations: string[];
+  isEnabled: boolean;
+  lockVersion: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type LegalDocumentDraft = {
+  documentId: number;
+  locale: LegalDocumentLocale;
+  title: string;
+  body: string;
+  lockVersion: number;
+  updatedAt: string;
+};
+export type LegalDocumentRelease = {
+  publicId: string;
+  documentId: number;
+  locale: LegalDocumentLocale;
+  version: number;
+  title: string;
+  body: string;
+  contentHash: string;
+  publishedAt: string;
+  publishedByUserId: number | null;
+};
+export type LegalDocumentLocaleState = {
+  publicId: string;
+  locale: LegalDocumentLocale;
+  draft: LegalDocumentDraft | null;
+  currentRelease: LegalDocumentRelease | null;
+};
+export type PublicLegalDocument = {
+  publicId: string;
+  slug: string;
+  internalPath: string;
+  displayLocations: string[];
+  locale: LegalDocumentLocale;
+  version: number;
+  title: string;
+  body: string;
+  contentHash: string;
+  publishedAt: string;
+};
