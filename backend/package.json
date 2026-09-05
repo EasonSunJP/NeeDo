@@ -75,6 +75,8 @@
     "backfill:unified-identifiers": "tsx scripts/backfill-unified-identifiers.ts",
     "check:unified-identifier-cutover": "tsx scripts/check-unified-identifier-cutover.ts",
     "backfill:technician-shop-affiliations": "tsx scripts/backfill-technician-shop-affiliations.ts",
+    "backfill:system-settings": "tsx scripts/backfill-system-settings.ts",
+    "check:system-settings-flow": "tsx scripts/check-system-settings-flow.ts",
     "backfill:test-ndp": "ENV_FILE=.env.dev tsx scripts/backfill-test-ndp.ts",
     "check:test-ndp-foundation": "ENV_FILE=.env.dev tsx scripts/check-test-ndp-foundation.ts",
     "check:technician-shop-affiliation-cutover": "tsx scripts/check-technician-shop-affiliation-cutover.ts",
