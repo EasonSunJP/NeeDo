@@ -226,7 +226,7 @@ git commit -m "feat: add scoped canonical user list"
 - Produces: `UnifiedUserDirectory({ scope: "operations" | "merchant", onSelect })`.
 - Produces: URL-backed `UserListQuery` containing all canonical filters and sort state.
 
-- [ ] **Step 1: Write failing API and rendering tests**
+- [x] **Step 1: Write failing API and rendering tests**
 
 Add the merchant request assertion:
 
@@ -270,7 +270,7 @@ expect(onQueryChange).toHaveBeenCalledWith(
 );
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run:
 
@@ -280,7 +280,7 @@ npm test -- src/features/platform-user-management/api.test.ts src/features/platf
 
 Expected: FAIL because the shared components and merchant canonical API do not exist.
 
-- [ ] **Step 3: Add shared list types, query serialization, and localized labels**
+- [x] **Step 3: Add shared list types, query serialization, and localized labels**
 
 Extend `PlatformManagedUser` with the Task 1 fields and `UserListQuery` with the exact Task 1 query keys.
 
@@ -307,7 +307,7 @@ export const privacyModeText = (enabled: boolean, language: Language) =>
 
 Add all five locales for `membership.free`, `membership.silver`, `membership.gold`, `membership.black_diamond`, `privacy.enabled`, `privacy.disabled`, `filter.apply`, and `filter.clear`.
 
-- [ ] **Step 4: Implement the shared table and portal adapters**
+- [x] **Step 4: Implement the shared table and portal adapters**
 
 `UnifiedUserTable` receives server state rather than filtering `rows` locally:
 
@@ -341,7 +341,7 @@ const columnKeys = [
 
 Replace the operations inline `UserTable` with `UnifiedUserDirectory scope="operations"`. Replace only the merchant `module === "users"` table with `UnifiedUserDirectory scope="merchant"`; leave employee modules untouched.
 
-- [ ] **Step 5: Run focused frontend tests and verify GREEN**
+- [x] **Step 5: Run focused frontend tests and verify GREEN**
 
 Run:
 
@@ -351,7 +351,7 @@ npm test -- src/features/platform-user-management/api.test.ts src/features/platf
 
 Expected: PASS; the two portals import the same directory component, actual email is visible, raw tier codes are absent, and header actions update server query state.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```bash
 git add src/features/platform-user-management src/pages/merchant-admin/MerchantAdminPeoplePage.tsx src/pages/merchant-admin/MerchantAdminPeoplePage.test.ts

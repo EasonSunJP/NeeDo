@@ -10,7 +10,6 @@ import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeCustomerDetailPayload,
-  type BackofficeCustomerPayload,
   type BackofficeCustomerTimelinePayload,
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
@@ -36,6 +35,7 @@ import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
+import { UnifiedUserDirectory } from "../../features/platform-user-management/UnifiedUserDirectory";
 import {
   merchantEmployeeApi,
   type EmployeeRelationshipType,
@@ -129,7 +129,6 @@ export function MerchantAdminPeoplePage() {
   languageRef.current = language;
   const module = normalizeModule(searchParams.get("module"));
   const [employees, setEmployees] = useState<MerchantEmployee[]>([]);
-  const [customers, setCustomers] = useState<BackofficeCustomerPayload[]>([]);
   const [selectedEmployeeNeedoId, setSelectedEmployeeNeedoId] = useState<
     string | null
   >(null);
@@ -197,9 +196,8 @@ export function MerchantAdminPeoplePage() {
 
   const load = useCallback(
     async (rejectOnError = false) => {
-      if (module === "reviews") {
+      if (module !== "staff") {
         setEmployees([]);
-        setCustomers([]);
         setTotal(0);
         setLoading(false);
         setError("");
@@ -215,14 +213,6 @@ export function MerchantAdminPeoplePage() {
             merchantEmployeeApi.list(query),
           );
           setEmployees(result.list);
-          setCustomers([]);
-          setTotal(result.total);
-        } else {
-          const result = await loadCoreReadWithTransientRetry(() =>
-            backofficeRealDataApi.customers("merchant-admin", query),
-          );
-          setCustomers(result.list);
-          setEmployees([]);
           setTotal(result.total);
         }
       } catch (loadError) {
@@ -536,11 +526,11 @@ export function MerchantAdminPeoplePage() {
     void employeeDetailRequest.load(employee.needoId);
   };
 
-  const openCustomer = (customer: BackofficeCustomerPayload) => {
+  const openCustomer = (customerId: number) => {
     closeEmployee();
-    selectedCustomerIdRef.current = customer.id;
-    setSelectedCustomerId(customer.id);
-    void customerDetailRequest.load(customer.id);
+    selectedCustomerIdRef.current = customerId;
+    setSelectedCustomerId(customerId);
+    void customerDetailRequest.load(customerId);
   };
 
   const changeCustomerTimelinePage = (nextPage: number) => {
@@ -760,7 +750,7 @@ export function MerchantAdminPeoplePage() {
     <MerchantAdminLayout>
       <ModuleShell
         actions={
-          module !== "reviews" ? (
+          module === "staff" ? (
             <Button onClick={() => void load()} variant="secondary">
               刷新正式数据
             </Button>
@@ -775,7 +765,7 @@ export function MerchantAdminPeoplePage() {
               : "评价中心"
         }
       >
-        {module !== "reviews" ? (
+        {module === "staff" ? (
           <form
             className="mb-4 flex gap-2 rounded-lg border border-line bg-white p-2 shadow-panel"
             onSubmit={submitSearch}
@@ -793,7 +783,7 @@ export function MerchantAdminPeoplePage() {
           </form>
         ) : null}
 
-        {error ? (
+        {module === "staff" && error ? (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
             <span>{error}</span>
             <Button onClick={() => void load()} size="sm" variant="secondary">
@@ -802,7 +792,7 @@ export function MerchantAdminPeoplePage() {
           </div>
         ) : null}
 
-        {loading ? (
+        {module === "staff" && loading ? (
           <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">
             正在读取当前店铺正式人员数据...
           </p>
@@ -896,59 +886,11 @@ export function MerchantAdminPeoplePage() {
           )
         ) : null}
 
-        {!loading && !error && module === "users" ? (
-          customers.length ? (
-            <DataTable<BackofficeCustomerPayload>
-              columns={[
-                {
-                  key: "name",
-                  title: "用户",
-                  render: (row) => row.displayName,
-                },
-                {
-                  key: "email",
-                  title: "邮箱",
-                  render: (row) => row.email,
-                },
-                {
-                  key: "city",
-                  title: "城市",
-                  render: (row) => row.city ?? "未设置",
-                },
-                {
-                  key: "membership",
-                  title: "会员等级",
-                  render: (row) => row.membershipLevel,
-                },
-                {
-                  key: "bookings",
-                  title: "预约数",
-                  render: (row) => row.bookingCount,
-                },
-                {
-                  key: "visibility",
-                  title: "公开资料",
-                  render: (row) => (
-                    <Badge tone={row.isPublic ? "green" : "neutral"}>
-                      {row.isPublic ? "公开" : "不公开"}
-                    </Badge>
-                  ),
-                },
-              ]}
-              footerPlacement="inline"
-              onView={openCustomer}
-              pageSize={pageSize}
-              rows={customers}
-              showFooterActions={false}
-            />
-          ) : (
-            <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">
-              本店当前没有符合条件的正式用户
-            </p>
-          )
+        {module === "users" ? (
+          <UnifiedUserDirectory onSelect={openCustomer} scope="merchant" />
         ) : null}
 
-        {!loading && !error && module !== "reviews" && total > 0 ? (
+        {!loading && !error && module === "staff" && total > 0 ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white p-3 text-sm font-bold shadow-panel">
             <span>
               共 {total} 条 · 第 {page} / {totalPages} 页

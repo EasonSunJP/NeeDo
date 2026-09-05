@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { translateText } from "../../i18n/translations";
-import { platformUserManagementCopy } from "./i18n";
+import { membershipTierText, platformUserManagementCopy, privacyModeText } from "./i18n";
 import "./registerI18n";
 
 describe("platform user management copy", () => {
@@ -26,5 +26,13 @@ describe("platform user management copy", () => {
   it("registers feature copy when the lazy user-management feature loads", () => {
     expect(translateText("用户列表", "ja")).toBe("ユーザーリスト");
     expect(translateText("NDP 基础经验比例", "en")).toBe("Base NDP experience ratio");
+  });
+
+  it("renders membership and privacy values in the current UI language", () => {
+    expect(membershipTierText("gold", "zh")).toBe("黄金会员");
+    expect(membershipTierText("gold", "ja")).toBe("ゴールド会員");
+    expect(membershipTierText("gold", "en")).toBe("Gold membership");
+    expect(privacyModeText(true, "zh")).toBe("已开启");
+    expect(privacyModeText(false, "ja")).toBe("オフ");
   });
 });

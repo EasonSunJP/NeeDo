@@ -18,7 +18,8 @@ import {
   type UserGlobalPolicy,
   type UserGroup,
   type UserGroupMember,
-  type UserListQuery
+  type UserListQuery,
+  type UserDirectoryScope
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -70,11 +71,17 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
     id: integer(raw.id),
     needoId: string(raw.needoId),
     username: string(raw.username),
+    displayName: string(raw.displayName),
     email: string(raw.email),
     phone: nullableString(raw.phone),
     emailBound: boolean(raw.emailBound),
     phoneBound: boolean(raw.phoneBound),
     avatarUrl: nullableString(raw.avatarUrl),
+    city: nullableString(raw.city),
+    privacyMode: boolean(raw.privacyMode),
+    privacyScope: raw.privacyScope === null
+      ? null
+      : enumValue(raw.privacyScope, ["public", "privateAll", "limited", "network"] as const),
     isActive: boolean(raw.isActive),
     isTestAccount: boolean(raw.isTestAccount),
     source: array(raw.source).map(string),
@@ -335,9 +342,10 @@ const userQuery = (query: UserListQuery): Record<string, ApiQueryValue> => {
 };
 
 export const platformUserManagementApi = {
-  async listUsers(query: UserListQuery = {}) {
+  async listUsers(scope: UserDirectoryScope, query: UserListQuery = {}) {
+    const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
     return decodePage(
-      await httpClient.request<unknown>("/backoffice/users", { query: userQuery(query) }),
+      await httpClient.request<unknown>(path, { query: userQuery(query) }),
       decodeUser
     );
   },

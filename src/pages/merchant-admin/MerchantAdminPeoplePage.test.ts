@@ -8,11 +8,10 @@ const source = readFileSync(
 );
 
 describe("MerchantAdminPeoplePage formal scoped data", () => {
-  it("uses the canonical employee API for staff and keeps customers on the scoped formal API", () => {
+  it("uses the canonical employee API for staff and the shared scoped user directory", () => {
     expect(source).toContain("merchantEmployeeApi.list(");
-    expect(source).toContain(
-      'backofficeRealDataApi.customers("merchant-admin"',
-    );
+    expect(source).toContain("UnifiedUserDirectory");
+    expect(source).toContain('scope="merchant"');
     expect(source).toContain("pageSize");
     expect(source).toContain("keyword:");
     expect(source).not.toContain(
@@ -28,16 +27,14 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toMatch(
       /loadCoreReadWithTransientRetry\(\s*\(\) =>\s*merchantEmployeeApi\.list\(query\),?\s*\)/,
     );
-    expect(source).toMatch(
-      /loadCoreReadWithTransientRetry\(\s*\(\) =>\s*backofficeRealDataApi\.customers\("merchant-admin", query\),?\s*\)/,
-    );
+    expect(source).not.toContain('backofficeRealDataApi.customers("merchant-admin"');
     expect(source).toContain(
       "describeMerchantReadError(loadError, languageRef.current)",
     );
     expect(source).toContain('!loading && !error && module === "staff"');
-    expect(source).toContain('!loading && !error && module === "users"');
+    expect(source).toContain('module === "users"');
     expect(source).toMatch(
-      /!loading\s*&&\s*!error\s*&&\s*module !== "reviews"\s*&&\s*total > 0/,
+      /!loading\s*&&\s*!error\s*&&\s*module === "staff"\s*&&\s*total > 0/,
     );
   });
 
@@ -102,7 +99,7 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("employeeDetailRequest.invalidate()");
     expect(source).toContain("employeeDetailRequest.activate()");
     expect(source).toContain("employeeDetailRequest.dispose()");
-    expect(source).toContain("customerDetailRequest.load(customer.id)");
+    expect(source).toContain("customerDetailRequest.load(customerId)");
     expect(source).toContain("customerDetailRequest.retry()");
   });
 

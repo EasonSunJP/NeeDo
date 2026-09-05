@@ -20,15 +20,22 @@ export type Paginated<T> = {
   page_size: number;
 };
 
+export type UserDirectoryScope = "operations" | "merchant";
+export type UserPrivacyScope = "public" | "privateAll" | "limited" | "network";
+
 export type PlatformManagedUser = {
   id: number;
   needoId: string;
   username: string;
+  displayName: string;
   email: string;
   phone: string | null;
   emailBound: boolean;
   phoneBound: boolean;
   avatarUrl: string | null;
+  city: string | null;
+  privacyMode: boolean;
+  privacyScope: UserPrivacyScope | null;
   isActive: boolean;
   isTestAccount: boolean;
   source: string[];
@@ -110,6 +117,13 @@ export type UserListQuery = {
   maxExpUnits?: string;
   minNdpBalance?: number;
   maxNdpBalance?: number;
+  city?: string;
+  emailState?: "set" | "unset";
+  privacy?: "enabled" | "disabled" | UserPrivacyScope;
+  minBookings?: number;
+  maxBookings?: number;
+  sortBy?: "displayName" | "email" | "city" | "createdAt";
+  sortDirection?: "asc" | "desc";
   registeredFrom?: string;
   registeredTo?: string;
 };

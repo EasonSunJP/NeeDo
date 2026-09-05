@@ -19,7 +19,7 @@ describe("platformUserManagementApi", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 20 });
 
-    await platformUserManagementApi.listUsers({ page: 2, page_size: 25, tier: "gold" });
+    await platformUserManagementApi.listUsers("operations", { page: 2, page_size: 25, tier: "gold" });
     await platformUserManagementApi.listGroups({ page: 1, page_size: 20 });
     await platformUserManagementApi.getGlobalSettings();
     await platformUserManagementApi.listTiers();
@@ -42,10 +42,38 @@ describe("platformUserManagementApi", () => {
     );
   });
 
+  it("uses the canonical scoped user route and serializes server filters", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({ list: [], total: 0, page: 2, page_size: 20 });
+
+    await platformUserManagementApi.listUsers("merchant", {
+      page: 2,
+      page_size: 20,
+      city: "Tokyo",
+      privacy: "enabled",
+      minBookings: 10,
+      maxBookings: 50,
+      sortBy: "city",
+      sortDirection: "desc"
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users", {
+      query: {
+        page: 2,
+        pageSize: 20,
+        city: "Tokyo",
+        privacy: "enabled",
+        minBookings: 10,
+        maxBookings: 50,
+        sortBy: "city",
+        sortDirection: "desc"
+      }
+    });
+  });
+
   it("rejects malformed responses instead of accepting legacy local data", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({ list: [{ id: "not-an-id" }], total: 1, page: 1, page_size: 20 });
 
-    await expect(platformUserManagementApi.listUsers()).rejects.toThrow("Invalid user management response");
+    await expect(platformUserManagementApi.listUsers("operations")).rejects.toThrow("Invalid user management response");
   });
 
   it("preserves 409 conflicts for the workspace recovery UI", async () => {
