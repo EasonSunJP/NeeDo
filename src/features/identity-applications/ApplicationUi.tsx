@@ -67,7 +67,7 @@ export function ApplicationSection({ title, info, children, className }: {
   const t = (source: string) => translateText(source, language);
   return (
     <ApplicationCard className={cn("space-y-4", className)}>
-      <TitleWithInfo as="h2" info={info ? t(info) : undefined} label={`${t(title)} ${t("说明")}`} title={t(title)} titleClassName="text-[17px] font-black text-[color:var(--client-text)]" variant="client" />
+      <TitleWithInfo as="h2" info={info ? t(info) : undefined} label={t("申请分区说明：{title}").replace("{title}", t(title))} title={t(title)} titleClassName="text-[17px] font-black text-[color:var(--client-text)]" variant="client" />
       {children}
     </ApplicationCard>
   );

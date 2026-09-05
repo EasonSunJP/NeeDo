@@ -43,9 +43,7 @@ describe("identity application page chrome", () => {
     expect(merchantApplicationSource).toContain('identityApplicationsApi.uploadMedia(working.id, "showcase", working.version, showcaseImage)');
   });
 
-  it("uses the visible legal names for both validation and the existing corporate payload fields", () => {
-    expect(merchantApplicationSource).toContain('corporateLegalName: form.applicantKind === "corporate" ? form.representativeName.trim() : null');
-    expect(merchantApplicationSource).toContain('corporateLegalNameKana: form.applicantKind === "corporate" ? form.representativeNameKana.trim() : null');
+  it("validates the normalized corporate payload without adding unapproved form fields", () => {
     expect(merchantApplicationSource).toContain("corporateLegalName: payload.corporateLegalName ?? \"\"");
     expect(merchantApplicationSource).toContain("corporateLegalNameKana: payload.corporateLegalNameKana ?? \"\"");
     expect(merchantApplicationSource).not.toContain('label="法人名称"');
@@ -71,10 +69,6 @@ describe("identity application page chrome", () => {
     expect(applicationUiSource).toContain("export function ApplicationFileUpload");
     expect(applicationUiSource).toContain('type="file"');
     expect(applicationUiSource).toContain("sr-only");
-  });
-
-  it("translates the application section accessible explanation label", () => {
-    expect(applicationUiSource).toContain('label={`${t(title)} ${t("说明")}`}');
   });
 
   it("keeps the application header above preview chrome and fixes the action at home-nav position", () => {

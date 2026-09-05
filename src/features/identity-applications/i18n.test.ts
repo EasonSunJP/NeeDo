@@ -3,8 +3,18 @@ import { translateText } from "../../i18n/translations";
 import { identityApplicationTranslations } from "./i18n";
 
 describe("identity application translations", () => {
+  it.each([
+    ["zh-Hant", "選擇店鋪展示圖", "{title}說明"],
+    ["ja", "店舗画像を選択", "{title}の説明"],
+    ["en", "Choose shop image", "About {title}"],
+    ["ko", "매장 이미지 선택", "{title} 안내"]
+  ] as const)("resolves scoped application labels in %s through the global translator", (language, upload, section) => {
+    expect.soft(translateText("选择店铺展示图", language)).toBe(upload);
+    expect.soft(translateText("申请分区说明：{title}", language)).toBe(section);
+  });
+
   it("localizes the seven-section merchant form and its validation copy", () => {
-    const sources = ["名义", "基础信息", "申请人", "请输入申请人姓名", "本人确认（eKYC）", "已本人确认", "费用区间", "最低费用", "最高费用", "请完整填写费用区间", "最低费用不能高于最高费用", "店铺简介", "上传店铺第一张展示图", "选择图片", "主页效果预览",
+    const sources = ["名义", "基础信息", "申请人", "请输入申请人姓名", "本人确认（eKYC）", "已本人确认", "费用区间", "最低费用", "最高费用", "请完整填写费用区间", "最低费用不能高于最高费用", "店铺简介", "上传店铺第一张展示图", "选择店铺展示图", "申请分区说明：{title}", "主页效果预览",
       "选择以个人或法人主体提交店铺申请。", "填写申请人与店铺的正式联系资料。", "填写主页展示的最低与最高服务费用。", "简介会显示在店铺主页。", "支持 JPEG 或 PNG，并作为主页第一张展示图。", "按照店铺主页的正式组件实时预览申请资料。"];
     for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
       for (const source of sources) expect(identityApplicationTranslations[source]?.[language], `${language}: ${source}`).toBeTruthy();

@@ -29,6 +29,7 @@ import {
 } from "./api";
 import { getContractLanguage, validateMerchantShowcase, type MerchantShowcaseForm } from "./formModel";
 import { formatMerchantPriceRange, parseMerchantPriceRange, validateMerchantPriceRange, type MerchantPriceRange } from "./merchantPriceRange";
+import { merchantApplicationDraftMemory } from "./merchantApplicationDraftMemory";
 
 type MerchantForm = MerchantShowcaseForm;
 
@@ -66,17 +67,25 @@ function readDraftString(draft: Record<string, unknown> | null | undefined, key:
 }
 
 export function MerchantApplicationPage() {
+  const { session } = useAuth();
+  const accountId = session?.id ?? null;
+  return <MerchantApplicationForm accountId={accountId} key={accountId ?? "anonymous"} />;
+}
+
+function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   const navigate = useNavigate();
   const { language } = useI18n();
   const { refreshSession } = useAuth();
   const t = (source: string) => translateText(source, language);
+  // Reading during initialization is non-destructive so StrictMode can replay the mount safely.
+  const [retainedDraft] = useState(() => merchantApplicationDraftMemory.read(accountId));
   const [step, setStep] = useState(0);
-  const [application, setApplication] = useState<IdentityApplication | null>(null);
-  const [form, setForm] = useState<MerchantForm>(emptyMerchantForm);
-  const [priceRange, setPriceRange] = useState<MerchantPriceRange>({ min: "", max: "" });
+  const [application, setApplication] = useState<IdentityApplication | null>(retainedDraft?.application ?? null);
+  const [form, setForm] = useState<MerchantForm>(retainedDraft?.form ?? emptyMerchantForm);
+  const [priceRange, setPriceRange] = useState<MerchantPriceRange>(retainedDraft?.priceRange ?? { min: "", max: "" });
   const [ekycVerified, setEkycVerified] = useState(false);
   const [bank, setBank] = useState<BankAccountInput>(emptyBank);
-  const [showcaseImage, setShowcaseImage] = useState<File | null>(null);
+  const [showcaseImage, setShowcaseImage] = useState<File | null>(retainedDraft?.showcaseImage ?? null);
   const [representativeIdentity, setRepresentativeIdentity] = useState<File | null>(null);
   const [corporateRegistration, setCorporateRegistration] = useState<File | null>(null);
   const [contract, setContract] = useState<ContractDefinition | null>(null);
@@ -85,7 +94,11 @@ export function MerchantApplicationPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [previewImageUrl, setPreviewImageUrl] = useState("");
-  const [selectedKeywordLabels, setSelectedKeywordLabels] = useState<string[]>([]);
+  const [selectedKeywordLabels, setSelectedKeywordLabels] = useState<string[]>(retainedDraft?.selectedKeywordLabels ?? []);
+
+  useEffect(() => {
+    merchantApplicationDraftMemory.clear(accountId);
+  }, [accountId]);
 
   useEffect(() => {
     let active = true;
@@ -107,7 +120,7 @@ export function MerchantApplicationPage() {
       if (!existing) return;
       setApplication(existing);
       const detail = existing.merchantDetail;
-      if (detail) {
+      if (detail && !retainedDraft) {
         setForm({
           applicantKind: detail.applicantKind,
           corporateLegalName: detail.corporateLegalName ?? "",
@@ -156,6 +169,11 @@ export function MerchantApplicationPage() {
     setBank((current) => ({ ...current, [key]: value }));
   const priceLabel = formatMerchantPriceRange(priceRange);
 
+  const openVerification = () => {
+    merchantApplicationDraftMemory.retain(accountId, { application, form, priceRange, showcaseImage, selectedKeywordLabels });
+    navigate("/me/settings/verification");
+  };
+
   const draftStore = useMemo<Store>(() => ({
     id: "merchant-application-draft",
     systemId: `application-${application?.id ?? "new"}`,
@@ -179,8 +197,8 @@ export function MerchantApplicationPage() {
 
   const showcasePayload = () => ({
     applicantKind: form.applicantKind,
-    corporateLegalName: form.applicantKind === "corporate" ? form.representativeName.trim() : null,
-    corporateLegalNameKana: form.applicantKind === "corporate" ? form.representativeNameKana.trim() : null,
+    corporateLegalName: form.applicantKind === "corporate" ? form.corporateLegalName.trim() || form.representativeName.trim() : null,
+    corporateLegalNameKana: form.applicantKind === "corporate" ? form.corporateLegalNameKana.trim() || form.representativeNameKana.trim() : null,
     representativeName: form.representativeName.trim(),
     representativeNameKana: form.representativeNameKana.trim(),
     shopName: form.shopName.trim(),
@@ -222,6 +240,7 @@ export function MerchantApplicationPage() {
         working = { ...working, version: uploaded.applicationVersion };
       }
       setApplication(working);
+      merchantApplicationDraftMemory.clear(accountId);
       setStep(1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -307,7 +326,7 @@ export function MerchantApplicationPage() {
             <ApplicationField label="申请人" required>
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <ApplicationInput onChange={(event) => updateForm("responsiblePersonName", event.target.value)} value={form.responsiblePersonName} />
-                <ApplicationButton onClick={() => navigate("/me/settings/verification")} tone={ekycVerified ? "secondary" : "primary"}>
+                <ApplicationButton onClick={openVerification} tone={ekycVerified ? "secondary" : "primary"}>
                   {t(ekycVerified ? "已本人确认" : "本人确认（eKYC）")}
                 </ApplicationButton>
               </div>
@@ -340,7 +359,7 @@ export function MerchantApplicationPage() {
             <ApplicationTextArea aria-label={t("店铺简介")} required onChange={(event) => updateForm("description", event.target.value)} value={form.description} />
           </ApplicationSection>
           <ApplicationSection info="支持 JPEG 或 PNG，并作为主页第一张展示图。" title="上传店铺第一张展示图">
-            <ApplicationFileUpload accept="image/jpeg,image/png" file={showcaseImage} label={t("选择图片")} onChange={setShowcaseImage} />
+            <ApplicationFileUpload accept="image/jpeg,image/png" file={showcaseImage} label={t("选择店铺展示图")} onChange={setShowcaseImage} />
           </ApplicationSection>
           <ApplicationSection className="overflow-hidden" info="按照店铺主页的正式组件实时预览申请资料。" title="主页效果预览">
             <div className="pointer-events-none max-h-[760px] overflow-hidden" aria-label={t("店铺服务展示预览")}><StoreDetailExperience embedded scope="user" store={draftStore} techniciansOverride={[]} /></div>
