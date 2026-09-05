@@ -21,13 +21,21 @@ export type OfficialNoticeBlockType =
   | "numbered"
   | "quote"
   | "callout"
-  | "divider";
+  | "divider"
+  | "image"
+  | "video"
+  | "file";
 
 export type OfficialNoticeBlock = {
   id: string;
   type: OfficialNoticeBlockType;
   content: string;
   caption?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  source?: "url" | "media";
+  mediaAssetId?: number;
 };
 
 export type MerchantNoticeAudience = {

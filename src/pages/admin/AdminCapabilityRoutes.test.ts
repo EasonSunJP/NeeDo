@@ -141,7 +141,7 @@ describe("formal official notification workspaces", () => {
     expect(appSource).toContain('["merchant-admin:notice:create", "merchant-admin:notice:send"]');
     expect(appSource).toContain('path="/merchant-admin/notifications/inbox" element={protect("merchant"');
     expect(adminLayoutSource).toContain('permission: "page:backoffice-official-notice"');
-    expect(merchantAdminLayoutSource).toContain('permission: "merchant-admin:notice:read"');
+    expect(merchantAdminLayoutSource).toContain('rbacPermission: "merchant-admin:notice:read"');
     expect(merchantAdminLayoutSource).toContain('to="/merchant-admin/notifications/inbox"');
   });
 });
