@@ -103,6 +103,8 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
   const [items, setItems] = useState<OfficialNotice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [status, setStatus] = useState<OfficialNoticeStatus | "">("");
   const [level, setLevel] = useState<OfficialNoticeLevel | "">("");
   const [selected, setSelected] = useState<OfficialNotice | null>(null);
@@ -122,6 +124,7 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
       const result = await officialNoticesApi.listManaged(scope, {
         page,
         pageSize,
+        ...(appliedSearch ? { search: appliedSearch } : {}),
         ...(status ? { status } : {}),
         ...(level ? { level } : {})
       });
@@ -132,7 +135,7 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
     } finally {
       setLoading(false);
     }
-  }, [language, level, page, scope, status]);
+  }, [appliedSearch, language, level, page, scope, status]);
 
   useEffect(() => void load(), [load]);
 
@@ -164,7 +167,23 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
       actions={canCreate ? <Button to={composePath}>创建通知</Button> : <Badge tone="neutral">只读</Badge>}
     >
       <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto_auto]">
+          <label className="block">
+            <span className="sr-only">搜索通知</span>
+            <input
+              className={inputClass}
+              id={`${scope}-official-notice-search`}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                setPage(1);
+                setAppliedSearch(search.trim());
+              }}
+              placeholder={translateText("搜索通知", language)}
+              value={search}
+            />
+          </label>
           <select aria-label="状态筛选" className={inputClass} onChange={(event) => { setPage(1); setStatus(event.target.value as OfficialNoticeStatus | ""); }} value={status}>
             <option value="">全部状态</option>
             {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -173,6 +192,7 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
             <option value="">全部级别</option>
             {Object.entries(levelLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
+          <Button onClick={() => { setPage(1); setAppliedSearch(search.trim()); }} variant="secondary">搜索</Button>
           <Button onClick={() => void load()} variant="secondary">刷新</Button>
         </div>
       </section>

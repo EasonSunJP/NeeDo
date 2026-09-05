@@ -115,6 +115,7 @@ export type OfficialNoticePage<T> = {
 export type ManagedNoticeQuery = {
   page: number;
   pageSize: number;
+  search?: string;
   status?: OfficialNoticeStatus;
   level?: OfficialNoticeLevel;
 };
@@ -140,7 +141,8 @@ export const officialNoticesApi = {
       ["page", query.page],
       ["pageSize", query.pageSize],
       ["status", query.status],
-      ["level", query.level]
+      ["level", query.level],
+      ["search", query.search]
     ]);
     return httpClient.request<OfficialNoticePage<OfficialNotice>>(
       `${managementBase(scope)}?${search}`

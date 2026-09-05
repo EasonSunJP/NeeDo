@@ -176,6 +176,7 @@ const paginationShape = {
 export const officialNoticeListQuerySchema = z
   .object({
     ...paginationShape,
+    search: z.string().trim().min(1).max(100).optional(),
     status: z.enum(officialNoticeStatuses).optional(),
     level: z.enum(officialNoticeLevels).optional()
   })

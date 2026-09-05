@@ -287,6 +287,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
+    search?: string;
     status?: OfficialNoticeStatusCode;
     level?: OfficialNoticeLevelCode;
   }): Promise<{ list: OfficialNoticePayload[]; total: number }> {
@@ -294,6 +295,25 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     const where: Prisma.OfficialNoticeWhereInput = {
       deletedAt: null,
       ...this.issuerWhere(input.issuerScope),
+      ...(input.search
+        ? {
+            OR: [
+              { publicId: { contains: input.search } },
+              { targetSummary: { contains: input.search } },
+              {
+                translations: {
+                  some: {
+                    deletedAt: null,
+                    OR: [
+                      { title: { contains: input.search } },
+                      { summary: { contains: input.search } }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        : {}),
       ...(input.status ? { status: statusToDb[input.status] } : {}),
       ...(input.level ? { level: levelToDb[input.level] } : {})
     };

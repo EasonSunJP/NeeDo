@@ -766,6 +766,7 @@ export const translations: TranslationMap = {
   "加载失败，请重试": fourLanguageTranslation("載入失敗，請重試", "読み込みに失敗しました。再試行してください", "Failed to load. Try again", "불러오지 못했습니다. 다시 시도해 주세요"),
   "权限已变化，请刷新页面": fourLanguageTranslation("權限已變更，請重新整理頁面", "権限が変更されました。ページを更新してください", "Permissions changed. Refresh the page", "권한이 변경되었습니다. 페이지를 새로고침해 주세요"),
   "申请编号": fourLanguageTranslation("申請編號", "申請番号", "Application ID", "신청 번호"),
+  "搜索通知": fourLanguageTranslation("搜尋通知", "通知を検索", "Search notices", "공지 검색"),
   "图片已过期": { "zh-Hant": "圖片已過期", ja: "画像の有効期限が切れました", en: "Image expired", ko: "이미지가 만료되었습니다" },
   "聊天媒体本地缓存": fourLanguageTranslation("聊天媒體本機快取", "チャットメディアのローカルキャッシュ", "Local chat media cache", "채팅 미디어 로컬 캐시"),
   "媒体已显示，但本地缓存不可用": fourLanguageTranslation("媒體已顯示，但本機快取無法使用", "メディアは表示されていますが、ローカルキャッシュは利用できません", "Media is visible, but local caching is unavailable", "미디어는 표시되지만 로컬 캐시를 사용할 수 없습니다"),

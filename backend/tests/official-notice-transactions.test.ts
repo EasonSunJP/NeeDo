@@ -280,4 +280,38 @@ describe("official notice transaction regression", () => {
       })
     );
   });
+
+  it("searches public id, target summary, and persisted translations on the server", async () => {
+    const { client, repository } = fixture();
+    await repository.listBackoffice({
+      issuerScope: { type: "shop", shopId: 11 },
+      page: 1,
+      pageSize: 20,
+      search: "営業時間"
+    });
+
+    expect(client.officialNotice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          issuerType: "SHOP",
+          issuerShopId: 11,
+          OR: [
+            { publicId: { contains: "営業時間" } },
+            { targetSummary: { contains: "営業時間" } },
+            {
+              translations: {
+                some: {
+                  deletedAt: null,
+                  OR: [
+                    { title: { contains: "営業時間" } },
+                    { summary: { contains: "営業時間" } }
+                  ]
+                }
+              }
+            }
+          ]
+        })
+      })
+    );
+  });
 });

@@ -281,15 +281,17 @@ describe("OfficialNoticeService", () => {
       idempotencyKey: "merchant-lifecycle"
     };
 
-    await service.listBackoffice(actor, { page: 1, pageSize: 20 });
-    await service.listMerchant(merchant, { page: 1, pageSize: 20 });
+    await service.listBackoffice(actor, { page: 1, pageSize: 20, search: "maintenance" });
+    await service.listMerchant(merchant, { page: 1, pageSize: 20, search: "営業時間" });
     await service.cancelMerchant(merchant, { ip: "127.0.0.1" }, payload().publicId, lifecycle);
 
     expect(repo.listBackoffice.mock.calls[0][0]).toMatchObject({
-      issuerScope: { type: "platform" }
+      issuerScope: { type: "platform" },
+      search: "maintenance"
     });
     expect(repo.listBackoffice.mock.calls[1][0]).toMatchObject({
-      issuerScope: { type: "shop", shopId: 11 }
+      issuerScope: { type: "shop", shopId: 11 },
+      search: "営業時間"
     });
     expect(repo.cancel).toHaveBeenCalledWith(
       expect.objectContaining({
