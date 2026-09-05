@@ -25,6 +25,7 @@ import { PublicIdentifierRepository } from "../src/repositories/public-identifie
 import { IdentifierAllocator } from "../src/services/public-identifier.service";
 import { UserBootstrapKeyAllocator } from "../src/services/user-bootstrap-key.service";
 import type { TestNdpProvisioningService } from "../src/services/test-ndp-provisioning.service";
+import { shouldRunFormalSeedEntrypoint } from "../src/simulation/simulation-seed-config";
 
 import {
   SYSTEM_PERMISSIONS,
@@ -4309,7 +4310,7 @@ const runSeed = async (): Promise<void> => {
   }
 };
 
-if (require.main === module) {
+if (shouldRunFormalSeedEntrypoint(require.main === module, process.env)) {
   runSeed().catch((error: unknown) => {
     console.error(error);
     process.exit(1);
