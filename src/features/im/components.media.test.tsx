@@ -26,24 +26,29 @@ describe("IM media delivery failures", () => {
     expect(container.textContent).toContain(type === "image" ? "图片加载失败，点击重试" : "视频加载失败，点击重试");
     expect(container.textContent).not.toMatch(/已过期|private-name/);
     expect(container.querySelector('[data-im-message-bubble] img')).toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="查看本地副本"]')!.click());
+    expect(open).toHaveBeenCalledOnce();
     const retry = [...container.querySelectorAll("button")].find((node) => node.textContent?.includes("重试"))!;
     await act(async () => retry.click());
     const reloaded = container.querySelector('[data-im-message-bubble] img')!;
     expect(reloaded).not.toBe(image);
-    expect(reloaded.getAttribute("src")).toBe("/media/im/a.jpg");
-    expect(open).not.toHaveBeenCalled();
+    expect(reloaded.getAttribute("src")).toBe("/media/im/a.jpg?needo_media_policy=2");
+    expect(open).toHaveBeenCalledOnce();
     await act(async () => reloaded.dispatchEvent(new Event("load")));
     await act(async () => reloaded.closest("button")!.click());
-    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledTimes(2);
   });
 
   it.each(["image", "video"] as const)("does not request an explicitly expired %s", async (type) => {
     const expired = message(type);
+    const open = vi.fn();
     expired.ext = { ...expired.ext, mediaState: "expired" };
-    await act(async () => root.render(<MessageBubble isMine={false} message={expired} />));
+    await act(async () => root.render(<MessageBubble isMine={false} message={expired} onPreviewMedia={open} />));
     expect(container.textContent).toContain(type === "image" ? "图片已过期" : "视频已过期");
     expect(container.querySelector('[data-im-message-bubble] img, [data-im-message-bubble] video')).toBeNull();
     expect(container.textContent).not.toContain("重试");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="查看本地副本"]')!.click());
+    expect(open).toHaveBeenCalledWith(expired);
   });
 
   it("keeps the server voice duration and removes the failed audio player", async () => {
@@ -62,7 +67,7 @@ describe("IM media delivery failures", () => {
     await act(async () => root.render(<MessageBubble isMine={false} message={message("image")} />));
     await act(async () => container.querySelector('[data-im-message-bubble] img')!.dispatchEvent(new Event("error")));
     await act(async () => root.render(<MessageBubble isMine={false} message={{ ...message("image"), content: "/media/im/b.jpg" }} />));
-    expect(container.querySelector('[data-im-message-bubble] img')?.getAttribute("src")).toBe("/media/im/b.jpg");
+    expect(container.querySelector('[data-im-message-bubble] img')?.getAttribute("src")).toBe("/media/im/b.jpg?needo_media_policy=2");
     expect(container.textContent).not.toContain("重试");
   });
 });

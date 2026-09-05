@@ -3,6 +3,10 @@ import { useAuth } from "../../auth/AuthProvider";
 import type { Language } from "../../i18n/translations";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
+  getImOpenedMediaCacheService,
+  type ImOpenedMediaCacheService,
+} from "./local-cache/service";
+import {
   applyConversationDraft,
   buildSearchResults,
   buildConversationLastMessageSummary,
@@ -139,6 +143,38 @@ export function getMessageFailureReason(error: unknown): ConversationMessage["fa
   }
 
   return "send_failed";
+}
+
+export function resolveImOpenedMediaCacheFetchSource(
+  source: string,
+  currentOrigin: string,
+) {
+  const origin = new URL(currentOrigin);
+  const resolved = new URL(source, origin);
+  if (
+    !["http:", "https:"].includes(resolved.protocol) ||
+    !resolved.pathname.startsWith("/media/im/")
+  ) {
+    throw new Error("error.im.local_cache_media_source_invalid");
+  }
+
+  return `${resolved.pathname}${resolved.search}`;
+}
+
+export async function fetchImOpenedMediaBlob(
+  source: string,
+  currentOrigin: string,
+  fetcher: typeof fetch = fetch,
+) {
+  const response = await fetcher(
+    resolveImOpenedMediaCacheFetchSource(source, currentOrigin),
+    { cache: "no-store", credentials: "same-origin" },
+  );
+  if (response.status === 410) return { state: "expired" as const };
+  if (!response.ok) {
+    throw new Error(`error.im.media_delivery_${response.status}`);
+  }
+  return { blob: await response.blob(), state: "ready" as const };
 }
 
 export function getFriendRequestCounterpartId(
@@ -312,13 +348,20 @@ function getUiStorageKey(scope: ImRoleType) {
   return `needo.im.ui.v2.${scope}`;
 }
 
+type PendingTerminalMediaPurge = {
+  onSuccess: Set<() => void>;
+  retryTimer?: number;
+};
+
 type ScopedStoreBackend = {
+  accountId: string;
   api: ReturnType<typeof createFormalImApi>;
+  localCache: ImOpenedMediaCacheService;
   subscribeUpdates: (onUpdate: (update: ImStoreUpdate) => void) => () => void;
 };
 
 function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
-  const { api } = backend;
+  const { accountId, api, localCache } = backend;
   const historyGenerations = new Map<string, number>();
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
@@ -326,9 +369,82 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let hydrating: Promise<void> | null = null;
   let entityRefresh: Promise<void> | null = null;
   let snapshot = createInitialSnapshot();
+  const failedTerminalMediaPurges = new Set<string>();
+  const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
 
   function emit() {
     listeners.forEach((listener) => listener());
+  }
+
+  async function purgeTerminalMediaWithRetry(
+    conversationId: string,
+    messageId: string,
+  ) {
+    const key = `${conversationId}:${messageId}`;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await localCache.purgeMedia(accountId, conversationId, messageId);
+        failedTerminalMediaPurges.delete(key);
+        if (
+          failedTerminalMediaPurges.size === 0 &&
+          snapshot.error === "error.im.local_cache_purge_failed"
+        ) {
+          snapshot = { ...snapshot, error: undefined };
+          emit();
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    failedTerminalMediaPurges.add(key);
+    snapshot = { ...snapshot, error: "error.im.local_cache_purge_failed" };
+    emit();
+    throw new Error("error.im.local_cache_purge_failed", { cause: lastError });
+  }
+
+  function scheduleTerminalMediaPurge(
+    conversationId: string,
+    messageId: string,
+    onSuccess?: () => void,
+    initialDelayMs = 0,
+  ) {
+    const key = `${conversationId}:${messageId}`;
+    const existing = pendingTerminalMediaPurges.get(key);
+    if (existing) {
+      if (onSuccess) existing.onSuccess.add(onSuccess);
+      return;
+    }
+
+    const pending: PendingTerminalMediaPurge = { onSuccess: new Set() };
+    if (onSuccess) pending.onSuccess.add(onSuccess);
+    pendingTerminalMediaPurges.set(key, pending);
+
+    const run = async () => {
+      try {
+        await purgeTerminalMediaWithRetry(conversationId, messageId);
+      } catch {
+        pending.retryTimer = window.setTimeout(() => {
+          pending.retryTimer = undefined;
+          void run();
+        }, 1_000);
+        return;
+      }
+
+      pendingTerminalMediaPurges.delete(key);
+      pending.onSuccess.forEach((callback) => callback());
+    };
+
+    if (initialDelayMs > 0) {
+      pending.retryTimer = window.setTimeout(() => {
+        pending.retryTimer = undefined;
+        void run();
+      }, initialDelayMs);
+    } else {
+      void run();
+    }
   }
 
   function readUiState(): UiState {
@@ -596,6 +712,20 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
         if (!realtimeUnsubscribe) {
           realtimeUnsubscribe = backend.subscribeUpdates((update) => {
+            if (update.type === "message.deleted") {
+              scheduleTerminalMediaPurge(
+                update.conversationId,
+                update.messageId,
+                () => {
+                  void refreshBootstrap();
+                  if (snapshot.activeConversationId === update.conversationId) {
+                    void loadMessages(update.conversationId, { reset: true, limit: 40 });
+                  }
+                },
+              );
+              return;
+            }
+
             if (
               update.type === "message.created" ||
               update.type === "message.updated" ||
@@ -609,6 +739,10 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               }
               upsertMessage(update.message);
               if (update.type === "message.recalled") {
+                scheduleTerminalMediaPurge(
+                  update.message.conversationId,
+                  update.message.id,
+                );
                 recomputeCurrentLastMessageSummary(update.message);
               }
               emit();
@@ -754,6 +888,11 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       }
     };
     emit();
+    response.messages
+      .filter((message) => message.serverState === "recalled" || message.type === "recalled")
+      .forEach((message) => {
+        scheduleTerminalMediaPurge(message.conversationId, message.id);
+      });
   }
 
   function setActiveConversation(conversationId?: string) {
@@ -953,15 +1092,27 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   async function recallMessage(conversationId: string, messageId: string, mode: "standard") {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
+    let localPurgeFailed = false;
+    await purgeTerminalMediaWithRetry(conversationId, messageId).catch(() => {
+      localPurgeFailed = true;
+    });
     upsertMessage(response.message);
     recomputeCurrentLastMessageSummary(response.message);
     emit();
+    if (localPurgeFailed) {
+      scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
+      throw new Error("error.im.local_cache_purge_failed");
+    }
     return response;
   }
 
   async function deleteMessage(conversationId: string, messageId: string) {
     await hydrateStore();
     const response = await api.deleteMessage(conversationId, messageId);
+    let localPurgeFailed = false;
+    await purgeTerminalMediaWithRetry(conversationId, messageId).catch(() => {
+      localPurgeFailed = true;
+    });
     const remainingMessages = (snapshot.messagesByConversation[conversationId] ?? []).filter(
       (message) => message.id !== messageId,
     );
@@ -975,6 +1126,10 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
     rebuildConversationMessageSummary(conversationId, latestMessage);
     emit();
+    if (localPurgeFailed) {
+      scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
+      throw new Error("error.im.local_cache_purge_failed");
+    }
     return response;
   }
 
@@ -1046,6 +1201,26 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       idempotencyKey,
       messageIds: [...messageIds],
     });
+    const localPurgeResults = await Promise.allSettled(
+      response.messageIds.map((messageId) =>
+        purgeTerminalMediaWithRetry(conversationId, messageId),
+      ),
+    );
+    const failedLocalPurgeMessageIds = response.messageIds.filter(
+      (_, index) => localPurgeResults[index]?.status === "rejected",
+    );
+    let localRetryScheduled = false;
+    const assertLocalPurgeSucceeded = () => {
+      if (failedLocalPurgeMessageIds.length > 0) {
+        if (!localRetryScheduled) {
+          localRetryScheduled = true;
+          failedLocalPurgeMessageIds.forEach((messageId) => {
+            scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
+          });
+        }
+        throw new Error("error.im.local_cache_purge_failed");
+      }
+    };
     const removed = new Set(response.messageIds);
     const conversation = snapshot.conversations.find((item) => item.id === conversationId);
     const pagination = snapshot.paginationByConversation[conversationId];
@@ -1061,11 +1236,13 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
     if (!removedCurrentLast) {
       emit();
+      assertLocalPurgeSucceeded();
       return;
     }
     if (pagination?.loaded && !pagination.hasMore) {
       rebuildConversationMessageSummary(conversationId);
       emit();
+      assertLocalPurgeSucceeded();
       return;
     }
     try {
@@ -1088,6 +1265,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       };
       emit();
     }
+    assertLocalPurgeSucceeded();
   }
 
   async function translateMessages(
@@ -1442,6 +1620,47 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
   }
 
+  async function cacheOpenedMedia(message: ConversationMessage, source: string) {
+    const cachePermitted =
+      message.privacyPolicyVersionAtSend === undefined &&
+      message.ext?.disappearing === undefined;
+    const intent = cachePermitted
+      ? await localCache.beginCacheOpenedMedia(
+          accountId,
+          message.conversationId,
+          message.id,
+        )
+      : null;
+    const delivery = await fetchImOpenedMediaBlob(source, window.location.origin);
+    if (delivery.state === "expired") {
+      return { state: "expired" as const };
+    }
+    const { blob } = delivery;
+    if (!intent) {
+      return { blob, cacheState: "skipped" as const, state: "ready" as const };
+    }
+    try {
+      await localCache.cacheOpenedMedia(accountId, message, blob, intent);
+      return { blob, cacheState: "stored" as const, state: "ready" as const };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "error.im.local_cache_media_terminal"
+      ) {
+        throw error;
+      }
+      return { blob, cacheState: "unavailable" as const, state: "ready" as const };
+    }
+  }
+
+  function getCachedMediaObjectUrl(conversationId: string, messageId: string) {
+    return localCache.getCachedMediaObjectUrl(accountId, conversationId, messageId);
+  }
+
+  function releaseCachedMediaObjectUrl(conversationId: string, messageId: string) {
+    localCache.releaseCachedMediaObjectUrl(accountId, conversationId, messageId);
+  }
+
   async function refreshBootstrap() {
     if (!hydrated || snapshot.status !== "ready") {
       return;
@@ -1538,6 +1757,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       rejectFriendRequest,
       search,
       searchDirectory,
+      cacheOpenedMedia,
+      getCachedMediaObjectUrl,
+      releaseCachedMediaObjectUrl,
       refresh: refreshBootstrap,
       rememberSearchTerm,
       clearSearchHistory
@@ -1572,7 +1794,9 @@ function getScopedStore(
   }
 
   const created = createScopedStore(scope, {
+    accountId: String(currentUser.id),
     api: createFormalImApi({ currentUser, scope }),
+    localCache: getImOpenedMediaCacheService(),
     subscribeUpdates: subscribeFormalImUpdates
   });
   scopedStores.set(key, created);

@@ -432,7 +432,11 @@ describe("IM pages", () => {
     expect(componentSource).toContain("messageIds: [mediaPreview.id]");
     expect(componentSource).toContain("sourceConversationId: conversationId");
     expect(componentSource).not.toContain("messageId: mediaPreview.id");
-    expect(componentSource).toContain("<video");
+    expect(pagesSource).toContain('import { OpenedImMediaViewer } from "./OpenedImMediaViewer";');
+    expect(componentSource).toContain("<OpenedImMediaViewer");
+    expect(componentSource).toContain("cache={store}");
+    expect(componentSource).toContain("onResolvedSourceChange={setMediaPreviewResolvedSource}");
+    expect(componentSource).toContain("href={mediaPreviewResolvedSource ?? undefined}");
   });
 
   it("anchors the long-press action menu to the selected message instead of the composer edge", () => {

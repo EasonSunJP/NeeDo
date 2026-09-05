@@ -32,6 +32,7 @@ import { getClientThemeClassName, useClientTheme } from "../../theme/ClientTheme
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
 import { getJudgementReactionIconUrl, ImReactionValue } from "./JudgementReactionIcon";
 import { ImChatRecordCard } from "./ImChatRecordCard";
+import { resolveImNoStoreMediaSource } from "./media-source";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
@@ -2992,9 +2993,10 @@ export function MessageBubble({
 }) {
   const i18n = useProvidedI18n();
   const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
-  const mediaSource = message.type === "image" || (message.type === "video" && !readOnly)
+  const rawMediaSource = message.type === "image" || (message.type === "video" && !readOnly)
     ? message.ext?.thumbnailUrl ?? message.ext?.url ?? message.content
     : message.ext?.url ?? message.content;
+  const mediaSource = resolveImNoStoreMediaSource(rawMediaSource);
   const mediaLoad = useMediaLoadState(`${message.id}:${mediaSource}`);
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const visibleTranslation = translation.visible
@@ -3051,10 +3053,23 @@ export function MessageBubble({
       const image = message.type === "video" && readOnly
         ? <video aria-label={previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls key={mediaLoad.key} onError={mediaLoad.onError} onLoadedMetadata={mediaLoad.onLoad} preload="metadata" src={mediaSource} />
         : <img alt={previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" key={mediaLoad.key} onError={mediaLoad.onError} onLoad={mediaLoad.onLoad} src={mediaSource} />;
+      const openLocalCopy = !readOnly && onPreviewMedia ? (
+        <button
+          aria-label={translateText("查看本地副本", i18n?.language ?? "zh")}
+          className="w-[180px] rounded-full bg-black/10 px-3 py-2 text-xs font-bold"
+          onClick={(event) => {
+            event.stopPropagation();
+            onPreviewMedia(message);
+          }}
+          type="button"
+        >
+          {translateText("查看本地副本", i18n?.language ?? "zh")}
+        </button>
+      ) : null;
       return (
         <div className="space-y-2">
-          {expired ? <MediaLoadFeedback className="w-[180px]" expired kind={message.type} /> : mediaLoad.failed ? (
-            <button className="w-[180px] rounded-2xl bg-black/10" onClick={(event) => { event.stopPropagation(); mediaLoad.retry(); }} type="button"><MediaLoadFeedback kind={message.type} /></button>
+          {expired ? <><MediaLoadFeedback className="w-[180px]" expired kind={message.type} />{openLocalCopy}</> : mediaLoad.failed ? (
+            <><button className="w-[180px] rounded-2xl bg-black/10" onClick={(event) => { event.stopPropagation(); mediaLoad.retry(); }} type="button"><MediaLoadFeedback kind={message.type} /></button>{openLocalCopy}</>
           ) : readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
             {image}
             {message.type === "video" ? (
