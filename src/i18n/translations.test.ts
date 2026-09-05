@@ -6,6 +6,49 @@ import { translateImUiText } from "../features/im/ui-copy";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes the formal travel-fare workflow in all five App languages", () => {
+    for (const source of [
+      "Geoapify 尚未配置",
+      "发布不可变版本",
+      "添加距离区间",
+      "距离必须是大于 0、精确到米的数值。",
+      "请输入有效的生效时间。",
+      "邮政编码",
+      "邮编 104-0061",
+      "丁目、番地（可选）",
+      "建筑物、房间号（可选）",
+      "请先从上方时间栏选定一个可用时段，再估算交通费。",
+      "为保护上门地址隐私，此处不加载第三方地图预览。",
+      "估算交通费",
+      "正式交通费",
+      "交通费估价已过期，请重新估算。",
+      "该地址超出店铺的上门服务范围。",
+      "路线供应商尚未配置，暂时无法估算交通费。",
+      "Geoapify 正常",
+      "Geoapify 已限流",
+      "Geoapify 不可用",
+      "Geoapify 已配置，尚未探测",
+      "供应商限流",
+      "供应商不可用",
+      "检测时间",
+      "距离费率区间最多为 50 个。",
+      "不可变发布历史",
+      "尚无已发布版本。",
+      "上一页历史",
+      "下一页历史",
+      "确认发布内容",
+      "确认发布",
+      "当前账号只有查看权限，不能发布新的交通费策略。",
+      "估价有效至"
+    ]) {
+      for (const { code } of languages) {
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
+      }
+    }
+  });
+
   it("localizes media expiry and retry feedback in every App language", () => {
     for (const source of ["图片已过期", "视频已过期", "图片加载失败，点击重试", "视频加载失败，点击重试", "语音加载失败，点击重试"]) {
       for (const { code } of languages) {

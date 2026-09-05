@@ -20,6 +20,99 @@ const fourLanguageTranslation = (
   ko: string,
 ): TranslationEntry => ({ "zh-Hant": zhHant, ja, en, ko });
 
+const travelFareTranslations: Record<string, TranslationEntry> = {
+  "查看路线供应商就绪状态，以及各店铺当前和计划生效的正式出行费率。": fourLanguageTranslation("查看路線供應商就緒狀態，以及各店鋪目前和計劃生效的正式出行費率。", "ルートプロバイダーの稼働状況と、各店舗の現在・適用予定の正式な交通費を確認します。", "View route-provider readiness and each shop's current and scheduled formal travel fares.", "경로 제공업체 준비 상태와 각 매장의 현재 및 예정된 정식 출장비를 확인합니다."),
+  "Geoapify 已配置": fourLanguageTranslation("Geoapify 已設定", "Geoapify 設定済み", "Geoapify configured", "Geoapify 설정됨"),
+  "Geoapify 尚未配置": fourLanguageTranslation("Geoapify 尚未設定", "Geoapify 未設定", "Geoapify not configured", "Geoapify 설정 안 됨"),
+  "Geoapify 正常": fourLanguageTranslation("Geoapify 運作正常", "Geoapify 正常稼働", "Geoapify healthy", "Geoapify 정상"),
+  "Geoapify 已限流": fourLanguageTranslation("Geoapify 已達限流", "Geoapify レート制限中", "Geoapify rate limited", "Geoapify 요청 제한됨"),
+  "Geoapify 不可用": fourLanguageTranslation("Geoapify 無法使用", "Geoapify 利用不可", "Geoapify unavailable", "Geoapify 사용 불가"),
+  "Geoapify 已配置，尚未探测": fourLanguageTranslation("Geoapify 已設定，尚未探測", "Geoapify 設定済み・未確認", "Geoapify configured, not yet observed", "Geoapify 설정됨, 아직 확인되지 않음"),
+  "供应商限流": fourLanguageTranslation("供應商限流", "プロバイダーのレート制限", "Provider rate limited", "제공업체 요청 제한"),
+  "供应商不可用": fourLanguageTranslation("供應商無法使用", "プロバイダー利用不可", "Provider unavailable", "제공업체 사용 불가"),
+  "检测时间": fourLanguageTranslation("檢測時間", "確認日時", "Observed at", "확인 시각"),
+  "正在加载路线供应商与费率策略…": fourLanguageTranslation("正在載入路線供應商與費率策略…", "ルートプロバイダーと料金ポリシーを読み込み中…", "Loading route provider and fare policies…", "경로 제공업체와 요금 정책을 불러오는 중…"),
+  "供应商或策略读取失败": fourLanguageTranslation("供應商或策略讀取失敗", "プロバイダーまたはポリシーを取得できません", "Provider or policy load failed", "제공업체 또는 정책을 불러오지 못했습니다"),
+  "无法读取正式出行配置，请稍后重试。": fourLanguageTranslation("無法讀取正式出行設定，請稍後重試。", "正式な交通設定を取得できません。しばらくしてから再試行してください。", "Could not load formal travel settings. Try again later.", "정식 출장 설정을 불러올 수 없습니다. 잠시 후 다시 시도하세요."),
+  "路线供应商": fourLanguageTranslation("路線供應商", "ルートプロバイダー", "Route provider", "경로 제공업체"),
+  "驾驶路线": fourLanguageTranslation("駕駛路線", "車のルート", "Driving route", "자동차 경로"),
+  "估价有效": fourLanguageTranslation("估價有效", "見積有効期間", "Estimate valid", "견적 유효"),
+  "路线缓存": fourLanguageTranslation("路線快取", "ルートキャッシュ", "Route cache", "경로 캐시"),
+  "当前无法创建新路线估价。": fourLanguageTranslation("目前無法建立新的路線估價。", "現在、新しいルート見積は作成できません。", "New route estimates are currently unavailable.", "현재 새 경로 견적을 생성할 수 없습니다."),
+  "系统不会使用静态距离、模拟路线或伪造价格兜底。": fourLanguageTranslation("系統不會使用靜態距離、模擬路線或偽造價格作為替代。", "静的な距離、模擬ルート、架空の料金で代替することはありません。", "The system will not fall back to static distances, simulated routes, or fabricated prices.", "시스템은 정적 거리, 모의 경로 또는 허위 가격으로 대체하지 않습니다."),
+  "城市": fourLanguageTranslation("城市", "都市", "City", "도시"),
+  "筛选": fourLanguageTranslation("篩選", "絞り込む", "Filter", "필터"),
+  "当前策略": fourLanguageTranslation("目前策略", "現在のポリシー", "Current policy", "현재 정책"),
+  "计划策略": fourLanguageTranslation("計劃策略", "適用予定のポリシー", "Scheduled policy", "예정 정책"),
+  "没有符合条件的店铺费率策略。": fourLanguageTranslation("沒有符合條件的店鋪費率策略。", "条件に一致する店舗料金ポリシーはありません。", "No shop fare policies match the filters.", "조건에 맞는 매장 요금 정책이 없습니다."),
+  "未发布": fourLanguageTranslation("未發佈", "未公開", "Not published", "게시 안 됨"),
+  "上一页": fourLanguageTranslation("上一頁", "前へ", "Previous", "이전"),
+  "下一页": fourLanguageTranslation("下一頁", "次へ", "Next", "다음"),
+  "上门交通费": fourLanguageTranslation("上門交通費", "訪問交通費", "Home-service travel fare", "방문 출장비"),
+  "按驾驶路线距离发布不可变的店铺交通费版本。": fourLanguageTranslation("依駕駛路線距離發佈不可變的店鋪交通費版本。", "車のルート距離に基づく変更不可の店舗交通費バージョンを公開します。", "Publish immutable shop travel-fare versions based on driving distance.", "자동차 경로 거리에 따른 변경 불가능한 매장 출장비 버전을 게시합니다."),
+  "正式策略": fourLanguageTranslation("正式策略", "正式ポリシー", "Formal policy", "정식 정책"),
+  "正在加载当前费率策略…": fourLanguageTranslation("正在載入目前費率策略…", "現在の料金ポリシーを読み込み中…", "Loading current fare policy…", "현재 요금 정책을 불러오는 중…"),
+  "当前账号没有查看或发布出行费率策略的权限。": fourLanguageTranslation("目前帳號沒有查看或發佈出行費率策略的權限。", "このアカウントには交通費ポリシーの閲覧・公開権限がありません。", "This account cannot view or publish travel-fare policies.", "현재 계정에는 출장비 정책을 조회하거나 게시할 권한이 없습니다."),
+  "策略版本已经变化，请重新加载后再发布。": fourLanguageTranslation("策略版本已變更，請重新載入後再發佈。", "ポリシーのバージョンが変更されました。再読み込みしてから公開してください。", "The policy version changed. Reload before publishing.", "정책 버전이 변경되었습니다. 다시 불러온 후 게시하세요."),
+  "无法读取或发布正式出行费率策略，请稍后重试。": fourLanguageTranslation("無法讀取或發佈正式出行費率策略，請稍後重試。", "正式な交通費ポリシーを取得または公開できません。後でもう一度お試しください。", "Could not load or publish the formal travel-fare policy. Try again later.", "정식 출장비 정책을 불러오거나 게시할 수 없습니다. 잠시 후 다시 시도하세요."),
+  "当前生效策略": fourLanguageTranslation("目前生效策略", "現在有効なポリシー", "Current active policy", "현재 적용 정책"),
+  "计划生效策略": fourLanguageTranslation("計劃生效策略", "適用予定のポリシー", "Scheduled policy", "적용 예정 정책"),
+  "尚未发布当前策略。": fourLanguageTranslation("尚未發佈目前策略。", "現在のポリシーはまだ公開されていません。", "No current policy has been published.", "현재 정책이 아직 게시되지 않았습니다."),
+  "没有计划生效的策略。": fourLanguageTranslation("沒有計劃生效的策略。", "適用予定のポリシーはありません。", "No policy is scheduled.", "적용 예정 정책이 없습니다."),
+  "不可变发布历史": fourLanguageTranslation("不可變發佈歷史", "変更不可の公開履歴", "Immutable publication history", "변경 불가능한 게시 이력"),
+  "尚无已发布版本。": fourLanguageTranslation("尚無已發佈版本。", "公開済みバージョンはありません。", "No versions have been published.", "게시된 버전이 없습니다."),
+  "上一页历史": fourLanguageTranslation("上一頁歷史", "前の履歴", "Previous history page", "이전 이력 페이지"),
+  "下一页历史": fourLanguageTranslation("下一頁歷史", "次の履歴", "Next history page", "다음 이력 페이지"),
+  "当前账号只有查看权限，不能发布新的交通费策略。": fourLanguageTranslation("目前帳號只有查看權限，不能發佈新的交通費策略。", "このアカウントは閲覧専用のため、新しい交通費ポリシーを公開できません。", "This account has read-only access and cannot publish a new travel-fare policy.", "현재 계정은 조회 전용이므로 새 출장비 정책을 게시할 수 없습니다."),
+  "发布新版本": fourLanguageTranslation("發佈新版本", "新しいバージョンを公開", "Publish new version", "새 버전 게시"),
+  "已发布版本不会被修改；新版本按生效时间接替。": fourLanguageTranslation("已發佈版本不會被修改；新版本依生效時間接替。", "公開済みバージョンは変更されません。新バージョンは適用日時に切り替わります。", "Published versions are immutable; a new version takes over at its effective time.", "게시된 버전은 변경되지 않으며 새 버전은 적용 시각에 전환됩니다."),
+  "距离上限（km）": fourLanguageTranslation("距離上限（km）", "距離上限（km）", "Distance limit (km)", "거리 상한(km)"),
+  "交通费（JPY）": fourLanguageTranslation("交通費（JPY）", "交通費（JPY）", "Travel fare (JPY)", "출장비(JPY)"),
+  "移除": fourLanguageTranslation("移除", "削除", "Remove", "삭제"),
+  "添加距离区间": fourLanguageTranslation("新增距離區間", "距離帯を追加", "Add distance band", "거리 구간 추가"),
+  "至少需要一个距离费率区间。": fourLanguageTranslation("至少需要一個距離費率區間。", "距離料金帯が1つ以上必要です。", "At least one distance-fare band is required.", "거리 요금 구간이 하나 이상 필요합니다."),
+  "距离必须是大于 0、精确到米的数值。": fourLanguageTranslation("距離必須為大於 0 且精確至公尺的數值。", "距離は0より大きく、メートル単位で指定してください。", "Distance must be greater than 0 and precise to the meter.", "거리는 0보다 크고 미터 단위로 정확하게 입력해야 합니다."),
+  "距离上限必须严格递增。": fourLanguageTranslation("距離上限必須嚴格遞增。", "距離上限は昇順にしてください。", "Distance limits must strictly increase.", "거리 상한은 엄격히 증가해야 합니다."),
+  "距离费率区间最多为 50 个。": fourLanguageTranslation("距離費率區間最多為 50 個。", "距離料金帯は最大50件です。", "A policy can contain at most 50 distance-fare bands.", "거리 요금 구간은 최대 50개입니다."),
+  "交通费必须是非负整数日元。": fourLanguageTranslation("交通費必須為非負整數日圓。", "交通費は0以上の整数（円）にしてください。", "Travel fare must be a non-negative integer in JPY.", "출장비는 0 이상의 정수 엔화여야 합니다."),
+  "生效时间": fourLanguageTranslation("生效時間", "適用開始日時", "Effective time", "적용 시각"),
+  "发布理由": fourLanguageTranslation("發佈理由", "公開理由", "Publication reason", "게시 사유"),
+  "请输入有效的生效时间。": fourLanguageTranslation("請輸入有效的生效時間。", "有効な適用開始日時を入力してください。", "Enter a valid effective time.", "올바른 적용 시각을 입력하세요."),
+  "新费率版本已发布。": fourLanguageTranslation("新費率版本已發佈。", "新しい料金バージョンを公開しました。", "New fare version published.", "새 요금 버전이 게시되었습니다."),
+  "正在发布…": fourLanguageTranslation("正在發佈…", "公開中…", "Publishing…", "게시 중…"),
+  "发布不可变版本": fourLanguageTranslation("發佈不可變版本", "変更不可のバージョンを公開", "Publish immutable version", "변경 불가능한 버전 게시"),
+  "确认发布内容": fourLanguageTranslation("確認發佈內容", "公開内容を確認", "Confirm publication details", "게시 내용 확인"),
+  "确认发布": fourLanguageTranslation("確認發佈", "公開を確定", "Confirm publication", "게시 확정"),
+  "邮政编码": fourLanguageTranslation("郵遞區號", "郵便番号", "Postal code", "우편번호"),
+  "邮编 104-0061": fourLanguageTranslation("郵遞區號 104-0061", "郵便番号 104-0061", "Postal code 104-0061", "우편번호 104-0061"),
+  "都道府县": fourLanguageTranslation("都道府縣", "都道府県", "Prefecture", "도도부현"),
+  "市区町村": fourLanguageTranslation("市區町村", "市区町村", "City / ward / town", "시구정촌"),
+  "街道地址": fourLanguageTranslation("街道地址", "町名・番地", "Street address", "도로명 주소"),
+  "地址补充": fourLanguageTranslation("地址補充", "住所補足", "Address line 2", "상세 주소"),
+  "建筑物与房间": fourLanguageTranslation("建築物與房間", "建物・部屋番号", "Building and room", "건물 및 호수"),
+  "丁目、番地（可选）": fourLanguageTranslation("丁目、番地（選填）", "丁目・番地（任意）", "Chome and street number (optional)", "초메, 번지(선택)"),
+  "建筑物、房间号（可选）": fourLanguageTranslation("建築物、房號（選填）", "建物・部屋番号（任意）", "Building and room (optional)", "건물, 호수(선택)"),
+  "估算交通费": fourLanguageTranslation("估算交通費", "交通費を見積もる", "Estimate travel fare", "출장비 계산"),
+  "正在计算驾驶路线…": fourLanguageTranslation("正在計算駕駛路線…", "車のルートを計算中…", "Calculating driving route…", "자동차 경로 계산 중…"),
+  "重新估算交通费": fourLanguageTranslation("重新估算交通費", "交通費を再見積もり", "Re-estimate travel fare", "출장비 다시 계산"),
+  "正式交通费": fourLanguageTranslation("正式交通費", "正式交通費", "Formal travel fare", "정식 출장비"),
+  "估价有效至": fourLanguageTranslation("估價有效至", "見積有効期限", "Estimate valid until", "견적 유효 기한"),
+  "驾驶距离": fourLanguageTranslation("駕駛距離", "走行距離", "Driving distance", "주행 거리"),
+  "适用上限": fourLanguageTranslation("適用上限", "適用上限", "Applicable limit", "적용 상한"),
+  "策略": fourLanguageTranslation("策略", "ポリシー", "Policy", "정책"),
+  "交通费估价已过期，请重新估算。": fourLanguageTranslation("交通費估價已過期，請重新估算。", "交通費見積の有効期限が切れました。再度見積もってください。", "The travel-fare estimate expired. Estimate it again.", "출장비 견적이 만료되었습니다. 다시 계산하세요."),
+  "该地址超出店铺的上门服务范围。": fourLanguageTranslation("該地址超出店鋪的上門服務範圍。", "この住所は店舗の訪問サービス範囲外です。", "This address is outside the shop's home-service area.", "이 주소는 매장 방문 서비스 범위를 벗어납니다."),
+  "路线供应商尚未配置，暂时无法估算交通费。": fourLanguageTranslation("路線供應商尚未設定，暫時無法估算交通費。", "ルートプロバイダーが未設定のため、交通費を見積もれません。", "The route provider is not configured, so travel fare cannot be estimated.", "경로 제공업체가 설정되지 않아 출장비를 계산할 수 없습니다."),
+  "没有找到可用的驾驶路线，请检查地址。": fourLanguageTranslation("找不到可用的駕駛路線，請檢查地址。", "利用可能な車のルートが見つかりません。住所を確認してください。", "No driving route was found. Check the address.", "이용 가능한 자동차 경로를 찾지 못했습니다. 주소를 확인하세요."),
+  "路线供应商暂时不可用，请稍后重试。": fourLanguageTranslation("路線供應商暫時無法使用，請稍後重試。", "ルートプロバイダーは一時的に利用できません。後でもう一度お試しください。", "The route provider is temporarily unavailable. Try again later.", "경로 제공업체를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요."),
+  "交通费估算失败，请检查地址后重试。": fourLanguageTranslation("交通費估算失敗，請檢查地址後重試。", "交通費の見積に失敗しました。住所を確認して再試行してください。", "Travel-fare estimation failed. Check the address and retry.", "출장비 계산에 실패했습니다. 주소를 확인한 후 다시 시도하세요."),
+  "请完整填写邮编、都道府县、市区町村和街道地址。": fourLanguageTranslation("請完整填寫郵遞區號、都道府縣、市區町村和街道地址。", "郵便番号、都道府県、市区町村、町名・番地を入力してください。", "Enter the postal code, prefecture, city/ward/town, and street address.", "우편번호, 도도부현, 시구정촌 및 도로명 주소를 모두 입력하세요."),
+  "请先从上方时间栏选定一个可用时段，再估算交通费。": fourLanguageTranslation("請先從上方時間欄選定一個可用時段，再估算交通費。", "上の時間欄で利用可能な時間を選択してから交通費を見積もってください。", "Choose an available time above before estimating travel fare.", "위 시간 영역에서 이용 가능한 시간을 선택한 후 출장비를 계산하세요."),
+  "为保护上门地址隐私，此处不加载第三方地图预览。": fourLanguageTranslation("為保護上門地址隱私，此處不載入第三方地圖預覽。", "訪問先住所のプライバシー保護のため、ここでは外部地図プレビューを読み込みません。", "To protect the home address, no third-party map preview is loaded here.", "방문 주소의 개인정보를 보호하기 위해 여기서는 외부 지도 미리보기를 불러오지 않습니다."),
+  "请先取得有效的正式交通费估价，再提交预约": fourLanguageTranslation("請先取得有效的正式交通費估價，再提交預約", "有効な正式交通費見積を取得してから予約してください", "Get a valid formal travel-fare estimate before booking", "유효한 정식 출장비 견적을 받은 후 예약하세요"),
+  "服务费 + 正式交通费": fourLanguageTranslation("服務費 + 正式交通費", "サービス料金 + 正式交通費", "Service fee + formal travel fare", "서비스 요금 + 정식 출장비")
+};
+
 export const languages: Array<{ code: Language; label: string; shortLabel: string; htmlLang: string }> = [
   { code: "ja", label: "日本語", shortLabel: "日", htmlLang: "ja" },
   { code: "en", label: "English", shortLabel: "En", htmlLang: "en" },
@@ -16348,7 +16441,7 @@ export function translateText(source: string, language: Language): string {
     return `${leading}${cleanupRuntimeTranslation(dynamicFastestMinutesLabel, language)}${trailing}`;
   }
 
-  const exact = resolveTranslationEntry(analyticsTask6Translations[core] ?? translations[core], language);
+  const exact = resolveTranslationEntry(travelFareTranslations[core] ?? analyticsTask6Translations[core] ?? translations[core], language);
 
   if (exact) {
     return `${leading}${cleanupRuntimeTranslation(exact, language)}${trailing}`;
@@ -16390,7 +16483,7 @@ export function translateText(source: string, language: Language): string {
     return `${leading}${cleanupRuntimeTranslation(dynamicGroupPrivacyCountdownStatus, language)}${trailing}`;
   }
 
-  const translated = Object.entries(translations)
+  const translated = Object.entries({ ...translations, ...travelFareTranslations })
     .filter(([phrase]) => phrase.length >= 2 && core.includes(phrase))
     .sort(([a], [b]) => b.length - a.length)
     .reduce((text, [phrase, values]) => {

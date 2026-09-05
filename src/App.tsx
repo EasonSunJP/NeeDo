@@ -73,6 +73,7 @@ import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrd
 import { MerchantAdminNotificationsPage } from "./pages/merchant-admin/MerchantAdminNotificationsPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
+import { ShopTravelFarePolicyPage } from "./pages/merchant-admin/ShopTravelFarePolicyPage";
 import {
   MerchantAdminFinancePage,
   MerchantAdminInventoryPage,
@@ -1352,6 +1353,7 @@ export default function App() {
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
+              <Route path="/merchant-admin/settings/travel-fare" element={protectPermission("merchant", "merchant-admin:travel-fare-policy:read", <ShopTravelFarePolicyPage />)} />
 
               <Route path="/technician" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
               <Route path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)} />

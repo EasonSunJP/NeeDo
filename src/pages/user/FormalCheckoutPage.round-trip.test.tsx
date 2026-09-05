@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "../../api/httpClient";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "../../features/booking/api";
 import {
   coreReadApi,
@@ -10,6 +11,7 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { pricingModeApi } from "../../features/pricing-mode/api";
+import { travelFareApi } from "../../api/travelFare";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { CheckoutPage } from "./CheckoutPage";
 import { ProfileDetailPage } from "./ProfileDetailPage";
@@ -231,6 +233,14 @@ async function click(element: Element) {
   await act(async () => element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
 }
 
+async function changeInput(label: string, value: string) {
+  const element = container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 beforeEach(() => {
   window.history.replaceState({ idx: 1 }, "", "/");
   vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
@@ -271,6 +281,47 @@ afterEach(async () => {
 });
 
 describe("formal checkout technician-card round trip", () => {
+  it("creates and submits a home booking only after a valid formal route estimate", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "both" });
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: slots.length, page: 1, page_size: 100 });
+    const createEstimate = vi.spyOn(travelFareApi, "createEstimate").mockResolvedValue({ publicId: "00000000-0000-4000-8000-000000000077", distanceMeters: 4200, durationSeconds: 900, fareAmountJpy: 800, policyVersionPublicId: "00000000-0000-4000-8000-000000000031", policyVersion: 2, bandMaximumDistanceMeters: 5000, expiresAt: "2026-09-02T22:10:00.000Z", cached: false });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({ ...createdOrder, fulfillmentMode: "home", paymentAmountJpy: 9600 });
+
+    await act(async () => root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=home"]}><Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /><Route element={<LocationProbe />} path="/orders/:orderId" /></Routes></MemoryRouter></ClientThemeProvider>));
+    await waitFor(() => expect(container.textContent).toContain("估算交通费"));
+    const confirmBefore = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("确定预约"))!;
+    expect(confirmBefore.disabled).toBe(true);
+    await changeInput("邮政编码", "104-0061"); await changeInput("都道府县", "東京都"); await changeInput("市区町村", "中央区"); await changeInput("街道地址", "銀座1-2-3");
+    await click([...container.querySelectorAll("button")].find((button) => button.textContent === "估算交通费")!);
+    await waitFor(() => expect(container.textContent).toContain("正式交通费 ¥800"));
+    expect(container.textContent).toContain("估价有效至 2026/9/3 7:10:00");
+    expect(createEstimate).toHaveBeenCalledWith({ servicePublicId: "svc0000000031", scheduleSlotId: 101, destination: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) });
+    expect(container.querySelector('iframe[src*="google.com/maps"]')).toBeNull();
+    await click(confirmBefore);
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ fulfillmentMode: "home", travelEstimatePublicId: "00000000-0000-4000-8000-000000000077", fulfillmentAddress: expect.objectContaining({ postalCode: "104-0061" }) })));
+  });
+
+  it("shows an unconfigured provider state and retries against the formal estimate API", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "both" });
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: slots.length, page: 1, page_size: 100 });
+    const createEstimate = vi.spyOn(travelFareApi, "createEstimate")
+      .mockRejectedValueOnce(new ApiClientError("error.travel.provider_unconfigured", 503, 50301))
+      .mockResolvedValueOnce({ publicId: "00000000-0000-4000-8000-000000000078", distanceMeters: 4200, durationSeconds: 900, fareAmountJpy: 800, policyVersionPublicId: "00000000-0000-4000-8000-000000000031", policyVersion: 2, bandMaximumDistanceMeters: 5000, expiresAt: "2026-09-02T22:10:00.000Z", cached: false });
+
+    await act(async () => root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=home"]}><Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes></MemoryRouter></ClientThemeProvider>));
+    await waitFor(() => expect(container.textContent).toContain("估算交通费"));
+    await changeInput("邮政编码", "104-0061"); await changeInput("都道府县", "東京都"); await changeInput("市区町村", "中央区"); await changeInput("街道地址", "銀座1-2-3");
+    await click([...container.querySelectorAll("button")].find((button) => button.textContent === "估算交通费")!);
+    await waitFor(() => expect(container.textContent).toContain("路线供应商尚未配置，暂时无法估算交通费。"));
+    await click([...container.querySelectorAll("button")].find((button) => button.textContent === "重新估算交通费")!);
+    await waitFor(() => expect(container.textContent).toContain("正式交通费 ¥800"));
+    expect(createEstimate).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps the exact second same-time formal slot and existing history state across the technician-card round trip", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);

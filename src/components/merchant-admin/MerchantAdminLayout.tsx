@@ -258,6 +258,13 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
         to: "/merchant-admin/settings",
         icon: "设",
         children: ["基础资料", "数据库状态", "待接入能力"]
+      },
+      {
+        label: "上门交通费",
+        to: "/merchant-admin/settings/travel-fare",
+        icon: "行",
+        children: ["当前策略", "计划版本", "距离区间"],
+        rbacPermission: "merchant-admin:travel-fare-policy:read"
       }
     ]
   },
