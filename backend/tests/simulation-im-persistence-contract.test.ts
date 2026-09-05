@@ -76,6 +76,8 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain("fixedPreviewConversations");
     expect(seedSource).toContain("fixedPreviewContacts");
     expect(checkSource).toContain("fixedRealtimeContacts");
+    expect(checkSource).toContain("fixedExpectedIdentityPairs");
+    expect(checkSource).toContain("ownerIdentityId: pair.ownerIdentityId");
     expect(checkSource).toContain("fixedRealtimeConversations");
     expect(checkSource).toContain("activeExperienceAccounts");
     expect(checkSource).toContain("const getRequiredId = <Key, Value>");

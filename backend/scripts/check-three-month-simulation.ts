@@ -820,39 +820,66 @@ const main = async (): Promise<void> => {
         isActive: true,
         deletedAt: null
       },
-      select: { id: true, email: true }
+      select: {
+        id: true,
+        email: true,
+        identities: {
+          where: { isActive: true, deletedAt: null },
+          select: { id: true, type: true }
+        }
+      }
     });
     assert(fixedRealtimeAccounts.length === 3, "fixed realtime test accounts are missing");
-    const fixedRealtimeUserIdByEmail = new Map(
-      fixedRealtimeAccounts.map((account) => [account.email, account.id])
+    const fixedRealtimeUserByEmail = new Map(
+      fixedRealtimeAccounts.map((account) => [account.email, account])
     );
-    const fixedCustomerUserId = getRequiredId(
-      fixedRealtimeUserIdByEmail,
+    const fixedCustomer = getRequiredId(
+      fixedRealtimeUserByEmail,
       "customer@example.com",
       "fixed customer user"
     );
-    const fixedCounterpartUserIds = [
-      getRequiredId(
-        fixedRealtimeUserIdByEmail,
-        "technician@example.com",
-        "fixed technician user"
-      ),
-      getRequiredId(
-        fixedRealtimeUserIdByEmail,
-        "merchant@example.com",
-        "fixed merchant user"
-      )
+    const fixedTechnician = getRequiredId(
+      fixedRealtimeUserByEmail,
+      "technician@example.com",
+      "fixed technician user"
+    );
+    const fixedMerchant = getRequiredId(
+      fixedRealtimeUserByEmail,
+      "merchant@example.com",
+      "fixed merchant user"
+    );
+    const getFixedIdentityId = (
+      account: (typeof fixedRealtimeAccounts)[number],
+      acceptedTypes: string[]
+    ): number => {
+      const identity = account.identities.find((candidate) => acceptedTypes.includes(candidate.type));
+      assert(identity, `${account.email} is missing identity ${acceptedTypes.join("|")}`);
+      return identity.id;
+    };
+    const fixedCustomerUserId = fixedCustomer.id;
+    const fixedCounterpartUserIds = [fixedTechnician.id, fixedMerchant.id];
+    const fixedCustomerIdentityId = getFixedIdentityId(fixedCustomer, ["customer"]);
+    const fixedTechnicianIdentityId = getFixedIdentityId(fixedTechnician, ["technician"]);
+    const fixedMerchantIdentityId = getFixedIdentityId(fixedMerchant, ["merchant_owner", "merchant"]);
+    const fixedExpectedIdentityPairs = [
+      { ownerIdentityId: fixedCustomerIdentityId, contactIdentityId: fixedTechnicianIdentityId },
+      { ownerIdentityId: fixedTechnicianIdentityId, contactIdentityId: fixedCustomerIdentityId },
+      { ownerIdentityId: fixedCustomerIdentityId, contactIdentityId: fixedMerchantIdentityId },
+      { ownerIdentityId: fixedMerchantIdentityId, contactIdentityId: fixedCustomerIdentityId }
     ];
     const fixedRealtimeContacts = await prisma.contact.count({
       where: {
         deletedAt: null,
-        OR: fixedCounterpartUserIds.flatMap((counterpartUserId) => [
-          { ownerUserId: fixedCustomerUserId, contactUserId: counterpartUserId },
-          { ownerUserId: counterpartUserId, contactUserId: fixedCustomerUserId }
-        ])
+        OR: fixedExpectedIdentityPairs.map((pair) => ({
+          ownerIdentityId: pair.ownerIdentityId,
+          contactIdentityId: pair.contactIdentityId
+        }))
       }
     });
-    assert(fixedRealtimeContacts === 4, `expected 4 fixed realtime contacts, found ${fixedRealtimeContacts}`);
+    assert(
+      fixedRealtimeContacts === fixedExpectedIdentityPairs.length,
+      `expected ${fixedExpectedIdentityPairs.length} identity-scoped fixed realtime contacts, found ${fixedRealtimeContacts}`
+    );
     const fixedRealtimeConversations = await prisma.conversation.findMany({
       where: {
         deletedAt: null,
