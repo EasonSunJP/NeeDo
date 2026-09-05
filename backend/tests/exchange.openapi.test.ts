@@ -328,4 +328,64 @@ describe("formal Exchange OpenAPI contract", () => {
       "error.exchange.intelligence_campaign_price_invalid"
     );
   });
+
+  it("documents the complete public Intelligence booking and card projection", () => {
+    const schemas = document().components.schemas;
+    expect(schemas.ExchangeIntelligence.required).toEqual(
+      expect.arrayContaining(["booking", "publisherCard", "serviceCard"])
+    );
+    expect(schemas.ExchangeIntelligence.properties).toEqual(
+      expect.objectContaining({
+        booking: { $ref: "#/components/schemas/ExchangeIntelligenceBooking" },
+        publisherCard: {
+          oneOf: [
+            { $ref: "#/components/schemas/ExchangeIntelligenceShopPublisherCard" },
+            { $ref: "#/components/schemas/ExchangeIntelligenceTechnicianPublisherCard" },
+            { type: "null" }
+          ]
+        },
+        serviceCard: {
+          oneOf: [
+            { $ref: "#/components/schemas/ExchangeIntelligenceServiceCard" },
+            { type: "null" }
+          ]
+        }
+      })
+    );
+    expect(schemas.ExchangeIntelligenceBooking.required).toEqual([
+      "available",
+      "unavailableReason",
+      "target",
+      "catalogPriceJpy",
+      "campaignPriceJpy",
+      "serviceName",
+      "durationMinutes",
+      "serviceMode",
+      "serviceWindow"
+    ]);
+    expect(schemas.ExchangeIntelligenceBooking.properties.unavailableReason.enum).toEqual([
+      "legacy_unbound",
+      "post_unavailable",
+      "publisher_unavailable",
+      "service_unavailable",
+      null
+    ]);
+    expect(schemas.ExchangeIntelligenceBookingTarget.properties.type.enum).toEqual([
+      "shop_service",
+      "technician_service"
+    ]);
+    expect(schemas.ExchangeIntelligenceTechnicianPublisherCard.properties.publicId).toEqual({
+      type: "string",
+      pattern: "^s[0-9]{10}$"
+    });
+
+    const serialized = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(schemas).filter(([name]) => name.startsWith("ExchangeIntelligence"))
+      )
+    );
+    expect(serialized).not.toMatch(
+      /authorUserId|authorIdentityId|actorUserId|actorIdentityId|technicianProfileId|phone|email|homeAddress|kyc/iu
+    );
+  });
 });

@@ -381,6 +381,39 @@ describe("ExchangeService", () => {
     await expect(service.getPost(access, 41)).resolves.toEqual(post);
   });
 
+  it("preserves the repository's authoritative Intelligence booking projection", async () => {
+    const repository = createRepository();
+    const intelligencePost: ExchangePostPayload = {
+      ...post,
+      type: "intelligence",
+      demand: null,
+      intelligence: {
+        serviceMode: "onsite",
+        addressLabel: "港区青山1-1",
+        serviceAreas: ["港区"],
+        originalPriceJpy: 15_000,
+        campaignPriceJpy: 10_000,
+        booking: {
+          available: false,
+          unavailableReason: "post_unavailable",
+          target: { type: "shop_service", id: 501 },
+          catalogPriceJpy: 15_000,
+          campaignPriceJpy: 10_000,
+          serviceName: "訪問ヘアセット",
+          durationMinutes: 60,
+          serviceMode: "onsite",
+          serviceWindow: { startsAt: post.serviceStartAt, endsAt: post.serviceEndAt }
+        },
+        publisherCard: null,
+        serviceCard: null
+      }
+    };
+    repository.findPostById.mockResolvedValueOnce(intelligencePost);
+    const service = new ExchangeService(repository, () => now);
+
+    await expect(service.getPost(access, 41)).resolves.toEqual(intelligencePost);
+  });
+
   it("decorates live selective Requests with server-authoritative claim capabilities", async () => {
     const repository = createRepository();
     const selectivePost = {

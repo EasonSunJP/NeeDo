@@ -4053,7 +4053,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "addressLabel",
           "serviceAreas",
           "originalPriceJpy",
-          "campaignPriceJpy"
+          "campaignPriceJpy",
+          "booking",
+          "publisherCard",
+          "serviceCard"
         ],
         properties: {
           serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
@@ -4070,7 +4073,222 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             minimum: 0,
             maximum: 1000000000
           },
-          campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+          campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          booking: { $ref: "#/components/schemas/ExchangeIntelligenceBooking" },
+          publisherCard: {
+            oneOf: [
+              { $ref: "#/components/schemas/ExchangeIntelligenceShopPublisherCard" },
+              { $ref: "#/components/schemas/ExchangeIntelligenceTechnicianPublisherCard" },
+              { type: "null" }
+            ]
+          },
+          serviceCard: {
+            oneOf: [
+              { $ref: "#/components/schemas/ExchangeIntelligenceServiceCard" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      ExchangeIntelligenceBookingTarget: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type", "id"],
+        properties: {
+          type: { type: "string", enum: ["shop_service", "technician_service"] },
+          id: { type: "integer", minimum: 1 }
+        }
+      },
+      ExchangeIntelligenceServiceWindow: {
+        type: "object",
+        additionalProperties: false,
+        required: ["startsAt", "endsAt"],
+        properties: {
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" }
+        }
+      },
+      ExchangeIntelligenceBooking: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "available",
+          "unavailableReason",
+          "target",
+          "catalogPriceJpy",
+          "campaignPriceJpy",
+          "serviceName",
+          "durationMinutes",
+          "serviceMode",
+          "serviceWindow"
+        ],
+        properties: {
+          available: { type: "boolean" },
+          unavailableReason: {
+            type: ["string", "null"],
+            enum: [
+              "legacy_unbound",
+              "post_unavailable",
+              "publisher_unavailable",
+              "service_unavailable",
+              null
+            ]
+          },
+          target: {
+            oneOf: [
+              { $ref: "#/components/schemas/ExchangeIntelligenceBookingTarget" },
+              { type: "null" }
+            ]
+          },
+          catalogPriceJpy: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 1000000000
+          },
+          campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          serviceName: { type: ["string", "null"], minLength: 1, maxLength: 160 },
+          durationMinutes: { type: ["integer", "null"], minimum: 1 },
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          serviceWindow: { $ref: "#/components/schemas/ExchangeIntelligenceServiceWindow" }
+        }
+      },
+      ExchangeIntelligenceShopPublisherCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "publicId",
+          "name",
+          "avatarUrl",
+          "coverUrl",
+          "imageUrls",
+          "status",
+          "isBookable",
+          "ratingAverage",
+          "reviewCount",
+          "address",
+          "serviceMode",
+          "detailPath"
+        ],
+        properties: {
+          type: { type: "string", enum: ["shop"] },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          avatarUrl: { type: ["string", "null"], maxLength: 500 },
+          coverUrl: { type: ["string", "null"], maxLength: 500 },
+          imageUrls: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          status: { type: "string", enum: ["published"] },
+          isBookable: { type: "boolean" },
+          ratingAverage: { type: ["string", "null"], pattern: "^[0-9]+(?:\\.[0-9]+)?$" },
+          reviewCount: { type: "integer", minimum: 0 },
+          address: { type: "string", minLength: 1, maxLength: 255 },
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          detailPath: { type: "string", pattern: "^/profiles/shop/shop[0-9]{10}$" }
+        }
+      },
+      ExchangeIntelligencePublisherShopSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name"],
+        properties: {
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          name: { type: "string", minLength: 1, maxLength: 160 }
+        }
+      },
+      ExchangeIntelligenceTechnicianPublisherCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "publicId",
+          "displayName",
+          "avatarUrl",
+          "shop",
+          "status",
+          "isBookable",
+          "yearsExperience",
+          "completedOrderCount",
+          "acceptanceRatePercent",
+          "ratingAverage",
+          "reviewCount",
+          "serviceAreas",
+          "languages",
+          "detailPath",
+          "servicesPath"
+        ],
+        properties: {
+          type: { type: "string", enum: ["technician"] },
+          publicId: { type: "string", pattern: "^s[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"], maxLength: 500 },
+          shop: { $ref: "#/components/schemas/ExchangeIntelligencePublisherShopSummary" },
+          status: { type: "string", enum: ["published"] },
+          isBookable: { type: "boolean" },
+          yearsExperience: { type: "integer", minimum: 0, maximum: 80 },
+          completedOrderCount: { type: ["integer", "null"], minimum: 0 },
+          acceptanceRatePercent: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          ratingAverage: { type: ["string", "null"], pattern: "^[0-9]+(?:\\.[0-9]+)?$" },
+          reviewCount: { type: "integer", minimum: 0 },
+          serviceAreas: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          languages: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 80 }
+          },
+          detailPath: { type: "string", pattern: "^/profiles/technician/s[0-9]{10}$" },
+          servicesPath: { type: "string", minLength: 1 }
+        }
+      },
+      ExchangeIntelligenceServiceCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "targetType",
+          "publicId",
+          "name",
+          "description",
+          "coverUrl",
+          "imageUrls",
+          "tags",
+          "catalogPriceJpy",
+          "campaignPriceJpy",
+          "currency",
+          "durationMinutes",
+          "serviceMode",
+          "shopPublicId",
+          "shopAddress",
+          "detailPath"
+        ],
+        properties: {
+          targetType: {
+            type: "string",
+            enum: ["shop_service", "technician_service"]
+          },
+          publicId: { type: "string", minLength: 1, maxLength: 36 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"] },
+          coverUrl: { type: ["string", "null"], maxLength: 500 },
+          imageUrls: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          tags: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          catalogPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          currency: { type: "string", enum: ["JPY"] },
+          durationMinutes: { type: "integer", minimum: 1 },
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          shopAddress: { type: "string", minLength: 1, maxLength: 255 },
+          detailPath: { type: "string", minLength: 1 }
         }
       },
       ExchangeIntelligenceServiceOptionShop: {

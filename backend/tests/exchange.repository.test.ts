@@ -631,7 +631,10 @@ describe("ExchangePostRepository", () => {
         take: 10,
         include: expect.objectContaining({
           demand: { where: { deletedAt: null } },
-          intelligence: { where: { deletedAt: null } },
+            intelligence: expect.objectContaining({
+              where: { deletedAt: null },
+              include: expect.any(Object)
+            }),
           likes: {
             where: { actorIdentityId: 17, deletedAt: null },
             select: { id: true },
@@ -857,6 +860,10 @@ describe("ExchangePostRepository", () => {
       publisherIdentityType: "technician",
       demand: null,
       intelligence: {
+        serviceId: null,
+        technicianServiceId: null,
+        serviceNameSnapshot: null,
+        serviceDurationSnapshot: null,
         serviceMode: "ONSITE",
         addressLabel: null,
         serviceAreas: ["渋谷区", "港区"],
@@ -880,13 +887,20 @@ describe("ExchangePostRepository", () => {
       expect.objectContaining({
         type: "intelligence",
         demand: null,
-        intelligence: {
+        intelligence: expect.objectContaining({
           serviceMode: "onsite",
           addressLabel: null,
           serviceAreas: ["渋谷区", "港区"],
           originalPriceJpy: 15_000,
-          campaignPriceJpy: 10_000
-        }
+          campaignPriceJpy: 10_000,
+          booking: expect.objectContaining({
+            available: false,
+            unavailableReason: "legacy_unbound",
+            target: null
+          }),
+          publisherCard: null,
+          serviceCard: null
+        })
       })
     );
     await expect(repository.findPostById(41, 17, now)).rejects.toThrow(

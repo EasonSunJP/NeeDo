@@ -34,6 +34,9 @@ import type {
   ExchangeCustomerMembershipLevel,
   ExchangeDemandServiceMode,
   ExchangeInteractionCounts,
+  ExchangeIntelligencePayload,
+  ExchangeIntelligencePublisherCardPayload,
+  ExchangeIntelligenceServiceCardPayload,
   ExchangeListInput,
   ExchangeMatchMode,
   ExchangePostPage,
@@ -179,10 +182,111 @@ const membershipLevelSnapshotFromDatabase = (
   throw new Error("error.exchange.invalid_membership_snapshot");
 };
 
+const intelligenceCardMedia = {
+  where: { deletedAt: null, isActive: true },
+  orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+  select: { url: true, usageType: true, sortOrder: true }
+};
+
+const intelligenceShopInclude = {
+  publicIdentifier: {
+    select: { publicId: true, kind: true, status: true, deletedAt: true }
+  },
+  entitySuspensions: {
+    where: { activeKey: { not: null }, status: "active" as const, deletedAt: null },
+    select: { id: true }
+  },
+  mediaAssets: intelligenceCardMedia,
+  reviewSummary: {
+    select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+  }
+};
+
 const postInclude = (viewerIdentityId: number) =>
   ({
     demand: { where: { deletedAt: null } },
-    intelligence: { where: { deletedAt: null } },
+    authorIdentity: {
+      select: {
+        type: true,
+        scopeType: true,
+        scopeId: true,
+        isActive: true,
+        deletedAt: true
+      }
+    },
+    intelligence: {
+      where: { deletedAt: null },
+      include: {
+        service: {
+          include: {
+            category: { select: { name: true, isActive: true, deletedAt: true } },
+            mediaAssets: intelligenceCardMedia,
+            reviewSummary: {
+              select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+            },
+            shop: { include: intelligenceShopInclude }
+          }
+        },
+        technicianService: {
+          include: {
+            category: { select: { name: true, isActive: true, deletedAt: true } },
+            sourceShopService: { select: { serviceMode: true } },
+            shop: { include: intelligenceShopInclude },
+            technicianProfile: {
+              include: {
+                mediaAssets: intelligenceCardMedia,
+                reviewSummary: {
+                  select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+                },
+                performanceSummary: {
+                  select: {
+                    completedOrderCount: true,
+                    acceptanceRateBps: true,
+                    deletedAt: true
+                  }
+                },
+                technicianShopAffiliations: {
+                  where: { deletedAt: null },
+                  select: {
+                    shopId: true,
+                    workStatus: true,
+                    activeKey: true,
+                    startsAt: true,
+                    endsAt: true,
+                    deletedAt: true
+                  }
+                },
+                user: {
+                  select: {
+                    isActive: true,
+                    deletedAt: true,
+                    avatarBootstrapUrl: true,
+                    identities: {
+                      where: {
+                        isActive: true,
+                        deletedAt: null,
+                        type: { in: ["technician", "service", "s"] },
+                        publicIdentifier: {
+                          is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                        }
+                      },
+                      select: {
+                        type: true,
+                        isActive: true,
+                        deletedAt: true,
+                        publicIdentifier: {
+                          select: { publicId: true, kind: true, status: true, deletedAt: true }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     likes: {
       where: { actorIdentityId: viewerIdentityId, deletedAt: null },
       select: { id: true },
@@ -205,6 +309,15 @@ const postInclude = (viewerIdentityId: number) =>
 type ExchangePostRecord = Prisma.ExchangePostGetPayload<{
   include: ReturnType<typeof postInclude>;
 }>;
+
+type ExchangeIntelligenceRecord = NonNullable<ExchangePostRecord["intelligence"]>;
+type ExchangeShopServiceRecord = NonNullable<ExchangeIntelligenceRecord["service"]>;
+type ExchangeTechnicianServiceRecord = NonNullable<
+  ExchangeIntelligenceRecord["technicianService"]
+>;
+type ExchangeIntelligenceShopRecord =
+  | ExchangeShopServiceRecord["shop"]
+  | ExchangeTechnicianServiceRecord["shop"];
 
 type PrioritizedDemandRow = {
   id: number | bigint;
@@ -1165,6 +1278,405 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     return due.map(({ id }) => id);
   }
 
+  private mapIntelligence(
+    row: ExchangePostRecord,
+    status: ExchangePostStatus,
+    now: Date
+  ): ExchangeIntelligencePayload | null {
+    const record = row.intelligence;
+    if (!record) return null;
+    if (!isServiceAreaList(record.serviceAreas)) {
+      throw new Error("error.exchange.invalid_service_areas");
+    }
+
+    const serviceMode = serviceModeFromDatabase[record.serviceMode];
+    const serviceWindow = {
+      startsAt: row.serviceStartAt.toISOString(),
+      endsAt: row.serviceEndAt.toISOString()
+    };
+    const legacyUnbound =
+      record.serviceId === null &&
+      record.technicianServiceId === null &&
+      record.serviceNameSnapshot === null &&
+      record.serviceDurationSnapshot === null;
+    if (legacyUnbound) {
+      return {
+        serviceMode,
+        addressLabel: record.addressLabel,
+        serviceAreas: record.serviceAreas,
+        originalPriceJpy: record.originalPriceJpy,
+        campaignPriceJpy: record.campaignPriceJpy,
+        booking: {
+          available: false,
+          unavailableReason: "legacy_unbound",
+          target: null,
+          catalogPriceJpy: null,
+          campaignPriceJpy: record.campaignPriceJpy,
+          serviceName: null,
+          durationMinutes: null,
+          serviceMode,
+          serviceWindow
+        },
+        publisherCard: null,
+        serviceCard: null
+      };
+    }
+
+    const snapshotValid =
+      Boolean(record.serviceNameSnapshot?.trim()) &&
+      record.serviceDurationSnapshot !== null &&
+      record.serviceDurationSnapshot > 0 &&
+      record.originalPriceJpy !== null &&
+      record.originalPriceJpy >= 0 &&
+      record.campaignPriceJpy >= 0 &&
+      record.campaignPriceJpy <= record.originalPriceJpy;
+    const postAvailable =
+      status === "published" &&
+      row.expiresAt.getTime() > now.getTime() &&
+      row.serviceStartAt.getTime() < row.serviceEndAt.getTime() &&
+      row.serviceEndAt.getTime() > now.getTime();
+
+    const shopBinding =
+      record.serviceId !== null &&
+      record.technicianServiceId === null &&
+      record.service?.id === record.serviceId;
+    const technicianBinding =
+      record.serviceId === null &&
+      record.technicianServiceId !== null &&
+      record.technicianService?.id === record.technicianServiceId;
+    const target = shopBinding
+      ? ({ type: "shop_service", id: record.serviceId! } as const)
+      : technicianBinding
+        ? ({ type: "technician_service", id: record.technicianServiceId! } as const)
+        : null;
+
+    let publisherAvailable = false;
+    let serviceAvailable = false;
+    let publisherCard: ExchangeIntelligencePublisherCardPayload | null = null;
+    let serviceCard: ExchangeIntelligenceServiceCardPayload | null = null;
+
+    if (shopBinding && record.service) {
+      const service = record.service;
+      const shopPublicId = this.publicShopId(service.shop);
+      publisherAvailable =
+        SHOP_MERCHANT_IDENTITIES.has(row.authorIdentity.type) &&
+        row.authorIdentity.scopeType === "shop" &&
+        row.authorIdentity.scopeId === service.shopId &&
+        row.authorIdentity.isActive &&
+        row.authorIdentity.deletedAt === null &&
+        this.shopAvailable(service.shop) &&
+        shopPublicId !== null;
+      serviceAvailable =
+        snapshotValid &&
+        service.deletedAt === null &&
+        service.status === "published" &&
+        service.category.isActive &&
+        service.category.deletedAt === null &&
+        service.currency === "JPY" &&
+        this.jpyInteger(service.priceAmount.toString()) !== null &&
+        service.durationMinutes > 0 &&
+        service.publicId.trim().length > 0;
+      if (publisherAvailable && shopPublicId) {
+        publisherCard = this.mapShopPublisherCard(
+          service.shop,
+          shopPublicId,
+          serviceMode,
+          serviceAvailable
+        );
+      }
+      if (publisherAvailable && serviceAvailable && shopPublicId) {
+        serviceCard = this.mapShopServiceCard(
+          service,
+          shopPublicId,
+          record.serviceNameSnapshot!,
+          record.serviceDurationSnapshot!,
+          record.originalPriceJpy!,
+          record.campaignPriceJpy,
+          serviceMode
+        );
+      }
+    } else if (technicianBinding && record.technicianService) {
+      const service = record.technicianService;
+      const profile = service.technicianProfile;
+      const shopPublicId = this.publicShopId(service.shop);
+      const technicianPublicId = this.publicTechnicianId(profile);
+      const affiliationActive = profile.technicianShopAffiliations.some(
+        (affiliation) =>
+          affiliation.shopId === service.shopId &&
+          affiliation.workStatus === "ACTIVE" &&
+          affiliation.activeKey !== null &&
+          affiliation.deletedAt === null &&
+          affiliation.startsAt.getTime() <= now.getTime() &&
+          (affiliation.endsAt === null || affiliation.endsAt.getTime() > now.getTime())
+      );
+      publisherAvailable =
+        row.authorIdentity.type === "technician" &&
+        row.authorIdentity.scopeType === "technician_profile" &&
+        row.authorIdentity.scopeId === service.technicianId &&
+        row.authorIdentity.isActive &&
+        row.authorIdentity.deletedAt === null &&
+        profile.id === service.technicianId &&
+        profile.status === "published" &&
+        profile.visibility === "public" &&
+        profile.deletedAt === null &&
+        profile.user.isActive &&
+        profile.user.deletedAt === null &&
+        affiliationActive &&
+        this.shopAvailable(service.shop) &&
+        shopPublicId !== null &&
+        technicianPublicId !== null;
+      serviceAvailable =
+        snapshotValid &&
+        service.deletedAt === null &&
+        service.isActive &&
+        service.isBookable &&
+        service.reviewStatus === "APPROVED" &&
+        service.category.isActive &&
+        service.category.deletedAt === null &&
+        service.currency === "JPY" &&
+        this.jpyInteger(service.priceAmount) !== null &&
+        service.durationMinutes > 0 &&
+        service.publicId.trim().length > 0;
+      if (publisherAvailable && shopPublicId && technicianPublicId) {
+        publisherCard = this.mapTechnicianPublisherCard(
+          service,
+          shopPublicId,
+          technicianPublicId,
+          serviceAvailable
+        );
+      }
+      if (publisherAvailable && serviceAvailable && shopPublicId && technicianPublicId) {
+        serviceCard = this.mapTechnicianServiceCard(
+          service,
+          shopPublicId,
+          technicianPublicId,
+          record.serviceNameSnapshot!,
+          record.serviceDurationSnapshot!,
+          record.originalPriceJpy!,
+          record.campaignPriceJpy,
+          serviceMode
+        );
+      }
+    }
+
+    const unavailableReason = !target || !snapshotValid
+      ? "service_unavailable"
+      : !postAvailable
+        ? "post_unavailable"
+        : !publisherAvailable
+          ? "publisher_unavailable"
+          : !serviceAvailable
+            ? "service_unavailable"
+            : null;
+
+    return {
+      serviceMode,
+      addressLabel: record.addressLabel,
+      serviceAreas: record.serviceAreas,
+      originalPriceJpy: record.originalPriceJpy,
+      campaignPriceJpy: record.campaignPriceJpy,
+      booking: {
+        available: unavailableReason === null,
+        unavailableReason,
+        target,
+        catalogPriceJpy: snapshotValid ? record.originalPriceJpy : null,
+        campaignPriceJpy: record.campaignPriceJpy,
+        serviceName: snapshotValid ? record.serviceNameSnapshot : null,
+        durationMinutes: snapshotValid ? record.serviceDurationSnapshot : null,
+        serviceMode,
+        serviceWindow
+      },
+      publisherCard,
+      serviceCard
+    };
+  }
+
+  private mapShopPublisherCard(
+    shop: ExchangeIntelligenceShopRecord,
+    publicId: string,
+    serviceMode: ExchangeServiceMode,
+    isBookable: boolean
+  ): ExchangeIntelligencePublisherCardPayload {
+    const imageUrls = this.mediaUrls(shop.mediaAssets);
+    const rating = this.publicRating(shop.reviewSummary);
+    return {
+      type: "shop",
+      publicId,
+      name: shop.name,
+      avatarUrl: this.mediaUrlByUsage(shop.mediaAssets, "avatar"),
+      coverUrl: this.mediaUrlByUsage(shop.mediaAssets, "cover"),
+      imageUrls,
+      status: shop.status,
+      isBookable,
+      ratingAverage: rating.ratingAverage,
+      reviewCount: rating.reviewCount,
+      address: shop.address,
+      serviceMode,
+      detailPath: `/profiles/shop/${publicId}`
+    };
+  }
+
+  private mapTechnicianPublisherCard(
+    service: ExchangeTechnicianServiceRecord,
+    shopPublicId: string,
+    publicId: string,
+    isBookable: boolean
+  ): ExchangeIntelligencePublisherCardPayload {
+    const profile = service.technicianProfile;
+    const rating = this.publicRating(profile.reviewSummary);
+    const summary =
+      profile.performanceSummary?.deletedAt === null ? profile.performanceSummary : null;
+    const acceptanceRatePercent =
+      summary && summary.acceptanceRateBps >= 0 && summary.acceptanceRateBps <= 10_000
+        ? summary.acceptanceRateBps / 100
+        : null;
+    return {
+      type: "technician",
+      publicId,
+      displayName: profile.displayName,
+      avatarUrl:
+        this.mediaUrlByUsage(profile.mediaAssets, "avatar") ??
+        profile.user.avatarBootstrapUrl,
+      shop: { publicId: shopPublicId, name: service.shop.name },
+      status: profile.status,
+      isBookable,
+      yearsExperience: profile.yearsExperience,
+      completedOrderCount: summary?.completedOrderCount ?? null,
+      acceptanceRatePercent,
+      ratingAverage: rating.ratingAverage,
+      reviewCount: rating.reviewCount,
+      serviceAreas: this.serviceAreas(
+        profile.serviceAreasJson,
+        profile.serviceArea,
+        profile.city
+      ),
+      languages: this.stringList(profile.languages),
+      detailPath: `/profiles/technician/${publicId}`,
+      servicesPath: `/stores/${shopPublicId}/technicians/${publicId}/services`
+    };
+  }
+
+  private mapShopServiceCard(
+    service: ExchangeShopServiceRecord,
+    shopPublicId: string,
+    serviceName: string,
+    durationMinutes: number,
+    catalogPriceJpy: number,
+    campaignPriceJpy: number,
+    serviceMode: ExchangeServiceMode
+  ): ExchangeIntelligenceServiceCardPayload {
+    const imageUrls = this.mediaUrls(service.mediaAssets);
+    return {
+      targetType: "shop_service",
+      publicId: service.publicId,
+      name: serviceName,
+      description: service.description,
+      coverUrl: this.mediaUrlByUsage(service.mediaAssets, "cover"),
+      imageUrls,
+      tags: this.uniqueStrings([service.category.name]),
+      catalogPriceJpy,
+      campaignPriceJpy,
+      currency: "JPY",
+      durationMinutes,
+      serviceMode,
+      shopPublicId,
+      shopAddress: service.shop.address,
+      detailPath: `/services/${service.publicId}`
+    };
+  }
+
+  private mapTechnicianServiceCard(
+    service: ExchangeTechnicianServiceRecord,
+    shopPublicId: string,
+    technicianPublicId: string,
+    serviceName: string,
+    durationMinutes: number,
+    catalogPriceJpy: number,
+    campaignPriceJpy: number,
+    serviceMode: ExchangeServiceMode
+  ): ExchangeIntelligenceServiceCardPayload {
+    const imageUrls = this.uniqueStrings([
+      service.coverImageUrl,
+      ...this.stringList(service.imagesJson)
+    ]);
+    const tags = this.stringList(service.tagsJson);
+    return {
+      targetType: "technician_service",
+      publicId: service.publicId,
+      name: serviceName,
+      description: service.description,
+      coverUrl: service.coverImageUrl?.trim() || imageUrls[0] || null,
+      imageUrls,
+      tags: tags.length > 0 ? tags : this.uniqueStrings([service.category.name]),
+      catalogPriceJpy,
+      campaignPriceJpy,
+      currency: "JPY",
+      durationMinutes,
+      serviceMode,
+      shopPublicId,
+      shopAddress: service.shop.address,
+      detailPath: `/stores/${shopPublicId}/technicians/${technicianPublicId}/services`
+    };
+  }
+
+  private publicShopId(shop: ExchangeIntelligenceShopRecord): string | null {
+    const identifier = shop.publicIdentifier;
+    return identifier?.kind === "SHOP" &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null &&
+      /^shop\d{10}$/u.test(identifier.publicId)
+      ? identifier.publicId
+      : null;
+  }
+
+  private publicTechnicianId(
+    profile: ExchangeTechnicianServiceRecord["technicianProfile"]
+  ): string | null {
+    const identifier = profile.user.identities.find(
+      (identity) =>
+        identity.isActive &&
+        identity.deletedAt === null &&
+        identity.publicIdentifier?.kind === "S" &&
+        identity.publicIdentifier.status === "ACTIVE" &&
+        identity.publicIdentifier.deletedAt === null &&
+        /^s\d{10}$/u.test(identity.publicIdentifier.publicId)
+    )?.publicIdentifier;
+    return identifier?.publicId ?? null;
+  }
+
+  private publicRating(
+    summary: { ratingAverage: Prisma.Decimal; reviewCount: number; deletedAt: Date | null } | null
+  ): { ratingAverage: string | null; reviewCount: number } {
+    if (!summary || summary.deletedAt !== null || summary.reviewCount <= 0) {
+      return { ratingAverage: null, reviewCount: 0 };
+    }
+    return {
+      ratingAverage: summary.ratingAverage.toString(),
+      reviewCount: summary.reviewCount
+    };
+  }
+
+  private mediaUrls(media: Array<{ url: string }>): string[] {
+    return this.uniqueStrings(media.map(({ url }) => url));
+  }
+
+  private mediaUrlByUsage(
+    media: Array<{ url: string; usageType: string }>,
+    usageType: string
+  ): string | null {
+    return media.find((asset) => asset.usageType === usageType)?.url.trim() || null;
+  }
+
+  private stringList(value: Prisma.JsonValue | null): string[] {
+    return Array.isArray(value)
+      ? this.uniqueStrings(value.filter((item): item is string => typeof item === "string"))
+      : [];
+  }
+
+  private uniqueStrings(values: Array<string | null | undefined>): string[] {
+    return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+  }
+
   private mapPost(
     row: ExchangePostRecord,
     viewerIdentityId: number,
@@ -1180,20 +1692,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     const matchedParticipantView = row.matchParticipants.length > 0;
     const claimableByProviderUser =
       claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
-    const intelligence = row.intelligence
-      ? (() => {
-          if (!isServiceAreaList(row.intelligence.serviceAreas)) {
-            throw new Error("error.exchange.invalid_service_areas");
-          }
-          return {
-            serviceMode: serviceModeFromDatabase[row.intelligence.serviceMode],
-            addressLabel: row.intelligence.addressLabel,
-            serviceAreas: row.intelligence.serviceAreas,
-            originalPriceJpy: row.intelligence.originalPriceJpy,
-            campaignPriceJpy: row.intelligence.campaignPriceJpy
-          };
-        })()
-      : null;
+    const intelligence = this.mapIntelligence(row, status, now);
 
     const demand = row.demand
       ? {

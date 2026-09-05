@@ -86,6 +86,90 @@ export interface ExchangeIntelligencePayload {
   serviceAreas: string[];
   originalPriceJpy: number | null;
   campaignPriceJpy: number;
+  booking: ExchangeIntelligenceBookingPayload;
+  publisherCard: ExchangeIntelligencePublisherCardPayload | null;
+  serviceCard: ExchangeIntelligenceServiceCardPayload | null;
+}
+
+export type ExchangeIntelligenceUnavailableReason =
+  | "legacy_unbound"
+  | "post_unavailable"
+  | "publisher_unavailable"
+  | "service_unavailable";
+
+export interface ExchangeIntelligenceBookingPayload {
+  available: boolean;
+  unavailableReason: ExchangeIntelligenceUnavailableReason | null;
+  target: {
+    type: "shop_service" | "technician_service";
+    id: number;
+  } | null;
+  catalogPriceJpy: number | null;
+  campaignPriceJpy: number;
+  serviceName: string | null;
+  durationMinutes: number | null;
+  serviceMode: ExchangeServiceMode;
+  serviceWindow: {
+    startsAt: string;
+    endsAt: string;
+  };
+}
+
+export interface ExchangeIntelligenceShopPublisherCardPayload {
+  type: "shop";
+  publicId: string;
+  name: string;
+  avatarUrl: string | null;
+  coverUrl: string | null;
+  imageUrls: string[];
+  status: string;
+  isBookable: boolean;
+  ratingAverage: string | null;
+  reviewCount: number;
+  address: string;
+  serviceMode: ExchangeServiceMode;
+  detailPath: string;
+}
+
+export interface ExchangeIntelligenceTechnicianPublisherCardPayload {
+  type: "technician";
+  publicId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  shop: { publicId: string; name: string };
+  status: string;
+  isBookable: boolean;
+  yearsExperience: number;
+  completedOrderCount: number | null;
+  acceptanceRatePercent: number | null;
+  ratingAverage: string | null;
+  reviewCount: number;
+  serviceAreas: string[];
+  languages: string[];
+  detailPath: string;
+  servicesPath: string;
+}
+
+export type ExchangeIntelligencePublisherCardPayload =
+  | ExchangeIntelligenceShopPublisherCardPayload
+  | ExchangeIntelligenceTechnicianPublisherCardPayload;
+
+export interface ExchangeIntelligenceServiceCardPayload {
+  targetType: "shop_service" | "technician_service";
+  publicId: string;
+  name: string;
+  description: string | null;
+  coverUrl: string | null;
+  imageUrls: string[];
+  tags: string[];
+  catalogPriceJpy: number;
+  campaignPriceJpy: number;
+  currency: "JPY";
+  durationMinutes: number;
+  serviceMode: ExchangeServiceMode;
+  shopPublicId: string;
+  shopAddress: string;
+  detailPath: string;
 }
 
 export interface ExchangePostPayload {
