@@ -137,7 +137,14 @@ export function buildOfficialNoticeRecipientWhere(
     return { ...base, type: { in: [...new Set(audience.identityTypes)] } };
   }
   if (audience.type === "exact_users") {
-    return { ...base, userId: { in: [...new Set(audience.userIds)] } };
+    return {
+      ...base,
+      user: {
+        isActive: true,
+        deletedAt: null,
+        needoId: { in: [...new Set(audience.needoIds)] }
+      }
+    };
   }
   return base;
 }
@@ -907,7 +914,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
   ): Promise<number> {
     let afterId = 0;
     let total = 0;
-    const foundUsers = new Set<number>();
+    const foundNeedoIds = new Set<string>();
     while (true) {
       const recipients = await transaction.userIdentity.findMany({
         where: {
@@ -936,7 +943,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       afterId = recipients[recipients.length - 1].id;
       total += recipients.length;
       if (input.audience.type === "exact_users")
-        for (const recipient of recipients) foundUsers.add(recipient.userId);
+        for (const recipient of recipients) foundNeedoIds.add(recipient.user.needoId);
       await transaction.noticeAudience.createMany({
         data: recipients.map((recipient) => ({
           noticeId,
@@ -978,7 +985,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     if (total === 0) throw this.conflict("error.official_notice.audience_empty");
     if (
       input.audience.type === "exact_users" &&
-      input.audience.userIds.some((id) => !foundUsers.has(id))
+      input.audience.needoIds.some((needoId) => !foundNeedoIds.has(needoId))
     ) {
       throw this.conflict("error.official_notice.target_unavailable");
     }

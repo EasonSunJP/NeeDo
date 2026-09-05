@@ -69,13 +69,19 @@ describe("official notice validation", () => {
     expect(
       officialNoticeCreateBodySchema.parse({
         ...base,
-        audience: { type: "exact_users", userIds: [4, 9] }
+        audience: { type: "exact_users", needoIds: ["u0000000004", "u0000000009"] }
       }).audience
-    ).toEqual({ type: "exact_users", userIds: [4, 9] });
+    ).toEqual({ type: "exact_users", needoIds: ["u0000000004", "u0000000009"] });
     expect(() =>
       officialNoticeCreateBodySchema.parse({
         ...base,
-        audience: { type: "exact_users", userIds: [] }
+        audience: { type: "exact_users", needoIds: [] }
+      })
+    ).toThrow();
+    expect(() =>
+      officialNoticeCreateBodySchema.parse({
+        ...base,
+        audience: { type: "exact_users", userIds: [4, 9] }
       })
     ).toThrow();
     expect(officialNoticeListQuerySchema.parse({ page: "2", pageSize: "20" })).toMatchObject({

@@ -24,7 +24,8 @@ const state = vi.hoisted(() => ({
   archiveManaged: vi.fn(),
   retryManaged: vi.fn(),
   listInbox: vi.fn(),
-  markRead: vi.fn()
+  markRead: vi.fn(),
+  listUsers: vi.fn()
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -44,6 +45,9 @@ vi.mock("../../api/officialNotices", async (importOriginal) => ({
     listInbox: state.listInbox,
     markRead: state.markRead
   }
+}));
+vi.mock("../platform-user-management/api", () => ({
+  platformUserManagementApi: { listUsers: state.listUsers }
 }));
 
 const notice = {
@@ -134,6 +138,20 @@ describe("official notice formal API interactions", () => {
     state.createManaged.mockResolvedValue(notice);
     state.listInbox.mockResolvedValue({ list: [{ publicId: "notice-1", level: "important", title: "営業時間変更", summary: "営業時間のお知らせ", blocks: notice.translations.ja.blocks, targetSummary: notice.targetSummary, sentAt: "2026-09-05T03:00:00.000Z", readAt: null }], total: 1, page: 1, page_size: 20 });
     state.markRead.mockResolvedValue({ publicId: "notice-1", readAt: "2026-09-05T04:00:00.000Z" });
+    state.listUsers.mockResolvedValue({
+      list: [{
+        id: 9,
+        needoId: "u0000000009",
+        username: "hanako",
+        email: "hanako@example.com",
+        phone: "+819012345678",
+        isActive: true,
+        identities: [{ type: "customer", displayName: "花子", scopeType: null, scopeId: null }]
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -186,7 +204,46 @@ describe("official notice formal API interactions", () => {
     expect(state.createManaged.mock.calls[0]?.[0]).toBe("merchant");
     expect(state.createManaged.mock.calls[0]?.[1]).toMatchObject({ audience: { type: "shop_card_holders" }, sendMode: "now", scheduledAt: null });
     expect(JSON.stringify(state.createManaged.mock.calls[0]?.[1])).not.toMatch(/userIds|shopId|issuer/);
+    expect(container.textContent).not.toMatch(/NeeDoID|指定アカウント/);
     await waitFor(() => expect(container.textContent).toContain("done"));
+  });
+
+  it("searches the formal global account directory and submits selected public NeeDo IDs", async () => {
+    state.permissions = new Set([
+      "button:backoffice-official-notice-create",
+      "button:backoffice-official-notice-send",
+      "backoffice:users:read"
+    ]);
+    act(() => root.render(<MemoryRouter initialEntries={["/compose"]}><Routes><Route path="/compose" element={<OfficialNoticeComposer returnPath="/done" scope="platform" />} /><Route path="/done" element={<p>done</p>} /></Routes></MemoryRouter>));
+
+    const exactRadio = [...document.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("指定アカウント"))
+      ?.querySelector("input") as HTMLInputElement | undefined;
+    expect(exactRadio).toBeDefined();
+    act(() => exactRadio?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    setField("メール、携帯番号または NeeDoID", "hanako@example.com");
+    await click("アカウントを検索");
+
+    await waitFor(() => expect(state.listUsers).toHaveBeenCalledWith({
+      keyword: "hanako@example.com",
+      state: "active",
+      page: 1,
+      page_size: 20
+    }));
+    expect(container.textContent).toContain("u0000000009");
+    expect(container.textContent).toContain("+819012345678");
+    await click("u0000000009");
+
+    setField("标题", "账号通知");
+    setField("摘要", "只发给花子");
+    setField("正文", "请确认账号资料");
+    await click("确认创建");
+    await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
+    expect(state.createManaged.mock.calls[0]?.[0]).toBe("platform");
+    expect(state.createManaged.mock.calls[0]?.[1]).toMatchObject({
+      audience: { type: "exact_users", needoIds: ["u0000000009"] }
+    });
+    expect(JSON.stringify(state.createManaged.mock.calls[0]?.[1])).not.toMatch(/userIds|friend|好友/);
   });
 
   it("loads the current-identity inbox and writes its read receipt", async () => {

@@ -22,7 +22,7 @@ describe("merchant notice publication contract", () => {
   });
   it.each([
     { type: "all" }, { type: "identity_types", identityTypes: ["customer"] },
-    { type: "exact_users", userIds: [1] }, { type: "shop_employees", shopId: 12 },
+    { type: "exact_users", userIds: [1] }, { type: "exact_users", needoIds: ["u0000000001"] }, { type: "shop_employees", shopId: 12 },
     { type: "shop_card_holders", userIds: [1] }
   ])("rejects injected audience %j", (audience) => {
     expect(merchantNoticeCreateBodySchema.safeParse({ ...body, audience }).success).toBe(false);

@@ -18,6 +18,8 @@ import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { useAuth } from "../../auth/AuthProvider";
 import { translateText, type Language } from "../../i18n/translations";
+import { platformUserManagementApi } from "../platform-user-management/api";
+import type { PlatformManagedUser } from "../platform-user-management/types";
 
 const inputClass = "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none focus:border-moss";
 const textareaClass = "min-h-32 w-full rounded-lg border border-line bg-white px-3 py-3 text-sm font-bold outline-none focus:border-moss";
@@ -245,11 +247,37 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const [body, setBody] = useState("");
   const [audienceType, setAudienceType] = useState(scope === "merchant" ? "shop_card_holders" : "all");
   const [identityTypes, setIdentityTypes] = useState<string[]>(["customer"]);
+  const [accountQuery, setAccountQuery] = useState("");
+  const [accountResults, setAccountResults] = useState<PlatformManagedUser[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<PlatformManagedUser[]>([]);
+  const [accountSearching, setAccountSearching] = useState(false);
+  const [accountSearchError, setAccountSearchError] = useState("");
   const [sendMode, setSendMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [idempotencyKey] = useState(() => makeKey("create"));
+
+  const searchAccounts = async () => {
+    const keyword = accountQuery.trim();
+    if (scope !== "platform" || !keyword) return;
+    setAccountSearching(true);
+    setAccountSearchError("");
+    try {
+      const result = await platformUserManagementApi.listUsers({
+        keyword,
+        state: "active",
+        page: 1,
+        page_size: 20
+      });
+      setAccountResults(result.list.filter((account) => account.isActive));
+    } catch (nextError) {
+      setAccountResults([]);
+      setAccountSearchError(describeOfficialNoticeError(nextError, language));
+    } finally {
+      setAccountSearching(false);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -261,7 +289,9 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
         ? { type: audienceType as "shop_card_holders" | "shop_employees" | "shop_technicians" }
         : audienceType === "all"
           ? { type: "all" as const }
-          : { type: "identity_types" as const, identityTypes: identityTypes as Array<"customer" | "technician" | "merchant_owner" | "merchant_staff" | "platform" | "platform_admin" | "scout"> };
+          : audienceType === "exact_users"
+            ? { type: "exact_users" as const, needoIds: selectedAccounts.map((account) => account.needoId) }
+            : { type: "identity_types" as const, identityTypes: identityTypes as Array<"customer" | "technician" | "merchant_owner" | "merchant_staff" | "platform" | "platform_admin" | "scout"> };
       await officialNoticesApi.createManaged(scope, {
         sourceLocale, level, title: title.trim(), summary: summary.trim(),
         blocks: [{ id: "body", type: "paragraph", content: body.trim() }],
@@ -279,17 +309,21 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   };
 
   const identityOptions = ["customer", "technician", "merchant_owner", "merchant_staff", "platform", "platform_admin", "scout"];
-  return <ModuleShell title={scope === "merchant" ? "创建店铺通知" : "发送官方通知"} description="受众由服务端按当前权限与店铺范围生成快照，不接受前端指定账号或店铺。" actions={<Button to={returnPath} variant="secondary">返回列表</Button>}>
+  const audienceOptions = scope === "merchant"
+    ? [["shop_card_holders", "本店持卡用户"], ["shop_employees", "本店员工"], ["shop_technicians", "本店技师"]]
+    : [["all", "全体用户"], ["identity_types", "身份类型"], ["exact_users", translateText("指定账号", language)]];
+  return <ModuleShell title={scope === "merchant" ? "创建店铺通知" : "发送官方通知"} description={scope === "merchant" ? "受众由服务端按当前权限与店铺范围生成快照，不接受前端指定账号或店铺。" : "全体与身份受众由服务端生成；指定账号通过正式全局账号目录搜索并在发送时再次校验。"} actions={<Button to={returnPath} variant="secondary">返回列表</Button>}>
     <form className="space-y-5 rounded-lg border border-line bg-white p-5 shadow-panel" onSubmit={submit}>
       {error ? <p className="rounded-lg bg-coral/10 p-3 text-sm font-bold text-coral">{error}</p> : null}
       <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">源语言<select className={`${inputClass} mt-2`} onChange={(event) => setSourceLocale(event.target.value as OfficialNoticeLocale)} value={sourceLocale}>{["ja", "zh-CN", "zh-TW", "en", "ko"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-sm font-black">级别<select className={`${inputClass} mt-2`} onChange={(event) => setLevel(event.target.value as OfficialNoticeLevel)} value={level}>{Object.entries(levelLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
       <label className="block text-sm font-black">标题<input className={`${inputClass} mt-2`} maxLength={160} onChange={(event) => setTitle(event.target.value)} required value={title} /></label>
       <label className="block text-sm font-black">摘要<input className={`${inputClass} mt-2`} maxLength={500} onChange={(event) => setSummary(event.target.value)} required value={summary} /></label>
       <label className="block text-sm font-black">正文<textarea className={`${textareaClass} mt-2`} maxLength={20000} onChange={(event) => setBody(event.target.value)} required value={body} /></label>
-      <fieldset><legend className="text-sm font-black">发送对象</legend><div className="mt-2 grid gap-2 md:grid-cols-3">{(scope === "merchant" ? [["shop_card_holders", "本店持卡用户"], ["shop_employees", "本店员工"], ["shop_technicians", "本店技师"]] : [["all", "全体用户"], ["identity_types", "身份类型"]]).map(([value, label]) => <label className="rounded-lg border border-line p-3 text-sm font-bold" key={value}><input checked={audienceType === value} className="mr-2" name="audience" onChange={() => setAudienceType(value)} type="radio" />{label}</label>)}</div></fieldset>
+      <fieldset><legend className="text-sm font-black">发送对象</legend><div className="mt-2 grid gap-2 md:grid-cols-3">{audienceOptions.map(([value, label]) => <label className="rounded-lg border border-line p-3 text-sm font-bold" key={value}><input checked={audienceType === value} className="mr-2" name="audience" onChange={() => setAudienceType(value)} type="radio" />{label}</label>)}</div></fieldset>
       {scope === "platform" && audienceType === "identity_types" ? <fieldset><legend className="text-sm font-black">身份类型</legend><div className="mt-2 flex flex-wrap gap-2">{identityOptions.map((value) => <label className="rounded-lg border border-line px-3 py-2 text-xs font-bold" key={value}><input checked={identityTypes.includes(value)} className="mr-2" onChange={(event) => setIdentityTypes((current) => event.target.checked ? [...current, value] : current.filter((item) => item !== value))} type="checkbox" />{value}</label>)}</div></fieldset> : null}
+      {scope === "platform" && audienceType === "exact_users" ? <fieldset className="space-y-3 rounded-lg border border-line bg-paper p-4"><legend className="px-1 text-sm font-black">{translateText("全局搜索账号", language)}</legend><div className="flex flex-col gap-2 md:flex-row"><label className="min-w-0 flex-1 text-sm font-black">{translateText("邮箱、手机号或 NeeDoID", language)}<input className={`${inputClass} mt-2`} onChange={(event) => setAccountQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchAccounts(); } }} placeholder={translateText("输入邮箱、手机号或 NeeDoID", language)} value={accountQuery} /></label><Button disabled={accountSearching || !accountQuery.trim()} onClick={() => void searchAccounts()} type="button" variant="secondary">{accountSearching ? translateText("正在搜索账号", language) : translateText("搜索账号", language)}</Button></div>{accountSearchError ? <p className="text-sm font-bold text-coral">{accountSearchError}</p> : null}{selectedAccounts.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAccounts.map((account) => <button aria-label={`${translateText("移除账号", language)} ${account.needoId}`} className="rounded-full border border-moss/30 bg-white px-3 py-2 text-xs font-black text-moss" key={account.needoId} onClick={() => setSelectedAccounts((current) => current.filter((item) => item.needoId !== account.needoId))} type="button">{account.username} · {account.needoId} ×</button>)}</div> : null}<div className="grid gap-2">{accountResults.map((account) => { const selected = selectedAccounts.some((item) => item.needoId === account.needoId); return <button aria-label={`${selected ? translateText("已选择账号", language) : translateText("选择账号", language)} ${account.needoId}`} className="grid gap-1 rounded-lg border border-line bg-white p-3 text-left text-sm disabled:opacity-60 md:grid-cols-[minmax(0,1fr)_auto]" disabled={selected} key={account.needoId} onClick={() => setSelectedAccounts((current) => current.some((item) => item.needoId === account.needoId) ? current : [...current, account])} type="button"><span><strong className="block text-ink">{account.username} · {account.needoId}</strong><span className="mt-1 block text-xs font-bold text-ink/55">{account.email}{account.phone ? ` · ${account.phone}` : ""}</span></span><span className="text-xs font-black text-moss">{selected ? translateText("已选择账号", language) : translateText("选择账号", language)}</span></button>; })}</div></fieldset> : null}
       <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">发送方式<select className={`${inputClass} mt-2`} onChange={(event) => setSendMode(event.target.value as "now" | "scheduled")} value={sendMode}><option value="now">立即发送</option><option value="scheduled">定时发送</option></select></label>{sendMode === "scheduled" ? <label className="text-sm font-black">发送时间<input className={`${inputClass} mt-2`} onChange={(event) => setScheduledAt(event.target.value)} required type="datetime-local" value={scheduledAt} /></label> : null}</div>
-      <div className="flex justify-end"><Button disabled={submitting || (scope === "platform" && audienceType === "identity_types" && identityTypes.length === 0)} type="submit">{submitting ? "提交中…" : "确认创建"}</Button></div>
+      <div className="flex justify-end"><Button disabled={submitting || (scope === "platform" && audienceType === "identity_types" && identityTypes.length === 0) || (scope === "platform" && audienceType === "exact_users" && selectedAccounts.length === 0)} type="submit">{submitting ? "提交中…" : "确认创建"}</Button></div>
     </form>
   </ModuleShell>;
 }

@@ -12849,14 +12849,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             type: "object",
             additionalProperties: false,
-            required: ["type", "userIds"],
+            required: ["type", "needoIds"],
             properties: {
               type: { type: "string", enum: ["exact_users"] },
-              userIds: {
+              needoIds: {
                 type: "array",
                 minItems: 1,
                 maxItems: 500,
-                items: { type: "integer", minimum: 1 }
+                items: { type: "string", pattern: "^u[0-9]{10}$" }
               }
             }
           }

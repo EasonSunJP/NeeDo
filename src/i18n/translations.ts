@@ -825,6 +825,15 @@ export const authTrustGatewayTranslations: TranslationMap = {
 
 export const translations: TranslationMap = {
   "搜索通知": fourLanguageTranslation("搜尋通知", "通知を検索", "Search notices", "공지 검색"),
+  "指定账号": fourLanguageTranslation("指定帳號", "指定アカウント", "Specific accounts", "지정 계정"),
+  "全局搜索账号": fourLanguageTranslation("全域搜尋帳號", "アカウントを全体検索", "Search all accounts", "전체 계정 검색"),
+  "邮箱、手机号或 NeeDoID": fourLanguageTranslation("電子郵件、手機號碼或 NeeDoID", "メール、携帯番号または NeeDoID", "Email, phone, or NeeDoID", "이메일, 휴대폰 번호 또는 NeeDoID"),
+  "输入邮箱、手机号或 NeeDoID": fourLanguageTranslation("輸入電子郵件、手機號碼或 NeeDoID", "メール、携帯番号または NeeDoID を入力", "Enter email, phone, or NeeDoID", "이메일, 휴대폰 번호 또는 NeeDoID 입력"),
+  "搜索账号": fourLanguageTranslation("搜尋帳號", "アカウントを検索", "Search accounts", "계정 검색"),
+  "正在搜索账号": fourLanguageTranslation("正在搜尋帳號…", "アカウントを検索中…", "Searching accounts…", "계정 검색 중…"),
+  "选择账号": fourLanguageTranslation("選擇帳號", "アカウントを選択", "Select account", "계정 선택"),
+  "已选择账号": fourLanguageTranslation("已選擇帳號", "選択済み", "Account selected", "계정 선택됨"),
+  "移除账号": fourLanguageTranslation("移除帳號", "アカウントを削除", "Remove account", "계정 제거"),
   "图片已过期": { "zh-Hant": "圖片已過期", ja: "画像の有効期限が切れました", en: "Image expired", ko: "이미지가 만료되었습니다" },
   "聊天媒体本地缓存": fourLanguageTranslation("聊天媒體本機快取", "チャットメディアのローカルキャッシュ", "Local chat media cache", "채팅 미디어 로컬 캐시"),
   "媒体已显示，但本地缓存不可用": fourLanguageTranslation("媒體已顯示，但本機快取無法使用", "メディアは表示されていますが、ローカルキャッシュは利用できません", "Media is visible, but local caching is unavailable", "미디어는 표시되지만 로컬 캐시를 사용할 수 없습니다"),
