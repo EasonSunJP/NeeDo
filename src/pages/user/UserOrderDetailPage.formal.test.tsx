@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactNode } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   createAddOn: vi.fn(),
   createReview: vi.fn(),
   endService: vi.fn(),
+  exchangeOrderLinked: false,
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
@@ -59,6 +60,27 @@ vi.mock("../../features/core-read/api", async () => {
 });
 vi.mock("../../state/userOrderStore", () => ({ useUserOrders: () => [{ id: "legacy-1", itemName: "历史服务", storeName: "历史店铺", bookedAt: "2026-08-01 10:00", status: "completed", amount: 5000, serviceId: "12" }] }));
 vi.mock("../../features/booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
+vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({
+    onCancellationChange,
+    onLinkedChange,
+    orderId
+  }: {
+    onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    onLinkedChange?: (linked: boolean) => void;
+    orderId: number;
+  }) => {
+    useEffect(() => onLinkedChange?.(mocks.exchangeOrderLinked), [onLinkedChange]);
+    return (
+      <button
+        onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+        type="button"
+      >
+        模拟双方同意取消
+      </button>
+    );
+  }
+}));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
   AppTopBar: ({ title }: { title: string }) => <header>{title}</header>,
   PageScaffold: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
@@ -164,15 +186,17 @@ const checkout: OrderCheckout = {
   status: "awaitingCheckout",
   baseAmountJpy: 8800,
   addOnAmountJpy: 1200,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 500,
   checkoutAmountJpy: 9500,
   payableNdp: 19000,
   rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 2, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount",
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
     baseAmountJpy: 8800,
     acceptedAddOnIds: [301],
     addOnAmountJpy: 1200,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 500,
     checkoutAmountJpy: 9500,
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
@@ -278,6 +302,7 @@ async function click(label: string) {
 describe("formal user order detail", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.exchangeOrderLinked = false;
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -303,6 +328,20 @@ describe("formal user order detail", () => {
     await click("开始计算");
     await waitFor(() => expect(mocks.startService).toHaveBeenCalledWith(88, { actor: "customer", idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
     expect(container.textContent).toContain("正式延长服务");
+  });
+
+  it("immediately adopts an accepted Exchange cancellation and removes stale customer actions", async () => {
+    mocks.exchangeOrderLinked = true;
+    mocks.getOrder.mockResolvedValue(makeOrder("confirmed"));
+
+    await render();
+    expect(container.textContent).toContain("开始服务");
+    await click("模拟双方同意取消");
+
+    await waitFor(() => expect(container.textContent).toContain("已取消"));
+    expect(container.textContent).not.toContain("开始服务");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+    expect(container.textContent).toContain("模拟双方同意取消");
   });
 
   it("reconstructs countdown and real catalog, proposes and decides add-ons, then uses formal early end", async () => {

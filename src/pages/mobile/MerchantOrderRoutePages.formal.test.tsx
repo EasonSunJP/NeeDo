@@ -54,6 +54,22 @@ vi.mock("../../components/mobile/MobileFullscreenPage", () => ({ MobileFullscree
 vi.mock("../../components/mobile/MobileFullscreenHeader", () => ({ MobileFullscreenHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock("../../components/mobile/MobileBottomActionBar", () => ({ MobileBottomActionBar: ({ children }: { children: React.ReactNode }) => <footer>{children}</footer> }));
 vi.mock("../../components/mobile/ContactEventTimeline", () => ({ ContactEventTimelinePanel: ({ title }: { title: string }) => <section>{title}</section> }));
+vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({
+    onCancellationChange,
+    orderId
+  }: {
+    onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    orderId: number;
+  }) => (
+    <button
+      onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+      type="button"
+    >
+      模拟双方同意取消
+    </button>
+  )
+}));
 vi.mock("../../components/ui/Button", () => ({
   Button: ({ children, to }: { children: React.ReactNode; to?: string }) => to ? <a href={to}>{children}</a> : <button type="button">{children}</button>
 }));
@@ -114,11 +130,12 @@ const checkout: OrderCheckout = {
   status: "completed",
   baseAmountJpy: 8_000,
   addOnAmountJpy: 6_500,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 0,
   checkoutAmountJpy: 14_500,
   payableNdp: 14_500,
   rate: { ruleId: 1, publicId: "rate-1", version: 1, ndpUnits: 1, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
-  calculation: { formula: "base_plus_accepted_add_ons_minus_discount", baseAmountJpy: 8_000, acceptedAddOnIds: [3], addOnAmountJpy: 6_500, discountAmountJpy: 0, checkoutAmountJpy: 14_500, rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" },
+  calculation: { formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount", baseAmountJpy: 8_000, acceptedAddOnIds: [3], addOnAmountJpy: 6_500, travelFareAmountJpy: 0, discountAmountJpy: 0, checkoutAmountJpy: 14_500, rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" },
   paymentMethod: "ndp",
   paymentSelectedAt: "2026-09-02T18:39:00.000Z",
   otherMethod: null,
@@ -221,6 +238,36 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     expect(container.textContent).toContain("佐藤 美咲");
     expect(container.textContent).toContain("￥14,500");
     expect(container.textContent).toContain("NDP 账本已结算");
+  });
+
+  it("immediately adopts an accepted Exchange cancellation and keeps its terminal record visible", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...order,
+      status: "pending",
+      paymentStatus: "pending",
+      paymentMethod: "onsite",
+      paymentConfirmedById: null,
+      paymentConfirmedAt: null
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/merchant/orders/46397"]}>
+          <Routes>
+            <Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const decision = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.includes("模拟双方同意取消"));
+    expect(decision).not.toBeUndefined();
+    await act(async () => decision!.click());
+
+    expect(container.textContent).toContain("已取消");
+    expect(container.textContent).toContain("模拟双方同意取消");
   });
 
   it("keeps a historical completed order visible when no checkout record exists", async () => {

@@ -46,6 +46,8 @@ The Exchange Request publication fee and its future operations-configured 1,000 
 
 Manual service payments remain JPY records, not NDP wallet mutations. Confirming an `onsite` or `bank_transfer` payment updates the Booking payment snapshot and synchronizes the `order_financials` offline-income fields/timeline transactionally. NDP platform-fee holds and settlement remain exclusively inside `LedgerService`.
 
+Home-service travel fare is also a JPY checkout component, not a new wallet or ledger authority. `OrderCheckout.travelFareAmountJpy` is copied from the immutable Booking travel-fare snapshot, and the checkout calculation is `base + accepted add-ons + travel fare - discount`. For NDP payment, that full JPY checkout amount is converted using the same persisted exchange-rate snapshot and ceiling formula; 1:1 rates therefore produce the exact same integer amount. Refund and reversal exclusion belongs to the existing payment/financial evidence chain and does not create a separate travel-fare refund ledger.
+
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
 
 ## Manual Top-up and Withdrawal

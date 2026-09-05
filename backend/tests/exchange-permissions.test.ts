@@ -13,6 +13,8 @@ const EXCHANGE_PERMISSION_CODES = [
   "exchange:matching:read-own",
   "exchange:matching:select-own",
   "exchange:matching:book-own",
+  "exchange:cancellation:read-own",
+  "exchange:cancellation:write-own",
   "exchange:comments:list",
   "exchange:comments:create",
   "exchange:likes:write",
@@ -83,6 +85,18 @@ describe("formal NeeDo Exchange RBAC contract", () => {
       ])
     );
   });
+
+  it.each(["customer", "technician", "merchant_owner", "merchant_staff"] as const)(
+    "grants %s bilateral cancellation read and write permissions",
+    (role) => {
+      expect(assignments[role]).toEqual(
+        expect.arrayContaining([
+          "exchange:cancellation:read-own",
+          "exchange:cancellation:write-own"
+        ])
+      );
+    }
+  );
 
   it("grants Request fee permissions to their exact system-role allowlists", () => {
     for (const role of SYSTEM_ROLE_CODES) {

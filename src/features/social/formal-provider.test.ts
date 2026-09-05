@@ -1,10 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { RealtimeSocialPost } from "../realtime/api";
-import type { SocialPost } from "./types";
+import type { RealtimeNotification, RealtimeSocialPost } from "../realtime/api";
+import type { SocialNotification, SocialPost, SocialProfile } from "./types";
 import * as socialContext from "./context";
 
 type FormalProviderBehavior = {
+  resolveFormalNotificationText?: (
+    value: string,
+    language: "zh" | "zh-Hant" | "ja" | "en" | "ko"
+  ) => string;
+  mapFormalNotification?: (
+    notification: RealtimeNotification,
+    profiles: Record<string, SocialProfile>,
+    language: "zh" | "zh-Hant" | "ja" | "en" | "ko"
+  ) => SocialNotification;
   createFormalSocialPost?: (
     request: () => Promise<RealtimeSocialPost>,
     onSuccess: (created: RealtimeSocialPost, mapped: SocialPost) => void
@@ -72,6 +81,56 @@ function createMemoryStorage(initial: Record<string, string>) {
 }
 
 describe("formal social provider gate", () => {
+  it("localizes every Exchange cancellation notification key instead of exposing it", () => {
+    expect(behavior.resolveFormalNotificationText).toBeTypeOf("function");
+    if (!behavior.resolveFormalNotificationText) return;
+
+    const actions = ["request", "accept", "reject", "withdraw"] as const;
+    const fields = ["title", "body"] as const;
+    const languages = ["zh", "zh-Hant", "ja", "en", "ko"] as const;
+
+    for (const action of actions) {
+      for (const field of fields) {
+        const key = `exchange.cancellation.${action}.${field}`;
+        for (const language of languages) {
+          expect(behavior.resolveFormalNotificationText(key, language)).not.toBe(key);
+        }
+      }
+    }
+
+    expect(behavior.resolveFormalNotificationText("exchange.cancellation.request.body", "zh"))
+      .toBe("对方已提交 Exchange 订单取消申请，请及时处理。");
+    expect(behavior.resolveFormalNotificationText("exchange.cancellation.request.body", "ja"))
+      .toBe("相手が Exchange 注文のキャンセルを申請しました。ご確認ください。");
+    expect(behavior.resolveFormalNotificationText("ordinary notification", "en"))
+      .toBe("ordinary notification");
+  });
+
+  it("maps a persisted Exchange cancellation notification to localized consumer content", () => {
+    expect(behavior.mapFormalNotification).toBeTypeOf("function");
+    if (!behavior.mapFormalNotification) return;
+
+    const mapped = behavior.mapFormalNotification({
+      actorUserId: 51,
+      body: "exchange.cancellation.accept.body",
+      createdAt: "2026-09-05T03:05:00.000Z",
+      id: 901,
+      payload: { orderId: 501, cancellationId: 91 },
+      readAt: null,
+      recipientUserId: 41,
+      title: "exchange.cancellation.accept.title",
+      type: "system"
+    }, {}, "en");
+
+    expect(mapped).toMatchObject({
+      id: "901",
+      recipientKey: "user:41",
+      content: "The other party accepted the Exchange order cancellation.",
+      read: false
+    });
+    expect(mapped.content).not.toContain("exchange.cancellation");
+  });
+
   it("always mounts the formal provider", () => {
     expect(source).not.toContain("isStaticDemoMode");
     expect(source).not.toContain("isFrontendBypassSession");

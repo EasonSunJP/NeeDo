@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   createSlot: vi.fn(),
   deleteSlot: vi.fn(),
   endService: vi.fn(),
+  exchangeOrderLinked: false,
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
@@ -32,6 +33,27 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
 vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
+vi.mock("../exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({
+    onCancellationChange,
+    onLinkedChange,
+    orderId
+  }: {
+    onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    onLinkedChange?: (linked: boolean) => void;
+    orderId: number;
+  }) => {
+    useEffect(() => onLinkedChange?.(mocks.exchangeOrderLinked), [onLinkedChange]);
+    return (
+      <button
+        onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+        type="button"
+      >
+        模拟双方同意取消
+      </button>
+    );
+  }
+}));
 vi.mock("../../theme/ClientThemeProvider", async () => {
   const actual = await vi.importActual<typeof import("../../theme/ClientThemeProvider")>("../../theme/ClientThemeProvider");
   return { ...actual, useClientTheme: () => ({ isNight: false, theme: "whiteGreen" }) };
@@ -307,15 +329,17 @@ const checkout = {
   status: "awaitingPaymentConfirmation" as const,
   baseAmountJpy: 10000,
   addOnAmountJpy: 3000,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 0,
   checkoutAmountJpy: 13000,
   payableNdp: 13000,
   rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 1, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount" as const,
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" as const,
     baseAmountJpy: 10000,
     acceptedAddOnIds: [301],
     addOnAmountJpy: 3000,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 0,
     checkoutAmountJpy: 13000,
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" as const
@@ -579,6 +603,7 @@ describe("formal technician schedule routes", () => {
 describe("formal technician order detail route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.exchangeOrderLinked = false;
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.getOwnReview.mockResolvedValue({ review: null });
     container = document.createElement("div");
@@ -632,6 +657,20 @@ describe("formal technician order detail route", () => {
     await click("确认接单");
     await waitFor(() => expect(mocks.confirmOrder).toHaveBeenCalledWith(29));
     expect(container.textContent).toContain("已确认");
+  });
+
+  it("immediately adopts an accepted Exchange cancellation and removes stale provider actions", async () => {
+    mocks.exchangeOrderLinked = true;
+    await renderOrder(makeOrder("pending"));
+    expect(container.textContent).toContain("确认接单");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+
+    await click("模拟双方同意取消");
+
+    await waitFor(() => expect(container.textContent).toContain("已取消"));
+    expect(container.textContent).not.toContain("确认接单");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+    expect(container.textContent).toContain("模拟双方同意取消");
   });
 
   it("requires an explicit second confirmation when the shop platform-fee balance is insufficient", async () => {

@@ -19,6 +19,10 @@ const createRepository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => 
     void shopId; void at;
     return { current: policy, next: null };
   }),
+  findLatest: jest.fn(async (shopId: number) => {
+    void shopId;
+    return policy;
+  }),
   listVersions: jest.fn(async (_shopId, input) => ({
     list: [policy], total: 21, page: input.page ?? 1, page_size: input.pageSize ?? 20
   })),
@@ -38,15 +42,21 @@ const createMerchantFixture = async (permissions: string[]) => {
     })
   } as never);
   fixture.users[0]!.identities.push({
-    id: 99, userId: 1, type: "merchant", scopeType: "shop", scopeId: 11,
+    id: 99, userId: 1, type: "merchant_owner", scopeType: "shop", scopeId: 11,
     displayName: "Shop owner", isDefault: true, isActive: true, deletedAt: null,
     publicIdentifier: { publicId: "shop0000000011", status: "ACTIVE", deletedAt: null }
   } as never);
   fixture.users[0]!.identities[0]!.isDefault = false;
-  fixture.users[0]!.userRoles.push({
-    ...fixture.users[0]!.userRoles[0]!, id: 99, scopeType: "shop", scopeId: 11
-  });
   fixture.replaceAdminPermissions(["auth:me", ...permissions]);
+  const adminRole = fixture.users[0]!.userRoles[0]!.role;
+  fixture.users[0]!.userRoles.push({
+    ...fixture.users[0]!.userRoles[0]!,
+    id: 99,
+    roleId: 99,
+    scopeType: "shop",
+    scopeId: 11,
+    role: { ...adminRole, id: 99, name: "Merchant Owner", code: "merchant_owner" }
+  });
   const login = await request(fixture.app)
     .post("/api/v1/auth/login")
     .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })

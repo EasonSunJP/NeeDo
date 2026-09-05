@@ -313,25 +313,33 @@ describe("membership reward fee operations", () => {
   });
 });
 
-describe("travel and map provider production capability gate", () => {
-  it("does not present static fare tables or inert save/import actions as enabled settings", () => {
-    expect(travelSource).not.toContain("areaTravelFareRules");
-    expect(travelSource).not.toContain("buildDistanceFarePreview");
-    expect(travelSource).not.toContain("DataTable");
-    expect(travelSource).not.toContain("导入城市车费");
-    expect(travelSource).not.toContain("保存出行规则");
+describe("formal travel provider and fare policy operations workspace", () => {
+  it("gates both the route and navigation item with the formal read permission", () => {
+    expect(appSource).toContain(
+      'path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)}'
+    );
+    expect(adminLayoutSource).toContain(
+      '{ label: "出行能力状态", to: "/admin/travel-settings", icon: "行", permission: "backoffice:travel-fare:read"'
+    );
   });
 
-  it("states the deferred provider and formal policy prerequisites", () => {
-    expect(travelSource).toContain("地图、导航与出行计费尚未启用");
-    expect(travelSource).toContain("ExternalProviderConfig、TravelPolicy 与 RouteEstimate 表和 migration");
-    expect(travelSource).toContain("地址、经纬度、出行方式与人工交通费上限的正式配置 API");
-    expect(travelSource).toContain(
-      "地图/路线供应商适配器、限流、超时、缓存与 provider_unavailable 合同"
-    );
-    expect(travelSource).toContain("计费版本、审批、范围 RBAC、审计、分页与导出");
-    expect(travelSource).toContain("当前不会展示静态城市车费、试算结果或“已启用”交通方式");
-    expect(travelSource).toContain("地址和经纬度基础数据仍可由正式店铺/订单接口保存");
+  it("does not present static fare tables or fake fallback results", () => {
+    expect(travelSource).not.toContain("areaTravelFareRules");
+    expect(travelSource).not.toContain("buildDistanceFarePreview");
+    expect(travelSource).not.toContain("导入城市车费");
+    expect(travelSource).not.toContain("保存出行规则");
+    expect(travelSource).toContain("不会使用静态距离、模拟路线或伪造价格兜底");
+  });
+
+  it("loads redacted provider status and paginated persisted policies", () => {
+    expect(travelSource).toContain("travelFareApi.getProviderStatus()");
+    expect(travelSource).toContain("travelFareApi.listPolicies");
+    expect(travelSource).toContain("正在加载路线供应商与费率策略");
+    expect(travelSource).toContain("供应商或策略读取失败");
+    expect(travelSource).toContain("Geoapify 尚未配置");
+    expect(travelSource).toContain("没有符合条件的店铺费率策略");
+    expect(travelSource).toContain("上一页");
+    expect(travelSource).toContain("下一页");
   });
 });
 

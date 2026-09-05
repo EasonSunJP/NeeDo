@@ -70,6 +70,7 @@ import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsP
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
+import { ShopTravelFarePolicyPage } from "./pages/merchant-admin/ShopTravelFarePolicyPage";
 import {
   MerchantAdminFinancePage,
   MerchantAdminInventoryPage,
@@ -1352,6 +1353,7 @@ export default function App() {
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
+              <Route path="/merchant-admin/settings/travel-fare" element={protectPermission("merchant", "merchant-admin:travel-fare-policy:read", <ShopTravelFarePolicyPage />)} />
 
               <Route path="/technician" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
               <Route path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)} />
@@ -1453,7 +1455,7 @@ export default function App() {
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
-              <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
+              <Route path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)} />
               <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
               <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 

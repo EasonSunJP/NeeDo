@@ -466,7 +466,7 @@ export async function createExchangeBookingFixture(
       ownerType: "USER",
       ownerId: ownerUser.id,
       exchangePostId: post.id,
-      feeType: "exchange_request_publication",
+      feeType: "exchange_request_publication_fee",
       holdAmountNdp: 500,
       currency: "TEST_NDP",
       status: "active",
@@ -586,8 +586,21 @@ export async function cleanupExchangeBookingFixture(client: any, fixture: Exchan
     select: { id: true }
   });
   const orderIds = orderRows.map(({ id }: any) => id);
+  if (orderIds.length > 0) {
+    await client.exchangeBookingCancellationEvent.deleteMany({
+      where: { bookingOrderId: { in: orderIds } }
+    });
+    await client.exchangeBookingCancellation.deleteMany({
+      where: { bookingOrderId: { in: orderIds } }
+    });
+  }
   await client.notification.deleteMany({
-    where: { recipientIdentityId: { in: fixture.providerIdentityIds } }
+    where: {
+      OR: [
+        { recipientIdentityId: { in: [fixture.ownerIdentityId, ...fixture.providerIdentityIds] } },
+        { actorIdentityId: { in: [fixture.ownerIdentityId, ...fixture.providerIdentityIds] } }
+      ]
+    }
   });
   await client.auditLog.deleteMany({ where: { userAgent: fixture.marker } });
   await client.exchangeMatchEvent.deleteMany({ where: { matchingId: fixture.matchingId } });

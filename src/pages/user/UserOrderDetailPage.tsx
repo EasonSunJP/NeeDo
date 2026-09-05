@@ -25,6 +25,8 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../../features/exchange/types";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
@@ -212,6 +214,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [queryRevision, setQueryRevision] = useState(0);
+  const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
   const mutationKeys = useRef(new Map<string, string>());
   const retainedReviewCommand = useRef<{ fingerprint: string; key: string } | null>(null);
   const routeState = location.state as { notice?: string } | null;
@@ -475,6 +478,12 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     navigate(-1);
   };
   const canCancel = order?.status === "pending" || order?.status === "confirmed";
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
 
   return (
     <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
@@ -558,6 +567,14 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             }}
           />
 
+          {canCancel || order.status === "cancelled" ? (
+            <ExchangeOrderCancellationPanel
+              onCancellationChange={handleExchangeCancellationChange}
+              onLinkedChange={setExchangeOrderLinked}
+              orderId={orderId}
+            />
+          ) : null}
+
           {order.status === "confirmed" && /^\d{6}$/.test(order.serviceVerificationCode ?? "") ? (
             <section className="rounded-[24px] border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-5 text-center">
               <h2 className="text-base font-black">服务验证码</h2>
@@ -625,7 +642,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
           {canChoosePayment ? <div className="grid grid-cols-3 gap-2"><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("cash")} type="button">现金支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("other")} type="button">其他方式</button></div> : null}
-          {canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => void runOrderMutation("cancel", async () => bookingApi.cancelOrder(orderId, "客户从预约详情取消"))} type="button">取消预约</button> : null}
+          {exchangeOrderLinked === false && canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => void runOrderMutation("cancel", async () => bookingApi.cancelOrder(orderId, "客户从预约详情取消"))} type="button">取消预约</button> : null}
         </>
       ) : null}
 

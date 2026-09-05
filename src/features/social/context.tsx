@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import type { Language } from "../../i18n/translations";
 import {
   realtimeApi,
   subscribeRealtimeEvents,
@@ -275,9 +277,73 @@ function formalEntityType(identityType: string | undefined): SocialProfile["enti
   return "user";
 }
 
-function mapFormalNotification(
+const formalNotificationTranslations: Record<string, Record<Language, string>> = {
+  "exchange.cancellation.request.title": {
+    zh: "收到取消申请",
+    "zh-Hant": "收到取消申請",
+    ja: "キャンセル申請を受け取りました",
+    en: "Cancellation request received",
+    ko: "취소 요청을 받았습니다"
+  },
+  "exchange.cancellation.request.body": {
+    zh: "对方已提交 Exchange 订单取消申请，请及时处理。",
+    "zh-Hant": "對方已提交 Exchange 訂單取消申請，請及時處理。",
+    ja: "相手が Exchange 注文のキャンセルを申請しました。ご確認ください。",
+    en: "The other party requested cancellation of the Exchange order. Please review it.",
+    ko: "상대방이 Exchange 주문 취소를 요청했습니다. 확인해 주세요."
+  },
+  "exchange.cancellation.accept.title": {
+    zh: "取消申请已同意",
+    "zh-Hant": "取消申請已同意",
+    ja: "キャンセル申請が承認されました",
+    en: "Cancellation request accepted",
+    ko: "취소 요청이 승인되었습니다"
+  },
+  "exchange.cancellation.accept.body": {
+    zh: "对方已同意取消 Exchange 订单。",
+    "zh-Hant": "對方已同意取消 Exchange 訂單。",
+    ja: "相手が Exchange 注文のキャンセルに同意しました。",
+    en: "The other party accepted the Exchange order cancellation.",
+    ko: "상대방이 Exchange 주문 취소에 동의했습니다."
+  },
+  "exchange.cancellation.reject.title": {
+    zh: "取消申请已拒绝",
+    "zh-Hant": "取消申請已拒絕",
+    ja: "キャンセル申請が拒否されました",
+    en: "Cancellation request rejected",
+    ko: "취소 요청이 거절되었습니다"
+  },
+  "exchange.cancellation.reject.body": {
+    zh: "对方已拒绝取消 Exchange 订单，订单继续有效。",
+    "zh-Hant": "對方已拒絕取消 Exchange 訂單，訂單繼續有效。",
+    ja: "相手が Exchange 注文のキャンセルを拒否しました。注文は引き続き有効です。",
+    en: "The other party rejected the Exchange order cancellation. The order remains active.",
+    ko: "상대방이 Exchange 주문 취소를 거절했습니다. 주문은 계속 유효합니다."
+  },
+  "exchange.cancellation.withdraw.title": {
+    zh: "取消申请已撤回",
+    "zh-Hant": "取消申請已撤回",
+    ja: "キャンセル申請が取り下げられました",
+    en: "Cancellation request withdrawn",
+    ko: "취소 요청이 철회되었습니다"
+  },
+  "exchange.cancellation.withdraw.body": {
+    zh: "对方已撤回 Exchange 订单取消申请，订单继续有效。",
+    "zh-Hant": "對方已撤回 Exchange 訂單取消申請，訂單繼續有效。",
+    ja: "相手が Exchange 注文のキャンセル申請を取り下げました。注文は引き続き有効です。",
+    en: "The other party withdrew the Exchange order cancellation request. The order remains active.",
+    ko: "상대방이 Exchange 주문 취소 요청을 철회했습니다. 주문은 계속 유효합니다."
+  }
+};
+
+export function resolveFormalNotificationText(value: string, language: Language): string {
+  return formalNotificationTranslations[value]?.[language] ?? value;
+}
+
+export function mapFormalNotification(
   notification: RealtimeNotification,
-  profiles: Record<string, SocialProfile>
+  profiles: Record<string, SocialProfile>,
+  language: Language
 ): SocialNotification {
   const actor = Object.values(profiles).find(
     (profile) => Number(profile.id) === notification.actorUserId
@@ -293,7 +359,7 @@ function mapFormalNotification(
     postId: typeof payload.postId === "number" ? String(payload.postId) : undefined,
     createdAt: notification.createdAt,
     read: Boolean(notification.readAt),
-    content: notification.body || notification.title
+    content: resolveFormalNotificationText(notification.body || notification.title, language)
   };
 }
 
@@ -309,6 +375,7 @@ function mapFormalInteraction(post: RealtimeSocialPost) {
 
 function FormalSocialProvider({ children }: { children: ReactNode }) {
   const { isRestoring, session } = useAuth();
+  const { language } = useOptionalI18n();
   const [storedState, setState] = useState<SocialState>(emptyFormalSocialState);
   const [storedProfiles, setProfiles] = useState<Record<string, SocialProfile>>({});
   const accountProfileRequestsRef = useRef(new Map<string, Promise<SocialProfile | undefined>>());
@@ -594,7 +661,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       }
     });
     const notifications = notificationPage.list.map((notification) =>
-      mapFormalNotification(notification, nextProfiles)
+      mapFormalNotification(notification, nextProfiles, language)
     );
     const activeThreadProfiles = [...activePostThreadIdsRef.current].reduce<Record<string, SocialProfile>>(
       (merged, postId) => ({ ...merged, ...activePostThreadProfilesRef.current.get(postId) }),
@@ -645,6 +712,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     });
   }, [
     isRestoring,
+    language,
     formalSessionKey,
     sessionAvatarUrl,
     sessionIdentityType,

@@ -1000,6 +1000,25 @@ enum ExchangeMatchingStatus {
   @@map("exchange_matching_status")
 }
 
+enum ExchangeCancellationParty {
+  CUSTOMER @map("customer")
+  PROVIDER @map("provider")
+}
+
+enum ExchangeCancellationStatus {
+  PENDING   @map("pending")
+  ACCEPTED  @map("accepted")
+  REJECTED  @map("rejected")
+  WITHDRAWN @map("withdrawn")
+}
+
+enum ExchangeCancellationEventType {
+  REQUESTED @map("requested")
+  ACCEPTED  @map("accepted")
+  REJECTED  @map("rejected")
+  WITHDRAWN @map("withdrawn")
+}
+
 enum ExchangeMatchEventType {
   OPENED            @map("opened")
   CLAIM_ADDED       @map("claim_added")
@@ -1292,6 +1311,9 @@ model User {
   exchangeClaims                          ExchangeClaim[]
   exchangeMatchParticipants               ExchangeMatchParticipant[]
   exchangeMatchEvents                     ExchangeMatchEvent[]
+  initiatedExchangeCancellations          ExchangeBookingCancellation[] @relation("ExchangeCancellationInitiatorUser")
+  resolvedExchangeCancellations           ExchangeBookingCancellation[] @relation("ExchangeCancellationResolverUser")
+  exchangeCancellationEvents              ExchangeBookingCancellationEvent[] @relation("ExchangeCancellationEventUser")
   selectedShopServiceCategories           ShopServiceCategory[]                 @relation("ShopServiceCategorySelector")
   selectedShopBusinessKeywords            ShopBusinessKeyword[]                 @relation("ShopBusinessKeywordSelector")
   shopServiceTaxonomyCommands             ShopServiceTaxonomyCommand[]          @relation("ShopServiceTaxonomyCommandActor")
@@ -3762,6 +3784,7 @@ model ScheduleSlot {
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   bookingOrders     BookingOrder[]
+  routeEstimates    RouteEstimate[]
   exchangeClaims    ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
 
@@ -4061,6 +4084,7 @@ model RouteEstimate {
   customerUserId           Int       @map("customer_user_id")
   shopId                   Int       @map("shop_id")
   serviceId                Int       @map("service_id")
+  scheduleSlotId           Int?      @map("schedule_slot_id")
   policyVersionId          Int       @map("policy_version_id")
   matchedBandId            Int       @map("matched_band_id")
   providerCode             String    @map("provider_code") @db.VarChar(32)
@@ -4080,17 +4104,19 @@ model RouteEstimate {
   customer          User                        @relation("RouteEstimateCustomer", fields: [customerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_customer_fkey")
   shop              Shop                        @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_shop_fkey")
   service           Service                     @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_service_fkey")
+  scheduleSlot      ScheduleSlot?               @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_schedule_slot_fkey")
   policyVersion     ShopTravelFarePolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_policy_fkey")
   matchedBand       ShopTravelFareBand          @relation(fields: [matchedBandId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_band_fkey")
   consumedByBooking BookingOrder?               @relation("RouteEstimateConsumedBooking", fields: [consumedByBookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_consumed_booking_fkey")
   bookingSnapshot   BookingTravelFareSnapshot?
 
-  @@index([customerUserId, shopId, serviceId, expiresAt, deletedAt], map: "route_estimates_binding_expiry_idx")
+  @@index([customerUserId, shopId, serviceId, scheduleSlotId, expiresAt, deletedAt], map: "route_estimates_binding_expiry_idx")
   @@index([providerCode, originAddressHash, destinationAddressHash, expiresAt, deletedAt], map: "route_estimates_provider_cache_idx")
   @@index([policyVersionId], map: "route_estimates_policy_idx")
   @@index([matchedBandId], map: "route_estimates_band_idx")
   @@index([shopId], map: "route_estimates_shop_idx")
   @@index([serviceId], map: "route_estimates_service_idx")
+  @@index([scheduleSlotId], map: "route_estimates_schedule_slot_idx")
   @@index([deletedAt], map: "route_estimates_deleted_idx")
   @@map("route_estimates")
 }
@@ -5000,6 +5026,9 @@ model UserIdentity {
   exchangeClaims             ExchangeClaim[]
   exchangeMatchParticipants  ExchangeMatchParticipant[]
   exchangeMatchEvents        ExchangeMatchEvent[]
+  initiatedExchangeCancellations ExchangeBookingCancellation[] @relation("ExchangeCancellationInitiatorIdentity")
+  resolvedExchangeCancellations  ExchangeBookingCancellation[] @relation("ExchangeCancellationResolverIdentity")
+  exchangeCancellationEvents     ExchangeBookingCancellationEvent[] @relation("ExchangeCancellationEventIdentity")
   createdConversations       Conversation[]                @relation("ConversationCreatorIdentity")
   conversationParticipants   ConversationParticipant[]     @relation("ConversationParticipantIdentity")
   sentMessages               Message[]                     @relation("MessageSenderIdentity")
@@ -5223,6 +5252,7 @@ model ExchangeMatchParticipant {
   technicianService   TechnicianService?      @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   scheduleSlot        ScheduleSlot            @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   bookingOrder        BookingOrder?           @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  cancellations       ExchangeBookingCancellation[]
 
   @@unique([matchingId, technicianProfileId], map: "exchange_match_participants_matching_technician_key")
   @@index([exchangePostId, deletedAt], map: "exchange_match_participants_post_deleted_idx")
@@ -5235,6 +5265,74 @@ model ExchangeMatchParticipant {
   @@index([technicianServiceId], map: "exchange_match_participants_technician_service_idx")
   @@index([deletedAt], map: "exchange_match_participants_deleted_idx")
   @@map("exchange_match_participants")
+}
+
+model ExchangeBookingCancellation {
+  id                    Int                        @id @default(autoincrement())
+  bookingOrderId        Int                        @map("booking_order_id")
+  activeOrderId         Int?                       @unique(map: "exchange_cancel_active_order_key") @map("active_order_id")
+  initiatedByUserId     Int                        @map("initiated_by_user_id")
+  initiatedByIdentityId Int                        @map("initiated_by_identity_id")
+  initiatorParty        ExchangeCancellationParty  @map("initiator_party")
+  reason                String                     @db.VarChar(500)
+  status                ExchangeCancellationStatus @default(PENDING)
+  requestedVersion      Int                        @map("requested_version")
+  version               Int
+  resolvedByUserId      Int?                       @map("resolved_by_user_id")
+  resolvedByIdentityId  Int?                       @map("resolved_by_identity_id")
+  resolverParty         ExchangeCancellationParty? @map("resolver_party")
+  resolvedAt            DateTime?                  @map("resolved_at")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
+  deletedAt             DateTime?                  @map("deleted_at")
+
+  participant ExchangeMatchParticipant @relation(fields: [bookingOrderId], references: [bookingOrderId], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_participant_fkey")
+  initiatorUser User @relation("ExchangeCancellationInitiatorUser", fields: [initiatedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_initiator_user_fkey")
+  initiatorIdentity UserIdentity @relation("ExchangeCancellationInitiatorIdentity", fields: [initiatedByIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_initiator_identity_fkey")
+  resolverUser User? @relation("ExchangeCancellationResolverUser", fields: [resolvedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_resolver_user_fkey")
+  resolverIdentity UserIdentity? @relation("ExchangeCancellationResolverIdentity", fields: [resolvedByIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_resolver_identity_fkey")
+  events ExchangeBookingCancellationEvent[]
+
+  @@unique([id, bookingOrderId], map: "exchange_cancel_id_order_key")
+  @@unique([bookingOrderId, requestedVersion], map: "exchange_cancel_order_request_version_key")
+  @@index([bookingOrderId, deletedAt, createdAt], map: "exchange_cancel_order_history_idx")
+  @@index([initiatedByUserId, createdAt], map: "exchange_cancel_initiator_user_idx")
+  @@index([initiatedByIdentityId, createdAt], map: "exchange_cancel_initiator_identity_idx")
+  @@index([resolvedByUserId], map: "exchange_cancel_resolver_user_idx")
+  @@index([resolvedByIdentityId], map: "exchange_cancel_resolver_identity_idx")
+  @@index([status, createdAt], map: "exchange_cancel_status_idx")
+  @@index([deletedAt], map: "exchange_cancel_deleted_idx")
+  @@map("exchange_booking_cancellations")
+}
+
+model ExchangeBookingCancellationEvent {
+  id                 Int                           @id @default(autoincrement())
+  cancellationId     Int                           @map("cancellation_id")
+  bookingOrderId     Int                           @map("booking_order_id")
+  type               ExchangeCancellationEventType
+  actorUserId        Int                           @map("actor_user_id")
+  actorIdentityId    Int                           @map("actor_identity_id")
+  actorParty         ExchangeCancellationParty     @map("actor_party")
+  versionBefore      Int                           @map("version_before")
+  versionAfter       Int                           @map("version_after")
+  idempotencyKey     String                        @unique(map: "exchange_cancel_event_idempotency_key") @map("idempotency_key") @db.VarChar(191)
+  payloadFingerprint String                        @map("payload_fingerprint") @db.Char(64)
+  resultSnapshot     Json                          @map("result_snapshot")
+  createdAt          DateTime                      @default(now()) @map("created_at")
+  updatedAt          DateTime                      @updatedAt @map("updated_at")
+  deletedAt          DateTime?                     @map("deleted_at")
+
+  cancellation ExchangeBookingCancellation @relation(fields: [cancellationId, bookingOrderId], references: [id, bookingOrderId], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_event_request_fkey")
+  actorUser User @relation("ExchangeCancellationEventUser", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_event_user_fkey")
+  actorIdentity UserIdentity @relation("ExchangeCancellationEventIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "exchange_cancel_event_identity_fkey")
+
+  @@unique([bookingOrderId, versionAfter], map: "exchange_cancel_event_order_version_key")
+  @@index([cancellationId], map: "exchange_cancel_event_request_idx")
+  @@index([actorUserId, createdAt], map: "exchange_cancel_event_user_idx")
+  @@index([actorIdentityId, createdAt], map: "exchange_cancel_event_identity_idx")
+  @@index([type, createdAt], map: "exchange_cancel_event_type_idx")
+  @@index([deletedAt], map: "exchange_cancel_event_deleted_idx")
+  @@map("exchange_booking_cancellation_events")
 }
 
 model ExchangeMatchEvent {

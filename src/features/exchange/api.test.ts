@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import {
   createExchangeClaim,
+  createExchangeCancellationRequest,
   createExchangeMatchingBookings,
   createExchangeComment,
+  decideExchangeCancellation,
+  getExchangeCancellation,
   getExchangeMatching,
   getMyExchangeClaim,
   getExchangePost,
@@ -291,6 +294,42 @@ describe("formal Exchange API client", () => {
       headers: { "Idempotency-Key": "idem-key-0000001" },
       method: "POST"
     });
+  });
+
+  it("uses the exact versioned bilateral cancellation routes", async () => {
+    const signal = new AbortController().signal;
+
+    await getExchangeCancellation(501, signal);
+    await createExchangeCancellationRequest(
+      501,
+      { expectedVersion: 0, reason: "无法按约定时间提供服务" },
+      "exchange-cancel-request-0001"
+    );
+    await decideExchangeCancellation(501, "accept", 3, "exchange-cancel-accept-0001");
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/exchange/orders/501/cancellation",
+      { signal }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/exchange/orders/501/cancellation/requests",
+      {
+        body: { expectedVersion: 0, reason: "无法按约定时间提供服务" },
+        headers: { "Idempotency-Key": "exchange-cancel-request-0001" },
+        method: "POST"
+      }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      3,
+      "/exchange/orders/501/cancellation/accept",
+      {
+        body: { expectedVersion: 3 },
+        headers: { "Idempotency-Key": "exchange-cancel-accept-0001" },
+        method: "POST"
+      }
+    );
   });
 
   it("unwraps the explicit nullable own-claim payload", async () => {

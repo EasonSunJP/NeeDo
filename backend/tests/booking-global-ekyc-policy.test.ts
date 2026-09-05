@@ -4,6 +4,16 @@ import { AppError } from "../src/utils/app-error";
 
 const occurredAt = new Date("2026-09-01T10:00:00.000Z");
 const actor = { userId: 41, roles: ["customer"], currentIdentityType: "customer" };
+const homeTravelInput = {
+  fulfillmentAddress: {
+    countryCode: "JP" as const,
+    postalCode: "104-0061",
+    prefecture: "東京都",
+    city: "中央区",
+    addressLine1: "銀座1-2-3"
+  },
+  travelEstimatePublicId: "route-estimate-ekyc-test"
+};
 
 function fixture(reject = false) {
   const repository = {
@@ -45,7 +55,11 @@ describe("booking global eKYC policy", () => {
     "passes the authenticated user, %s mode and server time to the shared gate",
     async (fulfillmentMode) => {
       const state = fixture();
-      await state.service.createBooking(actor, { scheduleSlotId: 11, fulfillmentMode });
+      await state.service.createBooking(actor, {
+        scheduleSlotId: 11,
+        fulfillmentMode,
+        ...(fulfillmentMode === "home" ? homeTravelInput : {})
+      });
       expect(state.enforcement.assertServiceEkyc).toHaveBeenCalledWith(
         41,
         fulfillmentMode,
@@ -58,7 +72,11 @@ describe("booking global eKYC policy", () => {
   it("rejects before slot lookup or booking mutation and returns only safe policy data", async () => {
     const state = fixture(true);
     await expect(
-      state.service.createBooking(actor, { scheduleSlotId: 11, fulfillmentMode: "home" })
+      state.service.createBooking(actor, {
+        scheduleSlotId: 11,
+        fulfillmentMode: "home",
+        ...homeTravelInput
+      })
     ).rejects.toMatchObject({
       code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
       statusCode: 403,

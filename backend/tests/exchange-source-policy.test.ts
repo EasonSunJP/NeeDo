@@ -29,7 +29,11 @@ const exchangeDeferredCapabilityTokens = [
   "cancel"
 ] as const;
 const permittedExchangeCapabilityMutations = new Set([
-  "post /exchange/posts/:id/matching/bookings"
+  "post /exchange/posts/:id/matching/bookings",
+  "post /exchange/orders/:id/cancellation/requests",
+  "post /exchange/orders/:id/cancellation/accept",
+  "post /exchange/orders/:id/cancellation/reject",
+  "post /exchange/orders/:id/cancellation/withdraw"
 ]);
 
 function isForbiddenExchangeCapabilityMutation(route: RouteTuple): boolean {
@@ -77,7 +81,7 @@ describe("formal Exchange source policy", () => {
     expect(isForbiddenExchangeCapabilityMutation({ method, path })).toBe(true);
   });
 
-  it("allows only the exact formal booking mutation tuple and does not block reads", () => {
+  it("allows only the exact formal booking and bilateral-cancellation mutation tuples and does not block reads", () => {
     expect(
       isForbiddenExchangeCapabilityMutation({
         method: "post",
@@ -96,6 +100,14 @@ describe("formal Exchange source policy", () => {
         path: "/exchange/posts/:id/matching/bookings"
       })
     ).toBe(true);
+    for (const action of ["requests", "accept", "reject", "withdraw"]) {
+      expect(
+        isForbiddenExchangeCapabilityMutation({
+          method: "post",
+          path: `/exchange/orders/:id/cancellation/${action}`
+        })
+      ).toBe(false);
+    }
   });
 
   it("inventories exactly one formal mounted booking conversion POST across split route files", async () => {

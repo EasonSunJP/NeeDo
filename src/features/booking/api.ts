@@ -47,6 +47,7 @@ export type OrderCheckout = {
   status: BookingOrderStatus;
   baseAmountJpy: number;
   addOnAmountJpy: number;
+  travelFareAmountJpy: number;
   discountAmountJpy: number;
   checkoutAmountJpy: number;
   payableNdp: number;
@@ -59,10 +60,11 @@ export type OrderCheckout = {
     effectiveFrom: string;
   };
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount";
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount";
     baseAmountJpy: number;
     acceptedAddOnIds: number[];
     addOnAmountJpy: number;
+    travelFareAmountJpy: number;
     discountAmountJpy: number;
     checkoutAmountJpy: number;
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
@@ -298,8 +300,11 @@ export type UpdateManagedScheduleSlotInput = {
   status?: "available" | "blocked";
 };
 
-export type CreateBookingInput = {
-  fulfillmentMode: FulfillmentMode;
+type BookingFulfillmentInput =
+  | { fulfillmentMode: "store"; fulfillmentAddress?: never; travelEstimatePublicId?: never }
+  | { fulfillmentMode: "home"; fulfillmentAddress: import("../../api/travelFare").JapaneseRouteAddress; travelEstimatePublicId: string };
+
+export type CreateBookingInput = BookingFulfillmentInput & {
   note?: string;
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;

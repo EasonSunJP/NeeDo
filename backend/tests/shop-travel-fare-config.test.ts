@@ -25,6 +25,8 @@ describe("shop travel fare environment configuration", () => {
       "TRAVEL_ROUTE_MAX_RETRIES",
       "TRAVEL_ROUTE_CACHE_TTL_SECONDS",
       "TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS",
+      "TRAVEL_ROUTE_HEALTH_REDIS_URL",
+      "TRAVEL_ROUTE_HEALTH_TTL_SECONDS",
       "TRAVEL_ESTIMATE_TTL_SECONDS"
     ]) {
       delete process.env[key];
@@ -38,6 +40,8 @@ describe("shop travel fare environment configuration", () => {
       TRAVEL_ROUTE_MAX_RETRIES: 2,
       TRAVEL_ROUTE_CACHE_TTL_SECONDS: 300,
       TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS: 30,
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: process.env.REDIS_URL,
+      TRAVEL_ROUTE_HEALTH_TTL_SECONDS: 900,
       TRAVEL_ESTIMATE_TTL_SECONDS: 600
     });
   });
@@ -51,6 +55,8 @@ describe("shop travel fare environment configuration", () => {
       TRAVEL_ROUTE_MAX_RETRIES: "1",
       TRAVEL_ROUTE_CACHE_TTL_SECONDS: "600",
       TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS: "45",
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: "redis://route-health.internal:6379/4",
+      TRAVEL_ROUTE_HEALTH_TTL_SECONDS: "300",
       TRAVEL_ESTIMATE_TTL_SECONDS: "900"
     });
 
@@ -62,6 +68,8 @@ describe("shop travel fare environment configuration", () => {
       TRAVEL_ROUTE_MAX_RETRIES: 1,
       TRAVEL_ROUTE_CACHE_TTL_SECONDS: 600,
       TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS: 45,
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: "redis://route-health.internal:6379/4",
+      TRAVEL_ROUTE_HEALTH_TTL_SECONDS: 300,
       TRAVEL_ESTIMATE_TTL_SECONDS: 900
     });
   });
@@ -77,6 +85,8 @@ describe("shop travel fare environment configuration", () => {
       { TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS: "301" },
       "TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS"
     ],
+    ["invalid health Redis URL", { TRAVEL_ROUTE_HEALTH_REDIS_URL: "https://redis.invalid" }, "TRAVEL_ROUTE_HEALTH_REDIS_URL"],
+    ["short health TTL", { TRAVEL_ROUTE_HEALTH_TTL_SECONDS: "29" }, "TRAVEL_ROUTE_HEALTH_TTL_SECONDS"],
     ["long estimate TTL", { TRAVEL_ESTIMATE_TTL_SECONDS: "1801" }, "TRAVEL_ESTIMATE_TTL_SECONDS"]
   ])("rejects Geoapify configuration with %s", async (_label, override, expectedField) => {
     Object.assign(process.env, {

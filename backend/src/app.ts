@@ -72,6 +72,8 @@ import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-po
 import type { ShopTravelFarePolicyRepositoryPort } from "./services/shop-travel-fare-policy.service";
 import type { RouteEstimateRepositoryPort } from "./services/route-estimate.service";
 import type { RouteDistanceProvider } from "./services/route-distance.provider";
+import type { RouteProviderHealthStorePort } from "./services/route-provider-health";
+import type { TravelOperationsRepositoryPort } from "./services/travel-operations.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
@@ -169,6 +171,7 @@ import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-policy.routes";
 import { createRouteEstimateRoutes } from "./routes/route-estimate.routes";
+import { createTravelOperationsRoutes } from "./routes/travel-operations.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
@@ -213,6 +216,7 @@ import { createExchangeRoutes } from "./routes/exchange.routes";
 import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes";
 import { createExchangeBookingConversionRoutes } from "./routes/exchange-booking-conversion.routes";
+import { createExchangeCancellationRoutes } from "./routes/exchange-cancellation.routes";
 import { createExchangeRequestFeeRoutes } from "./routes/exchange-request-fee.routes";
 import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createShopEmployeeDirectoryRoutes } from "./routes/shop-employee-directory.routes";
@@ -240,6 +244,7 @@ import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeMatchingService } from "./services/exchange-matching.service";
 import type { ExchangeBookingConversionService } from "./services/exchange-booking-conversion.service";
+import type { ExchangeCancellationService } from "./services/exchange-cancellation.service";
 import type { ExchangeRequestFeeService } from "./services/exchange-request-fee.service";
 import {
   SseRealtimeEventGateway,
@@ -312,6 +317,8 @@ export interface AppDependencies {
   shopTravelFarePolicyRepository?: ShopTravelFarePolicyRepositoryPort;
   routeEstimateRepository?: RouteEstimateRepositoryPort;
   routeDistanceProvider?: RouteDistanceProvider;
+  routeProviderHealthStore?: RouteProviderHealthStorePort;
+  travelOperationsRepository?: TravelOperationsRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
@@ -441,6 +448,7 @@ export interface AppDependencies {
   exchangeClaimService?: ExchangeClaimService;
   exchangeMatchingService?: ExchangeMatchingService;
   exchangeBookingConversionService?: ExchangeBookingConversionService;
+  exchangeCancellationService?: ExchangeCancellationService;
   exchangeRequestFeeService?: ExchangeRequestFeeService;
   ledgerService?: LedgerService;
 }
@@ -565,6 +573,7 @@ export const createApp = (
   );
   mount("merchant-admin", createShopTravelFarePolicyRoutes(config, resolvedDependencies));
   mount("shared", createRouteEstimateRoutes(config, resolvedDependencies));
+  mount("backoffice", createTravelOperationsRoutes(config, resolvedDependencies));
   mount("backoffice", createPlatformMembershipRoutes(config, resolvedDependencies));
   mount("backoffice", createUserExperienceRoutes(config, resolvedDependencies));
   mount("backoffice", createBackofficeUserGroupRoutes(config, resolvedDependencies));
@@ -613,6 +622,7 @@ export const createApp = (
   mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));
   mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));
   mount("shared", createExchangeBookingConversionRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeCancellationRoutes(config, resolvedDependencies));
   mount("backoffice", createExchangeRequestFeeRoutes(config, resolvedDependencies));
   mount("merchant-admin", createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopEmployeeDirectoryRoutes(config, resolvedDependencies));

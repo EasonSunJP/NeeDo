@@ -110,6 +110,26 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("pointer-events-none fixed inset-x-0 bottom-0");
     expect(formalSource).toContain("paymentMethod");
     expect(formalSource).toContain("void submitBooking()");
-    expect(formalSource).toContain("disabled={!selectedSlot || submitting}");
+    expect(formalSource).toContain('fulfillmentMode === "home" && estimateStatus !== "success"');
+  });
+
+  it("requires a structured Japanese address and valid server estimate for home checkout", () => {
+    for (const field of ["postalCode", "prefecture", "city", "addressLine1", "addressLine2", "building"]) {
+      expect(formalSource).toContain(`updateHomeAddress("${field}"`);
+    }
+    expect(formalSource).toContain("travelFareApi.createEstimate");
+    expect(formalSource).toContain("servicePublicId: service.publicId");
+    expect(formalSource).toContain("scheduleSlotId: selectedSlotId");
+    expect(formalSource).toContain("estimateRequestVersionRef");
+    expect(formalSource).toContain("不加载第三方地图预览");
+    expect(formalSource).toContain("travelEstimatePublicId: estimate!.publicId");
+    expect(formalSource).toContain("fulfillmentAddress:");
+    expect(formalSource).toContain("正式交通费");
+    expect(formalSource).toContain("驾驶距离");
+    expect(formalSource).toContain("适用上限");
+    expect(formalSource).toContain("交通费估价已过期");
+    expect(formalSource).toContain("超出店铺的上门服务范围");
+    expect(formalSource).toContain("路线供应商尚未配置");
+    expect(formalSource).toContain("重新估算交通费");
   });
 });
