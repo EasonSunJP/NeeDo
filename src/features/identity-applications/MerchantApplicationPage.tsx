@@ -79,6 +79,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   const t = (source: string) => translateText(source, language);
   // Reading during initialization is non-destructive so StrictMode can replay the mount safely.
   const [retainedDraft] = useState(() => merchantApplicationDraftMemory.read(accountId));
+  const [canSaveRetainedDraft, setCanSaveRetainedDraft] = useState(!retainedDraft);
   const [step, setStep] = useState(0);
   const [application, setApplication] = useState<IdentityApplication | null>(retainedDraft?.application ?? null);
   const [form, setForm] = useState<MerchantForm>(retainedDraft?.form ?? emptyMerchantForm);
@@ -117,6 +118,14 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
     identityApplicationsApi.listMine({ type: "merchant" }).then(({ list }) => {
       if (!active) return;
       const existing = list.find((item) => !["withdrawn", "approved"].includes(item.status)) ?? null;
+      if (retainedDraft) {
+        const base = retainedDraft.baseApplication;
+        if (existing?.id !== base?.id || existing?.version !== base?.version) {
+          setError("店铺申请草稿已发生变更。本页未保存资料已保留，请复制后重新打开申请。");
+          return;
+        }
+        setCanSaveRetainedDraft(true);
+      }
       if (!existing) return;
       setApplication(existing);
       const detail = existing.merchantDetail;
@@ -170,7 +179,11 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   const priceLabel = formatMerchantPriceRange(priceRange);
 
   const openVerification = () => {
-    merchantApplicationDraftMemory.retain(accountId, { application, form, priceRange, showcaseImage, selectedKeywordLabels });
+    if (busy) return;
+    merchantApplicationDraftMemory.retain(accountId, {
+      baseApplication: application ? { id: application.id, version: application.version } : null,
+      application, form, priceRange, showcaseImage, selectedKeywordLabels
+    });
     navigate("/me/settings/verification");
   };
 
@@ -214,6 +227,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   });
 
   const saveShowcase = async () => {
+    if (!canSaveRetainedDraft) return;
     const payload = showcasePayload();
     const validationError = validateMerchantShowcase({
       ...form,
@@ -326,7 +340,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
             <ApplicationField label="申请人" required>
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <ApplicationInput onChange={(event) => updateForm("responsiblePersonName", event.target.value)} value={form.responsiblePersonName} />
-                <ApplicationButton onClick={openVerification} tone={ekycVerified ? "secondary" : "primary"}>
+                <ApplicationButton disabled={busy} onClick={openVerification} tone={ekycVerified ? "secondary" : "primary"}>
                   {t(ekycVerified ? "已本人确认" : "本人确认（eKYC）")}
                 </ApplicationButton>
               </div>
@@ -365,7 +379,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
             <div className="pointer-events-none max-h-[760px] overflow-hidden" aria-label={t("店铺服务展示预览")}><StoreDetailExperience embedded scope="user" store={draftStore} techniciansOverride={[]} /></div>
           </ApplicationSection>
           <ApplicationBottomAction>
-            <ApplicationButton className="w-full" disabled={busy} onClick={() => void saveShowcase()}>{busy ? t("保存中") : t("下一步：银行与身份")}</ApplicationButton>
+            <ApplicationButton className="w-full" disabled={busy || !canSaveRetainedDraft} onClick={() => void saveShowcase()}>{busy ? t("保存中") : t("下一步：银行与身份")}</ApplicationButton>
           </ApplicationBottomAction>
         </>
       ) : null}

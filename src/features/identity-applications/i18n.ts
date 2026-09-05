@@ -1,6 +1,12 @@
 type Entry = { "zh-Hant": string; ja: string; en: string; ko: string };
 
 export const identityApplicationTranslations: Record<string, Entry> = {
+  "店铺申请草稿已发生变更。本页未保存资料已保留，请复制后重新打开申请。": {
+    "zh-Hant": "店鋪申請草稿已變更。本頁未儲存的資料已保留，請複製後重新開啟申請。",
+    ja: "店舗申請の下書きが変更されています。このページの未保存の内容は保持されています。内容をコピーしてから申請を開き直してください。",
+    en: "The shop application draft has changed. Your unsaved details are preserved on this page. Copy them before reopening the application.",
+    ko: "매장 신청 초안이 변경되었습니다. 이 페이지의 저장되지 않은 내용은 유지됩니다. 내용을 복사한 후 신청을 다시 열어 주세요."
+  },
   "名义": { "zh-Hant": "名義", ja: "申請名義", en: "Applicant type", ko: "신청 명의" },
   "基础信息": { "zh-Hant": "基本資訊", ja: "基本情報", en: "Basic information", ko: "기본 정보" },
   "申请人": { "zh-Hant": "申請人", ja: "申請者", en: "Applicant", ko: "신청인" },

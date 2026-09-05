@@ -9,6 +9,7 @@ import { platformMembershipSelfApi } from "../platform-membership/api";
 import { shopTaxonomyApi } from "../shop-taxonomy/api";
 import { identityApplicationsApi, type IdentityApplication } from "./api";
 import { MerchantApplicationPage } from "./MerchantApplicationPage";
+import { merchantApplicationDraftMemory } from "./merchantApplicationDraftMemory";
 
 const context = vi.hoisted(() => ({ accountId: 41, language: "zh" as Language, preview: null as Store | null }));
 vi.mock("../../auth/AuthProvider", () => ({
@@ -208,6 +209,63 @@ describe("MerchantApplicationPage behavior", () => {
     }));
   });
 
+  it.each([
+    ["a newer version", [{ ...corporateDraft, version: 4 }]],
+    ["a different application ID", [{ ...corporateDraft, id: 72 }]],
+    ["a removed application", []]
+  ] as const)("preserves the retained base and reports a conflict for %s without saving stale fields", async (_case, refreshedList) => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    await render();
+    await enter("店铺名称", "別タブと競合する未保存の名称");
+    await enter("最低费用", "5000");
+    const file = await chooseCover();
+    await act(async () => button("本人确认（eKYC）").click());
+    expect.soft(merchantApplicationDraftMemory.read(context.accountId)).toEqual(expect.objectContaining({
+      baseApplication: { id: 71, version: 3 }, showcaseImage: file
+    }));
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [...refreshedList], total: refreshedList.length, page: 1, page_size: 20 });
+    await act(async () => button("Return to application").click());
+    expect.soft(container.textContent).toContain("店铺申请草稿已发生变更。本页未保存资料已保留，请复制后重新打开申请。");
+    expect.soft(input("店铺名称").value).toBe("別タブと競合する未保存の名称");
+    expect.soft(input("最低费用").value).toBe("5000");
+    expect.soft(container.textContent).toContain("first-shop.png");
+    expect.soft(context.preview?.systemId).toBe("application-71");
+    await act(async () => button("下一步：银行与身份").click());
+    expect.soft(identityApplicationsApi.updateMerchantShowcase).not.toHaveBeenCalled();
+    expect.soft(identityApplicationsApi.createMerchantDraft).not.toHaveBeenCalled();
+    expect.soft(identityApplicationsApi.uploadMedia).not.toHaveBeenCalled();
+  });
+
+  it("does not attach a retained new form to an application created during the detour", async () => {
+    await render();
+    await enterNewCorporateDraft();
+    await act(async () => button("本人确认（eKYC）").click());
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    await act(async () => button("Return to application").click());
+    expect.soft(input("店铺名称").value).toBe("新店");
+    expect.soft(context.preview?.systemId).toBe("application-new");
+    expect.soft(container.textContent).toContain("店铺申请草稿已发生变更。本页未保存资料已保留，请复制后重新打开申请。");
+    await act(async () => button("下一步：银行与身份").click());
+    expect.soft(identityApplicationsApi.updateMerchantShowcase).not.toHaveBeenCalled();
+    expect.soft(identityApplicationsApi.createMerchantDraft).not.toHaveBeenCalled();
+  });
+
+  it("waits for the retained application base to be checked before allowing save", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    await render();
+    await enter("店铺名称", "照合待ちの名称");
+    await act(async () => button("本人确认（eKYC）").click());
+    let finishRead!: (page: Awaited<ReturnType<typeof identityApplicationsApi.listMine>>) => void;
+    vi.mocked(identityApplicationsApi.listMine).mockReturnValue(new Promise((resolve) => { finishRead = resolve; }));
+    await act(async () => button("Return to application").click());
+    expect(button("下一步：银行与身份").disabled).toBe(true);
+    await act(async () => button("下一步：银行与身份").click());
+    expect(identityApplicationsApi.updateMerchantShowcase).not.toHaveBeenCalled();
+    await act(async () => finishRead({ list: [corporateDraft], total: 1, page: 1, page_size: 20 }));
+    expect(button("下一步：银行与身份").disabled).toBe(false);
+    expect(input("店铺名称").value).toBe("照合待ちの名称");
+  });
+
   it("does not restore another account's fields, taxonomy, price or image", async () => {
     const originalAccountId = context.accountId;
     await render();
@@ -265,16 +323,26 @@ describe("MerchantApplicationPage behavior", () => {
     expect(input("申请人").value).toBe("");
   });
 
-  it("clears an outstanding detour draft after a successful first-step save", async () => {
+  it("disables the eKYC detour during a pending save so it cannot create or replace a snapshot", async () => {
     let finishSave!: (application: IdentityApplication) => void;
     vi.mocked(identityApplicationsApi.createMerchantDraft).mockReturnValue(new Promise((resolve) => { finishSave = resolve; }));
+    const retainDraft = vi.spyOn(merchantApplicationDraftMemory, "retain");
     await render();
     await enterNewCorporateDraft();
     await act(async () => button("下一步：银行与身份").click());
+    expect.soft(button("本人确认（eKYC）").disabled).toBe(true);
     await act(async () => button("本人确认（eKYC）").click());
+    expect.soft(container.querySelector("textarea")?.value).toBe("新しいお店の紹介");
+    expect.soft(retainDraft).not.toHaveBeenCalled();
+    expect.soft(merchantApplicationDraftMemory.read(context.accountId)).toBeUndefined();
     await act(async () => finishSave(corporateDraft));
-    await act(async () => button("Return to application").click());
-    expect(input("申请人").value).toBe("");
+    expect(button("下一步：收费规则与合同")).toBeTruthy();
+    await act(async () => button("上一步").click());
+    expect(button("本人确认（eKYC）").disabled).toBe(false);
+    await act(async () => button("本人确认（eKYC）").click());
+    expect(merchantApplicationDraftMemory.read(context.accountId)).toEqual(expect.objectContaining({
+      baseApplication: { id: 71, version: 3 }, form: expect.objectContaining({ shopName: "新店" })
+    }));
   });
 
   it.each([

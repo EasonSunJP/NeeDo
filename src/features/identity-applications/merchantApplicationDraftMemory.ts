@@ -3,6 +3,7 @@ import type { MerchantShowcaseForm } from "./formModel";
 import type { MerchantPriceRange } from "./merchantPriceRange";
 
 type MerchantApplicationDraft = {
+  baseApplication: { id: number; version: number } | null;
   application: IdentityApplication | null;
   form: MerchantShowcaseForm;
   priceRange: MerchantPriceRange;
