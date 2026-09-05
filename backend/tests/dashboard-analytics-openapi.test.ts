@@ -262,13 +262,29 @@ describe("dashboard analytics OpenAPI contract", () => {
     expect(schemas.DashboardAnalyticsMetricDetail).toMatchObject({
       type: "object",
       additionalProperties: false,
-      required: ["filter", "metric", "series"],
+      required: ["filter", "metric", "series", "details"],
       properties: {
         filter: { $ref: "#/components/schemas/DashboardAnalyticsFilter" },
         metric: { $ref: "#/components/schemas/AnalyticsMetricPayload" },
-        series: { type: "array", minItems: 1, maxItems: 1, items: false }
+        series: { type: "array", minItems: 1, maxItems: 1, items: false },
+        details: { type: "array", maxItems: 100 }
       }
     });
+    expect(schemas.DashboardAnalyticsMetricDetail.properties.details.items).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "orderNo",
+        "shopId",
+        "distanceMeters",
+        "fareAmountJpy",
+        "paymentEvidence",
+        "reversalState"
+      ])
+    });
+    expect(
+      JSON.stringify(schemas.DashboardAnalyticsMetricDetail.properties.details)
+    ).not.toMatch(/customerAddress|customerName|customerId/i);
     expect(schemas.DashboardAnalyticsMetricDetail.properties.series.prefixItems).toEqual([
       { $ref: "#/components/schemas/AnalyticsMetricSeries" }
     ]);
@@ -353,9 +369,11 @@ describe("dashboard analytics OpenAPI contract", () => {
         }),
         expect.objectContaining({
           metricKey: "travel_fare",
-          currentValue: null,
-          dataStatus: "not_connected",
-          comparisonDirection: "unavailable"
+          currentValue: 700,
+          previousValue: 300,
+          comparisonPercent: 133.33,
+          dataStatus: "ready",
+          comparisonDirection: "up"
         }),
         expect.objectContaining({
           metricKey: "supplier_onboarding",
@@ -368,6 +386,7 @@ describe("dashboard analytics OpenAPI contract", () => {
 
     expect(schemas.DashboardAnalyticsMetricDetail.example).toMatchObject({
       metric: { metricKey: "new_users" },
+      details: [],
       series: [
         {
           seriesKey: "new_users",
