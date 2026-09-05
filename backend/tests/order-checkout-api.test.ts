@@ -19,6 +19,7 @@ const checkout: OrderCheckoutPayload = {
   status: "awaitingCheckout",
   baseAmountJpy: 8_800,
   addOnAmountJpy: 2_200,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 800,
   checkoutAmountJpy: 10_200,
   payableNdp: 15_300,
@@ -31,10 +32,11 @@ const checkout: OrderCheckoutPayload = {
     effectiveFrom: "2026-08-01T00:00:00.000Z"
   },
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount",
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
     baseAmountJpy: 8_800,
     acceptedAddOnIds: [3],
     addOnAmountJpy: 2_200,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 800,
     checkoutAmountJpy: 10_200,
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"

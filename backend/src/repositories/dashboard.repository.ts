@@ -18,7 +18,8 @@ import {
 import {
   DashboardOperationsFinanceRepository,
   type DashboardOperationsFinanceReader,
-  type OperationsFinanceFacts
+  type OperationsFinanceFacts,
+  type TravelFareDetailRow
 } from "./dashboard-operations-finance.repository";
 import {
   DashboardCommissionRepository,
@@ -154,6 +155,12 @@ export class DashboardRepository {
     input: DashboardAggregateInput
   ): Promise<OperationsFinanceFacts> {
     return this.operationsFinanceReader.getOperationsFinance(input);
+  }
+
+  public async getTravelFareDetails(
+    input: DashboardAggregateInput
+  ): Promise<TravelFareDetailRow[]> {
+    return this.operationsFinanceReader.getTravelFareDetails?.(input) ?? [];
   }
 
   public async getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts> {

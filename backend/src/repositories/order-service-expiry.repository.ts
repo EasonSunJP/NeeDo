@@ -37,7 +37,8 @@ const expiryOrderInclude = {
   affiliateAttributions: {
     where: { deletedAt: null },
     orderBy: { id: "asc" }
-  }
+  },
+  travelFareSnapshot: true
 } satisfies Prisma.BookingOrderInclude;
 
 type ExpiryOrderRecord = Prisma.BookingOrderGetPayload<{ include: typeof expiryOrderInclude }>;
@@ -191,6 +192,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
             bookingOrderId: order.id,
             baseAmountJpy: calculation.baseAmountJpy,
             addOnAmountJpy: calculation.addOnAmountJpy,
+            travelFareAmountJpy: calculation.travelFareAmountJpy,
             discountAmountJpy: calculation.discountAmountJpy,
             checkoutAmountJpy: calculation.checkoutAmountJpy,
             payableNdp: calculation.payableNdp,
@@ -214,6 +216,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
               trigger: "system_timer",
               expectedEndsAt: dueAt.toISOString(),
               checkoutAmountJpy: calculation.checkoutAmountJpy,
+              travelFareAmountJpy: calculation.travelFareAmountJpy,
               payableNdp: calculation.payableNdp,
               rateRuleId: rate.id
             },
@@ -271,7 +274,8 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
           currency: order.currency,
           servicePrice: (order.servicePriceSnapshot ?? order.priceAmount).toString(),
           addOns: order.serviceSession?.addOns ?? [],
-          affiliateAttribution: order.affiliateAttributions[0] ?? null
+          affiliateAttribution: order.affiliateAttributions[0] ?? null,
+          travelFareAmountJpy: order.travelFareSnapshot?.fareAmountJpy ?? 0
         },
         { ...rate, ruleId: rate.id }
       );

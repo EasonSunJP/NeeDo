@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { japaneseRouteAddressSchema } from "./route-estimate.validator";
 import {
   canonicalizeTechnicianReviewTag,
   isTechnicianReviewSpecialTag,
@@ -126,6 +127,8 @@ export const bookingCreateBodySchema = z
     fulfillmentMode: z.enum(["home", "store"]),
     paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
     note: z.string().trim().max(500).optional(),
+    fulfillmentAddress: japaneseRouteAddressSchema.optional(),
+    travelEstimatePublicId: z.string().uuid().optional(),
     affiliateCode: z.string().trim().min(1).max(40).optional(),
     affiliatePublicToken: z.string().trim().min(1).max(512).optional()
   })
@@ -133,6 +136,18 @@ export const bookingCreateBodySchema = z
   .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
     message: "Exactly one of serviceId or technicianServiceId is required",
     path: ["serviceId"]
+  })
+  .superRefine((value, context) => {
+    if (value.fulfillmentMode === "home") {
+      if (!value.fulfillmentAddress) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "fulfillmentAddress is required for home service", path: ["fulfillmentAddress"] });
+      }
+      if (!value.travelEstimatePublicId) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "travelEstimatePublicId is required for home service", path: ["travelEstimatePublicId"] });
+      }
+    } else if (value.fulfillmentAddress || value.travelEstimatePublicId) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "travel estimate fields are not allowed for store service", path: ["travelEstimatePublicId"] });
+    }
   });
 
 export const orderIdParamSchema = z.object({

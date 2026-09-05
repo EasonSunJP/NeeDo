@@ -76,6 +76,7 @@ const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
     status: "completed",
     baseAmountJpy: 10_000,
     addOnAmountJpy: 0,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 0,
     checkoutAmountJpy: 10_000,
     payableNdp: 10_000,
@@ -88,10 +89,11 @@ const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
       effectiveFrom: "2026-09-01T00:00:00.000Z"
     },
     calculation: {
-      formula: "base_plus_accepted_add_ons_minus_discount",
+      formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
       baseAmountJpy: 10_000,
       acceptedAddOnIds: [],
       addOnAmountJpy: 0,
+      travelFareAmountJpy: 0,
       discountAmountJpy: 0,
       checkoutAmountJpy: 10_000,
       rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"

@@ -319,7 +319,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                     version: rate.version
                   },
                   calculationSnapshotJson: {
-                    formula: "base_plus_accepted_add_ons_minus_discount",
+                    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
                     baseAmountJpy: 10_000,
                     addOnAmountJpy,
                     discountAmountJpy,
@@ -517,7 +517,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               );
             };
             const ndpSnapshot = (acceptedAddOnIds: number[]) => ({
-              formula: "base_plus_accepted_add_ons_minus_discount",
+              formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
               baseAmountJpy: 10_000,
               addOnAmountJpy: 4_000,
               discountAmountJpy: 1_000,
@@ -719,7 +719,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               where: { id: ndp.checkout.id },
               data: {
                 calculationSnapshotJson: {
-                  formula: "base_plus_accepted_add_ons_minus_discount",
+                  formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
                   baseAmountJpy: 10_000,
                   addOnAmountJpy: 4_000,
                   discountAmountJpy: 1_000,

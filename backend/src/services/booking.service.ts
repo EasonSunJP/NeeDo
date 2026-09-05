@@ -260,6 +260,26 @@ export class BookingService {
       input.fulfillmentMode,
       this.now()
     );
+    if (
+      input.fulfillmentMode === "home" &&
+      (!input.fulfillmentAddress || !input.travelEstimatePublicId)
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.TRAVEL_ESTIMATE_REQUIRED,
+        message: "error.travel.estimate_required",
+        statusCode: 422
+      });
+    }
+    if (
+      input.fulfillmentMode === "store" &&
+      (input.fulfillmentAddress !== undefined || input.travelEstimatePublicId !== undefined)
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.travel.estimate_not_allowed",
+        statusCode: 400
+      });
+    }
     await this.assertShopNotSuspended(
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
@@ -271,7 +291,9 @@ export class BookingService {
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
       paymentMethod: input.paymentMethod,
-      note: input.note
+      note: input.note,
+      fulfillmentAddress: input.fulfillmentAddress,
+      travelEstimatePublicId: input.travelEstimatePublicId
     };
     const selector = selectAffiliatePromotion(input);
     if (selector && !this.affiliateCheckoutService) {
@@ -330,6 +352,15 @@ export class BookingService {
 
     if (!result) {
       throw this.slotUnavailableError();
+    }
+    if ("travelEstimateError" in result) {
+      const details = {
+        expired: [ERROR_CODES.TRAVEL_ESTIMATE_EXPIRED, "error.travel.estimate_expired", 409],
+        consumed: [ERROR_CODES.TRAVEL_ESTIMATE_CONSUMED, "error.travel.estimate_consumed", 409],
+        mismatch: [ERROR_CODES.TRAVEL_ESTIMATE_MISMATCH, "error.travel.estimate_mismatch", 422],
+        invalid: [ERROR_CODES.TRAVEL_ESTIMATE_INVALID, "error.travel.estimate_invalid", 422]
+      }[result.travelEstimateError] as [number, string, number];
+      throw new AppError({ code: details[0], message: details[1], statusCode: details[2] });
     }
     if (!("order" in result) || !("supersededOrders" in result)) {
       return result;

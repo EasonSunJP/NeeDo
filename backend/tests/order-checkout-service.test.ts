@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- stateful Prisma transaction harness */
 import { BookingService } from "../src/services/booking.service";
 import { BookingRepository } from "../src/repositories/booking.repository";
+import { calculateOrderCheckoutSnapshot } from "../src/repositories/order-checkout-calculation";
 
 const customer = {
   userId: 101,
@@ -19,6 +20,17 @@ const customer = {
 };
 
 describe("formal order checkout service", () => {
+  it("calculates checkout as base plus accepted add-ons plus travel fare minus discount", () => {
+    expect(calculateOrderCheckoutSnapshot({
+      currency: "JPY", servicePrice: 8_800, travelFareAmountJpy: 500,
+      addOns: [{ id: 1, status: "ACCEPTED", priceAmountJpy: 2_200, currency: "JPY", deletedAt: null }],
+      affiliateAttribution: { originalPriceJpy: 8_800, customerDiscountJpy: 800, finalPriceJpy: 8_000 }
+    }, { ruleId: 1, publicId: "rate-1", version: 1, ndpUnits: 1, jpyUnits: 1, effectiveFrom: new Date("2026-09-05T00:00:00.000Z") })).toMatchObject({
+      baseAmountJpy: 8_800, addOnAmountJpy: 2_200, travelFareAmountJpy: 500,
+      discountAmountJpy: 800, checkoutAmountJpy: 10_700, payableNdp: 10_700,
+      calculation: { formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount", travelFareAmountJpy: 500 }
+    });
+  });
   it("creates and returns the immutable checkout projection for the owning customer", async () => {
     const repository = {
       getOrCreateCheckout: jest.fn(async () => ({
