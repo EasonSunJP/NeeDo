@@ -357,6 +357,23 @@ describe("AWS Staging CloudFormation contract", () => {
     expect(verification).toContain('swapon --show=NAME --noheadings --raw');
   });
 
+  it("gives the backend exact write ownership on every persistent media directory", () => {
+    const bootstrap = resourceBlock("HostBootstrapDocument");
+    const verification = resourceBlock("HostVerificationDocument");
+    const mediaPaths = [
+      "media/customer-avatars",
+      "media/identity-applications",
+      "media/im-media",
+      "media/content-media"
+    ];
+
+    expect(bootstrap).toContain("install -d -m 0750 -o 1000 -g 1000 \\");
+    for (const mediaPath of mediaPaths) {
+      expect(bootstrap).toContain(`\"$mountpoint/${mediaPath}\"`);
+      expect(verification).toContain(`test \"$(stat -c '%u:%g %a' /srv/needo/${mediaPath})\" = \"1000:1000 750\"`);
+    }
+  });
+
   it("defines the exact alarm metrics, thresholds, dimensions, and SNS actions", () => {
     const alarms = {
       StatusCheckFailedAlarm: ["AWS/EC2", "StatusCheckFailed", "Maximum", "1", "missing", ["- Name: InstanceId", "Value: !Ref Instance"]],
