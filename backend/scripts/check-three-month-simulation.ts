@@ -856,11 +856,10 @@ const main = async (): Promise<void> => {
       assert(identity, `${account.email} is missing identity ${acceptedTypes.join("|")}`);
       return identity.id;
     };
-    const fixedCustomerUserId = fixedCustomer.id;
-    const fixedCounterpartUserIds = [fixedTechnician.id, fixedMerchant.id];
     const fixedCustomerIdentityId = getFixedIdentityId(fixedCustomer, ["customer"]);
     const fixedTechnicianIdentityId = getFixedIdentityId(fixedTechnician, ["technician"]);
     const fixedMerchantIdentityId = getFixedIdentityId(fixedMerchant, ["merchant_owner", "merchant"]);
+    const fixedCounterpartIdentityIds = [fixedTechnicianIdentityId, fixedMerchantIdentityId];
     const fixedExpectedIdentityPairs = [
       { ownerIdentityId: fixedCustomerIdentityId, contactIdentityId: fixedTechnicianIdentityId },
       { ownerIdentityId: fixedTechnicianIdentityId, contactIdentityId: fixedCustomerIdentityId },
@@ -884,8 +883,12 @@ const main = async (): Promise<void> => {
       where: {
         deletedAt: null,
         AND: [
-          { participants: { some: { userId: fixedCustomerUserId, deletedAt: null } } },
-          { participants: { some: { userId: { in: fixedCounterpartUserIds }, deletedAt: null } } }
+          { participants: { some: { identityId: fixedCustomerIdentityId, deletedAt: null } } },
+          {
+            participants: {
+              some: { identityId: { in: fixedCounterpartIdentityIds }, deletedAt: null }
+            }
+          }
         ]
       },
       select: { id: true }
