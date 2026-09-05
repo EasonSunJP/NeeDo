@@ -12,6 +12,10 @@ import {
   type DashboardValueUnit
 } from "./dashboardFormat";
 import { DashboardTestBadge } from "./DashboardTestBadge";
+import {
+  DashboardMetricSparkline,
+  type DashboardMetricSparklinePoint
+} from "./DashboardMetricSparkline";
 
 export type DashboardMetricSecondary = {
   label: string;
@@ -47,6 +51,7 @@ export function DashboardMetricCard({
   unit,
   testNdp,
   statusMessage,
+  sparkline,
   secondary,
   note,
   icon,
@@ -65,6 +70,7 @@ export function DashboardMetricCard({
   unit?: DashboardValueUnit;
   testNdp?: number | null;
   statusMessage?: string;
+  sparkline?: DashboardMetricSparklinePoint[];
   secondary?: DashboardMetricSecondary;
   note?: string;
   icon?: ReactNode;
@@ -155,11 +161,14 @@ export function DashboardMetricCard({
         ) : null}
       </div>
 
-      <div className="mt-4 flex min-w-0 items-baseline gap-1.5" data-analytics-metric-value="true">
-        <strong className="truncate text-3xl font-black tracking-tight text-ink" data-no-i18n>
-          {formatted?.number ?? "—"}
-        </strong>
-        <span className="text-xs font-black text-ink/45">{formatted?.unit ?? (resolvedUnit === "people" ? "人" : "")}</span>
+      <div className="mt-4 flex min-w-0 items-end justify-between gap-3" data-analytics-metric-value="true">
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <strong className="truncate text-3xl font-black tracking-tight text-ink" data-no-i18n>
+            {formatted?.number ?? "—"}
+          </strong>
+          <span className="text-xs font-black text-ink/45">{formatted?.unit ?? (resolvedUnit === "people" ? "人" : "")}</span>
+        </div>
+        {sparkline ? <DashboardMetricSparkline points={sparkline} /> : null}
       </div>
 
       {statusMessage && (!metric || metric.currentValue === null) ? (
