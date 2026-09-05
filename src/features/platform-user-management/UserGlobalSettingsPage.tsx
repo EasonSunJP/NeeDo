@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./registerI18n";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -47,7 +48,7 @@ export function UserGlobalSettingsPage() {
   };
   const dirty = JSON.stringify(localDraft) !== JSON.stringify(fromPolicy(serverDraft ?? current));
 
-  return <ModuleShell title="用户全局设置" description="管理账号绑定、服务 eKYC 基础规则，以及按日本时间发布的 NDP 经验倍率活动。">
+  return <AdminLayout><ModuleShell title="用户全局设置" description="管理账号绑定、服务 eKYC 基础规则，以及按日本时间发布的 NDP 经验倍率活动。">
     {loading ? <div className="rounded-xl border border-line bg-white p-10 text-center text-sm font-bold text-ink/50">正在读取全局策略…</div> : null}
     {error ? <div className="rounded-lg border border-coral/25 bg-coral/5 p-4 text-sm font-bold text-coral">{error}{conflict ? <div className="mt-3 flex gap-2"><Button onClick={() => setReloadToken((value) => value + 1)} size="sm" variant="secondary">重新读取服务端</Button><Button onClick={() => setConflict(false)} size="sm" variant="ghost">保留本地草稿</Button></div> : null}</div> : null}
     {!loading ? <section className="rounded-xl border border-line bg-white p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-black">账号与服务准入</h2><p className="mt-1 text-sm text-ink/50">当前生效与草稿分开显示；本地修改不会直接改变线上规则。</p></div><div className="flex gap-2"><Badge tone="green">当前生效 v{current?.version ?? 0}</Badge>{serverDraft ? <Badge tone="yellow">草稿 v{serverDraft.version}</Badge> : null}{dirty ? <Badge tone="red">未保存修改</Badge> : null}</div></div>
@@ -58,5 +59,5 @@ export function UserGlobalSettingsPage() {
       {canWritePolicy ? <div className="mt-5 flex justify-end gap-2"><Button disabled={saving || !dirty || localDraft.ndpPerBaseExp < 1} onClick={() => void saveDraft()} variant="secondary">保存草稿</Button><Button disabled={saving || !serverDraft || dirty} onClick={() => void publish()}>发布</Button></div> : <p className="mt-4 text-right text-xs font-bold text-ink/40">当前账号只有读取权限</p>}
     </section> : null}
     {!loading ? <NdpExperienceCampaignEditor campaigns={campaigns} canWrite={canWriteCampaign} onReload={() => setReloadToken((value) => value + 1)} /> : null}
-  </ModuleShell>;
+  </ModuleShell></AdminLayout>;
 }

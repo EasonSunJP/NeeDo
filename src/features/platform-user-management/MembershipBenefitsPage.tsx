@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import "./registerI18n";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -49,7 +50,7 @@ export function MembershipBenefitsPage() {
   const rows = useMemo(() => [...benefits].sort((left, right) => left.sortOrder - right.sortOrder), [benefits]);
   const selected = benefits.find((benefit) => benefit.code === selectedCode) ?? null;
 
-  return <ModuleShell title="会员权益说明" description="七项系统权益的全局状态、显示顺序与五语言说明。等级内点亮状态在会员等级设置中管理。">
+  return <AdminLayout><ModuleShell title="会员权益说明" description="七项系统权益的全局状态、显示顺序与五语言说明。等级内点亮状态在会员等级设置中管理。">
     <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-900">全局停用优先于各会员等级中的点亮状态。能力状态只反映正式业务链路是否接通，不代表已经发放权益。</div>
     {loading ? <div className="rounded-xl border border-line bg-white p-10 text-center text-sm font-bold text-ink/50">正在读取会员权益…</div> : null}
     {error ? <div className="rounded-xl border border-coral/25 bg-white p-10 text-center"><p className="text-sm font-bold text-coral">{error}</p><Button className="mt-4" onClick={() => setReloadToken((value) => value + 1)} variant="secondary">重新加载</Button></div> : null}
@@ -59,5 +60,5 @@ export function MembershipBenefitsPage() {
       return <tr key={benefit.code}><td className="px-4 py-4 font-black text-ink/45">{benefit.sortOrder}</td><td className="px-4 py-4"><p className="font-black">{benefit.nameTranslations.zh}</p><p className="mt-1 text-xs text-ink/40">{benefit.code}</p></td><td className="max-w-xl px-4 py-4 text-ink/60">{benefit.descriptionTranslations.zh}</td><td className="px-4 py-4">{benefit.isGloballyEnabled ? <Badge tone="green">已配置</Badge> : <Badge tone="red">全局停用</Badge>}</td><td className="px-4 py-4">{catalog.capabilityConnected ? <Badge tone="green">能力已接通</Badge> : <Badge tone="yellow">能力未接通</Badge>}</td><td className="px-4 py-4 text-right"><Button onClick={() => setSelectedCode(benefit.code)} size="sm" variant="secondary">{canWrite ? "编辑" : "查看"}</Button></td></tr>;
     })}</tbody></table></div></div> : null}
     {selected ? <MembershipBenefitEditor benefit={selected} canWrite={canWrite} onCancel={() => setSelectedCode(null)} onSaved={(updated) => { setBenefits((current) => current.map((benefit) => benefit.code === updated.code ? updated : benefit)); setSelectedCode(null); }} /> : null}
-  </ModuleShell>;
+  </ModuleShell></AdminLayout>;
 }
