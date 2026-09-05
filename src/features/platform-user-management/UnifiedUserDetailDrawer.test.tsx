@@ -6,9 +6,9 @@ import { UnifiedUserDetailDrawer } from "./UnifiedUserDetailDrawer";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const state = vi.hoisted(() => ({ getUser: vi.fn() }));
+const state = vi.hoisted(() => ({ getUser: vi.fn(), listReceivedReviews: vi.fn(), amendReview: vi.fn() }));
 
-vi.mock("./api", () => ({ platformUserManagementApi: { getUser: state.getUser } }));
+vi.mock("./api", () => ({ platformUserManagementApi: state }));
 vi.mock("../../components/ui/Drawer", () => ({
   Drawer: ({ children, open, title }: { children: ReactNode; open: boolean; title: string }) => open ? <section><h1>{title}</h1>{children}</section> : null
 }));
@@ -58,6 +58,8 @@ describe("UnifiedUserDetailDrawer", () => {
   let root: Root;
   beforeEach(() => {
     state.getUser.mockReset().mockResolvedValue(detail);
+    state.listReceivedReviews.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    state.amendReview.mockReset();
     window.localStorage.setItem("needo.language", "zh");
     window.localStorage.setItem("needo.language.mode", "manual");
     container = document.createElement("div");

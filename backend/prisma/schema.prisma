@@ -1169,6 +1169,7 @@ model User {
   bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
+  revisedOrderReviewAmendments          OrderReviewAmendment[]              @relation("OrderReviewAmendmentReviser")
   assignedBackofficeTags                BackofficeProfileTag[]              @relation("BackofficeProfileTagAssigner")
   orderTimelineComments                 OrderTimelineComment[]              @relation("OrderTimelineCommentActor")
   pricingModeUpdates                    Shop[]                              @relation("ShopPricingModeUpdatedBy")
@@ -4303,6 +4304,7 @@ model OrderReview {
   customerProfile   CustomerProfile?   @relation("OrderReviewCustomer", fields: [customerProfileId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation("OrderReviewTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
   tags              OrderReviewTag[]
+  amendments        OrderReviewAmendment[]
 
   @@unique([bookingOrderId, reviewerUserId, targetType])
   @@index([bookingOrderId])
@@ -4330,6 +4332,46 @@ model OrderReviewTag {
   @@index([label])
   @@index([deletedAt])
   @@map("order_review_tags")
+}
+
+model OrderReviewAmendment {
+  id            Int       @id @default(autoincrement())
+  publicId      String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  orderReviewId Int       @map("order_review_id")
+  version       Int
+  rating        Int?
+  comment       String?   @db.Text
+  reason        String    @db.VarChar(500)
+  revisedById   Int       @map("revised_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  orderReview OrderReview                 @relation(fields: [orderReviewId], references: [id], onDelete: Restrict)
+  revisedBy   User                        @relation("OrderReviewAmendmentReviser", fields: [revisedById], references: [id], onDelete: Restrict)
+  tags        OrderReviewAmendmentTag[]
+
+  @@unique([orderReviewId, version], map: "order_review_amendments_review_version_key")
+  @@index([orderReviewId, createdAt, deletedAt], map: "order_review_amendments_review_created_idx")
+  @@index([revisedById])
+  @@index([deletedAt])
+  @@map("order_review_amendments")
+}
+
+model OrderReviewAmendmentTag {
+  id          Int       @id @default(autoincrement())
+  amendmentId Int       @map("amendment_id")
+  label       String    @db.VarChar(40)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  amendment OrderReviewAmendment @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+
+  @@unique([amendmentId, label], map: "order_review_amendment_tags_key")
+  @@index([label])
+  @@index([deletedAt])
+  @@map("order_review_amendment_tags")
 }
 
 model BackofficeProfileTag {

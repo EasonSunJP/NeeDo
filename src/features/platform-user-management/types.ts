@@ -29,6 +29,26 @@ export type UserMembershipAdjustmentInput = {
   expectedLockVersion: number | null;
 };
 
+export type ReceivedUserReview = {
+  reviewId: number;
+  targetType: "customer";
+  rating: number;
+  comment: string | null;
+  tags: string[];
+  createdAt: string;
+  amendmentVersion: number;
+  order: { id: number; orderNo: string; serviceName: string; startsAt: string };
+  reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
+};
+
+export type UserReviewAmendmentInput = {
+  rating?: number;
+  comment?: string | null;
+  tags?: string[];
+  reason: string;
+  expectedVersion: number;
+};
+
 export type PlatformManagedUser = {
   id: number;
   needoId: string;

@@ -8,6 +8,7 @@ import { translateText } from "../../i18n/translations";
 import { platformUserManagementApi } from "./api";
 import type { PlatformManagedUserDetail, UserDirectoryScope } from "./types";
 import { UserMembershipAdjustmentDialog } from "./UserMembershipAdjustmentDialog";
+import { UserReceivedReviews } from "./UserReceivedReviews";
 
 type DetailState = {
   loading: boolean;
@@ -60,6 +61,7 @@ export function UnifiedUserDetailDrawer({
             tier: <UserMembershipAdjustmentDialog currentValue={user.membership.tierCode} expectedLockVersion={user.membership.lockVersion} kind="tier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />,
             multiplier: <UserMembershipAdjustmentDialog currentValue={user.membership.experienceMultiplier} expectedLockVersion={user.membership.lockVersion} kind="multiplier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />
           } : undefined}
+          reviewContent={<UserReceivedReviews canAmend={scope === "operations" && user.capabilities.reviewAmend} scope={scope} userId={user.id} />}
         />
         {scope === "operations" && user.capabilities.partnerWrite ? <PartnerMarkerEditor userId={user.id} /> : null}
       </div> : null}

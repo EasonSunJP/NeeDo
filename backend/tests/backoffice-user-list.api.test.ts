@@ -119,6 +119,7 @@ describe("backoffice all-user API", () => {
     const fixture = await createStep06Fixture({ backofficeRepository: { getManagedUser } } as never);
     fixture.replaceAdminPermissions([
       "backoffice:users:read",
+      "backoffice:customers:write",
       "backoffice:partner-profile:write"
     ]);
     const token = await fixture.loginAsAdmin();
@@ -130,7 +131,7 @@ describe("backoffice all-user API", () => {
 
     expect(response.body.data.capabilities).toEqual({
       membershipWrite: false,
-      reviewAmend: false,
+      reviewAmend: true,
       refundAmend: false,
       partnerWrite: true,
       timelineCommentWrite: false

@@ -672,7 +672,7 @@ git commit -m "feat: add audited user membership adjustments"
 - Produces: `POST /backoffice/reviews/:reviewId/amendments` with reason and optimistic version.
 - Consumes: formal `OrderReview`, `OrderReviewTag`, completed `BookingOrder`, and authenticated merchant scope.
 
-- [ ] **Step 1: Write failing schema, repository, and API tests**
+- [x] **Step 1: Write failing schema, repository, and API tests**
 
 Assert the result shape:
 
@@ -697,7 +697,7 @@ expect(page).toEqual({
 
 Assert merchant queries contain the authenticated `shopId`, target only `customer`, require completed orders, and filter `deletedAt: null`.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -708,13 +708,13 @@ npm test -- backoffice-user-review-schema.test.ts backoffice-user-review.reposit
 
 Expected: FAIL because the review read model and amendment tables/routes do not exist.
 
-- [ ] **Step 3: Add immutable review amendment models**
+- [x] **Step 3: Add immutable review amendment models**
 
 Create `OrderReviewAmendment` with `orderReviewId`, monotonic `version`, nullable replacement `rating` and `comment`, required `reason`, `revisedById`, `createdAt`, `updatedAt`, `deletedAt`; create `OrderReviewAmendmentTag` linked to one amendment. Add unique `(orderReviewId, version)` and read indexes.
 
 The repository transaction reads the current effective version, compares `expectedVersion`, creates a new amendment and amendment tags, and records audit. It never updates `OrderReview` or `OrderReviewTag`.
 
-- [ ] **Step 4: Implement routes, service, permissions, and OpenAPI**
+- [x] **Step 4: Implement routes, service, permissions, and OpenAPI**
 
 Use:
 
@@ -733,7 +733,7 @@ export const reviewAmendmentBodySchema = z.object({
 
 Read permissions are `backoffice:users:read` and `merchant-admin:customers:list`. Mutation requires `backoffice:customers:write`; no merchant mutation route is registered.
 
-- [ ] **Step 5: Run backend tests and verify GREEN**
+- [x] **Step 5: Run backend tests and verify GREEN**
 
 Run:
 
@@ -745,7 +745,7 @@ npm test -- backoffice-user-review-schema.test.ts backoffice-user-review.reposit
 
 Expected: PASS; merchant cross-shop reads return 404, blank reasons return 400, version conflicts return 409, and original reviews stay unchanged.
 
-- [ ] **Step 6: Write failing UI test, implement the tab, and verify GREEN**
+- [x] **Step 6: Write failing UI test, implement the tab, and verify GREEN**
 
 Assert 10-row pagination and localized tags:
 
@@ -770,7 +770,7 @@ npm test -- src/features/platform-user-management/UserReceivedReviews.test.tsx s
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```bash
 git add backend/prisma backend/src backend/tests src/components/admin src/features/platform-user-management

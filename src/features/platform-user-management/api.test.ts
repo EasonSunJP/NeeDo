@@ -96,6 +96,40 @@ describe("platformUserManagementApi", () => {
     );
   });
 
+  it("uses scoped ten-row review reads and append-only amendments", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ list: [], total: 0, page: 2, page_size: 10 })
+      .mockResolvedValueOnce({ reviewId: 77, version: 2 });
+
+    await platformUserManagementApi.listReceivedReviews("merchant", 41, {
+      page: 2,
+      page_size: 10
+    });
+    await platformUserManagementApi.amendReview(77, {
+      rating: 3,
+      reason: "Refund evidence confirmed",
+      expectedVersion: 1
+    });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/merchant-admin/users/41/received-reviews",
+      { query: { page: 2, page_size: 10 } }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/reviews/77/amendments",
+      {
+        method: "POST",
+        body: {
+          rating: 3,
+          reason: "Refund evidence confirmed",
+          expectedVersion: 1
+        }
+      }
+    );
+  });
+
   it("rejects malformed responses instead of accepting legacy local data", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({ list: [{ id: "not-an-id" }], total: 1, page: 1, page_size: 20 });
 

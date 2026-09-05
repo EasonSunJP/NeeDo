@@ -20,7 +20,9 @@ import {
   type UserGroupMember,
   type UserListQuery,
   type UserDirectoryScope,
-  type UserMembershipAdjustmentInput
+  type UserMembershipAdjustmentInput,
+  type ReceivedUserReview,
+  type UserReviewAmendmentInput
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -351,6 +353,32 @@ const decodeExperienceEntry = (value: unknown): UserExperienceEntry => {
   };
 };
 
+const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
+  const raw = record(value);
+  const order = record(raw.order);
+  const reviewer = record(raw.reviewer);
+  return {
+    reviewId: integer(raw.reviewId),
+    targetType: enumValue(raw.targetType, ["customer"] as const),
+    rating: integer(raw.rating),
+    comment: nullableString(raw.comment),
+    tags: array(raw.tags).map(string),
+    createdAt: timestamp(raw.createdAt),
+    amendmentVersion: integer(raw.amendmentVersion),
+    order: {
+      id: integer(order.id),
+      orderNo: string(order.orderNo),
+      serviceName: string(order.serviceName),
+      startsAt: timestamp(order.startsAt)
+    },
+    reviewer: {
+      needoId: string(reviewer.needoId),
+      displayName: string(reviewer.displayName),
+      avatarUrl: nullableString(reviewer.avatarUrl)
+    }
+  };
+};
+
 const pageQuery = (query: PageQuery): Record<string, ApiQueryValue> => ({
   page: query.page,
   pageSize: query.page_size
@@ -378,6 +406,25 @@ export const platformUserManagementApi = {
       method: "PATCH",
       body
     });
+  },
+  async listReceivedReviews(
+    scope: UserDirectoryScope,
+    userId: number,
+    query: { page?: number; page_size?: 10 } = {}
+  ) {
+    const prefix = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodePage(
+      await httpClient.request<unknown>(`${prefix}/${userId}/received-reviews`, {
+        query: { page: query.page ?? 1, page_size: 10 }
+      }),
+      decodeReceivedUserReview
+    );
+  },
+  amendReview(reviewId: number, body: UserReviewAmendmentInput) {
+    return httpClient.request<{ reviewId: number; version: number }>(
+      `/backoffice/reviews/${reviewId}/amendments`,
+      { method: "POST", body }
+    );
   },
   async listGroups(query: PageQuery = {}) {
     return decodePage(

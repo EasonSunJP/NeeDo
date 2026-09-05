@@ -1134,7 +1134,7 @@ export class BackofficeService {
       ...detail,
       capabilities: {
         membershipWrite: permits("backoffice:user-membership:write"),
-        reviewAmend: permits("backoffice:user-review:amend"),
+        reviewAmend: permits("backoffice:customers:write"),
         refundAmend: permits("backoffice:user-refund:amend"),
         partnerWrite: permits("backoffice:partner-profile:write"),
         timelineCommentWrite: permits("backoffice:user-usage:comment")

@@ -1,0 +1,29 @@
+import request from "supertest";
+import { createStep06Fixture } from "./helpers/step06-fixture";
+
+describe("backoffice received-review OpenAPI", () => {
+  it("documents scoped ten-row reads and append-only correction without delete", async () => {
+    const fixture = await createStep06Fixture();
+    const response = await request(fixture.app).get("/api/v1/openapi.json").expect(200);
+    const operationsPath =
+      response.body.paths["/api/v1/backoffice/users/{userId}/received-reviews"];
+    const merchantPath =
+      response.body.paths["/api/v1/merchant-admin/users/{userId}/received-reviews"];
+    const amendmentPath = response.body.paths["/api/v1/backoffice/reviews/{reviewId}/amendments"];
+
+    expect(operationsPath.get).toMatchObject({ "x-permission": "backoffice:users:read" });
+    expect(merchantPath.get).toMatchObject({
+      "x-permission": "merchant-admin:customers:list"
+    });
+    expect(amendmentPath.post).toMatchObject({
+      "x-permission": "backoffice:customers:write"
+    });
+    expect(amendmentPath.delete).toBeUndefined();
+    expect(
+      response.body.components.schemas.BackofficeReceivedUserReviewPage.properties.page_size
+    ).toMatchObject({ enum: [10] });
+    expect(response.body.components.schemas.BackofficeUserReviewAmendmentInput.required).toEqual(
+      expect.arrayContaining(["reason", "expectedVersion"])
+    );
+  });
+});

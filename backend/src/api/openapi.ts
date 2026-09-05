@@ -6725,6 +6725,89 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ]
       },
+      BackofficeReceivedUserReview: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "reviewId",
+          "targetType",
+          "rating",
+          "comment",
+          "tags",
+          "createdAt",
+          "amendmentVersion",
+          "order",
+          "reviewer"
+        ],
+        properties: {
+          reviewId: { type: "integer", minimum: 1 },
+          targetType: { type: "string", enum: ["customer"] },
+          rating: { type: "integer", minimum: 1, maximum: 5 },
+          comment: { type: ["string", "null"] },
+          tags: { type: "array", items: { type: "string" } },
+          createdAt: { type: "string", format: "date-time" },
+          amendmentVersion: { type: "integer", minimum: 0 },
+          order: {
+            type: "object",
+            required: ["id", "orderNo", "serviceName", "startsAt"],
+            properties: {
+              id: { type: "integer", minimum: 1 },
+              orderNo: { type: "string" },
+              serviceName: { type: "string" },
+              startsAt: { type: "string", format: "date-time" }
+            }
+          },
+          reviewer: {
+            type: "object",
+            required: ["needoId", "displayName", "avatarUrl"],
+            properties: {
+              needoId: { type: "string" },
+              displayName: { type: "string" },
+              avatarUrl: { type: ["string", "null"] }
+            }
+          }
+        }
+      },
+      BackofficeReceivedUserReviewPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeReceivedUserReview" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", enum: [10] }
+        }
+      },
+      BackofficeUserReviewAmendmentInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason", "expectedVersion"],
+        anyOf: [{ required: ["rating"] }, { required: ["comment"] }, { required: ["tags"] }],
+        properties: {
+          rating: { type: "integer", minimum: 1, maximum: 5 },
+          comment: { type: ["string", "null"], maxLength: 1000 },
+          tags: {
+            type: "array",
+            maxItems: 20,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          expectedVersion: { type: "integer", minimum: 0 }
+        }
+      },
+      BackofficeUserReviewAmendmentResult: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reviewId", "version"],
+        properties: {
+          reviewId: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 }
+        }
+      },
       PlatformPartnerProfile: {
         type: "object",
         additionalProperties: false,
@@ -21015,6 +21098,57 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/received-reviews`]: {
+      get: {
+        operationId: "listBackofficeUserReceivedReviews",
+        tags: ["User Management"],
+        summary: "List reviews received by a user after completed services",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [
+          idPathParameter("userId"),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", enum: [10], default: 10 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Received review page", {
+            $ref: "#/components/schemas/BackofficeReceivedUserReviewPage"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/reviews/{reviewId}/amendments`]: {
+      post: {
+        operationId: "amendBackofficeUserReview",
+        tags: ["User Management"],
+        summary: "Append an audited correction to a received user review",
+        description:
+          "Creates an immutable successor snapshot with a required operator reason. Original reviews and prior amendments are never updated or deleted.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:customers:write",
+        parameters: [idPathParameter("reviewId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserReviewAmendmentInput" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Review amendment created", {
+            $ref: "#/components/schemas/BackofficeUserReviewAmendmentResult"
+          }),
+          "400": { description: "Validation failed" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Completed customer review not found" },
+          "409": { description: "Amendment version conflict" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/users/{userId}/partner-profiles`]: {
       post: {
         tags: ["Platform Partners"],
@@ -24260,6 +24394,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User absent from the authenticated shop" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/users/{userId}/received-reviews`]: {
+      get: {
+        operationId: "listMerchantUserReceivedReviews",
+        tags: ["User Management"],
+        summary: "List completed-service reviews received by a user in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:customers:list",
+        parameters: [
+          idPathParameter("userId"),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", enum: [10], default: 10 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Scoped received review page", {
+            $ref: "#/components/schemas/BackofficeReceivedUserReviewPage"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
         }
       }
     },
