@@ -14,7 +14,11 @@ import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type { JapaneseRouteAddress } from "../services/route-distance.provider";
-import { hashRouteAddress, normalizeJapaneseRouteAddress } from "../services/route-estimate.service";
+import {
+  hashRouteAddress,
+  normalizeJapaneseRouteAddress,
+  shopAddressToJapaneseRouteAddress
+} from "../services/route-estimate.service";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
@@ -687,6 +691,21 @@ export type FulfillmentAddressSnapshot = {
   line1: string;
   line2: string | null;
   line3: string | null;
+};
+
+export const fulfillmentAddressSnapshotFromRouteAddress = (
+  address: JapaneseRouteAddress
+): FulfillmentAddressSnapshot => {
+  const normalized = normalizeJapaneseRouteAddress(address);
+  const postalCode =
+    normalized.postalCode.length === 7
+      ? `${normalized.postalCode.slice(0, 3)}-${normalized.postalCode.slice(3)}`
+      : normalized.postalCode;
+  return {
+    line1: `${postalCode ? `〒${postalCode} ` : ""}${normalized.prefecture}${normalized.city}${normalized.addressLine1}`,
+    line2: normalized.addressLine2 ?? null,
+    line3: normalized.building ?? null
+  };
 };
 
 export interface FulfillmentRequestContext {
@@ -1418,6 +1437,7 @@ export class BookingRepository implements BookingRepositoryPort {
             }
 
             let travelEstimate: BookingTravelEstimateRecord | null = null;
+            let normalizedFulfillmentAddress: JapaneseRouteAddress | null = null;
             if (input.fulfillmentMode === "home") {
               if (!input.travelEstimatePublicId || !input.fulfillmentAddress) {
                 throw new BookingTravelEstimateAbort("invalid");
@@ -1451,14 +1471,25 @@ export class BookingRepository implements BookingRepositoryPort {
                 orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }]
               });
               const serviceId = serviceSource.affiliateServiceId;
+              normalizedFulfillmentAddress = normalizeJapaneseRouteAddress(
+                input.fulfillmentAddress
+              );
               if (
                 !serviceId ||
                 travelEstimate.customerUserId !== input.customerUserId ||
                 travelEstimate.shopId !== slot.shopId ||
                 travelEstimate.serviceId !== serviceId ||
+                travelEstimate.scheduleSlotId !== slot.id ||
                 travelEstimate.policyVersionId !== currentPolicy?.id ||
+                travelEstimate.originAddressHash !==
+                  hashRouteAddress(
+                    shopAddressToJapaneseRouteAddress({
+                      city: slot.shop.city,
+                      address: slot.shop.address
+                    })
+                  ) ||
                 travelEstimate.destinationAddressHash !==
-                  hashRouteAddress(normalizeJapaneseRouteAddress(input.fulfillmentAddress))
+                  hashRouteAddress(normalizedFulfillmentAddress)
               ) {
                 throw new BookingTravelEstimateAbort("mismatch");
               }
@@ -1584,6 +1615,14 @@ export class BookingRepository implements BookingRepositoryPort {
                 servicePriceSnapshot: serviceSource.priceAmount,
                 serviceDurationSnapshot: serviceSource.durationMinutes,
                 serviceSnapshotJson: serviceSource.snapshot,
+                ...(normalizedFulfillmentAddress
+                  ? {
+                      fulfillmentAddressSnapshot:
+                        fulfillmentAddressSnapshotFromRouteAddress(
+                          normalizedFulfillmentAddress
+                        ) as unknown as Prisma.InputJsonValue
+                    }
+                  : {}),
                 startsAt: slot.startsAt,
                 endsAt: slot.endsAt,
                 paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
@@ -1600,7 +1639,7 @@ export class BookingRepository implements BookingRepositoryPort {
               include: this.orderInclude()
             });
 
-            if (travelEstimate && input.fulfillmentAddress) {
+            if (travelEstimate && normalizedFulfillmentAddress) {
               const consumedAt = new Date();
               const consumed = await tx.routeEstimate.updateMany({
                 where: {
@@ -1627,9 +1666,8 @@ export class BookingRepository implements BookingRepositoryPort {
                   providerRequestId: travelEstimate.providerRequestId,
                   originAddressHash: travelEstimate.originAddressHash,
                   destinationAddressHash: travelEstimate.destinationAddressHash,
-                  fulfillmentAddressJson: normalizeJapaneseRouteAddress(
-                    input.fulfillmentAddress
-                  ) as unknown as Prisma.InputJsonValue,
+                  fulfillmentAddressJson:
+                    normalizedFulfillmentAddress as unknown as Prisma.InputJsonValue,
                   distanceMeters: travelEstimate.distanceMeters,
                   durationSeconds: travelEstimate.durationSeconds,
                   fareAmountJpy: travelEstimate.fareAmountJpy

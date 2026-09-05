@@ -329,15 +329,17 @@ const checkout = {
   status: "awaitingPaymentConfirmation" as const,
   baseAmountJpy: 10000,
   addOnAmountJpy: 3000,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 0,
   checkoutAmountJpy: 13000,
   payableNdp: 13000,
   rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 1, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount" as const,
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" as const,
     baseAmountJpy: 10000,
     acceptedAddOnIds: [301],
     addOnAmountJpy: 3000,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 0,
     checkoutAmountJpy: 13000,
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" as const

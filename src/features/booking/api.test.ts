@@ -344,6 +344,7 @@ describe("bookingApi", () => {
         status: "pending",
         baseAmountJpy: 8800,
         addOnAmountJpy: 1200,
+        travelFareAmountJpy: 0,
         discountAmountJpy: 0,
         checkoutAmountJpy: 10000,
         payableNdp: 10000,
@@ -356,10 +357,11 @@ describe("bookingApi", () => {
           effectiveFrom: "2026-09-01T00:00:00.000Z"
         },
         calculation: {
-          formula: "base_plus_accepted_add_ons_minus_discount",
+          formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
           baseAmountJpy: 8800,
           acceptedAddOnIds: [301],
           addOnAmountJpy: 1200,
+          travelFareAmountJpy: 0,
           discountAmountJpy: 0,
           checkoutAmountJpy: 10000,
           rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"

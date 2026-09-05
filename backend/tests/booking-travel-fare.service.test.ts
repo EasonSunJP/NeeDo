@@ -1,4 +1,5 @@
 import { BookingService } from "../src/services/booking.service";
+import { fulfillmentAddressSnapshotFromRouteAddress } from "../src/repositories/booking.repository";
 
 const actor = {
   userId: 9, roles: ["customer"], currentIdentityId: 90, currentIdentityType: "customer",
@@ -9,6 +10,14 @@ const base = { serviceId: 21, scheduleSlotId: 31, fulfillmentMode: "home" as con
 const order = { id: 51, orderNo: "46493" };
 
 describe("BookingService travel estimate binding", () => {
+  it("maps the normalized home destination into the authorized order-detail snapshot", () => {
+    expect(fulfillmentAddressSnapshotFromRouteAddress({ ...address, addressLine2: "西口", building: "NeeDo 301" })).toEqual({
+      line1: "〒160-0022 東京都新宿区新宿1-2-3",
+      line2: "西口",
+      line3: "NeeDo 301"
+    });
+  });
+
   it("requires a structured address and estimate for home bookings and passes both to the repository", async () => {
     const repository = { createBooking: jest.fn(async () => order), findScheduleSlotShopId: jest.fn(async () => 11) };
     const service = new BookingService(repository as never);
