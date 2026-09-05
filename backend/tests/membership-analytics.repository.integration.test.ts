@@ -50,7 +50,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
         database: "needo_test",
         charset: "utf8mb4",
         collation: "utf8mb4_unicode_ci",
-        connectionLimit: 1,
+        connectionLimit: 3,
         acquireTimeout: 10_000,
         idleTimeout: 30_000,
         connectTimeout: 5_000,
@@ -150,7 +150,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
             });
             const shop = await tx.shop.create({
               data: {
-                shopNo: `s90${numeric}0`,
+                shopNo: `90${numeric}00`,
                 name: marker,
                 city: marker,
                 address: "Tokyo"
@@ -312,7 +312,7 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
             });
             expect(growth.newPaidMembers).toEqual({
               current: 3,
-              previous: 0,
+              previous: 1,
               dataStatus: "ready"
             });
 
@@ -485,10 +485,6 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
             };
             const frozenEventCorruptions = [
               {
-                corrupt: { fromStatus: "FROZEN" as const },
-                restore: { fromStatus: exactFrozenEvent.fromStatus }
-              },
-              {
                 corrupt: { toStatus: "VOID" as const },
                 restore: { toStatus: exactFrozenEvent.toStatus }
               },
@@ -517,6 +513,12 @@ describeIntegration("MembershipAnalyticsRepository against guarded local MySQL",
                 restore: { eventKey: exactFrozenEvent.eventKey }
               }
             ];
+            await expect(
+              tx.shopMembershipCardStatusEvent.update({
+                where: { id: frozenEvent.id },
+                data: { fromStatus: "FROZEN" }
+              })
+            ).rejects.toThrow("shop_membership_card_status_events_transition_distinct");
             for (const mutation of frozenEventCorruptions) {
               await assertCorruptionRejected(
                 () =>

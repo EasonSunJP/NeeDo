@@ -1,7 +1,7 @@
 # NeeDo 媒体存储稳定性与失败状态设计
 
 **Date:** 2026-09-05
-**Status:** Implemented on `codex/media-storage-stability`; authenticated page acceptance and main integration pending
+**Status:** Implemented, integrated and browser-accepted on local main; remote deployment and expiry/cache lifecycle follow-up excluded
 **Scope:** Step 13 IM/Social 媒体交付的一个可回滚微步骤。只处理跨 worktree 的稳定磁盘路径、现有文件恢复和前端失败状态；不在本步骤合并完整 IM 生命周期分支。
 
 ## 1. 目标
@@ -129,6 +129,8 @@ Social 在当前正式契约中没有媒体过期语义，因此只显示图片/
 6. 检查浏览器控制台没有新的资源错误、React 警告或横向溢出。
 
 ## 8. 回滚
+
+2026-09-05 本地验收已通过，见 [正式本地验收记录](../../verification/2026-09-05-media-storage-main-acceptance.md)。除原故障的四个文件外，验收还发现旧语音 10799 的原文件位于另一个工作树：经正式记录大小、WebM 类型及 SHA-256 核对后，只新增共享目录副本，源文件未移动或改写。过期服务端投影和已打开媒体的加密缓存仍是下一微步骤。
 
 - 代码回滚只需撤销启动器路径解析和媒体错误状态组件；
 - 本步骤没有数据库 migration、文件移动或文件删除；

@@ -46,7 +46,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
         database: "needo_test",
         charset: "utf8mb4",
         collation: "utf8mb4_unicode_ci",
-        connectionLimit: 1,
+        connectionLimit: 3,
         acquireTimeout: 10_000,
         idleTimeout: 30_000,
         connectTimeout: 5_000,
@@ -202,18 +202,8 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                 durationMinutes: 60
               }
             });
-            const rate = await tx.ndpExchangeRateRule.create({
-              data: {
-                version: Date.now() % 2_000_000_000,
-                ndpUnits: 1,
-                jpyUnits: 1,
-                status: "ACTIVE",
-                effectiveFrom: new Date("2026-01-01"),
-                activeKey: marker,
-                idempotencyKey: `${marker}-rate`,
-                reason: marker,
-                createdById: operator.id
-              }
+            const rate = await tx.ndpExchangeRateRule.findUniqueOrThrow({
+              where: { activeKey: "ndp_exchange_rate" }
             });
 
             const createFormalOrder = async (method: "NDP" | "CASH" | "OTHER", ordinal: number) => {
@@ -221,6 +211,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               const addOnAmountJpy = 2_000 * addOnCount;
               const discountAmountJpy = method === "NDP" ? 1_000 : 0;
               const checkoutAmountJpy = 10_000 + addOnAmountJpy - discountAmountJpy;
+              const payableNdp = Math.ceil((checkoutAmountJpy * rate.ndpUnits) / rate.jpyUnits);
               const slot = await tx.scheduleSlot.create({
                 data: {
                   serviceId: method === "CASH" ? null : service.id,
@@ -320,9 +311,13 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                   addOnAmountJpy,
                   discountAmountJpy,
                   checkoutAmountJpy,
-                  payableNdp: checkoutAmountJpy,
+                  payableNdp,
                   ndpRateRuleId: rate.id,
-                  rateSnapshotJson: { ndpUnits: 1, jpyUnits: 1, version: rate.version },
+                  rateSnapshotJson: {
+                    ndpUnits: rate.ndpUnits,
+                    jpyUnits: rate.jpyUnits,
+                    version: rate.version
+                  },
                   calculationSnapshotJson: {
                     formula: "base_plus_accepted_add_ons_minus_discount",
                     baseAmountJpy: 10_000,
@@ -371,7 +366,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                     referenceType: "order_checkout_payment",
                     referenceId: checkout.id,
                     actorUserId: customer.id,
-                    amount: checkoutAmountJpy,
+                    amount: payableNdp,
                     currency: "NDP",
                     createdAt: confirmedAt
                   }
@@ -598,6 +593,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
             await setNdpEvidenceTime(confirmedAt);
 
             const fullyReversed = {
+              paymentStatus: "REFUNDED" as const,
               paymentRefundedById: operator.id,
               paymentRefundedAt: new Date(confirmedAt.getTime() + 60_000),
               paymentRefundReference: `${marker}-full-reversal`,
@@ -610,6 +606,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
             await tx.bookingOrder.update({
               where: { id: ndp.order.id },
               data: {
+                paymentStatus: "CONFIRMED",
                 paymentRefundedById: null,
                 paymentRefundedAt: null,
                 paymentRefundReference: null,
@@ -778,15 +775,12 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               data: { otherMethodCode: null }
             });
 
-            await tx.orderAddOn.update({
-              where: { id: ndp.addOns[0]!.id },
-              data: { currency: "USD" }
-            });
-            await expectIncomplete();
-            await tx.orderAddOn.update({
-              where: { id: ndp.addOns[0]!.id },
-              data: { currency: "JPY" }
-            });
+            await expect(
+              tx.orderAddOn.update({
+                where: { id: ndp.addOns[0]!.id },
+                data: { currency: "USD" }
+              })
+            ).rejects.toThrow("order_add_ons_currency_chk");
 
             await tx.bookingOrder.update({
               where: { id: ndp.order.id },

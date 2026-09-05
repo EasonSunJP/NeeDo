@@ -44,6 +44,20 @@ remains TEST as explicitly requested. No remote push or deployment is included.
   translation split is a per-chunk adjustment, not a reduction of all initial
   translation downloads.
 
+## Real membership and ranking MySQL acceptance
+
+- A disposable loopback-only `needo_test` instance was migrated through all 126
+  repository migrations; no shared development, staging or production database
+  was modified.
+- `npm run check:membership-ranking` passed all 5 suites / 67 tests and reported
+  `ok: true` with both MySQL integration fixtures rolled back.
+- The integration fixtures now obey formal shop-number, exchange-rate singleton,
+  refund-state and database CHECK constraints. The membership event validator also
+  fails closed when an issuance event has a null actor.
+- Backend TypeScript build, focused ESLint and focused Prettier checks passed after
+  generating the Prisma client from the current schema. The disposable database
+  and its temporary environment file were removed after verification.
+
 ## Real merchant browser acceptance
 
 Verified on standard `http://127.0.0.1:5180`, with frontend PID 14207, formal API
@@ -70,7 +84,8 @@ the local main integration worktree; merchant requests used `/merchant-api/v1/`.
   were resolved by preserving the complete main version and applying Prettier.
   All 533 backend files differing from that main revision were AST-equivalent.
 - All 30 test files introduced/changed by that main update were selected explicitly:
-  29 suites / 370 tests passed; one opt-in MySQL suite/test remained skipped.
+  29 suites / 370 tests passed; one opt-in MySQL suite/test remained skipped at
+  that checkpoint and was subsequently covered by the isolated acceptance above.
   Backend lint, build and format check passed on the combined result.
 - Final frontend regression: 374 files / 2,613 tests passed. Build and unchanged
   production bundle audit passed with 8 HTML entries / 40 assets. Service-search

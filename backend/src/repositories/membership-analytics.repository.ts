@@ -358,6 +358,7 @@ export class MembershipAnalyticsRepository implements MembershipAnalyticsReposit
                   event.source = ${"issuance"}
                   AND event.event_key = CONCAT(${"membership-card:"}, event.card_public_id, ${":issued"})
                   AND event.reason_code = ${"card_issued"}
+                  AND event.actor_user_id IS NOT NULL
                   AND event.actor_user_id = event.issued_by_id
                   AND event.issued_by_id IS NOT NULL
                 )
