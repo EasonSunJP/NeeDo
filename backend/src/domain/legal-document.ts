@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const LEGAL_DOCUMENT_LOCALES = ["zh-CN", "zh-TW", "ja", "en", "ko"] as const;
 
 export type LegalDocumentLocale = (typeof LEGAL_DOCUMENT_LOCALES)[number];
@@ -29,3 +31,21 @@ export interface LegalDocumentReleaseRecord {
   publishedAt: Date;
   publishedByUserId: number | null;
 }
+
+export interface LegalDocumentDraftRecord {
+  documentId: number;
+  locale: LegalDocumentLocale;
+  title: string;
+  body: string;
+  lockVersion: number;
+  updatedAt: Date;
+}
+
+export const buildLegalDocumentContentHash = (
+  locale: LegalDocumentLocale,
+  title: string,
+  body: string
+): string =>
+  createHash("sha256")
+    .update(JSON.stringify({ locale, title, body }), "utf8")
+    .digest("hex");

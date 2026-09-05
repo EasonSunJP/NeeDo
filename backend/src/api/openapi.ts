@@ -3199,6 +3199,145 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           mediaDays: { type: "integer", minimum: 1, maximum: 3650 }
         }
       },
+      LegalDocumentCatalog: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "slug", "name", "internalPath", "displayLocations", "isEnabled", "lockVersion", "createdAt", "updatedAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 120 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          internalPath: { type: "string", pattern: "^/(?!/)", maxLength: 500 },
+          displayLocations: { type: "array", maxItems: 30, items: { type: "string", maxLength: 64 } },
+          isEnabled: { type: "boolean" },
+          lockVersion: { type: "integer", minimum: 1 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      LegalDocumentPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/LegalDocumentCatalog" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      LegalDocumentCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["slug", "name", "internalPath", "displayLocations", "isEnabled"],
+        properties: {
+          slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 120 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          internalPath: { type: "string", pattern: "^/(?!/)", maxLength: 500 },
+          displayLocations: { type: "array", maxItems: 30, items: { type: "string", maxLength: 64 } },
+          isEnabled: { type: "boolean" }
+        }
+      },
+      LegalDocumentMetadataUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "name", "internalPath", "displayLocations", "isEnabled"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          internalPath: { type: "string", pattern: "^/(?!/)", maxLength: 500 },
+          displayLocations: { type: "array", maxItems: 30, items: { type: "string", maxLength: 64 } },
+          isEnabled: { type: "boolean" }
+        }
+      },
+      LegalDocumentDraft: {
+        type: "object",
+        additionalProperties: false,
+        required: ["documentId", "locale", "title", "body", "lockVersion", "updatedAt"],
+        properties: {
+          documentId: { type: "integer", minimum: 1 },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] },
+          title: { type: "string", minLength: 1, maxLength: 240 },
+          body: { type: "string", minLength: 1, maxLength: 2000000 },
+          lockVersion: { type: "integer", minimum: 1 },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      LegalDocumentDraftUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "title", "body"],
+        properties: {
+          expectedLockVersion: { oneOf: [{ type: "null" }, { type: "integer", minimum: 1 }] },
+          title: { type: "string", minLength: 1, maxLength: 240 },
+          body: { type: "string", minLength: 1, maxLength: 2000000 }
+        }
+      },
+      LegalDocumentRelease: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "documentId", "locale", "version", "title", "body", "contentHash", "publishedAt", "publishedByUserId"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          documentId: { type: "integer", minimum: 1 },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] },
+          version: { type: "integer", minimum: 1 },
+          title: { type: "string", minLength: 1, maxLength: 240 },
+          body: { type: "string", minLength: 1 },
+          contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          publishedAt: { type: "string", format: "date-time" },
+          publishedByUserId: { oneOf: [{ type: "null" }, { type: "integer", minimum: 1 }] }
+        }
+      },
+      LegalDocumentLocaleState: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "locale", "draft", "currentRelease"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] },
+          draft: { oneOf: [{ type: "null" }, { $ref: "#/components/schemas/LegalDocumentDraft" }] },
+          currentRelease: { oneOf: [{ type: "null" }, { $ref: "#/components/schemas/LegalDocumentRelease" }] }
+        }
+      },
+      LegalDocumentReleasePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/LegalDocumentRelease" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      PublicLegalDocumentRelease: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "slug", "internalPath", "displayLocations", "locale", "version", "title", "body", "contentHash", "publishedAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          internalPath: { type: "string", pattern: "^/(?!/)" },
+          displayLocations: { type: "array", items: { type: "string" } },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] },
+          version: { type: "integer", minimum: 1 },
+          title: { type: "string" },
+          body: { type: "string" },
+          contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          publishedAt: { type: "string", format: "date-time" }
+        }
+      },
+      LegalDocumentPublish: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedDraftLockVersion", "publishedAt"],
+        properties: {
+          expectedDraftLockVersion: { type: "integer", minimum: 1 },
+          publishedAt: { type: "string", format: "date-time" },
+          setEnabled: { type: "boolean" }
+        }
+      },
       TrimmedVisibleIdempotencyKey: {
         type: "string",
         "x-min-utf16-code-units": 16,
@@ -15146,6 +15285,159 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
           "409": jsonErrorResponse("error.im.policy_version_conflict"),
           "503": jsonErrorResponse("error.dependency_unavailable")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/legal-documents`]: {
+      get: {
+        operationId: "listLegalDocuments",
+        tags: ["Legal Documents"],
+        summary: "List the legal-document catalog",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated legal documents", { $ref: "#/components/schemas/LegalDocumentPage" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden")
+        }
+      },
+      post: {
+        operationId: "createLegalDocument",
+        tags: ["Legal Documents"],
+        summary: "Create a configurable legal-document entry",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:write",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentCreate" } } } },
+        responses: {
+          "201": jsonDataResponse("Created legal document", { $ref: "#/components/schemas/LegalDocumentCatalog" }),
+          "400": jsonErrorResponse("error.validation or error.legal_document.internal_path_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "409": jsonErrorResponse("error.legal_document.slug_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/legal-documents/{publicId}`]: {
+      patch: {
+        operationId: "updateLegalDocumentMetadata",
+        tags: ["Legal Documents"],
+        summary: "Update display-link metadata with optimistic locking",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentMetadataUpdate" } } } },
+        responses: {
+          "200": jsonDataResponse("Updated legal document", { $ref: "#/components/schemas/LegalDocumentCatalog" }),
+          "400": jsonErrorResponse("error.validation or error.legal_document.internal_path_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "404": jsonErrorResponse("error.legal_document.not_found"),
+          "409": jsonErrorResponse("error.legal_document.version_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/legal-documents/{publicId}/locales/{locale}`]: {
+      get: {
+        operationId: "getLegalDocumentLocale",
+        tags: ["Legal Documents"],
+        summary: "Read one locale draft and current release without fallback",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:read",
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Locale draft and current release", { $ref: "#/components/schemas/LegalDocumentLocaleState" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "404": jsonErrorResponse("error.legal_document.not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/legal-documents/{publicId}/locales/{locale}/draft`]: {
+      put: {
+        operationId: "saveLegalDocumentDraft",
+        tags: ["Legal Documents"],
+        summary: "Save one locale draft independently",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:write",
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+        ],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentDraftUpdate" } } } },
+        responses: {
+          "200": jsonDataResponse("Saved locale draft", { $ref: "#/components/schemas/LegalDocumentDraft" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "404": jsonErrorResponse("error.legal_document.not_found"),
+          "409": jsonErrorResponse("error.legal_document.version_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/legal-documents/{publicId}/locales/{locale}/publish`]: {
+      post: {
+        operationId: "publishLegalDocumentLocale",
+        tags: ["Legal Documents"],
+        summary: "Publish an immutable locale release",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:publish",
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+        ],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentPublish" } } } },
+        responses: {
+          "201": jsonDataResponse("Published locale release", { $ref: "#/components/schemas/LegalDocumentRelease" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "404": jsonErrorResponse("error.legal_document.not_found"),
+          "409": jsonErrorResponse("error.legal_document.version_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/legal-documents/{publicId}/locales/{locale}/releases`]: {
+      get: {
+        operationId: "listLegalDocumentReleases",
+        tags: ["Legal Documents"],
+        summary: "List immutable release history for one locale",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:legal-documents:read",
+        parameters: [
+          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated immutable releases", { $ref: "#/components/schemas/LegalDocumentReleasePage" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "404": jsonErrorResponse("error.legal_document.not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/legal-documents/{slug}/current`]: {
+      get: {
+        operationId: "getPublicLegalDocumentCurrent",
+        tags: ["Legal Documents"],
+        summary: "Read the exact enabled current locale release",
+        description: "No locale fallback is performed. Disabled entries and locales without a release return 404.",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" } },
+          { name: "locale", in: "query", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Current public release and configured display link", { $ref: "#/components/schemas/PublicLegalDocumentRelease" }),
+          "400": jsonErrorResponse("error.validation or error.legal_document.locale_not_supported"),
+          "404": jsonErrorResponse("error.legal_document.unavailable")
         }
       }
     },

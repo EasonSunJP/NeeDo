@@ -66,6 +66,10 @@ import {
   ImPolicyRepository,
   type ImPolicyRepositoryPort
 } from "./repositories/im-policy.repository";
+import {
+  LegalDocumentRepository,
+  type LegalDocumentRepositoryPort
+} from "./repositories/legal-document.repository";
 import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
@@ -199,6 +203,7 @@ import { createPlatformSettingsRoutes } from "./routes/platform-settings.routes"
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
 import { createImPolicyRoutes } from "./routes/im-policy.routes";
+import { createLegalDocumentRoutes } from "./routes/legal-document.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
@@ -285,6 +290,7 @@ import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
 import { ImPolicyService } from "./services/im-policy.service";
+import { LegalDocumentService } from "./services/legal-document.service";
 import type { ImChatRecordMediaStoragePort } from "./services/im-chat-record-media.storage";
 import type { ImChatRecordService } from "./services/im-chat-record.service";
 import type { ImMessageTranslationService } from "./services/im-message-translation.service";
@@ -456,6 +462,18 @@ export interface AppDependencies {
   platformAccessPolicyService?: PlatformAccessPolicyPort;
   imPolicyRepository?: ImPolicyRepositoryPort;
   imPolicyService?: Pick<ImPolicyService, "get" | "update">;
+  legalDocumentRepository?: LegalDocumentRepositoryPort;
+  legalDocumentService?: Pick<
+    LegalDocumentService,
+    | "list"
+    | "create"
+    | "updateMetadata"
+    | "getLocale"
+    | "saveDraft"
+    | "publish"
+    | "listReleases"
+    | "getPublicCurrent"
+  >;
   backofficeUserGroupService?: Pick<
     BackofficeUserGroupService,
     | "listGroups"
@@ -591,6 +609,14 @@ export const createApp = (
     );
   const imMediaLifecycleRepository =
     dependencies.imMediaLifecycleRepository ?? new ImServerRetentionRepository();
+  const legalDocumentRepository =
+    dependencies.legalDocumentRepository ?? new LegalDocumentRepository();
+  const legalDocumentService =
+    dependencies.legalDocumentService ??
+    new LegalDocumentService(
+      legalDocumentRepository,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
@@ -615,6 +641,8 @@ export const createApp = (
     imPolicyRepository,
     imPolicyService,
     imMediaLifecycleRepository,
+    legalDocumentRepository,
+    legalDocumentService,
     ...(platformAccessPolicyService ? { platformAccessPolicyService } : {})
   };
 
@@ -633,6 +661,7 @@ export const createApp = (
   mount("shared", createObservabilityRoutes(config, metricsService));
   mount("shared", createPlatformSettingsRoutes(config, resolvedDependencies));
   mount("shared", createImPolicyRoutes(config, resolvedDependencies));
+  mount("shared", createLegalDocumentRoutes(config, resolvedDependencies));
   mount("shared", createAuthRoutes(config, resolvedDependencies));
   if (platformAccessPolicyService) {
     apiRouter.use(createPlatformMaintenanceMiddleware(platformAccessPolicyService));
