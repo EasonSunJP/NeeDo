@@ -1055,7 +1055,12 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           orderAddOnId: null, orderCheckoutId: persistedCheckout.id,
           eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
           idempotencyKey: `checkout:${ndpOrder.id}:created`, reason: null,
-          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+          metadata: {
+            checkoutAmountJpy: 11_000,
+            travelFareAmountJpy: 0,
+            payableNdp: 11_000,
+            rateRuleId: fixture.rateId
+          }
         },
         {
           bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
@@ -1328,7 +1333,12 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           orderAddOnId: null, orderCheckoutId: cashCheckout.id,
           eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
           idempotencyKey: `checkout:${cashOrder.id}:created`, reason: null,
-          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+          metadata: {
+            checkoutAmountJpy: 11_000,
+            travelFareAmountJpy: 0,
+            payableNdp: 11_000,
+            rateRuleId: fixture.rateId
+          }
         },
         {
           bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
