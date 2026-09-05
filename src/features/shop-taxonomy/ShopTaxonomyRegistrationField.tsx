@@ -111,7 +111,7 @@ export function ShopTaxonomyRegistrationField({
         <TitleWithInfo
           as="h2"
           info={copy.description}
-          label={`${copy.title} 说明`}
+          label={copy.infoLabel}
           title={copy.title}
           titleClassName="text-[17px] font-black text-[color:var(--client-text)]"
           variant="client"

@@ -44,5 +44,11 @@ describe("ShopTaxonomyRegistrationField", () => {
     ));
     await act(async () => { await Promise.resolve(); });
     expect(container.textContent).toContain("上门按摩");
+
+    await act(async () => root.render(
+      <ShopTaxonomyRegistrationField api={api} language="ja" onChange={onChange} value={{ serviceCategoryIds: [], businessKeywordIds: [] }} />
+    ));
+    await act(async () => { await Promise.resolve(); });
+    expect(container.querySelector('[aria-label="サービス種類とキーワードの説明"]')).not.toBeNull();
   });
 });
