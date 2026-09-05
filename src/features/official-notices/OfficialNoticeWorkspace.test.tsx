@@ -154,6 +154,19 @@ describe("official notice formal API interactions", () => {
     expect(state.listManaged).toHaveBeenCalledTimes(2);
   });
 
+  it("submits the management search to server pagination instead of filtering browser rows", async () => {
+    act(() => root.render(<MemoryRouter><OfficialNoticeManagement composePath="/merchant-admin/notifications/compose" scope="merchant" /></MemoryRouter>));
+    await waitFor(() => expect(container.textContent).toContain("営業時間変更"));
+    setField("搜索通知", "営業時間");
+    await click("搜索");
+    await waitFor(() => expect(state.listManaged).toHaveBeenCalledTimes(2));
+    expect(state.listManaged).toHaveBeenLastCalledWith("merchant", {
+      page: 1,
+      pageSize: 20,
+      search: "営業時間"
+    });
+  });
+
   it("hides write controls for a read-only identity and renders an empty page", async () => {
     state.permissions = new Set(["merchant-admin:notice:read"]);
     state.listManaged.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });

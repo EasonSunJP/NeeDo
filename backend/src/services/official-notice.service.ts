@@ -92,6 +92,7 @@ export interface OfficialNoticeRepositoryPort {
     issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
+    search?: string;
     status?: OfficialNoticeStatusCode;
     level?: OfficialNoticeLevelCode;
   }): Promise<{ list: OfficialNoticePayload[]; total: number }>;
@@ -239,6 +240,7 @@ export class OfficialNoticeService {
     const result = await this.repository.listBackoffice({
       issuerScope: { type: "platform" },
       ...pagination,
+      ...(input.search ? { search: input.search } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.level ? { level: input.level } : {})
     });
@@ -253,6 +255,7 @@ export class OfficialNoticeService {
     const result = await this.repository.listBackoffice({
       issuerScope: resolveNoticeReadScope(actor),
       ...pagination,
+      ...(input.search ? { search: input.search } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.level ? { level: input.level } : {})
     });

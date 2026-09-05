@@ -82,6 +82,12 @@ describe("official notice validation", () => {
       page: 2,
       pageSize: 20
     });
+    expect(
+      officialNoticeListQuerySchema.parse({ search: "  営業時間  " })
+    ).toMatchObject({ search: "営業時間" });
+    expect(() =>
+      officialNoticeListQuerySchema.parse({ search: "x".repeat(101) })
+    ).toThrow();
     expect(() => officialNoticeReadQuerySchema.parse({ locale: "fr" })).toThrow();
   });
 });

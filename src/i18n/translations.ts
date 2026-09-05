@@ -824,6 +824,7 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "搜索通知": fourLanguageTranslation("搜尋通知", "通知を検索", "Search notices", "공지 검색"),
   "图片已过期": { "zh-Hant": "圖片已過期", ja: "画像の有効期限が切れました", en: "Image expired", ko: "이미지가 만료되었습니다" },
   "聊天媒体本地缓存": fourLanguageTranslation("聊天媒體本機快取", "チャットメディアのローカルキャッシュ", "Local chat media cache", "채팅 미디어 로컬 캐시"),
   "媒体已显示，但本地缓存不可用": fourLanguageTranslation("媒體已顯示，但本機快取無法使用", "メディアは表示されていますが、ローカルキャッシュは利用できません", "Media is visible, but local caching is unavailable", "미디어는 표시되지만 로컬 캐시를 사용할 수 없습니다"),
