@@ -103,7 +103,13 @@ async function providerActor(
 }
 
 async function convertFixture(client: any, fixture: ExchangeBookingFixture): Promise<number[]> {
-  const service = await createExchangeBookingService(client, fixture, [], 7_100);
+  // Committed race fixtures share the scratch DB; reserve a distinct order-number range per post.
+  const service = await createExchangeBookingService(
+    client,
+    fixture,
+    [],
+    fixture.exchangePostId * 100
+  );
   await service.createBookings(
     ownerAccess(fixture),
     fixture.exchangePostId,
@@ -375,6 +381,9 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
       const walletBefore = await rootClient.wallet.findUniqueOrThrow({
         where: { id: fixture.walletId }
       });
+      const holdBefore = await rootClient.walletHold.findUniqueOrThrow({
+        where: { id: fixture.walletHoldId }
+      });
       const ledger = new LedgerService(
         new LedgerRepository(rootClient),
         undefined,
@@ -410,7 +419,7 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
       ).resolves.toBe(0);
       await expect(
         rootClient.walletHold.findUniqueOrThrow({ where: { id: fixture.walletHoldId } })
-      ).resolves.toMatchObject({ status: "held", capturedAmountNdp: 0 });
+      ).resolves.toEqual(holdBefore);
 
       await expect(
         rootClient.bookingOrder.findUniqueOrThrow({ where: { id: orderId } })

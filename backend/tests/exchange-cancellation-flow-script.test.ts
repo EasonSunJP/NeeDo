@@ -11,10 +11,22 @@ import {
   runExchangeCancellationScratchCheck,
   requireExchangeCancellationScratchEnvironment,
   resolveExchangeCancellationAdminCredentials,
+  verifyExchangeCancellationSocketAdmin,
   runExchangeCancellationCommand
 } from "../scripts/check-exchange-cancellation-flow";
 
 describe("Exchange cancellation isolated flow checker", () => {
+  it("requires root@localhost identity on the explicit socket connection", async () => {
+    const query = jest.fn(async () => [{ principal: "root@localhost" }]);
+    await expect(verifyExchangeCancellationSocketAdmin({ query })).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledWith("SELECT CURRENT_USER() AS principal");
+    await expect(
+      verifyExchangeCancellationSocketAdmin({
+        query: async () => [{ principal: "other@localhost" }]
+      })
+    ).rejects.toThrow("root@localhost");
+  });
+
   it.each(["production", "mismatched-principal"])(
     "rejects a scratch-looking environment with %s",
     async (problem) => {
@@ -55,6 +67,45 @@ describe("Exchange cancellation isolated flow checker", () => {
       resolveExchangeCancellationAdminCredentials(
         { MYSQL_ROOT_PASSWORD: "root-secret" },
         { EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: "someone-else" }
+      )
+    ).toThrow("Explicit MySQL administrator credentials");
+  });
+
+  it("allows passwordless root only on an explicit verified local Unix socket", () => {
+    expect(
+      resolveExchangeCancellationAdminCredentials(
+        { MYSQL_ROOT_PASSWORD: "unused-source-password" },
+        {
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH: "/tmp/mysql.sock"
+        },
+        () => true
+      )
+    ).toEqual({ user: "root", socketPath: "/tmp/mysql.sock" });
+    expect(() =>
+      resolveExchangeCancellationAdminCredentials(
+        {},
+        {
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH: "relative/mysql.sock"
+        },
+        () => true
+      )
+    ).toThrow("absolute Unix socket");
+    expect(() =>
+      resolveExchangeCancellationAdminCredentials(
+        {},
+        {
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH: "/tmp/not-a-socket"
+        },
+        () => false
+      )
+    ).toThrow("absolute Unix socket");
+    expect(() =>
+      resolveExchangeCancellationAdminCredentials(
+        {},
+        {
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: "root",
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD: ""
+        }
       )
     ).toThrow("Explicit MySQL administrator credentials");
   });

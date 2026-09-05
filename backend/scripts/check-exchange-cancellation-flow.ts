@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { parse as parseDotenv } from "dotenv";
 import mariadb, { type ConnectionConfig } from "mariadb";
 
@@ -168,17 +168,44 @@ export const runExchangeCancellationCommand = (
 
 export const resolveExchangeCancellationAdminCredentials = (
   source: RuntimeEnvironment,
-  runtime: RuntimeEnvironment
-): { user: string; password: string } => {
+  runtime: RuntimeEnvironment,
+  isSocket: (path: string) => boolean = (path) => {
+    try {
+      return statSync(path).isSocket();
+    } catch {
+      return false;
+    }
+  }
+): { user: string; password?: string; socketPath?: string } => {
+  const socketPath = runtime.EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH?.trim();
+  if (socketPath) {
+    if (!isAbsolute(socketPath) || !isSocket(socketPath)) {
+      throw new Error(
+        "Administrator socket authentication requires an existing absolute Unix socket"
+      );
+    }
+    return { user: "root", socketPath };
+  }
   const explicitUser = runtime.EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER?.trim();
   const user = explicitUser || (source.MYSQL_ROOT_PASSWORD !== undefined ? "root" : undefined);
   const password =
     runtime.EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD ??
     (user === "root" ? source.MYSQL_ROOT_PASSWORD : undefined);
-  if (!user || password === undefined) {
+  if (!user || !password) {
     throw new Error("Explicit MySQL administrator credentials are required");
   }
   return { user, password };
+};
+
+export const verifyExchangeCancellationSocketAdmin = async (
+  connection: Pick<SqlConnection, "query">
+): Promise<void> => {
+  const rows = (await connection.query("SELECT CURRENT_USER() AS principal")) as Array<{
+    principal: string;
+  }>;
+  if (rows.length !== 1 || rows[0]?.principal !== "root@localhost") {
+    throw new Error("Explicit socket administrator must be root@localhost");
+  }
 };
 
 const scratchEnvironmentSource = (
@@ -189,6 +216,7 @@ const scratchEnvironmentSource = (
     "DATABASE_URL",
     "MYSQL_ROOT_PASSWORD",
     "EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER",
+    "EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH",
     "EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD"
   ]);
   const retained = Object.entries(base.parsedEnvironment)
@@ -244,6 +272,7 @@ export async function runExchangeCancellationScratchCheck(
       RUN_EXCHANGE_CANCELLATION_INTEGRATION: "true",
       MYSQL_ROOT_PASSWORD: undefined,
       EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: undefined,
+      EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH: undefined,
       EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD: undefined
     });
   } catch (error) {
@@ -325,10 +354,14 @@ async function main(): Promise<void> {
     process.env
   );
   const connectionOptions: ConnectionConfig = {
-    host: base.databaseUrl.hostname === "[::1]" ? "::1" : base.databaseUrl.hostname,
-    ...(base.databaseUrl.port ? { port: Number(base.databaseUrl.port) } : {}),
+    ...(!credentials.socketPath
+      ? {
+          host: base.databaseUrl.hostname === "[::1]" ? "::1" : base.databaseUrl.hostname,
+          ...(base.databaseUrl.port ? { port: Number(base.databaseUrl.port) } : {})
+        }
+      : {}),
     ...credentials,
-    ...(base.parsedEnvironment.MYSQL_SOCKET_PATH
+    ...(!credentials.socketPath && base.parsedEnvironment.MYSQL_SOCKET_PATH
       ? { socketPath: base.parsedEnvironment.MYSQL_SOCKET_PATH }
       : {}),
     ...(base.parsedEnvironment.DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL === "true"
@@ -340,6 +373,10 @@ async function main(): Promise<void> {
   checkerStage = "administrator_connection";
   const connection = await mariadb.createConnection(connectionOptions);
   try {
+    if (credentials.socketPath) {
+      checkerStage = "socket_administrator_identity";
+      await verifyExchangeCancellationSocketAdmin(connection);
+    }
     checkerStage = "scratch_database_setup";
     const result = await runExchangeCancellationScratchCheck(
       base,
