@@ -125,6 +125,27 @@ describeIntegration("StagingAdminBootstrapRepository integration", () => {
     await expect(service.bootstrap(config)).resolves.toMatchObject({ status: "created" });
     await expect(service.bootstrap(config)).resolves.toMatchObject({ status: "already-complete" });
 
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { code: "admin" } });
+    const testAdministrator = await prisma.user.create({
+      data: {
+        needoId: `test-admin-${randomUUID()}`,
+        email: `test-admin-${randomUUID()}@needo.local`,
+        username: `test-admin-${randomUUID()}`,
+        passwordHash: "not-a-login-credential",
+        isTestAccount: true,
+        isActive: true
+      }
+    });
+    await prisma.userRole.create({
+      data: {
+        userId: testAdministrator.id,
+        roleId: adminRole.id,
+        scopeType: "global"
+      }
+    });
+
+    await expect(service.bootstrap(config)).resolves.toMatchObject({ status: "already-complete" });
+
     const user = await prisma.user.findUniqueOrThrow({
       where: { email: adminEmail },
       include: {

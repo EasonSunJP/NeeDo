@@ -78,7 +78,7 @@ export class StagingAdminBootstrapRepository implements StagingAdminBootstrapRep
         scopeType: "global",
         scopeId: null,
         deletedAt: null,
-        user: { deletedAt: null }
+        user: { deletedAt: null, isTestAccount: false }
       },
       include: {
         user: {
