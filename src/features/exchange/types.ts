@@ -241,6 +241,27 @@ export type ExchangeIntelligence = {
   serviceAreas: string[];
   originalPriceJpy: number | null;
   campaignPriceJpy: number;
+  booking: ExchangeIntelligenceBooking;
+  publisherCard: ExchangeIntelligencePublisherProfileProjection | null;
+  serviceCard: ExchangeIntelligenceServiceCardProjection | null;
+};
+
+export type ExchangeIntelligenceUnavailableReason =
+  | "legacy_unbound"
+  | "post_unavailable"
+  | "publisher_unavailable"
+  | "service_unavailable";
+
+export type ExchangeIntelligenceBooking = {
+  available: boolean;
+  unavailableReason: ExchangeIntelligenceUnavailableReason | null;
+  target: { type: "shop_service" | "technician_service"; id: number } | null;
+  catalogPriceJpy: number | null;
+  campaignPriceJpy: number;
+  serviceName: string | null;
+  durationMinutes: number | null;
+  serviceMode: ExchangeServiceMode;
+  serviceWindow: { startsAt: string; endsAt: string };
 };
 
 export type ExchangeIntelligenceServiceRef = `shop:${number}` | `technician:${number}`;
@@ -335,3 +356,5 @@ export type PublishExchangeIntelligenceInput = ExchangePublishCommon & {
 };
 
 export type PublishExchangePostInput = PublishExchangeDemandInput | PublishExchangeIntelligenceInput;
+import type { ExchangeIntelligencePublisherProfileProjection } from "../../shared/profile-card";
+import type { ExchangeIntelligenceServiceCardProjection } from "../../shared/service-card";

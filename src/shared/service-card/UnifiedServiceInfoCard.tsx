@@ -25,6 +25,7 @@ function formatDuration(durationMinutes: number | null) {
 
 function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCardData; hasActions: boolean }) {
   const visibleTags = data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 8);
+  const showCatalogPrice = data.catalogPriceAmount !== null && data.catalogPriceAmount !== undefined && data.catalogPriceAmount > data.priceAmount;
 
   return (
     <div className="grid min-h-[190px] grid-cols-[minmax(112px,36%)_1fr]">
@@ -47,6 +48,11 @@ function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCard
         <strong className="mt-1 block text-[19px] font-black tracking-[-0.02em] text-[color:var(--client-primary)]">
           {formatPrice(data.priceAmount, data.currency)}/{formatDuration(data.durationMinutes)}
         </strong>
+        {showCatalogPrice ? (
+          <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]">
+            <span className="line-through">{formatPrice(data.catalogPriceAmount!, data.currency)}</span>
+          </p>
+        ) : null}
 
         <div className="mt-2 space-y-1 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">
           <p>利用回数：<span className="font-black text-[color:var(--client-text)]">{data.usageCount ?? "未读取"}</span></p>

@@ -6,6 +6,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 const source = {
   category: read("../../pages/user/CategoryPage.tsx"),
   checkout: read("../../pages/user/FormalCheckoutPage.tsx"),
+  exchangeDetail: read("../../features/exchange/ExchangePostDetailPage.tsx"),
   home: read("../../pages/user/HomePage.tsx"),
   merchantOrders: read("../../pages/mobile/MerchantOrderRoutePages.tsx"),
   orderMiniCard: read("../../components/mobile/OrderServiceMiniCard.tsx"),
@@ -73,6 +74,13 @@ describe("unified service-information-card usage", () => {
     expect(source.merchantOrders).toContain("actionSlot={<DispatchStatusBadge");
     expect(source.merchantOrders).toContain("selectServicePackage(selection)");
     expect(source.technicianServices).toMatch(/services\.map\([\s\S]*<UnifiedServiceInfoCard[\s\S]*mapTechnicianServiceToUnifiedData\(service\)/u);
+  });
+
+  it("uses the shared profile and service cards for Intelligence detail", () => {
+    expect(source.exchangeDetail).toContain("<UnifiedProfileCard");
+    expect(source.exchangeDetail).toContain("<UnifiedServiceInfoCard");
+    expect(source.exchangeDetail).toContain("mapExchangeIntelligencePublisherToProfileData");
+    expect(source.exchangeDetail).toContain("mapExchangeIntelligenceServiceToUnifiedData");
   });
 
   it("documents only the HomePage ServiceModule image-navigation tile exemption", () => {

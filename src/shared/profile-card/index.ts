@@ -1,4 +1,4 @@
-export { UnifiedProfileCard } from "./UnifiedProfileCard";
+export { UnifiedProfileCard, mapExchangeIntelligencePublisherToProfileData } from "./UnifiedProfileCard";
 export { UnifiedSimpleProfileCard } from "./UnifiedSimpleProfileCard";
 export { CustomerMembershipBadge, CustomerMembershipIcon } from "./CustomerMembershipIcon";
 export { EntitySearchCardActions, formatEntityEngagementCount } from "./EntitySearchCardActions";
@@ -17,6 +17,9 @@ export type { PlatformMembershipSimpleCardProps } from "./PlatformMembershipSimp
 export type { SocialProfileMiniActionLabel, SocialProfileMiniData } from "./SocialProfileMiniCard";
 export type {
   BaseProfileCardData,
+  ExchangeIntelligencePublisherProfileProjection,
+  ExchangeIntelligenceShopPublisherProfileProjection,
+  ExchangeIntelligenceTechnicianPublisherProfileProjection,
   ShopProfileData,
   TechnicianFormalContactCardData,
   TechnicianFormalContactDetails,

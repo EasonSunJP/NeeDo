@@ -44,7 +44,23 @@ const publishedIntelligence: ExchangePost = {
     addressLabel: "東京都港区六本木 3-2-1",
     serviceAreas: ["港区"],
     originalPriceJpy: 16000,
-    campaignPriceJpy: 12800
+    campaignPriceJpy: 12800,
+    booking: {
+      available: false,
+      unavailableReason: "legacy_unbound",
+      target: null,
+      catalogPriceJpy: null,
+      campaignPriceJpy: 12800,
+      serviceName: null,
+      durationMinutes: null,
+      serviceMode: "store",
+      serviceWindow: {
+        startsAt: "2026-08-30T13:00:00.000Z",
+        endsAt: "2026-08-30T16:00:00.000Z"
+      }
+    },
+    publisherCard: null,
+    serviceCard: null
   }
 };
 

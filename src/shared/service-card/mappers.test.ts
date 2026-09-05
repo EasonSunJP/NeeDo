@@ -4,12 +4,47 @@ import type { TechnicianServicePayload } from "../../features/pricing-mode/api";
 import type { ServiceItem, Store, StoreMenuConfig } from "../../types/domain";
 import {
   mapCoreServiceCardToUnifiedData,
+  mapExchangeIntelligenceServiceToUnifiedData,
   mapServiceItemToUnifiedData,
   mapStoreMenuConfigToUnifiedData,
   mapTechnicianServiceToUnifiedData
 } from "./mappers";
 
 describe("unified service-card mappers", () => {
+  it("preserves the Intelligence campaign, catalog, mode, public ids, and empty utilization", () => {
+    expect(mapExchangeIntelligenceServiceToUnifiedData({
+      targetType: "technician_service",
+      publicId: "technician-service0000000801",
+      name: "深层放松护理",
+      description: "肩颈与足部深层护理",
+      coverUrl: null,
+      imageUrls: ["/services/deep-relaxation.png"],
+      tags: ["肩颈", "足部"],
+      catalogPriceJpy: 12_250,
+      campaignPriceJpy: 9_800,
+      currency: "JPY",
+      durationMinutes: 90,
+      serviceMode: "onsite",
+      shopPublicId: "shop0000000061",
+      shopAddress: "東京都中央区銀座3-4-12",
+      detailPath: "/stores/shop0000000061/technicians/s0000000062/services"
+    }, "上门")).toEqual({
+      id: "technician-service0000000801",
+      coverUrl: "/services/deep-relaxation.png",
+      name: "深层放松护理",
+      priceAmount: 9_800,
+      catalogPriceAmount: 12_250,
+      currency: "JPY",
+      durationMinutes: 90,
+      usageCount: null,
+      shopPublicId: "shop0000000061",
+      shopAddress: "東京都中央区銀座3-4-12",
+      description: "肩颈与足部深层护理",
+      tags: ["上门", "肩颈", "足部"],
+      serviceModeLabel: "上门"
+    });
+  });
+
   it("maps every formal public service fact without replacing it with legacy counters", () => {
     const service = {
       id: 71,

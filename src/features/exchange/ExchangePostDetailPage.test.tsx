@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getExchangePost,
@@ -86,7 +86,7 @@ const demandPost: ExchangePost = {
   intelligence: null
 };
 
-const intelligencePost: ExchangePost = {
+const intelligencePost = {
   ...demandPost,
   id: 61,
   type: "intelligence",
@@ -106,9 +106,105 @@ const intelligencePost: ExchangePost = {
     addressLabel: "東京都中央区銀座3-4-12",
     serviceAreas: ["銀座", "中央区"],
     originalPriceJpy: 12_250,
-    campaignPriceJpy: 9_800
+    campaignPriceJpy: 9_800,
+    booking: {
+      available: true,
+      unavailableReason: null,
+      target: { type: "shop_service", id: 701 },
+      catalogPriceJpy: 12_250,
+      campaignPriceJpy: 9_800,
+      serviceName: "深层放松护理",
+      durationMinutes: 90,
+      serviceMode: "store",
+      serviceWindow: {
+        startsAt: "2026-08-31T04:00:00.000Z",
+        endsAt: "2026-08-31T06:00:00.000Z"
+      }
+    },
+    publisherCard: {
+      type: "shop",
+      publicId: "shop0000000061",
+      name: "GINZA Calm Body Lab",
+      avatarUrl: "/simulation/shops/ginza-calm-body-lab-avatar.png",
+      coverUrl: "/simulation/shops/ginza-calm-body-lab.png",
+      imageUrls: ["/simulation/shops/ginza-calm-body-lab.png"],
+      status: "published",
+      isBookable: true,
+      ratingAverage: "4.8",
+      reviewCount: 126,
+      address: "東京都中央区銀座3-4-12",
+      serviceMode: "store",
+      detailPath: "/profiles/shop/shop0000000061"
+    },
+    serviceCard: {
+      targetType: "shop_service",
+      publicId: "service0000000701",
+      name: "深层放松护理",
+      description: "肩颈与足部深层护理",
+      coverUrl: "/services/deep-relaxation.png",
+      imageUrls: ["/services/deep-relaxation.png"],
+      tags: ["肩颈", "足部"],
+      catalogPriceJpy: 12_250,
+      campaignPriceJpy: 9_800,
+      currency: "JPY",
+      durationMinutes: 90,
+      serviceMode: "store",
+      shopPublicId: "shop0000000061",
+      shopAddress: "東京都中央区銀座3-4-12",
+      detailPath: "/services/service0000000701"
+    }
   }
-};
+} as unknown as ExchangePost;
+
+const technicianIntelligencePost = {
+  ...intelligencePost,
+  id: 62,
+  publisher: {
+    publicId: "s0000000062",
+    identityType: "technician",
+    displayName: "佐藤 真央",
+    avatarUrl: "/technicians/sato.png"
+  },
+  intelligence: {
+    ...intelligencePost.intelligence!,
+    serviceMode: "onsite",
+    booking: {
+      ...intelligencePost.intelligence!.booking,
+      target: { type: "technician_service", id: 801 },
+      serviceMode: "onsite"
+    },
+    publisherCard: {
+      type: "technician",
+      publicId: "s0000000062",
+      displayName: "佐藤 真央",
+      avatarUrl: "/technicians/sato.png",
+      shop: { publicId: "shop0000000061", name: "GINZA Calm Body Lab" },
+      status: "published",
+      isBookable: true,
+      yearsExperience: 8,
+      completedOrderCount: 352,
+      acceptanceRatePercent: 97.5,
+      ratingAverage: "4.9",
+      reviewCount: 88,
+      serviceAreas: ["中央区", "港区"],
+      languages: ["日本語", "中文"],
+      detailPath: "/profiles/technician/s0000000062",
+      servicesPath: "/stores/shop0000000061/technicians/s0000000062/services"
+    },
+    serviceCard: {
+      ...intelligencePost.intelligence!.serviceCard!,
+      targetType: "technician_service",
+      publicId: "technician-service0000000801",
+      serviceMode: "onsite",
+      detailPath: "/stores/shop0000000061/technicians/s0000000062/services"
+    }
+  }
+} as unknown as ExchangePost;
+
+function CheckoutDestination() {
+  const location = useLocation();
+  return <div data-testid="checkout-destination">{location.pathname}{location.search}</div>;
+}
 
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
@@ -147,6 +243,8 @@ async function renderDetail(
           element={<ExchangePostDetailPage context={context} />}
         />
         <Route path={basePath} element={<div data-testid="exchange-root">{basePath}</div>} />
+        <Route path="/checkout/:serviceId" element={<CheckoutDestination />} />
+        <Route path="/checkout/technician-service/:technicianServiceId" element={<CheckoutDestination />} />
       </Routes>
     </MemoryRouter>
   ));
@@ -267,18 +365,83 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("服务流程");
     expect(document.body.textContent).toContain("服务要求");
     expect(document.body.textContent).toContain("GINZA Calm Body Lab");
-    expect(document.body.textContent).toContain("m0000000061");
+    expect(document.body.textContent).toContain("shop0000000061");
     expect(document.body.textContent).toContain("¥9,800");
-    expect(document.body.textContent).toContain("预约与支付后续开放");
+    expect(document.body.textContent).toContain("可通过正式预约流程下单");
     expect(document.body.textContent).toContain("请通过平台保留沟通记录和服务凭证");
     expect(document.body.querySelector('[data-testid="exchange-detail-hero"] img')?.getAttribute("src")).toBe(
       "/simulation/shops/ginza-calm-body-lab.png"
     );
     expect(document.body.querySelector('[data-testid="formal-interactions"]')?.getAttribute("data-show-action-bar")).toBe("false");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')?.getAttribute("data-variant")).toBe("detail");
-    expect(document.body.querySelector<HTMLButtonElement>('[data-action="booking-deferred"]')?.disabled).toBe(true);
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.disabled).toBe(false);
     expect(document.body.querySelector('[data-action="detail-like"]')).not.toBeNull();
     expect(document.body.querySelector('[data-action="detail-share"]')).not.toBeNull();
+  });
+
+  it("renders the formal shop and service projections through the shared cards and opens the exact checkout", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain("深层放松护理"));
+
+    expect(document.body.querySelector('[data-testid="exchange-intelligence-publisher-card"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="unified-service-info-card"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("shop0000000061");
+    expect(document.body.textContent).toContain("4.8");
+    expect(document.body.textContent).toContain("126");
+    expect(document.body.textContent).toContain("￥9,800");
+    expect(document.body.textContent).toContain("￥12,250");
+    expect(document.body.textContent).toContain("90分钟");
+    expect(document.body.querySelector('a[href="/profiles/shop/shop0000000061"]')).not.toBeNull();
+    expect(document.body.querySelector('a[href="/services/service0000000701"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain("701");
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.click());
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
+      "/checkout/701?exchangePost=61"
+    );
+  });
+
+  it("renders the canonical technician projection and opens technician-service checkout", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(technicianIntelligencePost);
+    await renderDetail("/needo/posts/62");
+    await waitFor(() => expect(document.body.textContent).toContain("佐藤 真央"));
+
+    expect(document.body.textContent).toContain("s0000000062");
+    expect(document.body.textContent).toContain("GINZA Calm Body Lab");
+    expect(document.body.textContent).toContain("8年");
+    expect(document.body.textContent).toContain("352");
+    expect(document.body.textContent).toContain("97.5%");
+    expect(document.body.textContent).toContain("日本語");
+    expect(document.body.querySelector('a[href="/profiles/technician/s0000000062"]')).not.toBeNull();
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.click());
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
+      "/checkout/technician-service/801?exchangePost=62"
+    );
+  });
+
+  it.each([
+    ["legacy_unbound", "这条历史情报没有绑定正式服务，无法预约"],
+    ["publisher_unavailable", "发布方当前不可预约"],
+    ["service_unavailable", "绑定的正式服务当前不可预约"],
+    ["post_unavailable", "这条情报已结束，无法预约"]
+  ] as const)("fails closed with a localized %s reason", async (reason, expectedText) => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...intelligencePost,
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        booking: {
+          ...intelligencePost.intelligence!.booking,
+          available: false,
+          unavailableReason: reason
+        }
+      }
+    } as ExchangePost);
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain(expectedText));
+
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.disabled).toBe(true);
   });
 
   it("localizes the detail type and publisher identity instead of exposing raw identity codes", async () => {
