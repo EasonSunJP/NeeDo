@@ -90,6 +90,8 @@ describe("simulation identity matrix", () => {
     expect(check).toContain("expectedTypes: string[]");
     expect(check).toContain('["customer", "technician", "merchant_owner", "scout"]');
     expect(check).toContain("must keep the customer identity only");
+    expect(check).toContain("representative staging password hashes are missing");
+    expect(check).toContain("existingPasswordHashesVerified");
   });
 
   it("removes every restrictive child before reseeding simulation booking orders", () => {

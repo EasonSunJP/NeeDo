@@ -152,7 +152,9 @@ async function main() {
   for (const [entry, output] of [
     ["backend/scripts/seed-three-month-simulation.ts", "simulation-seed.cjs"],
     ["backend/scripts/seed-future-six-month-operations.ts", "future-operations-seed.cjs"],
-    ["backend/scripts/check-three-month-simulation.ts", "simulation-check.cjs"]
+    ["backend/scripts/check-three-month-simulation.ts", "simulation-check.cjs"],
+    ["backend/scripts/check-order-fulfillment-checkout-flow.ts", "order-fulfillment-check.cjs"],
+    ["backend/scripts/check-order-checkout-concurrency.ts", "order-checkout-concurrency.cjs"]
   ]) {
     await run(esbuild, [
       entry,

@@ -96,6 +96,33 @@ export function loadAndValidateFormalEnvironment(
   runtimeEnvironment: Environment,
   fileSystem: FormalEnvironmentFileSystem = defaultFileSystem
 ): FormalEnvironment {
+  if (runtimeEnvironment.ALLOW_STAGING_ORDER_ROLLBACK_CHECK === "true") {
+    if (runtimeEnvironment.NODE_ENV !== "production" || runtimeEnvironment.DEPLOY_ENV !== "staging") {
+      throw new Error("Staging order checker requires the exact staging runtime environment");
+    }
+    const databaseUrl = runtimeEnvironment.DATABASE_URL?.trim();
+    if (!databaseUrl) throw new Error("Staging order checker requires DATABASE_URL");
+    let target: URL;
+    try {
+      target = new URL(databaseUrl);
+    } catch {
+      throw new Error("Staging order checker requires a valid MySQL URL");
+    }
+    const databaseHost = target.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    const databaseName = decodeURIComponent(target.pathname.replace(/^\/+/, "")).trim();
+    if (target.protocol !== "mysql:" || databaseHost !== "mysql" || databaseName !== "needo_staging") {
+      throw new Error("Staging order checker is restricted to mysql/needo_staging");
+    }
+    return {
+      envFilePath: "<staging-runtime>",
+      databaseUrl,
+      databaseHost,
+      databaseName,
+      values: Object.fromEntries(
+        Object.entries(runtimeEnvironment).filter((entry): entry is [string, string] => entry[1] !== undefined)
+      )
+    };
+  }
   const requestedPath = runtimeEnvironment.FORMAL_BACKEND_ENV_FILE?.trim();
   if (!requestedPath) throw new Error("FORMAL_BACKEND_ENV_FILE is required");
   const envFilePath = fileSystem.resolve(requestedPath);
