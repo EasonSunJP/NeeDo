@@ -25,6 +25,7 @@ test("staging compose exposes only the web edge and binds durable data to /srv/n
 test("HTTP and HTTPS Nginx configs preserve portal entries and deny public metrics", () => {
   for (const path of ["./nginx-http.conf", "./nginx-https.conf"]) {
     const config = read(path);
+    assert.match(config, /client_max_body_size 8m;/);
     assert.match(config, /location = \/api\/v1\/metrics[\s\S]*deny all;/);
     assert.match(config, /proxy_pass http:\/\/needo_backend/);
     assert.match(config, /proxy_pass http:\/\/needo_ops_api\/api\/v1\//);
