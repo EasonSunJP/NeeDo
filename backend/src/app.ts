@@ -562,6 +562,7 @@ export const createApp = (
 
   mount("shared", createHealthRoutes(config, resolvedDependencies));
   mount("shared", createObservabilityRoutes(config, metricsService));
+  mount("shared", createPlatformSettingsRoutes(config, resolvedDependencies));
   mount("shared", createAuthRoutes(config, resolvedDependencies));
   mount("backoffice", createPermissionRoutes(config, resolvedDependencies));
   mount("backoffice", createRoleRoutes(config, resolvedDependencies));

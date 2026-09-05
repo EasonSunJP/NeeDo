@@ -100,6 +100,36 @@ const authJsonBody = (properties: Record<string, unknown>, required: string[] = 
   }
 });
 
+const platformSettingsVersionOpenApiProperties = {
+  id: { type: "integer", minimum: 1 },
+  publicId: { type: "string", format: "uuid" },
+  version: { type: "integer", minimum: 1 },
+  siteEnabled: { type: "boolean" },
+  selfRegistrationEnabled: { type: "boolean" },
+  googleLoginEnabled: { type: "boolean" },
+  passwordLoginOtpEnabled: { type: "boolean" },
+  passwordLoginOtpRule: {
+    type: "string",
+    enum: ["first_login", "monthly_first", "every_login"]
+  },
+  passwordLoginOtpOnNewIp: { type: "boolean" },
+  loginLogoMediaAssetId: { type: ["integer", "null"], minimum: 1 },
+  requestButtonMediaAssetId: { type: ["integer", "null"], minimum: 1 },
+  offlinePaymentEnabled: { type: "boolean" },
+  ndpPaymentEnabled: { type: "boolean" },
+  createdByUserId: { type: ["integer", "null"], minimum: 1 },
+  createdAt: { type: "string", format: "date-time" },
+  updatedAt: { type: "string", format: "date-time" },
+  loginLogo: {
+    oneOf: [{ $ref: "#/components/schemas/PlatformBrandMedia" }, { type: "null" }]
+  },
+  requestButton: {
+    oneOf: [{ $ref: "#/components/schemas/PlatformBrandMedia" }, { type: "null" }]
+  }
+};
+
+const platformSettingsVersionRequired = Object.keys(platformSettingsVersionOpenApiProperties);
+
 const socialRichTextOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -3010,6 +3040,140 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bandMaximumDistanceMeters: { type: "integer", minimum: 1 },
           expiresAt: { type: "string", format: "date-time" },
           cached: { type: "boolean" }
+        }
+      },
+      PlatformBrandMedia: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "url", "mimeType", "width", "height", "altText"],
+        properties: {
+          publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          url: { type: "string" },
+          mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+          width: { type: ["integer", "null"], minimum: 1 },
+          height: { type: ["integer", "null"], minimum: 1 },
+          altText: { type: ["string", "null"] }
+        }
+      },
+      PlatformCapabilityProject: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "configured", "enabled", "actionable"],
+        properties: {
+          code: { type: "string", enum: ["apple", "line", "paypay", "paypal", "stripe"] },
+          configured: { type: "boolean", enum: [false] },
+          enabled: { type: "boolean", enum: [false] },
+          actionable: { type: "boolean", enum: [false] }
+        },
+        description: "Reserved project entry only; no provider API or activation action exists."
+      },
+      PlatformPublicSettings: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "version",
+          "siteEnabled",
+          "selfRegistrationEnabled",
+          "loginMethods",
+          "loginLogo",
+          "requestButton",
+          "paymentMethods"
+        ],
+        properties: {
+          version: { type: "integer", minimum: 1 },
+          siteEnabled: { type: "boolean" },
+          selfRegistrationEnabled: { type: "boolean" },
+          loginMethods: {
+            type: "object",
+            additionalProperties: false,
+            required: ["password", "google"],
+            properties: {
+              password: { type: "boolean", enum: [true] },
+              google: { type: "boolean" }
+            }
+          },
+          loginLogo: {
+            oneOf: [{ $ref: "#/components/schemas/PlatformBrandMedia" }, { type: "null" }]
+          },
+          requestButton: {
+            oneOf: [{ $ref: "#/components/schemas/PlatformBrandMedia" }, { type: "null" }]
+          },
+          paymentMethods: {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "string", enum: ["cash", "ndp"] }
+          }
+        }
+      },
+      PlatformSettingsVersion: {
+        type: "object",
+        additionalProperties: false,
+        required: platformSettingsVersionRequired,
+        properties: platformSettingsVersionOpenApiProperties
+      },
+      PlatformOperationsSettings: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          ...platformSettingsVersionRequired,
+          "loginProviderProjects",
+          "paymentProviderProjects"
+        ],
+        properties: {
+          ...platformSettingsVersionOpenApiProperties,
+          loginProviderProjects: {
+            type: "array",
+            items: { $ref: "#/components/schemas/PlatformCapabilityProject" }
+          },
+          paymentProviderProjects: {
+            type: "array",
+            items: { $ref: "#/components/schemas/PlatformCapabilityProject" }
+          }
+        }
+      },
+      PlatformBasicSettingsUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "expectedVersion",
+          "siteEnabled",
+          "selfRegistrationEnabled",
+          "googleLoginEnabled",
+          "passwordLoginOtpEnabled",
+          "passwordLoginOtpRule",
+          "passwordLoginOtpOnNewIp",
+          "loginLogoMediaPublicId",
+          "requestButtonMediaPublicId"
+        ],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          siteEnabled: { type: "boolean" },
+          selfRegistrationEnabled: { type: "boolean" },
+          googleLoginEnabled: { type: "boolean" },
+          passwordLoginOtpEnabled: { type: "boolean" },
+          passwordLoginOtpRule: {
+            type: "string",
+            enum: ["first_login", "monthly_first", "every_login"]
+          },
+          passwordLoginOtpOnNewIp: {
+            type: "boolean",
+            description: "May be true only when passwordLoginOtpEnabled is true."
+          },
+          loginLogoMediaPublicId: { type: ["string", "null"], pattern: "^[a-f0-9]{64}$" },
+          requestButtonMediaPublicId: {
+            type: ["string", "null"],
+            pattern: "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      PlatformPaymentSettingsUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "offlinePaymentEnabled", "ndpPaymentEnabled"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          offlinePaymentEnabled: { type: "boolean" },
+          ndpPaymentEnabled: { type: "boolean" }
         }
       },
       TrimmedVisibleIdempotencyKey: {
@@ -14797,6 +14961,95 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    [`${config.API_PREFIX}/platform/settings/public`]: {
+      get: {
+        operationId: "getPublicPlatformSettings",
+        tags: ["Platform Settings"],
+        summary: "Read the public platform settings projection",
+        responses: {
+          "200": jsonDataResponse("Active public platform settings", {
+            $ref: "#/components/schemas/PlatformPublicSettings"
+          }),
+          "503": jsonErrorResponse("error.platform_settings.unavailable")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/system-settings`]: {
+      get: {
+        operationId: "getOperationsPlatformSettings",
+        tags: ["Platform Settings"],
+        summary: "Read the active platform settings and reserved provider projects",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:system-settings:read",
+        responses: {
+          "200": jsonDataResponse("Active operations platform settings", {
+            $ref: "#/components/schemas/PlatformOperationsSettings"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "503": jsonErrorResponse("error.platform_settings.unavailable")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/system-settings/basic`]: {
+      put: {
+        operationId: "updatePlatformBasicSettings",
+        tags: ["Platform Settings"],
+        summary: "Publish the next basic-settings version",
+        description:
+          "Changing a brand-media reference additionally requires backoffice:system-brand-media:activate.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:system-settings:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PlatformBasicSettingsUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Published platform settings version", {
+            $ref: "#/components/schemas/PlatformSettingsVersion"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "404": jsonErrorResponse("error.platform_settings.media_not_found"),
+          "409": jsonErrorResponse("error.platform_settings.version_conflict"),
+          "503": jsonErrorResponse("error.platform_settings.unavailable")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/system-settings/payment`]: {
+      put: {
+        operationId: "updatePlatformPaymentSettings",
+        tags: ["Platform Settings"],
+        summary: "Publish the next payment-settings version",
+        description:
+          "Only offline and NDP payment switches are implemented. PayPay, PayPal, and Stripe remain non-actionable project entries.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:payment-settings:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PlatformPaymentSettingsUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Published platform settings version", {
+            $ref: "#/components/schemas/PlatformSettingsVersion"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "409": jsonErrorResponse("error.platform_settings.version_conflict"),
+          "503": jsonErrorResponse("error.platform_settings.unavailable")
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/ndp-exchange-rates`]: {
       get: {
         operationId: "listNdpExchangeRates",
