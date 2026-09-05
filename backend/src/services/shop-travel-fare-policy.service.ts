@@ -115,6 +115,13 @@ export class ShopTravelFarePolicyService {
     }
 
     const latest = await this.repository.findLatest(shopId);
+    if ((latest?.version ?? 0) !== input.expectedVersion) {
+      throw new AppError({
+        code: ERROR_CODES.TRAVEL_FARE_POLICY_VERSION_CONFLICT,
+        message: "error.travel_fare_policy.version_conflict",
+        statusCode: 409
+      });
+    }
     const publicId = randomUUID();
     const effectiveFrom = new Date(input.effectiveFrom);
     const audit = this.auditInputFactory.createInput(

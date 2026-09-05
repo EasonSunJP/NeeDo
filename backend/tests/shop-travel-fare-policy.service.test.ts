@@ -40,7 +40,7 @@ const repository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => ({
   }),
   findLatest: jest.fn(async (shopId: number) => {
     void shopId;
-    return version({ publicId: "policy-v3", version: 3 });
+    return version();
   }),
   listVersions: jest.fn(async (shopId: number, input) => {
     void shopId; void input;
@@ -119,6 +119,7 @@ describe("ShopTravelFarePolicyService", () => {
 
   it("preserves the greatest inclusive maximum and writes complete immutable audit metadata", async () => {
     const repo = repository();
+    repo.findLatest.mockResolvedValue(version({ publicId: "policy-v3", version: 3 }));
     let audit: AuditLogCreateInput | undefined;
     const service = new ShopTravelFarePolicyService(repo, {
       createInput: (input) => {
@@ -132,7 +133,7 @@ describe("ShopTravelFarePolicyService", () => {
     ];
 
     await service.publishVersion(actor, { ip: "127.0.0.1", userAgent: "jest" }, {
-      expectedVersion: 1,
+      expectedVersion: 3,
       effectiveFrom: "2026-09-07T00:00:00.000Z",
       reason: "Publish maximum supported area",
       bands
@@ -156,6 +157,23 @@ describe("ShopTravelFarePolicyService", () => {
         ]
       }
     });
+  });
+
+  it("rejects a stale or future expected version before building audit metadata", async () => {
+    const repo = repository();
+    repo.findLatest.mockResolvedValue(version({ publicId: "policy-v3", version: 3 }));
+    const createInput = jest.fn((input) => input as never);
+    const service = new ShopTravelFarePolicyService(repo, { createInput });
+
+    await expect(service.publishVersion(actor, { ip: "127.0.0.1" }, {
+      expectedVersion: 4,
+      effectiveFrom: "2026-09-08T00:00:00.000Z",
+      reason: "Concurrent publish",
+      bands: [{ maximumDistanceMeters: 5_000, fareAmountJpy: 0 }]
+    })).rejects.toMatchObject({ message: "error.travel_fare_policy.version_conflict", statusCode: 409 });
+
+    expect(createInput).not.toHaveBeenCalled();
+    expect(repo.publishVersion).not.toHaveBeenCalled();
   });
 
   it("maps optimistic publication conflicts to a stable error", async () => {
