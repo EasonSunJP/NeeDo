@@ -32,7 +32,7 @@
 - Consumes: `DashboardMetricSparklinePoint[]`, metric `title`, `DashboardValueUnit`, and the current i18n language.
 - Produces: `<DashboardMetricSparkline points title unit />` with `data-dashboard-sparkline-control` and `data-dashboard-sparkline-detail` hooks.
 
-- [ ] **Step 1: Write the failing interaction tests**
+- [x] **Step 1: Write the failing interaction tests**
 
 Add a mounted-component test that asserts there is no `<line>`, finds exactly three controls, clicks the second control, verifies the detail contains `09-02` and the formatted value, switches with Space, closes with the labelled close button, reopens with Enter, and clears with Escape. Update card tests to require that the card passes `title` and resolved `unit` to the sparkline.
 
@@ -45,7 +45,7 @@ expect(container.querySelector('[data-dashboard-sparkline-detail="true"]')?.text
   .toContain("09-02");
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -55,7 +55,7 @@ npm test -- src/features/dashboard/DashboardMetricSparkline.test.tsx src/feature
 
 Expected: FAIL because the baseline still exists and the sparkline has no controls or detail state.
 
-- [ ] **Step 3: Implement the minimal accessible interaction**
+- [x] **Step 3: Implement the minimal accessible interaction**
 
 Change the public props and component state as follows, using the existing dashboard number formatter for visible values:
 
@@ -85,11 +85,11 @@ In `DashboardMetricCard.tsx` call:
 <DashboardMetricSparkline points={sparkline} title={title} unit={resolvedUnit} />
 ```
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run the same focused command. Expected: both test files PASS with no React act warnings.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/dashboard/DashboardMetricSparkline.tsx src/features/dashboard/DashboardMetricSparkline.test.tsx src/features/dashboard/DashboardMetricCard.tsx src/features/dashboard/DashboardMetricCard.test.tsx
@@ -106,7 +106,7 @@ git commit -m "feat: add metric sparkline point details"
 - Consumes: existing `title` and translated `description` strings.
 - Produces: chart figcaptions using the existing `TitleWithInfo` component; no visible description paragraph.
 
-- [ ] **Step 1: Write the failing chart-caption test**
+- [x] **Step 1: Write the failing chart-caption test**
 
 Render a chart and assert the information control is labelled for the title, its popover content contains the description, and the figcaption has no direct description paragraph.
 
@@ -117,7 +117,7 @@ expect(figure.querySelector('figcaption > p')).toBeNull();
 expect(figure.textContent).toContain("订单与服务金额趋势");
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 ```bash
 npm test -- src/features/dashboard/DashboardCharts.test.tsx
@@ -125,7 +125,7 @@ npm test -- src/features/dashboard/DashboardCharts.test.tsx
 
 Expected: FAIL because the description is still a visible `figcaption > p` and no information hook exists.
 
-- [ ] **Step 3: Replace the caption with the shared information title**
+- [x] **Step 3: Replace the caption with the shared information title**
 
 Import `TitleWithInfo` and render:
 
@@ -143,11 +143,11 @@ Import `TitleWithInfo` and render:
 
 Keep the legend margin, SVG, axes, point controls, exact table, and empty state unchanged.
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
 Run the focused command again. Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/dashboard/DashboardCharts.tsx src/features/dashboard/DashboardCharts.test.tsx
@@ -170,7 +170,7 @@ git commit -m "fix: move dashboard chart notes into info controls"
 - Consumes: `AnalyticsRankingItem`.
 - Produces: `buildAnalyticsRankingDetailLocation(item): { pathname: string; search: string }` and `onOpenDetail(item)` passed from Dashboard to each panel.
 
-- [ ] **Step 1: Write failing route and row interaction tests**
+- [x] **Step 1: Write failing route and row interaction tests**
 
 Cover the exact route contract:
 
@@ -191,7 +191,7 @@ expect(buildAnalyticsRankingDetailLocation(customerItem)).toEqual({
 
 Mount the ranking panel with `onOpenDetail`, then verify click, Enter, and Space call it with the unchanged formal item while TEST badges and metric toggles remain present.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 ```bash
 npm test -- src/features/dashboard/analyticsRankingDetailRoute.test.ts src/features/dashboard/AnalyticsRankingPanel.test.tsx src/features/dashboard/AnalyticsRankingsSection.test.tsx src/pages/admin/DashboardPage.test.ts
@@ -199,7 +199,7 @@ npm test -- src/features/dashboard/analyticsRankingDetailRoute.test.ts src/featu
 
 Expected: FAIL because the route builder, callback props, and row controls do not exist.
 
-- [ ] **Step 3: Implement the pure route builder and callback plumbing**
+- [x] **Step 3: Implement the pure route builder and callback plumbing**
 
 Use `URLSearchParams` and positive integer IDs. Both `service` and `technician_service` target the existing service-management surface; the entity type remains represented by the analytics item and must never be coerced into a technician or user ID.
 
@@ -222,11 +222,11 @@ export function buildAnalyticsRankingDetailLocation(item: AnalyticsRankingItem) 
 
 Render each list item with an inner full-width `<button>` preserving the current grid. Add `data-ranking-detail-control="true"`, a translated aria-label, hover/focus styles, and `onClick={() => onOpenDetail(item)}`. Let native button semantics provide Enter/Space activation.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the focused command again. Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/dashboard/analyticsRankingDetailRoute.ts src/features/dashboard/analyticsRankingDetailRoute.test.ts src/features/dashboard/AnalyticsRankingPanel.tsx src/features/dashboard/AnalyticsRankingPanel.test.tsx src/features/dashboard/AnalyticsRankingsSection.tsx src/features/dashboard/AnalyticsRankingsSection.test.tsx src/pages/admin/DashboardPage.tsx src/pages/admin/DashboardPage.test.ts
@@ -249,7 +249,7 @@ git commit -m "feat: link dashboard rankings to formal details"
 - Consumes: `detailServiceId`, `detailTechnicianId`, and `detailUserId` positive-integer URL parameters.
 - Produces: the same existing service, technician, and user drawers opened from a stable URL.
 
-- [ ] **Step 1: Add failing deep-link tests**
+- [x] **Step 1: Add failing deep-link tests**
 
 For each target page, mount under a memory router with its deep-link query. Resolve the current formal API mock and assert the existing drawer title/content becomes visible. Add invalid cases for `0`, negative, decimal, and non-numeric values and assert no detail request occurs.
 
@@ -259,7 +259,7 @@ For each target page, mount under a memory router with its deep-link query. Reso
 </MemoryRouter>
 ```
 
-- [ ] **Step 2: Run target-page tests and verify RED**
+- [x] **Step 2: Run target-page tests and verify RED**
 
 ```bash
 npm test -- src/pages/admin/MerchantsPage.deep-link.test.tsx src/pages/admin/TechniciansPage.test.tsx src/features/platform-user-management/UserListPage.test.tsx
@@ -267,7 +267,7 @@ npm test -- src/pages/admin/MerchantsPage.deep-link.test.tsx src/pages/admin/Tec
 
 Expected: FAIL because none of the pages consumes the new URL parameters.
 
-- [ ] **Step 3: Add one shared positive-integer parser**
+- [x] **Step 3: Add one shared positive-integer parser**
 
 Create or reuse a small route utility local to admin pages:
 
@@ -282,7 +282,7 @@ export function readPositiveIntegerSearchParam(params: URLSearchParams, key: str
 
 Use it in all three pages. `TechniciansPage` calls its existing `technicianDetailRequest.load`. `UserListPage` initializes `selectedUserId`, allowing the existing `UserDetailDrawer` to fetch. `MerchantsPage` selects the matching item after the existing formal services request resolves, switches to the existing “服务项目” tab, and opens the existing “服务项目详情” drawer. If the ID is absent from the authorized response, keep the list visible and show the existing formal error area rather than inventing data.
 
-- [ ] **Step 4: Run target-page and ranking tests and verify GREEN**
+- [x] **Step 4: Run target-page and ranking tests and verify GREEN**
 
 ```bash
 npm test -- src/pages/admin/MerchantsPage.deep-link.test.tsx src/pages/admin/TechniciansPage.test.tsx src/features/platform-user-management/UserListPage.test.tsx src/features/dashboard/analyticsRankingDetailRoute.test.ts src/features/dashboard/AnalyticsRankingPanel.test.tsx
@@ -290,7 +290,7 @@ npm test -- src/pages/admin/MerchantsPage.deep-link.test.tsx src/pages/admin/Tec
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pages/admin/MerchantsPage.tsx src/pages/admin/MerchantsPage.deep-link.test.tsx src/pages/admin/TechniciansPage.tsx src/pages/admin/TechniciansPage.test.tsx src/features/platform-user-management/UserListPage.tsx src/features/platform-user-management/UserListPage.test.tsx src/pages/admin/adminSearchParams.ts src/pages/admin/adminSearchParams.test.ts
@@ -306,7 +306,7 @@ git commit -m "feat: restore formal detail drawers from dashboard links"
 - Consumes: completed Tasks 1–4.
 - Produces: verified local `main` with no staging deployment or remote push.
 
-- [ ] **Step 1: Run focused dashboard and target-page tests**
+- [x] **Step 1: Run focused dashboard and target-page tests**
 
 ```bash
 npm test -- src/features/dashboard/DashboardMetricSparkline.test.tsx src/features/dashboard/DashboardMetricCard.test.tsx src/features/dashboard/DashboardCharts.test.tsx src/features/dashboard/analyticsRankingDetailRoute.test.ts src/features/dashboard/AnalyticsRankingPanel.test.tsx src/features/dashboard/AnalyticsRankingsSection.test.tsx src/pages/admin/DashboardPage.test.ts src/pages/admin/MerchantsPage.deep-link.test.tsx src/pages/admin/TechniciansPage.test.tsx src/features/platform-user-management/UserListPage.test.tsx
@@ -314,7 +314,7 @@ npm test -- src/features/dashboard/DashboardMetricSparkline.test.tsx src/feature
 
 Expected: PASS.
 
-- [ ] **Step 2: Run full frontend verification**
+- [x] **Step 2: Run full frontend verification**
 
 ```bash
 npm test
@@ -324,7 +324,7 @@ npm run verify:production-build
 
 Expected: all tests PASS, TypeScript exits 0, production build and bundle audit PASS.
 
-- [ ] **Step 3: Perform authenticated browser acceptance**
+- [x] **Step 3: Perform authenticated browser acceptance**
 
 Using the current local backend/frontend listeners and signed-in operations tab:
 
@@ -336,7 +336,7 @@ Using the current local backend/frontend listeners and signed-in operations tab:
 6. Verify the large-chart point detail still works, TEST remains red, ranking dividers remain aligned, and document width equals viewport width.
 7. Inspect runtime/browser errors generated by these interactions.
 
-- [ ] **Step 4: Verify repository and release boundaries**
+- [x] **Step 4: Verify repository and release boundaries**
 
 ```bash
 git status --short --branch
