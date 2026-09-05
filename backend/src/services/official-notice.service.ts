@@ -415,7 +415,8 @@ export class OfficialNoticeService {
 
   private targetSummary(audience: NoticeAudienceInput): string {
     if (audience.type === "all") return "全体用户";
-    if (audience.type === "exact_users") return `指定账号 ${audience.userIds.length} 个`;
+    if (audience.type === "exact_users")
+      return `指定账号 ${new Set(audience.needoIds).size} 个`;
     if (audience.type === "identity_types")
       return [...new Set(audience.identityTypes.map((type) => identityLabels[type] ?? type))].join(
         " / "

@@ -122,7 +122,10 @@ const audienceSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("exact_users"),
-      userIds: z.array(z.number().int().positive()).min(1).max(500)
+      needoIds: z
+        .array(z.string().trim().regex(/^u[0-9]{10}$/u))
+        .min(1)
+        .max(500)
     })
     .strict()
 ]);

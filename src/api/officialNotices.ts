@@ -43,6 +43,7 @@ export type MerchantNoticeAudience = {
 };
 export type PlatformNoticeAudience =
   | { type: "all" }
+  | { type: "exact_users"; needoIds: string[] }
   | {
       type: "identity_types";
       identityTypes: Array<

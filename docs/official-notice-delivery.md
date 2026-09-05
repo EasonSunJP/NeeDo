@@ -27,6 +27,11 @@ cancel/archive/retry operations under `/merchant-admin/official-notices`.
 Both management list endpoints accept the same bounded `search` query and match
 persisted notice public IDs, audience summaries, and locale titles/summaries on
 the server; the browser never filters only the currently loaded page.
+Operations exact-account delivery searches the formal global account directory
+under `backoffice:users:read` by email, phone or NeeDoID. The create request sends
+only public `needoIds`; the notice repository resolves them again and rejects any
+account without an active, non-deleted identity. Internal `userIds` and friend
+lists are not accepted as targeting inputs.
 Every merchant operation derives its shop and acting identity from the verified
 session. The request cannot supply a shop, issuer, recipient user or platform
 audience. Dedicated `merchant-admin:notice:*` permissions are granted to the

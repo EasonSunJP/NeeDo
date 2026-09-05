@@ -102,4 +102,22 @@ describe("official notice OpenAPI", () => {
       ])
     );
   });
+
+  it("documents public NeeDo IDs for exact-account delivery without exposing internal user IDs", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const variants = response.body.components.schemas.OfficialNoticeAudience.oneOf;
+    const exactUsers = variants.find(
+      (variant: { properties?: { type?: { enum?: string[] } } }) =>
+        variant.properties?.type?.enum?.includes("exact_users")
+    );
+
+    expect(exactUsers.required).toEqual(["type", "needoIds"]);
+    expect(exactUsers.properties.needoIds).toMatchObject({
+      type: "array",
+      minItems: 1,
+      maxItems: 500,
+      items: { type: "string", pattern: "^u[0-9]{10}$" }
+    });
+    expect(exactUsers.properties.userIds).toBeUndefined();
+  });
 });

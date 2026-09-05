@@ -99,7 +99,7 @@ async function main(): Promise<void> {
           title: marker,
           summary: "Local rollback acceptance",
           blocks: [{ id: "text-1", type: "paragraph", content: "Persisted notice acceptance" }],
-          audience: { type: "exact_users", userIds: [sender.id] },
+          audience: { type: "exact_users", needoIds: [sender.needoId] },
           sendMode: "now",
           scheduledAt: null,
           idempotencyKey: marker
@@ -354,7 +354,7 @@ async function checkConcurrentDelivery() {
         title: marker,
         summary: marker,
         blocks: [{ id: "p-1", type: "paragraph", content: marker }],
-        audience: { type: "exact_users", userIds: [user.id] },
+        audience: { type: "exact_users", needoIds: [user.needoId] },
         sendMode: "scheduled",
         scheduledAt: dueAt.toISOString(),
         idempotencyKey: marker
