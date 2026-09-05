@@ -21812,7 +21812,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Shop updated" },
           "400": jsonErrorResponse(
-            "error.administrative_region.invalid_hierarchy; error.administrative_region.verifier_required"
+            "error.administrative_region.invalid_hierarchy; error.administrative_region.verifier_required; error.shop.public_number_required"
           ),
           "404": { description: "Shop not found" }
         }
