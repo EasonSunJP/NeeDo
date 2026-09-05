@@ -138,6 +138,14 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                 username: `${marker}-customer`
               }
             });
+            const testCustomer = await tx.user.create({
+              data: {
+                needoId: `u5${Date.now().toString().slice(-9)}`,
+                email: `${marker}-test-customer@needo.local`,
+                username: `${marker}-test-customer`,
+                isTestAccount: true
+              }
+            });
             const technicianUser = await tx.user.create({
               data: {
                 needoId: `u6${Date.now().toString().slice(-9)}`,
@@ -147,6 +155,9 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
             });
             await tx.customerProfile.create({
               data: { userId: customer.id, displayName: `${marker}-customer` }
+            });
+            await tx.customerProfile.create({
+              data: { userId: testCustomer.id, displayName: `${marker}-test-customer` }
             });
             const category = await tx.category.create({ data: { code: marker, name: marker } });
             const shop = await tx.shop.create({
@@ -206,7 +217,11 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               where: { activeKey: "ndp_exchange_rate" }
             });
 
-            const createFormalOrder = async (method: "NDP" | "CASH" | "OTHER", ordinal: number) => {
+            const createFormalOrder = async (
+              method: "NDP" | "CASH" | "OTHER",
+              ordinal: number,
+              orderCustomer = customer
+            ) => {
               const addOnCount = method === "NDP" ? 2 : 1;
               const addOnAmountJpy = 2_000 * addOnCount;
               const discountAmountJpy = method === "NDP" ? 1_000 : 0;
@@ -225,7 +240,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               const order = await tx.bookingOrder.create({
                 data: {
                   orderNo: `${marker}-${ordinal}`,
-                  customerUserId: customer.id,
+                  customerUserId: orderCustomer.id,
                   serviceId: method === "CASH" ? null : service.id,
                   technicianServiceId: method === "CASH" ? technicianService.id : null,
                   shopId: shop.id,
@@ -258,7 +273,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                   paymentAmountJpy: checkoutAmountJpy,
                   paymentConfirmedById:
                     method === "NDP"
-                      ? customer.id
+                      ? orderCustomer.id
                       : method === "CASH"
                         ? technicianUser.id
                         : operator.id,
@@ -298,7 +313,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                       },
                       proposedByUserId: technicianUser.id,
                       proposedAt: new Date(selectedAt.getTime() - 1000),
-                      acceptedByUserId: customer.id,
+                      acceptedByUserId: orderCustomer.id,
                       acceptedAt: selectedAt
                     }
                   })
@@ -342,7 +357,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                   serviceSessionId: session.id,
                   orderCheckoutId: checkout.id,
                   eventType: "PAYMENT_METHOD_SELECTED",
-                  actorUserId: customer.id,
+                  actorUserId: orderCustomer.id,
                   idempotencyKey: `${marker}-${ordinal}-selected`,
                   occurredAt: selectedAt,
                   metadata:
@@ -365,7 +380,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                     type: "BOOKING_COMPLETE_SETTLEMENT",
                     referenceType: "order_checkout_payment",
                     referenceId: checkout.id,
-                    actorUserId: customer.id,
+                    actorUserId: orderCustomer.id,
                     amount: payableNdp,
                     currency: "NDP",
                     createdAt: confirmedAt
@@ -387,7 +402,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                     serviceSessionId: session.id,
                     orderCheckoutId: checkout.id,
                     eventType: "NDP_PAYMENT_APPLIED",
-                    actorUserId: customer.id,
+                    actorUserId: orderCustomer.id,
                     idempotencyKey: `${marker}-${ordinal}-paid`,
                     reason: "checkout_ndp_payment_applied",
                     occurredAt: confirmedAt,
@@ -496,6 +511,109 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                 }
               }
             }
+
+            const testCompletion = await createFormalOrder("NDP", 4, testCustomer);
+            const mixedServiceRanking = await repository.listRankings({
+              kind: "service",
+              metric: "gmv",
+              window,
+              evaluatedAt,
+              city: "东京",
+              categoryId: category.id,
+              page: 1,
+              pageSize: 10
+            });
+            expect(
+              mixedServiceRanking.list.find((item) => item.entityPublicId === service.publicId)
+            ).toMatchObject({
+              gmvJpy: 28_000,
+              completedCount: 3,
+              testGmvJpy: 9_000,
+              testCompletedCount: 1,
+              dataComposition: "mixed"
+            });
+            const mixedTechnicianRanking = await repository.listRankings({
+              kind: "technician",
+              metric: "gmv",
+              window,
+              evaluatedAt,
+              city: "东京",
+              categoryId: category.id,
+              page: 1,
+              pageSize: 10
+            });
+            expect(mixedTechnicianRanking.list[0]).toMatchObject({
+              entityPublicId: technicianUser.needoId,
+              gmvJpy: 50_000,
+              completedCount: 4,
+              testGmvJpy: 13_000,
+              testCompletedCount: 1,
+              dataComposition: "mixed"
+            });
+            const mixedCustomerRanking = await repository.listRankings({
+              kind: "customer",
+              metric: "gmv",
+              window,
+              evaluatedAt,
+              city: "东京",
+              categoryId: category.id,
+              page: 1,
+              pageSize: 10
+            });
+            expect(mixedCustomerRanking.list).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  entityPublicId: customer.needoId,
+                  testGmvJpy: 0,
+                  testCompletedCount: 0,
+                  dataComposition: "formal"
+                }),
+                expect.objectContaining({
+                  entityPublicId: testCustomer.needoId,
+                  gmvJpy: 13_000,
+                  completedCount: 1,
+                  testGmvJpy: 13_000,
+                  testCompletedCount: 1,
+                  dataComposition: "test"
+                })
+              ])
+            );
+
+            await tx.orderCheckout.update({
+              where: { id: testCompletion.checkout.id },
+              data: {
+                calculationSnapshotJson: {
+                  formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
+                  baseAmountJpy: 10_000,
+                  addOnAmountJpy: 4_000,
+                  discountAmountJpy: 1_000,
+                  checkoutAmountJpy: 12_999,
+                  acceptedAddOnIds: testCompletion.addOns.map((addOn) => addOn.id)
+                }
+              }
+            });
+            await expect(
+              repository.listRankings({
+                kind: "customer",
+                metric: "gmv",
+                window,
+                evaluatedAt,
+                city: "东京",
+                categoryId: category.id,
+                page: 1,
+                pageSize: 10
+              })
+            ).rejects.toBeInstanceOf(AnalyticsRankingIncompleteEvidenceError);
+            await tx.bookingOrder.update({
+              where: { id: testCompletion.order.id },
+              data: {
+                paymentStatus: "REFUNDED",
+                paymentRefundedById: operator.id,
+                paymentRefundedAt: new Date(confirmedAt.getTime() + 60_000),
+                paymentRefundReference: `${marker}-test-reversal`,
+                paymentRefundReason: "test_fixture_reversal"
+              }
+            });
 
             const customerRanking = (
               city: string | null = "东京",
