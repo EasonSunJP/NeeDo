@@ -52,6 +52,11 @@ const ADMIN_SEED_AUDIT_NAMESPACE = "lifedance_real_ops_v1";
 const SEED_PRISMA_LOG_LEVELS: Prisma.LogLevel[] = ["error"];
 const administrativeRegionCatalog =
   administrativeRegionCatalogJson as AdministrativeRegionCatalog;
+export const ADMINISTRATIVE_REGION_SEED_BATCH_SIZE = 100;
+export const ADMINISTRATIVE_REGION_SEED_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000
+} as const;
 export const DEFAULT_REQUEST_DISPATCH_FEE_NDP = 500;
 export const CUSTOMER_REQUEST_WALLET_SEED_NDP = DEFAULT_REQUEST_DISPATCH_FEE_NDP * 2;
 
@@ -616,67 +621,94 @@ export const seedShopServiceTaxonomyCatalog = async (
 };
 
 export const seedAdministrativeRegionCatalog = async (
-  tx: Prisma.TransactionClient
+  prisma: PrismaClient
 ): Promise<void> => {
   const regionIdByOfficialCode = new Map<string, number>();
 
-  for (const regionSeed of administrativeRegionCatalog.regions) {
-    const parentId = regionSeed.parentOfficialCode
-      ? regionIdByOfficialCode.get(regionSeed.parentOfficialCode)
-      : null;
+  for (const level of ["COUNTRY", "ADMIN1", "ADMIN2"] as const) {
+    const levelRegions = administrativeRegionCatalog.regions.filter(
+      (region) => region.level === level
+    );
 
-    if (regionSeed.parentOfficialCode && parentId === undefined) {
-      throw new Error(
-        `Administrative region seed failed: missing parent ${regionSeed.parentOfficialCode}.`
+    for (
+      let offset = 0;
+      offset < levelRegions.length;
+      offset += ADMINISTRATIVE_REGION_SEED_BATCH_SIZE
+    ) {
+      const batch = levelRegions.slice(
+        offset,
+        offset + ADMINISTRATIVE_REGION_SEED_BATCH_SIZE
       );
+      const seededRegions = await prisma.$transaction(
+        async (tx) =>
+          Promise.all(
+            batch.map(async (regionSeed) => {
+              const parentId = regionSeed.parentOfficialCode
+                ? regionIdByOfficialCode.get(regionSeed.parentOfficialCode)
+                : null;
+
+              if (regionSeed.parentOfficialCode && parentId === undefined) {
+                throw new Error(
+                  `Administrative region seed failed: missing parent ${regionSeed.parentOfficialCode}.`
+                );
+              }
+
+              const region = await tx.administrativeRegion.upsert({
+                where: {
+                  countryCode_officialCode: {
+                    countryCode: regionSeed.countryCode,
+                    officialCode: regionSeed.officialCode
+                  }
+                },
+                create: {
+                  countryCode: regionSeed.countryCode,
+                  officialCode: regionSeed.officialCode,
+                  level: regionSeed.level,
+                  parentId,
+                  centroidLat: regionSeed.centroidLat,
+                  centroidLng: regionSeed.centroidLng,
+                  source: regionSeed.source,
+                  sourceVersion: regionSeed.sourceVersion
+                },
+                update: {
+                  level: regionSeed.level,
+                  parentId,
+                  centroidLat: regionSeed.centroidLat,
+                  centroidLng: regionSeed.centroidLng,
+                  source: regionSeed.source,
+                  sourceVersion: regionSeed.sourceVersion,
+                  deletedAt: null
+                }
+              });
+
+              await tx.administrativeRegionLocale.upsert({
+                where: {
+                  regionId_locale: {
+                    regionId: region.id,
+                    locale: "JA"
+                  }
+                },
+                create: {
+                  regionId: region.id,
+                  locale: "JA",
+                  name: regionSeed.nameJa
+                },
+                update: {
+                  name: regionSeed.nameJa,
+                  deletedAt: null
+                }
+              });
+
+              return { id: region.id, officialCode: regionSeed.officialCode };
+            })
+          ),
+        ADMINISTRATIVE_REGION_SEED_TRANSACTION_OPTIONS
+      );
+
+      for (const region of seededRegions) {
+        regionIdByOfficialCode.set(region.officialCode, region.id);
+      }
     }
-
-    const region = await tx.administrativeRegion.upsert({
-      where: {
-        countryCode_officialCode: {
-          countryCode: regionSeed.countryCode,
-          officialCode: regionSeed.officialCode
-        }
-      },
-      create: {
-        countryCode: regionSeed.countryCode,
-        officialCode: regionSeed.officialCode,
-        level: regionSeed.level,
-        parentId,
-        centroidLat: regionSeed.centroidLat,
-        centroidLng: regionSeed.centroidLng,
-        source: regionSeed.source,
-        sourceVersion: regionSeed.sourceVersion
-      },
-      update: {
-        level: regionSeed.level,
-        parentId,
-        centroidLat: regionSeed.centroidLat,
-        centroidLng: regionSeed.centroidLng,
-        source: regionSeed.source,
-        sourceVersion: regionSeed.sourceVersion,
-        deletedAt: null
-      }
-    });
-    regionIdByOfficialCode.set(regionSeed.officialCode, region.id);
-
-    await tx.administrativeRegionLocale.upsert({
-      where: {
-        regionId_locale: {
-          regionId: region.id,
-          locale: "JA"
-        }
-      },
-      create: {
-        regionId: region.id,
-        locale: "JA",
-        name: regionSeed.nameJa
-      },
-      update: {
-        name: regionSeed.nameJa,
-        deletedAt: null
-      }
-    });
   }
 };
 
@@ -4344,8 +4376,9 @@ export const seedUserManagement = async (
     }
 
     await seedShopServiceTaxonomyCatalog(tx);
-    await seedAdministrativeRegionCatalog(tx);
   });
+
+  await seedAdministrativeRegionCatalog(prisma);
 
   const testUsers = await prisma.user.findMany({
     where: { isTestAccount: true, deletedAt: null },

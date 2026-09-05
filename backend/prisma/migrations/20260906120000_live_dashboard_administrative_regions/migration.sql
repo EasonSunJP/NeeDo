@@ -13,7 +13,7 @@ CREATE TABLE `administrative_regions` (
   `deleted_at` DATETIME(3) NULL,
 
   CONSTRAINT `administrative_regions_country_code_chk`
-    CHECK (`country_code` REGEXP '^[A-Z]{2}$'),
+    CHECK (REGEXP_LIKE(`country_code`, '^[A-Z]{2}$', 'c')),
   UNIQUE INDEX `administrative_regions_country_code_key` (`country_code`, `official_code`),
   INDEX `administrative_regions_hierarchy_idx` (`country_code`, `level`, `parent_id`, `deleted_at`),
   PRIMARY KEY (`id`)
@@ -47,7 +47,7 @@ CREATE TABLE `shop_service_locations` (
   `deleted_at` DATETIME(3) NULL,
 
   CONSTRAINT `shop_service_locations_country_code_chk`
-    CHECK (`country_code` REGEXP '^[A-Z]{2}$'),
+    CHECK (REGEXP_LIKE(`country_code`, '^[A-Z]{2}$', 'c')),
   UNIQUE INDEX `shop_service_locations_shop_id_key` (`shop_id`),
   INDEX `shop_service_locations_scope_idx` (`country_code`, `admin1_region_id`, `admin2_region_id`, `deleted_at`),
   INDEX `shop_service_locations_verified_by_id_idx` (`verified_by_id`),
@@ -71,7 +71,7 @@ CREATE TABLE `booking_service_locations` (
   `deleted_at` DATETIME(3) NULL,
 
   CONSTRAINT `booking_service_locations_country_code_chk`
-    CHECK (`country_code` REGEXP '^[A-Z]{2}$'),
+    CHECK (REGEXP_LIKE(`country_code`, '^[A-Z]{2}$', 'c')),
   CONSTRAINT `booking_service_locations_verified_regions_chk`
     CHECK (`resolution_status` <> 'VERIFIED' OR (`admin1_region_code` IS NOT NULL AND `admin2_region_code` IS NOT NULL)),
   CONSTRAINT `booking_service_locations_admin2_requires_admin1_chk`
