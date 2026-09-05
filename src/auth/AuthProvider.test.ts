@@ -443,7 +443,8 @@ const customerIdentity = {
   publicId: "u0000000007",
   scopeId: 41,
   scopeType: "customer_profile",
-  type: "customer"
+  type: "customer",
+  displayName: "用户"
 };
 
 const technicianIdentity = {
@@ -451,7 +452,8 @@ const technicianIdentity = {
   publicId: "s0000000007",
   scopeId: 42,
   scopeType: "technician_profile",
-  type: "technician"
+  type: "technician",
+  displayName: "技师"
 };
 
 const merchantStoreIdentity = {
@@ -459,7 +461,8 @@ const merchantStoreIdentity = {
   publicId: "b0000000007",
   scopeId: 43,
   scopeType: "shop",
-  type: "merchant_owner"
+  type: "merchant_owner",
+  displayName: "店铺负责人"
 };
 
 const merchantOrganizationIdentity = {
@@ -467,7 +470,8 @@ const merchantOrganizationIdentity = {
   publicId: "o0000000007",
   scopeId: 9,
   scopeType: "merchant_account",
-  type: "merchant_organization"
+  type: "merchant_organization",
+  displayName: "商户组织"
 };
 
 const platformIdentity = {
@@ -475,7 +479,8 @@ const platformIdentity = {
   publicId: null,
   scopeId: null,
   scopeType: "global",
-  type: "platform"
+  type: "platform",
+  displayName: "平台管理员"
 };
 
 const customerMe: AuthMePayload = {
@@ -489,6 +494,7 @@ const customerMe: AuthMePayload = {
   hasPassword: true,
   username: "u0000000007",
   avatarUrl: null,
+  profileDisplayName: "u0000000007",
   isActive: true,
   isTestAccount: false,
   currentIdentity: customerIdentity,
@@ -657,6 +663,7 @@ function storedCustomerSession(overrides: Partial<AuthSession> = {}): AuthSessio
     emailVerifiedAt: customerMe.emailVerifiedAt,
     hasPassword: customerMe.hasPassword,
     avatarUrl: null,
+    profileDisplayName: customerMe.profileDisplayName,
     portal: "user",
     allowedPortals: ["user"],
     loginMethod: "google",
@@ -1144,7 +1151,8 @@ describe("AuthProvider formal registration and Google sessions", () => {
       publicId: null,
       scopeId: null,
       scopeType: "global",
-      type: "platform"
+      type: "platform",
+      displayName: "平台管理员"
     };
     mocked.authApi.verifyRegistration.mockImplementation(async () => {
       persistTokens("registration-access", "registration-refresh");

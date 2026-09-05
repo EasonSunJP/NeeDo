@@ -52,7 +52,7 @@ describe("formal platform user-management routes", () => {
 
   it("keeps the three old user-management entries as replace redirects", () => {
     expect(appSource).toContain('path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)}');
-    expect(appSource).toContain('path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><DataCenterPage /></LegacyUserManagementRedirect>)}');
+    expect(appSource).toContain('path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><Suspense fallback={null}><DataCenterPage /></Suspense></LegacyUserManagementRedirect>)}');
     expect(appSource).toContain('<LegacyUserManagementRedirect source="users"><Suspense fallback={null}><PlatformUserListPage /></Suspense></LegacyUserManagementRedirect>');
   });
 });

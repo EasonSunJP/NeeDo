@@ -310,6 +310,10 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
     passwordHash,
     username: "admin",
     avatarUrl: null,
+    customerProfile: {
+      displayName: "运营者用户端姓名",
+      deletedAt: null as Date | null
+    },
     isActive: true,
     isTestAccount: true,
     sessionGeneration: 0,
@@ -1657,8 +1661,10 @@ describe("verified email registration and formal password authentication", () =>
         type: "platform",
         scopeType: "global",
         scopeId: null,
-        publicId: "needo1234567890"
+        publicId: "needo1234567890",
+        displayName: "admin"
       },
+      profileDisplayName: "运营者用户端姓名",
       activeIdentityId: 10,
       activePublicId: "needo1234567890",
       primaryPublicId: "needo1234567890",
@@ -1671,7 +1677,8 @@ describe("verified email registration and formal password authentication", () =>
       expect.objectContaining({
         id: 10,
         type: "platform",
-        publicId: "needo1234567890"
+        publicId: "needo1234567890",
+        displayName: "admin"
       })
     ]);
     expect(meResponse.body.data.identities).not.toEqual(
@@ -1713,6 +1720,23 @@ describe("verified email registration and formal password authentication", () =>
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.TOKEN_BLACKLISTED);
       });
+  });
+
+  it("does not project a soft-deleted customer profile through /auth/me", async () => {
+    const fixture = await createAuthFixture();
+    fixture.user.customerProfile.displayName = "不应返回的软删除姓名";
+    fixture.user.customerProfile.deletedAt = new Date("2026-08-27T00:00:00.000Z");
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    const response = await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .expect(200);
+
+    expect(response.body.data.profileDisplayName).toBeNull();
   });
 
   it("exposes and switches to a platform account customer identity with the shared NeeDo ID", async () => {

@@ -40,6 +40,7 @@ import type {
   BackofficeDashboardPayload,
   DashboardAggregateFacts,
   DashboardAggregateInput,
+  DashboardHeadlineSeriesPoint,
   DashboardMetricComparison,
   DashboardNdpPair,
   DashboardPlatformGlobalNdpPair
@@ -839,6 +840,9 @@ export interface BackofficeNdpSummaryPayload {
 
 export interface BackofficeRepositoryPort {
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
+  getHeadlineSeries3d: (
+    input: DashboardAggregateInput
+  ) => Promise<DashboardHeadlineSeriesPoint[]>;
   listManagedUsers: (
     input: BackofficeScope & BackofficeManagedUserListQuery,
     occurredAt: Date
@@ -1052,6 +1056,14 @@ export class BackofficeService {
   ): Promise<BackofficeDashboardPayload> {
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     const city = query.city ?? null;
     await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard", {
       period: window.period,
@@ -1060,13 +1072,25 @@ export class BackofficeService {
       city,
       shopId: null
     });
-    const aggregate = await this.repository.getDashboard({
-      scope: { kind: "platform" },
-      city,
+    const scope = { kind: "platform" } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({ scope, city, window, evaluatedAt }),
+      this.repository.getHeadlineSeries3d({
+        scope,
+        city,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
       window,
+      headlineWindow,
+      headlineBuckets,
+      city,
+      null,
       evaluatedAt
-    });
-    return this.composeDashboard(aggregate, window, city, null, evaluatedAt);
+    );
   }
 
   public async listManagedUsers(
@@ -1150,6 +1174,14 @@ export class BackofficeService {
     const scope = this.getMerchantScope(actor);
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
       period: window.period,
       from: window.fromDate,
@@ -1157,13 +1189,30 @@ export class BackofficeService {
       city: null,
       shopId: scope.shopId
     });
-    const aggregate = await this.repository.getDashboard({
-      scope: { kind: "shop", shopId: scope.shopId },
-      city: null,
+    const dashboardScope = { kind: "shop", shopId: scope.shopId } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({
+        scope: dashboardScope,
+        city: null,
+        window,
+        evaluatedAt
+      }),
+      this.repository.getHeadlineSeries3d({
+        scope: dashboardScope,
+        city: null,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
       window,
+      headlineWindow,
+      headlineBuckets,
+      null,
+      scope.shopId,
       evaluatedAt
-    });
-    return this.composeDashboard(aggregate, window, null, scope.shopId, evaluatedAt);
+    );
   }
 
   public async listManageableMerchantShops(
@@ -1325,6 +1374,8 @@ export class BackofficeService {
   private composeDashboard(
     aggregate: DashboardAggregateFacts,
     window: ReturnType<typeof resolveDashboardWindow>,
+    headlineWindow: ReturnType<typeof resolveDashboardWindow>,
+    headlineBuckets: DashboardHeadlineSeriesPoint[],
     city: string | null,
     shopId: number | null,
     evaluatedAt: Date
@@ -1405,6 +1456,12 @@ export class BackofficeService {
           shopEstimatedGrossProfitJpy:
             aggregate.finance.bucketShopEstimatedGrossProfitJpy.get(bucket.key) ?? 0
         }))
+      },
+      headlineSeries3d: {
+        from: headlineWindow.fromDate,
+        to: headlineWindow.toDate,
+        timeZone: "Asia/Tokyo",
+        buckets: headlineBuckets
       },
       finance: {
         platformNetRevenue: aggregate.finance.platformNetRevenue,

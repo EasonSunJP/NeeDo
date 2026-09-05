@@ -49,6 +49,12 @@ const main = async (): Promise<void> => {
           throw new Error("LifeDance admin2 technician profile was not found.");
         }
 
+        const compensationProfileId =
+          await provisioning.ensureLifeDanceAdmin2CompensationProfile(tx, {
+            shopId: shop.id,
+            technicianProfileId: technicianProfile.id,
+            adminUserId: admin.id
+          });
         const inventory = await provisioning.ensureLifeDanceAdmin2BookingInventory(tx, {
           shopId: shop.id,
           technicianProfileId: technicianProfile.id
@@ -62,6 +68,7 @@ const main = async (): Promise<void> => {
             metadata: {
               userId: user.id,
               technicianProfileId: technicianProfile.id,
+              compensationProfileId,
               serviceId: inventory.serviceId,
               availableSlotCount: inventory.availableSlotCount
             }
@@ -72,6 +79,7 @@ const main = async (): Promise<void> => {
           userId: user.id,
           shopId: shop.id,
           technicianProfileId: technicianProfile.id,
+          compensationProfileId,
           ...inventory
         };
       },

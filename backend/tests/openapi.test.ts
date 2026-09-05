@@ -114,6 +114,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/merchant-shop/switch");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    expect(response.body.components.schemas.AuthMe.required).toEqual(
+      expect.arrayContaining(["profileDisplayName"])
+    );
+    expect(response.body.components.schemas.AuthMe.properties.profileDisplayName).toEqual({
+      type: ["string", "null"]
+    });
+    expect(response.body.components.schemas.AuthIdentity.required).toEqual(
+      expect.arrayContaining(["displayName"])
+    );
+    expect(response.body.components.schemas.AuthIdentity.properties.displayName).toEqual({
+      type: ["string", "null"]
+    });
     [
       "/api/v1/social/posts/{id}/like",
       "/api/v1/social/posts/{id}/bookmark",
@@ -794,7 +806,42 @@ describe("GET /api/v1/openapi.json", () => {
     expect(dashboardSchemas.Dashboard).toMatchObject({
       type: "object",
       additionalProperties: false,
-      required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"]
+      required: [
+        "filter",
+        "summary",
+        "series",
+        "headlineSeries3d",
+        "finance",
+        "shop",
+        "membership",
+        "scope"
+      ]
+    });
+    expect(dashboardSchemas.DashboardHeadlineSeriesPoint).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "key",
+        "label",
+        "availableScheduleSlots",
+        "activeTechnicians",
+        "registeredTechnicians",
+        "shopCount",
+        "newCustomers"
+      ]
+    });
+    expect(dashboardSchemas.Dashboard.properties.headlineSeries3d).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["from", "to", "timeZone", "buckets"],
+      properties: {
+        buckets: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: { $ref: "#/components/schemas/DashboardHeadlineSeriesPoint" }
+        }
+      }
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.walletStock).toEqual({
       oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]

@@ -262,6 +262,7 @@ describe("merchant-account selected shop scope", () => {
   it("uses Shop B across dashboard, orders, schedule, finance, employees, and settings reads/writes", async () => {
     const repository = {
       getDashboard: jest.fn(async () => dashboardFacts),
+      getHeadlineSeries3d: jest.fn(async () => []),
       listOrders: jest.fn(async () => emptyPage),
       listSchedule: jest.fn(async () => emptyPage),
       listFinanceSettlements: jest.fn(async () => emptyPage),
@@ -285,6 +286,9 @@ describe("merchant-account selected shop scope", () => {
     await service.updateMerchantShop({ name: "Shop B updated" }, selectedShopBActor, context);
 
     expect(repository.getDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: { kind: "shop", shopId: SHOP_B_ID } })
+    );
+    expect(repository.getHeadlineSeries3d).toHaveBeenCalledWith(
       expect.objectContaining({ scope: { kind: "shop", shopId: SHOP_B_ID } })
     );
     expect(repository.listOrders).toHaveBeenCalledWith(

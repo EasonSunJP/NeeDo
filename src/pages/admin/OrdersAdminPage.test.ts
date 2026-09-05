@@ -38,4 +38,11 @@ describe("OrdersAdminPage formal operations workflow", () => {
     expect(source).toContain("createdAt");
     expect(source).toContain("startsAt");
   });
+
+  it("restores and synchronizes supported sidebar deep-link parameters", () => {
+    expect(source).toContain("useSearchParams");
+    expect(source).toContain('searchParams.get("status")');
+    expect(source).toContain('searchParams.get("orderId")');
+    expect(source).toContain("setSearchParams");
+  });
 });

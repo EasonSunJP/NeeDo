@@ -56,6 +56,16 @@ const dashboardPayload = {
     serviceGmvJpy: 0
   },
   series: { buckets: [] },
+  headlineSeries3d: {
+    from: "2026-08-30",
+    to: "2026-09-01",
+    timeZone: "Asia/Tokyo",
+    buckets: [
+      { key: "2026-08-30", label: "08-30", availableScheduleSlots: 1, activeTechnicians: 2, registeredTechnicians: 3, shopCount: 4, newCustomers: 5 },
+      { key: "2026-08-31", label: "08-31", availableScheduleSlots: 10, activeTechnicians: 20, registeredTechnicians: 30, shopCount: 40, newCustomers: 50 },
+      { key: "2026-09-01", label: "09-01", availableScheduleSlots: 100, activeTechnicians: 200, registeredTechnicians: 300, shopCount: 400, newCustomers: 500 }
+    ]
+  },
   finance: {
     platformNetRevenue: { ndp: 0, testNdp: 0 },
     frozen: { ndp: 0, testNdp: 0 },
@@ -149,6 +159,13 @@ describe("operations unified data dashboard", () => {
     expect(container.querySelectorAll("[data-analytics-disabled-detail]")).toHaveLength(3);
     expect(container.querySelectorAll("[data-analytics-detail-accessory]")).toHaveLength(8);
     expect(container.querySelector('button[aria-label="查看营业总额说明和计算公式"]')).toBeTruthy();
+    expect(
+      [...container.querySelectorAll<HTMLElement>('[data-dashboard-sparkline="true"]')].map(
+        (item) => item.dataset.sparklineValues
+      )
+    ).toEqual(["1,10,100", "2,20,200", "3,30,300", "4,40,400", "5,50,500"]);
+    expect(source).toContain("dashboard.headlineSeries3d");
+    expect(source).not.toMatch(/changeRatePercent.{0,160}(sparkline|points)/s);
   });
 
   it.each(["pending", "failed"] as const)(

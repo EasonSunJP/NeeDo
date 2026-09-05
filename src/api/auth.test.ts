@@ -48,7 +48,8 @@ const merchantIdentity = {
   publicId: "o0000000051",
   scopeId: 41,
   scopeType: "merchant_account",
-  type: "merchant_organization"
+  type: "merchant_organization",
+  displayName: "店铺负责人"
 };
 
 const merchantMe = {
@@ -62,6 +63,7 @@ const merchantMe = {
   hasPassword: true,
   username: "Merchant",
   avatarUrl: null,
+  profileDisplayName: "Merchant",
   isActive: true,
   isTestAccount: false,
   currentIdentity: merchantIdentity,

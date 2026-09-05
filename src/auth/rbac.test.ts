@@ -21,6 +21,7 @@ const baseMe = {
   hasPassword: true,
   username: "Admin",
   avatarUrl: null,
+  profileDisplayName: "Admin",
   isActive: true,
   isTestAccount: false,
   currentIdentity: {
@@ -28,7 +29,8 @@ const baseMe = {
     publicId: "needo0000000001",
     type: "platform",
     scopeType: "global",
-    scopeId: null
+    scopeId: null,
+    displayName: "平台管理员"
   },
   identities: [
     {
@@ -36,7 +38,8 @@ const baseMe = {
       publicId: "needo0000000001",
       type: "platform",
       scopeType: "global",
-      scopeId: null
+      scopeId: null,
+      displayName: "平台管理员"
     }
   ],
   roles: ["admin"],
@@ -46,6 +49,26 @@ const baseMe = {
 } satisfies AuthMePayload;
 
 describe("frontend RBAC session helpers", () => {
+  it("carries the formal profile display name into the admin session", () => {
+    const me = {
+      ...baseMe,
+      profileDisplayName: "运营者用户端姓名",
+      currentIdentity: {
+        ...baseMe.currentIdentity,
+        displayName: "东京运营组"
+      },
+      identities: baseMe.identities.map((identity) => ({
+        ...identity,
+        displayName: "东京运营组"
+      }))
+    } as unknown as AuthMePayload;
+
+    expect(buildAuthSessionFromMe(me, "admin", "password")).toMatchObject({
+      profileDisplayName: "运营者用户端姓名",
+      currentIdentity: { displayName: "东京运营组" }
+    });
+  });
+
   it("carries server-owned compliance requirements into the limited session", () => {
     const session = buildAuthSessionFromMe(
       {
@@ -68,7 +91,8 @@ describe("frontend RBAC session helpers", () => {
       publicId: "o0000000009",
       type: "merchant_organization",
       scopeType: "merchant_account",
-      scopeId: 4
+      scopeId: 4,
+      displayName: "店铺负责人"
     };
 
     expect(findIdentityForPortal([organizationIdentity], "merchant")).toEqual(
@@ -89,7 +113,7 @@ describe("frontend RBAC session helpers", () => {
         ...baseMe,
         identities: [
           ...baseMe.identities,
-          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" }
         ],
         roles: ["admin", "customer"],
         permissions: [...baseMe.permissions, "page:client-app"],
@@ -110,7 +134,7 @@ describe("frontend RBAC session helpers", () => {
         ...baseMe,
         identities: [
           ...baseMe.identities,
-          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" }
         ],
         roles: ["admin", "customer"],
         permissions: [...baseMe.permissions, "page:client-app"],
@@ -128,11 +152,11 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 3 },
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 3, displayName: "用户" },
         identities: [
-          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 3 },
-          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 2 },
-          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 4 }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 3, displayName: "用户" },
+          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 2, displayName: "店铺负责人" },
+          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 4, displayName: "技师" }
         ],
         roles: ["customer", "merchant_owner", "technician"],
         permissions: ["page:client-app", "page:merchant-app", "page:technician-app"],
@@ -151,8 +175,8 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
-        identities: [{ id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" },
+        identities: [{ id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" }],
         roles: ["customer"],
         permissions: ["page:client-app"],
         menus: ["menu:client-app"]
@@ -172,8 +196,8 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
-        identities: [{ id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" },
+        identities: [{ id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" }],
         roles: ["customer"],
         permissions: ["page:client-app"],
         menus: ["menu:client-app"]
@@ -212,12 +236,12 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" },
         identities: [
-          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
-          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 20 },
-          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 30 },
-          { id: 5, publicId: null, type: "scout", scopeType: "global", scopeId: null }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" },
+          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 20, displayName: "店铺负责人" },
+          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 30, displayName: "技师" },
+          { id: 5, publicId: null, type: "scout", scopeType: "global", scopeId: null, displayName: "推广者" }
         ],
         roles: ["customer", "merchant_owner", "technician", "scout"],
         permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
@@ -238,12 +262,12 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        currentIdentity: { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" },
         identities: [
-          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10 },
-          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 20 },
-          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 30 },
-          { id: 5, publicId: null, type: "scout", scopeType: "global", scopeId: null }
+          { id: 2, publicId: "u0000000002", type: "customer", scopeType: "customer_profile", scopeId: 10, displayName: "用户" },
+          { id: 3, publicId: "b0000000003", type: "merchant_owner", scopeType: "store", scopeId: 20, displayName: "店铺负责人" },
+          { id: 4, publicId: "s0000000004", type: "technician", scopeType: "technician_profile", scopeId: 30, displayName: "技师" },
+          { id: 5, publicId: null, type: "scout", scopeType: "global", scopeId: null, displayName: "推广者" }
         ],
         roles: ["customer", "merchant_owner", "technician", "scout"],
         permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
@@ -267,8 +291,8 @@ describe("frontend RBAC session helpers", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
-        currentIdentity: { id: 2, publicId: null, type: "scout", scopeType: "global", scopeId: null },
-        identities: [{ id: 2, publicId: null, type: "scout", scopeType: "global", scopeId: null }],
+        currentIdentity: { id: 2, publicId: null, type: "scout", scopeType: "global", scopeId: null, displayName: "推广者" },
+        identities: [{ id: 2, publicId: null, type: "scout", scopeType: "global", scopeId: null, displayName: "推广者" }],
         roles: ["scout"],
         permissions: ["page:dashboard"],
         menus: ["menu:dashboard"]

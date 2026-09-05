@@ -4,7 +4,6 @@ import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 
 type AdminAccountMenuProps = {
   accountName: string;
-  fallbackEmail?: string;
   loginPath: string;
   portal: Extract<PortalScope, "admin" | "merchant">;
   roleLabel: string;
@@ -31,7 +30,6 @@ function GearIcon() {
 
 export function AdminAccountMenu({
   accountName,
-  fallbackEmail = "admin@example.com",
   loginPath,
   portal,
   roleLabel
@@ -42,8 +40,8 @@ export function AdminAccountMenu({
   const [open, setOpen] = useState(false);
   const [passwordNoticeVisible, setPasswordNoticeVisible] = useState(false);
   const isCurrentPortalSession = session?.portal === portal;
-  const email = isCurrentPortalSession ? session.email : fallbackEmail;
-  const username = isCurrentPortalSession ? session.username : fallbackEmail;
+  const email = isCurrentPortalSession ? session.email : "—";
+  const username = isCurrentPortalSession ? session.username : "—";
   const loginMethod = loginMethodLabels[isCurrentPortalSession ? session.loginMethod : "password"];
 
   useEffect(() => {

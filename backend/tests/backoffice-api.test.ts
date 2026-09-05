@@ -425,6 +425,17 @@ const createFixture = async (
         availableCities: input.scope.kind === "platform" ? ["Osaka", "Tokyo"] : []
       })
     ),
+    getHeadlineSeries3d: jest.fn(
+      async (input: { window: { buckets: Array<{ key: string; label: string }> } }) =>
+        input.window.buckets.map((bucket, index) => ({
+          ...bucket,
+          availableScheduleSlots: index + 1,
+          activeTechnicians: index + 2,
+          registeredTechnicians: index + 10,
+          shopCount: index + 4,
+          newCustomers: index
+        }))
+    ),
     listOrders: jest.fn(async (input: unknown) => ({
       list: [{ id: 31, orderNo: "ND202605250001", status: "pending", shopId: 11 }],
       total: 1,
@@ -1343,6 +1354,14 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         serviceGmvJpy: 8_800
       },
       series: { buckets: expect.any(Array) },
+      headlineSeries3d: {
+        from: "2026-05-23",
+        to: "2026-05-25",
+        timeZone: "Asia/Tokyo",
+        buckets: expect.arrayContaining([
+          expect.objectContaining({ key: "2026-05-25", availableScheduleSlots: 3 })
+        ])
+      },
       finance: {
         userReward: { ndp: 100, testNdp: 20 },
         walletStock: expect.objectContaining({
@@ -1361,6 +1380,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     expect(response.body.data).not.toHaveProperty("technicians");
     expect(response.body.data).not.toHaveProperty("shops");
     expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledTimes(1);
+    expect(fixture.backofficeRepository.getHeadlineSeries3d).toHaveBeenCalledTimes(1);
     expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith(
       expect.objectContaining({
         scope: { kind: "platform" },

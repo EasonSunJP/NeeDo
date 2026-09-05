@@ -6,6 +6,26 @@ import { translateImUiText } from "../features/im/ui-copy";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes the admin operator pending summaries in all five App languages", () => {
+    for (const source of [
+      "运营后台成员",
+      "暂无待处理订单",
+      "暂无待审核申请",
+      "待审核共",
+      "正在加载…",
+      "加载失败，请重试",
+      "权限已变化，请刷新页面",
+      "待确认",
+      "申请编号"
+    ]) {
+      for (const { code } of languages) {
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
+      }
+    }
+  });
+
   it("localizes the formal travel-fare workflow in all five App languages", () => {
     for (const source of [
       "Geoapify 尚未配置",

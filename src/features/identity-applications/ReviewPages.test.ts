@@ -22,4 +22,13 @@ describe("identity application review pages", () => {
   it("documents the exact 15-day trial boundary in the approval surface", () => {
     expect(source).toContain("剩余正好 15 天或大于 15 天时，当月计为试用第一个月");
   });
+
+  it("restores the pending-review union and selected application from sidebar deep links", () => {
+    expect(source).toContain("useSearchParams");
+    expect(source).toContain('searchParams.get("status") === "pending"');
+    expect(source).toContain('searchParams.get("applicationId")');
+    expect(source).toContain('status: "submitted"');
+    expect(source).toContain('status: "under_review"');
+    expect(source).toContain("setSearchParams");
+  });
 });
