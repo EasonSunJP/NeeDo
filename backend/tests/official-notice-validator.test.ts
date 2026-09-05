@@ -4,12 +4,22 @@ import {
   officialNoticeReadQuerySchema
 } from "../src/validators/official-notice.validator";
 
+const translation = (locale: string) => ({
+  title: `title-${locale}`,
+  summary: `summary-${locale}`,
+  blocks: [{ id: `body-${locale}`, type: "paragraph" as const, content: `body-${locale}` }]
+});
+
 const base = {
   sourceLocale: "zh-CN",
   level: "important",
-  title: "系统维护通知",
-  summary: "今晚将进行短时维护。",
-  blocks: [{ id: "body-1", type: "paragraph", content: "请提前保存正在编辑的内容。" }],
+  translations: {
+    "zh-CN": translation("zh-CN"),
+    "zh-TW": translation("zh-TW"),
+    en: translation("en"),
+    ja: translation("ja"),
+    ko: translation("ko")
+  },
   audience: { type: "identity_types", identityTypes: ["customer", "technician"] },
   sendMode: "now",
   scheduledAt: null,
@@ -17,6 +27,27 @@ const base = {
 } as const;
 
 describe("official notice validation", () => {
+  it("requires five independently supplied locale payloads instead of cloning one browser field", () => {
+    const explicit = { ...base, sourceLocale: "ja" as const };
+
+    expect(officialNoticeCreateBodySchema.parse(explicit)).toEqual(explicit);
+    expect(() => officialNoticeCreateBodySchema.parse({
+      sourceLocale: "ja",
+      level: "important",
+      title: "legacy",
+      summary: "legacy",
+      blocks: [{ id: "legacy", type: "paragraph", content: "legacy" }],
+      audience: { type: "all" },
+      sendMode: "now",
+      scheduledAt: null,
+      idempotencyKey: "legacy-single-locale"
+    })).toThrow();
+    expect(() => officialNoticeCreateBodySchema.parse({
+      ...explicit,
+      translations: { ...explicit.translations, ko: undefined }
+    })).toThrow();
+  });
+
   it("accepts a strict immediate segment broadcast", () => {
     expect(officialNoticeCreateBodySchema.parse(base)).toEqual(base);
   });
@@ -25,24 +56,36 @@ describe("official notice validation", () => {
     expect(
       officialNoticeCreateBodySchema.parse({
         ...base,
-        blocks: [
-          {
-            id: "image-1",
-            type: "image",
-            content: `/media/content/${"a".repeat(64)}.webp`,
-            caption: "维护窗口",
-            mediaAssetId: 41,
-            source: "media"
+        translations: {
+          ...base.translations,
+          "zh-CN": {
+            ...base.translations["zh-CN"],
+            blocks: [
+              {
+                id: "image-1",
+                type: "image",
+                content: `/media/content/${"a".repeat(64)}.webp`,
+                caption: "维护窗口",
+                mediaAssetId: 41,
+                source: "media"
+              }
+            ]
           }
-        ]
-      }).blocks[0]
+        }
+      }).translations["zh-CN"].blocks[0]
     ).toMatchObject({ mediaAssetId: 41, source: "media" });
 
     for (const content of ["data:image/png;base64,AAAA", "blob:http://localhost/file"]) {
       expect(() =>
         officialNoticeCreateBodySchema.parse({
           ...base,
-          blocks: [{ id: "image-1", type: "image", content, source: "url" }]
+          translations: {
+            ...base.translations,
+            "zh-CN": {
+              ...base.translations["zh-CN"],
+              blocks: [{ id: "image-1", type: "image", content, source: "url" }]
+            }
+          }
         })
       ).toThrow();
     }

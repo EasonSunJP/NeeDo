@@ -212,6 +212,7 @@ describe("official notice formal API interactions", () => {
     setField("标题", "営業時間変更");
     setField("摘要", "営業時間のお知らせ");
     setField("正文", "18時まで営業します");
+    await click("現在の内容を全言語へコピー");
     await click("确认创建");
     await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
     expect(state.createManaged.mock.calls[0]?.[0]).toBe("merchant");
@@ -234,12 +235,22 @@ describe("official notice formal API interactions", () => {
       textareas[1].dispatchEvent(new Event("input", { bubbles: true }));
       textareas[1].dispatchEvent(new Event("change", { bubbles: true }));
     });
+    await click("現在の内容を全言語へコピー");
+    await click("English");
+    setField("标题", "Structured notice");
     await click("确认创建");
     await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
-    expect(state.createManaged.mock.calls[0]?.[1].blocks).toEqual([
+    expect(state.createManaged.mock.calls[0]?.[1].translations.ja.blocks).toEqual([
       expect.objectContaining({ type: "paragraph", content: "第一段正文" }),
       expect.objectContaining({ type: "heading", content: "重要事项" })
     ]);
+    expect(Object.keys(state.createManaged.mock.calls[0]?.[1].translations).sort()).toEqual([
+      "en", "ja", "ko", "zh-CN", "zh-TW"
+    ]);
+    expect(state.createManaged.mock.calls[0]?.[1].translations.en.title).toBe("Structured notice");
+    expect(state.createManaged.mock.calls[0]?.[1].translations.ja.title).toBe("结构化通知");
+    expect(state.createManaged.mock.calls[0]?.[1]).not.toHaveProperty("title");
+    expect(state.createManaged.mock.calls[0]?.[1]).not.toHaveProperty("blocks");
   });
 
   it("uploads image blocks through the formal content media API", async () => {
@@ -287,6 +298,7 @@ describe("official notice formal API interactions", () => {
     setField("标题", "账号通知");
     setField("摘要", "只发给花子");
     setField("正文", "请确认账号资料");
+    await click("現在の内容を全言語へコピー");
     await click("确认创建");
     await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
     expect(state.createManaged.mock.calls[0]?.[0]).toBe("platform");

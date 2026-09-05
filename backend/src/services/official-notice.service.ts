@@ -185,20 +185,20 @@ export class OfficialNoticeService {
   ): Promise<OfficialNoticePayload> {
     const now = this.now();
     const scheduledAt = input.sendMode === "now" ? now : new Date(input.scheduledAt as string);
-    const translation = {
-      title: input.title.trim(),
-      summary: input.summary.trim(),
-      blocks: structuredClone(input.blocks)
-    };
     const translations = Object.fromEntries(
-      CONTENT_LOCALES.map((locale) => [
-        locale,
-        {
-          ...structuredClone(translation),
-          sourceLocale: input.sourceLocale,
-          isInitialCopy: locale !== input.sourceLocale
-        }
-      ])
+      CONTENT_LOCALES.map((locale) => {
+        const translation = input.translations[locale];
+        return [
+          locale,
+          {
+            title: translation.title.trim(),
+            summary: translation.summary.trim(),
+            blocks: structuredClone(translation.blocks),
+            sourceLocale: locale,
+            isInitialCopy: false
+          }
+        ];
+      })
     ) as Record<ContentLocaleCode, OfficialNoticeTranslationPayload>;
     const publicId = this.createPublicId();
     const created = await this.repository.createAndPlan({

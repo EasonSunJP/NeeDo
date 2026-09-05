@@ -22,12 +22,21 @@ describe("officialNoticesApi", () => {
   });
 
   it("sends only server-derived merchant audience input", async () => {
+    const translation = {
+      title: "営業時間変更",
+      summary: "本日の営業時間を変更します",
+      blocks: [{ id: "body", type: "paragraph" as const, content: "18時まで営業します" }]
+    };
     const input = {
       sourceLocale: "ja" as const,
       level: "important" as const,
-      title: "営業時間変更",
-      summary: "本日の営業時間を変更します",
-      blocks: [{ id: "body", type: "paragraph" as const, content: "18時まで営業します" }],
+      translations: {
+        "zh-CN": translation,
+        "zh-TW": translation,
+        en: translation,
+        ja: translation,
+        ko: translation
+      },
       audience: { type: "shop_employees" as const },
       sendMode: "now" as const,
       scheduledAt: null,

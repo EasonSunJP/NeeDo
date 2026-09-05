@@ -14,6 +14,14 @@ const actor = {
   currentIdentityScopeId: null
 } as AuthenticatedAccessContext;
 
+const translationInputs = {
+  "zh-CN": { title: "维护", summary: "摘要", blocks: [{ id: "p-zh-cn", type: "paragraph" as const, content: "正文" }] },
+  "zh-TW": { title: "維護", summary: "摘要", blocks: [{ id: "p-zh-tw", type: "paragraph" as const, content: "正文" }] },
+  en: { title: "Maintenance", summary: "Summary", blocks: [{ id: "p-en", type: "paragraph" as const, content: "Body" }] },
+  ja: { title: "メンテナンス", summary: "お知らせ", blocks: [{ id: "p-ja", type: "paragraph" as const, content: "本文" }] },
+  ko: { title: "유지 보수", summary: "알림", blocks: [{ id: "p-ko", type: "paragraph" as const, content: "본문" }] }
+};
+
 const payload = (patch: Partial<OfficialNoticePayload> = {}): OfficialNoticePayload => ({
   publicId: "11111111-1111-4111-8111-111111111111",
   level: "important",
@@ -105,7 +113,7 @@ function repository(): jest.Mocked<OfficialNoticeRepositoryPort> {
 }
 
 describe("OfficialNoticeService", () => {
-  it("copies the source translation to all locales, snapshots segment labels, and dispatches now", async () => {
+  it("preserves all supplied locale payloads, snapshots segment labels, and dispatches now", async () => {
     const repo = repository();
     const service = new OfficialNoticeService(repo, {
       now: () => now,
@@ -117,9 +125,7 @@ describe("OfficialNoticeService", () => {
       {
         sourceLocale: "zh-CN",
         level: "important",
-        title: "维护",
-        summary: "摘要",
-        blocks: [{ id: "p-1", type: "paragraph", content: "正文" }],
+        translations: translationInputs,
         audience: { type: "identity_types", identityTypes: ["customer", "technician"] },
         sendMode: "now",
         scheduledAt: null,
@@ -135,7 +141,8 @@ describe("OfficialNoticeService", () => {
         targetSummary: "用户端 / 技师端",
         audience: { type: "identity_types", identityTypes: ["customer", "technician"] },
         translations: expect.objectContaining({
-          ja: expect.objectContaining({ title: "维护", sourceLocale: "zh-CN", isInitialCopy: true })
+          ja: expect.objectContaining({ title: "メンテナンス", sourceLocale: "ja", isInitialCopy: false }),
+          en: expect.objectContaining({ title: "Maintenance", sourceLocale: "en", isInitialCopy: false })
         })
       })
     );
@@ -153,9 +160,7 @@ describe("OfficialNoticeService", () => {
       {
         sourceLocale: "ja",
         level: "urgent",
-        title: "メンテナンス",
-        summary: "お知らせ",
-        blocks: [{ id: "p-1", type: "paragraph", content: "本文" }],
+        translations: translationInputs,
         audience: { type: "all" },
         sendMode: "scheduled",
         scheduledAt: scheduledAt.toISOString(),
@@ -189,9 +194,7 @@ describe("OfficialNoticeService", () => {
       {
         sourceLocale: "ja",
         level: "important",
-        title: "Notice",
-        summary: "Summary",
-        blocks: [{ id: "p-1", type: "paragraph", content: "Body" }],
+        translations: translationInputs,
         audience: { type: "all" },
         sendMode: "now",
         scheduledAt: null,
@@ -213,9 +216,7 @@ describe("OfficialNoticeService", () => {
         {
           sourceLocale: "ja",
           level: "important",
-          title: "Notice",
-          summary: "Summary",
-          blocks: [{ id: "p-1", type: "paragraph", content: "Body" }],
+          translations: translationInputs,
           audience: { type: "all" },
           sendMode: "scheduled",
           scheduledAt: new Date(now.getTime() - 1_000).toISOString(),
@@ -238,9 +239,7 @@ describe("OfficialNoticeService", () => {
     const input = {
       sourceLocale: "ja" as const,
       level: "important" as const,
-      title: "営業時間変更",
-      summary: "お知らせ",
-      blocks: [{ id: "p-1", type: "paragraph" as const, content: "本文" }],
+      translations: translationInputs,
       audience: { type: "shop_employees" as const },
       sendMode: "scheduled" as const,
       scheduledAt: new Date(now.getTime() + 60_000).toISOString(),

@@ -46,9 +46,12 @@ platform publishing permission. All route contracts are registered in OpenAPI.
 
 ## Persistence and delivery
 
-Publication creates the notice, five locale records, immutable audience snapshots,
-queued delivery rows and an audit record in one transaction. Locale records are
-source copies marked `isInitialCopy`; this is **not automatic translation**.
+Publication requires five explicit locale payloads and creates the notice, all
+five locale records, immutable audience snapshots, queued delivery rows and an
+audit record in one transaction. The editor may copy one locale to the others as
+an explicit operator action, but every tab remains independently editable. The
+server never fabricates missing translations and records all supplied locales as
+authored content rather than automatic translation copies.
 Merchant publication supports only server-derived current-shop audiences:
 active issued membership-card holders, current shop employees, and current shop
 technicians linked through their active affiliation, employee record and role.

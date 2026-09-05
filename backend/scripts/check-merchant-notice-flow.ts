@@ -5,6 +5,14 @@ import type { PrismaClient } from "@prisma/client";
 
 const rollback = new Error("merchant notice acceptance rollback");
 
+const noticeTranslations = (title: string, summary: string, content: string) => ({
+  "zh-CN": { title, summary, blocks: [{ id: "body-zh-cn", type: "paragraph", content }] },
+  "zh-TW": { title, summary, blocks: [{ id: "body-zh-tw", type: "paragraph", content }] },
+  en: { title, summary, blocks: [{ id: "body-en", type: "paragraph", content }] },
+  ja: { title, summary, blocks: [{ id: "body-ja", type: "paragraph", content }] },
+  ko: { title, summary, blocks: [{ id: "body-ko", type: "paragraph", content }] }
+});
+
 async function main(): Promise<void> {
   const envFile = process.env.ENV_FILE;
   if (!envFile) throw new Error("ENV_FILE is required for local merchant notice acceptance");
@@ -522,9 +530,7 @@ async function main(): Promise<void> {
             merchantNoticeCreateBodySchema.parse({
               sourceLocale: "ja",
               level: "important",
-              title: `${marker}-${suffix}`,
-              summary: marker,
-              blocks: [{ id: "p-1", type: "paragraph", content: marker }],
+              translations: noticeTranslations(`${marker}-${suffix}`, marker, marker),
               audience: { type: audience },
               sendMode: "scheduled",
               scheduledAt,
@@ -580,9 +586,7 @@ async function main(): Promise<void> {
             merchantNoticeCreateBodySchema.parse({
               sourceLocale: "ja",
               level: "important",
-              title: `${marker}-employees`,
-              summary: marker,
-              blocks: [{ id: "p-1", type: "paragraph", content: marker }],
+              translations: noticeTranslations(`${marker}-employees`, marker, marker),
               audience: { type: "shop_employees" },
               sendMode: "scheduled",
               scheduledAt,
@@ -598,9 +602,7 @@ async function main(): Promise<void> {
             merchantNoticeCreateBodySchema.parse({
               sourceLocale: "ja",
               level: "important",
-              title: `${marker}-employees`,
-              summary: marker,
-              blocks: [{ id: "p-1", type: "paragraph", content: marker }],
+              translations: noticeTranslations(`${marker}-employees`, marker, marker),
               audience: { type: "shop_employees" },
               sendMode: "scheduled",
               scheduledAt,
