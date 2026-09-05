@@ -249,7 +249,7 @@ const authActionErrorResponses = {
   },
   "403": {
     description:
-      "error.forbidden, error.auth.account_disabled, or error.auth.account_restricted — permission or account-state denial"
+      "error.forbidden, error.auth.account_disabled, error.auth.account_restricted, or error.auth.registration_disabled — permission, account-state, or registration denial"
   },
   "409": { description: "error.auth.google_conflict — login-method state conflicts" },
   "429": {
@@ -258,7 +258,8 @@ const authActionErrorResponses = {
   },
   "502": { description: "error.auth.otp_delivery_failed — verification email delivery failed" },
   "503": {
-    description: "error.dependency.redis_unavailable or error.dependency.google_auth_unavailable"
+    description:
+      "error.dependency.redis_unavailable, error.dependency.google_auth_unavailable, error.auth.google_disabled, or error.platform.maintenance"
   }
 };
 
@@ -6153,6 +6154,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           refreshToken: { type: "string" },
           expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] }
         }
+      },
+      PasswordLoginResult: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["status", "accessToken", "refreshToken", "expiresIn"],
+            properties: {
+              status: { type: "string", const: "authenticated" },
+              accessToken: { type: "string" },
+              refreshToken: { type: "string" },
+              expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["status", "challengeId", "maskedEmail", "expiresIn", "cooldownSeconds"],
+            properties: {
+              status: { type: "string", const: "verification_required" },
+              challengeId: { type: "string", format: "uuid", maxLength: 64 },
+              maskedEmail: { type: "string", minLength: 1, maxLength: 255 },
+              expiresIn: { type: "integer", minimum: 1, maximum: 600 },
+              cooldownSeconds: { type: "integer", minimum: 0 }
+            }
+          }
+        ]
       },
       TokenPairWithNeedoId: {
         type: "object",
@@ -17512,7 +17540,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   properties: {
                     code: { type: "integer", enum: [0] },
                     message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/TokenPair" }
+                    data: { $ref: "#/components/schemas/PasswordLoginResult" }
                   }
                 }
               }
@@ -17536,7 +17564,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["loginIdentifier", "password"]
         ),
         responses: {
-          "200": jsonDataResponse("JWT token pair", {
+          "200": jsonDataResponse("Authenticated tokens or an email verification challenge", {
+            $ref: "#/components/schemas/PasswordLoginResult"
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/login/verify`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Complete password-login email verification",
+        requestBody: authJsonBody(
+          {
+            challengeId: { type: "string", format: "uuid", maxLength: 64 },
+            otp: { type: "string", pattern: "^\\d{6}$" }
+          },
+          ["challengeId", "otp"]
+        ),
+        responses: {
+          "200": jsonDataResponse("JWT token pair after one-time challenge completion", {
             $ref: "#/components/schemas/TokenPair"
           }),
           ...authActionErrorResponses

@@ -97,6 +97,19 @@ export interface CreateLoginLogInput {
   failReason?: string | null;
 }
 
+export interface SuccessfulLoginEvidenceInput {
+  userId: number;
+  ip: string;
+  periodStart: Date;
+  periodEnd: Date;
+}
+
+export interface SuccessfulLoginEvidence {
+  hasAnySuccessfulLogin: boolean;
+  hasSuccessfulLoginInPeriod: boolean;
+  hasSuccessfulLoginFromIp: boolean;
+}
+
 export interface CreateAuditLogInput {
   actorId?: number | null;
   action: string;
@@ -230,6 +243,9 @@ export interface AuthRepositoryPort {
   ) => Promise<AuthUserRecord | null>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
+  getSuccessfulLoginEvidence: (
+    input: SuccessfulLoginEvidenceInput
+  ) => Promise<SuccessfulLoginEvidence>;
   createAuditLog: (input: CreateAuditLogInput) => Promise<void | AuditLogReceipt>;
   completePhoneBinding?: (input: CompletePhoneBindingInput) => Promise<AuthUserRecord>;
   completeMerchantShopSwitchAudit?: (input: {
@@ -967,6 +983,35 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         failReason: input.failReason ?? null
       }
     });
+  }
+
+  public async getSuccessfulLoginEvidence(
+    input: SuccessfulLoginEvidenceInput
+  ): Promise<SuccessfulLoginEvidence> {
+    const commonWhere = {
+      userId: input.userId,
+      status: "success",
+      deletedAt: null
+    } as const;
+    const [anyLogin, periodLogin, ipLogin] = await Promise.all([
+      this.client.loginLog.findFirst({ where: commonWhere, select: { id: true } }),
+      this.client.loginLog.findFirst({
+        where: {
+          ...commonWhere,
+          createdAt: { gte: input.periodStart, lt: input.periodEnd }
+        },
+        select: { id: true }
+      }),
+      this.client.loginLog.findFirst({
+        where: { ...commonWhere, ip: input.ip },
+        select: { id: true }
+      })
+    ]);
+    return {
+      hasAnySuccessfulLogin: anyLogin !== null,
+      hasSuccessfulLoginInPeriod: periodLogin !== null,
+      hasSuccessfulLoginFromIp: ipLogin !== null
+    };
   }
 
   public async createAuditLog(input: CreateAuditLogInput): Promise<AuditLogReceipt> {

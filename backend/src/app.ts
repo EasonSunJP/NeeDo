@@ -16,7 +16,11 @@ import {
   createRateLimitMiddleware
 } from "./middlewares/security.middleware";
 import { createTracingMiddleware } from "./middlewares/tracing.middleware";
-import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
+import { createPlatformMaintenanceMiddleware } from "./middlewares/platform-maintenance.middleware";
+import {
+  AuditLogRepository,
+  type AuditLogRepositoryPort
+} from "./repositories/audit-log.repository";
 import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import { AuthRepository, type AuthRepositoryPort } from "./repositories/auth.repository";
 import type { MerchantShopContextRepositoryPort } from "./repositories/merchant-shop-context.repository";
@@ -50,6 +54,10 @@ import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.re
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import {
+  PlatformSettingsRepository,
+  type PlatformSettingsRepositoryPort
+} from "./repositories/platform-settings.repository";
 import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
@@ -179,6 +187,7 @@ import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-poli
 import { createRouteEstimateRoutes } from "./routes/route-estimate.routes";
 import { createTravelOperationsRoutes } from "./routes/travel-operations.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
+import { createPlatformSettingsRoutes } from "./routes/platform-settings.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
@@ -246,6 +255,13 @@ import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
+import { AuditLogService } from "./services/audit-log.service";
+import {
+  PlatformAccessPolicyService,
+  type PlatformAccessPolicyPort
+} from "./services/platform-access-policy.service";
+import { PlatformSettingsResolver } from "./services/platform-settings.resolver";
+import { PlatformSettingsService } from "./services/platform-settings.service";
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeMatchingService } from "./services/exchange-matching.service";
@@ -421,6 +437,13 @@ export interface AppDependencies {
     | "getMyMembershipBenefits"
   >;
   platformMembershipRepository?: PlatformMembershipRepositoryPort;
+  platformSettingsRepository?: PlatformSettingsRepositoryPort;
+  platformSettingsResolver?: PlatformSettingsResolver;
+  platformSettingsService?: Pick<
+    PlatformSettingsService,
+    "getPublic" | "getForOperations" | "updateBasic" | "updatePayment"
+  >;
+  platformAccessPolicyService?: PlatformAccessPolicyPort;
   backofficeUserGroupService?: Pick<
     BackofficeUserGroupService,
     | "listGroups"
@@ -529,6 +552,23 @@ export const createApp = (
   const personalIdentityScopeService =
     dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
   const userExperienceService = createUserExperienceServiceForRoutes(dependencies);
+  const platformSettingsRepository =
+    dependencies.platformSettingsRepository ?? new PlatformSettingsRepository();
+  const platformSettingsResolver =
+    dependencies.platformSettingsResolver ??
+    new PlatformSettingsResolver(platformSettingsRepository);
+  const platformSettingsService =
+    dependencies.platformSettingsService ??
+    new PlatformSettingsService(
+      platformSettingsRepository,
+      platformSettingsResolver,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const platformAccessPolicyService =
+    dependencies.platformAccessPolicyService ??
+    (config.NODE_ENV === "test"
+      ? undefined
+      : new PlatformAccessPolicyService(platformSettingsResolver));
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
@@ -546,7 +586,11 @@ export const createApp = (
     realtimeEventGateway,
     realtimeService,
     userExperienceService,
-    personalIdentityScopeService
+    personalIdentityScopeService,
+    platformSettingsRepository,
+    platformSettingsResolver,
+    platformSettingsService,
+    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {})
   };
 
   apiRouter.use((request, response, next) => {
@@ -564,6 +608,9 @@ export const createApp = (
   mount("shared", createObservabilityRoutes(config, metricsService));
   mount("shared", createPlatformSettingsRoutes(config, resolvedDependencies));
   mount("shared", createAuthRoutes(config, resolvedDependencies));
+  if (platformAccessPolicyService) {
+    apiRouter.use(createPlatformMaintenanceMiddleware(platformAccessPolicyService));
+  }
   mount("backoffice", createPermissionRoutes(config, resolvedDependencies));
   mount("backoffice", createRoleRoutes(config, resolvedDependencies));
   mount("backoffice", createUserRoutes(config, resolvedDependencies));
