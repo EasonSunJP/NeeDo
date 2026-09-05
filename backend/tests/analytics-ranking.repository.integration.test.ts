@@ -322,6 +322,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                     formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
                     baseAmountJpy: 10_000,
                     addOnAmountJpy,
+                    travelFareAmountJpy: 0,
                     discountAmountJpy,
                     checkoutAmountJpy,
                     acceptedAddOnIds: addOns.map((addOn) => addOn.id)
@@ -520,6 +521,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
               formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
               baseAmountJpy: 10_000,
               addOnAmountJpy: 4_000,
+              travelFareAmountJpy: 0,
               discountAmountJpy: 1_000,
               checkoutAmountJpy: 13_000,
               acceptedAddOnIds
@@ -722,6 +724,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                   formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
                   baseAmountJpy: 10_000,
                   addOnAmountJpy: 4_000,
+                  travelFareAmountJpy: 0,
                   discountAmountJpy: 1_000,
                   checkoutAmountJpy: 13_000
                 }

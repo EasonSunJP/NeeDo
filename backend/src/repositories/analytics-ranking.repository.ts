@@ -135,7 +135,8 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       ranking_candidate_orders AS (
         SELECT booking.*, shop.city AS current_shop_city,
                checkout.id AS checkout_id, checkout.base_amount_jpy,
-               checkout.add_on_amount_jpy, checkout.discount_amount_jpy,
+               checkout.add_on_amount_jpy, checkout.travel_fare_amount_jpy,
+               checkout.discount_amount_jpy,
                checkout.checkout_amount_jpy, checkout.payable_ndp,
                checkout.payment_method AS checkout_payment_method,
                checkout.payment_selected_at, checkout.other_method_code,
@@ -227,10 +228,12 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
             OR candidate.resolved_technician_user_id IS NULL
             OR candidate.technician_user_id <> candidate.resolved_technician_user_id
             OR candidate.base_amount_jpy < 0 OR candidate.add_on_amount_jpy < 0
+            OR candidate.travel_fare_amount_jpy < 0
             OR candidate.discount_amount_jpy < 0 OR candidate.checkout_amount_jpy < 0
             OR candidate.payable_ndp < 0
             OR candidate.base_amount_jpy < candidate.discount_amount_jpy
-            OR candidate.base_amount_jpy + candidate.add_on_amount_jpy - candidate.discount_amount_jpy
+            OR candidate.base_amount_jpy + candidate.add_on_amount_jpy
+                 + candidate.travel_fare_amount_jpy - candidate.discount_amount_jpy
                  <> candidate.checkout_amount_jpy
             OR candidate.checkout_amount_jpy <> candidate.payment_amount_jpy
             OR (candidate.service_id IS NULL) = (candidate.technician_service_id IS NULL)
@@ -263,20 +266,24 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.formula"}) IS NULL
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.baseAmountJpy"}) IS NULL
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.addOnAmountJpy"}) IS NULL
+            OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.travelFareAmountJpy"}) IS NULL
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.discountAmountJpy"}) IS NULL
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.checkoutAmountJpy"}) IS NULL
             OR JSON_TYPE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.baseAmountJpy"})) <> ${"INTEGER"}
             OR JSON_TYPE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.addOnAmountJpy"})) <> ${"INTEGER"}
+            OR JSON_TYPE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.travelFareAmountJpy"})) <> ${"INTEGER"}
             OR JSON_TYPE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.discountAmountJpy"})) <> ${"INTEGER"}
             OR JSON_TYPE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.checkoutAmountJpy"})) <> ${"INTEGER"}
             OR JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.acceptedAddOnIds"}) IS NULL
             OR JSON_TYPE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.acceptedAddOnIds"})) <> ${"ARRAY"}
             OR JSON_UNQUOTE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.formula"}))
-                 <> ${"base_plus_accepted_add_ons_minus_discount"}
+                 <> ${"base_plus_accepted_add_ons_plus_travel_fare_minus_discount"}
             OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.baseAmountJpy"})) AS SIGNED)
                  <> candidate.base_amount_jpy
             OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.addOnAmountJpy"})) AS SIGNED)
                  <> candidate.add_on_amount_jpy
+            OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.travelFareAmountJpy"})) AS SIGNED)
+                 <> candidate.travel_fare_amount_jpy
             OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.discountAmountJpy"})) AS SIGNED)
                  <> candidate.discount_amount_jpy
             OR CAST(JSON_UNQUOTE(JSON_EXTRACT(candidate.calculation_snapshot_json, ${"$.checkoutAmountJpy"})) AS SIGNED)

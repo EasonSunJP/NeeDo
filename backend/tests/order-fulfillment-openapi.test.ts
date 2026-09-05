@@ -294,13 +294,14 @@ describe("formal order fulfillment OpenAPI contract", () => {
         "baseAmountJpy",
         "acceptedAddOnIds",
         "addOnAmountJpy",
+        "travelFareAmountJpy",
         "discountAmountJpy",
         "checkoutAmountJpy",
         "rateFormula"
       ]
     });
     expect(schemas.OrderCheckoutCalculation.properties.formula.enum).toEqual([
-      "base_plus_accepted_add_ons_minus_discount"
+      "base_plus_accepted_add_ons_plus_travel_fare_minus_discount"
     ]);
     expect(schemas.OrderCheckoutCalculation.properties.rateFormula.enum).toEqual([
       "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
@@ -317,6 +318,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
       "status",
       "baseAmountJpy",
       "addOnAmountJpy",
+      "travelFareAmountJpy",
       "discountAmountJpy",
       "checkoutAmountJpy",
       "payableNdp",

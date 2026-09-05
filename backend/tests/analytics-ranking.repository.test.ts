@@ -118,7 +118,8 @@ describe("AnalyticsRankingRepository", () => {
         "ndp_payment_applied",
         "receipt_confirmed",
         "booking_complete_settlement",
-        "base_plus_accepted_add_ons_minus_discount",
+        "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
+        "$.travelFareAmountJpy",
         "$.acceptedAddOnIds"
       ])
     );
