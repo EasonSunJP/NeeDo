@@ -1084,15 +1084,17 @@ const main = async (): Promise<void> => {
           key: string
         ): number => {
           const userId = getParticipantUserId(type, key);
-          const identityType = type === "admin"
-            ? "platform"
+          const identityTypes = type === "admin"
+            ? ["platform"]
             : type === "shop_owner"
-              ? "merchant_owner"
-              : type;
-          return getRequiredId(
-            participantIdentityIds,
-            `${userId}:${identityType}`,
-            "IM participant identity"
+              ? ["merchant_owner", "merchant"]
+              : [type];
+          for (const identityType of identityTypes) {
+            const identityId = participantIdentityIds.get(`${userId}:${identityType}`);
+            if (identityId !== undefined) return identityId;
+          }
+          throw new Error(
+            `IM participant identity id is missing for ${userId}:${identityTypes.join("|")}.`
           );
         };
         await tx.contact.deleteMany({
