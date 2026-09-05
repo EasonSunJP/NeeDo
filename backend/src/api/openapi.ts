@@ -12758,6 +12758,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
         }
       },
+      MerchantOfficialNoticeAudience: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type"],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["shop_card_holders", "shop_employees", "shop_technicians"]
+          }
+        }
+      },
+      MerchantOfficialNoticeCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "audience",
+          "sendMode",
+          "scheduledAt",
+          "idempotencyKey"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          },
+          audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
+          sendMode: { type: "string", enum: ["now", "scheduled"] },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
       OfficialNoticeLifecycle: {
         type: "object",
         additionalProperties: false,
@@ -23797,6 +23839,146 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
         )
       })
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices`]: {
+      get: {
+        tags: ["Merchant Official Notices"],
+        summary: "List formal notices published by the current shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:read",
+        parameters: [
+          merchantPreviewShopHeaderParameter,
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "draft",
+                "pending_review",
+                "approved",
+                "scheduled",
+                "sending",
+                "sent",
+                "cancelled",
+                "archived"
+              ]
+            }
+          },
+          {
+            name: "level",
+            in: "query",
+            schema: { type: "string", enum: ["general", "important", "urgent"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-shop official notices", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Create a server-derived current-shop audience snapshot and plan delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": ["merchant-admin:notice:create", "merchant-admin:notice:send"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantOfficialNoticeCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Current-shop official notice created and planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Audience, schedule, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/cancel`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Cancel a current-shop notice before delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice cancelled", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/archive`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Archive a terminal current-shop notice",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice archived", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/retry-failures`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Retry failed current-shop identity deliveries",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:send",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Failed current-shop deliveries requeued", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/official-notices`]: {
       get: {

@@ -124,6 +124,13 @@ export const OFFICIAL_NOTICE_PERMISSIONS = {
   send: "button:backoffice-official-notice-send"
 } as const;
 
+export const MERCHANT_NOTICE_PERMISSIONS = {
+  read: "merchant-admin:notice:read",
+  create: "merchant-admin:notice:create",
+  review: "merchant-admin:notice:review",
+  send: "merchant-admin:notice:send"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -1759,6 +1766,34 @@ export const SYSTEM_PERMISSIONS = [
     "立即或定时发送并重试失败的官方通知"
   ),
   createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.read,
+    "商户通知读取",
+    "api",
+    "merchant-admin",
+    "分页读取当前店铺发布的正式通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.create,
+    "商户通知创建",
+    "api",
+    "merchant-admin",
+    "为当前店铺的服务端派生受众创建正式通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.review,
+    "商户通知审核",
+    "api",
+    "merchant-admin",
+    "取消或归档当前店铺发布的正式通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.send,
+    "商户通知发送",
+    "api",
+    "merchant-admin",
+    "立即或定时发送并重试当前店铺的正式通知"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.postList,
     "需求情报列表",
     "api",
@@ -2211,6 +2246,13 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const MERCHANT_NOTICE_PERMISSION_CODES = [
+  MERCHANT_NOTICE_PERMISSIONS.read,
+  MERCHANT_NOTICE_PERMISSIONS.create,
+  MERCHANT_NOTICE_PERMISSIONS.review,
+  MERCHANT_NOTICE_PERMISSIONS.send
+] as const satisfies readonly SystemPermissionCode[];
+
 const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
   "shop.member.create",
   "shop.member.analytics.view",
@@ -2366,6 +2408,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    ...MERCHANT_NOTICE_PERMISSION_CODES,
     ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
     "merchant-admin:shop:service-taxonomy:write",
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
@@ -2382,6 +2425,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
     ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    ...MERCHANT_NOTICE_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,

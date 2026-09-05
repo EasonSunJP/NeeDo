@@ -3,6 +3,7 @@ import {
   NoticeDeliveryStatus,
   NotificationType,
   OfficialNoticeAudienceType,
+  OfficialNoticeIssuerType,
   OfficialNoticeLevel,
   OfficialNoticeStatus,
   Prisma,
@@ -25,9 +26,19 @@ import { AppError } from "../utils/app-error";
 import { toPrismaPagination } from "../utils/pagination";
 import type { RealtimeEvent, RealtimeEventGatewayPort } from "../services/realtime-event.gateway";
 import type {
+  MerchantNoticeAudienceInput,
+  NoticeAudienceInput,
   OfficialNoticeAudienceInput,
   OfficialNoticeBlockInput
 } from "../validators/official-notice.validator";
+import type {
+  NoticeIssuerReadScope,
+  NoticeIssuerScope
+} from "../services/official-notice-scope";
+import {
+  buildActiveMerchantNoticePublisherWhere,
+  buildMerchantNoticeRecipientWhere
+} from "./merchant-notice-audience";
 
 const localeToDb: Record<ContentLocaleCode, ContentLocale> = {
   "zh-CN": ContentLocale.ZH_CN,
@@ -66,10 +77,13 @@ const statusFromDb: Record<OfficialNoticeStatus, OfficialNoticeStatusCode> = {
 const statusToDb: Record<OfficialNoticeStatusCode, OfficialNoticeStatus> = Object.fromEntries(
   Object.entries(statusFromDb).map(([database, value]) => [value, database])
 ) as Record<OfficialNoticeStatusCode, OfficialNoticeStatus>;
-const audienceTypeToDb: Record<OfficialNoticeAudienceInput["type"], OfficialNoticeAudienceType> = {
+const audienceTypeToDb: Record<NoticeAudienceInput["type"], OfficialNoticeAudienceType> = {
   all: OfficialNoticeAudienceType.ALL,
   identity_types: OfficialNoticeAudienceType.IDENTITY_TYPES,
-  exact_users: OfficialNoticeAudienceType.EXACT_USERS
+  exact_users: OfficialNoticeAudienceType.EXACT_USERS,
+  shop_card_holders: OfficialNoticeAudienceType.SHOP_CARD_HOLDERS,
+  shop_employees: OfficialNoticeAudienceType.SHOP_EMPLOYEES,
+  shop_technicians: OfficialNoticeAudienceType.SHOP_TECHNICIANS
 };
 
 interface NoticeRecord {
@@ -143,11 +157,18 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     input: CreateAndPlanOfficialNoticeInput
   ): Promise<OfficialNoticePayload> {
     let resultPublicId = input.publicId;
+    await this.assertActiveMerchantPublisher(this.client, input.issuerScope, input.now);
     const replay = await this.client.officialNotice.findUnique({
       where: { idempotencyKey: input.idempotencyKey },
-      select: { publicId: true, requestFingerprint: true }
+      select: {
+        publicId: true,
+        requestFingerprint: true,
+        issuerType: true,
+        issuerShopId: true
+      }
     });
     if (replay) {
+      this.assertIssuerScope(replay, input.issuerScope);
       if (replay.requestFingerprint !== input.requestFingerprint)
         throw this.conflict("error.idempotency_key_reused");
       return this.requirePayload(replay.publicId);
@@ -163,6 +184,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     await this.client
       .$transaction(
         async (transaction) => {
+          await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
           const notice = await transaction.officialNotice.create({
             data: {
               publicId: input.publicId,
@@ -178,6 +200,13 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
               lockVersion: 1,
               idempotencyKey: input.idempotencyKey,
               requestFingerprint: input.requestFingerprint,
+              issuerType:
+                input.issuerScope.type === "platform"
+                  ? OfficialNoticeIssuerType.PLATFORM
+                  : OfficialNoticeIssuerType.SHOP,
+              issuerShopId: input.issuerScope.type === "shop" ? input.issuerScope.shopId : null,
+              createdByIdentityId:
+                input.issuerScope.type === "shop" ? input.issuerScope.actorIdentityId : null,
               createdById: input.actorUserId,
               updatedById: input.actorUserId,
               submittedById: input.actorUserId,
@@ -214,7 +243,11 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
                 targetSummary: input.targetSummary,
                 audienceCount,
                 scheduledAt: input.scheduledAt.toISOString(),
-                idempotencyKey: input.idempotencyKey
+                idempotencyKey: input.idempotencyKey,
+                issuerType: input.issuerScope.type,
+                issuerShopId: input.issuerScope.type === "shop" ? input.issuerScope.shopId : null,
+                actorIdentityId:
+                  input.issuerScope.type === "shop" ? input.issuerScope.actorIdentityId : null
               } satisfies Prisma.InputJsonValue,
               createdAt: input.now
             }
@@ -229,9 +262,15 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
         ) {
           const concurrent = await this.client.officialNotice.findUnique({
             where: { idempotencyKey: input.idempotencyKey },
-            select: { publicId: true, requestFingerprint: true }
+            select: {
+              publicId: true,
+              requestFingerprint: true,
+              issuerType: true,
+              issuerShopId: true
+            }
           });
           if (concurrent) {
+            this.assertIssuerScope(concurrent, input.issuerScope);
             if (concurrent.requestFingerprint !== input.requestFingerprint)
               throw this.conflict("error.idempotency_key_reused");
             resultPublicId = concurrent.publicId;
@@ -245,6 +284,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
   }
 
   public async listBackoffice(input: {
+    issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
     status?: OfficialNoticeStatusCode;
@@ -253,6 +293,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     const pagination = toPrismaPagination(input);
     const where: Prisma.OfficialNoticeWhereInput = {
       deletedAt: null,
+      ...this.issuerWhere(input.issuerScope),
       ...(input.status ? { status: statusToDb[input.status] } : {}),
       ...(input.level ? { level: levelToDb[input.level] } : {})
     };
@@ -431,7 +472,8 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
 
   public async retryFailures(input: LifecycleMutationInput): Promise<OfficialNoticePayload> {
     await this.client.$transaction(async (transaction) => {
-      const notice = await this.lockNotice(transaction, input.publicId);
+      const notice = await this.lockNotice(transaction, input.publicId, input.issuerScope);
+      await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
       if (await this.isLifecycleReplay(transaction, notice.id, input)) return;
       if (
         !new Set<OfficialNoticeStatus>([
@@ -641,6 +683,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
             recipientUserId: delivery.recipientUserId,
             recipientIdentityId: delivery.recipientIdentityId,
             actorUserId: delivery.notice.createdById,
+            actorIdentityId: delivery.notice.createdByIdentityId,
             type: NotificationType.SYSTEM,
             title: translation.title,
             body: translation.summary,
@@ -692,7 +735,8 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     action: "cancel" | "archive"
   ): Promise<OfficialNoticePayload> {
     await this.client.$transaction(async (transaction) => {
-      const notice = await this.lockNotice(transaction, input.publicId);
+      const notice = await this.lockNotice(transaction, input.publicId, input.issuerScope);
+      await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
       if (await this.isLifecycleReplay(transaction, notice.id, input)) return;
       this.assertVersion(notice.lockVersion, input.expectedLockVersion);
       if (action === "cancel") {
@@ -751,10 +795,19 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     return this.requirePayload(input.publicId);
   }
 
-  private async lockNotice(transaction: Prisma.TransactionClient, publicId: string) {
-    const locked = await transaction.$queryRaw<Array<{ id: number }>>(
-      Prisma.sql`SELECT id FROM official_notices WHERE public_id = ${publicId} AND deleted_at IS NULL FOR UPDATE`
-    );
+  private async lockNotice(
+    transaction: Prisma.TransactionClient,
+    publicId: string,
+    issuerScope: NoticeIssuerScope
+  ) {
+    const locked =
+      issuerScope.type === "platform"
+        ? await transaction.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT id FROM official_notices WHERE public_id = ${publicId} AND issuer_type = 'platform' AND deleted_at IS NULL FOR UPDATE`
+          )
+        : await transaction.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT id FROM official_notices WHERE public_id = ${publicId} AND issuer_type = 'shop' AND issuer_shop_id = ${issuerScope.shopId} AND deleted_at IS NULL FOR UPDATE`
+          );
     if (locked.length !== 1) throw this.notFound();
     return transaction.officialNotice.findUniqueOrThrow({
       where: { id: locked[0].id },
@@ -837,7 +890,16 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     const foundUsers = new Set<number>();
     while (true) {
       const recipients = await transaction.userIdentity.findMany({
-        where: { ...buildOfficialNoticeRecipientWhere(input.audience), id: { gt: afterId } },
+        where: {
+          ...(input.issuerScope.type === "platform"
+            ? buildOfficialNoticeRecipientWhere(input.audience as OfficialNoticeAudienceInput)
+            : buildMerchantNoticeRecipientWhere(
+                input.issuerScope.shopId,
+                input.audience as MerchantNoticeAudienceInput,
+                input.now
+              )),
+          id: { gt: afterId }
+        },
         orderBy: { id: "asc" },
         take: 500,
         select: {
@@ -999,6 +1061,47 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
 
   private assertVersion(actual: number, expected: number): void {
     if (actual !== expected) throw this.conflict("error.official_notice.version_conflict");
+  }
+
+  private issuerWhere(issuerScope: NoticeIssuerReadScope): Prisma.OfficialNoticeWhereInput {
+    return issuerScope.type === "platform"
+      ? { issuerType: OfficialNoticeIssuerType.PLATFORM }
+      : { issuerType: OfficialNoticeIssuerType.SHOP, issuerShopId: issuerScope.shopId };
+  }
+
+  private assertIssuerScope(
+    notice: { issuerType: OfficialNoticeIssuerType; issuerShopId: number | null },
+    issuerScope: NoticeIssuerScope
+  ): void {
+    const matches =
+      issuerScope.type === "platform"
+        ? notice.issuerType === OfficialNoticeIssuerType.PLATFORM
+        : notice.issuerType === OfficialNoticeIssuerType.SHOP &&
+          notice.issuerShopId === issuerScope.shopId;
+    if (!matches) throw this.conflict("error.idempotency_key_reused");
+  }
+
+  private async assertActiveMerchantPublisher(
+    client: PrismaClient | Prisma.TransactionClient,
+    issuerScope: NoticeIssuerScope,
+    now: Date
+  ): Promise<void> {
+    if (issuerScope.type === "platform") return;
+    const employee = await client.shopEmployee.findFirst({
+      where: buildActiveMerchantNoticePublisherWhere(
+        issuerScope.shopId,
+        issuerScope.actorUserId,
+        now
+      ),
+      select: { id: true }
+    });
+    if (!employee) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
   }
 
   private errorName(error: unknown): string {

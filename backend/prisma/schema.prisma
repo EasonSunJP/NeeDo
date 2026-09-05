@@ -568,10 +568,18 @@ enum OfficialNoticeStatus {
   ARCHIVED       @map("archived")
 }
 
+enum OfficialNoticeIssuerType {
+  PLATFORM @map("platform")
+  SHOP     @map("shop")
+}
+
 enum OfficialNoticeAudienceType {
-  ALL            @map("all")
-  IDENTITY_TYPES @map("identity_types")
-  EXACT_USERS    @map("exact_users")
+  ALL               @map("all")
+  IDENTITY_TYPES    @map("identity_types")
+  EXACT_USERS       @map("exact_users")
+  SHOP_CARD_HOLDERS @map("shop_card_holders")
+  SHOP_EMPLOYEES    @map("shop_employees")
+  SHOP_TECHNICIANS  @map("shop_technicians")
 }
 
 enum NoticeDeliveryStatus {
@@ -1689,6 +1697,7 @@ model Shop {
   agentShopReferrals         AgentShopReferral[]
   operatingCostAllocations   OperatingCostAllocation[]
   agentSettlementLines       AgentSettlementLine[]
+  issuedOfficialNotices      OfficialNotice[]                      @relation("OfficialNoticeIssuerShop")
 
   @@index([ownerUserId])
   @@index([city])
@@ -3418,6 +3427,9 @@ model OfficialNotice {
   lockVersion        Int                        @default(1) @map("lock_version")
   idempotencyKey     String                     @unique @map("idempotency_key") @db.VarChar(191)
   requestFingerprint String                     @map("request_fingerprint") @db.Char(64)
+  issuerType          OfficialNoticeIssuerType   @default(PLATFORM) @map("issuer_type")
+  issuerShopId        Int?                       @map("issuer_shop_id")
+  createdByIdentityId Int?                       @map("created_by_identity_id")
   createdById        Int                        @map("created_by_id")
   updatedById        Int?                       @map("updated_by_id")
   submittedById      Int?                       @map("submitted_by_id")
@@ -3428,6 +3440,8 @@ model OfficialNotice {
   updatedAt          DateTime                   @updatedAt @map("updated_at")
   deletedAt          DateTime?                  @map("deleted_at")
 
+  issuerShop        Shop?                       @relation("OfficialNoticeIssuerShop", fields: [issuerShopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByIdentity UserIdentity?               @relation("OfficialNoticeCreatedByIdentity", fields: [createdByIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdBy    User                        @relation("OfficialNoticeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy    User?                       @relation("OfficialNoticeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   submittedBy  User?                       @relation("OfficialNoticeSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
@@ -3439,6 +3453,9 @@ model OfficialNotice {
   deliveries   NoticeDelivery[]
 
   @@index([status, scheduledAt, deletedAt])
+  @@index([issuerType, issuerShopId, createdAt, deletedAt], map: "official_notices_issuer_scope_created_at_idx")
+  @@index([issuerShopId])
+  @@index([createdByIdentityId])
   @@index([createdById])
   @@index([updatedById])
   @@index([submittedById])
@@ -4882,6 +4899,7 @@ model UserIdentity {
   actedNotifications         Notification[]                @relation("NotificationActorIdentity")
   officialNoticeAudiences    NoticeAudience[]              @relation("NoticeAudienceRecipientIdentity")
   officialNoticeDeliveries   NoticeDelivery[]              @relation("NoticeDeliveryRecipientIdentity")
+  createdOfficialNotices     OfficialNotice[]              @relation("OfficialNoticeCreatedByIdentity")
   ownedMediaAssets           MediaAsset[]                  @relation("MediaAssetOwnerIdentity")
   createdEntityShareEvents   EntityShareEvent[]            @relation("EntityShareActorIdentity")
   receivedEntityShareEvents  EntityShareEvent[]            @relation("EntityShareRecipientIdentity")

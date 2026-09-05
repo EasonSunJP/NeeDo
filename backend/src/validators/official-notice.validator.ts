@@ -127,7 +127,10 @@ const audienceSchema = z.discriminatedUnion("type", [
     .strict()
 ]);
 
-export const officialNoticeCreateBodySchema = z
+export const merchantNoticeAudienceTypes = ["shop_card_holders", "shop_employees", "shop_technicians"] as const;
+const merchantAudienceSchema = z.object({ type: z.enum(merchantNoticeAudienceTypes) }).strict();
+
+const noticeCreateBaseSchema = z
   .object({
     sourceLocale: z.enum(officialNoticeLocales),
     level: z.enum(officialNoticeLevels),
@@ -144,8 +147,8 @@ export const officialNoticeCreateBodySchema = z
       .max(191)
       .regex(/^[A-Za-z0-9._:-]+$/u)
   })
-  .strict()
-  .superRefine((value, context) => {
+  .strict();
+const validateSendMode = (value: { sendMode: string; scheduledAt: string | null }, context: z.RefinementCtx) => {
     if (value.sendMode === "scheduled" && !value.scheduledAt) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -160,7 +163,10 @@ export const officialNoticeCreateBodySchema = z
         message: "error.official_notice.schedule_forbidden"
       });
     }
-  });
+  };
+export const officialNoticeCreateBodySchema = noticeCreateBaseSchema.superRefine(validateSendMode);
+export const merchantNoticeCreateBodySchema = noticeCreateBaseSchema
+  .extend({ audience: merchantAudienceSchema }).superRefine(validateSendMode);
 
 const paginationShape = {
   page: z.coerce.number().int().min(1).default(1),
@@ -203,6 +209,9 @@ export const officialNoticeLifecycleBodySchema = z
 
 export type OfficialNoticeBlockInput = z.infer<typeof officialNoticeBlockSchema>;
 export type OfficialNoticeAudienceInput = z.infer<typeof audienceSchema>;
+export type MerchantNoticeAudienceInput = z.infer<typeof merchantAudienceSchema>;
+export type NoticeAudienceInput = OfficialNoticeAudienceInput | MerchantNoticeAudienceInput;
+export type MerchantNoticeCreateBody = z.infer<typeof merchantNoticeCreateBodySchema>;
 export type OfficialNoticeCreateBody = z.infer<typeof officialNoticeCreateBodySchema>;
 export type OfficialNoticeListQuery = z.infer<typeof officialNoticeListQuerySchema>;
 export type OfficialNoticeReadQuery = z.infer<typeof officialNoticeReadQuerySchema>;

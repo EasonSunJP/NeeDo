@@ -183,6 +183,7 @@ import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createSocialMediaRoutes } from "./routes/social-media.routes";
 import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
 import {
+  createMerchantOfficialNoticeManagementRoutes,
   createOfficialNoticeManagementRoutes,
   createOfficialNoticeRecipientRoutes
 } from "./routes/official-notice.routes";
@@ -576,6 +577,10 @@ export const createApp = (
   mount("backoffice", createContentMediaRoutes(config, resolvedDependencies));
   mount("backoffice", createOfficialAnnouncementRoutes(config, resolvedDependencies));
   mount("backoffice", createOfficialNoticeManagementRoutes(config, resolvedDependencies));
+  mount(
+    "merchant-admin",
+    createMerchantOfficialNoticeManagementRoutes(config, resolvedDependencies)
+  );
   mount("shared", createOfficialNoticeRecipientRoutes(config, resolvedDependencies));
   mount("backoffice", createCarouselPublicationRoutes(config, resolvedDependencies));
   mount("shared", createIdentityActivationRoutes(config, resolvedDependencies));

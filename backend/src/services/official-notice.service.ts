@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
-  OfficialNoticeAudienceInput,
+  MerchantNoticeCreateBody,
+  NoticeAudienceInput,
   OfficialNoticeBlockInput,
   OfficialNoticeCreateBody,
   OfficialNoticeLifecycleBody,
@@ -12,6 +13,12 @@ import type {
 import { AppError } from "../utils/app-error";
 import { normalizePagination } from "../utils/pagination";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import {
+  resolveNoticeIssuerScope,
+  resolveNoticeReadScope,
+  type NoticeIssuerReadScope,
+  type NoticeIssuerScope
+} from "./official-notice-scope";
 
 export type OfficialNoticeLevelCode = "general" | "important" | "urgent";
 export type OfficialNoticeStatusCode =
@@ -68,7 +75,8 @@ export interface CreateAndPlanOfficialNoticeInput {
   now: Date;
   level: OfficialNoticeLevelCode;
   sourceLocale: ContentLocaleCode;
-  audience: OfficialNoticeAudienceInput;
+  issuerScope: NoticeIssuerScope;
+  audience: NoticeAudienceInput;
   targetSummary: string;
   scheduledAt: Date;
   sendMode: "now" | "scheduled";
@@ -81,6 +89,7 @@ export interface OfficialNoticeRepositoryPort {
   createAndPlan(input: CreateAndPlanOfficialNoticeInput): Promise<OfficialNoticePayload>;
   dispatchNotice(publicId: string, now: Date): Promise<OfficialNoticePayload>;
   listBackoffice(input: {
+    issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
     status?: OfficialNoticeStatusCode;
@@ -115,6 +124,7 @@ export interface LifecycleMutationInput {
   reason: string;
   idempotencyKey: string;
   requestFingerprint: string;
+  issuerScope: NoticeIssuerScope;
 }
 
 export interface OfficialNoticeDispatchResult {
@@ -155,6 +165,23 @@ export class OfficialNoticeService {
     context: AuthRequestContext,
     input: OfficialNoticeCreateBody
   ): Promise<OfficialNoticePayload> {
+    return this.createAndPlanScoped(actor, context, input, { type: "platform" });
+  }
+
+  public async createAndPlanMerchant(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: MerchantNoticeCreateBody
+  ): Promise<OfficialNoticePayload> {
+    return this.createAndPlanScoped(actor, context, input, resolveNoticeIssuerScope(actor, "shop"));
+  }
+
+  private async createAndPlanScoped(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: OfficialNoticeCreateBody | MerchantNoticeCreateBody,
+    issuerScope: NoticeIssuerScope
+  ): Promise<OfficialNoticePayload> {
     const now = this.now();
     const scheduledAt = input.sendMode === "now" ? now : new Date(input.scheduledAt as string);
     const translation = {
@@ -176,6 +203,7 @@ export class OfficialNoticeService {
     const created = await this.repository.createAndPlan({
       publicId,
       actorUserId: actor.userId,
+      issuerScope,
       context,
       now,
       level: input.level,
@@ -185,7 +213,17 @@ export class OfficialNoticeService {
       scheduledAt,
       sendMode: input.sendMode,
       idempotencyKey: input.idempotencyKey,
-      requestFingerprint: this.fingerprint("create_and_plan", { actorUserId: actor.userId, input }),
+      requestFingerprint: this.fingerprint(
+        "create_and_plan",
+        issuerScope.type === "platform"
+          ? { actorUserId: actor.userId, input }
+          : {
+              actorUserId: actor.userId,
+              actorIdentityId: issuerScope.actorIdentityId,
+              issuerShopId: issuerScope.shopId,
+              input
+            }
+      ),
       translations
     });
     return input.sendMode === "now" && ["scheduled", "sending"].includes(created.status)
@@ -199,6 +237,21 @@ export class OfficialNoticeService {
   ): Promise<{ list: OfficialNoticePayload[]; total: number; page: number; page_size: number }> {
     const pagination = normalizePagination(input);
     const result = await this.repository.listBackoffice({
+      issuerScope: { type: "platform" },
+      ...pagination,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.level ? { level: input.level } : {})
+    });
+    return { ...result, page: pagination.page, page_size: pagination.pageSize };
+  }
+
+  public async listMerchant(
+    actor: AuthenticatedAccessContext,
+    input: OfficialNoticeListQuery
+  ): Promise<{ list: OfficialNoticePayload[]; total: number; page: number; page_size: number }> {
+    const pagination = normalizePagination(input);
+    const result = await this.repository.listBackoffice({
+      issuerScope: resolveNoticeReadScope(actor),
       ...pagination,
       ...(input.status ? { status: input.status } : {}),
       ...(input.level ? { level: input.level } : {})
@@ -212,7 +265,9 @@ export class OfficialNoticeService {
     publicId: string,
     input: OfficialNoticeLifecycleBody
   ): Promise<OfficialNoticePayload> {
-    return this.repository.cancel(this.lifecycle("cancel", actor, context, publicId, input));
+    return this.repository.cancel(
+      this.lifecycle("cancel", actor, context, publicId, input, { type: "platform" })
+    );
   }
 
   public archive(
@@ -221,7 +276,9 @@ export class OfficialNoticeService {
     publicId: string,
     input: OfficialNoticeLifecycleBody
   ): Promise<OfficialNoticePayload> {
-    return this.repository.archive(this.lifecycle("archive", actor, context, publicId, input));
+    return this.repository.archive(
+      this.lifecycle("archive", actor, context, publicId, input, { type: "platform" })
+    );
   }
 
   public retryFailures(
@@ -231,7 +288,61 @@ export class OfficialNoticeService {
     input: OfficialNoticeLifecycleBody
   ): Promise<OfficialNoticePayload> {
     return this.repository.retryFailures(
-      this.lifecycle("retry_failures", actor, context, publicId, input)
+      this.lifecycle("retry_failures", actor, context, publicId, input, { type: "platform" })
+    );
+  }
+
+  public cancelMerchant(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticeLifecycleBody
+  ): Promise<OfficialNoticePayload> {
+    return this.repository.cancel(
+      this.lifecycle(
+        "cancel",
+        actor,
+        context,
+        publicId,
+        input,
+        resolveNoticeIssuerScope(actor, "shop")
+      )
+    );
+  }
+
+  public archiveMerchant(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticeLifecycleBody
+  ): Promise<OfficialNoticePayload> {
+    return this.repository.archive(
+      this.lifecycle(
+        "archive",
+        actor,
+        context,
+        publicId,
+        input,
+        resolveNoticeIssuerScope(actor, "shop")
+      )
+    );
+  }
+
+  public retryMerchantFailures(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticeLifecycleBody
+  ): Promise<OfficialNoticePayload> {
+    return this.repository.retryFailures(
+      this.lifecycle(
+        "retry_failures",
+        actor,
+        context,
+        publicId,
+        input,
+        resolveNoticeIssuerScope(actor, "shop")
+      )
     );
   }
 
@@ -274,7 +385,8 @@ export class OfficialNoticeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
     publicId: string,
-    input: OfficialNoticeLifecycleBody
+    input: OfficialNoticeLifecycleBody,
+    issuerScope: NoticeIssuerScope
   ): LifecycleMutationInput {
     return {
       publicId,
@@ -282,16 +394,32 @@ export class OfficialNoticeService {
       context,
       now: this.now(),
       ...input,
-      requestFingerprint: this.fingerprint(action, { actorUserId: actor.userId, publicId, input })
+      issuerScope,
+      requestFingerprint: this.fingerprint(
+        action,
+        issuerScope.type === "platform"
+          ? { actorUserId: actor.userId, publicId, input }
+          : {
+              actorUserId: actor.userId,
+              actorIdentityId: issuerScope.actorIdentityId,
+              issuerShopId: issuerScope.shopId,
+              publicId,
+              input
+            }
+      )
     };
   }
 
-  private targetSummary(audience: OfficialNoticeAudienceInput): string {
+  private targetSummary(audience: NoticeAudienceInput): string {
     if (audience.type === "all") return "全体用户";
     if (audience.type === "exact_users") return `指定账号 ${audience.userIds.length} 个`;
-    return [...new Set(audience.identityTypes.map((type) => identityLabels[type] ?? type))].join(
-      " / "
-    );
+    if (audience.type === "identity_types")
+      return [...new Set(audience.identityTypes.map((type) => identityLabels[type] ?? type))].join(
+        " / "
+      );
+    if (audience.type === "shop_card_holders") return "本店の会員カード保有者";
+    if (audience.type === "shop_technicians") return "本店の技師";
+    return "本店の従業員";
   }
 
   private requireIdentity(actor: AuthenticatedAccessContext): number {

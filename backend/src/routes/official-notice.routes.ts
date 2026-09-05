@@ -1,7 +1,10 @@
 import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
-import { OFFICIAL_NOTICE_PERMISSIONS } from "../constants/permissions.constants";
+import {
+  MERCHANT_NOTICE_PERMISSIONS,
+  OFFICIAL_NOTICE_PERMISSIONS
+} from "../constants/permissions.constants";
 import { OfficialNoticeController } from "../controllers/official-notice.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
@@ -13,7 +16,8 @@ import {
   officialNoticeLifecycleBodySchema,
   officialNoticeListQuerySchema,
   officialNoticePublicIdParamSchema,
-  officialNoticeReadQuerySchema
+  officialNoticeReadQuerySchema,
+  merchantNoticeCreateBodySchema
 } from "../validators/official-notice.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -119,5 +123,51 @@ export const createOfficialNoticeRecipientRoutes = (
     controller.markRead
   );
 
+  return router;
+};
+
+export const createMerchantOfficialNoticeManagementRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+): Router => {
+  const router = Router();
+  const { controller, authenticate } = createNoticeController(config, dependencies);
+
+  router.get(
+    "/merchant-admin/official-notices",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.read),
+    validate({ query: officialNoticeListQuerySchema }),
+    controller.listMerchant
+  );
+  router.post(
+    "/merchant-admin/official-notices",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.create),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.send),
+    validate({ body: merchantNoticeCreateBodySchema }),
+    controller.createAndPlanMerchant
+  );
+  router.post(
+    "/merchant-admin/official-notices/:publicId/cancel",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.review),
+    validate({ params: officialNoticePublicIdParamSchema, body: officialNoticeLifecycleBodySchema }),
+    controller.cancelMerchant
+  );
+  router.post(
+    "/merchant-admin/official-notices/:publicId/archive",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.review),
+    validate({ params: officialNoticePublicIdParamSchema, body: officialNoticeLifecycleBodySchema }),
+    controller.archiveMerchant
+  );
+  router.post(
+    "/merchant-admin/official-notices/:publicId/retry-failures",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.send),
+    validate({ params: officialNoticePublicIdParamSchema, body: officialNoticeLifecycleBodySchema }),
+    controller.retryMerchantFailures
+  );
   return router;
 };

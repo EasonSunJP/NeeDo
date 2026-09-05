@@ -21,6 +21,7 @@
     "check:finance-request-flow": "node --import tsx scripts/check-finance-request-flow.ts",
     "check:master-data-flow": "tsx scripts/check-master-data-flow.ts",
     "check:official-notice-flow": "tsx scripts/check-official-notice-flow.ts",
+    "check:merchant-notice-flow": "tsx scripts/check-merchant-notice-flow.ts",
     "check:schedule-flow": "tsx scripts/check-schedule-flow.ts",
     "check:manual-payment-flow": "tsx scripts/check-manual-payment-flow.ts",
     "check:wallet-adjustment-flow": "tsx scripts/check-wallet-adjustment-flow.ts",
