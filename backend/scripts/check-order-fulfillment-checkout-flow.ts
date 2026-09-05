@@ -923,7 +923,15 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     paymentEntry.frozenBalanceAfter === 0 && ndpWalletBefore.availableBalance === 100_000 &&
     ndpWalletAfter.availableBalance === 89_000 && ndpWalletAfter.frozenBalance === 0,
   "NDP wallet/ledger balance evidence is not exact");
-  assert(reconciliation === null && ndpEvidence.financial?.settlementStatus === "settled",
+  assert(reconciliation === null && ndpEvidence.financial?.settlementStatus === "settled" &&
+    ndpEvidence.financial.serviceAmountJpy === 11_000 &&
+    ndpEvidence.financial.baseServiceAmountJpy === 8_800 &&
+    ndpEvidence.financial.extensionAmountJpy === 2_200 &&
+    ndpEvidence.financial.platformCollectedServiceAmountJpy === 11_000 &&
+    ndpEvidence.financial.offlineReportedServiceAmountJpy === 0 &&
+    ndpEvidence.financial.unknownOrUnreportedServiceAmountJpy === 0 &&
+    ndpEvidence.financial.paymentChannel === "platform_online" &&
+    ndpEvidence.financial.serviceIncomeStatus === "confirmed",
   "TEST_NDP reconciliation isolation/settlement evidence is not exact");
   assertFormalFulfillmentChain(
     {

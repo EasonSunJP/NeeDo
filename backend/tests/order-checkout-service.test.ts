@@ -283,6 +283,13 @@ const createRepositoryHarness = (
   const events: any[] = [];
   const histories: any[] = [];
   const audits: any[] = [];
+  const financial: any = {
+    id: 77,
+    bookingOrderId: order.id,
+    moneyTimelineJson: [],
+    paymentChannel: "unknown",
+    serviceIncomeStatus: "unreported"
+  };
   let nextCheckoutId = 9;
   const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("en-US");
   const tx: any = {
@@ -376,8 +383,14 @@ const createRepositoryHarness = (
       })
     },
     orderFinancial: {
-      findUnique: jest.fn(async () => null),
-      update: jest.fn(async () => null),
+      findUnique: jest.fn(async ({ where }: any) =>
+        where.bookingOrderId === order.id || where.id === financial.id ? financial : null
+      ),
+      update: jest.fn(async ({ where, data }: any) => {
+        if (where.id !== financial.id) throw new Error("financial missing");
+        Object.assign(financial, data);
+        return financial;
+      }),
       upsert: jest.fn(async () => null)
     },
     auditLog: {
@@ -408,6 +421,7 @@ const createRepositoryHarness = (
       const eventLength = events.length;
       const historyLength = histories.length;
       const auditLength = audits.length;
+      const financialSnapshot = { ...financial };
       try {
         return await handler(tx);
       } catch (error) {
@@ -417,6 +431,8 @@ const createRepositoryHarness = (
         events.splice(eventLength);
         histories.splice(historyLength);
         audits.splice(auditLength);
+        Object.keys(financial).forEach((key) => delete financial[key]);
+        Object.assign(financial, financialSnapshot);
         throw error;
       }
     })
@@ -427,6 +443,7 @@ const createRepositoryHarness = (
     events,
     histories,
     audits,
+    financial,
     performanceSummaryUpsert: tx.technicianPerformanceSummary.upsert,
     transaction: client.$transaction,
     get checkout() {
@@ -854,6 +871,15 @@ describe("formal checkout repository state", () => {
     expect(applied).toMatchObject({
       outcome: "ok",
       checkout: { status: "completed", paymentEvidence: "ndp_ledger" }
+    });
+    expect(h.financial).toMatchObject({
+      serviceAmountJpy: 10_200,
+      baseServiceAmountJpy: 8_800,
+      extensionAmountJpy: 2_200,
+      platformCollectedServiceAmountJpy: 10_200,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "platform_online",
+      serviceIncomeStatus: "confirmed"
     });
     await expect(
       h.repository.payCheckoutWithNdp(

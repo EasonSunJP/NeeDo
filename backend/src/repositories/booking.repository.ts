@@ -2482,6 +2482,43 @@ export class BookingRepository implements BookingRepositoryPort {
       const context = { transactionClient: tx, order: this.mapOrder(current), checkout: before };
       await options.settle(context);
       await options.settleAffiliate(context);
+      const existingFinancial = await tx.orderFinancial.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      if (!existingFinancial) throw new CheckoutTransactionAbort("conflict");
+      const moneyTimeline = this.appendMoneyTimeline(existingFinancial.moneyTimelineJson, {
+        type: "ndp_checkout_payment_confirmed",
+        label: "NDP 服务收款已确认",
+        amountJpy: checkout.checkoutAmountJpy,
+        amountNdp: checkout.payableNdp,
+        actorType: "customer",
+        occurredAt: now.toISOString(),
+        status: "confirmed",
+        metadata: {
+          checkoutId: checkout.id,
+          ledgerTransactionId: debit.transactionId,
+          paymentChannel: "platform_online"
+        }
+      });
+      await tx.orderFinancial.update({
+        where: { id: existingFinancial.id },
+        data: {
+          serviceAmountJpy: checkout.checkoutAmountJpy,
+          baseServiceAmountJpy: checkout.baseAmountJpy,
+          extensionAmountJpy: checkout.addOnAmountJpy,
+          platformCollectedServiceAmountJpy: checkout.checkoutAmountJpy,
+          offlineReportedServiceAmountJpy: 0,
+          unknownOrUnreportedServiceAmountJpy: 0,
+          paymentChannel: "platform_online",
+          serviceIncomeStatus: "confirmed",
+          serviceIncomeReportedById: input.actorUserId,
+          serviceIncomeReportedAt: now,
+          serviceIncomeConfirmedById: input.actorUserId,
+          serviceIncomeConfirmedAt: now,
+          moneyTimelineJson: moneyTimeline as Prisma.InputJsonValue,
+          deletedAt: null
+        }
+      });
       const next = await tx.orderCheckout.findUnique({ where: { id: checkout.id } });
       if (!next) throw new CheckoutTransactionAbort("conflict");
       return {
