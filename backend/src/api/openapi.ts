@@ -2740,6 +2740,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      JapaneseRouteAddress: {
+        type: "object",
+        additionalProperties: false,
+        required: ["countryCode", "postalCode", "prefecture", "city", "addressLine1"],
+        properties: {
+          countryCode: { type: "string", enum: ["JP"] },
+          postalCode: { type: "string", pattern: "^\\d{3}-?\\d{4}$" },
+          prefecture: { type: "string", minLength: 1, maxLength: 32 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: { type: "string", maxLength: 255 },
+          building: { type: "string", maxLength: 255 }
+        }
+      },
+      RouteEstimateCreateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["servicePublicId", "destination"],
+        properties: {
+          servicePublicId: { type: "string", minLength: 1, maxLength: 160 },
+          destination: { $ref: "#/components/schemas/JapaneseRouteAddress" }
+        }
+      },
+      RouteEstimate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "distanceMeters", "durationSeconds", "fareAmountJpy", "policyVersionPublicId", "policyVersion", "bandMaximumDistanceMeters", "expiresAt", "cached"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          distanceMeters: { type: "integer", minimum: 1 },
+          durationSeconds: { type: "integer", minimum: 1 },
+          fareAmountJpy: { type: "integer", minimum: 0 },
+          policyVersionPublicId: { type: "string", format: "uuid" },
+          policyVersion: { type: "integer", minimum: 1 },
+          bandMaximumDistanceMeters: { type: "integer", minimum: 1 },
+          expiresAt: { type: "string", format: "date-time" },
+          cached: { type: "boolean" }
+        }
+      },
       TrimmedVisibleIdempotencyKey: {
         type: "string",
         "x-min-utf16-code-units": 16,
@@ -14393,6 +14432,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.shop.not_found"),
           "409": jsonErrorResponse("error.travel_fare_policy.version_conflict or error.travel_fare_policy.effective_time_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/bookings/travel-estimates`]: {
+      post: {
+        tags: ["Travel Fare"],
+        summary: "Create a short-lived driving-distance fare estimate for a home service",
+        description: "The shop origin, active policy, route distance, and fare are server-owned. The response never exposes address hashes, provider credentials, or raw provider data.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "booking:travel-estimate:create",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RouteEstimateCreateInput" } } } },
+        responses: {
+          "201": jsonDataResponse("Created or safely reused route estimate", { $ref: "#/components/schemas/RouteEstimate" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "422": jsonErrorResponse("error.travel.home_service_not_eligible, error.travel.outside_service_area, or error.travel.route_not_found"),
+          "429": jsonErrorResponse("error.rate_limited or error.travel.provider_rate_limited"),
+          "503": jsonErrorResponse("error.travel.provider_unconfigured, error.travel.provider_timeout, error.travel.provider_invalid_response, error.travel.provider_unavailable, or error.travel.policy_unavailable")
         }
       }
     },
