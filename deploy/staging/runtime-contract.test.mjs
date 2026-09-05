@@ -116,3 +116,11 @@ test("web healthcheck tolerates the local HTTPS redirect after TLS activation", 
     /wget -q --spider http:\/\/127\.0\.0\.1\/api\/v1\/health/,
   );
 });
+
+test("deployment acceptance follows the exact staging HTTPS redirect with TLS SNI", () => {
+  const deployer = read("../../scripts/aws-staging-deploy-application.mjs");
+
+  assert.match(deployer, /import https from "node:https"/);
+  assert.match(deployer, /servername:\s*hostname/);
+  assert.match(deployer, /location !== `https:\/\/\$\{hostname\}\/api\/v1\/ready`/);
+});

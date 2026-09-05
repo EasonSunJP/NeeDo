@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -136,6 +137,36 @@ async function waitForCommand(aws, commandId, instanceId) {
   throw new Error("SSM application deployment timed out");
 }
 
+function requestHttpsReady(address, hostname) {
+  return new Promise((resolve, reject) => {
+    const request = https.get({
+      host: address,
+      port: 443,
+      path: "/api/v1/ready",
+      headers: { Host: hostname },
+      servername: hostname,
+      timeout: 10_000
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          if (response.statusCode !== 200 || body?.code !== 0) {
+            reject(new Error("Public readiness response is invalid"));
+            return;
+          }
+          resolve();
+        } catch {
+          reject(new Error("Public readiness response is invalid"));
+        }
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error("Public readiness request timed out")));
+    request.on("error", reject);
+  });
+}
+
 function requestReady(address, hostname) {
   return new Promise((resolve, reject) => {
     const request = http.get({
@@ -148,6 +179,15 @@ function requestReady(address, hostname) {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
+        const location = response.headers.location;
+        if ([301, 308].includes(response.statusCode ?? 0)) {
+          if (location !== `https://${hostname}/api/v1/ready`) {
+            reject(new Error("Public readiness redirect is invalid"));
+            return;
+          }
+          requestHttpsReady(address, hostname).then(resolve, reject);
+          return;
+        }
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           if (response.statusCode !== 200 || body?.code !== 0) {
