@@ -44,6 +44,10 @@ import type {
   ExchangePublisherCapacitySource,
   ExchangeServiceMode
 } from "../types/exchange.types";
+import type {
+  ExchangeIntelligencePublicationServiceResolution,
+  ExchangeIntelligenceServiceRef
+} from "../types/exchange-intelligence-booking.types";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import { toAuditLogCreateData } from "./audit-log.repository";
 
@@ -531,11 +535,176 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     };
   }
 
+  public async resolveIntelligencePublicationService(input: {
+    actor: ExchangeActorRecord;
+    serviceRef: ExchangeIntelligenceServiceRef;
+    now: Date;
+  }): Promise<ExchangeIntelligencePublicationServiceResolution> {
+    const parsed = /^(shop|technician):([1-9]\d*)$/u.exec(input.serviceRef);
+    if (!parsed) return { kind: "not_found" };
+    const id = Number(parsed[2]);
+    if (!Number.isSafeInteger(id)) return { kind: "not_found" };
+
+    if (parsed[1] === "shop") {
+      if (
+        !SHOP_MERCHANT_IDENTITIES.has(input.actor.identityType) ||
+        input.actor.scopeType !== "shop" ||
+        !input.actor.scopeId ||
+        input.actor.shopScope?.shopId !== input.actor.scopeId
+      ) {
+        return { kind: "forbidden" };
+      }
+      const service = await this.client.service.findUnique({
+        where: { id },
+        include: {
+          category: { select: { isActive: true, deletedAt: true } },
+          shop: {
+            include: {
+              publicIdentifier: true,
+              entitySuspensions: {
+                where: { activeKey: { not: null }, status: "active", deletedAt: null },
+                select: { id: true }
+              }
+            }
+          }
+        }
+      });
+      if (!service) return { kind: "not_found" };
+      if (service.shopId !== input.actor.scopeId) return { kind: "forbidden" };
+      if (
+        service.deletedAt ||
+        service.status !== "published" ||
+        !service.category.isActive ||
+        service.category.deletedAt ||
+        !this.shopAvailable(service.shop) ||
+        service.currency !== "JPY"
+      ) {
+        return { kind: "unavailable" };
+      }
+      const serviceMode = this.intelligenceServiceMode(service.serviceMode);
+      const catalogPriceJpy = this.jpyInteger(service.priceAmount.toString());
+      if (!serviceMode || catalogPriceJpy === null || service.durationMinutes <= 0) {
+        return { kind: "unavailable" };
+      }
+      return {
+        kind: "success",
+        value: {
+          serviceRef: input.serviceRef,
+          serviceId: service.id,
+          technicianServiceId: null,
+          serviceName: service.name,
+          serviceDurationMinutes: service.durationMinutes,
+          catalogPriceJpy,
+          serviceMode,
+          areaLabel: service.shop.city,
+          addressLabel: service.shop.address,
+          serviceAreas: [service.shop.city]
+        }
+      };
+    }
+
+    if (
+      input.actor.identityType !== "technician" ||
+      input.actor.scopeType !== "technician_profile" ||
+      !input.actor.scopeId
+    ) {
+      return { kind: "forbidden" };
+    }
+    const service = await this.client.technicianService.findUnique({
+      where: { id },
+      include: {
+        category: { select: { isActive: true, deletedAt: true } },
+        sourceShopService: { select: { serviceMode: true } },
+        shop: {
+          include: {
+            publicIdentifier: true,
+            entitySuspensions: {
+              where: { activeKey: { not: null }, status: "active", deletedAt: null },
+              select: { id: true }
+            }
+          }
+        },
+        technicianProfile: {
+          select: {
+            status: true,
+            visibility: true,
+            deletedAt: true,
+            serviceArea: true,
+            serviceAreasJson: true,
+            user: { select: { isActive: true, deletedAt: true } }
+          }
+        }
+      }
+    });
+    if (!service) return { kind: "not_found" };
+    if (service.technicianId !== input.actor.scopeId) return { kind: "forbidden" };
+    const affiliation = await this.client.technicianShopAffiliation.findFirst({
+      where: {
+        technicianProfileId: input.actor.scopeId,
+        shopId: service.shopId,
+        workStatus: "ACTIVE",
+        activeKey: { not: null },
+        startsAt: { lte: input.now },
+        OR: [{ endsAt: null }, { endsAt: { gt: input.now } }],
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    if (
+      !affiliation ||
+      service.deletedAt ||
+      !service.isActive ||
+      !service.isBookable ||
+      service.reviewStatus !== "APPROVED" ||
+      !service.category.isActive ||
+      service.category.deletedAt ||
+      !this.shopAvailable(service.shop) ||
+      service.technicianProfile.status !== "published" ||
+      service.technicianProfile.visibility !== "public" ||
+      service.technicianProfile.deletedAt ||
+      !service.technicianProfile.user.isActive ||
+      service.technicianProfile.user.deletedAt ||
+      service.currency !== "JPY" ||
+      service.durationMinutes <= 0
+    ) {
+      return { kind: "unavailable" };
+    }
+    const catalogPriceJpy = this.jpyInteger(service.priceAmount);
+    const serviceMode = this.intelligenceServiceMode(
+      service.sourceShopService?.serviceMode ?? "store"
+    );
+    if (catalogPriceJpy === null || !serviceMode) return { kind: "unavailable" };
+    const serviceAreas = this.serviceAreas(
+      service.technicianProfile.serviceAreasJson,
+      service.technicianProfile.serviceArea,
+      service.shop.city
+    );
+    return {
+      kind: "success",
+      value: {
+        serviceRef: input.serviceRef,
+        serviceId: null,
+        technicianServiceId: service.id,
+        serviceName: service.name,
+        serviceDurationMinutes: service.durationMinutes,
+        catalogPriceJpy,
+        serviceMode,
+        areaLabel: serviceAreas[0] ?? service.shop.city,
+        addressLabel: service.shop.address,
+        serviceAreas
+      }
+    };
+  }
+
   public async createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }> {
     const ownerIdentityId = input.actor.ownerIdentityId ?? input.actor.identityId;
     const capacity = input.capacity;
     if (input.input.type === "demand" && !capacity) {
       throw new Error("error.exchange.request_capacity_missing");
+    }
+    const intelligenceService = input.intelligenceService;
+    if (input.input.type === "intelligence" && !intelligenceService) {
+      throw new Error("error.exchange.intelligence_service_required");
     }
     const created = await this.client.exchangePost.create({
       data: {
@@ -551,7 +720,10 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         title: input.input.title,
         detail: input.input.detail,
         contentLocale: localeToDatabase[input.input.contentLocale],
-        areaLabel: input.input.type === "demand" ? input.input.addressLine1 : input.input.areaLabel,
+        areaLabel:
+          input.input.type === "demand"
+            ? input.input.addressLine1
+            : intelligenceService!.areaLabel,
         serviceStartAt: input.input.serviceStartAt,
         serviceEndAt: input.input.serviceEndAt,
         expiresAt: input.input.expiresAt,
@@ -615,10 +787,14 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           : {
               intelligence: {
                 create: {
-                  serviceMode: serviceModeToDatabase[input.input.serviceMode],
-                  addressLabel: input.input.addressLabel,
-                  serviceAreas: input.input.serviceAreas,
-                  originalPriceJpy: input.input.originalPriceJpy,
+                  serviceId: intelligenceService!.serviceId,
+                  technicianServiceId: intelligenceService!.technicianServiceId,
+                  serviceNameSnapshot: intelligenceService!.serviceName,
+                  serviceDurationSnapshot: intelligenceService!.serviceDurationMinutes,
+                  serviceMode: serviceModeToDatabase[intelligenceService!.serviceMode],
+                  addressLabel: intelligenceService!.addressLabel,
+                  serviceAreas: intelligenceService!.serviceAreas,
+                  originalPriceJpy: intelligenceService!.catalogPriceJpy,
                   campaignPriceJpy: input.input.campaignPriceJpy
                 }
               }
@@ -628,6 +804,49 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     });
 
     return created;
+  }
+
+  private shopAvailable(shop: {
+    status: string;
+    deletedAt: Date | null;
+    publicIdentifier: { kind: string; status: string; deletedAt: Date | null } | null;
+    entitySuspensions: Array<{ id: number }>;
+  }): boolean {
+    return (
+      shop.status === "published" &&
+      shop.deletedAt === null &&
+      shop.publicIdentifier?.kind === "SHOP" &&
+      shop.publicIdentifier.status === "ACTIVE" &&
+      shop.publicIdentifier.deletedAt === null &&
+      shop.entitySuspensions.length === 0
+    );
+  }
+
+  private intelligenceServiceMode(value: string): ExchangeServiceMode | null {
+    if (value === "store") return "store";
+    if (value === "home" || value === "onsite") return "onsite";
+    if (value === "flexible") return "flexible";
+    return null;
+  }
+
+  private jpyInteger(value: number | string): number | null {
+    const amount = Number(value);
+    return Number.isSafeInteger(amount) && amount >= 0 ? amount : null;
+  }
+
+  private serviceAreas(
+    value: Prisma.JsonValue | null,
+    fallback: string | null,
+    city: string
+  ): string[] {
+    if (Array.isArray(value)) {
+      const areas = value.filter(
+        (item): item is string => typeof item === "string" && item.trim().length > 0
+      );
+      if (areas.length > 0) return [...new Set(areas.map((item) => item.trim()))];
+    }
+    if (fallback?.trim()) return [fallback.trim()];
+    return [city];
   }
 
   public async createAudit(

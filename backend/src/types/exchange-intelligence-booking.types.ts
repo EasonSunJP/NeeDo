@@ -1,4 +1,5 @@
 import type { PaginatedResponse } from "../utils/pagination";
+import type { ExchangeServiceMode } from "./exchange.types";
 
 export type ExchangeIntelligenceServiceRef = `shop:${number}` | `technician:${number}`;
 
@@ -32,3 +33,20 @@ export interface ExchangeIntelligenceServiceOptionPayload {
 
 export type ExchangeIntelligenceServiceOptionPage =
   PaginatedResponse<ExchangeIntelligenceServiceOptionPayload>;
+
+export interface ExchangeIntelligencePublicationService {
+  serviceRef: ExchangeIntelligenceServiceRef;
+  serviceId: number | null;
+  technicianServiceId: number | null;
+  serviceName: string;
+  serviceDurationMinutes: number;
+  catalogPriceJpy: number;
+  serviceMode: ExchangeServiceMode;
+  areaLabel: string;
+  addressLabel: string | null;
+  serviceAreas: string[];
+}
+
+export type ExchangeIntelligencePublicationServiceResolution =
+  | { kind: "success"; value: ExchangeIntelligencePublicationService }
+  | { kind: "not_found" | "forbidden" | "unavailable" };

@@ -103,6 +103,19 @@ const comment: ExchangeCommentPayload = {
 
 const counts: ExchangeInteractionCounts = { comments: 4, likes: 21, shares: 5 };
 
+const resolvedIntelligenceService = {
+  serviceRef: "shop:501" as const,
+  serviceId: 501,
+  technicianServiceId: null,
+  serviceName: "訪問ヘアセット",
+  serviceDurationMinutes: 60,
+  catalogPriceJpy: 15_000,
+  serviceMode: "onsite" as const,
+  areaLabel: "港区",
+  addressLabel: "港区青山1-1",
+  serviceAreas: ["港区"]
+};
+
 const demandInput = {
   type: "demand" as const,
   serviceMode: "store" as const,
@@ -181,6 +194,10 @@ const createRepository = () => {
       page_size: 20
     })),
     findPostByIdempotencyKey: jest.fn(async () => null),
+    resolveIntelligencePublicationService: jest.fn(async () => ({
+      kind: "success" as const,
+      value: resolvedIntelligenceService
+    })),
     createPost: jest.fn(async () => ({ id: post.id })),
     createAudit: jest.fn(async () => undefined),
     findPostByIdOrThrow: jest.fn(async () => post),
@@ -532,6 +549,7 @@ describe("ExchangeService", () => {
         {
           ...demandInput,
           type: "intelligence",
+          serviceRef: "shop:501",
           areaLabel: "渋谷区",
           serviceMode: "store",
           addressLabel: "渋谷区",
@@ -869,7 +887,33 @@ describe("ExchangeService", () => {
     "allows a %s identity to publish intelligence",
     async (identityType) => {
       const repository = createRepository();
-      repository.resolveActor.mockResolvedValueOnce({ ...actor, identityType });
+      const technician = identityType === "technician";
+      repository.resolveActor.mockResolvedValueOnce({
+        ...actor,
+        identityType,
+        scopeType: technician ? "technician_profile" : "shop",
+        scopeId: technician ? 81 : 11,
+        publicId: technician ? "s0000000081" : "b0000000017",
+        customerMembership: null,
+        shopScope: technician ? null : { shopId: 11, status: "published" }
+      });
+      const publicationService = technician
+        ? {
+            ...resolvedIntelligenceService,
+            serviceRef: "technician:701" as const,
+            serviceId: null,
+            technicianServiceId: 701,
+            serviceName: "着付け",
+            serviceDurationMinutes: 90,
+            catalogPriceJpy: 18_000,
+            serviceMode: "store" as const,
+            serviceAreas: ["港区", "渋谷区"]
+          }
+        : resolvedIntelligenceService;
+      repository.resolveIntelligencePublicationService.mockResolvedValueOnce({
+        kind: "success",
+        value: publicationService
+      });
       repository.findPostByIdOrThrow.mockResolvedValueOnce({
         ...post,
         type: "intelligence",
@@ -879,10 +923,17 @@ describe("ExchangeService", () => {
 
       await expect(
         service.publish(
-          { ...access, currentIdentityType: identityType },
+          {
+            ...access,
+            currentIdentityType: identityType,
+            currentIdentityScopeType: technician ? "technician_profile" : "shop",
+            currentIdentityScopeId: technician ? 81 : 11,
+            currentPublicId: technician ? "s0000000081" : "b0000000017"
+          },
           {
             ...demandInput,
             type: "intelligence",
+            serviceRef: technician ? "technician:701" : "shop:501",
             areaLabel: "渋谷区",
             serviceMode: "onsite",
             addressLabel: null,
@@ -893,8 +944,106 @@ describe("ExchangeService", () => {
           `publish-${identityType}-0001`
         )
       ).resolves.toEqual(expect.objectContaining({ type: "intelligence" }));
+      expect(repository.resolveIntelligencePublicationService).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serviceRef: technician ? "technician:701" : "shop:501",
+          now
+        })
+      );
+      expect(repository.createPost).toHaveBeenCalledWith(
+        expect.objectContaining({ intelligenceService: publicationService })
+      );
     }
   );
+
+  it.each([
+    ["not_found", ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_NOT_FOUND, 404],
+    ["forbidden", ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_FORBIDDEN, 403],
+    ["unavailable", ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_UNAVAILABLE, 409]
+  ] as const)(
+    "maps a %s service resolution outcome without creating a post",
+    async (kind, code, statusCode) => {
+      const repository = createRepository();
+      repository.resolveActor.mockResolvedValue({
+        ...actor,
+        identityType: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 11,
+        publicId: "b0000000017",
+        customerMembership: null,
+        shopScope: { shopId: 11, status: "published" }
+      });
+      repository.resolveIntelligencePublicationService.mockResolvedValue({ kind });
+      const service = new ExchangeService(repository, () => now);
+
+      await expect(
+        service.publish(
+          {
+            ...access,
+            currentIdentityType: "merchant_owner",
+            currentIdentityScopeType: "shop",
+            currentIdentityScopeId: 11,
+            currentPublicId: "b0000000017"
+          },
+          {
+            type: "intelligence",
+            serviceRef: "shop:501",
+            title: "青山限定",
+            detail: "正式サービスです。",
+            contentLocale: "ja",
+            serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
+            serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
+            expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+            campaignPriceJpy: 10_000
+          },
+          "intelligence-bind-001"
+        )
+      ).rejects.toMatchObject({ code, statusCode });
+      expect(repository.createPost).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects a campaign price above the server-resolved catalog price", async () => {
+    const repository = createRepository();
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "merchant_staff",
+      scopeType: "shop",
+      scopeId: 11,
+      publicId: "b0000000017",
+      customerMembership: null,
+      shopScope: { shopId: 11, status: "published" }
+    });
+    const service = new ExchangeService(repository, () => now);
+
+    await expect(
+      service.publish(
+        {
+          ...access,
+          currentIdentityType: "merchant_staff",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 11,
+          currentPublicId: "b0000000017"
+        },
+        {
+          type: "intelligence",
+          serviceRef: "shop:501",
+          title: "青山限定",
+          detail: "正式サービスです。",
+          contentLocale: "ja",
+          serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
+          expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+          campaignPriceJpy: 15_001
+        },
+        "intelligence-price-01"
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.EXCHANGE_INTELLIGENCE_CAMPAIGN_PRICE_INVALID,
+      statusCode: 422
+    });
+    expect(repository.createPost).not.toHaveBeenCalled();
+  });
 
   it("passes idempotency keys and transactional audits to comment and share", async () => {
     const repository = createRepository();

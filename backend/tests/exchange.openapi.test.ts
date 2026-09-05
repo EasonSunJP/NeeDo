@@ -279,4 +279,53 @@ describe("formal Exchange OpenAPI contract", () => {
       })
     );
   });
+
+  it("documents server-authoritative Intelligence service binding and stable publication errors", () => {
+    const openApi = document();
+    const publish = openApi.components.schemas.ExchangeIntelligencePublishRequest;
+
+    expect(publish.required).toEqual(
+      expect.arrayContaining([
+        "type",
+        "title",
+        "detail",
+        "contentLocale",
+        "serviceStartAt",
+        "serviceEndAt",
+        "expiresAt",
+        "serviceRef",
+        "campaignPriceJpy"
+      ])
+    );
+    for (const derivedField of [
+      "areaLabel",
+      "serviceMode",
+      "addressLabel",
+      "serviceAreas",
+      "originalPriceJpy"
+    ]) {
+      expect(publish.required).not.toContain(derivedField);
+    }
+    expect(publish.properties.serviceRef).toEqual({
+      type: "string",
+      pattern: "^(?:shop|technician):[1-9][0-9]*$"
+    });
+
+    const responses = openApi.paths["/api/v1/exchange/posts"].post.responses;
+    expect(responses["403"].description).toContain(
+      "error.exchange.intelligence_service_forbidden"
+    );
+    expect(responses["404"].description).toContain(
+      "error.exchange.intelligence_service_not_found"
+    );
+    expect(responses["409"].description).toContain(
+      "error.exchange.intelligence_service_unavailable"
+    );
+    expect(responses["422"].description).toContain(
+      "error.exchange.intelligence_service_required"
+    );
+    expect(responses["422"].description).toContain(
+      "error.exchange.intelligence_campaign_price_invalid"
+    );
+  });
 });

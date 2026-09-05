@@ -50,6 +50,231 @@ const demandRow = {
 };
 
 describe("ExchangePostRepository", () => {
+  it("resolves a merchant Intelligence service from the active shop authority", async () => {
+    const findUnique = jest.fn(async () => ({
+      id: 501,
+      shopId: 11,
+      name: "訪問ヘアセット",
+      durationMinutes: 60,
+      priceAmount: { toString: () => "15000.00" },
+      currency: "JPY",
+      serviceMode: "home",
+      status: "published",
+      deletedAt: null,
+      category: { isActive: true, deletedAt: null },
+      shop: {
+        city: "港区",
+        address: "港区青山1-1",
+        status: "published",
+        deletedAt: null,
+        publicIdentifier: {
+          publicId: "shop00000011",
+          kind: "SHOP",
+          status: "ACTIVE",
+          deletedAt: null
+        },
+        entitySuspensions: []
+      }
+    }));
+    const repository = new ExchangePostRepository({ service: { findUnique } } as never);
+
+    await expect(
+      repository.resolveIntelligencePublicationService({
+        actor: {
+          userId: 7,
+          identityId: 17,
+          identityType: "merchant_owner",
+          scopeType: "shop",
+          scopeId: 11,
+          publicId: "b0000000017",
+          displayName: "青山ケア",
+          avatarUrl: null,
+          isTestAccount: true,
+          customerMembership: null,
+          shopScope: { shopId: 11, status: "published" }
+        },
+        serviceRef: "shop:501",
+        now
+      })
+    ).resolves.toEqual({
+      kind: "success",
+      value: {
+        serviceRef: "shop:501",
+        serviceId: 501,
+        technicianServiceId: null,
+        serviceName: "訪問ヘアセット",
+        serviceDurationMinutes: 60,
+        catalogPriceJpy: 15_000,
+        serviceMode: "onsite",
+        areaLabel: "港区",
+        addressLabel: "港区青山1-1",
+        serviceAreas: ["港区"]
+      }
+    });
+
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 501 }, include: expect.any(Object) })
+    );
+  });
+
+  it("requires a technician service to share the active technician and shop affiliation", async () => {
+    const technicianServiceFindUnique = jest.fn(async () => ({
+      id: 701,
+      shopId: 11,
+      technicianId: 81,
+      name: "着付け",
+      durationMinutes: 90,
+      priceAmount: 18_000,
+      currency: "JPY",
+      isActive: true,
+      isBookable: true,
+      reviewStatus: "APPROVED",
+      deletedAt: null,
+      category: { isActive: true, deletedAt: null },
+      sourceShopService: { serviceMode: "store" },
+      shop: {
+        city: "港区",
+        address: "港区青山1-1",
+        status: "published",
+        deletedAt: null,
+        publicIdentifier: {
+          publicId: "shop00000011",
+          kind: "SHOP",
+          status: "ACTIVE",
+          deletedAt: null
+        },
+        entitySuspensions: []
+      },
+      technicianProfile: {
+        status: "published",
+        visibility: "public",
+        deletedAt: null,
+        serviceArea: "東京23区",
+        serviceAreasJson: ["港区", "渋谷区"],
+        user: { isActive: true, deletedAt: null }
+      }
+    }));
+    const affiliationFindFirst = jest.fn(async () => ({ id: 91 }));
+    const repository = new ExchangePostRepository({
+      technicianService: { findUnique: technicianServiceFindUnique },
+      technicianShopAffiliation: { findFirst: affiliationFindFirst }
+    } as never);
+
+    await expect(
+      repository.resolveIntelligencePublicationService({
+        actor: {
+          userId: 8,
+          identityId: 18,
+          identityType: "technician",
+          scopeType: "technician_profile",
+          scopeId: 81,
+          publicId: "s0000000081",
+          displayName: "山田 花子",
+          avatarUrl: null,
+          isTestAccount: true,
+          customerMembership: null,
+          shopScope: null
+        },
+        serviceRef: "technician:701",
+        now
+      })
+    ).resolves.toEqual({
+      kind: "success",
+      value: expect.objectContaining({
+        serviceRef: "technician:701",
+        serviceId: null,
+        technicianServiceId: 701,
+        serviceMode: "store",
+        serviceAreas: ["港区", "渋谷区"]
+      })
+    });
+    expect(affiliationFindFirst).toHaveBeenCalledWith({
+      where: {
+        technicianProfileId: 81,
+        shopId: 11,
+        workStatus: "ACTIVE",
+        activeKey: { not: null },
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  });
+
+  it("persists only the server-resolved Intelligence service fields", async () => {
+    const create = jest.fn(async () => ({ id: 41 }));
+    const repository = new ExchangePostRepository({ exchangePost: { create } } as never);
+    const intelligenceService = {
+      serviceRef: "shop:501" as const,
+      serviceId: 501,
+      technicianServiceId: null,
+      serviceName: "訪問ヘアセット",
+      serviceDurationMinutes: 60,
+      catalogPriceJpy: 15_000,
+      serviceMode: "onsite" as const,
+      areaLabel: "港区",
+      addressLabel: "港区青山1-1",
+      serviceAreas: ["港区"]
+    };
+
+    await repository.createPost({
+      actor: {
+        userId: 7,
+        identityId: 17,
+        identityType: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 11,
+        publicId: "b0000000017",
+        displayName: "青山ケア",
+        avatarUrl: null,
+        isTestAccount: true,
+        customerMembership: null,
+        shopScope: { shopId: 11, status: "published" }
+      },
+      input: {
+        type: "intelligence",
+        serviceRef: "shop:501",
+        title: "青山限定",
+        detail: "正式サービスです。",
+        contentLocale: "ja",
+        serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
+        serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
+        expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+        campaignPriceJpy: 10_000,
+        areaLabel: "forged area",
+        serviceMode: "flexible",
+        addressLabel: "forged address",
+        serviceAreas: ["forged"],
+        originalPriceJpy: 1
+      },
+      intelligenceService,
+      idempotencyKey: "publish-intel-0001",
+      payloadFingerprint: "a".repeat(64),
+      now
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        areaLabel: "港区",
+        intelligence: {
+          create: {
+            serviceId: 501,
+            technicianServiceId: null,
+            serviceNameSnapshot: "訪問ヘアセット",
+            serviceDurationSnapshot: 60,
+            serviceMode: "ONSITE",
+            addressLabel: "港区青山1-1",
+            serviceAreas: ["港区"],
+            originalPriceJpy: 15_000,
+            campaignPriceJpy: 10_000
+          }
+        }
+      }),
+      select: { id: true }
+    });
+  });
+
   it("resolves only the exact active identity and public NeeDo id", async () => {
     const findFirst = jest.fn(async () => ({
       id: 17,

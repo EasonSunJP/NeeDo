@@ -53,6 +53,23 @@ const authorizePublish: RequestHandler = (request, response, next) => {
   createAuthorizeMiddleware(permission)(request, response, next);
 };
 
+const requireIntelligenceServiceRef: RequestHandler = (request, _response, next) => {
+  if (
+    request.body?.type === "intelligence" &&
+    (typeof request.body.serviceRef !== "string" || request.body.serviceRef.trim().length === 0)
+  ) {
+    next(
+      new AppError({
+        code: ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_REQUIRED,
+        message: "error.exchange.intelligence_service_required",
+        statusCode: 422
+      })
+    );
+    return;
+  }
+  next();
+};
+
 export const createExchangeRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
   const router = Router();
   const authenticate = createAuthenticateMiddleware(
@@ -96,6 +113,7 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
   router.post(
     "/exchange/posts",
     authenticate(),
+    requireIntelligenceServiceRef,
     validateRequest({ body: publishExchangePostSchema }),
     authorizePublish,
     validateIdempotencyKey,

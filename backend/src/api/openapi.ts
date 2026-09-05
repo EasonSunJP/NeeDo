@@ -2025,7 +2025,19 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
             ...exchangeErrorResponses,
             "403": {
               description:
-                "error.forbidden, error.identity.forbidden, or error.user_policy.ekyc_required — denied permission, identity, or the selected service mode requires eKYC"
+                "error.forbidden, error.identity.forbidden, error.user_policy.ekyc_required, or error.exchange.intelligence_service_forbidden — denied permission, identity, eKYC policy, or service ownership"
+            },
+            "404": {
+              description:
+                "error.exchange.post_not_found or error.exchange.intelligence_service_not_found — the referenced formal resource does not exist"
+            },
+            "409": {
+              description:
+                `${exchangeErrorResponses["409"].description}, or error.exchange.intelligence_service_unavailable`
+            },
+            "422": {
+              description:
+                "error.exchange.intelligence_service_required or error.exchange.intelligence_campaign_price_invalid — Intelligence must bind an owned formal service and its campaign price cannot exceed the current catalog price"
             },
             "503": {
               description:
@@ -4749,12 +4761,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "title",
           "detail",
           "contentLocale",
-          "areaLabel",
           "serviceStartAt",
           "serviceEndAt",
           "expiresAt",
-          "serviceMode",
-          "serviceAreas",
+          "serviceRef",
           "campaignPriceJpy"
         ],
         properties: {
@@ -4772,23 +4782,47 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             example: "落ち着いた個室で施術します。事前相談も可能です。"
           },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
+          serviceRef: {
+            type: "string",
+            pattern: "^(?:shop|technician):[1-9][0-9]*$"
+          },
+          areaLabel: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            deprecated: true,
+            description: "Compatibility input only; the server derives this value from serviceRef."
+          },
           serviceStartAt: { type: "string", format: "date-time" },
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
-          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
-          addressLabel: { type: ["string", "null"], maxLength: 255 },
+          serviceMode: {
+            type: "string",
+            enum: ["store", "onsite", "flexible"],
+            deprecated: true,
+            description: "Compatibility input only; the server derives this value from serviceRef."
+          },
+          addressLabel: {
+            type: ["string", "null"],
+            maxLength: 255,
+            deprecated: true,
+            description: "Compatibility input only; the server derives this value from serviceRef."
+          },
           serviceAreas: {
             type: "array",
             minItems: 1,
             maxItems: 30,
             uniqueItems: true,
-            items: { type: "string", minLength: 1, maxLength: 120 }
+            items: { type: "string", minLength: 1, maxLength: 120 },
+            deprecated: true,
+            description: "Compatibility input only; the server derives this value from serviceRef."
           },
           originalPriceJpy: {
             type: ["integer", "null"],
             minimum: 0,
-            maximum: 1000000000
+            maximum: 1000000000,
+            deprecated: true,
+            description: "Compatibility input only; the server derives this value from serviceRef."
           },
           campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
         }
