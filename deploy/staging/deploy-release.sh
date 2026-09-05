@@ -60,11 +60,20 @@ compose_for() {
     "$@"
 }
 
+nginx_config_for() {
+  local target_release="$1"
+  if [[ -f "/srv/needo/certbot/conf/live/${hostname}/fullchain.pem" && -f "/srv/needo/certbot/conf/live/${hostname}/privkey.pem" ]]; then
+    printf '%s\n' "$target_release/deploy/staging/nginx-https.conf"
+  else
+    printf '%s\n' "$target_release/deploy/staging/nginx-http.conf"
+  fi
+}
+
 rollback_application() {
   local status=$?
   trap - ERR
   if [[ "$deployment_complete" != true && -n "$previous_release" && -d "$previous_release" ]]; then
-    install -m 0644 "$previous_release/deploy/staging/nginx-http.conf" /srv/needo/config/nginx.conf
+    install -m 0644 "$(nginx_config_for "$previous_release")" /srv/needo/config/nginx.conf
     compose_for "$previous_release" up -d --build --wait backend ops-api merchant-api web || true
     compose_for "$previous_release" up -d --no-deps --force-recreate --wait web || true
     ln -sfn "$previous_release" /srv/needo/current.rollback
@@ -125,7 +134,7 @@ grep -Eq '^AUTH_VERIFICATION_SECRET=.{32,}$' "$env_candidate"
 
 install -m 0600 "$env_candidate" "$env_file"
 chmod 0600 "$env_file"
-install -m 0644 "$release_dir/deploy/staging/nginx-http.conf" /srv/needo/config/nginx.conf
+install -m 0644 "$(nginx_config_for "$release_dir")" /srv/needo/config/nginx.conf
 
 compose_for "$release_dir" config --quiet
 compose_for "$release_dir" build migrate bootstrap-admin backend ops-api merchant-api web

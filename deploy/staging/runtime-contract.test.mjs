@@ -18,6 +18,8 @@ test("staging compose exposes only the web edge and binds durable data to /srv/n
   assert.match(compose, /\/srv\/needo\/mysql:\/var\/lib\/mysql/);
   assert.match(compose, /\/srv\/needo\/redis:\/data/);
   assert.match(compose, /\/srv\/needo\/media:\/app\/runtime/);
+  assert.match(compose, /IM_MEDIA_STORAGE_DIR:\s*\/app\/runtime\/im-media/);
+  assert.match(compose, /CONTENT_MEDIA_STORAGE_DIR:\s*\/app\/runtime\/content-media/);
   assert.match(compose, /ALLOW_STAGING_ADMIN_BOOTSTRAP:\s*"true"/);
   assert.match(compose, /restart:\s*"no"/);
 });
@@ -92,10 +94,12 @@ test("staging migration backup avoids privileged tablespace reads", () => {
   assert.match(releaseScript, /mysqldump --single-transaction --routines --triggers --no-tablespaces/);
 });
 
-test("staging web reloads the written HTTP Nginx config for deploy and rollback", () => {
+test("staging web preserves an existing TLS edge for deploy and rollback", () => {
   const releaseScript = read("./deploy-release.sh");
-  assert.match(releaseScript, /install -m 0644 "\$previous_release\/deploy\/staging\/nginx-http\.conf"[\s\S]{0,180}up -d --no-deps --force-recreate --wait web/);
-  assert.match(releaseScript, /install -m 0644 "\$release_dir\/deploy\/staging\/nginx-http\.conf"[\s\S]{0,2200}up -d --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /nginx_config_for\(\)/);
+  assert.match(releaseScript, /fullchain\.pem[\s\S]*privkey\.pem[\s\S]*nginx-https\.conf/);
+  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,220}up -d --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,2400}up -d --no-deps --force-recreate --wait web/);
 });
 
 test("web healthcheck tolerates the local HTTPS redirect after TLS activation", () => {
