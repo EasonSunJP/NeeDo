@@ -824,20 +824,6 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
-  "搜索通知": fourLanguageTranslation("搜尋通知", "通知を検索", "Search notices", "공지 검색"),
-  "指定账号": fourLanguageTranslation("指定帳號", "指定アカウント", "Specific accounts", "지정 계정"),
-  "全局搜索账号": fourLanguageTranslation("全域搜尋帳號", "アカウントを全体検索", "Search all accounts", "전체 계정 검색"),
-  "邮箱、手机号或 NeeDoID": fourLanguageTranslation("電子郵件、手機號碼或 NeeDoID", "メール、携帯番号または NeeDoID", "Email, phone, or NeeDoID", "이메일, 휴대폰 번호 또는 NeeDoID"),
-  "输入邮箱、手机号或 NeeDoID": fourLanguageTranslation("輸入電子郵件、手機號碼或 NeeDoID", "メール、携帯番号または NeeDoID を入力", "Enter email, phone, or NeeDoID", "이메일, 휴대폰 번호 또는 NeeDoID 입력"),
-  "搜索账号": fourLanguageTranslation("搜尋帳號", "アカウントを検索", "Search accounts", "계정 검색"),
-  "正在搜索账号": fourLanguageTranslation("正在搜尋帳號…", "アカウントを検索中…", "Searching accounts…", "계정 검색 중…"),
-  "选择账号": fourLanguageTranslation("選擇帳號", "アカウントを選択", "Select account", "계정 선택"),
-  "已选择账号": fourLanguageTranslation("已選擇帳號", "選択済み", "Account selected", "계정 선택됨"),
-  "移除账号": fourLanguageTranslation("移除帳號", "アカウントを削除", "Remove account", "계정 제거"),
-  "源语言": fourLanguageTranslation("來源語言", "原文言語", "Source language", "원문 언어"),
-  "复制当前内容到全部语言": fourLanguageTranslation("將目前內容複製到所有語言", "現在の内容を全言語へコピー", "Copy current content to all languages", "현재 내용을 모든 언어로 복사"),
-  "每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。": fourLanguageTranslation("每個語言頁籤皆可獨立編輯；複製後仍可逐項修改，傳送時會一併儲存五份內容。", "各言語タブは個別に編集できます。コピー後も個別に変更でき、送信時に5言語すべてを保存します。", "Each language tab is independently editable. Copies remain editable, and all five versions are saved together.", "각 언어 탭은 독립적으로 편집할 수 있습니다. 복사 후에도 개별 수정할 수 있으며 전송 시 5개 언어를 함께 저장합니다."),
-  "请补齐五种语言的标题、摘要和正文": fourLanguageTranslation("請補齊五種語言的標題、摘要和正文", "5言語すべてのタイトル、概要、本文を入力してください", "Complete the title, summary, and body in all five languages", "5개 언어의 제목, 요약, 본문을 모두 입력하세요"),
   "图片已过期": { "zh-Hant": "圖片已過期", ja: "画像の有効期限が切れました", en: "Image expired", ko: "이미지가 만료되었습니다" },
   "聊天媒体本地缓存": fourLanguageTranslation("聊天媒體本機快取", "チャットメディアのローカルキャッシュ", "Local chat media cache", "채팅 미디어 로컬 캐시"),
   "媒体已显示，但本地缓存不可用": fourLanguageTranslation("媒體已顯示，但本機快取無法使用", "メディアは表示されていますが、ローカルキャッシュは利用できません", "Media is visible, but local caching is unavailable", "미디어는 표시되지만 로컬 캐시를 사용할 수 없습니다"),
