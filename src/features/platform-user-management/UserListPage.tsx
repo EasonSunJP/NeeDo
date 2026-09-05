@@ -9,12 +9,14 @@ import { platformUserManagementApi } from "./api";
 import type { Paginated, PlatformManagedUser, PlatformTierCode, UserListQuery } from "./types";
 import { UserDetailDrawer } from "./UserDetailDrawer";
 import { UserFilters } from "./UserFilters";
+import { readPositiveIntegerSearchParam } from "../../pages/admin/adminSearchParams";
 
 const tierLabels: Record<PlatformTierCode, string> = { free: "免费", silver: "白银", gold: "黄金", black_diamond: "黑钻" };
 
 export function UserListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const detailUserId = readPositiveIntegerSearchParam(searchParams, "detailUserId");
   const [reloadToken, setReloadToken] = useState(0);
   const query = useMemo<UserListQuery>(() => ({
     page: Math.max(1, Number(searchParams.get("page")) || 1), page_size: 20,
@@ -33,6 +35,10 @@ export function UserListPage() {
     return () => { active = false; };
   }, [query, reloadToken]);
 
+  useEffect(() => {
+    if (detailUserId !== null) setSelectedUserId(detailUserId);
+  }, [detailUserId]);
+
   const updateQuery = (next: Partial<UserListQuery>) => {
     const params = new URLSearchParams();
     const merged = { ...query, ...next, page_size: undefined };
@@ -41,6 +47,18 @@ export function UserListPage() {
   };
   const data = state.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1;
+  const openUserDetail = (userId: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("detailUserId", String(userId));
+    setSearchParams(params, { replace: true });
+    setSelectedUserId(userId);
+  };
+  const closeUserDetail = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("detailUserId");
+    setSearchParams(params, { replace: true });
+    setSelectedUserId(null);
+  };
 
   return (
     <AdminLayout>
@@ -50,10 +68,10 @@ export function UserListPage() {
           {state.loading ? <div className="p-10 text-center text-sm font-bold text-ink/50">正在读取全部用户…</div> : null}
           {state.error ? <div className="p-10 text-center"><p className="text-sm font-bold text-coral">{state.error}</p><Button className="mt-4" onClick={() => setReloadToken((value) => value + 1)} variant="secondary">重新加载</Button></div> : null}
           {!state.loading && !state.error && data?.list.length === 0 ? <div className="p-10 text-center text-sm font-bold text-ink/50">没有符合条件的用户</div> : null}
-          {!state.loading && !state.error && data?.list.length ? <UserTable rows={data.list} onSelect={setSelectedUserId} /> : null}
+          {!state.loading && !state.error && data?.list.length ? <UserTable rows={data.list} onSelect={openUserDetail} /> : null}
           {data && data.total > 0 ? <footer className="flex items-center justify-between border-t border-line px-4 py-3 text-sm text-ink/55"><span>共 {data.total} 位用户</span><div className="flex items-center gap-2"><Button disabled={query.page === 1} onClick={() => updateQuery({ page: Math.max(1, (query.page ?? 1) - 1) })} size="sm" variant="secondary">上一页</Button><span>{query.page} / {totalPages}</span><Button disabled={(query.page ?? 1) >= totalPages} onClick={() => updateQuery({ page: (query.page ?? 1) + 1 })} size="sm" variant="secondary">下一页</Button></div></footer> : null}
         </section>
-        <UserDetailDrawer onClose={() => setSelectedUserId(null)} userId={selectedUserId} />
+        <UserDetailDrawer onClose={closeUserDetail} userId={selectedUserId} />
       </ModuleShell>
     </AdminLayout>
   );

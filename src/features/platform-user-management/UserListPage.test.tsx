@@ -9,6 +9,7 @@ describe("formal all-user workspace", () => {
     expect(source).toContain("page_size: 20");
     expect(source).toContain("setSearchParams");
     expect(filtersSource).toContain("onSubmit");
+    expect(source).toContain('readPositiveIntegerSearchParam(searchParams, "detailUserId")');
   });
 
   it("renders explicit loading, empty, retry and bounded account facts", () => {
