@@ -81,7 +81,7 @@ describe("MerchantPortalPage store privacy control", () => {
 
   it("adds the floating privacy menu to the merchant service card only", () => {
     expect(merchantSource).toContain('{ label: "信息卡", value: "info" }');
-    expect(merchantSource).toContain('{ label: "服务展示", value: "service" }');
+    expect(merchantSource).toContain('{ label: "店铺展示", value: "service" }');
     expect(merchantSource).toContain('{ label: "数据中心", value: "data" }');
     expect(merchantSource).toContain("function MerchantStorePrivacyControl");
     expect(merchantSource).toContain('data-testid="merchant-store-privacy-control"');
@@ -120,6 +120,15 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
     expect(merchantSource).toContain('showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}');
+  });
+
+  it("keeps the personal-center status panel inside the same mobile content inset", () => {
+    const statusPanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "dashboard" ? (', merchantSource.indexOf("{selectedContact && (")),
+      merchantSource.indexOf("</MobileShell>")
+    );
+
+    expect(statusPanelSource).toContain('className={activeView === "me" ? "mx-4 !w-auto" : undefined}');
   });
 
   it("adds the merchant pricing mode switch beside the privacy switch", () => {

@@ -4084,6 +4084,9 @@ export function StoreDetailExperience({
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
           <div className={cn("relative", hasMerchantControls && "min-h-[112px]")}>
             <div className="min-w-0 pr-12">
+              <p className="truncate text-[11px] font-black tracking-[0.08em] text-[color:var(--client-muted)]">
+                <span>店铺 ID</span> <span data-no-i18n>{store.systemId}</span>
+              </p>
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>

@@ -4281,6 +4281,7 @@ export const translations: TranslationMap = {
   "店内照片墙": { "zh-Hant": "店內照片牆", ja: "店内環境", en: "Store gallery", ko: "매장 사진 갤러리" },
   "店内周中加开席位": { "zh-Hant": "店內週間加開席位", ja: "店内の平日追加席", en: "Extra weekday in-store seats", ko: "평일 매장 내 추가 좌석" },
   "店铺": { "zh-Hant": "店鋪", ja: "店舗", en: "Store", ko: "매장" },
+  "店铺展示": { "zh-Hant": "店鋪展示", ja: "店舗紹介", en: "Shop Showcase", ko: "매장 쇼케이스" },
   "店铺 / 服务方": { "zh-Hant": "店鋪 / 服務方", ja: "店舗／サービス方", en: "Store / Service", ko: "매장 / 서비스" },
   "店铺 PC 后台": { "zh-Hant": "店鋪 PC 後台", ja: "店舗PC管理画面", en: "Store PC admin", ko: "스토어 PC 관리자" },
   "店铺、个人技师、服务号和黑名单统一管理，常用联系人更好找。": { "zh-Hant": "店鋪、個人技師、服務號碼和黑名單統一管理，常用聯絡人更好找。", ja: "店舗、個人スタッフ、サービスアカウント、ブラックリストなどが一元管理されているため、よく利用する連絡先を簡単に見つけることが可能。", en: "Stores, personal staffs, service accounts, and blacklists are managed in a unified manner, making it easier to find frequently used contacts.", ko: "매장, 개인 스태프, 서비스 계정 및 블랙리스트가 통합적으로 관리되므로 자주 사용하는 연락처를 더 쉽게 찾을 수 있습니다." },
