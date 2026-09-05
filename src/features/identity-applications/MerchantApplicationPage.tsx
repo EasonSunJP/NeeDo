@@ -98,8 +98,8 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   const [selectedKeywordLabels, setSelectedKeywordLabels] = useState<string[]>(retainedDraft?.selectedKeywordLabels ?? []);
 
   useEffect(() => {
-    merchantApplicationDraftMemory.clear(accountId);
-  }, [accountId]);
+    merchantApplicationDraftMemory.clearIfCurrent(accountId, retainedDraft);
+  }, [accountId, retainedDraft]);
 
   useEffect(() => {
     let active = true;
@@ -254,7 +254,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
         working = { ...working, version: uploaded.applicationVersion };
       }
       setApplication(working);
-      merchantApplicationDraftMemory.clear(accountId);
+      merchantApplicationDraftMemory.clearIfCurrent(accountId, retainedDraft);
       setStep(1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

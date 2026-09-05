@@ -21,7 +21,8 @@ export const merchantApplicationDraftMemory = {
   retain(accountId: number | null, draft: MerchantApplicationDraft) {
     if (accountId !== null) drafts.set(accountId, draft);
   },
-  clear(accountId: number | null) {
-    if (accountId !== null) drafts.delete(accountId);
+  clearIfCurrent(accountId: number | null, ownedDraft: MerchantApplicationDraft | undefined) {
+    // The captured snapshot reference is its ownership token; later route instances create new snapshots.
+    if (accountId !== null && ownedDraft && drafts.get(accountId) === ownedDraft) drafts.delete(accountId);
   }
 };

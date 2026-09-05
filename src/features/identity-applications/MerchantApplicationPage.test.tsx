@@ -345,6 +345,51 @@ describe("MerchantApplicationPage behavior", () => {
     }));
   });
 
+  it.each([false, true])("preserves a newer remount snapshot after an old unmounted save resolves (old mount restored: %s)", async (restoreOldMount) => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    await render();
+    if (restoreOldMount) {
+      await enter("店铺名称", "最初の復元スナップショット");
+      await act(async () => button("本人确认（eKYC）").click());
+      await act(async () => button("Return to application").click());
+    }
+    let finishOldSave!: (application: IdentityApplication) => void;
+    vi.mocked(identityApplicationsApi.updateMerchantShowcase).mockReturnValue(new Promise((resolve) => { finishOldSave = resolve; }));
+    await enter("店铺名称", "古い保存リクエストの名称");
+    await act(async () => button("下一步：银行与身份").click());
+    expect(button("本人确认（eKYC）").disabled).toBe(true);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render();
+    await enter("申请人", "新しい申請者");
+    await enter("店铺名称", "再マウント後の新しい名称");
+    await enter("最低费用", "9500");
+    await enter("最高费用", "15500");
+    const newerFile = await chooseCover();
+    await act(async () => button("本人确认（eKYC）").click());
+    const newerSnapshot = merchantApplicationDraftMemory.read(context.accountId);
+    expect(newerSnapshot).toBeDefined();
+    expect(newerSnapshot?.showcaseImage).toBe(newerFile);
+
+    const savedOldApplication = {
+      ...corporateDraft, version: 4,
+      merchantDetail: { ...corporateDraft.merchantDetail!, shopName: "古い保存リクエストの名称" }
+    };
+    await act(async () => finishOldSave(savedOldApplication));
+    expect.soft(merchantApplicationDraftMemory.read(context.accountId)).toBe(newerSnapshot);
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [savedOldApplication], total: 1, page: 1, page_size: 20 });
+    await act(async () => button("Return to application").click());
+    expect.soft(input("申请人").value).toBe("新しい申請者");
+    expect.soft(input("店铺名称").value).toBe("再マウント後の新しい名称");
+    expect.soft(input("最低费用").value).toBe("9500");
+    expect.soft(input("最高费用").value).toBe("15500");
+    expect.soft(container.textContent).toContain("first-shop.png");
+    expect.soft(button("下一步：银行与身份").disabled).toBe(true);
+    expect.soft(container.textContent).toContain("店铺申请草稿已发生变更。本页未保存资料已保留，请复制后重新打开申请。");
+    expect(merchantApplicationDraftMemory.read(context.accountId)).toBeUndefined();
+  });
+
   it.each([
     ["zh-Hant", "選擇店鋪展示圖", "費用區間說明"],
     ["ja", "店舗画像を選択", "料金帯の説明"],
