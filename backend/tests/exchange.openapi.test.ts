@@ -46,6 +46,7 @@ describe("formal Exchange OpenAPI contract", () => {
       ["/api/v1/exchange/posts/{id}/like", "delete"],
       ["/api/v1/exchange/posts/{id}/shares", "post"],
       ["/api/v1/exchange/request-publication-context", "get"],
+      ["/api/v1/exchange/intelligence/service-options", "get"],
       ["/api/v1/backoffice/exchange-request-fee/current", "get"],
       ["/api/v1/backoffice/exchange-request-fee/versions", "get"],
       ["/api/v1/backoffice/exchange-request-fee/versions", "post"]
@@ -59,6 +60,28 @@ describe("formal Exchange OpenAPI contract", () => {
     for (const deferred of ["offers", "matches", "bookings", "orders", "payments"]) {
       expect(paths).not.toHaveProperty(`/api/v1/exchange/posts/{id}/${deferred}`);
     }
+  });
+
+  it("documents the paginated Intelligence service option permission and public projection", () => {
+    const openApi = document();
+    const operation = openApi.paths["/api/v1/exchange/intelligence/service-options"].get;
+
+    expect(operation).toEqual(
+      expect.objectContaining({
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "exchange:intelligence:service-options:list"
+      })
+    );
+    expect(operation.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page" }),
+        expect.objectContaining({ name: "page_size" })
+      ])
+    );
+    expect(openApi.components.schemas).toHaveProperty("ExchangeIntelligenceServiceOption");
+    expect(JSON.stringify(openApi.components.schemas.ExchangeIntelligenceServiceOption)).not.toMatch(
+      /userId|identityId|technicianProfileId/
+    );
   });
 
   it("documents the Request publication context and paginated fee administration permissions", () => {

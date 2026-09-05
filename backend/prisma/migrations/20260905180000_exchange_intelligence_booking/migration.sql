@@ -33,3 +33,46 @@ ALTER TABLE `booking_orders`
   ADD INDEX `booking_orders_exchange_intelligence_created_idx` (`exchange_intelligence_post_id`, `created_at`),
   ADD CONSTRAINT `booking_orders_exchange_intelligence_fkey`
     FOREIGN KEY (`exchange_intelligence_post_id`) REFERENCES `exchange_intelligences` (`post_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+INSERT INTO `permissions` (
+  `name`, `code`, `type`, `module`, `description`, `is_system`,
+  `created_at`, `updated_at`, `deleted_at`
+)
+VALUES (
+  '读取情报服务选项',
+  'exchange:intelligence:service-options:list',
+  'api',
+  'exchange',
+  '分页读取当前技师或店铺可用于发布正式情报的服务',
+  TRUE,
+  CURRENT_TIMESTAMP(3),
+  CURRENT_TIMESTAMP(3),
+  NULL
+)
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `type` = VALUES(`type`),
+  `module` = VALUES(`module`),
+  `description` = VALUES(`description`),
+  `is_system` = TRUE,
+  `updated_at` = CURRENT_TIMESTAMP(3),
+  `deleted_at` = NULL;
+
+INSERT INTO `role_permissions` (
+  `role_id`, `permission_id`, `created_at`, `updated_at`, `deleted_at`
+)
+SELECT
+  `roles`.`id`,
+  `permissions`.`id`,
+  CURRENT_TIMESTAMP(3),
+  CURRENT_TIMESTAMP(3),
+  NULL
+FROM `roles`
+JOIN `permissions`
+  ON `permissions`.`code` = 'exchange:intelligence:service-options:list'
+  AND `permissions`.`deleted_at` IS NULL
+WHERE `roles`.`code` IN ('admin', 'merchant_owner', 'merchant_staff', 'technician')
+  AND `roles`.`deleted_at` IS NULL
+ON DUPLICATE KEY UPDATE
+  `updated_at` = CURRENT_TIMESTAMP(3),
+  `deleted_at` = NULL;

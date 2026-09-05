@@ -152,6 +152,7 @@ export const EXCHANGE_PERMISSIONS = {
   postDetail: "exchange:posts:detail",
   createDemand: "exchange:posts:create-demand",
   createIntelligence: "exchange:posts:create-intelligence",
+  intelligenceServiceOptionList: "exchange:intelligence:service-options:list",
   withdrawOwn: "exchange:posts:withdraw-own",
   claimOptionList: "exchange:claim-options:list",
   claimCreate: "exchange:claims:create",
@@ -1859,6 +1860,13 @@ export const SYSTEM_PERMISSIONS = [
     "以当前技师或店铺身份发布正式情报"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.intelligenceServiceOptionList,
+    "读取情报服务选项",
+    "api",
+    "exchange",
+    "分页读取当前技师或店铺可用于发布正式情报的服务"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.withdrawOwn,
     "撤回本人发布",
     "api",
@@ -2001,6 +2009,7 @@ const EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES = [
 const EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES = [
   ...EXCHANGE_COMMON_PERMISSION_CODES,
   EXCHANGE_PERMISSIONS.createIntelligence,
+  EXCHANGE_PERMISSIONS.intelligenceServiceOptionList,
   EXCHANGE_PERMISSIONS.withdrawOwn
 ] as const satisfies readonly SystemPermissionCode[];
 

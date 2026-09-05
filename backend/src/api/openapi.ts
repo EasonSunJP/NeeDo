@@ -1937,6 +1937,7 @@ const exchangeOperation = (
 
 const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
   const base = `${config.API_PREFIX}/exchange/posts`;
+  const intelligenceServiceOptionsBase = `${config.API_PREFIX}/exchange/intelligence/service-options`;
   const cancellationBase = `${config.API_PREFIX}/exchange/orders/{id}/cancellation`;
   const contextBase = `${config.API_PREFIX}/exchange/request-publication-context`;
   const feeBase = `${config.API_PREFIX}/backoffice/exchange-request-fee`;
@@ -1974,6 +1975,23 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
   ];
 
   return {
+    [intelligenceServiceOptionsBase]: {
+      get: exchangeOperation(
+        "List formal services available to the active Intelligence publisher",
+        "exchange:intelligence:service-options:list",
+        {
+          description:
+            "Returns only approved, active, bookable formal services owned by the current shop identity or current technician profile through an active shop affiliation.",
+          parameters: pageParameters,
+          responses: {
+            "200": jsonDataResponse("Paginated Intelligence service options", {
+              $ref: "#/components/schemas/ExchangeIntelligenceServiceOptionPage"
+            }),
+            ...exchangeErrorResponses
+          }
+        }
+      )
+    },
     [base]: {
       get: exchangeOperation("List live demand or intelligence posts", "exchange:posts:list", {
         description:
@@ -4041,6 +4059,79 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maximum: 1000000000
           },
           campaignPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 }
+        }
+      },
+      ExchangeIntelligenceServiceOptionShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "name", "city", "address"],
+        properties: {
+          publicId: { type: "string", minLength: 1, maxLength: 32 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 }
+        }
+      },
+      ExchangeIntelligenceServiceOptionTechnician: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "displayName", "avatarUrl", "serviceArea", "serviceAreas"],
+        properties: {
+          publicId: { type: "string", pattern: "^s[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarUrl: { type: ["string", "null"], maxLength: 500 },
+          serviceArea: { type: ["string", "null"], maxLength: 255 },
+          serviceAreas: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          }
+        }
+      },
+      ExchangeIntelligenceServiceOption: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "serviceRef",
+          "ownerType",
+          "name",
+          "durationMinutes",
+          "catalogPriceJpy",
+          "currency",
+          "serviceMode",
+          "available",
+          "shop",
+          "technician"
+        ],
+        properties: {
+          serviceRef: { type: "string", pattern: "^(?:shop|technician):[1-9][0-9]*$" },
+          ownerType: { type: "string", enum: ["shop", "technician"] },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          durationMinutes: { type: "integer", minimum: 1 },
+          catalogPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          currency: { type: "string", enum: ["JPY"] },
+          serviceMode: { type: "string", minLength: 1, maxLength: 50 },
+          available: { type: "boolean", enum: [true] },
+          shop: { $ref: "#/components/schemas/ExchangeIntelligenceServiceOptionShop" },
+          technician: {
+            oneOf: [
+              { $ref: "#/components/schemas/ExchangeIntelligenceServiceOptionTechnician" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      ExchangeIntelligenceServiceOptionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ExchangeIntelligenceServiceOption" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
       ExchangePost: {

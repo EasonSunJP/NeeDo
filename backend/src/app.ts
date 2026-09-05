@@ -210,6 +210,7 @@ import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
+import { createExchangeIntelligenceServiceRoutes } from "./routes/exchange-intelligence-service.routes";
 import { createExchangeClaimRoutes } from "./routes/exchange-claim.routes";
 import { createExchangeMatchingRoutes } from "./routes/exchange-matching.routes";
 import { createExchangeBookingConversionRoutes } from "./routes/exchange-booking-conversion.routes";
@@ -238,6 +239,7 @@ import type { BackofficeUserGroupService } from "./services/backoffice-user-grou
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
 import type { ExchangeService } from "./services/exchange.service";
+import type { ExchangeIntelligenceServiceService } from "./services/exchange-intelligence-service.service";
 import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeMatchingService } from "./services/exchange-matching.service";
 import type { ExchangeBookingConversionService } from "./services/exchange-booking-conversion.service";
@@ -440,6 +442,7 @@ export interface AppDependencies {
   imVoiceStorage?: ImVoiceStoragePort;
   imVoiceMessageService?: ImVoiceMessageService;
   exchangeService?: ExchangeService;
+  exchangeIntelligenceServiceService?: ExchangeIntelligenceServiceService;
   exchangeClaimService?: ExchangeClaimService;
   exchangeMatchingService?: ExchangeMatchingService;
   exchangeBookingConversionService?: ExchangeBookingConversionService;
@@ -613,6 +616,7 @@ export const createApp = (
   mount("shared", createImMessageTranslationRoutes(config, resolvedDependencies));
   mount("shared", createRealtimeRoutes(config, resolvedDependencies));
   mount("shared", createExchangeRoutes(config, resolvedDependencies));
+  mount("shared", createExchangeIntelligenceServiceRoutes(config, resolvedDependencies));
   mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));
   mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));
   mount("shared", createExchangeBookingConversionRoutes(config, resolvedDependencies));
