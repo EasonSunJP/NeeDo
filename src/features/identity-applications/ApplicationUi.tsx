@@ -33,7 +33,7 @@ export function ApplicationShell({
       closeLabel={t("关闭")}
       closeTo="/me/settings/portal"
       contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
-      headerFrameClassName="z-[140]"
+      headerFrameClassName="!z-[140]"
       info={t(info)}
       navItems={hideNavigation ? [] : undefined}
       onBack={onBack}

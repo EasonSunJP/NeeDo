@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import applicationUiSource from "./ApplicationUi.tsx?raw";
 import merchantApplicationSource from "./MerchantApplicationPage.tsx?raw";
+import storeDetailPageSource from "../../pages/user/StoreDetailPage.tsx?raw";
 import { shopTaxonomyCopy } from "../shop-taxonomy/i18n";
 
 describe("identity application page chrome", () => {
@@ -72,9 +73,14 @@ describe("identity application page chrome", () => {
   });
 
   it("keeps the application header above preview chrome and fixes the action at home-nav position", () => {
-    expect(applicationUiSource).toContain('headerFrameClassName="z-[140]"');
+    expect(applicationUiSource).toContain('headerFrameClassName="!z-[140]"');
     expect(applicationUiSource).toContain("export function ApplicationBottomAction");
     expect(applicationUiSource).toContain("fixed inset-x-0 bottom-0 z-[100]");
     expect(applicationUiSource).toContain("--client-bottom-nav-inline-gap");
+  });
+
+  it("preserves the approved tilde separator in the store preview price range", () => {
+    expect(storeDetailPageSource).toContain('return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;');
+    expect(storeDetailPageSource).not.toContain('return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;');
   });
 });
