@@ -224,4 +224,77 @@ describe("OfficialNoticeService", () => {
       )
     ).resolves.toMatchObject({ status: "sent" });
   });
+
+  it("derives merchant issuer scope and includes shop plus identity in create idempotency", async () => {
+    const repo = repository();
+    const service = new OfficialNoticeService(repo, { now: () => now });
+    const merchant = {
+      userId: 7,
+      currentIdentityId: 17,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11
+    } as AuthenticatedAccessContext;
+    const input = {
+      sourceLocale: "ja" as const,
+      level: "important" as const,
+      title: "営業時間変更",
+      summary: "お知らせ",
+      blocks: [{ id: "p-1", type: "paragraph" as const, content: "本文" }],
+      audience: { type: "shop_employees" as const },
+      sendMode: "scheduled" as const,
+      scheduledAt: new Date(now.getTime() + 60_000).toISOString(),
+      idempotencyKey: "merchant-create"
+    };
+
+    await service.createAndPlanMerchant(merchant, { ip: "127.0.0.1" }, input);
+    const first = repo.createAndPlan.mock.calls[0][0];
+    await service.createAndPlanMerchant(
+      { ...merchant, currentIdentityScopeId: 12 },
+      { ip: "127.0.0.1" },
+      input
+    );
+    const second = repo.createAndPlan.mock.calls[1][0];
+
+    expect(first).toMatchObject({
+      actorUserId: 7,
+      issuerScope: { type: "shop", shopId: 11, actorUserId: 7, actorIdentityId: 17 },
+      audience: { type: "shop_employees" },
+      targetSummary: "本店の従業員"
+    });
+    expect(first.requestFingerprint).not.toBe(second.requestFingerprint);
+  });
+
+  it("passes platform and merchant ownership into list and lifecycle repository calls", async () => {
+    const repo = repository();
+    const service = new OfficialNoticeService(repo, { now: () => now });
+    const merchant = {
+      userId: 7,
+      currentIdentityId: 17,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11
+    } as AuthenticatedAccessContext;
+    const lifecycle = {
+      expectedLockVersion: 1,
+      reason: "merchant request",
+      idempotencyKey: "merchant-lifecycle"
+    };
+
+    await service.listBackoffice(actor, { page: 1, pageSize: 20 });
+    await service.listMerchant(merchant, { page: 1, pageSize: 20 });
+    await service.cancelMerchant(merchant, { ip: "127.0.0.1" }, payload().publicId, lifecycle);
+
+    expect(repo.listBackoffice.mock.calls[0][0]).toMatchObject({
+      issuerScope: { type: "platform" }
+    });
+    expect(repo.listBackoffice.mock.calls[1][0]).toMatchObject({
+      issuerScope: { type: "shop", shopId: 11 }
+    });
+    expect(repo.cancel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issuerScope: expect.objectContaining({ type: "shop", shopId: 11 })
+      })
+    );
+  });
 });

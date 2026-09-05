@@ -23,11 +23,14 @@ function fixture() {
   const client = {
     officialNotice: {
       findFirst: jest.fn(async () => notice),
+      findUnique: jest.fn(async () => null),
       updateMany: jest.fn(async () => ({ count: 1 })),
       update: jest.fn(async () => notice),
       findMany: jest.fn(async (): Promise<Array<{ publicId: string }>> => []),
+      count: jest.fn(async () => 0),
       findUniqueOrThrow: jest.fn(async () => notice)
     },
+    shopEmployee: { findFirst: jest.fn(async () => null) },
     noticeDelivery: {
       findMany: jest.fn(async (): Promise<Array<{ id: number; attemptCount: number }>> => []),
       findUnique: jest.fn(async () => ({ noticeId: 1, status: "DELIVERED" })),
@@ -169,7 +172,8 @@ describe("official notice transaction regression", () => {
       expectedLockVersion: 1,
       reason: "cancel scheduled notice",
       idempotencyKey: "cancel-command",
-      requestFingerprint: "same-command"
+      requestFingerprint: "same-command",
+      issuerScope: { type: "platform" }
     });
     expect(client.auditLog.create).not.toHaveBeenCalled();
     expect(client.officialNotice.updateMany).not.toHaveBeenCalled();
@@ -186,11 +190,93 @@ describe("official notice transaction regression", () => {
       expectedLockVersion: 1,
       reason: "retry failed recipients",
       idempotencyKey: "retry-command",
-      requestFingerprint: "retry-fingerprint"
+      requestFingerprint: "retry-fingerprint",
+      issuerScope: { type: "platform" }
     });
     expect(client.officialNotice.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "SENDING" })
+      })
+    );
+  });
+
+  it("checks active shop employment before looking up an idempotency replay", async () => {
+    const { client, repository } = fixture();
+    await expect(
+      repository.createAndPlan({
+        publicId,
+        actorUserId: 7,
+        issuerScope: {
+          type: "shop",
+          shopId: 11,
+          actorUserId: 7,
+          actorIdentityId: 17
+        },
+        context: { ip: "127.0.0.1" },
+        now,
+        level: "important",
+        sourceLocale: "ja",
+        audience: { type: "shop_employees" },
+        targetSummary: "本店の従業員",
+        scheduledAt: now,
+        sendMode: "now",
+        idempotencyKey: "merchant-create",
+        requestFingerprint: "merchant-fingerprint",
+        translations: {}
+      } as never)
+    ).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(client.shopEmployee.findFirst).toHaveBeenCalled();
+    expect(client.officialNotice.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each(["cancel", "archive", "retryFailures"] as const)(
+    "rechecks active shop employment before merchant %s replay or mutation",
+    async (command) => {
+      const { client, repository } = fixture();
+      await expect(
+        repository[command]({
+          publicId,
+          actorUserId: 7,
+          context: { ip: "127.0.0.1" },
+          now,
+          expectedLockVersion: 1,
+          reason: "merchant lifecycle",
+          idempotencyKey: `merchant-${command}`,
+          requestFingerprint: `merchant-${command}-fingerprint`,
+          issuerScope: {
+            type: "shop",
+            shopId: 11,
+            actorUserId: 7,
+            actorIdentityId: 17
+          }
+        })
+      ).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+      expect(client.shopEmployee.findFirst).toHaveBeenCalled();
+      expect(client.auditLog.findFirst).not.toHaveBeenCalled();
+      expect(client.officialNotice.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it("separates platform and current-shop management queries", async () => {
+    const { client, repository } = fixture();
+    await repository.listBackoffice({
+      issuerScope: { type: "platform" },
+      page: 1,
+      pageSize: 20
+    });
+    await repository.listBackoffice({
+      issuerScope: { type: "shop", shopId: 11 },
+      page: 1,
+      pageSize: 20
+    });
+    expect(client.officialNotice.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: { deletedAt: null, issuerType: "PLATFORM" } })
+    );
+    expect(client.officialNotice.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { deletedAt: null, issuerType: "SHOP", issuerShopId: 11 }
       })
     );
   });

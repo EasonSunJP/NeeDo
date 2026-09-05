@@ -245,6 +245,19 @@ const envSchema = z
     IM_TRANSLATION_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(2),
     // Provider quota policy metadata only; this bounded step does not create a local usage ledger.
     IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT: z.coerce.number().int().positive().default(500_000),
+    TRAVEL_ROUTE_PROVIDER: z.enum(["disabled", "geoapify"]).default("disabled"),
+    GEOAPIFY_API_BASE_URL: z.string().url().default("https://api.geoapify.com"),
+    GEOAPIFY_API_KEY: optionalSecretSchema,
+    TRAVEL_ROUTE_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
+    TRAVEL_ROUTE_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(2),
+    TRAVEL_ROUTE_CACHE_TTL_SECONDS: z.coerce.number().int().min(30).max(3_600).default(300),
+    TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(5)
+      .max(300)
+      .default(30),
+    TRAVEL_ESTIMATE_TTL_SECONDS: z.coerce.number().int().min(60).max(1_800).default(600),
     CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
     FRIEND_REQUEST_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
     FRIEND_REQUEST_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
@@ -362,6 +375,34 @@ const envSchema = z
         "GOOGLE_AUTH_CLIENT_ID",
         "GOOGLE_AUTH_CLIENT_ID is required when AUTH_GOOGLE_ENABLED=true"
       );
+    }
+
+    if (value.TRAVEL_ROUTE_PROVIDER === "geoapify") {
+      const geoapifyUrl = new URL(value.GEOAPIFY_API_BASE_URL);
+      if (geoapifyUrl.protocol !== "https:") {
+        addProductionIssue(
+          context,
+          "GEOAPIFY_API_BASE_URL",
+          "GEOAPIFY_API_BASE_URL must use HTTPS"
+        );
+      }
+      if (
+        value.NODE_ENV === "production" &&
+        isUnsafeProductionTranslationHostname(geoapifyUrl.hostname)
+      ) {
+        addProductionIssue(
+          context,
+          "GEOAPIFY_API_BASE_URL",
+          "GEOAPIFY_API_BASE_URL must use a non-local production host"
+        );
+      }
+      if (!value.GEOAPIFY_API_KEY) {
+        addProductionIssue(
+          context,
+          "GEOAPIFY_API_KEY",
+          "GEOAPIFY_API_KEY is required for the Geoapify provider"
+        );
+      }
     }
 
     if (value.NODE_ENV !== "production") {
@@ -587,7 +628,8 @@ if (!parsedEnv.success) {
 export const env = {
   ...parsedEnv.data,
   IM_TRANSLATION_API_BASE_URL: parsedEnv.data.IM_TRANSLATION_API_BASE_URL,
-  IM_TRANSLATION_API_KEY: parsedEnv.data.IM_TRANSLATION_API_KEY
+  IM_TRANSLATION_API_KEY: parsedEnv.data.IM_TRANSLATION_API_KEY,
+  GEOAPIFY_API_KEY: parsedEnv.data.GEOAPIFY_API_KEY
 };
 
 export type AppConfig = typeof env;

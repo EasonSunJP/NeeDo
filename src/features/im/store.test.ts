@@ -19,6 +19,17 @@ const mocked = vi.hoisted(() => ({
     primaryPublicId: "u0000000100",
     username: "测试用户",
   },
+  localCache: {
+    beginCacheOpenedMedia: vi.fn(async () => ({ generation: 0, key: "intent" })),
+    cacheOpenedMedia: vi.fn(async () => undefined),
+    clearAccount: vi.fn(async () => undefined),
+    getCachedMediaObjectUrl: vi.fn(async () => undefined),
+    getUsage: vi.fn(async () => ({ mediaBytes: 0 })),
+    lock: vi.fn(),
+    purgeMedia: vi.fn(async () => undefined),
+    releaseCachedMediaObjectUrl: vi.fn(),
+    unlock: vi.fn(async () => undefined),
+  },
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -36,13 +47,19 @@ vi.mock("./formal-api", () => ({
     };
   },
 }));
+
+vi.mock("./local-cache/service", () => ({
+  getImOpenedMediaCacheService: () => mocked.localCache,
+}));
 import {
   buildCachedImSearchResults,
+  fetchImOpenedMediaBlob,
   getIncomingPendingFriendRequestCount,
   getMessageFailureReason,
   getForwardableMessagePayload,
   mergeConversationMessageHistory,
   preferTerminalMessage,
+  resolveImOpenedMediaCacheFetchSource,
   selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
   useImStore,
@@ -50,6 +67,95 @@ import {
 } from "./store";
 
 const sentAt = "2026-08-25T10:00:00.000Z";
+
+describe("opened IM media cache delivery source", () => {
+  it("routes a formal absolute backend media URL through the current-origin proxy", () => {
+    expect(resolveImOpenedMediaCacheFetchSource(
+      "http://localhost:3000/media/im/original.jpg?version=1",
+      "http://127.0.0.1:5180",
+    )).toBe("/media/im/original.jpg?version=1");
+  });
+
+  it("refuses to read arbitrary cross-origin bytes into the private cache", () => {
+    expect(() => resolveImOpenedMediaCacheFetchSource(
+      "https://untrusted.example/private.jpg",
+      "http://127.0.0.1:5180",
+    )).toThrow("error.im.local_cache_media_source_invalid");
+  });
+
+  it("classifies only an authoritative HTTP 410 as expired", async () => {
+    const fetcher = vi.fn(async () => ({ ok: false, status: 410 } as Response));
+    await expect(fetchImOpenedMediaBlob(
+      "http://localhost:3000/media/im/expired.jpg",
+      "http://127.0.0.1:5180",
+      fetcher,
+    )).resolves.toEqual({ state: "expired" });
+    expect(fetcher).toHaveBeenCalledWith("/media/im/expired.jpg", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    const missing = vi.fn(async () => ({ ok: false, status: 404 } as Response));
+    await expect(fetchImOpenedMediaBlob(
+      "/media/im/missing.jpg",
+      "http://127.0.0.1:5180",
+      missing,
+    )).rejects.toThrow("error.im.media_delivery_404");
+  });
+
+  it("captures deletion intent before a no-store same-origin media fetch", async () => {
+    mocked.session = {
+      activePublicId: "u0000000109",
+      avatarUrl: null,
+      id: 109,
+      primaryPublicId: "u0000000109",
+      username: "媒体缓存测试用户",
+    };
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "109",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [], contacts: [], friendRequests: [], conversations: [], members: [],
+      }),
+    };
+    const response = {
+      blob: vi.fn(async () => new Blob(["image"], { type: "image/jpeg" })),
+      ok: true,
+      status: 200,
+    } as unknown as Response;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+
+    await renderStore();
+    await store?.cacheOpenedMedia(
+      message({
+        type: "image",
+        content: "http://localhost:3000/media/im/original.jpg",
+        ext: { url: "http://localhost:3000/media/im/original.jpg" },
+      }),
+      "http://localhost:3000/media/im/original.jpg",
+    );
+
+    expect(mocked.localCache.beginCacheOpenedMedia).toHaveBeenCalledWith("109", "91", "700");
+    expect(fetchSpy).toHaveBeenCalledWith("/media/im/original.jpg", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    expect(mocked.localCache.beginCacheOpenedMedia.mock.invocationCallOrder[0])
+      .toBeLessThan(fetchSpy.mock.invocationCallOrder[0]!);
+    expect(mocked.localCache.cacheOpenedMedia).toHaveBeenCalledWith(
+      "109",
+      expect.objectContaining({ id: "700" }),
+      expect.any(Blob),
+      { generation: 0, key: "intent" },
+    );
+  });
+});
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -105,7 +211,10 @@ afterEach(async () => {
   mocked.api = null;
   window.localStorage.clear();
   document.body.replaceChildren();
+  vi.clearAllMocks();
+  mocked.localCache.purgeMedia.mockResolvedValue(undefined);
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function message(overrides: Partial<ConversationMessage> = {}): ConversationMessage {
@@ -215,6 +324,126 @@ describe("formal IM recall terminal precedence", () => {
       lastMessageType: "recalled",
       lastMessageStatus: "recalled",
     });
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledWith("106", "91", "700");
+  });
+
+  it("purges encrypted media before refreshing an online privacy deletion", async () => {
+    vi.useFakeTimers();
+    mocked.session = {
+      activePublicId: "u0000010107",
+      avatarUrl: null,
+      id: 10_107,
+      primaryPublicId: "u0000010107",
+      username: "隐私删除测试用户",
+    };
+    const bootstrap = vi.fn().mockResolvedValue({
+        currentUserId: "10107",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: [],
+      });
+    const listMessages = vi.fn()
+      .mockResolvedValueOnce({ messages: [message()], nextCursor: null, hasMore: false })
+      .mockResolvedValue({ messages: [], nextCursor: null, hasMore: false });
+    mocked.api = {
+      bootstrap,
+      listMessages,
+    };
+    mocked.localCache.purgeMedia.mockRejectedValue(
+      new Error("transient IndexedDB transaction failure"),
+    );
+
+    await renderStore();
+    await act(async () => {
+      store?.setActiveConversation("91");
+      await store?.loadMessages("91", { reset: true });
+      mocked.subscriptionListener?.({
+        type: "message.deleted",
+        conversationId: "91",
+        messageId: "700",
+        reason: "privacy_expired",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledTimes(3);
+    expect(mocked.localCache.purgeMedia).toHaveBeenNthCalledWith(1, "10107", "91", "700");
+    expect(mocked.localCache.purgeMedia).toHaveBeenNthCalledWith(2, "10107", "91", "700");
+    expect(mocked.localCache.purgeMedia).toHaveBeenNthCalledWith(3, "10107", "91", "700");
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    expect(store?.messagesByConversation["91"]).toEqual([
+      expect.objectContaining({ id: "700", serverState: "active" }),
+    ]);
+    expect(store?.error).toBe("error.im.local_cache_purge_failed");
+
+    mocked.localCache.purgeMedia.mockResolvedValue(undefined);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+    });
+
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledTimes(4);
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+    expect(listMessages).toHaveBeenCalledTimes(2);
+    expect(store?.messagesByConversation["91"]).toEqual([]);
+    expect(store?.error).toBeUndefined();
+  });
+
+  it("applies a recalled history tombstone and releases pagination while local cleanup retries", async () => {
+    vi.useFakeTimers();
+    mocked.session = {
+      activePublicId: "u0000010108",
+      avatarUrl: null,
+      id: 10_108,
+      primaryPublicId: "u0000010108",
+      username: "测试用户",
+    };
+    mocked.localCache.purgeMedia.mockRejectedValue(new Error("IndexedDB unavailable"));
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "10108",
+        config: {
+          allowStrangerMessaging: true,
+          preserveConversationAfterDelete: true,
+          recallWindowMs: 180_000,
+          separatorThresholdMs: 300_000,
+          syncDraftAcrossDevices: false,
+        },
+        users: [], contacts: [], friendRequests: [], conversations: [conversation()], members: [],
+      }),
+      listMessages: vi.fn().mockResolvedValue({
+        messages: [recalled],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await expect(store?.loadMessages("91", { reset: true })).resolves.toBeUndefined();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store?.messagesByConversation["91"]).toEqual([recalled]);
+    expect(store?.paginationByConversation["91"]).toMatchObject({ loading: false, loaded: true });
+    expect(store?.error).toBe("error.im.local_cache_purge_failed");
+
+    mocked.localCache.purgeMedia.mockResolvedValue(undefined);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(store?.error).toBeUndefined();
   });
 
   it("recomputes the current last-message summary for message-only SSE recall", async () => {
@@ -915,7 +1144,36 @@ describe("formal IM forwarding", () => {
     };
     await renderStore();
     await act(async () => { await store?.loadMessages("91", { reset: true }); await store?.batchDeleteMessages("91", ["701"], "delete-last"); });
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledWith("192", "91", "701");
     expect(store?.conversations[0]).toMatchObject({ lastMessageId: "700", lastMessagePreview: "earlier", lastMessageTime: sentAt });
+  });
+
+  it("does not report a confirmed batch delete as fully successful when local terminal cleanup fails", async () => {
+    vi.useFakeTimers();
+    mocked.session = { activePublicId: "u0000000196", avatarUrl: null, id: 196, primaryPublicId: "u0000000196", username: "测试用户" };
+    mocked.localCache.purgeMedia.mockRejectedValue(new Error("IndexedDB failed"));
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "196", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation()], members: [] }),
+      listMessages: vi.fn().mockResolvedValue({ messages: [message()], nextCursor: null, hasMore: false }),
+      batchDeleteMessages: vi.fn().mockResolvedValue({ conversationId: "91", messageIds: ["700"], count: 1, deleted: true, replayed: false }),
+    };
+    await renderStore();
+    await act(async () => { await store?.loadMessages("91", { reset: true }); });
+
+    await act(async () => {
+      await expect(store?.batchDeleteMessages("91", ["700"], "delete-cache-failure"))
+        .rejects.toThrow("error.im.local_cache_purge_failed");
+    });
+    expect(store?.messagesByConversation["91"]).toEqual([]);
+    expect(store?.error).toBe("error.im.local_cache_purge_failed");
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledTimes(3);
+
+    mocked.localCache.purgeMedia.mockResolvedValue(undefined);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledTimes(4);
+    expect(store?.error).toBeUndefined();
   });
 
   it("clears every last-message field after deleting all messages from a complete history without changing unread state", async () => {
@@ -1122,5 +1380,40 @@ describe("formal IM quick reactions", () => {
     expect(reactionSource).toContain("await api.setMessageReaction");
     expect(reactionSource).toContain("upsertMessage(response.message)");
     expect(source).toContain("setMessageReaction,");
+  });
+});
+
+describe("conversation deletion", () => {
+  it.each(["single", "group"] as const)("purges %s history and drafts even when an old page arrives later", async (type) => {
+    mocked.session = { ...mocked.session, id: type === "single" ? 91001 : 91002 };
+    let resolvePage!: (value: unknown) => void;
+    const listMessages = vi.fn()
+      .mockResolvedValueOnce({ messages: [message()], nextCursor: "700", hasMore: true })
+      .mockImplementationOnce(() => new Promise(resolve => { resolvePage = resolve; }))
+      .mockResolvedValue({ messages: [], nextCursor: null, hasMore: false });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: {}, users: [], contacts: [], friendRequests: [], conversations: [conversation({ type })], members: [] }),
+      listMessages,
+      deleteConversation: vi.fn().mockResolvedValue({ conversation: conversation({ type, isDeleted: true }) }),
+      getConversation: vi.fn().mockResolvedValue({ conversation: conversation({ type }), users: [], members: [] }),
+    };
+    window.localStorage.setItem("needo.im.ui.v2.user", JSON.stringify({
+      drafts: { "91": { text: "private draft", updatedAt: sentAt } },
+      searchHistory: [],
+    }));
+    await renderStore();
+    await act(async () => { await store?.loadMessages("91"); });
+    let pending!: Promise<void>;
+    await act(async () => { pending = store!.loadMessages("91"); await Promise.resolve(); });
+    await act(async () => { await store?.deleteConversation("91"); });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    expect(store?.ui.drafts["91"]).toBeUndefined();
+    await act(async () => { resolvePage({ messages: [message()], nextCursor: null, hasMore: false }); await pending; });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    await act(async () => { await store?.loadConversation("91"); await store?.loadMessages("91", { reset: true }); });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    await act(async () => { mocked.subscriptionListener?.({ type: "message.updated", message: message() }); });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    expect(window.localStorage.getItem("needo.im.ui.v2.user")).not.toContain("private draft");
   });
 });

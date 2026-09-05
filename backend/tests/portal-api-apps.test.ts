@@ -15,6 +15,8 @@ describe("portal API application boundaries", () => {
     const merchant = createMerchantApp(env, healthDependencies);
     await request(ops).post("/api/v1/backoffice/official-notices").send({}).expect(401);
     await request(merchant).post("/api/v1/backoffice/official-notices").send({}).expect(404);
+    await request(merchant).post("/api/v1/merchant-admin/official-notices").send({}).expect(401);
+    await request(ops).post("/api/v1/merchant-admin/official-notices").send({}).expect(404);
     await request(ops).get("/api/v1/official-notices?locale=ja").expect(401);
     await request(merchant).get("/api/v1/official-notices?locale=ja").expect(401);
   });

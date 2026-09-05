@@ -4,6 +4,7 @@ import type { OfficialNoticeService } from "../services/official-notice.service"
 import { successResponse } from "../utils/api-response";
 import { getRequestContext } from "../utils/request-context";
 import type {
+  MerchantNoticeCreateBody,
   OfficialNoticeCreateBody,
   OfficialNoticeLifecycleBody,
   OfficialNoticeListQuery,
@@ -35,6 +36,78 @@ export class OfficialNoticeController {
             this.actor(response),
             getRequestContext(request),
             request.body as OfficialNoticeCreateBody
+          )
+        )
+      );
+  });
+
+  public listMerchant = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listMerchant(
+            this.actor(response),
+            request.query as unknown as OfficialNoticeListQuery
+          )
+        )
+      );
+  });
+
+  public createAndPlanMerchant = this.handle(async (request, response) => {
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.createAndPlanMerchant(
+            this.actor(response),
+            getRequestContext(request),
+            request.body as MerchantNoticeCreateBody
+          )
+        )
+      );
+  });
+
+  public cancelMerchant = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.cancelMerchant(
+            this.actor(response),
+            getRequestContext(request),
+            request.params.publicId,
+            request.body as OfficialNoticeLifecycleBody
+          )
+        )
+      );
+  });
+
+  public archiveMerchant = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.archiveMerchant(
+            this.actor(response),
+            getRequestContext(request),
+            request.params.publicId,
+            request.body as OfficialNoticeLifecycleBody
+          )
+        )
+      );
+  });
+
+  public retryMerchantFailures = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.retryMerchantFailures(
+            this.actor(response),
+            getRequestContext(request),
+            request.params.publicId,
+            request.body as OfficialNoticeLifecycleBody
           )
         )
       );

@@ -503,7 +503,7 @@ describeIntegration("Dashboard operations finance against guarded local MySQL", 
               reader.getOperationsFinance({ scope: { kind: "platform" }, city: marker, window })
             ).resolves.toEqual({
               grossRevenue: { current: 3_300, previous: 500, dataStatus: "ready" },
-              travelFare: { current: null, previous: null, dataStatus: "not_connected" },
+              travelFare: { current: 0, previous: 0, dataStatus: "ready" },
               discountAmount: { current: 330, previous: 50, dataStatus: "ready" },
               consumablesSales: { current: null, previous: null, dataStatus: "not_connected" }
             });

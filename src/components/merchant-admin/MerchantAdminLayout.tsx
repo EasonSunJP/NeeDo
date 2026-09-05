@@ -48,6 +48,7 @@ type MerchantAdminNavItem = {
   children?: string[];
   badge?: string;
   permission?: FeaturePermission;
+  rbacPermission?: string;
 };
 
 type MerchantAdminNavSection = {
@@ -180,6 +181,13 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
         to: "/merchant-admin/finance",
         icon: "¥",
         children: ["店铺流水", "结算单", "分账"]
+      },
+      {
+        label: "店铺通知",
+        to: "/merchant-admin/notifications",
+        icon: "通",
+        children: ["通知列表", "定时发送", "投递回执"],
+        rbacPermission: "merchant-admin:notice:read"
       }
     ]
   },
@@ -374,7 +382,7 @@ function getInitialThemeState(): AdminThemeState {
 }
 
 export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
-  const { canAccessFeature, session } = useAuth();
+  const { canAccessFeature, hasPermission, session } = useAuth();
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
   const [{ theme, preferenceMode }, setThemeState] =
@@ -436,11 +444,12 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
           ...section,
           items: section.items.filter(
             (item) =>
-              !item.permission || readOnlyPreview || canAccessFeature("merchant", item.permission)
+              (!item.permission || readOnlyPreview || canAccessFeature("merchant", item.permission)) &&
+              (!item.rbacPermission || hasPermission(item.rbacPermission))
           )
         }))
         .filter((section) => section.items.length > 0),
-    [canAccessFeature, readOnlyPreview]
+    [canAccessFeature, hasPermission, readOnlyPreview]
   );
   const routeSectionKey = getSectionForRoute(location.pathname, location.search, visibleSections);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);
@@ -817,12 +826,12 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
                 </label>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <button
+                <NavLink
                   className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
-                  type="button"
+                  to="/merchant-admin/notifications/inbox"
                 >
                   通知
-                </button>
+                </NavLink>
                 <NavLink
                   className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
                   to="/merchant-admin/settings"

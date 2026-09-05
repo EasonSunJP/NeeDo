@@ -2592,11 +2592,11 @@ const dashboardAnalyticsMetricExamples = [
     detailRoute: "/admin/analytics/metrics/discount_amount"
   }),
   dashboardAnalyticsMetricExample("travel_fare", {
-    currentValue: null,
-    previousValue: null,
-    comparisonPercent: null,
-    comparisonDirection: "unavailable",
-    dataStatus: "not_connected",
+    currentValue: 700,
+    previousValue: 300,
+    comparisonPercent: 133.33,
+    comparisonDirection: "up",
+    dataStatus: "ready",
     unit: "jpy",
     detailRoute: "/admin/analytics/metrics/travel_fare"
   }),
@@ -2672,6 +2672,113 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     schemas: {
       ...shopMembershipCardPlanOpenApiSchemas,
+      ShopTravelFareBand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ordinal", "maximumDistanceMeters", "fareAmountJpy"],
+        properties: {
+          ordinal: { type: "integer", minimum: 0 },
+          maximumDistanceMeters: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          fareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum }
+        }
+      },
+      ShopTravelFarePolicyVersion: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "version", "effectiveFrom", "publishedByUserId", "reason", "bands", "createdAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          publishedByUserId: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          bands: { type: "array", minItems: 1, maxItems: 50, items: { $ref: "#/components/schemas/ShopTravelFareBand" } },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopTravelFarePolicySummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["current", "next"],
+        properties: {
+          current: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] },
+          next: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] }
+        }
+      },
+      ShopTravelFarePolicyPublishInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "effectiveFrom", "reason", "bands"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 0 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          bands: {
+            type: "array",
+            minItems: 1,
+            maxItems: 50,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["maximumDistanceMeters", "fareAmountJpy"],
+              properties: {
+                maximumDistanceMeters: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+                fareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum }
+              }
+            }
+          }
+        }
+      },
+      ShopTravelFarePolicyVersionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      JapaneseRouteAddress: {
+        type: "object",
+        additionalProperties: false,
+        required: ["countryCode", "postalCode", "prefecture", "city", "addressLine1"],
+        properties: {
+          countryCode: { type: "string", enum: ["JP"] },
+          postalCode: { type: "string", pattern: "^\\d{3}-?\\d{4}$" },
+          prefecture: { type: "string", minLength: 1, maxLength: 32 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: { type: "string", maxLength: 255 },
+          building: { type: "string", maxLength: 255 }
+        }
+      },
+      RouteEstimateCreateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["servicePublicId", "destination"],
+        properties: {
+          servicePublicId: { type: "string", minLength: 1, maxLength: 160 },
+          destination: { $ref: "#/components/schemas/JapaneseRouteAddress" }
+        }
+      },
+      RouteEstimate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "distanceMeters", "durationSeconds", "fareAmountJpy", "policyVersionPublicId", "policyVersion", "bandMaximumDistanceMeters", "expiresAt", "cached"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          distanceMeters: { type: "integer", minimum: 1 },
+          durationSeconds: { type: "integer", minimum: 1 },
+          fareAmountJpy: { type: "integer", minimum: 0 },
+          policyVersionPublicId: { type: "string", format: "uuid" },
+          policyVersion: { type: "integer", minimum: 1 },
+          bandMaximumDistanceMeters: { type: "integer", minimum: 1 },
+          expiresAt: { type: "string", format: "date-time" },
+          cached: { type: "boolean" }
+        }
+      },
       TrimmedVisibleIdempotencyKey: {
         type: "string",
         "x-min-utf16-code-units": 16,
@@ -3234,10 +3341,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       DashboardAnalyticsMetricDetail: {
         type: "object",
         additionalProperties: false,
-        required: ["filter", "metric", "series"],
+        required: ["filter", "metric", "series", "details"],
         properties: {
           filter: { $ref: "#/components/schemas/DashboardAnalyticsFilter" },
           metric: { $ref: "#/components/schemas/AnalyticsMetricPayload" },
+          details: {
+            type: "array",
+            maxItems: 100,
+            description: "Redacted completed-order rows populated only for travel_fare; complete customer addresses are never returned.",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["orderNo", "shopId", "shopName", "completedAt", "distanceMeters", "policyVersionPublicId", "policyVersion", "bandMaximumDistanceMeters", "fareAmountJpy", "paymentEvidence", "reversalState"],
+              properties: {
+                orderNo: { type: "string" },
+                shopId: { type: "integer", minimum: 1 },
+                shopName: { type: "string" },
+                completedAt: { type: "string", format: "date-time" },
+                distanceMeters: { type: "integer", minimum: 1 },
+                policyVersionPublicId: { type: "string", format: "uuid" },
+                policyVersion: { type: "integer", minimum: 1 },
+                bandMaximumDistanceMeters: { type: "integer", minimum: 1 },
+                fareAmountJpy: { type: "integer", minimum: 0 },
+                paymentEvidence: { type: "string", enum: ["ndp_ledger", "technician_receipt_confirmation", "operations_receipt_override"] },
+                reversalState: { type: "string", const: "none" }
+              }
+            }
+          },
           series: {
             type: "array",
             minItems: 1,
@@ -3266,6 +3396,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             unit: "people",
             detailRoute: "/admin/analytics/metrics/new_users"
           }),
+          details: [],
           series: [
             {
               seriesKey: "new_users",
@@ -9323,6 +9454,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "baseAmountJpy",
           "acceptedAddOnIds",
           "addOnAmountJpy",
+          "travelFareAmountJpy",
           "discountAmountJpy",
           "checkoutAmountJpy",
           "rateFormula"
@@ -9330,7 +9462,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           formula: {
             type: "string",
-            enum: ["base_plus_accepted_add_ons_minus_discount"]
+            enum: ["base_plus_accepted_add_ons_plus_travel_fare_minus_discount"]
           },
           baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           acceptedAddOnIds: {
@@ -9339,6 +9471,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
           },
           addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          travelFareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           rateFormula: {
@@ -9358,6 +9491,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "status",
           "baseAmountJpy",
           "addOnAmountJpy",
+          "travelFareAmountJpy",
           "discountAmountJpy",
           "checkoutAmountJpy",
           "payableNdp",
@@ -9381,6 +9515,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          travelFareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           payableNdp: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
@@ -12758,6 +12893,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
         }
       },
+      MerchantOfficialNoticeAudience: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type"],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["shop_card_holders", "shop_employees", "shop_technicians"]
+          }
+        }
+      },
+      MerchantOfficialNoticeCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "audience",
+          "sendMode",
+          "scheduledAt",
+          "idempotencyKey"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          },
+          audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
+          sendMode: { type: "string", enum: ["now", "scheduled"] },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
       OfficialNoticeLifecycle: {
         type: "object",
         additionalProperties: false,
@@ -14237,6 +14414,71 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/ShopPlatformFeePolicy"
           }),
           ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/travel-fare-policy`]: {
+      get: {
+        tags: ["Travel Fare"],
+        summary: "Read current and next travel-fare policy for the signed merchant shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:travel-fare-policy:read",
+        responses: {
+          "200": jsonDataResponse("Current and next immutable travel-fare policy versions", { $ref: "#/components/schemas/ShopTravelFarePolicySummary" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/travel-fare-policy/versions`]: {
+      get: {
+        tags: ["Travel Fare"],
+        summary: "List immutable travel-fare policy version history for the signed merchant shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:travel-fare-policy:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated immutable travel-fare policy versions", { $ref: "#/components/schemas/ShopTravelFarePolicyVersionPage" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Travel Fare"],
+        summary: "Publish the next immutable travel-fare policy version for the signed merchant shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:travel-fare-policy:write",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ShopTravelFarePolicyPublishInput" } } } },
+        responses: {
+          "201": jsonDataResponse("Published immutable travel-fare policy version", { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }),
+          "400": jsonErrorResponse("error.validation or error.travel_fare_policy.invalid_bands"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.shop.not_found"),
+          "409": jsonErrorResponse("error.travel_fare_policy.version_conflict or error.travel_fare_policy.effective_time_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/bookings/travel-estimates`]: {
+      post: {
+        tags: ["Travel Fare"],
+        summary: "Create a short-lived driving-distance fare estimate for a home service",
+        description: "The shop origin, active policy, route distance, and fare are server-owned. The response never exposes address hashes, provider credentials, or raw provider data.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "booking:travel-estimate:create",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RouteEstimateCreateInput" } } } },
+        responses: {
+          "201": jsonDataResponse("Created or safely reused route estimate", { $ref: "#/components/schemas/RouteEstimate" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "422": jsonErrorResponse("error.travel.home_service_not_eligible, error.travel.outside_service_area, or error.travel.route_not_found"),
+          "429": jsonErrorResponse("error.rate_limited or error.travel.provider_rate_limited"),
+          "503": jsonErrorResponse("error.travel.provider_unconfigured, error.travel.provider_timeout, error.travel.provider_invalid_response, error.travel.provider_unavailable, or error.travel.policy_unavailable")
         }
       }
     },
@@ -18289,6 +18531,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
+                  fulfillmentAddress: { $ref: "#/components/schemas/JapaneseRouteAddress" },
+                  travelEstimatePublicId: { type: "string", format: "uuid" },
                   paymentMethod: {
                     type: "string",
                     enum: ["onsite", "bank_transfer"],
@@ -18301,7 +18545,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     minLength: 1,
                     maxLength: 512
                   }
-                }
+                },
+                allOf: [
+                  {
+                    if: { properties: { fulfillmentMode: { const: "home" } }, required: ["fulfillmentMode"] },
+                    then: { required: ["fulfillmentAddress", "travelEstimatePublicId"] }
+                  },
+                  {
+                    if: { properties: { fulfillmentMode: { const: "store" } }, required: ["fulfillmentMode"] },
+                    then: { not: { anyOf: [{ required: ["fulfillmentAddress"] }, { required: ["travelEstimatePublicId"] }] } }
+                  }
+                ]
               }
             }
           }
@@ -18323,11 +18577,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
+          "400": { description: "Validation failure or travel estimate fields on store service" },
+          "401": { description: "Authentication required" },
           "403": {
             description:
               "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
           },
-          "409": { description: "Slot unavailable or already booked" }
+          "409": { description: "Slot unavailable, estimate expired, or estimate already consumed" },
+          "422": { description: "Home estimate required, invalid, or mismatched" }
         }
       }
     },
@@ -23804,6 +24061,146 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         )
       })
     },
+    [`${config.API_PREFIX}/merchant-admin/official-notices`]: {
+      get: {
+        tags: ["Merchant Official Notices"],
+        summary: "List formal notices published by the current shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:read",
+        parameters: [
+          merchantPreviewShopHeaderParameter,
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "draft",
+                "pending_review",
+                "approved",
+                "scheduled",
+                "sending",
+                "sent",
+                "cancelled",
+                "archived"
+              ]
+            }
+          },
+          {
+            name: "level",
+            in: "query",
+            schema: { type: "string", enum: ["general", "important", "urgent"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-shop official notices", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Create a server-derived current-shop audience snapshot and plan delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": ["merchant-admin:notice:create", "merchant-admin:notice:send"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantOfficialNoticeCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Current-shop official notice created and planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Audience, schedule, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/cancel`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Cancel a current-shop notice before delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice cancelled", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/archive`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Archive a terminal current-shop notice",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice archived", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/retry-failures`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Retry failed current-shop identity deliveries",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:send",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Failed current-shop deliveries requeued", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/official-notices`]: {
       get: {
         tags: ["Official Notices"],
@@ -25021,7 +25418,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       delete: {
         tags: ["Step 13 Realtime"],
         summary:
-          "Hide a conversation from the current participant without deleting shared messages",
+          "Delete the current participant conversation and clear their history; reopening does not restore earlier messages. Other participants retain their messages",
         security: [{ bearerAuth: [] }],
         parameters: [
           {

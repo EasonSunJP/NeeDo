@@ -50,7 +50,10 @@ import {
   type AnalyticsMetricPayload,
   type AnalyticsMetricSeries
 } from "../domain/analytics-metric";
-import type { OperationsFinanceFacts } from "../repositories/dashboard-operations-finance.repository";
+import type {
+  OperationsFinanceFacts,
+  TravelFareDetailRow
+} from "../repositories/dashboard-operations-finance.repository";
 import type { CommissionFacts } from "../repositories/dashboard-commission.repository";
 import type { GrowthFacts } from "../repositories/dashboard-growth.repository";
 import { DashboardMerchantSnapshotService } from "./dashboard-merchant-snapshot.service";
@@ -69,6 +72,7 @@ export { DASHBOARD_METRIC_KEYS } from "../validators/backoffice.validator";
 
 export interface BackofficeAnalyticsReader {
   getOperationsFinance(input: DashboardAggregateInput): Promise<OperationsFinanceFacts>;
+  getTravelFareDetails?(input: DashboardAggregateInput): Promise<TravelFareDetailRow[]>;
   getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts>;
   getGrowthFacts(input: DashboardAggregateInput): Promise<GrowthFacts>;
 }
@@ -101,6 +105,7 @@ export interface DashboardMetricDetailPayload {
   filter: DashboardOverviewFilter;
   metric: AnalyticsMetricPayload;
   series: AnalyticsMetricSeries[];
+  details: TravelFareDetailRow[];
 }
 
 interface DashboardMetricMetadata {
@@ -131,8 +136,8 @@ const DASHBOARD_METRIC_METADATA: Record<DashboardMetricKey, DashboardMetricMetad
     "gross_revenue"
   ),
   travel_fare: metricMetadata(
-    "Reserved formal travel fare source",
-    "SUM(travel fare)",
+    "Completed payment-evidenced travel fare excluding refunded or reversed orders",
+    "SUM(completed non-refunded checkout travelFareAmountJpy)",
     "jpy",
     "travel_fare"
   ),
@@ -984,10 +989,15 @@ export class BackofficeService {
       fact = this.growthFact(await reader.getGrowthFacts(input), metricKey);
     }
     const metric = this.composeAnalyticsMetric(metricKey, fact);
+    const details =
+      metricKey === "travel_fare" && reader.getTravelFareDetails
+        ? await reader.getTravelFareDetails(input)
+        : [];
 
     return {
       filter: this.analyticsFilter(window, city),
       metric,
+      details,
       series: [
         {
           seriesKey: metricKey,

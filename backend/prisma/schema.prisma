@@ -568,10 +568,18 @@ enum OfficialNoticeStatus {
   ARCHIVED       @map("archived")
 }
 
+enum OfficialNoticeIssuerType {
+  PLATFORM @map("platform")
+  SHOP     @map("shop")
+}
+
 enum OfficialNoticeAudienceType {
-  ALL            @map("all")
-  IDENTITY_TYPES @map("identity_types")
-  EXACT_USERS    @map("exact_users")
+  ALL               @map("all")
+  IDENTITY_TYPES    @map("identity_types")
+  EXACT_USERS       @map("exact_users")
+  SHOP_CARD_HOLDERS @map("shop_card_holders")
+  SHOP_EMPLOYEES    @map("shop_employees")
+  SHOP_TECHNICIANS  @map("shop_technicians")
 }
 
 enum NoticeDeliveryStatus {
@@ -1158,6 +1166,8 @@ model User {
   acceptedOrderAddOns                   OrderAddOn[]                        @relation("OrderAddOnAcceptedBy")
   rejectedOrderAddOns                   OrderAddOn[]                        @relation("OrderAddOnRejectedBy")
   receiptConfirmedOrderCheckouts        OrderCheckout[]                     @relation("OrderCheckoutReceiptConfirmer")
+  publishedTravelFarePolicies           ShopTravelFarePolicyVersion[]       @relation("ShopTravelFarePolicyPublishedBy")
+  routeEstimates                        RouteEstimate[]                      @relation("RouteEstimateCustomer")
   createdNdpExchangeRateRules           NdpExchangeRateRule[]               @relation("NdpExchangeRateRuleCreatedBy")
   generatedPayRuns                      PayRun[]                            @relation("PayRunGeneratedBy")
   approvedPayRuns                       PayRun[]                            @relation("PayRunApprovedBy")
@@ -1689,6 +1699,9 @@ model Shop {
   agentShopReferrals         AgentShopReferral[]
   operatingCostAllocations   OperatingCostAllocation[]
   agentSettlementLines       AgentSettlementLine[]
+  issuedOfficialNotices      OfficialNotice[]                      @relation("OfficialNoticeIssuerShop")
+  travelFarePolicyVersions   ShopTravelFarePolicyVersion[]
+  routeEstimates             RouteEstimate[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -3195,6 +3208,7 @@ model Service {
   exchangeClaims        ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
   carouselSlides        CarouselSlide[]
+  routeEstimates        RouteEstimate[]
 
   @@index([categoryId])
   @@index([shopId])
@@ -3418,6 +3432,9 @@ model OfficialNotice {
   lockVersion        Int                        @default(1) @map("lock_version")
   idempotencyKey     String                     @unique @map("idempotency_key") @db.VarChar(191)
   requestFingerprint String                     @map("request_fingerprint") @db.Char(64)
+  issuerType          OfficialNoticeIssuerType   @default(PLATFORM) @map("issuer_type")
+  issuerShopId        Int?                       @map("issuer_shop_id")
+  createdByIdentityId Int?                       @map("created_by_identity_id")
   createdById        Int                        @map("created_by_id")
   updatedById        Int?                       @map("updated_by_id")
   submittedById      Int?                       @map("submitted_by_id")
@@ -3428,6 +3445,8 @@ model OfficialNotice {
   updatedAt          DateTime                   @updatedAt @map("updated_at")
   deletedAt          DateTime?                  @map("deleted_at")
 
+  issuerShop        Shop?                       @relation("OfficialNoticeIssuerShop", fields: [issuerShopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByIdentity UserIdentity?               @relation("OfficialNoticeCreatedByIdentity", fields: [createdByIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdBy    User                        @relation("OfficialNoticeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy    User?                       @relation("OfficialNoticeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   submittedBy  User?                       @relation("OfficialNoticeSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
@@ -3439,6 +3458,9 @@ model OfficialNotice {
   deliveries   NoticeDelivery[]
 
   @@index([status, scheduledAt, deletedAt])
+  @@index([issuerType, issuerShopId, createdAt, deletedAt], map: "official_notices_issuer_scope_created_at_idx")
+  @@index([issuerShopId])
+  @@index([createdByIdentityId])
   @@index([createdById])
   @@index([updatedById])
   @@index([submittedById])
@@ -3816,6 +3838,8 @@ model BookingOrder {
   serviceEvents         OrderServiceEvent[]
   addOns                OrderAddOn[]
   checkout              OrderCheckout?
+  consumedRouteEstimate RouteEstimate?                    @relation("RouteEstimateConsumedBooking")
+  travelFareSnapshot    BookingTravelFareSnapshot?
   exchangeMatchParticipant ExchangeMatchParticipant?
   membershipCardRedemption       ShopMembershipCardRedemption?
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
@@ -3950,6 +3974,7 @@ model OrderCheckout {
   bookingOrderId            Int                   @unique(map: "order_checkouts_booking_order_key") @map("booking_order_id")
   baseAmountJpy             Int                   @map("base_amount_jpy")
   addOnAmountJpy            Int                   @default(0) @map("add_on_amount_jpy")
+  travelFareAmountJpy       Int                   @default(0) @map("travel_fare_amount_jpy")
   discountAmountJpy         Int                   @default(0) @map("discount_amount_jpy")
   checkoutAmountJpy         Int                   @map("checkout_amount_jpy")
   payableNdp                Int                   @map("payable_ndp")
@@ -3982,6 +4007,125 @@ model OrderCheckout {
   @@index([createdAt, deletedAt], map: "order_checkouts_created_active_idx")
   @@index([deletedAt], map: "order_checkouts_deleted_idx")
   @@map("order_checkouts")
+}
+
+model ShopTravelFarePolicyVersion {
+  id                Int       @id @default(autoincrement())
+  publicId          String    @unique(map: "shop_travel_fare_policy_versions_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  shopId            Int       @map("shop_id")
+  version           Int
+  effectiveFrom     DateTime  @map("effective_from")
+  publishedByUserId Int       @map("published_by_user_id")
+  reason            String    @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  shop        Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "shop_travel_fare_policy_versions_shop_fkey")
+  publishedBy User                 @relation("ShopTravelFarePolicyPublishedBy", fields: [publishedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "shop_travel_fare_policy_versions_publisher_fkey")
+  bands       ShopTravelFareBand[]
+  estimates   RouteEstimate[]
+  snapshots   BookingTravelFareSnapshot[]
+
+  @@unique([shopId, version], map: "shop_travel_fare_policy_versions_shop_version_key")
+  @@index([shopId, effectiveFrom, deletedAt], map: "shop_travel_fare_policy_versions_effective_idx")
+  @@index([publishedByUserId], map: "shop_travel_fare_policy_versions_publisher_idx")
+  @@index([deletedAt], map: "shop_travel_fare_policy_versions_deleted_idx")
+  @@map("shop_travel_fare_policy_versions")
+}
+
+model ShopTravelFareBand {
+  id                    Int       @id @default(autoincrement())
+  policyVersionId       Int       @map("policy_version_id")
+  ordinal               Int
+  maximumDistanceMeters Int       @map("maximum_distance_meters")
+  fareAmountJpy         Int       @map("fare_amount_jpy")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  policyVersion ShopTravelFarePolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "shop_travel_fare_bands_policy_fkey")
+  estimates     RouteEstimate[]
+  snapshots     BookingTravelFareSnapshot[]
+
+  @@unique([policyVersionId, ordinal], map: "shop_travel_fare_bands_policy_ordinal_key")
+  @@unique([policyVersionId, maximumDistanceMeters], map: "shop_travel_fare_bands_policy_distance_key")
+  @@index([policyVersionId, deletedAt], map: "shop_travel_fare_bands_policy_deleted_idx")
+  @@index([deletedAt], map: "shop_travel_fare_bands_deleted_idx")
+  @@map("shop_travel_fare_bands")
+}
+
+model RouteEstimate {
+  id                       Int       @id @default(autoincrement())
+  publicId                 String    @unique(map: "route_estimates_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  customerUserId           Int       @map("customer_user_id")
+  shopId                   Int       @map("shop_id")
+  serviceId                Int       @map("service_id")
+  policyVersionId          Int       @map("policy_version_id")
+  matchedBandId            Int       @map("matched_band_id")
+  providerCode             String    @map("provider_code") @db.VarChar(32)
+  providerRequestId        String?   @map("provider_request_id") @db.VarChar(160)
+  originAddressHash        String    @map("origin_address_hash") @db.Char(64)
+  destinationAddressHash   String    @map("destination_address_hash") @db.Char(64)
+  distanceMeters           Int       @map("distance_meters")
+  durationSeconds          Int       @map("duration_seconds")
+  fareAmountJpy            Int       @map("fare_amount_jpy")
+  expiresAt                DateTime  @map("expires_at")
+  consumedAt               DateTime? @map("consumed_at")
+  consumedByBookingOrderId Int?      @unique(map: "route_estimates_consumed_booking_key") @map("consumed_by_booking_order_id")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  deletedAt                DateTime? @map("deleted_at")
+
+  customer          User                        @relation("RouteEstimateCustomer", fields: [customerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_customer_fkey")
+  shop              Shop                        @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_shop_fkey")
+  service           Service                     @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_service_fkey")
+  policyVersion     ShopTravelFarePolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_policy_fkey")
+  matchedBand       ShopTravelFareBand          @relation(fields: [matchedBandId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_band_fkey")
+  consumedByBooking BookingOrder?               @relation("RouteEstimateConsumedBooking", fields: [consumedByBookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_consumed_booking_fkey")
+  bookingSnapshot   BookingTravelFareSnapshot?
+
+  @@index([customerUserId, shopId, serviceId, expiresAt, deletedAt], map: "route_estimates_binding_expiry_idx")
+  @@index([providerCode, originAddressHash, destinationAddressHash, expiresAt, deletedAt], map: "route_estimates_provider_cache_idx")
+  @@index([policyVersionId], map: "route_estimates_policy_idx")
+  @@index([matchedBandId], map: "route_estimates_band_idx")
+  @@index([shopId], map: "route_estimates_shop_idx")
+  @@index([serviceId], map: "route_estimates_service_idx")
+  @@index([deletedAt], map: "route_estimates_deleted_idx")
+  @@map("route_estimates")
+}
+
+model BookingTravelFareSnapshot {
+  id                        Int       @id @default(autoincrement())
+  publicId                  String    @unique(map: "booking_travel_fare_snapshots_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  bookingOrderId            Int       @unique(map: "booking_travel_fare_snapshots_booking_key") @map("booking_order_id")
+  routeEstimateId           Int       @unique(map: "booking_travel_fare_snapshots_estimate_key") @map("route_estimate_id")
+  policyVersionId           Int       @map("policy_version_id")
+  matchedBandId             Int       @map("matched_band_id")
+  policyVersionPublicId     String    @map("policy_version_public_id") @db.Char(36)
+  bandMaximumDistanceMeters Int       @map("band_maximum_distance_meters")
+  providerCode              String    @map("provider_code") @db.VarChar(32)
+  providerRequestId         String?   @map("provider_request_id") @db.VarChar(160)
+  originAddressHash         String    @map("origin_address_hash") @db.Char(64)
+  destinationAddressHash    String    @map("destination_address_hash") @db.Char(64)
+  fulfillmentAddressJson    Json      @map("fulfillment_address_json")
+  distanceMeters            Int       @map("distance_meters")
+  durationSeconds           Int       @map("duration_seconds")
+  fareAmountJpy             Int       @map("fare_amount_jpy")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  deletedAt                 DateTime? @map("deleted_at")
+
+  bookingOrder  BookingOrder                @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "booking_travel_fare_snapshots_booking_fkey")
+  routeEstimate RouteEstimate               @relation(fields: [routeEstimateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "booking_travel_fare_snapshots_estimate_fkey")
+  policyVersion ShopTravelFarePolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "booking_travel_fare_snapshots_policy_fkey")
+  matchedBand   ShopTravelFareBand          @relation(fields: [matchedBandId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "booking_travel_fare_snapshots_band_fkey")
+
+  @@index([policyVersionId], map: "booking_travel_fare_snapshots_policy_idx")
+  @@index([matchedBandId], map: "booking_travel_fare_snapshots_band_idx")
+  @@index([distanceMeters], map: "booking_travel_fare_snapshots_distance_idx")
+  @@index([deletedAt], map: "booking_travel_fare_snapshots_deleted_idx")
+  @@map("booking_travel_fare_snapshots")
 }
 
 model NdpExchangeRateRule {
@@ -4882,6 +5026,7 @@ model UserIdentity {
   actedNotifications         Notification[]                @relation("NotificationActorIdentity")
   officialNoticeAudiences    NoticeAudience[]              @relation("NoticeAudienceRecipientIdentity")
   officialNoticeDeliveries   NoticeDelivery[]              @relation("NoticeDeliveryRecipientIdentity")
+  createdOfficialNotices     OfficialNotice[]              @relation("OfficialNoticeCreatedByIdentity")
   ownedMediaAssets           MediaAsset[]                  @relation("MediaAssetOwnerIdentity")
   createdEntityShareEvents   EntityShareEvent[]            @relation("EntityShareActorIdentity")
   receivedEntityShareEvents  EntityShareEvent[]            @relation("EntityShareRecipientIdentity")
