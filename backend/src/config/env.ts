@@ -66,6 +66,17 @@ const optionalSecretSchema = z.preprocess((value) => {
   return value;
 }, z.string().trim().min(1).optional());
 
+const optionalRedisUrlSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
+  z
+    .string()
+    .url()
+    .refine((value) => ["redis:", "rediss:"].includes(new URL(value).protocol), {
+      message: "Must use redis: or rediss:"
+    })
+    .optional()
+);
+
 const productionPlaceholderPattern = /(change-?me|example|placeholder|replace-?with)/i;
 const translationPlaceholderTokenPattern =
   /(?:^|[-_.:])(change-?me|example|placeholder|replace-?with|dummy|test|fake|sample)(?:$|[-_.:])/iu;
@@ -255,6 +266,8 @@ const envSchema = z
       .min(5)
       .max(300)
       .default(30),
+    TRAVEL_ROUTE_HEALTH_REDIS_URL: optionalRedisUrlSchema,
+    TRAVEL_ROUTE_HEALTH_TTL_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
     TRAVEL_ESTIMATE_TTL_SECONDS: z.coerce.number().int().min(60).max(1_800).default(600),
     CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
     FRIEND_REQUEST_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
@@ -618,7 +631,9 @@ export const env = {
   ...parsedEnv.data,
   IM_TRANSLATION_API_BASE_URL: parsedEnv.data.IM_TRANSLATION_API_BASE_URL,
   IM_TRANSLATION_API_KEY: parsedEnv.data.IM_TRANSLATION_API_KEY,
-  GEOAPIFY_API_KEY: parsedEnv.data.GEOAPIFY_API_KEY
+  GEOAPIFY_API_KEY: parsedEnv.data.GEOAPIFY_API_KEY,
+  TRAVEL_ROUTE_HEALTH_REDIS_URL:
+    parsedEnv.data.TRAVEL_ROUTE_HEALTH_REDIS_URL ?? parsedEnv.data.REDIS_URL
 };
 
 export type AppConfig = typeof env;

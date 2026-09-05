@@ -48,6 +48,11 @@ export function resolveFormalDevConfig(env) {
     "redis://127.0.0.1:6379/2",
     "FORMAL_MERCHANT_API_REDIS_URL"
   );
+  const travelRouteHealthRedisUrl = parseRedisUrl(
+    env.FORMAL_TRAVEL_ROUTE_HEALTH_REDIS_URL,
+    "redis://127.0.0.1:6379/0",
+    "FORMAL_TRAVEL_ROUTE_HEALTH_REDIS_URL"
+  );
   if (opsApiRedisUrl === merchantApiRedisUrl) {
     throw new Error("Operations and merchant API Redis URLs must be distinct");
   }
@@ -61,6 +66,7 @@ export function resolveFormalDevConfig(env) {
     opsApiPort,
     opsApiProxyTarget: `http://127.0.0.1:${opsApiPort}`,
     opsApiRedisUrl,
-    proxyTarget: `http://127.0.0.1:${backendPort}`
+    proxyTarget: `http://127.0.0.1:${backendPort}`,
+    travelRouteHealthRedisUrl
   };
 }

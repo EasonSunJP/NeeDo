@@ -72,6 +72,8 @@ import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-po
 import type { ShopTravelFarePolicyRepositoryPort } from "./services/shop-travel-fare-policy.service";
 import type { RouteEstimateRepositoryPort } from "./services/route-estimate.service";
 import type { RouteDistanceProvider } from "./services/route-distance.provider";
+import type { RouteProviderHealthStorePort } from "./services/route-provider-health";
+import type { TravelOperationsRepositoryPort } from "./services/travel-operations.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
@@ -169,6 +171,7 @@ import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-policy.routes";
 import { createRouteEstimateRoutes } from "./routes/route-estimate.routes";
+import { createTravelOperationsRoutes } from "./routes/travel-operations.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
@@ -314,6 +317,8 @@ export interface AppDependencies {
   shopTravelFarePolicyRepository?: ShopTravelFarePolicyRepositoryPort;
   routeEstimateRepository?: RouteEstimateRepositoryPort;
   routeDistanceProvider?: RouteDistanceProvider;
+  routeProviderHealthStore?: RouteProviderHealthStorePort;
+  travelOperationsRepository?: TravelOperationsRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
@@ -568,6 +573,7 @@ export const createApp = (
   );
   mount("merchant-admin", createShopTravelFarePolicyRoutes(config, resolvedDependencies));
   mount("shared", createRouteEstimateRoutes(config, resolvedDependencies));
+  mount("backoffice", createTravelOperationsRoutes(config, resolvedDependencies));
   mount("backoffice", createPlatformMembershipRoutes(config, resolvedDependencies));
   mount("backoffice", createUserExperienceRoutes(config, resolvedDependencies));
   mount("backoffice", createBackofficeUserGroupRoutes(config, resolvedDependencies));

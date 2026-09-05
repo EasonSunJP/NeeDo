@@ -2886,6 +2886,44 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      TravelRouteProviderStatus: {
+        type: "object",
+        additionalProperties: false,
+        required: ["providerCode", "status", "configured", "checkedAt", "routingProfile", "estimateTtlSeconds", "cacheTtlSeconds"],
+        properties: {
+          providerCode: { type: "string", enum: ["disabled", "geoapify"] },
+          status: { type: "string", enum: ["configured", "unconfigured", "healthy", "rate_limited", "unavailable"] },
+          configured: { type: "boolean" },
+          checkedAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+          routingProfile: { type: "string", enum: ["drive"] },
+          estimateTtlSeconds: { type: "integer", minimum: 1 },
+          cacheTtlSeconds: { type: "integer", minimum: 1 }
+        }
+      },
+      OperationsTravelFarePolicy: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shopId", "shopPublicId", "shopName", "city", "current", "next"],
+        properties: {
+          shopId: { type: "integer", minimum: 1 },
+          shopPublicId: { anyOf: [{ type: "string" }, { type: "null" }] },
+          shopName: { type: "string" },
+          city: { type: "string" },
+          current: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] },
+          next: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] }
+        }
+      },
+      OperationsTravelFarePolicyPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/OperationsTravelFarePolicy" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       JapaneseRouteAddress: {
         type: "object",
         additionalProperties: false,
@@ -2903,9 +2941,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       RouteEstimateCreateInput: {
         type: "object",
         additionalProperties: false,
-        required: ["servicePublicId", "destination"],
+        required: ["servicePublicId", "scheduleSlotId", "destination"],
         properties: {
           servicePublicId: { type: "string", minLength: 1, maxLength: 160 },
+          scheduleSlotId: { type: "integer", minimum: 1 },
           destination: { $ref: "#/components/schemas/JapaneseRouteAddress" }
         }
       },
@@ -14716,6 +14755,40 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "422": jsonErrorResponse("error.travel.home_service_not_eligible, error.travel.outside_service_area, or error.travel.route_not_found"),
           "429": jsonErrorResponse("error.rate_limited or error.travel.provider_rate_limited"),
           "503": jsonErrorResponse("error.travel.provider_unconfigured, error.travel.provider_timeout, error.travel.provider_invalid_response, error.travel.provider_unavailable, or error.travel.policy_unavailable")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/travel/providers/status`]: {
+      get: {
+        tags: ["Travel Fare"],
+        summary: "Read redacted route provider readiness",
+        description: "Returns operational readiness only; credentials and provider payloads are never exposed.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:travel-fare:read",
+        responses: {
+          "200": jsonDataResponse("Redacted route provider status", { $ref: "#/components/schemas/TravelRouteProviderStatus" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/travel/fare-policies`]: {
+      get: {
+        tags: ["Travel Fare"],
+        summary: "List current and scheduled shop travel-fare policies",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:travel-fare:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "shopKeyword", in: "query", schema: { type: "string", maxLength: 160 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated shop travel-fare policy visibility", { $ref: "#/components/schemas/OperationsTravelFarePolicyPage" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
         }
       }
     },
