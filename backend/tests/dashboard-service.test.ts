@@ -77,12 +77,43 @@ const aggregateFacts = (): DashboardAggregateFacts => ({
   availableCities: ["Osaka", "Tokyo"]
 });
 
+const headlineBuckets = () => [
+  {
+    key: "2026-08-29",
+    label: "08-29",
+    availableScheduleSlots: 4,
+    activeTechnicians: 2,
+    registeredTechnicians: 15,
+    shopCount: 9,
+    newCustomers: 1
+  },
+  {
+    key: "2026-08-30",
+    label: "08-30",
+    availableScheduleSlots: 6,
+    activeTechnicians: 3,
+    registeredTechnicians: 16,
+    shopCount: 10,
+    newCustomers: 2
+  },
+  {
+    key: "2026-08-31",
+    label: "08-31",
+    availableScheduleSlots: 8,
+    activeTechnicians: 4,
+    registeredTechnicians: 17,
+    shopCount: 10,
+    newCustomers: 3
+  }
+];
+
 describe("BackofficeService named dashboard contract", () => {
   it("composes the platform DTO, comparison rules, buckets, global metadata, and audit scope", async () => {
     const getDashboard = jest.fn(async () => aggregateFacts());
+    const getHeadlineSeries3d = jest.fn(async () => headlineBuckets());
     const record = jest.fn(async () => undefined);
     const service = new BackofficeService(
-      { getDashboard } as never,
+      { getDashboard, getHeadlineSeries3d } as never,
       { record } as never,
       createDirectShopContextRepository(),
       () => now
@@ -136,6 +167,12 @@ describe("BackofficeService named dashboard contract", () => {
           }
         ]
       },
+      headlineSeries3d: {
+        from: "2026-08-29",
+        to: "2026-08-31",
+        timeZone: "Asia/Tokyo",
+        buckets: headlineBuckets()
+      },
       finance: {
         platformNetRevenue: { ndp: 900, testNdp: 90 },
         frozen: { ndp: 500, testNdp: 50 },
@@ -159,6 +196,19 @@ describe("BackofficeService named dashboard contract", () => {
       scope: { kind: "platform", shopPublicId: null }
     });
     expect(getDashboard).toHaveBeenCalledTimes(1);
+    expect(getHeadlineSeries3d).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { kind: "platform" },
+        city: "Tokyo",
+        window: expect.objectContaining({
+          fromDate: "2026-08-29",
+          toDate: "2026-08-31",
+          timeZone: "Asia/Tokyo",
+          granularity: "day"
+        }),
+        evaluatedAt: now
+      })
+    );
     expect(getDashboard).toHaveBeenCalledWith(
       expect.objectContaining({
         scope: { kind: "platform" },
@@ -211,9 +261,10 @@ describe("BackofficeService named dashboard contract", () => {
     facts.availableCities = [];
     facts.membership = { memberCount: 7, completedCustomerCount: 5 };
     const getDashboard = jest.fn(async () => facts);
+    const getHeadlineSeries3d = jest.fn(async () => headlineBuckets());
     const record = jest.fn(async () => undefined);
     const service = new BackofficeService(
-      { getDashboard } as never,
+      { getDashboard, getHeadlineSeries3d } as never,
       { record } as never,
       createDirectShopContextRepository(),
       () => now
@@ -281,12 +332,13 @@ describe("BackofficeService named dashboard contract", () => {
     };
     facts.membership = { memberCount: 1, completedCustomerCount: 1 };
     const getDashboard = jest.fn(async () => facts);
+    const getHeadlineSeries3d = jest.fn(async () => headlineBuckets());
     const nowFn = jest
       .fn()
       .mockReturnValueOnce(new Date("2026-08-31T14:59:59.999Z"))
       .mockReturnValueOnce(new Date("2026-09-01T15:00:00.000Z"));
     const service = new BackofficeService(
-      { getDashboard } as never,
+      { getDashboard, getHeadlineSeries3d } as never,
       { record: jest.fn(async () => undefined) } as never,
       createDirectShopContextRepository(),
       nowFn
@@ -300,6 +352,9 @@ describe("BackofficeService named dashboard contract", () => {
         evaluatedAt: new Date("2026-08-31T14:59:59.999Z"),
         window: expect.objectContaining({ fromDate: "2026-08-31", toDate: "2026-08-31" })
       })
+    );
+    expect(getHeadlineSeries3d).toHaveBeenCalledWith(
+      expect.objectContaining({ evaluatedAt: new Date("2026-08-31T14:59:59.999Z") })
     );
   });
 
@@ -330,7 +385,10 @@ describe("BackofficeService named dashboard contract", () => {
     facts.finance.bucketFrozenNdp = new Map();
     facts.finance.bucketShopEstimatedGrossProfitJpy = new Map();
     const service = new BackofficeService(
-      { getDashboard: jest.fn(async () => facts) } as never,
+      {
+        getDashboard: jest.fn(async () => facts),
+        getHeadlineSeries3d: jest.fn(async () => headlineBuckets())
+      } as never,
       { record: jest.fn(async () => undefined) } as never,
       createDirectShopContextRepository(),
       () => now

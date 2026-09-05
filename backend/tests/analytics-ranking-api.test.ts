@@ -90,6 +90,28 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 describe("formal analytics rankings API", () => {
   it.each(["admin", "operator"])("serves %s through the actual createApp chain", async (role) => {
     const test = fixture(role);
+    test.repository.listRankings.mockResolvedValueOnce({
+      list: [
+        {
+          rank: 1,
+          entityType: "service",
+          entityPublicId: "00000000-0000-4000-8000-000000000001",
+          entityNumericId: 1,
+          displayName: "Test service",
+          avatarUrl: null,
+          categoryId: 8,
+          gmvJpy: 12_300,
+          completedCount: 2,
+          testGmvJpy: 12_300,
+          testCompletedCount: 2,
+          dataComposition: "test",
+          registeredAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
     const response = await request(test.app)
       .get(
         "/api/v1/backoffice/analytics/rankings/service?metric=gmv&period=last7days&page=1&pageSize=10"
@@ -98,8 +120,14 @@ describe("formal analytics rankings API", () => {
       .expect(200);
     expect(response.body.data).toMatchObject({
       dataStatus: "ready",
-      list: [],
-      total: 0,
+      list: [
+        expect.objectContaining({
+          testGmvJpy: 12_300,
+          testCompletedCount: 2,
+          dataComposition: "test"
+        })
+      ],
+      total: 1,
       page: 1,
       page_size: 10,
       filter: { kind: "service", metric: "gmv", period: "last7days" }

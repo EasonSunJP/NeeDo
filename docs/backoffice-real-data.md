@@ -575,3 +575,26 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 - 本次不做银行代付、税务/发票、文件上传和多级复杂审批；工资调整只覆盖基础申请、提交、审批/驳回、申诉处理、支付记录确认和锁定应用。
 - 本次只做 Request dispatch fee 的后端/API/账本适配，不做 Request 大厅、复杂调度、退款、商户违约赔付或前端入口。
 - 旧后台周边模块仍可能保留 legacy mock compatibility；正式运营/商户后台的核心指标、订单、排班、财务、技师、店铺入口不再使用这些兼容数据。
+
+## 2026-09-06 数据大盘视觉证据补齐
+
+本微步骤保持现有运营后台信息架构，只补齐排行榜、摘要趋势和大图表的正式数据证据：
+
+- 服务项目、技师和用户 Top 10 使用同一套完整订单证据聚合。结果同时返回总 `gmvJpy` / `completedCount` 与 TEST 子集 `testGmvJpy` / `testCompletedCount`，并以 `dataComposition=formal|test|mixed` 明确来源；任何 TEST 贡献都显示红色 `TEST` 标签。
+- TEST NDP 订单只接受 `TEST_NDP` 账本，正式订单仍只接受 `NDP`。有独立支付方式选择事件时，账本必须发生在选择之后；无独立选择事件的直接 NDP 路径，账本必须处于服务结束与支付确认之间。其他结算、事件、退款、身份、软删除与一致性条件继续 fail-closed。
+- 五张摘要卡消费服务端 `headlineSeries3d`，固定为以 `Asia/Tokyo` 解释、截至同一 `evaluatedAt` 的连续 3 个自然日；每张卡只绘制三个有限数值点，缺失或矛盾数据不在浏览器中补造。
+- 三张大折线图分别显示左右数值坐标轴；每个折线节点可由鼠标、Enter 或 Space 打开锚定详情，显示该日期全部序列的精确值，并支持关闭按钮、Escape 和筛选变化后的状态清理。原有无障碍数据表和 reduced-motion 规则保留。
+- 三个排行榜标题控制行采用相同最小高度，服务榜补齐与另外两榜一致的分类筛选位置，因此分割线基线一致。
+
+本地真实 MySQL 的近 7 天只读查询结果为：服务榜 3 项、技师榜 2 人、用户榜 1 人；用户榜合计 5 个完成订单、`testCompletedCount=5`，全部为 `dataComposition=test`。服务榜把每个完成订单的主服务及已接受加项分别计入服务完成次数，因此三项合计 10 次。未执行 seed、repair、migration 或 schema 修改。
+
+本次新鲜验证结果：
+
+- 后端聚焦测试：8 suites / 99 tests 通过；受显式本地 `needo_test` authority 保护的 MySQL fixture suite 默认跳过 1 test。
+- 前端聚焦测试：9 files / 70 tests 通过。
+- 后端 lint、后端 build、前端 typecheck lint、i18n audit 和前端 production build 均退出 0。
+- `audit:production-bundle` 未通过：`main-BCYiBKko.js` 为 4,053,344 bytes（预算 4,000,000），`i18n-DvR3q3_2.js` 为 3,723,288 bytes（预算 3,704,096）；本微步骤未做跨模块拆包重构。
+- 现有全量模拟数据 checker 已连接本地 MySQL，但被既有联系人基线差异阻断：预期 460，实际 462；未在本微步骤修复或写入联系人数据。
+- 标准前端端口 `5180` 由原始检出目录占用，标准后端 `3000` 当时未监听。本分支在 `5286/3106/3107/3108` 隔离运行并到达运营后台登录页；由于新 origin 不继承既有登录态，认证后的视觉浏览器验收未宣称完成。
+
+上述事实仅证明隔离分支的代码、测试、构建、只读数据库聚合和运行时可达性；不代表已合并到 `main`、已 push、已部署、已执行 migration，亦不代表 staging 已验收。

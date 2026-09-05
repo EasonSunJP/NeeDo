@@ -806,7 +806,42 @@ describe("GET /api/v1/openapi.json", () => {
     expect(dashboardSchemas.Dashboard).toMatchObject({
       type: "object",
       additionalProperties: false,
-      required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"]
+      required: [
+        "filter",
+        "summary",
+        "series",
+        "headlineSeries3d",
+        "finance",
+        "shop",
+        "membership",
+        "scope"
+      ]
+    });
+    expect(dashboardSchemas.DashboardHeadlineSeriesPoint).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "key",
+        "label",
+        "availableScheduleSlots",
+        "activeTechnicians",
+        "registeredTechnicians",
+        "shopCount",
+        "newCustomers"
+      ]
+    });
+    expect(dashboardSchemas.Dashboard.properties.headlineSeries3d).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["from", "to", "timeZone", "buckets"],
+      properties: {
+        buckets: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: { $ref: "#/components/schemas/DashboardHeadlineSeriesPoint" }
+        }
+      }
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.walletStock).toEqual({
       oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]

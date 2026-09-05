@@ -40,6 +40,23 @@ export interface DashboardMetricComparison {
   changeRatePercent: number | null;
 }
 
+export interface DashboardHeadlineSeriesPoint {
+  key: string;
+  label: string;
+  availableScheduleSlots: number;
+  activeTechnicians: number;
+  registeredTechnicians: number;
+  shopCount: number;
+  newCustomers: number;
+}
+
+export interface DashboardHeadlineSeries3d {
+  from: string;
+  to: string;
+  timeZone: "Asia/Tokyo";
+  buckets: DashboardHeadlineSeriesPoint[];
+}
+
 export interface DashboardPlatformGlobalNdpPair extends DashboardNdpPair {
   cityFilterApplied: false;
   scopeLabel: "platform_global";
@@ -165,6 +182,7 @@ export interface BackofficeDashboardPayload {
     serviceGmvJpy: number;
   };
   series: { buckets: DashboardBucketPayload[] };
+  headlineSeries3d: DashboardHeadlineSeries3d;
   finance: {
     platformNetRevenue: DashboardNdpPair;
     frozen: DashboardNdpPair;
