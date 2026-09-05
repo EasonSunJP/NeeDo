@@ -146,6 +146,25 @@ async function main() {
   await run("npm", ["run", "build", "--", "--mode", "formal"]);
   await run("npm", ["run", "prisma:generate"], path.join(repositoryRoot, "backend"));
   await run("npm", ["run", "build"], path.join(repositoryRoot, "backend"));
+  const stagingBundleDirectory = path.join(repositoryRoot, "backend", "dist", "staging");
+  await fs.mkdir(stagingBundleDirectory, { recursive: true });
+  const esbuild = path.join(repositoryRoot, "node_modules", ".bin", "esbuild");
+  for (const [entry, output] of [
+    ["backend/scripts/seed-three-month-simulation.ts", "simulation-seed.cjs"],
+    ["backend/scripts/seed-future-six-month-operations.ts", "future-operations-seed.cjs"],
+    ["backend/scripts/check-three-month-simulation.ts", "simulation-check.cjs"]
+  ]) {
+    await run(esbuild, [
+      entry,
+      "--bundle",
+      "--platform=node",
+      "--target=node22",
+      "--format=cjs",
+      "--packages=external",
+      "--log-level=warning",
+      `--outfile=${path.join(stagingBundleDirectory, output)}`
+    ]);
+  }
   await assertCleanRevision(repository, revision);
 
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "needo-staging-release-"));

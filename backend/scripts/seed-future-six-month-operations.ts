@@ -7,11 +7,19 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
   }
 };
 
-const main = async (): Promise<void> => {
-  const envFile = process.env.ENV_FILE || ".env.dev";
+const loadEnvironmentFile = (): void => {
+  const requestedEnvFile = process.env.ENV_FILE?.trim();
+  if (process.env.ALLOW_STAGING_SIMULATION_SYNC === "true" && !requestedEnvFile) {
+    return;
+  }
+  const envFile = requestedEnvFile || ".env.dev";
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
+};
+
+const main = async (): Promise<void> => {
+  loadEnvironmentFile();
 
   const apply = process.argv.includes("--apply");
 
