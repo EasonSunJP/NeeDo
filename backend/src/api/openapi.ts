@@ -1938,6 +1938,8 @@ const exchangeOperation = (
 const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
   const base = `${config.API_PREFIX}/exchange/posts`;
   const intelligenceServiceOptionsBase = `${config.API_PREFIX}/exchange/intelligence/service-options`;
+  const technicianServiceContextBase =
+    `${config.API_PREFIX}/technician-services/{id}/booking-context`;
   const cancellationBase = `${config.API_PREFIX}/exchange/orders/{id}/cancellation`;
   const contextBase = `${config.API_PREFIX}/exchange/request-publication-context`;
   const feeBase = `${config.API_PREFIX}/backoffice/exchange-request-fee`;
@@ -1975,6 +1977,29 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
   ];
 
   return {
+    [technicianServiceContextBase]: {
+      get: exchangeOperation(
+        "Read a public technician-service checkout context",
+        "booking:create",
+        {
+          description:
+            "Returns one currently approved, active, bookable technician service only when its technician profile, shop, public identifiers, and exact shop affiliation remain public and active. All missing or hidden states share one 404 boundary.",
+          parameters: [postId],
+          responses: {
+            "200": jsonDataResponse("Technician-service checkout context", {
+              $ref: "#/components/schemas/TechnicianServiceBookingContext"
+            }),
+            "400": { description: "error.validation — the technician service id is invalid" },
+            "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+            "403": { description: "error.forbidden — booking:create permission is required" },
+            "404": {
+              description:
+                "error.technician_service.booking_context_not_found — the service is missing, hidden, detached, or unavailable"
+            }
+          }
+        }
+      )
+    },
     [intelligenceServiceOptionsBase]: {
       get: exchangeOperation(
         "List formal services available to the active Intelligence publisher",
@@ -4043,6 +4068,112 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           amountNdp: { type: "integer", minimum: 0, maximum: 1000000000 },
           effectiveFrom: { type: "string", format: "date-time" },
           expectedCurrentVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      TechnicianServiceBookingTarget: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type", "id"],
+        properties: {
+          type: { type: "string", enum: ["technician_service"] },
+          id: { type: "integer", minimum: 1 }
+        }
+      },
+      TechnicianServiceBookingServiceCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "targetType",
+          "publicId",
+          "name",
+          "description",
+          "coverUrl",
+          "imageUrls",
+          "tags",
+          "catalogPriceJpy",
+          "currency",
+          "durationMinutes",
+          "serviceMode",
+          "serviceAreas",
+          "shopPublicId",
+          "shopAddress",
+          "detailPath"
+        ],
+        properties: {
+          targetType: { type: "string", enum: ["technician_service"] },
+          publicId: { type: "string", minLength: 1, maxLength: 36 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"] },
+          coverUrl: { type: ["string", "null"], maxLength: 500 },
+          imageUrls: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          tags: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          catalogPriceJpy: { type: "integer", minimum: 0, maximum: 1000000000 },
+          currency: { type: "string", enum: ["JPY"] },
+          durationMinutes: { type: "integer", minimum: 1 },
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          serviceAreas: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          shopAddress: { type: "string", minLength: 1, maxLength: 255 },
+          detailPath: { type: "string", minLength: 1 }
+        }
+      },
+      TechnicianServiceBookingShopCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "publicId",
+          "name",
+          "coverUrl",
+          "imageUrls",
+          "status",
+          "isBookable",
+          "ratingAverage",
+          "reviewCount",
+          "address",
+          "serviceMode",
+          "detailPath"
+        ],
+        properties: {
+          type: { type: "string", enum: ["shop"] },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          coverUrl: { type: ["string", "null"], maxLength: 500 },
+          imageUrls: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 500 }
+          },
+          status: { type: "string", enum: ["published"] },
+          isBookable: { type: "boolean", enum: [true] },
+          ratingAverage: { type: ["string", "null"], pattern: "^[0-9]+(?:\\.[0-9]+)?$" },
+          reviewCount: { type: "integer", minimum: 0 },
+          address: { type: "string", minLength: 1, maxLength: 255 },
+          serviceMode: { type: "string", enum: ["store", "onsite", "flexible"] },
+          detailPath: { type: "string", pattern: "^/profiles/shop/shop[0-9]{10}$" }
+        }
+      },
+      TechnicianServiceBookingContext: {
+        type: "object",
+        additionalProperties: false,
+        required: ["target", "serviceCard", "shopCard", "technicianCard"],
+        properties: {
+          target: { $ref: "#/components/schemas/TechnicianServiceBookingTarget" },
+          serviceCard: {
+            $ref: "#/components/schemas/TechnicianServiceBookingServiceCard"
+          },
+          shopCard: { $ref: "#/components/schemas/TechnicianServiceBookingShopCard" },
+          technicianCard: {
+            $ref: "#/components/schemas/ExchangeIntelligenceTechnicianPublisherCard"
+          }
         }
       },
       ExchangeIntelligence: {
