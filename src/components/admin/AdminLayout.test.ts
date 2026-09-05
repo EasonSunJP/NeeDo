@@ -63,6 +63,17 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain("admin-sidebar-note");
   });
 
+  it("renders the formal operator summary without demo profile constants", () => {
+    expect(source).toContain("<AdminOperatorSummary");
+    expect(source).toContain("resolveAdminDisplayName");
+    expect(source).toContain("resolveAdminRoleLabel");
+    expect(source).not.toContain("David Stainberry");
+    expect(source).not.toContain("profile-03.jpg");
+    expect(source).not.toContain("admin@needo.jp");
+    expect(source).not.toContain(">36<");
+    expect(source).not.toContain(">19<");
+  });
+
   it("does not expose the removed operations design module", () => {
     expect(source).not.toContain('key: "design"');
     expect(source).not.toContain('title: "设计"');

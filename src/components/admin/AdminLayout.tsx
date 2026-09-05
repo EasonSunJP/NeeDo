@@ -10,6 +10,9 @@ import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 import { NotificationBadge } from "../ui/NotificationBadge";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { contentPublicationEditorText } from "../../features/content-publication/i18n";
+import { translateText } from "../../i18n/translations";
+import { AdminOperatorSummary } from "./AdminOperatorSummary";
+import { resolveAdminDisplayName, resolveAdminRoleLabel } from "./adminOperatorSummaryModel";
 
 const themeStorageKey = "needo.admin.theme";
 const themePreferenceModeStorageKey = "needo.admin.theme.mode";
@@ -276,8 +279,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [{ theme, preferenceMode }, setThemeState] = useState<AdminThemeState>(getInitialAdminThemeState);
   const location = useLocation();
   const navigate = useNavigate();
-  const { canAccessMenu } = useAuth();
+  const { canAccessMenu, hasPermission, session } = useAuth();
   const { language } = useOptionalI18n();
+  const accountName = session ? resolveAdminDisplayName(session) : "—";
+  const roleLabel = session
+    ? resolveAdminRoleLabel(session, translateText("运营后台成员", language))
+    : translateText("运营后台成员", language);
   const visibleNavSections = useMemo(
     () =>
       navSections
@@ -333,7 +340,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <div className="flex h-full flex-col">
           <div className="admin-brand rounded-lg p-4 text-white">
             <div className="flex items-center gap-3">
-              <AdminAccountMenu accountName="David Stainberry" fallbackEmail="admin@needo.jp" loginPath="/login/admin" portal="admin" roleLabel="平台运营管理员" />
+              <AdminAccountMenu accountName={accountName} loginPath="/login/admin" portal="admin" roleLabel={roleLabel} />
               <NavLink className="min-w-0 flex-1 text-white" to="/">
                 <p className="text-xs font-bold text-mint">NeeDo 运营后台</p>
                 <h1 className="mt-1 text-lg font-black">运营后台</h1>
@@ -341,29 +348,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <section className="admin-profile mt-4 rounded-lg border border-line bg-paper p-3">
-            <div className="flex items-center gap-3">
-              <img
-                alt="运营管理员头像"
-                className="avatar-shape h-11 w-11 object-cover"
-                src="/images/generated/profiles/profile-03.jpg"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black">David Stainberry</p>
-                <p className="mt-1 text-xs text-ink/45">平台运营管理员</p>
-              </div>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">待处理</p>
-                <strong className="text-sm">36</strong>
-              </div>
-              <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">审核</p>
-                <strong className="text-sm">19</strong>
-              </div>
-            </div>
-          </section>
+          <AdminOperatorSummary hasPermission={hasPermission} language={language} session={session} />
 
           <section className="admin-sidebar-search mt-4 rounded-lg border border-line bg-paper p-3">
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
