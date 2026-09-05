@@ -76,6 +76,26 @@ describe("platformUserManagementApi", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users/41");
   });
 
+  it("sends a reasoned membership adjustment without a level field", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    await platformUserManagementApi.adjustMembership(41, {
+      tierCode: "gold",
+      reason: "Approved retention adjustment",
+      expectedLockVersion: 2
+    });
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/backoffice/users/41/membership-adjustment",
+      {
+        method: "PATCH",
+        body: {
+          tierCode: "gold",
+          reason: "Approved retention adjustment",
+          expectedLockVersion: 2
+        }
+      }
+    );
+  });
+
   it("rejects malformed responses instead of accepting legacy local data", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({ list: [{ id: "not-an-id" }], total: 1, page: 1, page_size: 20 });
 

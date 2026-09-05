@@ -1296,6 +1296,8 @@ model User {
   ndpExperienceAccumulators               UserNdpExperienceAccumulator[]
   platformMembershipEntitlements          PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementOwner")
   createdPlatformMembershipEntitlements   PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementCreator")
+  membershipAdjustments                   UserMembershipAdjustment[]            @relation("UserMembershipAdjustmentOwner")
+  createdMembershipAdjustments            UserMembershipAdjustment[]            @relation("UserMembershipAdjustmentCreator")
   createdPlatformMembershipTierVersions   PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionCreator")
   publishedPlatformMembershipTierVersions PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionPublisher")
   createdBackofficeUserGroups             BackofficeUserGroup[]                 @relation("BackofficeUserGroupCreator")
@@ -2570,6 +2572,7 @@ model PlatformMembershipTierVersion {
   publishedBy  User?                           @relation("PlatformMembershipTierVersionPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
   benefits     PlatformMembershipTierBenefit[]
   entitlements PlatformMembershipEntitlement[]
+  userAdjustments UserMembershipAdjustment[]
 
   @@unique([tierId, version], map: "platform_membership_tier_version_key")
   @@index([tierId, status, effectiveFrom, effectiveTo, deletedAt], map: "platform_membership_tier_version_resolution_idx")
@@ -2651,6 +2654,33 @@ model PlatformMembershipEntitlement {
   @@index([createdById])
   @@index([deletedAt])
   @@map("platform_membership_entitlements")
+}
+
+model UserMembershipAdjustment {
+  id                  Int       @id @default(autoincrement())
+  publicId            String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  userId              Int       @map("user_id")
+  tierVersionId       Int?      @map("tier_version_id")
+  multiplierBps       Int?      @map("multiplier_bps")
+  reason              String    @db.VarChar(500)
+  expectedLockVersion Int?      @map("expected_lock_version")
+  lockVersion         Int       @default(1) @map("lock_version")
+  effectiveFrom       DateTime  @default(now()) @map("effective_from")
+  supersededAt        DateTime? @map("superseded_at")
+  createdById         Int       @map("created_by_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  user        User                               @relation("UserMembershipAdjustmentOwner", fields: [userId], references: [id], onDelete: Restrict)
+  tierVersion PlatformMembershipTierVersion?     @relation(fields: [tierVersionId], references: [id], onDelete: Restrict)
+  createdBy   User                               @relation("UserMembershipAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, effectiveFrom, supersededAt, deletedAt], map: "user_membership_adjustments_active_idx")
+  @@index([tierVersionId])
+  @@index([createdById])
+  @@index([deletedAt])
+  @@map("user_membership_adjustments")
 }
 
 model BackofficeUserGroup {

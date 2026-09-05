@@ -77,4 +77,14 @@ describe("UnifiedUserDetailDrawer", () => {
     expect(container.textContent).toContain("4.8");
     expect(container.textContent).toContain("已开启");
   });
+
+  it("shows both reasoned membership actions only when the operations capability is granted", async () => {
+    state.getUser.mockResolvedValue({
+      ...detail,
+      capabilities: { ...detail.capabilities, membershipWrite: true },
+    });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "修改会员类型");
+    expect(container.textContent).toContain("修改会员倍率");
+  });
 });

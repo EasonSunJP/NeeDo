@@ -11,7 +11,8 @@ describe("platform membership OpenAPI", () => {
       "/api/v1/backoffice/membership-tiers/{tierCode}/publish",
       "/api/v1/backoffice/membership-benefits",
       "/api/v1/backoffice/membership-benefits/{benefitCode}",
-      "/api/v1/backoffice/users/{userId}/platform-membership"
+      "/api/v1/backoffice/users/{userId}/platform-membership",
+      "/api/v1/backoffice/users/{userId}/membership-adjustment"
     ]) {
       expect(paths).toHaveProperty(path);
     }
@@ -25,5 +26,10 @@ describe("platform membership OpenAPI", () => {
     expect(schemas.PlatformMembershipBenefitCode.enum).toHaveLength(7);
     expect(schemas.PlatformMembershipTheme.required).toHaveLength(8);
     expect(schemas.PlatformMembershipEntitlementCommand.discriminator.propertyName).toBe("kind");
+    expect(schemas.UserMembershipAdjustmentInput.required).toEqual([
+      "reason",
+      "expectedLockVersion"
+    ]);
+    expect(schemas.UserMembershipAdjustmentInput.properties).not.toHaveProperty("level");
   });
 });

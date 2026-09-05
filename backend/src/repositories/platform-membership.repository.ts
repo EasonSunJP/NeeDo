@@ -127,6 +127,24 @@ export type PlatformMembershipBenefitMutationResult =
   | { kind: "updated"; value: PlatformMembershipBenefitAdministrationPayload }
   | { kind: "not_found" | "version_conflict" };
 
+export interface ResolvedUserMembershipAdjustment {
+  tierMembership: ResolvedPlatformMembership | null;
+  multiplier: number | null;
+  lockVersion: number;
+  effectiveFrom: Date;
+}
+
+export interface UserMembershipAdjustmentPayload {
+  tierCode: PlatformMembershipTierCodeValue | null;
+  multiplier: number | null;
+  lockVersion: number;
+  effectiveFrom: Date;
+}
+
+export type UserMembershipAdjustmentMutationResult =
+  | { kind: "adjusted"; value: UserMembershipAdjustmentPayload }
+  | { kind: "not_found" | "version_conflict" | "invalid_state" };
+
 export interface PlatformMembershipRepositoryPort {
   listTiersForAdministration: () => Promise<PlatformMembershipTierAdministrationPayload[]>;
   listBenefitsForAdministration: () => Promise<PlatformMembershipBenefitAdministrationPayload[]>;
@@ -140,6 +158,10 @@ export interface PlatformMembershipRepositoryPort {
     tierCode: PlatformMembershipTierCodeValue,
     occurredAt: Date
   ) => Promise<ResolvedPlatformMembership | null>;
+  findActiveAdjustmentAt?: (
+    userId: number,
+    occurredAt: Date
+  ) => Promise<ResolvedUserMembershipAdjustment | null>;
   findTierDraft: (
     tierCode: PlatformMembershipTierCodeValue
   ) => Promise<PlatformMembershipTierVersionPayload | null>;
@@ -176,6 +198,16 @@ export interface PlatformMembershipRepositoryPort {
     expectedLockVersion: number;
     audit: AuditLogCreateInput;
   }) => Promise<PlatformMembershipBenefitMutationResult>;
+  adjustUserMembershipWithAudit?: (input: {
+    actorId: number;
+    userId: number;
+    tierCode?: PlatformMembershipTierCodeValue;
+    multiplierBps?: number;
+    reason: string;
+    expectedLockVersion: number | null;
+    effectiveFrom: Date;
+    audit: AuditLogCreateInput;
+  }) => Promise<UserMembershipAdjustmentMutationResult>;
 }
 
 const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionSelect>()({
@@ -477,6 +509,37 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     });
 
     return version ? this.mapVersion(version, null) : null;
+  }
+
+  public async findActiveAdjustmentAt(
+    userId: number,
+    occurredAt: Date
+  ): Promise<ResolvedUserMembershipAdjustment | null> {
+    const adjustment = await this.client.userMembershipAdjustment.findFirst({
+      where: {
+        userId,
+        effectiveFrom: { lte: occurredAt },
+        supersededAt: null,
+        deletedAt: null
+      },
+      orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+      select: {
+        multiplierBps: true,
+        lockVersion: true,
+        effectiveFrom: true,
+        tierVersion: { select: tierVersionSelect }
+      }
+    });
+    if (!adjustment) return null;
+    return {
+      tierMembership: adjustment.tierVersion
+        ? this.mapVersion(adjustment.tierVersion, null)
+        : null,
+      multiplier:
+        adjustment.multiplierBps === null ? null : adjustment.multiplierBps / 10_000,
+      lockVersion: adjustment.lockVersion,
+      effectiveFrom: adjustment.effectiveFrom
+    };
   }
 
   public async findTierDraft(
@@ -963,6 +1026,122 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         ? { kind: "idempotent", value: this.mapEntitlementResult(existing, true) }
         : { kind: "version_conflict" };
     }
+  }
+
+  public async adjustUserMembershipWithAudit(input: {
+    actorId: number;
+    userId: number;
+    tierCode?: PlatformMembershipTierCodeValue;
+    multiplierBps?: number;
+    reason: string;
+    expectedLockVersion: number | null;
+    effectiveFrom: Date;
+    audit: AuditLogCreateInput;
+  }): Promise<UserMembershipAdjustmentMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const lockedCustomers = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM customer_profiles WHERE user_id = ${input.userId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (lockedCustomers.length === 0) return { kind: "not_found" as const };
+
+      const current = await transaction.userMembershipAdjustment.findFirst({
+        where: {
+          userId: input.userId,
+          effectiveFrom: { lte: input.effectiveFrom },
+          supersededAt: null,
+          deletedAt: null
+        },
+        orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          lockVersion: true,
+          tierVersionId: true,
+          multiplierBps: true,
+          tierVersion: { select: { tier: { select: { code: true } } } }
+        }
+      });
+      if ((current?.lockVersion ?? null) !== input.expectedLockVersion) {
+        return { kind: "version_conflict" as const };
+      }
+
+      let tierVersionId: number | null = current?.tierVersionId ?? null;
+      if (input.tierCode !== undefined) {
+        const tierVersion = await transaction.platformMembershipTierVersion.findFirst({
+          where: {
+            status: PlatformMembershipVersionStatus.PUBLISHED,
+            deletedAt: null,
+            effectiveFrom: { lte: input.effectiveFrom },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gt: input.effectiveFrom } }],
+            tier: { code: tierCodeToDb[input.tierCode], deletedAt: null }
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }],
+          select: { id: true }
+        });
+        if (!tierVersion) return { kind: "not_found" as const };
+        tierVersionId = tierVersion.id;
+      }
+
+      if (current) {
+        const superseded = await transaction.userMembershipAdjustment.updateMany({
+          where: {
+            id: current.id,
+            lockVersion: current.lockVersion,
+            supersededAt: null,
+            deletedAt: null
+          },
+          data: { supersededAt: input.effectiveFrom }
+        });
+        if (superseded.count !== 1) return { kind: "version_conflict" as const };
+      }
+
+      const lockVersion = (current?.lockVersion ?? 0) + 1;
+      const created = await transaction.userMembershipAdjustment.create({
+        data: {
+          userId: input.userId,
+          tierVersionId,
+          multiplierBps: input.multiplierBps ?? current?.multiplierBps ?? null,
+          reason: input.reason,
+          expectedLockVersion: input.expectedLockVersion,
+          lockVersion,
+          effectiveFrom: input.effectiveFrom,
+          createdById: input.actorId
+        },
+        select: { id: true }
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.audit,
+          targetId: created.id,
+          metadata: {
+            ...this.metadataObject(input.audit.metadata),
+            userId: input.userId,
+            tierCode: input.tierCode ?? null,
+            multiplierBps: input.multiplierBps ?? null,
+            reason: input.reason,
+            expectedLockVersion: input.expectedLockVersion,
+            lockVersion
+          }
+        })
+      });
+      return {
+        kind: "adjusted" as const,
+        value: {
+          tierCode:
+            input.tierCode ??
+            (current?.tierVersion
+              ? tierCodeFromDb[current.tierVersion.tier.code]
+              : null),
+          multiplier:
+            input.multiplierBps === undefined
+              ? current?.multiplierBps === null || current?.multiplierBps === undefined
+                ? null
+                : current.multiplierBps / 10_000
+              : input.multiplierBps / 10_000,
+          lockVersion,
+          effectiveFrom: input.effectiveFrom
+        }
+      };
+    });
   }
 
   public async updateBenefitWithAudit(input: {

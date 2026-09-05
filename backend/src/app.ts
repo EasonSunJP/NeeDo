@@ -395,6 +395,7 @@ export interface AppDependencies {
     | "listBenefitsForAdministration"
     | "updateBenefit"
     | "changeEntitlement"
+    | "adjustUserMembership"
     | "getMyMembership"
     | "getMyMembershipBenefits"
   >;

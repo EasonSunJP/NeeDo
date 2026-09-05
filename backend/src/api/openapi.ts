@@ -7830,6 +7830,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotent: { type: "boolean" }
         }
       },
+      UserMembershipAdjustmentInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason", "expectedLockVersion"],
+        anyOf: [{ required: ["tierCode"] }, { required: ["multiplier"] }],
+        properties: {
+          tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+          multiplier: { type: "number", exclusiveMinimum: 0, maximum: 100 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          expectedLockVersion: { type: ["integer", "null"], minimum: 1 }
+        }
+      },
+      UserMembershipAdjustmentResult: {
+        type: "object",
+        required: ["tierCode", "multiplier", "lockVersion", "effectiveFrom"],
+        properties: {
+          tierCode: {
+            oneOf: [
+              { $ref: "#/components/schemas/PlatformMembershipTierCode" },
+              { type: "null" }
+            ]
+          },
+          multiplier: { type: ["number", "null"] },
+          lockVersion: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" }
+        }
+      },
       BackofficeUserGroup: {
         type: "object",
         required: ["code", "kind", "name", "description", "status", "mutableName", "memberCount"],
@@ -22249,6 +22276,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "User or tier not found" },
           "409": { description: "Version conflict" },
           "422": { description: "Target is not an active customer" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/membership-adjustment`]: {
+      patch: {
+        tags: ["Platform Membership"],
+        summary: "Create a reasoned per-user membership or multiplier adjustment",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UserMembershipAdjustmentInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Created membership adjustment", {
+            $ref: "#/components/schemas/UserMembershipAdjustmentResult"
+          }),
+          "400": { description: "Invalid adjustment or missing reason" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User or published tier not found" },
+          "409": { description: "Version conflict" }
         }
       }
     },

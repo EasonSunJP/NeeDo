@@ -22,6 +22,12 @@ export type Paginated<T> = {
 
 export type UserDirectoryScope = "operations" | "merchant";
 export type UserPrivacyScope = "public" | "privateAll" | "limited" | "network";
+export type UserMembershipAdjustmentInput = {
+  tierCode?: PlatformTierCode;
+  multiplier?: number;
+  reason: string;
+  expectedLockVersion: number | null;
+};
 
 export type PlatformManagedUser = {
   id: number;

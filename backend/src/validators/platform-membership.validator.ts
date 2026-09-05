@@ -158,7 +158,23 @@ export const platformMembershipEntitlementCommandSchema = z.discriminatedUnion("
     .strict()
 ]);
 
+export const userMembershipAdjustmentBodySchema = z
+  .object({
+    tierCode: platformMembershipTierCodeSchema.optional(),
+    multiplier: z.number().positive().max(100).optional(),
+    reason: z.string().trim().min(1).max(500),
+    expectedLockVersion: z.number().int().positive().nullable(),
+  })
+  .strict()
+  .refine(
+    (value) => value.tierCode !== undefined || value.multiplier !== undefined,
+    { message: "tierCode or multiplier is required" },
+  );
+
 export type PlatformMembershipTierDraftBody = z.infer<typeof platformMembershipTierDraftBodySchema>;
 export type PlatformMembershipBenefitUpdateBody = z.infer<
   typeof platformMembershipBenefitUpdateBodySchema
+>;
+export type UserMembershipAdjustmentBody = z.infer<
+  typeof userMembershipAdjustmentBodySchema
 >;

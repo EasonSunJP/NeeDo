@@ -19,7 +19,8 @@ import {
   type UserGroup,
   type UserGroupMember,
   type UserListQuery,
-  type UserDirectoryScope
+  type UserDirectoryScope,
+  type UserMembershipAdjustmentInput
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -371,6 +372,12 @@ export const platformUserManagementApi = {
   async getUser(scope: UserDirectoryScope, userId: number) {
     const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
     return decodeUserDetail(await httpClient.request<unknown>(`${path}/${userId}`));
+  },
+  adjustMembership(userId: number, body: UserMembershipAdjustmentInput) {
+    return httpClient.request<unknown>(`/backoffice/users/${userId}/membership-adjustment`, {
+      method: "PATCH",
+      body
+    });
   },
   async listGroups(query: PageQuery = {}) {
     return decodePage(

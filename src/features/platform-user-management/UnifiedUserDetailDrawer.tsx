@@ -7,6 +7,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { platformUserManagementApi } from "./api";
 import type { PlatformManagedUserDetail, UserDirectoryScope } from "./types";
+import { UserMembershipAdjustmentDialog } from "./UserMembershipAdjustmentDialog";
 
 type DetailState = {
   loading: boolean;
@@ -53,7 +54,13 @@ export function UnifiedUserDetailDrawer({
       {state.loading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取用户详细信息...", language)}</p> : null}
       {!state.loading && state.error ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700"><span>{state.error}</span><Button onClick={() => setReloadToken((value) => value + 1)} size="sm" variant="secondary">{translateText("重试", language)}</Button></div> : null}
       {!state.loading && !state.error && user ? <div className="space-y-4">
-        <FormalManagedUserDetailPanel detail={user} />
+        <FormalManagedUserDetailPanel
+          detail={user}
+          membershipActions={scope === "operations" && user.capabilities.membershipWrite ? {
+            tier: <UserMembershipAdjustmentDialog currentValue={user.membership.tierCode} expectedLockVersion={user.membership.lockVersion} kind="tier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />,
+            multiplier: <UserMembershipAdjustmentDialog currentValue={user.membership.experienceMultiplier} expectedLockVersion={user.membership.lockVersion} kind="multiplier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />
+          } : undefined}
+        />
         {scope === "operations" && user.capabilities.partnerWrite ? <PartnerMarkerEditor userId={user.id} /> : null}
       </div> : null}
     </Drawer>

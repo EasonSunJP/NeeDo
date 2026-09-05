@@ -185,6 +185,26 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
         }
       }
     },
+    membershipAdjustments: {
+      where: {
+        deletedAt: null,
+        supersededAt: null,
+        effectiveFrom: { lte: occurredAt }
+      },
+      orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+      take: 1,
+      select: {
+        multiplierBps: true,
+        lockVersion: true,
+        tierVersion: {
+          select: {
+            publicId: true,
+            experienceMultiplier: true,
+            tier: { select: { code: true } }
+          }
+        }
+      }
+    },
     backofficeUserGroupMemberships: {
       where: {
         deletedAt: null,
@@ -1978,18 +1998,37 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     occurredAt: Date
   ): Prisma.UserWhereInput {
     const activeEntitlement = this.managedActiveEntitlementWhere(occurredAt);
+    const activeTierAdjustment = {
+      deletedAt: null,
+      supersededAt: null,
+      effectiveFrom: { lte: occurredAt },
+      tierVersionId: { not: null }
+    } satisfies Prisma.UserMembershipAdjustmentWhereInput;
     if (tierCode === "free") {
       return {
         customerProfile: { is: { deletedAt: null } },
-        platformMembershipEntitlements: {
-          none: {
-            ...activeEntitlement,
-            tierVersion: {
-              ...this.managedActiveTierVersionWhere(occurredAt),
-              tier: { code: { in: PAID_PLATFORM_TIER_CODES }, deletedAt: null }
+        OR: [
+          {
+            membershipAdjustments: {
+              some: {
+                ...activeTierAdjustment,
+                tierVersion: { tier: { code: PlatformMembershipTierCode.FREE } }
+              }
+            }
+          },
+          {
+            membershipAdjustments: { none: activeTierAdjustment },
+            platformMembershipEntitlements: {
+              none: {
+                ...activeEntitlement,
+                tierVersion: {
+                  ...this.managedActiveTierVersionWhere(occurredAt),
+                  tier: { code: { in: PAID_PLATFORM_TIER_CODES }, deletedAt: null }
+                }
+              }
             }
           }
-        }
+        ]
       };
     }
     const dbTierCode =
@@ -2000,15 +2039,28 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           : PlatformMembershipTierCode.BLACK_DIAMOND;
     return {
       customerProfile: { is: { deletedAt: null } },
-      platformMembershipEntitlements: {
-        some: {
-          ...activeEntitlement,
-          tierVersion: {
-            ...this.managedActiveTierVersionWhere(occurredAt),
-            tier: { code: dbTierCode, deletedAt: null }
+      OR: [
+        {
+          membershipAdjustments: {
+            some: {
+              ...activeTierAdjustment,
+              tierVersion: { tier: { code: dbTierCode, deletedAt: null } }
+            }
+          }
+        },
+        {
+          membershipAdjustments: { none: activeTierAdjustment },
+          platformMembershipEntitlements: {
+            some: {
+              ...activeEntitlement,
+              tierVersion: {
+                ...this.managedActiveTierVersionWhere(occurredAt),
+                tier: { code: dbTierCode, deletedAt: null }
+              }
+            }
           }
         }
-      }
+      ]
     };
   }
 
@@ -2098,10 +2150,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         ? rawPrivacyScope
         : null;
     const entitlement = user.platformMembershipEntitlements[0] ?? null;
-    const tierCode = entitlement
-      ? entitlement.tierVersion.tier.code === PlatformMembershipTierCode.BLACK_DIAMOND
+    const adjustment = user.membershipAdjustments?.[0] ?? null;
+    const effectiveTierVersion = adjustment?.tierVersion ?? entitlement?.tierVersion ?? null;
+    const tierCode = effectiveTierVersion
+      ? effectiveTierVersion.tier.code === PlatformMembershipTierCode.BLACK_DIAMOND
         ? "black_diamond"
-        : (entitlement.tierVersion.tier.code.toLowerCase() as "free" | "silver" | "gold")
+        : (effectiveTierVersion.tier.code.toLowerCase() as "free" | "silver" | "gold")
       : "free";
     const operationMember = user.userRoles.some((assignment) =>
       OPERATIONS_ROLE_CODES.includes(assignment.role.code)
@@ -2137,13 +2191,16 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ),
       membership: {
         tierCode,
-        tierVersionPublicId: entitlement?.tierVersion.publicId ?? null,
+        tierVersionPublicId: effectiveTierVersion?.publicId ?? null,
         entitlementPublicId: entitlement?.publicId ?? null,
         expiresAt: entitlement?.expiresAt?.toISOString() ?? null,
-        experienceMultiplier: entitlement
-          ? Number(entitlement.tierVersion.experienceMultiplier.toString())
-          : 1,
-        lockVersion: entitlement?.lockVersion ?? null
+        experienceMultiplier:
+          adjustment?.multiplierBps !== null && adjustment?.multiplierBps !== undefined
+            ? adjustment.multiplierBps / 10_000
+            : effectiveTierVersion
+              ? Number(effectiveTierVersion.experienceMultiplier.toString())
+              : 1,
+        lockVersion: adjustment?.lockVersion ?? null
       },
       experience:
         customerProfile && user.experienceAccount && !user.experienceAccount.deletedAt

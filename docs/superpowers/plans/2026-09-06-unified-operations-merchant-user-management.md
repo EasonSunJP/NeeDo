@@ -532,7 +532,7 @@ git commit -m "feat: unify user detail across operations and merchant"
 - Produces: `UserMembershipAdjustmentInput = { tierCode?: PlatformTierCode; multiplier?: number; reason: string; expectedLockVersion: number | null }`.
 - Consumes: existing platform tier publications and user experience event snapshots.
 
-- [ ] **Step 1: Write failing schema and service tests**
+- [x] **Step 1: Write failing schema and service tests**
 
 Assert the schema contains an append-only override model:
 
@@ -565,7 +565,7 @@ expect(repository.adjustUserMembershipWithAudit).toHaveBeenCalledWith(
 );
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -576,13 +576,13 @@ npm test -- user-membership-adjustment-schema.test.ts user-membership-adjustment
 
 Expected: FAIL because the model and adjustment service do not exist.
 
-- [ ] **Step 3: Add the migration and transactional repository**
+- [x] **Step 3: Add the migration and transactional repository**
 
 Create `UserMembershipAdjustment` with immutable rows, `multiplierBps Int?`, optional tier entitlement reference, `reason VarChar(500)`, `expected/current lockVersion`, `effectiveFrom`, `supersededAt`, actor relation, and standard timestamps. Add indexes on `(userId, effectiveFrom, supersededAt, deletedAt)` and `createdById`.
 
 In one transaction: lock/read the current adjustment, compare `expectedLockVersion`, supersede it, create the new row, and create the audit log. Do not update historical `UserExperienceEntry.membershipMultiplierBps` values.
 
-- [ ] **Step 4: Add validated route and OpenAPI**
+- [x] **Step 4: Add validated route and OpenAPI**
 
 Use this strict body:
 
@@ -602,7 +602,7 @@ export const userMembershipAdjustmentBodySchema = z
 
 The service derives all future multiplier snapshots from the active override plus published tier data. The request and response contain no `level` field.
 
-- [ ] **Step 5: Run backend tests and verify GREEN**
+- [x] **Step 5: Run backend tests and verify GREEN**
 
 Run:
 
@@ -614,7 +614,7 @@ npm test -- user-membership-adjustment-schema.test.ts user-membership-adjustment
 
 Expected: PASS; blank reasons fail, concurrency conflicts return 409, and historical experience snapshots remain unchanged.
 
-- [ ] **Step 6: Write failing dialog test, implement, and verify GREEN**
+- [x] **Step 6: Write failing dialog test, implement, and verify GREEN**
 
 Assert each field has its own right-side button and reason is mandatory:
 
@@ -636,7 +636,7 @@ npm test -- src/features/platform-user-management/UserMembershipAdjustmentDialog
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```bash
 git add backend/prisma backend/src backend/tests src/components/admin src/features/platform-user-management

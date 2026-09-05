@@ -266,11 +266,13 @@ export function FormalCustomerDetailPanel({
 export function FormalManagedUserDetailPanel({
   actionContent,
   detail,
-  initialTab = "基础资料"
+  initialTab = "基础资料",
+  membershipActions
 }: {
   actionContent?: ReactNode;
   detail: PlatformManagedUserDetail;
   initialTab?: CustomerDetailTab;
+  membershipActions?: { tier?: ReactNode; multiplier?: ReactNode };
 }) {
   const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
@@ -311,8 +313,8 @@ export function FormalManagedUserDetailPanel({
           { id: "privacy", label: localization.t("隐私模式"), value: detail.privacyScope ? privacyScopeText(detail.privacyScope, localization.language) : privacyModeText(false, localization.language) }
         ]} />
         <div className="mt-3 grid gap-2 rounded-lg border border-line bg-paper p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ManagedHeaderFact label={localization.t("会员类型")} value={membershipTierText(detail.membership.tierCode, localization.language)} />
-          <ManagedHeaderFact label={localization.t("会员倍率")} value={`×${formatDecimal(detail.membership.experienceMultiplier, localization)}`} />
+          <ManagedHeaderFact action={membershipActions?.tier} label={localization.t("会员类型")} value={membershipTierText(detail.membership.tierCode, localization.language)} />
+          <ManagedHeaderFact action={membershipActions?.multiplier} label={localization.t("会员倍率")} value={`×${formatDecimal(detail.membership.experienceMultiplier, localization)}`} />
           <ManagedHeaderFact label={localization.t("当前等级")} value={detail.experience ? `Lv.${formatInteger(detail.experience.currentLevel, localization)}` : "—"} />
           <ManagedHeaderFact label={localization.t("累计经验")} value={detail.experience ? `${formatInteger(Number(detail.experience.totalExpUnits), localization)} EXP` : "—"} />
         </div>
@@ -326,8 +328,8 @@ export function FormalManagedUserDetailPanel({
   );
 }
 
-function ManagedHeaderFact({ label, value }: { label: string; value: ReactNode }) {
-  return <div><p className="text-[11px] font-black text-ink/45">{label}</p><p className="mt-1 text-sm font-black text-ink">{value}</p></div>;
+function ManagedHeaderFact({ action, label, value }: { action?: ReactNode; label: string; value: ReactNode }) {
+  return <div className="flex min-w-0 items-center justify-between gap-2"><div className="min-w-0"><p className="text-[11px] font-black text-ink/45">{label}</p><p className="mt-1 truncate text-sm font-black text-ink">{value}</p></div>{action}</div>;
 }
 
 function renderManagedUserTab(
