@@ -16,7 +16,6 @@ import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
-import { mobileBottomDockInsetClassName } from "../../components/mobile/MobileBottomActionBar";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { MediaLoadFeedback, useMediaLoadState } from "../../components/ui/MediaLoadFeedback";
@@ -822,8 +821,7 @@ export function ImChatComposer({
   return (
     <div
       className={cn(
-        "im-chat-composer-root relative z-10 max-w-full pt-2 [overflow-x:clip]",
-        mobileBottomDockInsetClassName,
+        "im-chat-composer-root safe-nav-bottom relative z-10 max-w-full px-3 pt-2 [overflow-x:clip]",
         disabled ? "cursor-not-allowed opacity-60" : ""
       )}
       data-im-composer-disabled={disabled ? "true" : undefined}

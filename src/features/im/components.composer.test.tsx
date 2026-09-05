@@ -399,12 +399,9 @@ describe("ImChatComposer", () => {
     ];
 
     expect(inputShell?.classList.contains("items-end")).toBe(true);
-    expect(composerRoot?.classList.contains("px-4")).toBe(true);
-    expect(
-      composerRoot?.classList.contains(
-        "pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]"
-      )
-    ).toBe(true);
+    expect(composerRoot?.classList.contains("safe-nav-bottom")).toBe(true);
+    expect(composerRoot?.classList.contains("px-3")).toBe(true);
+    expect(composerRoot?.className).not.toContain("pb-[max(12px,env(safe-area-inset-bottom))]");
     expect(editor?.parentElement?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
     expect(editor?.classList.contains("block")).toBe(true);
     for (const control of controls) {
