@@ -3229,6 +3229,7 @@ model Service {
   affiliateAttributions AffiliateAttribution[]
   exchangeClaims        ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
+  exchangeIntelligences ExchangeIntelligence[]
   carouselSlides        CarouselSlide[]
   routeEstimates        RouteEstimate[]
 
@@ -3280,6 +3281,7 @@ model TechnicianService {
   bookingOrders     BookingOrder[]
   exchangeClaims    ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
+  exchangeIntelligences ExchangeIntelligence[]
 
   @@index([shopId, technicianId, isActive, deletedAt])
   @@index([shopId, isRecommended, isActive, deletedAt])
@@ -3821,6 +3823,7 @@ model BookingOrder {
   serviceDurationSnapshot Int?                 @map("service_duration_snapshot")
   serviceSnapshotJson     Json?                @map("service_snapshot_json")
   fulfillmentAddressSnapshot Json?             @map("fulfillment_address_snapshot")
+  exchangeIntelligencePostId Int?              @map("exchange_intelligence_post_id")
   startsAt                DateTime             @map("starts_at")
   endsAt                  DateTime             @map("ends_at")
   note                    String?              @db.VarChar(500)
@@ -3863,6 +3866,7 @@ model BookingOrder {
   consumedRouteEstimate RouteEstimate?                    @relation("RouteEstimateConsumedBooking")
   travelFareSnapshot    BookingTravelFareSnapshot?
   exchangeMatchParticipant ExchangeMatchParticipant?
+  exchangeIntelligence ExchangeIntelligence? @relation(fields: [exchangeIntelligencePostId], references: [postId], onDelete: Restrict, onUpdate: Restrict)
   membershipCardRedemption       ShopMembershipCardRedemption?
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
@@ -3884,6 +3888,7 @@ model BookingOrder {
   @@index([paymentStatus])
   @@index([paymentConfirmedById])
   @@index([paymentRefundedById])
+  @@index([exchangeIntelligencePostId, createdAt], map: "booking_orders_exchange_intelligence_created_idx")
   @@index([status, paymentStatus, deletedAt, paymentConfirmedAt, shopId, id], map: "booking_orders_ranking_window_idx")
   @@index([deletedAt])
   @@map("booking_orders")
@@ -5360,20 +5365,29 @@ model ExchangeMatchEvent {
 }
 
 model ExchangeIntelligence {
-  id               Int                 @id @default(autoincrement())
-  postId           Int                 @unique @map("post_id")
-  serviceMode      ExchangeServiceMode @map("service_mode")
-  addressLabel     String?             @map("address_label") @db.VarChar(255)
-  serviceAreas     Json                @map("service_areas")
-  originalPriceJpy Int?                @map("original_price_jpy")
-  campaignPriceJpy Int                 @map("campaign_price_jpy")
-  createdAt        DateTime            @default(now()) @map("created_at")
-  updatedAt        DateTime            @updatedAt @map("updated_at")
-  deletedAt        DateTime?           @map("deleted_at")
+  id                      Int                 @id @default(autoincrement())
+  postId                  Int                 @unique @map("post_id")
+  serviceId               Int?                @map("service_id")
+  technicianServiceId     Int?                @map("technician_service_id")
+  serviceNameSnapshot     String?             @map("service_name_snapshot") @db.VarChar(160)
+  serviceDurationSnapshot Int?                @map("service_duration_snapshot")
+  serviceMode             ExchangeServiceMode @map("service_mode")
+  addressLabel            String?             @map("address_label") @db.VarChar(255)
+  serviceAreas            Json                @map("service_areas")
+  originalPriceJpy        Int?                @map("original_price_jpy")
+  campaignPriceJpy        Int                 @map("campaign_price_jpy")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+  deletedAt               DateTime?           @map("deleted_at")
 
-  post ExchangePost @relation(fields: [postId], references: [id], onDelete: Restrict)
+  post              ExchangePost        @relation(fields: [postId], references: [id], onDelete: Restrict)
+  service           Service?             @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  technicianService TechnicianService?   @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookingOrders     BookingOrder[]
 
   @@index([serviceMode, deletedAt])
+  @@index([serviceId, deletedAt], map: "exchange_intelligences_service_deleted_idx")
+  @@index([technicianServiceId, deletedAt], map: "exchange_intelligences_technician_service_deleted_idx")
   @@index([deletedAt])
   @@map("exchange_intelligences")
 }
