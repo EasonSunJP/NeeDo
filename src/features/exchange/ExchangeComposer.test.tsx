@@ -3,7 +3,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getRequestPublicationContext, publishExchangePost } from "./api";
+import {
+  getRequestPublicationContext,
+  listExchangeIntelligenceServiceOptions,
+  publishExchangePost
+} from "./api";
 import { ExchangeComposer, getExchangeComposerMode } from "./ExchangeComposer";
 import { exchangeText } from "./i18n";
 import type { ExchangePost } from "./types";
@@ -22,6 +26,7 @@ vi.mock("../../theme/ClientThemeProvider", () => ({
 }));
 vi.mock("./api", () => ({
   getRequestPublicationContext: vi.fn(),
+  listExchangeIntelligenceServiceOptions: vi.fn(),
   publishExchangePost: vi.fn()
 }));
 
@@ -170,6 +175,9 @@ describe("ExchangeComposer publication", () => {
       membershipLevel: "standard",
       maxTargetProviderCount: 1,
       publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 1 }
+    });
+    vi.mocked(listExchangeIntelligenceServiceOptions).mockResolvedValue({
+      list: [], total: 0, page: 1, page_size: 100
     });
     vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
   });

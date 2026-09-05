@@ -243,6 +243,21 @@ export type ExchangeIntelligence = {
   campaignPriceJpy: number;
 };
 
+export type ExchangeIntelligenceServiceRef = `shop:${number}` | `technician:${number}`;
+
+export type ExchangeIntelligenceServiceOption = {
+  serviceRef: ExchangeIntelligenceServiceRef;
+  ownerType: "shop" | "technician";
+  name: string;
+  durationMinutes: number;
+  catalogPriceJpy: number;
+  currency: "JPY";
+  serviceMode: ExchangeServiceMode;
+  available: true;
+  shop: { publicId: string; name: string; city: string; address: string };
+  technician: null | { publicId: string; displayName: string; avatarUrl: string | null; serviceArea: string | null; serviceAreas: string[] };
+};
+
 export type ExchangePost = {
   id: number;
   type: ExchangePostType;
@@ -315,11 +330,7 @@ export type PublishExchangeDemandInput = ExchangePublishCommon & {
 
 export type PublishExchangeIntelligenceInput = ExchangePublishCommon & {
   type: "intelligence";
-  areaLabel: string;
-  serviceMode: ExchangeServiceMode;
-  addressLabel: string | null;
-  serviceAreas: string[];
-  originalPriceJpy: number | null;
+  serviceRef: ExchangeIntelligenceServiceRef;
   campaignPriceJpy: number;
 };
 

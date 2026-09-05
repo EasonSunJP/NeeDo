@@ -2,7 +2,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getRequestPublicationContext, publishExchangePost } from "./api";
+import {
+  getRequestPublicationContext,
+  listExchangeIntelligenceServiceOptions,
+  publishExchangePost
+} from "./api";
 import { ExchangeComposer } from "./ExchangeComposer";
 import type { ExchangePost } from "./types";
 
@@ -13,6 +17,7 @@ vi.mock("../../theme/ClientThemeProvider", () => ({
 }));
 vi.mock("./api", () => ({
   getRequestPublicationContext: vi.fn(),
+  listExchangeIntelligenceServiceOptions: vi.fn(),
   publishExchangePost: vi.fn()
 }));
 
@@ -60,23 +65,21 @@ function fillValidIntelligenceDraft() {
   const values = {
     title: "今晚 22 点后可预约",
     detail: "支持平台内确认后到店或预约。",
-    areaLabel: "六本木",
     serviceStartDate: "2026-08-30",
     serviceStartTime: "22:00",
     serviceEndDate: "2026-08-31",
     serviceEndTime: "01:00",
     expiresDate: "2026-08-31",
-    expiresTime: "01:00",
-    addressLabel: "東京都港区六本木 3-2-1",
-    serviceAreas: "港区",
-    originalPriceJpy: "16000",
-    campaignPriceJpy: "12800"
+    expiresTime: "01:00"
   };
   Object.entries(values).forEach(([name, value]) => {
     const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
     if (!input) throw new Error(`missing ${name}`);
     setInputValue(input, value);
   });
+  const campaign = document.body.querySelector<HTMLInputElement>('[name="campaignPriceJpy"]');
+  if (!campaign) throw new Error("missing campaign price");
+  setInputValue(campaign, "12800");
 }
 
 async function waitFor(assertion: () => void) {
@@ -111,6 +114,25 @@ describe("ExchangeComposer approved shared shell", () => {
       maxTargetProviderCount: 1,
       publicationFee: { amountNdp: 1000, currency: "TEST_NDP", ruleSetVersion: 1 }
     });
+    vi.mocked(listExchangeIntelligenceServiceOptions).mockResolvedValue({
+      list: [
+        {
+          serviceRef: "technician:31",
+          ownerType: "technician",
+          name: "指压 60 分钟",
+          durationMinutes: 60,
+          catalogPriceJpy: 16000,
+          currency: "JPY",
+          serviceMode: "store",
+          available: true,
+          shop: { publicId: "shop0000000031", name: "六本木店", city: "港区", address: "東京都港区六本木 3-2-1" },
+          technician: { publicId: "s0000000084", displayName: "技师 84", avatarUrl: null, serviceArea: "港区", serviceAreas: ["港区"] }
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
     vi.stubGlobal("crypto", { randomUUID: () => "123e4567-e89b-42d3-a456-426614174000" });
   });
 
@@ -143,7 +165,13 @@ describe("ExchangeComposer approved shared shell", () => {
   it("does not publish on Next and publishes only from review", async () => {
     vi.mocked(publishExchangePost).mockResolvedValue(publishedIntelligence);
     await renderAndOpen("technician");
-    fillValidIntelligenceDraft();
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-service-ref="technician:31"]')).not.toBeNull()
+    );
+    await act(async () =>
+      document.body.querySelector<HTMLButtonElement>('[data-service-ref="technician:31"]')?.click()
+    );
+    await act(async () => fillValidIntelligenceDraft());
 
     await act(async () => clickAction("composer-next"));
     expect(publishExchangePost).not.toHaveBeenCalled();
@@ -151,6 +179,21 @@ describe("ExchangeComposer approved shared shell", () => {
 
     await act(async () => clickAction("composer-publish"));
     await waitFor(() => expect(publishExchangePost).toHaveBeenCalledTimes(1));
+    expect(publishExchangePost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "intelligence",
+        serviceRef: "technician:31",
+        campaignPriceJpy: 12800
+      }),
+      "123e4567-e89b-42d3-a456-426614174000"
+    );
+    expect(vi.mocked(publishExchangePost).mock.calls[0]?.[0]).not.toEqual(
+      expect.objectContaining({
+        serviceMode: expect.anything(),
+        areaLabel: expect.anything(),
+        originalPriceJpy: expect.anything()
+      })
+    );
   });
 
   it("splits date and time controls and removes unavailable upload controls", async () => {

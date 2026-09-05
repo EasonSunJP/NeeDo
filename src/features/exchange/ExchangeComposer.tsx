@@ -4,7 +4,11 @@ import { FloatingActionButton } from "../../components/mobile/FloatingActionButt
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
-import { getRequestPublicationContext, publishExchangePost } from "./api";
+import {
+  getRequestPublicationContext,
+  listExchangeIntelligenceServiceOptions,
+  publishExchangePost
+} from "./api";
 import { ExchangeComposerShell, type ExchangeComposerStep } from "./ExchangeComposerShell";
 import { ExchangePublicationReview } from "./ExchangePublicationReview";
 import { IntelligenceComposerFields } from "./IntelligenceComposerFields";
@@ -19,6 +23,7 @@ import {
 import { exchangeText } from "./i18n";
 import type {
   ExchangeContentLocale,
+  ExchangeIntelligenceServiceOption,
   ExchangePost,
   ExchangePostType,
   ExchangeRequestPublicationContext,
@@ -79,17 +84,13 @@ function createEmptyIntelligenceDraft(contentLocale: ExchangeContentLocale): Int
     contentLocale,
     title: "",
     detail: "",
-    areaLabel: "",
+    serviceRef: "",
     serviceStartDate: "",
     serviceStartTime: "",
     serviceEndDate: "",
     serviceEndTime: "",
     expiresDate: "",
     expiresTime: "",
-    serviceMode: "store",
-    addressLabel: "",
-    serviceAreas: "",
-    originalPriceJpy: "",
     campaignPriceJpy: ""
   };
 }
@@ -176,6 +177,9 @@ export function ExchangeComposer({
   const [requestContext, setRequestContext] = useState<ExchangeRequestPublicationContext | null>(null);
   const [requestContextStatus, setRequestContextStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [requestContextVersion, setRequestContextVersion] = useState(0);
+  const [intelligenceServiceOptions, setIntelligenceServiceOptions] = useState<ExchangeIntelligenceServiceOption[]>([]);
+  const [intelligenceServicesStatus, setIntelligenceServicesStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [intelligenceServicesVersion, setIntelligenceServicesVersion] = useState(0);
   const [normalizedPayload, setNormalizedPayload] = useState<PublishExchangePostInput | null>(null);
   const [errorKey, setErrorKey] = useState<ExchangeComposerErrorKey | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -211,12 +215,53 @@ export function ExchangeComposer({
     };
   }, [open, requestContextVersion, type]);
 
+  useEffect(() => {
+    if (!open || type !== "intelligence") return;
+    const controller = new AbortController();
+    setIntelligenceServicesStatus("loading");
+    const load = async () => {
+      const first = await listExchangeIntelligenceServiceOptions({
+        page: 1,
+        pageSize: 100,
+        signal: controller.signal
+      });
+      const options = [...first.list];
+      let page = 2;
+      while (options.length < first.total) {
+        const next = await listExchangeIntelligenceServiceOptions({
+          page,
+          pageSize: 100,
+          signal: controller.signal
+        });
+        options.push(...next.list);
+        if (next.list.length === 0) break;
+        page += 1;
+      }
+      if (!controller.signal.aborted) {
+        setIntelligenceServiceOptions(options);
+        setIntelligenceServicesStatus("ready");
+        setIntelligenceDraft((current) =>
+          current.serviceRef && !options.some((option) => option.serviceRef === current.serviceRef)
+            ? { ...current, serviceRef: "", campaignPriceJpy: "" }
+            : current
+        );
+      }
+    };
+    void load().catch(() => {
+      if (controller.signal.aborted) return;
+      setIntelligenceServicesStatus("error");
+    });
+    return () => controller.abort();
+  }, [open, intelligenceServicesVersion, type]);
+
   const openComposer = () => {
     setRequestDraft((current) => isRequestDraftDirty(current) ? current : createEmptyRequestDraft(contentLocale));
     setIntelligenceDraft((current) => isIntelligenceDraftDirty(current) ? current : createEmptyIntelligenceDraft(contentLocale));
     if (type === "demand") {
       setRequestContext(null);
       setRequestContextStatus("loading");
+    } else {
+      setIntelligenceServicesStatus("loading");
     }
     setErrorKey(null);
     setStep("edit");
@@ -235,6 +280,8 @@ export function ExchangeComposer({
     setIntelligenceDraft(createEmptyIntelligenceDraft(contentLocale));
     setRequestContext(null);
     setRequestContextStatus("idle");
+    setIntelligenceServiceOptions([]);
+    setIntelligenceServicesStatus("idle");
     setNormalizedPayload(null);
     setErrorKey(null);
     setStep("edit");
@@ -257,6 +304,8 @@ export function ExchangeComposer({
     if (nextType === "demand") {
       setRequestContext(null);
       setRequestContextStatus("loading");
+    } else {
+      setIntelligenceServicesStatus("loading");
     }
   };
 
@@ -273,7 +322,13 @@ export function ExchangeComposer({
       }
       result = normalizeRequestDraft(requestDraft, requestContext);
     } else {
-      result = normalizeIntelligenceDraft(intelligenceDraft);
+      const selectedService = intelligenceServiceOptions.find(
+        (option) => option.serviceRef === intelligenceDraft.serviceRef
+      );
+      result = normalizeIntelligenceDraft(
+        intelligenceDraft,
+        selectedService?.catalogPriceJpy ?? null
+      );
     }
     if (!result.ok) {
       setErrorKey(result.errorKey);
@@ -356,13 +411,22 @@ export function ExchangeComposer({
               { label: t("publisherIdentityVisible"), value: t(normalizedPayload.publisherIdentityPublic ? "visibleToProviders" : "hiddenUntilMatch") }
               ]
             : [
-              { label: t("area"), value: normalizedPayload.areaLabel },
-              { label: t("serviceMode"), value: t(normalizedPayload.serviceMode) },
+              {
+                label: t("intelligenceService"),
+                value: intelligenceServiceOptions.find(
+                  (option) => option.serviceRef === normalizedPayload.serviceRef
+                )?.name ?? normalizedPayload.serviceRef
+              },
               { label: t("serviceWindow"), value: `${formatComposerDateTime(normalizedPayload.serviceStartAt, language)} ～ ${formatComposerDateTime(normalizedPayload.serviceEndAt, language)}` },
               { label: t("expiry"), value: formatComposerDateTime(normalizedPayload.expiresAt, language) },
-              { label: t("publicAddress"), value: normalizedPayload.addressLabel ?? "—" },
-              { label: t("serviceAreas"), value: normalizedPayload.serviceAreas.join("、") },
-              { label: t("originalPrice"), value: formatComposerMoney(normalizedPayload.originalPriceJpy) },
+              {
+                label: t("originalPrice"),
+                value: formatComposerMoney(
+                  intelligenceServiceOptions.find(
+                    (option) => option.serviceRef === normalizedPayload.serviceRef
+                  )?.catalogPriceJpy ?? null
+                )
+              },
               { label: t("campaignPrice"), value: formatComposerMoney(normalizedPayload.campaignPriceJpy) }
               ])
         ]}
@@ -487,7 +551,10 @@ export function ExchangeComposer({
             <IntelligenceComposerFields
               draft={intelligenceDraft}
               language={language}
+              onRetryServiceOptions={() => setIntelligenceServicesVersion((version) => version + 1)}
               onChange={(patch) => setIntelligenceDraft((current) => ({ ...current, ...patch }))}
+              serviceOptions={intelligenceServiceOptions}
+              serviceOptionsStatus={intelligenceServicesStatus === "idle" ? "loading" : intelligenceServicesStatus}
             />
           )}
         </ExchangeComposerShell>

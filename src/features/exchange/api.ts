@@ -10,6 +10,7 @@ import type {
   ExchangeCancellationAction,
   ExchangeComment,
   ExchangeInteractionCounts,
+  ExchangeIntelligenceServiceOption,
   ExchangeListInput,
   ExchangeMatching,
   ExchangePost,
@@ -171,6 +172,18 @@ export function withdrawExchangeClaim(claimId: string, key: string): Promise<Exc
 
 export function getRequestPublicationContext(): Promise<ExchangeRequestPublicationContext> {
   return httpClient.request<ExchangeRequestPublicationContext>("/exchange/request-publication-context");
+}
+
+export function listExchangeIntelligenceServiceOptions(
+  input: PaginationInput = {}
+): Promise<Paginated<ExchangeIntelligenceServiceOption>> {
+  return httpClient.request<Paginated<ExchangeIntelligenceServiceOption>>(
+    "/exchange/intelligence/service-options",
+    {
+      query: { page: input.page ?? 1, page_size: input.pageSize ?? 20 },
+      signal: input.signal
+    }
+  );
 }
 
 export function publishExchangePost(input: PublishExchangePostInput, key: string): Promise<ExchangePost> {

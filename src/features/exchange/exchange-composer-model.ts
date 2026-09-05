@@ -2,7 +2,6 @@ import type {
   ExchangeContentLocale,
   ExchangeDemandServiceMode,
   ExchangeRequestPublicationContext,
-  ExchangeServiceMode,
   PublishExchangeDemandInput,
   PublishExchangeIntelligenceInput
 } from "./types";
@@ -12,6 +11,7 @@ export type ExchangeComposerErrorKey =
   | "invalidWindow"
   | "invalidBudget"
   | "invalidPrice"
+  | "serviceRequired"
   | "targetProviderLimit"
   | "contextFailed"
   | "requestFeeUnavailable"
@@ -136,40 +136,30 @@ export type IntelligenceComposerDraft = {
   contentLocale: ExchangeContentLocale;
   title: string;
   detail: string;
-  areaLabel: string;
+  serviceRef: string;
   serviceStartDate: string;
   serviceStartTime: string;
   serviceEndDate: string;
   serviceEndTime: string;
   expiresDate: string;
   expiresTime: string;
-  serviceMode: ExchangeServiceMode;
-  addressLabel: string;
-  serviceAreas: string;
-  originalPriceJpy: string;
   campaignPriceJpy: string;
 };
 
 export function normalizeIntelligenceDraft(
-  draft: IntelligenceComposerDraft
+  draft: IntelligenceComposerDraft,
+  catalogPriceJpy: number | null
 ): { ok: true; value: PublishExchangeIntelligenceInput } | { ok: false; errorKey: ExchangeComposerErrorKey } {
   const serviceStartAt = combineLocalDateTime(draft.serviceStartDate, draft.serviceStartTime);
   const serviceEndAt = combineLocalDateTime(draft.serviceEndDate, draft.serviceEndTime);
   const expiresAt = combineLocalDateTime(draft.expiresDate, draft.expiresTime);
-  const enteredServiceAreas = Array.from(new Set(
-    draft.serviceAreas.split(/[,，、]/u).map((value) => value.trim()).filter(Boolean)
-  ));
-  const serviceAreas = enteredServiceAreas.length > 0
-    ? enteredServiceAreas
-    : draft.serviceMode === "store" && draft.areaLabel.trim()
-      ? [draft.areaLabel.trim()]
-      : [];
-  const originalPrice = optionalMoney(draft.originalPriceJpy);
   const campaignPriceJpy = requiredMoney(draft.campaignPriceJpy);
+  if (!/^(?:shop|technician):[1-9]\d*$/u.test(draft.serviceRef)) {
+    return { ok: false, errorKey: "serviceRequired" };
+  }
   if (
     !draft.title.trim()
     || !draft.detail.trim()
-    || !draft.areaLabel.trim()
     || !serviceStartAt
     || !serviceEndAt
     || !expiresAt
@@ -177,14 +167,12 @@ export function normalizeIntelligenceDraft(
   ) {
     return { ok: false, errorKey: "required" };
   }
-  if (!originalPrice.valid) return { ok: false, errorKey: "invalidPrice" };
   if (!(serviceStartAt < serviceEndAt && serviceEndAt <= expiresAt)) {
     return { ok: false, errorKey: "invalidWindow" };
   }
-  if (originalPrice.value !== null && campaignPriceJpy > originalPrice.value) {
+  if (catalogPriceJpy === null || campaignPriceJpy > catalogPriceJpy) {
     return { ok: false, errorKey: "invalidPrice" };
   }
-  if (serviceAreas.length === 0) return { ok: false, errorKey: "required" };
   return {
     ok: true,
     value: {
@@ -192,16 +180,10 @@ export function normalizeIntelligenceDraft(
       title: draft.title.trim(),
       detail: draft.detail.trim(),
       contentLocale: draft.contentLocale,
-      areaLabel: draft.areaLabel.trim(),
+      serviceRef: draft.serviceRef as PublishExchangeIntelligenceInput["serviceRef"],
       serviceStartAt,
       serviceEndAt,
       expiresAt,
-      serviceMode: draft.serviceMode,
-      addressLabel: draft.serviceMode === "store" || draft.serviceMode === "flexible"
-        ? nullableTrim(draft.addressLabel)
-        : null,
-      serviceAreas,
-      originalPriceJpy: originalPrice.value,
       campaignPriceJpy
     }
   };

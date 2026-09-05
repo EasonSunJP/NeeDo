@@ -13,6 +13,7 @@ import {
   getExchangePost,
   getRequestPublicationContext,
   likeExchangePost,
+  listExchangeIntelligenceServiceOptions,
   listExchangeClaimOptions,
   listExchangeComments,
   listExchangePosts,
@@ -119,6 +120,15 @@ describe("formal Exchange API client", () => {
 
     await expect(getRequestPublicationContext()).resolves.toEqual(context);
     expect(httpClient.request).toHaveBeenCalledWith("/exchange/request-publication-context");
+  });
+
+  it("loads paginated formal service options for the active Intelligence publisher", async () => {
+    const signal = new AbortController().signal;
+    await listExchangeIntelligenceServiceOptions({ page: 2, pageSize: 10, signal });
+    expect(httpClient.request).toHaveBeenCalledWith("/exchange/intelligence/service-options", {
+      query: { page: 2, page_size: 10 },
+      signal
+    });
   });
 
   it("publishes each subtype without client-controlled actor fields", async () => {
