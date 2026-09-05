@@ -30,7 +30,10 @@ ALTER TABLE `exchange_intelligences`
 
 ALTER TABLE `booking_orders`
   ADD COLUMN `exchange_intelligence_post_id` INTEGER NULL,
+  ADD COLUMN `create_idempotency_key` VARCHAR(191) NULL,
+  ADD COLUMN `create_request_fingerprint` CHAR(64) NULL,
   ADD INDEX `booking_orders_exchange_intelligence_created_idx` (`exchange_intelligence_post_id`, `created_at`),
+  ADD UNIQUE INDEX `booking_orders_customer_create_idempotency_key` (`customer_user_id`, `create_idempotency_key`),
   ADD CONSTRAINT `booking_orders_exchange_intelligence_fkey`
     FOREIGN KEY (`exchange_intelligence_post_id`) REFERENCES `exchange_intelligences` (`post_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 

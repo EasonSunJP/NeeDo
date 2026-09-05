@@ -9987,6 +9987,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "shopId",
           "technicianProfileId",
           "scheduleSlotId",
+          "exchangeIntelligencePostId",
           "fulfillmentMode",
           "serviceName",
           "pricingModeSnapshot",
@@ -10052,6 +10053,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopId: { type: "integer" },
           technicianProfileId: { type: ["integer", "null"] },
           scheduleSlotId: { type: "integer" },
+          exchangeIntelligencePostId: { type: ["integer", "null"], minimum: 1 },
           fulfillmentMode: { type: "string", enum: ["home", "store"] },
           serviceName: { type: "string" },
           pricingModeSnapshot: { type: "string", enum: ["merchant", "technician"] },
@@ -19222,6 +19224,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Create a free Booking order from an available schedule slot",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            required: false,
+            description:
+              "Required for Exchange Intelligence bookings; exact replay returns the same order.",
+            schema: { type: "string", minLength: 16, maxLength: 191 }
+          }
+        ],
         requestBody: {
           required: true,
           content: {
@@ -19233,6 +19245,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 properties: {
                   serviceId: { type: "integer", minimum: 1 },
                   technicianServiceId: { type: "integer", minimum: 1 },
+                  exchangeIntelligencePostId: { type: "integer", minimum: 1 },
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
@@ -19288,7 +19301,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description:
               "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
           },
-          "409": { description: "Slot unavailable, estimate expired, or estimate already consumed" },
+          "409": {
+            description:
+              "Slot unavailable, estimate expired/consumed, Intelligence unavailable/mismatched, or idempotency conflict"
+          },
           "422": { description: "Home estimate required, invalid, or mismatched" }
         }
       }

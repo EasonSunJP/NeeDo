@@ -55,6 +55,7 @@ import {
   type AffiliatePromotionInput
 } from "./affiliate-checkout.service";
 import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
+import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators";
 import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
 import type { UserExperienceService } from "./user-experience.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
@@ -246,7 +247,8 @@ export class BookingService {
 
   public async createBooking(
     actor: AuthenticatedBookingActor,
-    input: BookingCreateInput
+    input: BookingCreateInput,
+    rawIdempotencyKey?: string
   ): Promise<BookingOrderPayload> {
     if (!this.isCustomerSharedIdentity(actor)) {
       throw new AppError({
@@ -280,6 +282,19 @@ export class BookingService {
         statusCode: 400
       });
     }
+    const selector = selectAffiliatePromotion(input);
+    let idempotencyKey: string | undefined;
+    if (input.exchangeIntelligencePostId) {
+      const parsedKey = exchangeIdempotencyKeySchema.safeParse(rawIdempotencyKey);
+      if (!parsedKey.success || selector) {
+        throw new AppError({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.validation",
+          statusCode: 400
+        });
+      }
+      idempotencyKey = parsedKey.data;
+    }
     await this.assertShopNotSuspended(
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
@@ -293,9 +308,10 @@ export class BookingService {
       paymentMethod: input.paymentMethod,
       note: input.note,
       fulfillmentAddress: input.fulfillmentAddress,
-      travelEstimatePublicId: input.travelEstimatePublicId
+      travelEstimatePublicId: input.travelEstimatePublicId,
+      exchangeIntelligencePostId: input.exchangeIntelligencePostId,
+      idempotencyKey
     };
-    const selector = selectAffiliatePromotion(input);
     if (selector && !this.affiliateCheckoutService) {
       throw new AppError({
         code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
@@ -361,6 +377,23 @@ export class BookingService {
         invalid: [ERROR_CODES.TRAVEL_ESTIMATE_INVALID, "error.travel.estimate_invalid", 422]
       }[result.travelEstimateError] as [number, string, number];
       throw new AppError({ code: details[0], message: details[1], statusCode: details[2] });
+    }
+    if ("intelligenceBookingError" in result) {
+      const details = {
+        unavailable: [
+          ERROR_CODES.EXCHANGE_INTELLIGENCE_BOOKING_UNAVAILABLE,
+          "error.exchange.intelligence_booking_unavailable"
+        ],
+        service_mismatch: [
+          ERROR_CODES.EXCHANGE_INTELLIGENCE_BOOKING_SERVICE_MISMATCH,
+          "error.exchange.intelligence_booking_service_mismatch"
+        ],
+        idempotency_conflict: [
+          ERROR_CODES.BOOKING_CREATE_IDEMPOTENCY_CONFLICT,
+          "error.booking.create_idempotency_conflict"
+        ]
+      }[result.intelligenceBookingError] as [number, string];
+      throw new AppError({ code: details[0], message: details[1], statusCode: 409 });
     }
     if (!("order" in result) || !("supersededOrders" in result)) {
       return result;

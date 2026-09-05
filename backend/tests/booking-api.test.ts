@@ -605,6 +605,43 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       });
   });
 
+  it("requires and forwards an idempotency key for Intelligence booking creation", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+    const body = {
+      serviceId: 1,
+      scheduleSlotId: 11,
+      exchangeIntelligencePostId: 61,
+      fulfillmentMode: "store"
+    };
+
+    await request(fixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${token}`)
+      .send(body)
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: ERROR_CODES.VALIDATION });
+      });
+    expect(fixture.bookingRepository.createBooking).not.toHaveBeenCalled();
+
+    await request(fixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", "intelligence-booking-0001")
+      .send(body)
+      .expect(201);
+
+    expect(fixture.bookingRepository.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerUserId: 1,
+        exchangeIntelligencePostId: 61,
+        idempotencyKey: "intelligence-booking-0001"
+      }),
+      expect.objectContaining({ invalidateSupersededAffiliate: expect.any(Function) })
+    );
+  });
+
   it("lists available slots, creates a free booking, rejects oversell, and records status history", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();

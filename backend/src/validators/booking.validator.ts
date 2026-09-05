@@ -122,6 +122,7 @@ export const bookingCreateBodySchema = z
   .object({
     serviceId: z.coerce.number().int().positive().optional(),
     technicianServiceId: z.coerce.number().int().positive().optional(),
+    exchangeIntelligencePostId: z.coerce.number().int().positive().optional(),
     scheduleSlotId: z.coerce.number().int().positive(),
     orderType: z.enum(["booking", "request"]).optional(),
     fulfillmentMode: z.enum(["home", "store"]),
@@ -138,6 +139,16 @@ export const bookingCreateBodySchema = z
     path: ["serviceId"]
   })
   .superRefine((value, context) => {
+    if (
+      value.exchangeIntelligencePostId &&
+      (value.affiliateCode !== undefined || value.affiliatePublicToken !== undefined)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Affiliate selectors are not allowed for Intelligence bookings",
+        path: ["affiliateCode"]
+      });
+    }
     if (value.fulfillmentMode === "home") {
       if (!value.fulfillmentAddress) {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "fulfillmentAddress is required for home service", path: ["fulfillmentAddress"] });

@@ -55,13 +55,16 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const body = bookingCreateBodySchema.parse(request.body);
+      const rawIdempotencyKey = request.get("Idempotency-Key");
       response
         .status(201)
         .json(
           successResponse(
             await this.bookingService.createBooking(
               this.getActor(response),
-              bookingCreateBodySchema.parse(request.body)
+              body,
+              ...(rawIdempotencyKey === undefined ? [] : [rawIdempotencyKey])
             )
           )
         );

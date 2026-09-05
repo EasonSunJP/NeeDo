@@ -393,6 +393,38 @@ describe("order fulfillment validators", () => {
       }
     );
 
+    it("accepts an Intelligence source id and keeps client-owned prices closed", () => {
+      expect(
+        bookingCreateBodySchema.parse({
+          serviceId: 1,
+          scheduleSlotId: 11,
+          exchangeIntelligencePostId: 91,
+          fulfillmentMode: "store"
+        })
+      ).toMatchObject({ exchangeIntelligencePostId: 91 });
+
+      expect(() =>
+        bookingCreateBodySchema.parse({
+          serviceId: 1,
+          scheduleSlotId: 11,
+          exchangeIntelligencePostId: 0,
+          fulfillmentMode: "store"
+        })
+      ).toThrow();
+
+      for (const priceField of ["priceAmount", "campaignPriceJpy", "paymentAmountJpy"] as const) {
+        expect(() =>
+          bookingCreateBodySchema.parse({
+            serviceId: 1,
+            scheduleSlotId: 11,
+            exchangeIntelligencePostId: 91,
+            fulfillmentMode: "store",
+            [priceField]: 1
+          })
+        ).toThrow();
+      }
+    });
+
     it.each(["awaitingCheckout", "awaitingPaymentConfirmation"] as const)(
       "accepts the %s order-list status",
       (status) => {

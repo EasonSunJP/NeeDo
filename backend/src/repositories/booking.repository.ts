@@ -55,6 +55,11 @@ class BookingTravelEstimateAbort extends Error {
     super(reason);
   }
 }
+class BookingIntelligenceAbort extends Error {
+  public constructor(public readonly reason: BookingIntelligenceFailure) {
+    super(reason);
+  }
+}
 
 export const deriveOrderServiceVerificationCode = (orderId: number): string => {
   const digest = createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
@@ -205,6 +210,8 @@ export interface BookingCreateRepositoryInput {
   note?: string | null;
   fulfillmentAddress?: JapaneseRouteAddress;
   travelEstimatePublicId?: string;
+  exchangeIntelligencePostId?: number;
+  idempotencyKey?: string;
 }
 
 export interface BookingCreateAffiliatePreparationContext {
@@ -262,6 +269,14 @@ export interface BookingCreateMutationResult {
 export type BookingTravelEstimateFailure = "expired" | "consumed" | "mismatch" | "invalid";
 export interface BookingTravelEstimateFailureResult {
   travelEstimateError: BookingTravelEstimateFailure;
+}
+
+export type BookingIntelligenceFailure =
+  | "unavailable"
+  | "service_mismatch"
+  | "idempotency_conflict";
+export interface BookingIntelligenceFailureResult {
+  intelligenceBookingError: BookingIntelligenceFailure;
 }
 
 export type ManualPaymentScope = { scope: "merchant"; shopId: number } | { scope: "backoffice" };
@@ -655,6 +670,7 @@ export interface BookingOrderPayload {
   shopId: number;
   technicianProfileId: number | null;
   scheduleSlotId: number;
+  exchangeIntelligencePostId?: number | null;
   fulfillmentMode: BookingFulfillmentMode;
   serviceName: string;
   pricingModeSnapshot: "merchant" | "technician";
@@ -762,7 +778,11 @@ export interface BookingRepositoryPort {
     input: BookingCreateRepositoryInput,
     options?: BookingCreateRepositoryOptions
   ) => Promise<
-    BookingCreateMutationResult | BookingOrderPayload | BookingTravelEstimateFailureResult | null
+    | BookingCreateMutationResult
+    | BookingOrderPayload
+    | BookingTravelEstimateFailureResult
+    | BookingIntelligenceFailureResult
+    | null
   >;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
   findTechnicianShopId?: (technicianProfileId: number) => Promise<number | null>;
@@ -1249,7 +1269,12 @@ export class BookingRepository implements BookingRepositoryPort {
   public async createBooking(
     input: BookingCreateRepositoryInput,
     options: BookingCreateRepositoryOptions = {}
-  ): Promise<BookingCreateMutationResult | BookingTravelEstimateFailureResult | null> {
+  ): Promise<
+    | BookingCreateMutationResult
+    | BookingTravelEstimateFailureResult
+    | BookingIntelligenceFailureResult
+    | null
+  > {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
       throw new Error("error.affiliate.checkout_hook_invalid");
     }
@@ -1260,11 +1285,38 @@ export class BookingRepository implements BookingRepositoryPort {
             if (!(await this.lockCustomerUser(tx, input.customerUserId))) {
               return null;
             }
+            const createRequestFingerprint = input.exchangeIntelligencePostId
+              ? this.bookingCreateRequestFingerprint(input)
+              : null;
+            if (input.exchangeIntelligencePostId && input.idempotencyKey) {
+              const replay = await tx.bookingOrder.findFirst({
+                where: {
+                  customerUserId: input.customerUserId,
+                  createIdempotencyKey: input.idempotencyKey,
+                  deletedAt: null
+                },
+                include: this.orderInclude()
+              });
+              if (replay) {
+                if (replay.createRequestFingerprint !== createRequestFingerprint) {
+                  throw new BookingIntelligenceAbort("idempotency_conflict");
+                }
+                return {
+                  order: this.mapOrder(replay),
+                  recipientUserIds: this.providerUserIds(replay),
+                  supersededOrders: []
+                };
+              }
+            }
             const customerProfile = await tx.customerProfile.findFirst({
               where: { userId: input.customerUserId, deletedAt: null },
               select: { membershipLevel: true }
             });
             const isBlackMember = customerProfile?.membershipLevel.toLowerCase() === "black";
+
+            const intelligenceSource = input.exchangeIntelligencePostId
+              ? await this.resolveIntelligenceBookingSource(tx, input, new Date())
+              : null;
 
             let slot = await tx.scheduleSlot.findFirst({
               where: {
@@ -1411,10 +1463,27 @@ export class BookingRepository implements BookingRepositoryPort {
                 : this.createShopServiceSource(slot, input.serviceId);
 
             if (!serviceSource) {
+              if (intelligenceSource) {
+                throw new BookingIntelligenceAbort("service_mismatch");
+              }
               if (supersededOrderIds.length > 0) {
                 throw new BookingPendingReplacementUnavailableError();
               }
               return null;
+            }
+
+            if (
+              intelligenceSource &&
+              (slot.startsAt.getTime() < intelligenceSource.serviceStartAt.getTime() ||
+                slot.endsAt.getTime() > intelligenceSource.serviceEndAt.getTime() ||
+                slot.shopId !== intelligenceSource.shopId ||
+                slot.technicianProfileId !== intelligenceSource.technicianProfileId ||
+                serviceSource.serviceId !== intelligenceSource.serviceId ||
+                serviceSource.technicianServiceId !== intelligenceSource.technicianServiceId ||
+                (intelligenceSource.serviceMode === "store" && input.fulfillmentMode !== "store") ||
+                (intelligenceSource.serviceMode === "onsite" && input.fulfillmentMode !== "home"))
+            ) {
+              throw new BookingIntelligenceAbort("service_mismatch");
             }
 
             let travelEstimate: BookingTravelEstimateRecord | null = null;
@@ -1527,7 +1596,9 @@ export class BookingRepository implements BookingRepositoryPort {
               }
             }
 
-            const originalPriceJpy = Math.round(Number(serviceSource.priceAmount.toString()));
+            const originalPriceJpy = intelligenceSource
+              ? intelligenceSource.campaignPriceJpy
+              : Math.round(Number(serviceSource.priceAmount.toString()));
             const affiliateContext: BookingCreateAffiliatePreparationContext = {
               transactionClient: tx,
               customerUserId: input.customerUserId,
@@ -1536,7 +1607,7 @@ export class BookingRepository implements BookingRepositoryPort {
               originalPriceJpy,
               scheduledStartAt: slot.startsAt
             };
-            const preparedAffiliate = options.prepareAffiliate
+            const preparedAffiliate = !intelligenceSource && options.prepareAffiliate
               ? await options.prepareAffiliate(affiliateContext)
               : null;
             const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
@@ -1570,6 +1641,9 @@ export class BookingRepository implements BookingRepositoryPort {
                 customerUserId: input.customerUserId,
                 serviceId: serviceSource.serviceId,
                 technicianServiceId: serviceSource.technicianServiceId,
+                exchangeIntelligencePostId: intelligenceSource?.postId ?? null,
+                createIdempotencyKey: intelligenceSource ? input.idempotencyKey : null,
+                createRequestFingerprint,
                 shopId: slot.shopId,
                 technicianProfileId: slot.technicianProfileId,
                 scheduleSlotId: slot.id,
@@ -1580,10 +1654,26 @@ export class BookingRepository implements BookingRepositoryPort {
                 pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
                 serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
                 serviceOwnerId: serviceSource.ownerId,
-                serviceNameSnapshot: serviceSource.name,
-                servicePriceSnapshot: serviceSource.priceAmount,
-                serviceDurationSnapshot: serviceSource.durationMinutes,
-                serviceSnapshotJson: serviceSource.snapshot,
+                serviceNameSnapshot: intelligenceSource?.serviceName ?? serviceSource.name,
+                servicePriceSnapshot:
+                  intelligenceSource?.campaignPriceJpy ?? serviceSource.priceAmount,
+                serviceDurationSnapshot:
+                  intelligenceSource?.durationMinutes ?? serviceSource.durationMinutes,
+                serviceSnapshotJson: intelligenceSource
+                  ? {
+                      ...serviceSource.snapshot,
+                      name: intelligenceSource.serviceName,
+                      priceAmount: intelligenceSource.campaignPriceJpy.toFixed(2),
+                      durationMinutes: intelligenceSource.durationMinutes,
+                      bookingSource: {
+                        type: "exchange_intelligence",
+                        postId: intelligenceSource.postId,
+                        serviceRef: intelligenceSource.serviceRef,
+                        catalogPriceJpy: intelligenceSource.catalogPriceJpy,
+                        campaignPriceJpy: intelligenceSource.campaignPriceJpy
+                      }
+                    }
+                  : serviceSource.snapshot,
                 startsAt: slot.startsAt,
                 endsAt: slot.endsAt,
                 paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
@@ -1599,6 +1689,23 @@ export class BookingRepository implements BookingRepositoryPort {
               },
               include: this.orderInclude()
             });
+
+            if (intelligenceSource) {
+              await tx.auditLog.create({
+                data: toAuditLogCreateData({
+                  actorId: input.customerUserId,
+                  action: "booking.exchange_intelligence.create",
+                  targetType: "booking_order",
+                  targetId: order.id,
+                  metadata: {
+                    exchangeIntelligencePostId: intelligenceSource.postId,
+                    serviceRef: intelligenceSource.serviceRef,
+                    scheduleSlotId: slot.id,
+                    campaignPriceJpy: intelligenceSource.campaignPriceJpy
+                  }
+                })
+              });
+            }
 
             if (travelEstimate && input.fulfillmentAddress) {
               const consumedAt = new Date();
@@ -1702,8 +1809,342 @@ export class BookingRepository implements BookingRepositoryPort {
       if (error instanceof BookingPendingReplacementUnavailableError) {
         return null;
       }
+      if (error instanceof BookingIntelligenceAbort) {
+        return { intelligenceBookingError: error.reason };
+      }
       throw error;
     }
+  }
+
+  private bookingCreateRequestFingerprint(input: BookingCreateRepositoryInput): string {
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          customerUserId: input.customerUserId,
+          orderType: input.orderType ?? "booking",
+          serviceId: input.serviceId ?? null,
+          technicianServiceId: input.technicianServiceId ?? null,
+          scheduleSlotId: input.scheduleSlotId,
+          fulfillmentMode: input.fulfillmentMode,
+          paymentMethod: input.paymentMethod ?? "onsite",
+          note: input.note?.trim() || null,
+          fulfillmentAddress: input.fulfillmentAddress
+            ? normalizeJapaneseRouteAddress(input.fulfillmentAddress)
+            : null,
+          travelEstimatePublicId: input.travelEstimatePublicId ?? null,
+          exchangeIntelligencePostId: input.exchangeIntelligencePostId ?? null
+        })
+      )
+      .digest("hex");
+  }
+
+  private async resolveIntelligenceBookingSource(
+    transaction: Prisma.TransactionClient,
+    input: BookingCreateRepositoryInput,
+    now: Date
+  ): Promise<{
+    postId: number;
+    serviceId: number | null;
+    technicianServiceId: number | null;
+    shopId: number;
+    technicianProfileId: number | null;
+    serviceRef: string;
+    serviceName: string;
+    durationMinutes: number;
+    catalogPriceJpy: number;
+    campaignPriceJpy: number;
+    serviceMode: "store" | "onsite" | "flexible";
+    serviceStartAt: Date;
+    serviceEndAt: Date;
+  }> {
+    const postId = input.exchangeIntelligencePostId;
+    if (!postId || !input.idempotencyKey) {
+      throw new BookingIntelligenceAbort("unavailable");
+    }
+    const locked = await transaction.$queryRaw<Array<{ post_id: number }>>(
+      Prisma.sql`SELECT post_id
+        FROM exchange_intelligences
+        WHERE post_id = ${postId}
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    if (!locked[0]) throw new BookingIntelligenceAbort("unavailable");
+
+    await transaction.$queryRaw(
+      Prisma.sql`SELECT s.id
+        FROM services s
+        INNER JOIN exchange_intelligences ei ON ei.service_id = s.id
+        WHERE ei.post_id = ${postId}
+        FOR UPDATE`
+    );
+    await transaction.$queryRaw(
+      Prisma.sql`SELECT ts.id
+        FROM technician_services ts
+        INNER JOIN exchange_intelligences ei ON ei.technician_service_id = ts.id
+        WHERE ei.post_id = ${postId}
+        FOR UPDATE`
+    );
+    await transaction.$queryRaw(
+      Prisma.sql`SELECT sh.id
+        FROM shops sh
+        INNER JOIN exchange_intelligences ei ON ei.post_id = ${postId}
+        LEFT JOIN services s ON s.id = ei.service_id
+        LEFT JOIN technician_services ts ON ts.id = ei.technician_service_id
+        WHERE sh.id = COALESCE(s.shop_id, ts.shop_id)
+        FOR UPDATE`
+    );
+    await transaction.$queryRaw(
+      Prisma.sql`SELECT tsa.id
+        FROM technician_shop_affiliations tsa
+        INNER JOIN exchange_intelligences ei ON ei.post_id = ${postId}
+        INNER JOIN technician_services ts ON ts.id = ei.technician_service_id
+        WHERE tsa.technician_profile_id = ts.technician_id
+          AND tsa.shop_id = ts.shop_id
+          AND tsa.deleted_at IS NULL
+        FOR UPDATE`
+    );
+
+    const record = await transaction.exchangeIntelligence.findFirst({
+      where: { postId, deletedAt: null },
+      include: {
+        post: {
+          include: {
+            ownerIdentity: {
+              select: {
+                type: true,
+                scopeType: true,
+                scopeId: true,
+                isActive: true,
+                deletedAt: true
+              }
+            }
+          }
+        },
+        service: {
+          include: {
+            category: { select: { isActive: true, deletedAt: true } },
+            shop: {
+              include: {
+                publicIdentifier: {
+                  select: { kind: true, status: true, deletedAt: true }
+                },
+                entitySuspensions: {
+                  where: { activeKey: { not: null }, status: "active", deletedAt: null },
+                  select: { id: true }
+                }
+              }
+            }
+          }
+        },
+        technicianService: {
+          include: {
+            sourceShopService: { select: { serviceMode: true } },
+            category: { select: { isActive: true, deletedAt: true } },
+            shop: {
+              include: {
+                publicIdentifier: {
+                  select: { kind: true, status: true, deletedAt: true }
+                },
+                entitySuspensions: {
+                  where: { activeKey: { not: null }, status: "active", deletedAt: null },
+                  select: { id: true }
+                }
+              }
+            },
+            technicianProfile: {
+              include: {
+                user: {
+                  select: {
+                    isActive: true,
+                    deletedAt: true,
+                    identities: {
+                      where: {
+                        type: { in: ["technician", "service", "s"] },
+                        isActive: true,
+                        deletedAt: null,
+                        publicIdentifier: {
+                          is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                        }
+                      },
+                      select: { id: true },
+                      take: 1
+                    }
+                  }
+                },
+                technicianShopAffiliations: {
+                  where: { deletedAt: null },
+                  select: {
+                    shopId: true,
+                    workStatus: true,
+                    activeKey: true,
+                    startsAt: true,
+                    endsAt: true,
+                    deletedAt: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+    if (
+      !record ||
+      record.post.type !== "INTELLIGENCE" ||
+      record.post.status !== "PUBLISHED" ||
+      record.post.deletedAt !== null ||
+      record.post.expiresAt.getTime() <= now.getTime() ||
+      record.post.serviceStartAt.getTime() >= record.post.serviceEndAt.getTime() ||
+      record.post.serviceEndAt.getTime() <= now.getTime() ||
+      !record.serviceNameSnapshot?.trim() ||
+      !record.serviceDurationSnapshot ||
+      record.serviceDurationSnapshot <= 0 ||
+      record.originalPriceJpy === null ||
+      record.originalPriceJpy < 0 ||
+      record.campaignPriceJpy < 0 ||
+      record.campaignPriceJpy > record.originalPriceJpy
+    ) {
+      throw new BookingIntelligenceAbort("unavailable");
+    }
+
+    const owner = record.post.ownerIdentity;
+    if (record.serviceId !== null && record.technicianServiceId === null && record.service) {
+      if (input.serviceId !== record.serviceId || input.technicianServiceId !== undefined) {
+        throw new BookingIntelligenceAbort("service_mismatch");
+      }
+      const service = record.service;
+      const shop = service.shop;
+      const serviceMode = this.intelligenceServiceMode(service.serviceMode);
+      if (
+        !["merchant", "merchant_owner", "merchant_staff"].includes(owner.type) ||
+        owner.scopeType !== "shop" ||
+        owner.scopeId !== service.shopId ||
+        !owner.isActive ||
+        owner.deletedAt !== null ||
+        service.status !== "published" ||
+        service.deletedAt !== null ||
+        !service.category.isActive ||
+        service.category.deletedAt !== null ||
+        service.currency !== "JPY" ||
+        !Number.isSafeInteger(Number(service.priceAmount.toString())) ||
+        service.durationMinutes <= 0 ||
+        !service.publicId.trim() ||
+        !serviceMode ||
+        !this.intelligenceShopAvailable(shop)
+      ) {
+        throw new BookingIntelligenceAbort("unavailable");
+      }
+      return {
+        postId,
+        serviceId: service.id,
+        technicianServiceId: null,
+        shopId: service.shopId,
+        technicianProfileId: null,
+        serviceRef: `shop:${service.id}`,
+        serviceName: record.serviceNameSnapshot,
+        durationMinutes: record.serviceDurationSnapshot,
+        catalogPriceJpy: record.originalPriceJpy,
+        campaignPriceJpy: record.campaignPriceJpy,
+        serviceMode,
+        serviceStartAt: record.post.serviceStartAt,
+        serviceEndAt: record.post.serviceEndAt
+      };
+    }
+
+    if (
+      record.serviceId === null &&
+      record.technicianServiceId !== null &&
+      record.technicianService
+    ) {
+      if (
+        input.technicianServiceId !== record.technicianServiceId ||
+        input.serviceId !== undefined
+      ) {
+        throw new BookingIntelligenceAbort("service_mismatch");
+      }
+      const service = record.technicianService;
+      const profile = service.technicianProfile;
+      const serviceMode = this.intelligenceServiceMode(
+        service.sourceShopService?.serviceMode ?? "store"
+      );
+      const affiliationActive = profile.technicianShopAffiliations.some(
+        (affiliation) =>
+          affiliation.shopId === service.shopId &&
+          affiliation.workStatus === "ACTIVE" &&
+          affiliation.activeKey !== null &&
+          affiliation.deletedAt === null &&
+          affiliation.startsAt.getTime() <= now.getTime() &&
+          (affiliation.endsAt === null || affiliation.endsAt.getTime() > now.getTime())
+      );
+      if (
+        owner.type !== "technician" ||
+        owner.scopeType !== "technician_profile" ||
+        owner.scopeId !== service.technicianId ||
+        !owner.isActive ||
+        owner.deletedAt !== null ||
+        !service.isActive ||
+        !service.isBookable ||
+        service.reviewStatus !== "APPROVED" ||
+        service.deletedAt !== null ||
+        !service.category.isActive ||
+        service.category.deletedAt !== null ||
+        service.currency !== "JPY" ||
+        !Number.isSafeInteger(service.priceAmount) ||
+        service.durationMinutes <= 0 ||
+        !service.publicId.trim() ||
+        profile.status !== "published" ||
+        profile.visibility !== "public" ||
+        profile.deletedAt !== null ||
+        !profile.user.isActive ||
+        profile.user.deletedAt !== null ||
+        profile.user.identities.length === 0 ||
+        !affiliationActive ||
+        !serviceMode ||
+        !this.intelligenceShopAvailable(service.shop)
+      ) {
+        throw new BookingIntelligenceAbort("unavailable");
+      }
+      return {
+        postId,
+        serviceId: null,
+        technicianServiceId: service.id,
+        shopId: service.shopId,
+        technicianProfileId: service.technicianId,
+        serviceRef: `technician:${service.id}`,
+        serviceName: record.serviceNameSnapshot,
+        durationMinutes: record.serviceDurationSnapshot,
+        catalogPriceJpy: record.originalPriceJpy,
+        campaignPriceJpy: record.campaignPriceJpy,
+        serviceMode,
+        serviceStartAt: record.post.serviceStartAt,
+        serviceEndAt: record.post.serviceEndAt
+      };
+    }
+
+    throw new BookingIntelligenceAbort("unavailable");
+  }
+
+  private intelligenceServiceMode(value: string): "store" | "onsite" | "flexible" | null {
+    if (value === "store") return "store";
+    if (value === "home" || value === "onsite") return "onsite";
+    if (value === "flexible") return "flexible";
+    return null;
+  }
+
+  private intelligenceShopAvailable(shop: {
+    status: string;
+    deletedAt: Date | null;
+    publicIdentifier: { kind: string; status: string; deletedAt: Date | null } | null;
+    entitySuspensions: Array<{ id: number }>;
+  }): boolean {
+    return (
+      shop.status === "published" &&
+      shop.deletedAt === null &&
+      shop.publicIdentifier?.kind === "SHOP" &&
+      shop.publicIdentifier.status === "ACTIVE" &&
+      shop.publicIdentifier.deletedAt === null &&
+      shop.entitySuspensions.length === 0
+    );
   }
 
   private async isShopSuspendedInTransaction(
@@ -4380,6 +4821,7 @@ export class BookingRepository implements BookingRepositoryPort {
       shopId: order.shopId,
       technicianProfileId: order.technicianProfileId,
       scheduleSlotId: order.scheduleSlotId,
+      exchangeIntelligencePostId: order.exchangeIntelligencePostId,
       fulfillmentMode: order.fulfillmentMode === "home" ? "home" : "store",
       serviceName,
       pricingModeSnapshot: this.pricingModeFromDb(order.pricingModeSnapshot),

@@ -53,6 +53,15 @@ describe("Exchange Intelligence booking schema", () => {
     expect(booking).toContain(
       '@@index([exchangeIntelligencePostId, createdAt], map: "booking_orders_exchange_intelligence_created_idx")'
     );
+    expect(booking).toMatch(
+      /createIdempotencyKey\s+String\?\s+@map\("create_idempotency_key"\) @db\.VarChar\(191\)/
+    );
+    expect(booking).toMatch(
+      /createRequestFingerprint\s+String\?\s+@map\("create_request_fingerprint"\) @db\.Char\(64\)/
+    );
+    expect(booking).toContain(
+      '@@unique([customerUserId, createIdempotencyKey], map: "booking_orders_customer_create_idempotency_key")'
+    );
   });
 
   it("ships an additive migration that keeps legacy rows unbound and constrains new bindings", () => {
@@ -61,6 +70,9 @@ describe("Exchange Intelligence booking schema", () => {
     expect(migration).toContain("ADD COLUMN `service_name_snapshot` VARCHAR(160) NULL");
     expect(migration).toContain("ADD COLUMN `service_duration_snapshot` INTEGER NULL");
     expect(migration).toContain("ADD COLUMN `exchange_intelligence_post_id` INTEGER NULL");
+    expect(migration).toContain("ADD COLUMN `create_idempotency_key` VARCHAR(191) NULL");
+    expect(migration).toContain("ADD COLUMN `create_request_fingerprint` CHAR(64) NULL");
+    expect(migration).toContain("booking_orders_customer_create_idempotency_key");
     expect(migration).toContain("exchange_intelligences_service_binding_check");
     expect(migration).toContain("exchange_intelligences_service_fkey");
     expect(migration).toContain("exchange_intelligences_technician_service_fkey");
