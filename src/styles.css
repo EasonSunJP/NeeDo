@@ -8087,7 +8087,10 @@ html.im-conversation-scroll-lock #root {
   height: 100vh;
   height: 100svh;
   height: 100dvh;
-  max-height: 100dvh;
+  height: var(--im-visual-viewport-height, 100dvh);
+  max-height: var(--im-visual-viewport-height, 100dvh);
+  top: var(--im-visual-viewport-top, 0px);
+  bottom: auto;
   overscroll-behavior: none;
   overflow: hidden;
 }

@@ -27,6 +27,7 @@ import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
+import { useVisualViewportFrame } from "../../lib/useVisualViewportFrame";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
@@ -955,6 +956,9 @@ export function ImStandaloneShell({
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useVisualViewportFrame(shellRef);
 
   useEffect(() => {
     let frame = 0;
@@ -1016,6 +1020,7 @@ export function ImStandaloneShell({
       )}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
+      ref={shellRef}
     >
       <div className="mx-auto min-h-[100dvh] w-full min-w-0 overflow-x-hidden [overflow-x:clip] bg-transparent" style={{ maxWidth: "min(880px, 100%)" }}>
         {children}
@@ -2837,9 +2842,10 @@ function ImRichMessageText({
       {parts.map((part, index) =>
         part.type === "judgement" ? (
           <span
-            className="mx-0.5 inline-flex align-[-0.3em]"
+            className="mx-0.5 inline-flex select-none align-[-0.3em] [-webkit-touch-callout:none]"
             data-im-message-judgement={part.value}
             key={`judgement-${part.value}-${index}`}
+            onContextMenu={(event) => event.preventDefault()}
           >
             <ImReactionValue judgementDisplay="summary" value={part.value} />
           </span>

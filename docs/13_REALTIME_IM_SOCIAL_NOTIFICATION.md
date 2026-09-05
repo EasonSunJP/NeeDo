@@ -396,6 +396,13 @@
 - 本地正式数据验收使用 `sim.customer.100@needo.local` 的 customer identity、动态 `64774` 和一个既有双向好友会话。真实 API 验证了点赞/取消及刷新持久化、收藏分页添加/移除、同身份两次浏览只累计一次、好友收到 `social-post-card`、重复同一 `Idempotency-Key` 不重复计数或消息、发送方互动 SSE 与接收方消息 SSE。验收脚本随后按精确 ID 删除 interaction/share/message/audit，并恢复 conversation 与 participant 的未读、last-read、隐藏状态和时间戳；复查所有 marker 为零、动态计数回到基线。
 - 440×956 浏览器验收确认：详情首次进入从 1 次浏览变为 2，刷新仍为 2；用户中心 `/me/favorites` 收藏后可见且刷新持久；转发页加载 12 位正式好友，选择后发送按钮启用、取消后禁用；动态、收藏和转发页均无横向溢出且 console error 为零。浏览器产生的临时 bookmark/view 及对应 audit 已按精确 ID 清理，时间线恢复未收藏与原计数。
 
+## 6.28 移动 Safari 对话视口与判断表情长按保护（2026-09-05）
+
+- 对话全屏框架以 `VisualViewport.height` 和 `offsetTop` 跟随 iOS Safari 的实时可视区域；地址栏、输入法或系统浮层改变可视高度后，顶部栏、消息区和输入栏仍共同占满当前窗口，不在输入栏下方留下页面背景空区。无 `VisualViewport` 的浏览器继续使用 `window.innerHeight` 和既有 `100dvh` 回退。
+- 判断表情 SVG 禁止原生拖动、图片命中和 WebKit touch callout；表情外层同样禁止触摸呼出，但仍把长按交给 NeeDo 既有消息操作面板。普通消息文字继续允许用户选取，不把整条消息改成不可选择。
+- 用户端首页共享玻璃头部的 28px 外框增加实际裁剪，确保移动 Safari 的背景与伪元素遵守左上、右上圆角；头部尺寸和桌面布局保持原值。
+- 前端定向回归 8 个文件、173 项通过；完整前端回归 378 个文件、2,632 项通过；TypeScript build 与 production Vite build 通过。本节不新增接口、数据库、mock 或业务持久化。
+
 ---
 
 ## 7. 给 Codex 的命令
