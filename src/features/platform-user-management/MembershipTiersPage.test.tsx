@@ -20,4 +20,11 @@ describe("fixed platform membership tier editor", () => {
     expect(editorSource).toContain("会员经验倍率");
     expect(editorSource).toContain("有效期");
   });
+
+  it("loads formal benefit copy and does not render raw benefit fields", () => {
+    expect(pageSource).toContain("platformUserManagementApi.listBenefits");
+    expect(pageSource).toContain("benefits={benefits}");
+    expect(editorSource).toContain("resolvePlatformBenefitLocalizedText");
+    expect(editorSource).not.toContain("{benefit.code}</span>");
+  });
 });

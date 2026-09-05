@@ -12,20 +12,20 @@ describe("currentMembershipBenefitsApi", () => {
       expiresAt: null,
       list: [
         {
-          code: "support_service",
+          code: "traceless_recall",
           configuredEnabled: true,
           globallyEnabled: true,
           effective: false,
           deliveryCapability: "unavailable",
-          name: "Dedicated support",
-          description: "Coming later"
+          name: "Traceless message recall",
+          description: "No recall notice remains in either participant's chat"
         }
       ]
     });
 
     await expect(currentMembershipBenefitsApi.getMine("en")).resolves.toMatchObject({
       tierCode: "free",
-      list: [{ code: "support_service", deliveryCapability: "unavailable" }]
+      list: [{ code: "traceless_recall", deliveryCapability: "unavailable" }]
     });
     expect(request).toHaveBeenCalledWith("/me/membership-benefits?locale=en");
 

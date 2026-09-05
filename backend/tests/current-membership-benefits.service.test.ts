@@ -43,6 +43,14 @@ const membership = (tierCode: "free" | "gold"): ResolvedPlatformMembership => ({
       configuration: {},
       nameTranslations: translations("birthday"),
       descriptionTranslations: translations("birthday-description")
+    },
+    {
+      code: "traceless_recall",
+      configuredEnabled: true,
+      globallyEnabled: true,
+      configuration: {},
+      nameTranslations: translations("traceless"),
+      descriptionTranslations: translations("traceless-description")
     }
   ],
   theme: {
@@ -121,6 +129,14 @@ describe("current membership benefits", () => {
       globallyEnabled: false,
       deliveryCapability: "unavailable",
       effective: false
+    });
+    expect(result.list.find((item) => item.code === "traceless_recall")).toMatchObject({
+      configuredEnabled: true,
+      globallyEnabled: true,
+      deliveryCapability: "unavailable",
+      effective: false,
+      name: "traceless-ja",
+      description: "traceless-description-ja"
     });
     expect(JSON.stringify(result)).not.toMatch(/targetUserId|conversationId|couponId/);
   });

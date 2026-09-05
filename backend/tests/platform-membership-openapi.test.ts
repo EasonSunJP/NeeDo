@@ -23,8 +23,25 @@ describe("platform membership OpenAPI", () => {
       "gold",
       "black_diamond"
     ]);
-    expect(schemas.PlatformMembershipBenefitCode.enum).toHaveLength(7);
+    expect(schemas.PlatformMembershipBenefitCode.enum).toEqual([
+      "ndp_experience",
+      "member_sign_in",
+      "priority_request",
+      "support_service",
+      "exclusive_discount",
+      "member_day",
+      "birthday_gift",
+      "traceless_recall"
+    ]);
     expect(schemas.PlatformMembershipTheme.required).toHaveLength(8);
+    expect(schemas.PlatformMembershipTierVersion.properties.benefits).toMatchObject({
+      minItems: 8,
+      maxItems: 8
+    });
+    expect(schemas.PlatformMembershipTierDraftInput.properties.benefits).toMatchObject({
+      minItems: 8,
+      maxItems: 8
+    });
     expect(schemas.PlatformMembershipEntitlementCommand.discriminator.propertyName).toBe("kind");
     expect(schemas.UserMembershipAdjustmentInput.required).toEqual([
       "reason",

@@ -8,7 +8,8 @@ export const platformMembershipBenefitCodeSchema = z.enum([
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ]);
 export const platformMembershipBenefitLocaleQuerySchema = z
   .object({
@@ -102,7 +103,7 @@ export const platformMembershipTierDraftBodySchema = z
     experienceMultiplier: z.number().positive().max(100),
     description: z.string().trim().max(500).nullable(),
     theme: platformMembershipThemeSchema,
-    benefits: z.array(tierBenefitSchema).length(7)
+    benefits: z.array(tierBenefitSchema).length(8)
   })
   .strict();
 

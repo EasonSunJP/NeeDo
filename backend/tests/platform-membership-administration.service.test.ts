@@ -22,7 +22,8 @@ const benefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 const nameTranslations = { zh: "权益", "zh-Hant": "權益", ja: "特典", en: "Benefit", ko: "혜택" };
 const descriptionTranslations = {

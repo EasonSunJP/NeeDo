@@ -19,7 +19,8 @@ const benefits = [
   ["support_service", false, {}],
   ["exclusive_discount", false, {}],
   ["member_day", false, {}],
-  ["birthday_gift", false, {}]
+  ["birthday_gift", false, {}],
+  ["traceless_recall", true, {}]
 ].map(([code, isEnabled, configuration]) => ({ code, isEnabled, configuration }));
 const version = {
   tierCode: "gold" as const,

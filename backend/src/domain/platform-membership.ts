@@ -9,7 +9,8 @@ export const PLATFORM_MEMBERSHIP_BENEFIT_CODES = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 
 export type PlatformMembershipBenefitCodeValue = (typeof PLATFORM_MEMBERSHIP_BENEFIT_CODES)[number];

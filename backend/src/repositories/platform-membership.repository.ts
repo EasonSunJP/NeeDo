@@ -332,7 +332,8 @@ const benefitCodeFromDb: Readonly<
   [PlatformMembershipBenefitCode.SUPPORT_SERVICE]: "support_service",
   [PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT]: "exclusive_discount",
   [PlatformMembershipBenefitCode.MEMBER_DAY]: "member_day",
-  [PlatformMembershipBenefitCode.BIRTHDAY_GIFT]: "birthday_gift"
+  [PlatformMembershipBenefitCode.BIRTHDAY_GIFT]: "birthday_gift",
+  [PlatformMembershipBenefitCode.TRACELESS_RECALL]: "traceless_recall"
 };
 
 const benefitCodeToDb: Readonly<
@@ -344,7 +345,8 @@ const benefitCodeToDb: Readonly<
   support_service: PlatformMembershipBenefitCode.SUPPORT_SERVICE,
   exclusive_discount: PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT,
   member_day: PlatformMembershipBenefitCode.MEMBER_DAY,
-  birthday_gift: PlatformMembershipBenefitCode.BIRTHDAY_GIFT
+  birthday_gift: PlatformMembershipBenefitCode.BIRTHDAY_GIFT,
+  traceless_recall: PlatformMembershipBenefitCode.TRACELESS_RECALL
 };
 
 const versionStatusFromDb = {

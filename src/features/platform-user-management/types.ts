@@ -8,7 +8,8 @@ export const platformBenefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 export type PlatformBenefitCode = (typeof platformBenefitCodes)[number];
 export type PublicationStatus = "draft" | "published" | "archived";
