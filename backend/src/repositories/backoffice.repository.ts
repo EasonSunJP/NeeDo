@@ -18,7 +18,11 @@ import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
-import type { DashboardAggregateFacts, DashboardAggregateInput } from "../domain/dashboard";
+import type {
+  DashboardAggregateFacts,
+  DashboardAggregateInput,
+  DashboardHeadlineSeriesPoint
+} from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
 import {
   type BackofficeCsvExportPayload,
@@ -405,6 +409,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
     return this.dashboardRepository.getDashboard(input);
+  }
+
+  public async getHeadlineSeries3d(
+    input: DashboardAggregateInput
+  ): Promise<DashboardHeadlineSeriesPoint[]> {
+    return this.dashboardRepository.getHeadlineSeries3d(input);
   }
 
   public async listManagedUsers(

@@ -82,6 +82,20 @@ const dashboard: BackofficeDashboardPayload = {
       }
     ]
   },
+  headlineSeries3d: {
+    from: "2026-09-04",
+    to: "2026-09-06",
+    timeZone: "Asia/Tokyo",
+    buckets: ["2026-09-04", "2026-09-05", "2026-09-06"].map((key, index) => ({
+      key,
+      label: key.slice(5),
+      availableScheduleSlots: 16 + index,
+      activeTechnicians: 4 + index,
+      registeredTechnicians: 8,
+      shopCount: 1,
+      newCustomers: 0
+    }))
+  },
   finance: {
     platformNetRevenue: { ndp: 0, testNdp: 0 },
     frozen: { ndp: 0, testNdp: 0 },

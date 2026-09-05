@@ -715,6 +715,23 @@ export type BackofficeServiceCreateInput = Pick<
   >;
 export type BackofficeServiceUpdateInput = Partial<BackofficeServiceCreateInput>;
 
+export interface DashboardHeadlineSeriesPoint {
+  key: string;
+  label: string;
+  availableScheduleSlots: number;
+  activeTechnicians: number;
+  registeredTechnicians: number;
+  shopCount: number;
+  newCustomers: number;
+}
+
+export interface DashboardHeadlineSeries3d {
+  from: string;
+  to: string;
+  timeZone: "Asia/Tokyo";
+  buckets: DashboardHeadlineSeriesPoint[];
+}
+
 export interface BackofficeDashboardPayload {
   filter: {
     period: DashboardPeriod;
@@ -737,6 +754,7 @@ export interface BackofficeDashboardPayload {
     serviceGmvJpy: number;
   };
   series: { buckets: DashboardBucketPayload[] };
+  headlineSeries3d: DashboardHeadlineSeries3d;
   finance: {
     platformNetRevenue: DashboardNdpPair;
     frozen: DashboardNdpPair;

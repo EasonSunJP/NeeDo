@@ -3631,6 +3631,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           scopeLabel: { type: "string", const: "platform_global" }
         }
       },
+      DashboardHeadlineSeriesPoint: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "key",
+          "label",
+          "availableScheduleSlots",
+          "activeTechnicians",
+          "registeredTechnicians",
+          "shopCount",
+          "newCustomers"
+        ],
+        properties: {
+          key: { type: "string", format: "date" },
+          label: { type: "string", minLength: 1 },
+          availableScheduleSlots: { type: "integer", minimum: 0 },
+          activeTechnicians: { type: "integer", minimum: 0 },
+          registeredTechnicians: { type: "integer", minimum: 0 },
+          shopCount: { type: "integer", minimum: 0 },
+          newCustomers: { type: "integer", minimum: 0 }
+        }
+      },
       DashboardBucket: {
         type: "object",
         additionalProperties: false,
@@ -3741,7 +3763,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       Dashboard: {
         type: "object",
         additionalProperties: false,
-        required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"],
+        required: [
+          "filter",
+          "summary",
+          "series",
+          "headlineSeries3d",
+          "finance",
+          "shop",
+          "membership",
+          "scope"
+        ],
         properties: {
           filter: {
             type: "object",
@@ -3809,6 +3840,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               buckets: {
                 type: "array",
                 items: { $ref: "#/components/schemas/DashboardBucket" }
+              }
+            }
+          },
+          headlineSeries3d: {
+            type: "object",
+            additionalProperties: false,
+            required: ["from", "to", "timeZone", "buckets"],
+            properties: {
+              from: { type: "string", format: "date" },
+              to: { type: "string", format: "date" },
+              timeZone: { type: "string", const: "Asia/Tokyo" },
+              buckets: {
+                type: "array",
+                minItems: 3,
+                maxItems: 3,
+                items: { $ref: "#/components/schemas/DashboardHeadlineSeriesPoint" }
               }
             }
           },
