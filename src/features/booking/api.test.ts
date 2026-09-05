@@ -96,6 +96,44 @@ describe("bookingApi", () => {
     });
   });
 
+  it("loads the authenticated technician-service booking context", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { target: { type: "technician_service", id: 51 } }
+    }));
+
+    await bookingApi.getTechnicianServiceBookingContext(51);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/technician-services/51/booking-context",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("submits Intelligence source evidence and idempotency without accepting a client price", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.createBooking({
+      exchangeIntelligencePostId: 61,
+      fulfillmentMode: "store",
+      scheduleSlotId: 33,
+      serviceId: 12
+    }, "123e4567-e89b-42d3-a456-426614174000");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(lastRequestBody()).toEqual({
+      exchangeIntelligencePostId: 61,
+      fulfillmentMode: "store",
+      orderType: "booking",
+      paymentMethod: "onsite",
+      scheduleSlotId: 33,
+      serviceId: 12
+    });
+    expect(lastRequestBody()).not.toHaveProperty("priceAmount");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("123e4567-e89b-42d3-a456-426614174000");
+  });
+
   it("generates distinct opaque idempotency keys within the formal contract bounds", () => {
     const first = createBookingIdempotencyKey();
     const second = createBookingIdempotencyKey();

@@ -1,4 +1,11 @@
 import { httpClient } from "../../api/httpClient";
+import type {
+  ExchangeIntelligenceShopPublisherProfileProjection,
+  ExchangeIntelligenceTechnicianPublisherProfileProjection
+} from "../../shared/profile-card";
+import type {
+  TechnicianServiceBookingContextServiceCardProjection
+} from "../../shared/service-card";
 import type { FulfillmentMode, Order } from "../../types/domain";
 
 export type BookingOrderStatus =
@@ -202,6 +209,7 @@ export type BookingOrder = {
   paymentRefundReference: string | null;
   paymentRefundReason: string | null;
   customerUserId: number;
+  exchangeIntelligencePostId?: number | null;
   customer?: BookingOrderCustomer;
   serviceId: number | null;
   technicianServiceId: number | null;
@@ -299,12 +307,23 @@ export type UpdateManagedScheduleSlotInput = {
 };
 
 export type CreateBookingInput = {
+  exchangeIntelligencePostId?: number;
   fulfillmentMode: FulfillmentMode;
   note?: string;
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
 } & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+
+export type TechnicianServiceBookingContext = {
+  target: { type: "technician_service"; id: number };
+  serviceCard: TechnicianServiceBookingContextServiceCardProjection;
+  shopCard: Omit<ExchangeIntelligenceShopPublisherProfileProjection, "avatarUrl" | "serviceMode"> & {
+    type: "shop";
+    serviceMode: "store" | "onsite" | "flexible";
+  };
+  technicianCard: ExchangeIntelligenceTechnicianPublisherProfileProjection;
+};
 
 export function isBookingApiId(value: string | number | null | undefined) {
   return typeof value === "number" ? Number.isInteger(value) && value > 0 : Boolean(value && /^[1-9]\d*$/.test(value));
@@ -375,13 +394,17 @@ export const bookingApi = {
       query
     });
   },
-  createBooking(input: CreateBookingInput) {
+  getTechnicianServiceBookingContext(id: number) {
+    return httpClient.request<TechnicianServiceBookingContext>(`/technician-services/${id}/booking-context`);
+  },
+  createBooking(input: CreateBookingInput, idempotencyKey?: string) {
     return httpClient.request<BookingOrder>("/bookings", {
       body: {
         ...input,
         orderType: input.orderType ?? "booking",
         paymentMethod: input.paymentMethod ?? "onsite"
-      }
+      },
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined
     });
   },
   listOrders(query: OrderListQuery = {}) {

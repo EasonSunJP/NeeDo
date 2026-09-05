@@ -31,3 +31,11 @@ export type ExchangeIntelligenceServiceCardProjection = {
   shopAddress: string;
   detailPath: string;
 };
+
+export type TechnicianServiceBookingContextServiceCardProjection = Omit<
+  ExchangeIntelligenceServiceCardProjection,
+  "campaignPriceJpy"
+> & {
+  targetType: "technician_service";
+  serviceAreas: string[];
+};

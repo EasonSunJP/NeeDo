@@ -1119,6 +1119,7 @@ export default function App() {
               <Route path="/profiles/:entityType/:id/followers" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id/following" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
+              <Route path="/checkout/technician-service/:technicianServiceId" element={protect("user", <CheckoutPage />)} />
               <Route path="/checkout/:serviceId" element={protect("user", <CheckoutPage />)} />
               <Route path="/schedule" element={protect("user", <UserSchedulePage />)} />
               <Route path="/schedule/technicians/:technicianId" element={protect("user", <UserTechnicianScheduleDetailPage />)} />

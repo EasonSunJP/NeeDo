@@ -66,7 +66,9 @@ describe("unified service-information-card usage", () => {
   });
 
   it("uses actual unified-card JSX for checkout, order, merchant, and technician-service consumers", () => {
-    expect(source.checkout).toContain("<UnifiedServiceInfoCard data={mapCoreServiceCardToUnifiedData(service)}");
+    expect(source.checkout).toContain("<UnifiedServiceInfoCard data={displayServiceInfo}");
+    expect(source.checkout).toContain("mapCoreServiceCardToUnifiedData(serviceDetail)");
+    expect(source.checkout).toContain("mapExchangeIntelligenceServiceToUnifiedData");
     expect(source.orderMiniCard).toMatch(/<UnifiedServiceInfoCard[\s\S]*data=\{serviceCardData\}/u);
     expect(countJsx(source.userOrder, "UnifiedServiceInfoCard")).toBeGreaterThanOrEqual(4);
     expect(source.userOrder).toContain("data={orderService ? mapCoreServiceCardToUnifiedData(orderService) : buildBookingOrderSnapshotServiceData(order)}");
@@ -74,6 +76,7 @@ describe("unified service-information-card usage", () => {
     expect(source.merchantOrders).toContain("actionSlot={<DispatchStatusBadge");
     expect(source.merchantOrders).toContain("selectServicePackage(selection)");
     expect(source.technicianServices).toMatch(/services\.map\([\s\S]*<UnifiedServiceInfoCard[\s\S]*mapTechnicianServiceToUnifiedData\(service\)/u);
+    expect(source.technicianServices).toContain("/checkout/technician-service/${service.id}");
   });
 
   it("uses the shared profile and service cards for Intelligence detail", () => {

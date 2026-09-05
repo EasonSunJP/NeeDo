@@ -1,7 +1,11 @@
 import type { CoreServiceCard, CoreServiceDetail } from "../../features/core-read/api";
 import type { TechnicianServicePayload } from "../../features/pricing-mode/api";
 import type { ServiceItem, Store, StoreMenuConfig, Technician } from "../../types/domain";
-import type { ExchangeIntelligenceServiceCardProjection, UnifiedServiceInfoCardData } from "./model";
+import type {
+  ExchangeIntelligenceServiceCardProjection,
+  TechnicianServiceBookingContextServiceCardProjection,
+  UnifiedServiceInfoCardData
+} from "./model";
 
 function normalizeText(value: string | null | undefined) {
   const normalized = value?.trim();
@@ -82,6 +86,26 @@ export function mapExchangeIntelligenceServiceToUnifiedData(
     shopAddress: normalizeText(service.shopAddress),
     description: normalizeText(service.description),
     tags: uniqueStrings([serviceModeLabel, ...service.tags]).slice(0, 8),
+    serviceModeLabel
+  };
+}
+
+export function mapTechnicianBookingContextServiceToUnifiedData(
+  service: TechnicianServiceBookingContextServiceCardProjection,
+  serviceModeLabel: string
+): UnifiedServiceInfoCardData {
+  return {
+    id: service.publicId,
+    coverUrl: normalizeText(service.coverUrl) ?? normalizeText(service.imageUrls[0]),
+    name: service.name,
+    priceAmount: normalizeAmount(service.catalogPriceJpy),
+    currency: service.currency,
+    durationMinutes: service.durationMinutes,
+    usageCount: null,
+    shopPublicId: normalizeText(service.shopPublicId),
+    shopAddress: normalizeText(service.shopAddress),
+    description: normalizeText(service.description),
+    tags: uniqueStrings([serviceModeLabel, ...service.tags, ...service.serviceAreas]).slice(0, 8),
     serviceModeLabel
   };
 }

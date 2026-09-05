@@ -3,9 +3,13 @@ import { isBookingApiId } from "../../features/booking/api";
 import { FormalCheckoutPage } from "./FormalCheckoutPage";
 
 export function CheckoutPage() {
-  const { serviceId } = useParams();
+  const { serviceId, technicianServiceId } = useParams();
 
-  return isBookingApiId(serviceId)
-    ? <FormalCheckoutPage serviceId={Number(serviceId)} />
-    : <Navigate replace to="/categories" />;
+  if (isBookingApiId(technicianServiceId)) {
+    return <FormalCheckoutPage catalogRef={{ id: Number(technicianServiceId), type: "technician_service" }} />;
+  }
+  if (isBookingApiId(serviceId)) {
+    return <FormalCheckoutPage catalogRef={{ id: Number(serviceId), type: "shop_service" }} />;
+  }
+  return <Navigate replace to="/categories" />;
 }

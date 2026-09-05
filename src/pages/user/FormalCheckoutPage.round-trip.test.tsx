@@ -3,13 +3,20 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "../../features/booking/api";
+import {
+  bookingApi,
+  type BookingOrder,
+  type BookingScheduleSlot,
+  type TechnicianServiceBookingContext
+} from "../../features/booking/api";
 import {
   coreReadApi,
   type CoreServiceDetail,
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { pricingModeApi } from "../../features/pricing-mode/api";
+import * as exchangeApi from "../../features/exchange/api";
+import type { ExchangePost } from "../../features/exchange/types";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { CheckoutPage } from "./CheckoutPage";
 import { ProfileDetailPage } from "./ProfileDetailPage";
@@ -189,6 +196,158 @@ const createdOrder: BookingOrder = {
   statusHistory: []
 };
 
+const intelligencePost: ExchangePost = {
+  id: 61,
+  type: "intelligence",
+  status: "published",
+  title: "正式情报活动",
+  detail: "活动时段内可预约",
+  contentLocale: "zh-CN",
+  areaLabel: "银座",
+  serviceStartAt: "2026-09-03T02:00:00.000Z",
+  serviceEndAt: "2026-09-03T04:00:00.000Z",
+  expiresAt: "2026-09-03T04:00:00.000Z",
+  publishedAt: "2026-09-02T12:00:00.000Z",
+  publisher: { publicId: "m0000000007", identityType: "merchant_owner", displayName: "GINZA Calm Body Lab", avatarUrl: null },
+  counts: { comments: 0, likes: 0, shares: 0 },
+  viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false },
+  demand: null,
+  intelligence: {
+    serviceMode: "store",
+    addressLabel: "东京都中央区银座 1-2-3",
+    serviceAreas: ["银座"],
+    originalPriceJpy: 8_800,
+    campaignPriceJpy: 7_000,
+    booking: {
+      available: true,
+      unavailableReason: null,
+      target: { type: "shop_service", id: 31 },
+      catalogPriceJpy: 8_800,
+      campaignPriceJpy: 7_000,
+      serviceName: "肩颈调理",
+      durationMinutes: 60,
+      serviceMode: "store",
+      serviceWindow: { startsAt: "2026-09-03T02:00:00.000Z", endsAt: "2026-09-03T04:00:00.000Z" }
+    },
+    publisherCard: {
+      type: "shop",
+      publicId: "shop0000000007",
+      name: "GINZA Calm Body Lab",
+      avatarUrl: null,
+      coverUrl: null,
+      imageUrls: [],
+      status: "published",
+      isBookable: true,
+      ratingAverage: "5.0",
+      reviewCount: 8,
+      address: "东京都中央区银座 1-2-3",
+      serviceMode: "store",
+      detailPath: "/profiles/shop/shop0000000007"
+    },
+    serviceCard: {
+      targetType: "shop_service",
+      publicId: "svc0000000031",
+      name: "肩颈调理",
+      description: "正式服务",
+      coverUrl: null,
+      imageUrls: [],
+      tags: ["按摩"],
+      catalogPriceJpy: 8_800,
+      campaignPriceJpy: 7_000,
+      currency: "JPY",
+      durationMinutes: 60,
+      serviceMode: "store",
+      shopPublicId: "shop0000000007",
+      shopAddress: "东京都中央区银座 1-2-3",
+      detailPath: "/services/svc0000000031"
+    }
+  }
+};
+
+const technicianBookingContext: TechnicianServiceBookingContext = {
+  target: { type: "technician_service", id: 51 },
+  serviceCard: {
+    targetType: "technician_service",
+    publicId: "technician-service0000000051",
+    name: "技师限定肩颈调理",
+    description: "技师正式服务",
+    coverUrl: null,
+    imageUrls: [],
+    tags: ["肩颈"],
+    catalogPriceJpy: 9_000,
+    currency: "JPY",
+    durationMinutes: 60,
+    serviceMode: "store",
+    serviceAreas: ["银座"],
+    shopPublicId: "shop0000000007",
+    shopAddress: "东京都中央区银座 1-2-3",
+    detailPath: "/stores/shop0000000007/technicians/s0000000017/services"
+  },
+  shopCard: {
+    type: "shop",
+    publicId: "shop0000000007",
+    name: "GINZA Calm Body Lab",
+    coverUrl: null,
+    imageUrls: [],
+    status: "published",
+    isBookable: true,
+    ratingAverage: "5.0",
+    reviewCount: 8,
+    address: "东京都中央区银座 1-2-3",
+    serviceMode: "store",
+    detailPath: "/profiles/shop/shop0000000007"
+  },
+  technicianCard: {
+    type: "technician",
+    publicId: "s0000000017",
+    displayName: "Misaki",
+    avatarUrl: "/images/misaki.jpg",
+    shop: { publicId: "shop0000000007", name: "GINZA Calm Body Lab" },
+    status: "published",
+    isBookable: true,
+    yearsExperience: 5,
+    completedOrderCount: 12,
+    acceptanceRatePercent: 100,
+    ratingAverage: "5.0",
+    reviewCount: 8,
+    serviceAreas: ["银座"],
+    languages: ["日本語", "中文"],
+    detailPath: "/profiles/technician/s0000000017",
+    servicesPath: "/stores/shop0000000007/technicians/s0000000017/services"
+  }
+};
+
+const technicianIntelligencePost: ExchangePost = {
+  ...intelligencePost,
+  id: 62,
+  publisher: { publicId: "s0000000017", identityType: "technician", displayName: "Misaki", avatarUrl: "/images/misaki.jpg" },
+  intelligence: {
+    ...intelligencePost.intelligence!,
+    originalPriceJpy: 9_000,
+    campaignPriceJpy: 7_500,
+    booking: {
+      ...intelligencePost.intelligence!.booking,
+      target: { type: "technician_service", id: 51 },
+      catalogPriceJpy: 9_000,
+      campaignPriceJpy: 7_500,
+      serviceName: "技师限定肩颈调理"
+    },
+    publisherCard: technicianBookingContext.technicianCard,
+    serviceCard: {
+      ...technicianBookingContext.serviceCard,
+      campaignPriceJpy: 7_500
+    }
+  }
+};
+
+const technicianSlot: BookingScheduleSlot = {
+  ...makeSlot(151, "2026-09-03T02:30:00.000Z"),
+  serviceId: null,
+  technicianServiceId: 51,
+  serviceName: "技师限定肩颈调理",
+  priceAmount: "9000.00"
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -271,6 +430,173 @@ afterEach(async () => {
 });
 
 describe("formal checkout technician-card round trip", () => {
+  it("locks a shop Intelligence checkout to its target, activity price, window, and idempotent source submission", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(harukaDetail);
+    vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue(intelligencePost);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: slots,
+      total: slots.length,
+      page: 1,
+      page_size: 100
+    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({
+      ...createdOrder,
+      exchangeIntelligencePostId: 61,
+      paymentAmountJpy: 7_000,
+      priceAmount: "7000.00",
+      scheduleSlotId: 102
+    });
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=11%3A30&exchangePost=61"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+              <Route element={<LocationProbe />} path="/orders/:orderId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("来源情报 · #61"));
+    expect(container.textContent).toContain("￥7,000");
+    expect(container.textContent).toContain("￥8,800");
+    expect(container.textContent).not.toContain("08:00");
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    await click(confirm);
+
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchangeIntelligencePostId: 61,
+        scheduleSlotId: 102,
+        serviceId: 31
+      }),
+      expect.stringMatching(/^[a-f0-9]{32}$/)
+    ));
+    expect(createBooking.mock.calls[0]?.[0]).not.toHaveProperty("priceAmount");
+  });
+
+  it("fails closed when the Intelligence target does not match the checkout route", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue({
+      ...intelligencePost,
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        booking: {
+          ...intelligencePost.intelligence!.booking,
+          target: { type: "shop_service", id: 999 }
+        }
+      }
+    });
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: 3, page: 1, page_size: 100 });
+    const createBooking = vi.spyOn(bookingApi, "createBooking");
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&exchangePost=61"]}>
+            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("来源情报与当前正式服务不一致"));
+    expect(container.textContent).not.toContain("确定预约");
+    expect(createBooking).not.toHaveBeenCalled();
+  });
+
+  it("directly reloads the explicit technician-service route and submits the exact Intelligence target", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    const getContext = vi.spyOn(bookingApi, "getTechnicianServiceBookingContext").mockResolvedValue(technicianBookingContext);
+    vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue(technicianIntelligencePost);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: [technicianSlot], total: 1, page: 1, page_size: 100 });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({
+      ...createdOrder,
+      exchangeIntelligencePostId: 62,
+      serviceId: null,
+      technicianServiceId: 51,
+      scheduleSlotId: 151,
+      serviceName: "技师限定肩颈调理",
+      paymentAmountJpy: 7_500,
+      priceAmount: "7500.00"
+    });
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/technician-service/51?date=2026-09-03&time=11%3A30&exchangePost=62"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/technician-service/:technicianServiceId" />
+              <Route element={<LocationProbe />} path="/orders/:orderId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("技师限定肩颈调理"));
+    expect(getContext).toHaveBeenCalledWith(51);
+    expect(container.textContent).toContain("s0000000017");
+    expect(container.textContent).toContain("￥7,500");
+    expect(container.textContent).toContain("￥9,000");
+    expect(container.querySelector('a[href="/profiles/technician/s0000000017"]')).not.toBeNull();
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    await click(confirm);
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchangeIntelligencePostId: 62,
+        scheduleSlotId: 151,
+        technicianServiceId: 51
+      }),
+      expect.stringMatching(/^[a-f0-9]{32}$/)
+    ));
+    expect(createBooking.mock.calls[0]?.[0]).not.toHaveProperty("serviceId");
+  });
+
+  it("reuses the same Intelligence idempotency key after an uncertain network failure", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(harukaDetail);
+    vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue(intelligencePost);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: 3, page: 1, page_size: 100 });
+    const createBooking = vi.spyOn(bookingApi, "createBooking")
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ ...createdOrder, exchangeIntelligencePostId: 61, scheduleSlotId: 102 });
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=11%3A30&exchangePost=61"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+              <Route element={<LocationProbe />} path="/orders/:orderId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+    await waitFor(() => expect(container.textContent).toContain("来源情报 · #61"));
+    const confirm = () => Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+
+    await click(confirm());
+    await waitFor(() => expect(container.textContent).toContain("预约页加载失败，请检查网络后重试"));
+    await click(confirm());
+    await waitFor(() => expect(createBooking).toHaveBeenCalledTimes(2));
+
+    expect(createBooking.mock.calls[0]?.[1]).toBe(createBooking.mock.calls[1]?.[1]);
+  });
+
   it("keeps the exact second same-time formal slot and existing history state across the technician-card round trip", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);

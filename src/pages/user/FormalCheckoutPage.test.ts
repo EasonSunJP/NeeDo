@@ -4,15 +4,27 @@ import checkoutSource from "./CheckoutPage.tsx?raw";
 import progressSource from "./formal-checkout/CheckoutProgressNav.tsx?raw";
 
 describe("formal customer checkout", () => {
-  it("routes numeric services into an isolated API-only checkout", () => {
+  it("routes typed numeric service references into an isolated API-only checkout", () => {
     expect(checkoutSource).toContain("isBookingApiId(serviceId)");
-    expect(checkoutSource).toContain("? <FormalCheckoutPage serviceId={Number(serviceId)} />");
+    expect(checkoutSource).toContain("isBookingApiId(technicianServiceId)");
+    expect(checkoutSource).toContain('type: "shop_service"');
+    expect(checkoutSource).toContain('type: "technician_service"');
     expect(formalSource).toContain("coreReadApi.getServiceDetail(serviceId)");
+    expect(formalSource).toContain("bookingApi.getTechnicianServiceBookingContext");
+    expect(formalSource).toContain("getExchangePost");
     expect(formalSource).toContain("bookingApi.listAvailability");
     expect(formalSource).toContain("bookingApi.createBooking");
     expect(formalSource).toContain("isCheckoutSlotBookable(slot, Date.now())");
     expect(formalSource).toContain("scheduleSlotId: freshSelectedSlot.id");
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");
+  });
+
+  it("validates Intelligence source target and window before submitting the source id", () => {
+    expect(formalSource).toContain('searchParams.get("exchangePost")');
+    expect(formalSource).toContain("slotInsideIntelligenceWindow");
+    expect(formalSource).toContain("exchangeIntelligencePostId");
+    expect(formalSource).toContain("resolveBookingIdempotencyKey");
+    expect(formalSource).not.toContain("campaignPriceJpy:");
   });
 
   it("loads all formal rows for the exact Tokyo date into the checkout-time dropdown", () => {
@@ -76,7 +88,10 @@ describe("formal customer checkout", () => {
 
   it("renders the formal package through the unified service information card", () => {
     expect(formalSource).toContain("UnifiedServiceInfoCard");
-    expect(formalSource).toContain("mapCoreServiceCardToUnifiedData(service)");
+    expect(formalSource).toContain("serviceInfo: mapCoreServiceCardToUnifiedData(serviceDetail)");
+    expect(formalSource).toContain("<UnifiedServiceInfoCard data={displayServiceInfo}");
+    expect(formalSource).toContain("mapExchangeIntelligenceServiceToUnifiedData");
+    expect(formalSource).toContain("mapTechnicianBookingContextServiceToUnifiedData");
     expect(formalSource).not.toContain("mapCoreServiceToServiceItem");
   });
 
