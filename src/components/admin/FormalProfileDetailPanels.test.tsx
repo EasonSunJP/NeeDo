@@ -215,13 +215,13 @@ describe("formal profile tab accessibility", () => {
     assertExactTabRelationships(markup, 7);
   });
 
-  it("renders five user tabs and exact tab-to-panel relationships", () => {
+  it("renders six user tabs including reviews and exact tab-to-panel relationships", () => {
     const markup = renderToStaticMarkup(<FormalCustomerDetailPanel detail={customerDetail} />);
 
-    for (const label of ["基础资料", "会员等级", "预约与消费", "权限与账号", "用户动态"]) {
+    for (const label of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户动态"]) {
       expect(markup).toContain(`>${label}</button>`);
     }
-    assertExactTabRelationships(markup, 5);
+    assertExactTabRelationships(markup, 6);
   });
 
   it("renders membership provenance and the operations editor only when supplied", () => {

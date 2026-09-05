@@ -88,6 +88,22 @@ export type PlatformManagedUserDetail = PlatformManagedUser & {
     completedBookings: number;
     completedSpendJpy: number;
   };
+  metrics: {
+    ndpAvailable: number;
+    usageCount: number;
+    credit: {
+      ratingAverage: number;
+      reviewCount: number;
+      latestReviewAt: string | null;
+    };
+  };
+  capabilities: {
+    membershipWrite: boolean;
+    reviewAmend: boolean;
+    refundAmend: boolean;
+    partnerWrite: boolean;
+    timelineCommentWrite: boolean;
+  };
   audit: {
     total: number;
     list: Array<{

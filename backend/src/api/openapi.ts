@@ -6687,11 +6687,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { $ref: "#/components/schemas/BackofficeManagedUser" },
           {
             type: "object",
-            required: ["profile", "account", "bookingSpend", "audit"],
+            required: ["profile", "account", "bookingSpend", "metrics", "capabilities", "audit"],
             properties: {
               profile: { type: ["object", "null"] },
               account: { type: "object" },
               bookingSpend: { type: "object" },
+              metrics: {
+                type: "object",
+                required: ["ndpAvailable", "usageCount", "credit"],
+                properties: {
+                  ndpAvailable: { type: "integer" },
+                  usageCount: { type: "integer", minimum: 0 },
+                  credit: {
+                    type: "object",
+                    required: ["ratingAverage", "reviewCount", "latestReviewAt"],
+                    properties: {
+                      ratingAverage: { type: "number", minimum: 0, maximum: 5 },
+                      reviewCount: { type: "integer", minimum: 0 },
+                      latestReviewAt: { type: ["string", "null"], format: "date-time" }
+                    }
+                  }
+                }
+              },
+              capabilities: {
+                type: "object",
+                required: ["membershipWrite", "reviewAmend", "refundAmend", "partnerWrite", "timelineCommentWrite"],
+                properties: {
+                  membershipWrite: { type: "boolean" },
+                  reviewAmend: { type: "boolean" },
+                  refundAmend: { type: "boolean" },
+                  partnerWrite: { type: "boolean" },
+                  timelineCommentWrite: { type: "boolean" }
+                }
+              },
               audit: { type: "object" }
             }
           }
@@ -24154,6 +24182,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/users/{userId}`]: {
+      get: {
+        operationId: "getMerchantManagedUser",
+        tags: ["User Management"],
+        summary: "Read a canonical user detail scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:customers:list",
+        parameters: [idPathParameter("userId")],
+        responses: {
+          "200": jsonDataResponse("Scoped user detail", {
+            $ref: "#/components/schemas/BackofficeManagedUserDetail"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "User absent from the authenticated shop" }
         }
       }
     },

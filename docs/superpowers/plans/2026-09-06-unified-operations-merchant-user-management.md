@@ -385,7 +385,7 @@ git commit -m "feat: share filtered user directory across portals"
 - Produces: `GET /backoffice/users/:userId` and `GET /merchant-admin/users/:userId` with the same `PlatformManagedUserDetail` shape.
 - Produces: `UnifiedUserDetailDrawer({ scope, userId, onClose })` backed by `FormalCustomerDetailPanel`.
 
-- [ ] **Step 1: Write failing detail aggregate tests**
+- [x] **Step 1: Write failing detail aggregate tests**
 
 Assert both scopes return:
 
@@ -409,7 +409,7 @@ expect(detail).toMatchObject({
 
 For merchant scope assert all booking/review aggregates include `shopId: 11` and all operations capabilities are false.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run:
 
@@ -420,7 +420,7 @@ npm test -- backoffice-profile-detail-repository.test.ts backoffice-user-list.ap
 
 Expected: FAIL because scoped managed-user details, metrics, and capabilities are missing.
 
-- [ ] **Step 3: Implement the shared detail contract**
+- [x] **Step 3: Implement the shared detail contract**
 
 Add:
 
@@ -441,7 +441,7 @@ capabilities: {
 
 Resolve capabilities in the service from the authenticated access context; do not return hard-coded administrator booleans. Add `getMerchantManagedUser` using `getMerchantScope(actor)`, and enforce a matching scoped booking relationship in the repository before returning the user.
 
-- [ ] **Step 4: Write the failing shared-detail component test**
+- [x] **Step 4: Write the failing shared-detail component test**
 
 Render both scopes and assert the same structure:
 
@@ -458,7 +458,7 @@ for (const scope of ["operations", "merchant"] as const) {
 }
 ```
 
-- [ ] **Step 5: Run the component test and verify RED**
+- [x] **Step 5: Run the component test and verify RED**
 
 Run:
 
@@ -468,7 +468,7 @@ npm test -- src/features/platform-user-management/UnifiedUserDetailDrawer.test.t
 
 Expected: FAIL because the unified drawer, review tab, and metric header do not exist.
 
-- [ ] **Step 6: Implement the unified detail component**
+- [x] **Step 6: Implement the unified detail component**
 
 Extend customer tabs to:
 
@@ -486,7 +486,7 @@ Render avatar and identity in the existing green header. Directly below it rende
 
 Remove the old standalone operations detail component after all imports use the unified drawer.
 
-- [ ] **Step 7: Run focused backend and frontend tests and verify GREEN**
+- [x] **Step 7: Run focused backend and frontend tests and verify GREEN**
 
 Run:
 
@@ -499,7 +499,7 @@ npm test -- src/features/platform-user-management/UnifiedUserDetailDrawer.test.t
 
 Expected: PASS; both portals render the same header and tabs, while merchant detail remains shop-scoped.
 
-- [ ] **Step 8: Commit Task 3**
+- [x] **Step 8: Commit Task 3**
 
 ```bash
 git add backend/src backend/tests src/components/admin src/features/platform-user-management src/pages/merchant-admin/MerchantAdminPeoplePage.tsx src/pages/merchant-admin/MerchantAdminPeoplePage.test.ts

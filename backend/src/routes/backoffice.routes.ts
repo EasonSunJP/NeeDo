@@ -462,6 +462,13 @@ export const createBackofficeRoutes = (
     controller.merchantManagedUsers
   );
   router.get(
+    "/merchant-admin/users/:userId",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({ params: backofficeManagedUserParamSchema }),
+    controller.merchantManagedUser
+  );
+  router.get(
     "/merchant-admin/customers",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),

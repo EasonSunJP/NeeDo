@@ -70,6 +70,12 @@ describe("platformUserManagementApi", () => {
     });
   });
 
+  it("uses the canonical scoped detail route", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    await expect(platformUserManagementApi.getUser("merchant", 41)).rejects.toThrow("Invalid user management response");
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users/41");
+  });
+
   it("rejects malformed responses instead of accepting legacy local data", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({ list: [{ id: "not-an-id" }], total: 1, page: 1, page_size: 20 });
 

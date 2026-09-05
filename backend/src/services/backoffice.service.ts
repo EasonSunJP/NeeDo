@@ -519,11 +519,32 @@ export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUse
     completedBookings: number;
     completedSpendJpy: number;
   };
+  metrics: {
+    ndpAvailable: number;
+    usageCount: number;
+    credit: {
+      ratingAverage: number;
+      reviewCount: number;
+      latestReviewAt: string | null;
+    };
+  };
+  capabilities: {
+    membershipWrite: boolean;
+    reviewAmend: boolean;
+    refundAmend: boolean;
+    partnerWrite: boolean;
+    timelineCommentWrite: boolean;
+  };
   audit: {
     total: number;
     list: BackofficeAuditEventPayload[];
   };
 }
+
+export type BackofficeManagedUserDetailRecord = Omit<
+  BackofficeManagedUserDetailPayload,
+  "capabilities"
+>;
 
 export interface BackofficeTechnicianPayload {
   id: number;
@@ -823,9 +844,9 @@ export interface BackofficeRepositoryPort {
     occurredAt: Date
   ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
   getManagedUser: (
-    userId: number,
+    input: BackofficeScope & { userId: number },
     occurredAt: Date
-  ) => Promise<BackofficeManagedUserDetailPayload | null>;
+  ) => Promise<BackofficeManagedUserDetailRecord | null>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
@@ -1078,10 +1099,47 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeManagedUserDetailPayload> {
     await this.record(actor, context, "backoffice.user.read", "User", { userId });
-    return this.requireResult(
-      await this.repository.getManagedUser(userId, this.now()),
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ scope: "platform", userId }, this.now()),
       "error.user.not_found"
     );
+    return this.withManagedUserCapabilities(detail, actor, "platform");
+  }
+
+  public async getMerchantManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.user.read", "User", {
+      userId,
+      shopId: scope.shopId
+    });
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ ...scope, userId }, this.now()),
+      "error.user.not_found"
+    );
+    return this.withManagedUserCapabilities(detail, actor, "merchant");
+  }
+
+  private withManagedUserCapabilities(
+    detail: BackofficeManagedUserDetailRecord,
+    actor: AuthenticatedAccessContext,
+    scope: "platform" | "merchant"
+  ): BackofficeManagedUserDetailPayload {
+    const permits = (permission: string) =>
+      scope === "platform" && actor.permissions.includes(permission);
+    return {
+      ...detail,
+      capabilities: {
+        membershipWrite: permits("backoffice:user-membership:write"),
+        reviewAmend: permits("backoffice:user-review:amend"),
+        refundAmend: permits("backoffice:user-refund:amend"),
+        partnerWrite: permits("backoffice:partner-profile:write"),
+        timelineCommentWrite: permits("backoffice:user-usage:comment")
+      }
+    };
   }
 
   public async getMerchantDashboard(

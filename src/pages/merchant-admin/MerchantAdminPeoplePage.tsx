@@ -7,11 +7,6 @@ import {
   type FormEvent,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  backofficeRealDataApi,
-  type BackofficeCustomerDetailPayload,
-  type BackofficeCustomerTimelinePayload,
-} from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import {
   employeeCompensationApi,
@@ -25,7 +20,6 @@ import {
   type EmployeePayrollSchedulePolicyInput,
   type PayrollSchedulePolicyResult,
 } from "../../api/payrollSchedulePolicy";
-import { FormalCustomerDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import type { FormalTimelinePageSize } from "../../components/admin/FormalTimelinePagination";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { EmployeeDetailCard } from "../../components/merchant-admin/EmployeeDetailCard";
@@ -36,6 +30,7 @@ import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { UnifiedUserDirectory } from "../../features/platform-user-management/UnifiedUserDirectory";
+import { UnifiedUserDetailDrawer } from "../../features/platform-user-management/UnifiedUserDetailDrawer";
 import {
   merchantEmployeeApi,
   type EmployeeRelationshipType,
@@ -138,22 +133,8 @@ export function MerchantAdminPeoplePage() {
   const [employeeDetail, setEmployeeDetail] = useState<MerchantEmployee | null>(
     null,
   );
-  const [customerDetail, setCustomerDetail] =
-    useState<BackofficeCustomerDetailPayload | null>(null);
   const [employeeDetailLoading, setEmployeeDetailLoading] = useState(false);
-  const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
   const [employeeDetailError, setEmployeeDetailError] = useState("");
-  const [customerDetailError, setCustomerDetailError] = useState("");
-  const [customerTimeline, setCustomerTimeline] =
-    useState<BackofficeCustomerTimelinePayload | null>(null);
-  const [customerTimelineLoading, setCustomerTimelineLoading] = useState(false);
-  const [customerTimelineError, setCustomerTimelineError] = useState("");
-  const [customerTimelinePage, setCustomerTimelinePage] = useState(1);
-  const [customerTimelinePageSize, setCustomerTimelinePageSize] =
-    useState<FormalTimelinePageSize>(10);
-  const customerTimelinePageSizeRef = useRef<FormalTimelinePageSize>(10);
-  const customerTimelineGenerationRef = useRef(0);
-  const selectedCustomerIdRef = useRef<number | null>(null);
   const [employeeMutationError, setEmployeeMutationError] = useState("");
   const [employeeSaving, setEmployeeSaving] =
     useState<EmployeeSavingSection>(null);
@@ -359,98 +340,17 @@ export function MerchantAdminPeoplePage() {
     ],
   );
 
-  const loadCustomerTimeline = useCallback(
-    async (customerId: number, nextPage: number, nextPageSize: number) => {
-      const generation = ++customerTimelineGenerationRef.current;
-      setCustomerTimelineLoading(true);
-      setCustomerTimelineError("");
-      try {
-        const result = await backofficeRealDataApi.customerTimeline(
-          "merchant-admin",
-          customerId,
-          nextPage,
-          nextPageSize,
-        );
-        if (
-          generation === customerTimelineGenerationRef.current &&
-          selectedCustomerIdRef.current === customerId
-        ) {
-          setCustomerTimeline(result);
-          setCustomerTimelinePage(result.page);
-        }
-      } catch (timelineError) {
-        if (
-          generation === customerTimelineGenerationRef.current &&
-          selectedCustomerIdRef.current === customerId
-        ) {
-          setCustomerTimelineError(
-            describeDetailError(
-              timelineError,
-              languageRef.current,
-              "用户动态读取失败，请重试",
-            ),
-          );
-        }
-      } finally {
-        if (
-          generation === customerTimelineGenerationRef.current &&
-          selectedCustomerIdRef.current === customerId
-        ) {
-          setCustomerTimelineLoading(false);
-        }
-      }
-    },
-    [],
-  );
-
-  const customerDetailRequest = useMemo(
-    () =>
-      createFormalDetailRequestCoordinator<BackofficeCustomerDetailPayload>({
-        onError: (detailError) => {
-          setCustomerDetailError(
-            describeDetailError(
-              detailError,
-              languageRef.current,
-              "用户详细信息读取失败",
-            ),
-          );
-        },
-        onFinally: () => setCustomerDetailLoading(false),
-        onStart: () => {
-          setCustomerDetail(null);
-          setCustomerDetailLoading(true);
-          setCustomerDetailError("");
-        },
-        onSuccess: (detail) => {
-          setCustomerDetail(detail);
-          setCustomerTimelinePage(1);
-          void loadCustomerTimeline(
-            detail.id,
-            1,
-            customerTimelinePageSizeRef.current,
-          );
-        },
-        request: (customerId) =>
-          backofficeRealDataApi.customer("merchant-admin", customerId),
-      }),
-    [loadCustomerTimeline],
-  );
-
   useEffect(() => {
     employeeCompensationRequest.activate();
     employeePayrollPolicyRequest.activate();
     employeeDetailRequest.activate();
-    customerDetailRequest.activate();
     return () => {
       employeeCompensationRequest.dispose();
       employeePayrollPolicyRequest.dispose();
       employeeTimelineGenerationRef.current += 1;
-      customerTimelineGenerationRef.current += 1;
       employeeDetailRequest.dispose();
-      customerDetailRequest.dispose();
     };
   }, [
-    customerDetailRequest,
     employeeCompensationRequest,
     employeeDetailRequest,
     employeePayrollPolicyRequest,
@@ -489,18 +389,8 @@ export function MerchantAdminPeoplePage() {
   ]);
 
   const closeCustomer = useCallback(() => {
-    customerDetailRequest.invalidate();
-    customerTimelineGenerationRef.current += 1;
-    selectedCustomerIdRef.current = null;
     setSelectedCustomerId(null);
-    setCustomerDetail(null);
-    setCustomerDetailLoading(false);
-    setCustomerDetailError("");
-    setCustomerTimeline(null);
-    setCustomerTimelineLoading(false);
-    setCustomerTimelineError("");
-    setCustomerTimelinePage(1);
-  }, [customerDetailRequest]);
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -528,29 +418,7 @@ export function MerchantAdminPeoplePage() {
 
   const openCustomer = (customerId: number) => {
     closeEmployee();
-    selectedCustomerIdRef.current = customerId;
     setSelectedCustomerId(customerId);
-    void customerDetailRequest.load(customerId);
-  };
-
-  const changeCustomerTimelinePage = (nextPage: number) => {
-    if (!selectedCustomerId) return;
-    setCustomerTimelinePage(nextPage);
-    void loadCustomerTimeline(
-      selectedCustomerId,
-      nextPage,
-      customerTimelinePageSize,
-    );
-  };
-
-  const changeCustomerTimelinePageSize = (
-    nextPageSize: FormalTimelinePageSize,
-  ) => {
-    if (!selectedCustomerId) return;
-    setCustomerTimelinePage(1);
-    setCustomerTimelinePageSize(nextPageSize);
-    customerTimelinePageSizeRef.current = nextPageSize;
-    void loadCustomerTimeline(selectedCustomerId, 1, nextPageSize);
   };
 
   const runEmployeeMutation = async (
@@ -1001,48 +869,11 @@ export function MerchantAdminPeoplePage() {
           ) : null}
         </Drawer>
 
-        <Drawer
+        <UnifiedUserDetailDrawer
           onClose={closeCustomer}
-          open={selectedCustomerId !== null}
-          title="用户详细信息"
-        >
-          {customerDetailLoading ? (
-            <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">
-              {translateText("正在读取用户详细信息...", language)}
-            </p>
-          ) : null}
-          {!customerDetailLoading && customerDetailError ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
-              <span>{customerDetailError}</span>
-              <Button
-                onClick={() => void customerDetailRequest.retry()}
-                size="sm"
-                variant="secondary"
-              >
-                {translateText("重试", language)}
-              </Button>
-            </div>
-          ) : null}
-          {!customerDetailLoading && !customerDetailError && customerDetail ? (
-            <FormalCustomerDetailPanel
-              detail={customerDetail}
-              onRetryTimeline={() => {
-                if (selectedCustomerId) {
-                  void loadCustomerTimeline(
-                    selectedCustomerId,
-                    customerTimelinePage,
-                    customerTimelinePageSize,
-                  );
-                }
-              }}
-              onTimelinePageChange={changeCustomerTimelinePage}
-              onTimelinePageSizeChange={changeCustomerTimelinePageSize}
-              timeline={customerTimeline}
-              timelineError={customerTimelineError}
-              timelineLoading={customerTimelineLoading}
-            />
-          ) : null}
-        </Drawer>
+          scope="merchant"
+          userId={selectedCustomerId}
+        />
       </ModuleShell>
     </MerchantAdminLayout>
   );

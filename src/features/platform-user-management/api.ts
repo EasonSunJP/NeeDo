@@ -128,6 +128,9 @@ const decodeUserDetail = (value: unknown): PlatformManagedUserDetail => {
   const profile = raw.profile === null ? null : record(raw.profile);
   const account = record(raw.account);
   const bookingSpend = record(raw.bookingSpend);
+  const metrics = record(raw.metrics);
+  const credit = record(metrics.credit);
+  const capabilities = record(raw.capabilities);
   const audit = record(raw.audit);
   return {
     ...summary,
@@ -158,6 +161,22 @@ const decodeUserDetail = (value: unknown): PlatformManagedUserDetail => {
       totalBookings: integer(bookingSpend.totalBookings),
       completedBookings: integer(bookingSpend.completedBookings),
       completedSpendJpy: number(bookingSpend.completedSpendJpy)
+    },
+    metrics: {
+      ndpAvailable: integer(metrics.ndpAvailable),
+      usageCount: integer(metrics.usageCount),
+      credit: {
+        ratingAverage: number(credit.ratingAverage),
+        reviewCount: integer(credit.reviewCount),
+        latestReviewAt: nullableTimestamp(credit.latestReviewAt)
+      }
+    },
+    capabilities: {
+      membershipWrite: boolean(capabilities.membershipWrite),
+      reviewAmend: boolean(capabilities.reviewAmend),
+      refundAmend: boolean(capabilities.refundAmend),
+      partnerWrite: boolean(capabilities.partnerWrite),
+      timelineCommentWrite: boolean(capabilities.timelineCommentWrite)
     },
     audit: {
       total: integer(audit.total),
@@ -349,8 +368,9 @@ export const platformUserManagementApi = {
       decodeUser
     );
   },
-  async getUser(userId: number) {
-    return decodeUserDetail(await httpClient.request<unknown>(`/backoffice/users/${userId}`));
+  async getUser(scope: UserDirectoryScope, userId: number) {
+    const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodeUserDetail(await httpClient.request<unknown>(`${path}/${userId}`));
   },
   async listGroups(query: PageQuery = {}) {
     return decodePage(

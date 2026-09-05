@@ -12,6 +12,13 @@ describe("backoffice all-user OpenAPI", () => {
       operationId: "listMerchantManagedUsers",
       "x-permission": "merchant-admin:customers:list"
     });
+    expect(response.body.paths["/api/v1/merchant-admin/users/{userId}"].get).toMatchObject({
+      operationId: "getMerchantManagedUser",
+      "x-permission": "merchant-admin:customers:list"
+    });
+    expect(response.body.components.schemas.BackofficeManagedUserDetail.allOf[1].required).toEqual(
+      expect.arrayContaining(["metrics", "capabilities"])
+    );
     expect(response.body.components.schemas.BackofficeManagedUser.required).toEqual(
       expect.arrayContaining(["displayName", "city", "privacyMode", "privacyScope"])
     );

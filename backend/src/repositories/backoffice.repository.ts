@@ -29,7 +29,7 @@ import {
   type BackofficeCustomerDetailPayload,
   type BackofficeCustomerMembershipGrantContext,
   type BackofficeFinanceSettlementPayload,
-  type BackofficeManagedUserDetailPayload,
+  type BackofficeManagedUserDetailRecord,
   type BackofficeManagedUserPayload,
   type BackofficeNdpAggregate,
   type BackofficeOrderDetailPayload,
@@ -444,35 +444,69 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public async getManagedUser(
-    userId: number,
+    input: BackofficeScope & { userId: number },
     occurredAt: Date
-  ): Promise<BackofficeManagedUserDetailPayload | null> {
+  ): Promise<BackofficeManagedUserDetailRecord | null> {
+    const { userId } = input;
     const user = await this.client.user.findFirst({
-      where: { id: userId, deletedAt: null },
-      select: buildManagedUserSelect(occurredAt, { scope: "platform" })
+      where: {
+        id: userId,
+        deletedAt: null,
+        ...(input.scope === "merchant"
+          ? { bookingOrders: { some: { shopId: input.shopId, deletedAt: null } } }
+          : {})
+      },
+      select: buildManagedUserSelect(occurredAt, input)
     });
     if (!user) return null;
-    const [balances, totalBookings, completedBookings, completedSpend, auditTotal, auditRows] =
+    const bookingWhere = {
+      customerUserId: userId,
+      ...(input.scope === "merchant" ? { shopId: input.shopId } : {}),
+      deletedAt: null
+    };
+    const auditWhere = {
+      targetType: "User",
+      targetId: userId,
+      deletedAt: null,
+      ...(input.scope === "merchant"
+        ? { metadata: { path: "$.shopId", equals: input.shopId } }
+        : {})
+    } satisfies Prisma.AuditLogWhereInput;
+    const reviewWhere = user.customerProfile
+      ? {
+          customerProfileId: user.customerProfile.id,
+          deletedAt: null,
+          ...(input.scope === "merchant"
+            ? { bookingOrder: { shopId: input.shopId } }
+            : {})
+        }
+      : null;
+    const [balances, totalBookings, completedBookings, completedSpend, credit, auditTotal, auditRows] =
       await Promise.all([
         this.managedUserBalances([userId]),
-        this.client.bookingOrder.count({ where: { customerUserId: userId, deletedAt: null } }),
+        this.client.bookingOrder.count({ where: bookingWhere }),
         this.client.bookingOrder.count({
-          where: { customerUserId: userId, status: "COMPLETED", deletedAt: null }
+          where: { ...bookingWhere, status: "COMPLETED" }
         }),
         this.client.bookingOrder.aggregate({
           where: {
-            customerUserId: userId,
+            ...bookingWhere,
             status: "COMPLETED",
-            paymentStatus: "CONFIRMED",
-            deletedAt: null
+            paymentStatus: "CONFIRMED"
           },
           _sum: { paymentAmountJpy: true }
         }),
-        this.client.auditLog.count({
-          where: { targetType: "User", targetId: userId, deletedAt: null }
-        }),
+        reviewWhere
+          ? this.client.orderReview.aggregate({
+              where: reviewWhere,
+              _avg: { rating: true },
+              _count: { _all: true },
+              _max: { createdAt: true }
+            })
+          : Promise.resolve({ _avg: { rating: null }, _count: { _all: 0 }, _max: { createdAt: null } }),
+        this.client.auditLog.count({ where: auditWhere }),
         this.client.auditLog.findMany({
-          where: { targetType: "User", targetId: userId, deletedAt: null },
+          where: auditWhere,
           include: { actor: { select: { username: true, avatarUrl: true } } },
           take: 20,
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
@@ -506,6 +540,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         totalBookings,
         completedBookings,
         completedSpendJpy: completedSpend._sum.paymentAmountJpy ?? 0
+      },
+      metrics: {
+        ndpAvailable: summary.ndpBalance.available,
+        usageCount: totalBookings,
+        credit: {
+          ratingAverage: Number(credit._avg.rating ?? 0),
+          reviewCount: credit._count._all,
+          latestReviewAt: credit._max.createdAt?.toISOString() ?? null
+        }
       },
       audit: {
         total: auditTotal,
