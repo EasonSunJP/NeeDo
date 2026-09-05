@@ -308,6 +308,27 @@ describe("official notice formal API interactions", () => {
     expect(JSON.stringify(state.createManaged.mock.calls[0]?.[1])).not.toMatch(/userIds|friend|好友/);
   });
 
+  it("preserves the approved operations compose workspace around the formal APIs", () => {
+    state.permissions = new Set([
+      "button:backoffice-official-notice-create",
+      "button:backoffice-official-notice-send",
+      "backoffice:users:read"
+    ]);
+    act(() => root.render(
+      <MemoryRouter>
+        <OfficialNoticeComposer returnPath="/done" scope="platform" />
+      </MemoryRouter>
+    ));
+
+    expect(container.textContent).toContain("发送设置");
+    expect(container.textContent).toContain("发送对象");
+    expect(container.textContent).toContain("发送时间");
+    expect(container.textContent).toContain("发送预览");
+    expect(container.textContent).toContain("发送检查");
+    expect(container.querySelector(".official-notice-editor")).not.toBeNull();
+    expect(container.querySelector("[data-official-notice-block-toolbar]")).not.toBeNull();
+  });
+
   it("loads the current-identity inbox and writes its read receipt", async () => {
     act(() => root.render(<MemoryRouter><OfficialNoticeInbox /></MemoryRouter>));
     await waitFor(() => expect(container.textContent).toContain("営業時間変更"));

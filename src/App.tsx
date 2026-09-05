@@ -17,8 +17,6 @@ import { AffiliateFeeRulesPage } from "./pages/admin/AffiliateFeeRulesPage";
 import { AffiliateNoticeCarouselPage } from "./pages/admin/AffiliateNoticeCarouselPage";
 import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
 import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
-import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
-import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CarouselPage } from "./pages/admin/CarouselPage";
@@ -67,7 +65,6 @@ import {
 } from "./pages/merchant-admin/dispatch-center/DispatchCenterRoutePages";
 import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsPage";
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
-import { MerchantAdminNotificationsPage } from "./pages/merchant-admin/MerchantAdminNotificationsPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
 import { ShopTravelFarePolicyPage } from "./pages/merchant-admin/ShopTravelFarePolicyPage";
@@ -228,6 +225,9 @@ const MembershipTiersPage = lazy(() => import("./features/platform-user-manageme
 const MembershipBenefitsPage = lazy(() => import("./features/platform-user-management/MembershipBenefitsPage").then((module) => ({ default: module.MembershipBenefitsPage })));
 const SystemSettingsPage = lazy(() => import("./features/admin-system-settings/SystemSettingsPage").then((module) => ({ default: module.SystemSettingsPage })));
 const AccountCompliancePage = lazy(() => import("./features/auth/AccountCompliancePage").then((module) => ({ default: module.AccountCompliancePage })));
+const AdminNotificationComposePage = lazy(() => import("./pages/admin/AdminNotificationComposePage").then((module) => ({ default: module.AdminNotificationComposePage })));
+const AdminNotificationsPage = lazy(() => import("./pages/admin/AdminNotificationsPage").then((module) => ({ default: module.AdminNotificationsPage })));
+const MerchantAdminNotificationsPage = lazy(() => import("./pages/merchant-admin/MerchantAdminNotificationsPage").then((module) => ({ default: module.MerchantAdminNotificationsPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 

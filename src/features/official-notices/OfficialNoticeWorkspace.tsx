@@ -15,6 +15,7 @@ import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { useAuth } from "../../auth/AuthProvider";
 import { translateText, type Language } from "../../i18n/translations";
@@ -72,6 +73,26 @@ const noticeLocaleLabels: Record<OfficialNoticeLocale, string> = {
   en: "English",
   ko: "한국어"
 };
+const noticeUiTranslations: Record<string, Partial<Record<Language, string>>> = {
+  "搜索通知": { "zh-Hant": "搜尋通知", ja: "通知を検索", en: "Search notices", ko: "공지 검색" },
+  "指定账号": { "zh-Hant": "指定帳號", ja: "指定アカウント", en: "Specific accounts", ko: "지정 계정" },
+  "全局搜索账号": { "zh-Hant": "全域搜尋帳號", ja: "アカウントを全体検索", en: "Search all accounts", ko: "전체 계정 검색" },
+  "邮箱、手机号或 NeeDoID": { "zh-Hant": "電子郵件、手機號碼或 NeeDoID", ja: "メール、携帯番号または NeeDoID", en: "Email, phone, or NeeDoID", ko: "이메일, 휴대폰 번호 또는 NeeDoID" },
+  "输入邮箱、手机号或 NeeDoID": { "zh-Hant": "輸入電子郵件、手機號碼或 NeeDoID", ja: "メール、携帯番号または NeeDoID を入力", en: "Enter email, phone, or NeeDoID", ko: "이메일, 휴대폰 번호 또는 NeeDoID 입력" },
+  "搜索账号": { "zh-Hant": "搜尋帳號", ja: "アカウントを検索", en: "Search accounts", ko: "계정 검색" },
+  "正在搜索账号": { "zh-Hant": "正在搜尋帳號…", ja: "アカウントを検索中…", en: "Searching accounts…", ko: "계정 검색 중…" },
+  "选择账号": { "zh-Hant": "選擇帳號", ja: "アカウントを選択", en: "Select account", ko: "계정 선택" },
+  "已选择账号": { "zh-Hant": "已選擇帳號", ja: "選択済み", en: "Account selected", ko: "계정 선택됨" },
+  "移除账号": { "zh-Hant": "移除帳號", ja: "アカウントを削除", en: "Remove account", ko: "계정 제거" },
+  "源语言": { "zh-Hant": "來源語言", ja: "原文言語", en: "Source language", ko: "원문 언어" },
+  "复制当前内容到全部语言": { "zh-Hant": "將目前內容複製到所有語言", ja: "現在の内容を全言語へコピー", en: "Copy current content to all languages", ko: "현재 내용을 모든 언어로 복사" },
+  "每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。": { "zh-Hant": "每個語言頁籤皆可獨立編輯；複製後仍可逐項修改，傳送時會一併儲存五份內容。", ja: "各言語タブは個別に編集できます。コピー後も個別に変更でき、送信時に5言語すべてを保存します。", en: "Each language tab is independently editable. Copies remain editable, and all five versions are saved together.", ko: "각 언어 탭은 독립적으로 편집할 수 있습니다. 복사 후에도 개별 수정할 수 있으며 전송 시 5개 언어를 함께 저장합니다." },
+  "请补齐五种语言的标题、摘要和正文": { "zh-Hant": "請補齊五種語言的標題、摘要和正文", ja: "5言語すべてのタイトル、概要、本文を入力してください", en: "Complete the title, summary, and body in all five languages", ko: "5개 언어의 제목, 요약, 본문을 모두 입력하세요" }
+};
+
+function translateNoticeText(source: string, language: Language) {
+  return language === "zh" ? source : noticeUiTranslations[source]?.[language] ?? source;
+}
 
 function createNoticeBlock(type: OfficialNoticeBlock["type"] = "paragraph"): OfficialNoticeBlock {
   return { id: makeKey("block"), type, content: "" };
@@ -235,7 +256,7 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
                 setPage(1);
                 setAppliedSearch(search.trim());
               }}
-              placeholder={translateText("搜索通知", language)}
+              placeholder={translateNoticeText("搜索通知", language)}
               value={search}
             />
           </label>
@@ -456,7 +477,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
       return translation.title && translation.summary && translation.blocks.some((block) => block.type !== "divider");
     });
     if (!allLocalesComplete || (sendMode === "scheduled" && !scheduledAt)) {
-      setError(translateText("请补齐五种语言的标题、摘要和正文", language));
+      setError(translateNoticeText("请补齐五种语言的标题、摘要和正文", language));
       return;
     }
     setSubmitting(true);
@@ -489,22 +510,492 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const identityOptions = ["customer", "technician", "merchant_owner", "merchant_staff", "platform", "platform_admin", "scout"];
   const audienceOptions = scope === "merchant"
     ? [["shop_card_holders", "本店持卡用户"], ["shop_employees", "本店员工"], ["shop_technicians", "本店技师"]]
-    : [["all", "全体用户"], ["identity_types", "身份类型"], ["exact_users", translateText("指定账号", language)]];
-  return <ModuleShell title={scope === "merchant" ? "创建店铺通知" : "发送官方通知"} description={scope === "merchant" ? "受众由服务端按当前权限与店铺范围生成快照，不接受前端指定账号或店铺。" : "全体与身份受众由服务端生成；指定账号通过正式全局账号目录搜索并在发送时再次校验。"} actions={<Button to={returnPath} variant="secondary">返回列表</Button>}>
-    <form className="space-y-5 rounded-lg border border-line bg-white p-5 shadow-panel" onSubmit={submit}>
-      {error ? <p className="rounded-lg bg-coral/10 p-3 text-sm font-bold text-coral">{error}</p> : null}
-      <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">源语言<select className={`${inputClass} mt-2`} onChange={(event) => { const locale = event.target.value as OfficialNoticeLocale; setSourceLocale(locale); setActiveLocale(locale); }} value={sourceLocale}>{noticeLocales.map((value) => <option key={value} value={value}>{noticeLocaleLabels[value]}</option>)}</select></label><label className="text-sm font-black">级别<select className={`${inputClass} mt-2`} onChange={(event) => setLevel(event.target.value as OfficialNoticeLevel)} value={level}>{Object.entries(levelLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
-      <section className="rounded-lg border border-line bg-paper p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{noticeLocales.map((locale) => { const complete = Boolean(normalizedTranslations[locale].title && normalizedTranslations[locale].summary && normalizedTranslations[locale].blocks.some((block) => block.type !== "divider")); return <button aria-pressed={activeLocale === locale} className={`rounded-lg border px-3 py-2 text-xs font-black ${activeLocale === locale ? "border-moss bg-moss text-white" : "border-line bg-white text-ink"}`} key={locale} onClick={() => setActiveLocale(locale)} type="button">{noticeLocaleLabels[locale]}{locale === sourceLocale ? ` · ${translateText("源语言", language)}` : ""}{complete ? " ✓" : ""}</button>; })}</div><Button onClick={copyCurrentTranslationToAll} size="sm" type="button" variant="secondary">{translateText("复制当前内容到全部语言", language)}</Button></div><p className="mt-2 text-xs font-bold text-ink/50">{translateText("每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。", language)}</p></section>
-      <label className="block text-sm font-black">标题<input className={`${inputClass} mt-2`} maxLength={160} onChange={(event) => setTitle(event.target.value)} required value={title} /></label>
-      <label className="block text-sm font-black">摘要<input className={`${inputClass} mt-2`} maxLength={500} onChange={(event) => setSummary(event.target.value)} required value={summary} /></label>
-      <section className="overflow-hidden rounded-lg border border-line"><div className="border-b border-line bg-paper px-4 py-3"><h2 className="text-base font-black">通知正文</h2><p className="mt-1 text-xs font-bold text-ink/50">按顺序编辑结构化内容块；图片上传使用正式媒体接口，视频和文件只接受正式 URL。</p></div><div className="divide-y divide-line">{blocks.map((block, index) => <article className="space-y-3 p-4" key={block.id}><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><select aria-label={`内容块 ${index + 1} 类型`} className="h-9 rounded-lg border border-line bg-paper px-3 text-xs font-black" onChange={(event) => updateBlock(block.id, { type: event.target.value as OfficialNoticeBlock["type"], content: "", caption: undefined, fileName: undefined, fileSize: undefined, mimeType: undefined, source: undefined, mediaAssetId: undefined })} value={block.type}>{blockOptions.map((option) => <option key={option.type} value={option.type}>{option.label}</option>)}</select><Badge tone="neutral">Block {index + 1}</Badge></div><div className="flex gap-2"><Button disabled={index === 0} onClick={() => moveBlock(block.id, -1)} size="sm" type="button" variant="secondary">↑</Button><Button disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)} size="sm" type="button" variant="secondary">↓</Button><Button onClick={() => duplicateBlock(block)} size="sm" type="button" variant="secondary">复制</Button><Button onClick={() => removeBlock(block.id)} size="sm" type="button" variant="danger">删除</Button></div></div>{block.type === "divider" ? <hr className="border-line" /> : block.type === "image" || block.type === "video" || block.type === "file" ? <div className="space-y-3"><label className="block text-sm font-black">{blockOptions.find((option) => option.type === block.type)?.label} URL<input className={`${inputClass} mt-2`} onChange={(event) => updateBlock(block.id, { content: event.target.value, source: "url", mediaAssetId: undefined, fileName: block.type === "file" ? block.fileName : undefined, fileSize: undefined, mimeType: undefined })} placeholder={blockPlaceholder(block.type)} type="url" value={block.source === "media" ? "" : block.content} /></label><label className="block text-sm font-black">说明文字<input className={`${inputClass} mt-2`} onChange={(event) => updateBlock(block.id, { caption: event.target.value, ...(block.type === "file" ? { fileName: event.target.value } : {}) })} value={block.caption ?? ""} /></label>{block.type === "image" && scope === "platform" ? <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black">{uploadingBlockId === block.id ? "上传中…" : "上传图片"}<input accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploadingBlockId === block.id} onChange={(event) => void uploadImage(block, event)} type="file" /></label> : <p className="text-xs font-bold text-ink/50">当前只保存正式 HTTPS 媒体地址，不会把文件写入浏览器缓存。</p>}{block.content ? <div className="rounded-lg border border-line bg-paper p-3"><NoticeBlocks blocks={[block]} /></div> : null}</div> : <label className="block text-sm font-black">{blockOptions.find((option) => option.type === block.type)?.label}<textarea className={`${textareaClass} mt-2`} maxLength={20000} onChange={(event) => updateBlock(block.id, { content: event.target.value })} placeholder={blockPlaceholder(block.type)} required value={block.content} /></label>}</article>)}</div><div className="flex gap-2 overflow-x-auto border-t border-line bg-paper p-3">{blockOptions.map((option) => <button className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-line bg-white px-3 text-xs font-black hover:border-moss" key={option.type} onClick={() => addBlock(option.type)} type="button"><span className="grid h-6 min-w-6 place-items-center rounded bg-paper px-1">{option.icon}</span>{option.label}</button>)}</div></section>
-      <fieldset><legend className="text-sm font-black">发送对象</legend><div className="mt-2 grid gap-2 md:grid-cols-3">{audienceOptions.map(([value, label]) => <label className="rounded-lg border border-line p-3 text-sm font-bold" key={value}><input checked={audienceType === value} className="mr-2" name="audience" onChange={() => setAudienceType(value)} type="radio" />{label}</label>)}</div></fieldset>
-      {scope === "platform" && audienceType === "identity_types" ? <fieldset><legend className="text-sm font-black">身份类型</legend><div className="mt-2 flex flex-wrap gap-2">{identityOptions.map((value) => <label className="rounded-lg border border-line px-3 py-2 text-xs font-bold" key={value}><input checked={identityTypes.includes(value)} className="mr-2" onChange={(event) => setIdentityTypes((current) => event.target.checked ? [...current, value] : current.filter((item) => item !== value))} type="checkbox" />{value}</label>)}</div></fieldset> : null}
-      {scope === "platform" && audienceType === "exact_users" ? <fieldset className="space-y-3 rounded-lg border border-line bg-paper p-4"><legend className="px-1 text-sm font-black">{translateText("全局搜索账号", language)}</legend><div className="flex flex-col gap-2 md:flex-row"><label className="min-w-0 flex-1 text-sm font-black">{translateText("邮箱、手机号或 NeeDoID", language)}<input className={`${inputClass} mt-2`} onChange={(event) => setAccountQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchAccounts(); } }} placeholder={translateText("输入邮箱、手机号或 NeeDoID", language)} value={accountQuery} /></label><Button disabled={accountSearching || !accountQuery.trim()} onClick={() => void searchAccounts()} type="button" variant="secondary">{accountSearching ? translateText("正在搜索账号", language) : translateText("搜索账号", language)}</Button></div>{accountSearchError ? <p className="text-sm font-bold text-coral">{accountSearchError}</p> : null}{selectedAccounts.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAccounts.map((account) => <button aria-label={`${translateText("移除账号", language)} ${account.needoId}`} className="rounded-full border border-moss/30 bg-white px-3 py-2 text-xs font-black text-moss" key={account.needoId} onClick={() => setSelectedAccounts((current) => current.filter((item) => item.needoId !== account.needoId))} type="button">{account.username} · {account.needoId} ×</button>)}</div> : null}<div className="grid gap-2">{accountResults.map((account) => { const selected = selectedAccounts.some((item) => item.needoId === account.needoId); return <button aria-label={`${selected ? translateText("已选择账号", language) : translateText("选择账号", language)} ${account.needoId}`} className="grid gap-1 rounded-lg border border-line bg-white p-3 text-left text-sm disabled:opacity-60 md:grid-cols-[minmax(0,1fr)_auto]" disabled={selected} key={account.needoId} onClick={() => setSelectedAccounts((current) => current.some((item) => item.needoId === account.needoId) ? current : [...current, account])} type="button"><span><strong className="block text-ink">{account.username} · {account.needoId}</strong><span className="mt-1 block text-xs font-bold text-ink/55">{account.email}{account.phone ? ` · ${account.phone}` : ""}</span></span><span className="text-xs font-black text-moss">{selected ? translateText("已选择账号", language) : translateText("选择账号", language)}</span></button>; })}</div></fieldset> : null}
-      <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">发送方式<select className={`${inputClass} mt-2`} onChange={(event) => setSendMode(event.target.value as "now" | "scheduled")} value={sendMode}><option value="now">立即发送</option><option value="scheduled">定时发送</option></select></label>{sendMode === "scheduled" ? <label className="text-sm font-black">发送时间<input className={`${inputClass} mt-2`} onChange={(event) => setScheduledAt(event.target.value)} required type="datetime-local" value={scheduledAt} /></label> : null}</div>
-      <div className="flex justify-end"><Button disabled={submitting || (scope === "platform" && audienceType === "identity_types" && identityTypes.length === 0) || (scope === "platform" && audienceType === "exact_users" && selectedAccounts.length === 0)} type="submit">{submitting ? "提交中…" : "确认创建"}</Button></div>
-    </form>
-  </ModuleShell>;
+    : [["all", "全体用户"], ["identity_types", "身份类型"], ["exact_users", translateNoticeText("指定账号", language)]];
+  const allLocalesComplete = noticeLocales.every((locale) => {
+    const translation = normalizedTranslations[locale];
+    return Boolean(
+      translation.title
+      && translation.summary
+      && translation.blocks.some((block) => block.type !== "divider")
+    );
+  });
+  const audienceReady = scope === "merchant"
+    || audienceType === "all"
+    || (audienceType === "identity_types" && identityTypes.length > 0)
+    || (audienceType === "exact_users" && selectedAccounts.length > 0);
+  const hasSchedule = sendMode === "now" || Boolean(scheduledAt);
+  const canSubmit = allLocalesComplete && audienceReady && hasSchedule && !submitting;
+  const targetSummary = scope === "merchant"
+    ? audienceOptions.find(([value]) => value === audienceType)?.[1]
+    : audienceType === "all"
+      ? "全体用户"
+      : audienceType === "identity_types"
+        ? identityTypes.join(" / ")
+        : selectedAccounts.length > 0
+          ? selectedAccounts.map((account) => `${account.username} / ${account.needoId}`).join("、")
+          : "未选择账号";
+
+  return (
+    <ModuleShell
+      title={scope === "merchant" ? "创建店铺通知" : "发送官方通知"}
+      description={scope === "merchant"
+        ? "受众由服务端按当前权限与店铺范围生成快照，不接受前端指定账号或店铺。"
+        : "编辑官方通知；发送时固定受众并记录投递与已读状态。"}
+      actions={(
+        <div className="flex flex-wrap gap-2">
+          <Button to={returnPath} variant="secondary">返回列表</Button>
+          <Button disabled={!canSubmit} form="official-notice-compose-form" type="submit">
+            {submitting ? "提交中…" : "确认创建"}
+          </Button>
+        </div>
+      )}
+    >
+      <form
+        className="space-y-5 pb-36"
+        id="official-notice-compose-form"
+        onSubmit={submit}
+      >
+        {error ? (
+          <p className="rounded-lg border border-coral/25 bg-coral/10 px-4 py-3 text-sm font-bold text-coral">
+            {error}
+          </p>
+        ) : null}
+
+        <section className="grid items-stretch gap-4 lg:grid-cols-3 xl:grid-cols-[minmax(220px,0.78fr)_minmax(360px,1.42fr)_minmax(300px,1fr)]">
+          <section className="h-full rounded-lg border border-line bg-white p-4 shadow-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <TitleWithInfo
+                as="h2"
+                info="重要和紧急通知到达发送时间后，会在目标身份首页自动弹出。"
+                label="发送设置说明"
+                title="发送设置"
+                titleClassName="text-lg font-black"
+              />
+              <Badge tone={level === "general" ? "neutral" : "red"}>
+                {levelLabels[level]}
+              </Badge>
+            </div>
+            <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-ink/40">通知级别</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(Object.entries(levelLabels) as Array<[OfficialNoticeLevel, string]>).map(([value, label]) => (
+                <button
+                  className={`h-10 rounded-lg border px-4 text-sm font-black transition ${level === value ? "border-ink bg-ink text-white" : "border-line bg-paper text-ink/65 hover:border-moss"}`}
+                  key={value}
+                  onClick={() => setLevel(value)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="mt-4 block text-sm font-black">
+              <span className="text-xs font-black text-ink/40">源语言</span>
+              <select
+                className={`${inputClass} mt-2 bg-paper`}
+                onChange={(event) => {
+                  const locale = event.target.value as OfficialNoticeLocale;
+                  setSourceLocale(locale);
+                  setActiveLocale(locale);
+                }}
+                value={sourceLocale}
+              >
+                {noticeLocales.map((value) => (
+                  <option key={value} value={value}>{noticeLocaleLabels[value]}</option>
+                ))}
+              </select>
+            </label>
+          </section>
+
+          <section className="h-full rounded-lg border border-line bg-white p-4 shadow-panel">
+            <TitleWithInfo
+              as="h2"
+              info={scope === "platform"
+                ? "按身份端群发，或从正式全局账号库按邮箱、手机号、NeeDoID 搜索目标账号。"
+                : "店铺受众由服务端根据当前店铺与权限生成。"}
+              label="发送对象说明"
+              title="发送对象"
+              titleClassName="text-lg font-black"
+            />
+            <div className="mt-5 grid gap-2 md:grid-cols-3">
+              {audienceOptions.map(([value, label]) => (
+                <label
+                  className={`cursor-pointer rounded-lg border px-3 py-3 text-sm font-black transition ${audienceType === value ? "border-ink bg-ink text-white" : "border-line bg-paper text-ink/65 hover:border-moss"}`}
+                  key={value}
+                >
+                  <input
+                    checked={audienceType === value}
+                    className="sr-only"
+                    name="audience"
+                    onChange={() => setAudienceType(value)}
+                    type="radio"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {scope === "platform" && audienceType === "identity_types" ? (
+              <fieldset className="mt-3">
+                <legend className="text-xs font-black text-ink/40">身份类型</legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {identityOptions.map((value) => (
+                    <label className="rounded-lg border border-line bg-paper px-3 py-2 text-xs font-bold" key={value}>
+                      <input
+                        checked={identityTypes.includes(value)}
+                        className="mr-2"
+                        onChange={(event) => setIdentityTypes((current) => event.target.checked
+                          ? [...current, value]
+                          : current.filter((item) => item !== value))}
+                        type="checkbox"
+                      />
+                      {value}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
+            {scope === "platform" && audienceType === "exact_users" ? (
+              <fieldset className="mt-3 space-y-3 rounded-lg border border-line bg-paper p-3">
+                <legend className="px-1 text-xs font-black text-ink/40">{translateNoticeText("全局搜索账号", language)}</legend>
+                <div className="flex flex-col gap-2 md:flex-row">
+                  <label className="min-w-0 flex-1 text-sm font-black">
+                    {translateNoticeText("邮箱、手机号或 NeeDoID", language)}
+                    <input
+                      className={`${inputClass} mt-2`}
+                      onChange={(event) => setAccountQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void searchAccounts();
+                        }
+                      }}
+                      placeholder={translateNoticeText("输入邮箱、手机号或 NeeDoID", language)}
+                      value={accountQuery}
+                    />
+                  </label>
+                  <Button
+                    className="self-end"
+                    disabled={accountSearching || !accountQuery.trim()}
+                    onClick={() => void searchAccounts()}
+                    type="button"
+                    variant="secondary"
+                  >
+                    {accountSearching ? translateNoticeText("正在搜索账号", language) : translateNoticeText("搜索账号", language)}
+                  </Button>
+                </div>
+                {accountSearchError ? <p className="text-sm font-bold text-coral">{accountSearchError}</p> : null}
+                {selectedAccounts.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedAccounts.map((account) => (
+                      <button
+                        aria-label={`${translateNoticeText("移除账号", language)} ${account.needoId}`}
+                        className="rounded-full border border-moss/30 bg-white px-3 py-2 text-xs font-black text-moss"
+                        key={account.needoId}
+                        onClick={() => setSelectedAccounts((current) => current.filter((item) => item.needoId !== account.needoId))}
+                        type="button"
+                      >
+                        {account.username} · {account.needoId} ×
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="grid max-h-56 gap-2 overflow-y-auto">
+                  {accountResults.map((account) => {
+                    const selected = selectedAccounts.some((item) => item.needoId === account.needoId);
+                    return (
+                      <button
+                        aria-label={`${selected ? translateNoticeText("已选择账号", language) : translateNoticeText("选择账号", language)} ${account.needoId}`}
+                        className="grid gap-1 rounded-lg border border-line bg-white p-3 text-left text-sm disabled:opacity-60 md:grid-cols-[minmax(0,1fr)_auto]"
+                        disabled={selected}
+                        key={account.needoId}
+                        onClick={() => setSelectedAccounts((current) => current.some((item) => item.needoId === account.needoId) ? current : [...current, account])}
+                        type="button"
+                      >
+                        <span>
+                          <strong className="block text-ink">{account.username} · {account.needoId}</strong>
+                          <span className="mt-1 block text-xs font-bold text-ink/55">
+                            {account.email}{account.phone ? ` · ${account.phone}` : ""}
+                          </span>
+                        </span>
+                        <span className="text-xs font-black text-moss">
+                          {selected ? translateNoticeText("已选择账号", language) : translateNoticeText("选择账号", language)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
+          </section>
+
+          <section className="h-full rounded-lg border border-line bg-white p-4 shadow-panel">
+            <TitleWithInfo
+              as="h2"
+              info="立即发送会在提交后进入投递；定时发送按保存时间由后台任务执行。"
+              label="发送时间说明"
+              title="发送时间"
+              titleClassName="text-lg font-black"
+            />
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              {(["now", "scheduled"] as const).map((value) => (
+                <button
+                  className={`h-10 rounded-lg border px-3 text-sm font-black ${sendMode === value ? "border-ink bg-ink text-white" : "border-line bg-paper text-ink/65"}`}
+                  key={value}
+                  onClick={() => setSendMode(value)}
+                  type="button"
+                >
+                  {value === "now" ? "立即发送" : "定时发送"}
+                </button>
+              ))}
+            </div>
+            {sendMode === "scheduled" ? (
+              <label className="mt-3 block text-sm font-black">
+                发送时间
+                <input
+                  className={`${inputClass} mt-2 bg-paper`}
+                  onChange={(event) => setScheduledAt(event.target.value)}
+                  required
+                  type="datetime-local"
+                  value={scheduledAt}
+                />
+              </label>
+            ) : (
+              <div className="mt-3 rounded-lg border border-moss/30 bg-moss/10 px-3 py-3 text-sm font-black text-moss">
+                提交后立即进入逐身份投递
+              </div>
+            )}
+          </section>
+        </section>
+
+        <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <section className="official-notice-editor overflow-hidden rounded-lg border border-line bg-white shadow-panel">
+            <div className="border-b border-line bg-paper px-4 py-3">
+              <TitleWithInfo
+                as="h2"
+                info="使用内容块组织正文。图片可上传到正式内容媒体库；视频和文件只接受持久化 HTTPS 地址。"
+                label="编辑器说明"
+                title="通知正文"
+                titleClassName="text-lg font-black"
+                variant="paper"
+              />
+            </div>
+            <div className="border-b border-line p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {noticeLocales.map((locale) => {
+                    const translation = normalizedTranslations[locale];
+                    const complete = Boolean(
+                      translation.title
+                      && translation.summary
+                      && translation.blocks.some((block) => block.type !== "divider")
+                    );
+                    return (
+                      <button
+                        aria-pressed={activeLocale === locale}
+                        className={`rounded-lg border px-3 py-2 text-xs font-black ${activeLocale === locale ? "border-moss bg-moss text-white" : "border-line bg-paper text-ink"}`}
+                        key={locale}
+                        onClick={() => setActiveLocale(locale)}
+                        type="button"
+                      >
+                        {noticeLocaleLabels[locale]}
+                        {locale === sourceLocale ? ` · ${translateNoticeText("源语言", language)}` : ""}
+                        {complete ? " ✓" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button onClick={copyCurrentTranslationToAll} size="sm" type="button" variant="secondary">
+                  {translateNoticeText("复制当前内容到全部语言", language)}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs font-bold text-ink/50">
+                {translateNoticeText("每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。", language)}
+              </p>
+            </div>
+            <div className="grid gap-3 border-b border-line p-4 lg:grid-cols-2">
+              <label className="text-sm font-black">
+                <span className="text-xs font-black text-ink/40">标题</span>
+                <input
+                  className={`${inputClass} mt-2 bg-paper text-base font-black`}
+                  maxLength={160}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                  value={title}
+                />
+              </label>
+              <label className="text-sm font-black">
+                <span className="text-xs font-black text-ink/40">摘要</span>
+                <input
+                  className={`${inputClass} mt-2 bg-paper`}
+                  maxLength={500}
+                  onChange={(event) => setSummary(event.target.value)}
+                  required
+                  value={summary}
+                />
+              </label>
+            </div>
+            <div className="divide-y divide-line">
+              {blocks.map((block, index) => (
+                <article className="bg-white p-4" key={block.id}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        aria-label={`内容块 ${index + 1} 类型`}
+                        className="h-9 rounded-lg border border-line bg-paper px-3 text-xs font-black"
+                        onChange={(event) => updateBlock(block.id, {
+                          type: event.target.value as OfficialNoticeBlock["type"],
+                          content: event.target.value === "divider" ? "" : block.content,
+                          caption: undefined,
+                          fileName: undefined,
+                          fileSize: undefined,
+                          mimeType: undefined,
+                          source: undefined,
+                          mediaAssetId: undefined
+                        })}
+                        value={block.type}
+                      >
+                        {blockOptions.map((option) => (
+                          <option key={option.type} value={option.type}>{option.label}</option>
+                        ))}
+                      </select>
+                      <Badge tone="neutral">Block {index + 1}</Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button disabled={index === 0} onClick={() => moveBlock(block.id, -1)} size="sm" type="button" variant="secondary">↑</Button>
+                      <Button disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)} size="sm" type="button" variant="secondary">↓</Button>
+                      <Button onClick={() => duplicateBlock(block)} size="sm" type="button" variant="secondary">复制</Button>
+                      <Button onClick={() => removeBlock(block.id)} size="sm" type="button" variant="danger">删除</Button>
+                    </div>
+                  </div>
+                  {block.type === "divider" ? (
+                    <div className="mt-4 border-t border-line" />
+                  ) : block.type === "image" || block.type === "video" || block.type === "file" ? (
+                    <div className="mt-4 space-y-3">
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
+                        <label className="text-sm font-black">
+                          <span className="text-xs font-black text-ink/40">资源 URL</span>
+                          <input
+                            className={`${inputClass} mt-2 bg-paper`}
+                            onChange={(event) => updateBlock(block.id, {
+                              content: event.target.value,
+                              source: "url",
+                              mediaAssetId: undefined,
+                              fileName: block.type === "file" ? block.fileName : undefined,
+                              fileSize: undefined,
+                              mimeType: undefined
+                            })}
+                            placeholder={blockPlaceholder(block.type)}
+                            type="url"
+                            value={block.source === "media" ? "" : block.content}
+                          />
+                        </label>
+                        <label className="text-sm font-black">
+                          <span className="text-xs font-black text-ink/40">说明文字</span>
+                          <input
+                            className={`${inputClass} mt-2 bg-paper`}
+                            onChange={(event) => updateBlock(block.id, {
+                              caption: event.target.value,
+                              ...(block.type === "file" ? { fileName: event.target.value } : {})
+                            })}
+                            value={block.caption ?? ""}
+                          />
+                        </label>
+                      </div>
+                      {block.type === "image" && scope === "platform" ? (
+                        <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black">
+                          {uploadingBlockId === block.id ? "上传中…" : "上传图片到正式媒体库"}
+                          <input
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            disabled={uploadingBlockId === block.id}
+                            onChange={(event) => void uploadImage(block, event)}
+                            type="file"
+                          />
+                        </label>
+                      ) : (
+                        <p className="text-xs font-bold text-ink/50">当前只保存正式 HTTPS 媒体地址，不会把文件写入浏览器缓存。</p>
+                      )}
+                    </div>
+                  ) : (
+                    <label className="mt-4 block text-sm font-black">
+                      {blockOptions.find((option) => option.type === block.type)?.label}
+                      <textarea
+                        className={`${textareaClass} mt-2 bg-paper`}
+                        maxLength={20000}
+                        onChange={(event) => updateBlock(block.id, { content: event.target.value })}
+                        placeholder={blockPlaceholder(block.type)}
+                        required
+                        value={block.content}
+                      />
+                    </label>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="space-y-5 xl:sticky xl:top-28">
+            <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+              <div className="flex items-center justify-between gap-3">
+                <TitleWithInfo
+                  as="h2"
+                  info="发送前检查当前语言内容、时间、对象和内容块顺序。"
+                  label="预览说明"
+                  title="发送预览"
+                  titleClassName="text-lg font-black"
+                />
+                <Badge tone={level === "general" ? "neutral" : "red"}>{levelLabels[level]}</Badge>
+              </div>
+              <div className="mt-4 rounded-lg border border-line bg-paper p-4">
+                <p className="text-xs font-black text-ink/40">发送时间</p>
+                <p className="mt-1 text-sm font-black">{sendMode === "now" ? "立即发送" : scheduledAt || "未设置"}</p>
+                <p className="mt-3 text-xs font-black text-ink/40">发送对象</p>
+                <p className="mt-1 text-sm font-black">{targetSummary || "未选择"}</p>
+              </div>
+              <div className="mt-4 space-y-3">
+                <h3 className="text-xl font-black">{title || "官方通知标题"}</h3>
+                <p className="text-sm font-bold text-ink/55">{summary || "通知摘要"}</p>
+                <div className="space-y-3 text-sm leading-7">
+                  <NoticeBlocks blocks={normalizedBlocks.length > 0 ? normalizedBlocks : blocks} />
+                </div>
+              </div>
+            </section>
+            <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+              <h2 className="text-lg font-black">发送检查</h2>
+              <div className="mt-3 space-y-2 text-sm font-bold">
+                <p className={allLocalesComplete ? "text-moss" : "text-coral"}>五种语言：{allLocalesComplete ? "已填写" : "未填写完整"}</p>
+                <p className={audienceReady ? "text-moss" : "text-coral"}>对象：{audienceReady ? targetSummary : "未选择"}</p>
+                <p className={hasSchedule ? "text-moss" : "text-coral"}>时间：{hasSchedule ? (sendMode === "now" ? "立即发送" : "已设置") : "未设置"}</p>
+              </div>
+              <Button className="mt-4 w-full" disabled={!canSubmit} type="submit">
+                {submitting ? "提交中…" : "确认创建"}
+              </Button>
+            </section>
+          </aside>
+        </section>
+
+        <div
+          className="fixed inset-x-0 bottom-0 z-[55] border-t border-line bg-white/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_44px_rgba(0,0,0,0.18)] backdrop-blur lg:left-64 md:px-5 2xl:px-6"
+          data-official-notice-block-toolbar
+        >
+          <div className="scrollbar-none flex min-w-0 items-center gap-3 overflow-x-auto">
+            {blockOptions.map((option) => (
+              <button
+                className="focus-ring inline-flex h-11 shrink-0 items-center gap-3 rounded-lg border border-line bg-white px-4 text-sm font-black text-ink/65 transition hover:border-moss"
+                key={option.type}
+                onClick={() => addBlock(option.type)}
+                type="button"
+              >
+                <span className="grid h-7 min-w-7 place-items-center rounded-md bg-paper px-1 text-xs text-ink">
+                  {option.icon}
+                </span>
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </form>
+    </ModuleShell>
+  );
 }
 
 export function OfficialNoticeInbox() {
