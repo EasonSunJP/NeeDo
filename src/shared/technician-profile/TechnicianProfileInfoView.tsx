@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
+import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
 import {
   getServiceReviewStampVisual,
@@ -89,6 +90,11 @@ export function TechnicianReviewTagSummaryView({ model }: { model: TechnicianPro
 }
 
 export function TechnicianProfileInfoView({ className, model, privacySlot, serviceAction }: TechnicianProfileInfoViewProps) {
+  const [copyStatus, setCopyStatus] = useState<"" | "copied" | "failed">("");
+  const copyNeedoId = async () => {
+    setCopyStatus(await copyTextToClipboard(model.publicId) ? "copied" : "failed");
+  };
+
   return (
     <div className={cn("space-y-4", className)} data-testid="technician-profile-info-view">
       <section className="overflow-visible rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_18%)] bg-[color:var(--client-surface)] p-4 text-[color:var(--client-text)] shadow-panel">
@@ -103,7 +109,8 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
           <div className="min-w-0 flex-1 pt-1">
             <h1 className="text-[21px] font-black leading-7">{model.displayName} <KycVerifiedBadge className="inline-flex align-middle" size="label" /></h1>
             <span className="mt-2 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_45%,var(--client-line))] bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-primary)]">{model.identityLabel}</span>
-            <p className={cn("mt-2 truncate text-xs font-bold", mutedClassName)}>ID：{model.publicId}</p>
+            <button aria-label="复制 NeeDo ID" className={cn("mt-2 block max-w-full cursor-copy truncate text-left text-xs font-bold", mutedClassName)} onClick={() => void copyNeedoId()} type="button">ID：{model.publicId}</button>
+            {copyStatus ? <p aria-live="polite" className={cn("mt-1 text-xs font-bold", mutedClassName)} role="status">{copyStatus === "copied" ? "已复制" : "复制失败，请手动复制"}</p> : null}
           </div>
         </header>
 

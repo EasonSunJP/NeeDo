@@ -5157,6 +5157,7 @@ export const translations: TranslationMap = {
   "复制上一天": { "zh-Hant": "複製上一天", ja: "前日をコピー", en: "Copy previous day", ko: "전날 복사" },
   "复制上一天 / 上一周会复制整行 24 小时状态。": { "zh-Hant": "複制上一天 / 上一週會複制整行 24 小時狀態。", ja: "前日をコピー／ステータス・コピー・時間に関する説明です。", en: "Copy previous day / Status Copy Hour.", ko: "전날 복사 / 상태 복사 시간" },
   "复制上一周": { "zh-Hant": "複製上一週", ja: "前週をコピー", en: "Copy previous week", ko: "전주 복사" },
+  "已复制": { "zh-Hant": "已複製", ja: "コピーしました", en: "Copied", ko: "복사됨" },
   "复制失败，请手动复制": { "zh-Hant": "複製失敗，請手動複製", ja: "コピーに失敗しました。手動でコピーする。", en: "Copying failed, please copy manually.", ko: "복사에 실패했습니다. 수동으로 복사해 주세요." },
   "复制失败，请长按链接后手动复制": { "zh-Hant": "複製失敗，請長按連結後手動複製", ja: "コピーに失敗しました。リンクを長押しして手動でコピーする。", en: "Copying failed. Please long-press the link and copy manually.", ko: "복사에 실패했습니다. 링크를 길게 눌러 수동으로 복사해 주세요." },
   "复制新建": { "zh-Hant": "複制新建", ja: "コピー新しい", en: "CopyNew", ko: "복사새로운" },
