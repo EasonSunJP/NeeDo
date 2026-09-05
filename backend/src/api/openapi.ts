@@ -2672,6 +2672,74 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     schemas: {
       ...shopMembershipCardPlanOpenApiSchemas,
+      ShopTravelFareBand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ordinal", "maximumDistanceMeters", "fareAmountJpy"],
+        properties: {
+          ordinal: { type: "integer", minimum: 0 },
+          maximumDistanceMeters: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+          fareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum }
+        }
+      },
+      ShopTravelFarePolicyVersion: {
+        type: "object",
+        additionalProperties: false,
+        required: ["publicId", "version", "effectiveFrom", "publishedByUserId", "reason", "bands", "createdAt"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          publishedByUserId: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          bands: { type: "array", minItems: 1, maxItems: 50, items: { $ref: "#/components/schemas/ShopTravelFareBand" } },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopTravelFarePolicySummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["current", "next"],
+        properties: {
+          current: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] },
+          next: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] }
+        }
+      },
+      ShopTravelFarePolicyPublishInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "effectiveFrom", "reason", "bands"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 0 },
+          effectiveFrom: { type: "string", format: "date-time" },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          bands: {
+            type: "array",
+            minItems: 1,
+            maxItems: 50,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["maximumDistanceMeters", "fareAmountJpy"],
+              properties: {
+                maximumDistanceMeters: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
+                fareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum }
+              }
+            }
+          }
+        }
+      },
+      ShopTravelFarePolicyVersionPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       TrimmedVisibleIdempotencyKey: {
         type: "string",
         "x-min-utf16-code-units": 16,
@@ -14279,6 +14347,52 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/ShopPlatformFeePolicy"
           }),
           ...platformFeePolicyErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/travel-fare-policy`]: {
+      get: {
+        tags: ["Travel Fare"],
+        summary: "Read current and next travel-fare policy for the signed merchant shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:travel-fare-policy:read",
+        responses: {
+          "200": jsonDataResponse("Current and next immutable travel-fare policy versions", { $ref: "#/components/schemas/ShopTravelFarePolicySummary" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/travel-fare-policy/versions`]: {
+      get: {
+        tags: ["Travel Fare"],
+        summary: "List immutable travel-fare policy version history for the signed merchant shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:travel-fare-policy:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated immutable travel-fare policy versions", { $ref: "#/components/schemas/ShopTravelFarePolicyVersionPage" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Travel Fare"],
+        summary: "Publish the next immutable travel-fare policy version for the signed merchant shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:travel-fare-policy:write",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ShopTravelFarePolicyPublishInput" } } } },
+        responses: {
+          "201": jsonDataResponse("Published immutable travel-fare policy version", { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }),
+          "400": jsonErrorResponse("error.validation or error.travel_fare_policy.invalid_bands"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.shop.not_found"),
+          "409": jsonErrorResponse("error.travel_fare_policy.version_conflict or error.travel_fare_policy.effective_time_conflict")
         }
       }
     },

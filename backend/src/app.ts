@@ -69,6 +69,7 @@ import type { TechnicianDataCenterRepositoryPort } from "./services/technician-d
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-policy.service";
+import type { ShopTravelFarePolicyRepositoryPort } from "./services/shop-travel-fare-policy.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
@@ -164,6 +165,7 @@ import { createTechnicianDataCenterRoutes } from "./routes/technician-data-cente
 import { createMerchantProfileRoutes } from "./routes/merchant-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
+import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-policy.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
@@ -304,6 +306,7 @@ export interface AppDependencies {
   customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
   platformFeePolicyRepository?: PlatformFeePolicyRepositoryPort;
+  shopTravelFarePolicyRepository?: ShopTravelFarePolicyRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
@@ -555,6 +558,7 @@ export const createApp = (
     ["backoffice", "merchant-admin"],
     createPlatformFeePolicyRoutes(config, resolvedDependencies)
   );
+  mount("merchant-admin", createShopTravelFarePolicyRoutes(config, resolvedDependencies));
   mount("backoffice", createPlatformMembershipRoutes(config, resolvedDependencies));
   mount("backoffice", createUserExperienceRoutes(config, resolvedDependencies));
   mount("backoffice", createBackofficeUserGroupRoutes(config, resolvedDependencies));
