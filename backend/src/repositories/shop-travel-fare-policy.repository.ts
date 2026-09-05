@@ -36,6 +36,15 @@ export class ShopTravelFarePolicyRepository implements ShopTravelFarePolicyRepos
     return { current: current ? this.mapPolicy(current) : null, next: next ? this.mapPolicy(next) : null };
   }
 
+  public async findLatest(shopId: number): Promise<TravelFarePolicyVersionPayload | null> {
+    const latest = await this.client.shopTravelFarePolicyVersion.findFirst({
+      where: { shopId, deletedAt: null },
+      include: includeBands,
+      orderBy: [{ version: "desc" }]
+    });
+    return latest ? this.mapPolicy(latest) : null;
+  }
+
   public async listVersions(
     shopId: number,
     input: PaginationInput

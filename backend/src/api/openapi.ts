@@ -14768,7 +14768,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": jsonDataResponse("Redacted route provider status", { $ref: "#/components/schemas/TravelRouteProviderStatus" }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
-          "403": jsonErrorResponse("error.forbidden")
+          "403": jsonErrorResponse("error.forbidden"),
+          "503": jsonErrorResponse("error.dependency.redis_unavailable")
         }
       }
     },

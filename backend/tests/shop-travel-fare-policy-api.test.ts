@@ -19,6 +19,10 @@ const createRepository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => 
     void shopId; void at;
     return { current: policy, next: null };
   }),
+  findLatest: jest.fn(async (shopId: number) => {
+    void shopId;
+    return policy;
+  }),
   listVersions: jest.fn(async (_shopId, input) => ({
     list: [policy], total: 21, page: input.page ?? 1, page_size: input.pageSize ?? 20
   })),

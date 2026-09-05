@@ -35,6 +35,16 @@ describe("ShopTravelFarePolicyPage", () => {
   });
 
   it("publishes a validated immutable version with expected-version protection", async () => {
+    vi.mocked(travelFareApi.listMerchantPolicyVersions).mockResolvedValue({
+      list: [
+        { ...summary.current, publicId: "policy-3", version: 3, reason: "Later future policy" },
+        { ...summary.current, publicId: "policy-2", version: 2, reason: "Earlier future policy" },
+        summary.current
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20
+    });
     await act(async () => root.render(<ShopTravelFarePolicyPage />)); await settle();
     await input("距离上限 1", "10"); await input("交通费 1", "900"); await input("生效时间", "2026-09-07T09:00"); await input("发布理由", "Updated range");
     await click("发布不可变版本"); await settle();
@@ -42,7 +52,7 @@ describe("ShopTravelFarePolicyPage", () => {
     expect(container.textContent).toContain("确认发布内容");
     expect(container.textContent).toContain("Updated range");
     await click("确认发布"); await settle();
-    expect(travelFareApi.publishMerchantPolicy).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1, reason: "Updated range", bands: [{ maximumDistanceMeters: 10_000, fareAmountJpy: 900 }] }));
+    expect(travelFareApi.publishMerchantPolicy).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 3, reason: "Updated range", bands: [{ maximumDistanceMeters: 10_000, fareAmountJpy: 900 }] }));
   });
 
   it("pages through the complete immutable version history", async () => {

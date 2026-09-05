@@ -46,6 +46,7 @@ export function ShopTravelFarePolicyPage() {
   const canWrite = hasPermission("merchant-admin:travel-fare-policy:write");
   const [summary, setSummary] = useState<ShopTravelFarePolicySummary | null>(null);
   const [history, setHistory] = useState<ShopTravelFarePolicyHistoryPage | null>(null);
+  const [latestVersion, setLatestVersion] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
@@ -65,13 +66,18 @@ export function ShopTravelFarePolicyPage() {
       ]);
       setSummary(nextSummary);
       setHistory(nextHistory);
+      if (requestedHistoryPage === 1) {
+        setLatestVersion(
+          nextHistory.list[0]?.version
+            ?? Math.max(nextSummary.current?.version ?? 0, nextSummary.next?.version ?? 0)
+        );
+      }
       setStatus("ready");
     }
     catch (loadError) { setError(describeError(loadError)); setStatus("error"); }
   }, [historyPage]);
   useEffect(() => { void load(historyPage); }, [historyPage, load]);
 
-  const latestVersion = Math.max(summary?.current?.version ?? 0, summary?.next?.version ?? 0);
   const parsedBands = useMemo(() => validateBands(bands), [bands]);
   const canPublish = typeof parsedBands !== "string" && Boolean(effectiveFrom && reason.trim()) && !publishing;
 

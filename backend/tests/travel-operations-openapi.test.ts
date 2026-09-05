@@ -16,6 +16,7 @@ describe("travel operations OpenAPI", () => {
     };
 
     expect(provider["x-permission"]).toBe(TRAVEL_FARE_PERMISSIONS.backofficeRead);
+    expect((provider.responses as Record<string, unknown>)["503"]).toBeDefined();
     expect(policies["x-permission"]).toBe(TRAVEL_FARE_PERMISSIONS.backofficeRead);
     expect(policies.parameters).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "page" }),

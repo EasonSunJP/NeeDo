@@ -1455,7 +1455,7 @@ export default function App() {
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
-              <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
+              <Route path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)} />
               <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
               <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 

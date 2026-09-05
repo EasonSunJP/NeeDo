@@ -46,6 +46,7 @@ export type PublishTravelFarePolicyResult =
 
 export interface ShopTravelFarePolicyRepositoryPort {
   findCurrentAndNext: (shopId: number, at: Date) => Promise<TravelFarePolicySummaryPayload>;
+  findLatest: (shopId: number) => Promise<TravelFarePolicyVersionPayload | null>;
   listVersions: (
     shopId: number,
     input: PaginationInput
@@ -113,9 +114,7 @@ export class ShopTravelFarePolicyService {
       throw error;
     }
 
-    const current = await this.repository.findCurrentAndNext(shopId, new Date()).then(
-      (summary) => summary.current
-    );
+    const latest = await this.repository.findLatest(shopId);
     const publicId = randomUUID();
     const effectiveFrom = new Date(input.effectiveFrom);
     const audit = this.auditInputFactory.createInput(
@@ -123,7 +122,7 @@ export class ShopTravelFarePolicyService {
         action: "merchant_admin.travel_fare_policy.publish",
         targetType: "shop_travel_fare_policy_version",
         metadata: {
-          previousVersionPublicId: current?.publicId ?? null,
+          previousVersionPublicId: latest?.publicId ?? null,
           newVersionPublicId: publicId,
           effectiveFrom: effectiveFrom.toISOString(),
           reason: input.reason,

@@ -38,6 +38,10 @@ const repository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => ({
     void shopId; void at;
     return { current: version(), next: null };
   }),
+  findLatest: jest.fn(async (shopId: number) => {
+    void shopId;
+    return version({ publicId: "policy-v3", version: 3 });
+  }),
   listVersions: jest.fn(async (shopId: number, input) => {
     void shopId; void input;
     return { list: [version()], total: 1, page: 1, page_size: 20 };
@@ -87,6 +91,7 @@ describe("ShopTravelFarePolicyService", () => {
     });
 
     expect(repo.findCurrentAndNext).toHaveBeenCalledWith(11, expect.any(Date));
+    expect(repo.findLatest).toHaveBeenCalledWith(11);
     expect(repo.listVersions).toHaveBeenCalledWith(11, { page: 2, pageSize: 5 });
     expect(repo.publishVersion).toHaveBeenCalledWith(expect.objectContaining({
       shopId: 11,
@@ -141,7 +146,7 @@ describe("ShopTravelFarePolicyService", () => {
       action: "merchant_admin.travel_fare_policy.publish",
       targetType: "shop_travel_fare_policy_version",
       metadata: {
-        previousVersionPublicId: "policy-v1",
+        previousVersionPublicId: "policy-v3",
         newVersionPublicId: expect.any(String),
         effectiveFrom: "2026-09-07T00:00:00.000Z",
         reason: "Publish maximum supported area",

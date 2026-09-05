@@ -314,6 +314,15 @@ describe("membership reward fee operations", () => {
 });
 
 describe("formal travel provider and fare policy operations workspace", () => {
+  it("gates both the route and navigation item with the formal read permission", () => {
+    expect(appSource).toContain(
+      'path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)}'
+    );
+    expect(adminLayoutSource).toContain(
+      '{ label: "出行能力状态", to: "/admin/travel-settings", icon: "行", permission: "backoffice:travel-fare:read"'
+    );
+  });
+
   it("does not present static fare tables or fake fallback results", () => {
     expect(travelSource).not.toContain("areaTravelFareRules");
     expect(travelSource).not.toContain("buildDistanceFarePreview");
