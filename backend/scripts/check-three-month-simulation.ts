@@ -1325,18 +1325,22 @@ const main = async (): Promise<void> => {
 
     const representativeAccounts = [owners[0], technicianUsers[0], customerUsers[0]];
     assert(representativeAccounts.every(Boolean), "representative login accounts are missing");
-    const passwordChecks = await Promise.all(
-      representativeAccounts.map((account) =>
-        compare(
-          account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
-          account.passwordHash
+    let passwordSamplesVerified = 0;
+    if (!seedConfig.preserveExistingPasswords) {
+      const passwordChecks = await Promise.all(
+        representativeAccounts.map((account) =>
+          compare(
+            account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
+            account.passwordHash
+          )
         )
-      )
-    );
-    assert(
-      passwordChecks.every(Boolean),
-      "representative simulation passwords do not match export"
-    );
+      );
+      assert(
+        passwordChecks.every(Boolean),
+        "representative simulation passwords do not match export"
+      );
+      passwordSamplesVerified = passwordChecks.length;
+    }
 
     const firstSlot = scheduleSlots.reduce((earliest, slot) =>
       slot.startsAt < earliest.startsAt ? slot : earliest
@@ -1354,7 +1358,7 @@ const main = async (): Promise<void> => {
             merchantOwners: owners.length,
             technicians: technicianUsers.length,
             customers: customerUsers.length,
-            passwordSamplesVerified: passwordChecks.length
+            passwordSamplesVerified
           },
           avatars: {
             assigned: simulationUsers.length,

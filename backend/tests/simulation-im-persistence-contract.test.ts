@@ -77,6 +77,12 @@ describe("three-month simulation IM persistence", () => {
     expect(checkSource).toContain("activeExperienceAccounts");
   });
 
+  it("does not compare preserved staging passwords against the local export password", () => {
+    expect(checkSource).toMatch(
+      /if \(!seedConfig\.preserveExistingPasswords\) \{\s+const passwordChecks = await Promise\.all/
+    );
+  });
+
   it("keeps the focused customer-100 account linked to an expanded real IM dataset", () => {
     expect(seedSource).toContain('conversation.firstKey === "customer-100"');
     expect(checkSource).toContain('"sim.customer.100@needo.local"');
