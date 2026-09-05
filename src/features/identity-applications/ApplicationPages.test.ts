@@ -24,6 +24,10 @@ describe("identity application page chrome", () => {
     expect(applicationUiSource).toContain("sr-only");
   });
 
+  it("translates the application section accessible explanation label", () => {
+    expect(applicationUiSource).toContain('label={`${t(title)} ${t("说明")}`}');
+  });
+
   it("keeps the application header above preview chrome and fixes the action at home-nav position", () => {
     expect(applicationUiSource).toContain('headerFrameClassName="z-[140]"');
     expect(applicationUiSource).toContain("export function ApplicationBottomAction");
