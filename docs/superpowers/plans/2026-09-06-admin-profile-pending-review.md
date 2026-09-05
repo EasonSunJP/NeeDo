@@ -4,7 +4,7 @@
 
 **Goal:** Replace the operations sidebar's hardcoded administrator identity and counts with the signed-in User's formal profile plus permission-scoped, expandable pending-order and merchant-review summaries.
 
-**Architecture:** Extend the existing `/auth/me` self projection with the user's customer-profile display name and identity display names, preserve those fields through the frontend auth contract and persisted session, then render a focused `AdminOperatorSummary` that calls the existing paginated order and merchant-application APIs. Keep detail ownership in the existing order and merchant-review pages by restoring their state from optional query parameters.
+**Architecture:** Extend the existing `/auth/me` self projection with the user's customer-profile display name and identity display names, preserve those fields through the frontend auth contract and persisted session, then render a focused `AdminOperatorSummary` that calls the existing paginated order and merchant-application APIs. The formal operations identity types are `platform` and `platform_admin`; keep detail ownership in the existing order and merchant-review pages by restoring their state from optional query parameters.
 
 **Tech Stack:** React 18, TypeScript, React Router, existing NeeDo i18n/auth/http clients, Express, Prisma, Zod, Jest/Supertest, Vitest/Testing Library.
 
@@ -414,9 +414,11 @@ export function resolveAdminRoleLabel(
   session: Pick<AuthSession, "activeIdentityId" | "currentIdentity" | "identities">,
   fallback: string
 ): string {
+  const isOperationsIdentity = (type: string) =>
+    type === "platform" || type === "platform_admin";
   const active = session.identities.find((identity) =>
-    identity.id === session.activeIdentityId && identity.type === "operations"
-  ) ?? (session.currentIdentity.type === "operations" ? session.currentIdentity : null);
+    identity.id === session.activeIdentityId && isOperationsIdentity(identity.type)
+  ) ?? (isOperationsIdentity(session.currentIdentity.type) ? session.currentIdentity : null);
   return active?.displayName?.trim() || fallback;
 }
 ```
@@ -485,7 +487,7 @@ Also cover:
 
 - no order permission means no order card and no order request;
 - no merchant-review permission means no review card and no review request;
-- `session.portal !== "admin"` or active identity not operations renders no summary;
+- `session.portal !== "admin"` or active identity not `platform`/`platform_admin` renders no summary;
 - loading, zero items, independent failures, independent retry, and 403 permission-change presentation;
 - mutual exclusion of expanded panels;
 - stale promise resolution after session id/portal change does not overwrite the new account;

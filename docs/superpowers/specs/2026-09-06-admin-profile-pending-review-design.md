@@ -80,7 +80,7 @@ session.profileDisplayName.trim()
 
 ### 4.4 角色文案
 
-侧栏副标题不再固定为“平台运营管理员”。优先展示当前 operations 身份的正式 displayName；为空时展示经过 i18n 的“运营后台成员”。账号菜单与侧栏资料卡使用同一个解析结果。
+侧栏副标题不再固定为“平台运营管理员”。优先展示当前后台身份（正式类型 `platform` 或 `platform_admin`）的 `UserIdentity.displayName`；为空时展示经过 i18n 的“运营后台成员”。账号菜单与侧栏资料卡使用同一个解析结果。
 
 角色和权限判断仍以 session.roles、session.permissions 和当前 operations 身份为准；显示文案不能授予权限。
 
@@ -173,7 +173,7 @@ GET /api/v1/ops/merchant-applications?page=1&page_size=5&status=under_review
 
 ## 8. 权限边界
 
-- 当前 session 必须是 admin portal 且当前身份是 operations，才显示运营资料摘要。
+- 当前 session 必须是 admin portal 且当前身份类型是 `platform` 或 `platform_admin`，才显示运营资料摘要。
 - 具有 `backoffice:orders:list` 才显示并请求“待处理”。
 - 具有 `ops:merchant-application:read` 才显示并请求“审核”。
 - 无权限时隐藏对应卡片，不发出请求，也不显示 403 数量。
