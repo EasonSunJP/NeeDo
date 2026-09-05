@@ -70,6 +70,7 @@ import {
 } from "./pages/merchant-admin/dispatch-center/DispatchCenterRoutePages";
 import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsPage";
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
+import { MerchantAdminNotificationsPage } from "./pages/merchant-admin/MerchantAdminNotificationsPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
 import {
@@ -1048,6 +1049,14 @@ export default function App() {
         {element}
       </RequirePermission>
     );
+  const protectPermissions = (portal: PortalScope, permissions: string[], element: ReactElement) =>
+    protect(
+      portal,
+      permissions.reduceRight<ReactElement>(
+        (child, permission) => <RequirePermission permission={permission}>{child}</RequirePermission>,
+        element
+      )
+    );
   const protectFeature = (portal: PortalScope, permission: FeaturePermission, element: ReactElement, fallbackTo?: string) =>
     protect(
       portal,
@@ -1339,6 +1348,9 @@ export default function App() {
               <Route path="/merchant-admin/inventory" element={protectFeature("merchant", "store.inventory.view", <MerchantAdminInventoryPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
+              <Route path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read", <MerchantAdminNotificationsPage view="list" />)} />
+              <Route path="/merchant-admin/notifications/compose" element={protectPermissions("merchant", ["merchant-admin:notice:create", "merchant-admin:notice:send"], <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/inbox" element={protect("merchant", <MerchantAdminNotificationsPage view="inbox" />)} />
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
@@ -1406,8 +1418,8 @@ export default function App() {
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <MembershipAnalyticsPage scope="backoffice" />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
-              <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
-              <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />
+              <Route path="/admin/notifications/compose" element={protectPermissions("admin", ["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"], <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
               <Route path="/admin/docs" element={protect("admin", <AdminDocsPage />)} />
               <Route path="/admin/docs/api" element={protect("admin", <AdminDocsPage />)} />

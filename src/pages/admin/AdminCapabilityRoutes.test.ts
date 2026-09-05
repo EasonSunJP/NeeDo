@@ -27,6 +27,10 @@ const adminLayoutSource = readFileSync(
   new URL("../../components/admin/AdminLayout.tsx", import.meta.url),
   "utf8"
 );
+const merchantAdminLayoutSource = readFileSync(
+  new URL("../../components/merchant-admin/MerchantAdminLayout.tsx", import.meta.url),
+  "utf8"
+);
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
 
@@ -128,6 +132,17 @@ describe("formal official notification workspaces", () => {
     }
     expect(notificationWorkspaceSource).toContain("受众由服务端按当前权限与店铺范围生成快照");
     expect(notificationWorkspaceSource).not.toMatch(/localStorage|sessionStorage|data\/mock|userIds|shopId/);
+  });
+
+  it("registers separately permissioned platform and merchant management routes", () => {
+    expect(appSource).toContain('path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice"');
+    expect(appSource).toContain('["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"]');
+    expect(appSource).toContain('path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read"');
+    expect(appSource).toContain('["merchant-admin:notice:create", "merchant-admin:notice:send"]');
+    expect(appSource).toContain('path="/merchant-admin/notifications/inbox" element={protect("merchant"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-official-notice"');
+    expect(merchantAdminLayoutSource).toContain('permission: "merchant-admin:notice:read"');
+    expect(merchantAdminLayoutSource).toContain('to="/merchant-admin/notifications/inbox"');
   });
 });
 

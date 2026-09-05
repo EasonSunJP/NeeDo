@@ -180,6 +180,13 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
         to: "/merchant-admin/finance",
         icon: "¥",
         children: ["店铺流水", "结算单", "分账"]
+      },
+      {
+        label: "店铺通知",
+        to: "/merchant-admin/notifications",
+        icon: "通",
+        children: ["通知列表", "定时发送", "投递回执"],
+        permission: "merchant-admin:notice:read"
       }
     ]
   },
@@ -817,12 +824,12 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
                 </label>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <button
+                <NavLink
                   className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
-                  type="button"
+                  to="/merchant-admin/notifications/inbox"
                 >
                   通知
-                </button>
+                </NavLink>
                 <NavLink
                   className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
                   to="/merchant-admin/settings"

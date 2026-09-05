@@ -53,7 +53,7 @@ const navSections: AdminNavSection[] = [
       { label: "数据中心", to: "/admin/data", icon: "▥" },
       { label: "动态管理", to: "/admin/data?module=moments", icon: "◎" },
       { label: "用户端首页轮播图", to: "/admin/carousel", icon: "播", permission: "page:backoffice-user-home-carousel", children: ["五语言", "草稿与发布", "版本回滚"] },
-      { label: "官方通知", to: "/admin/notifications", icon: "通", children: ["通知列表", "定时发送", "图文视频"] }
+      { label: "官方通知", to: "/admin/notifications", icon: "通", permission: "page:backoffice-official-notice", children: ["通知列表", "定时发送", "投递回执"] }
     ]
   },
   {
