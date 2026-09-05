@@ -1,12 +1,19 @@
+// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
-import { createElement } from "react";
+import { resolve } from "node:path";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TechnicianProfileInfoModel } from "./model";
+
+const clipboardMocks = vi.hoisted(() => ({ copyTextToClipboard: vi.fn() }));
+vi.mock("../../lib/share", () => ({ copyTextToClipboard: clipboardMocks.copyTextToClipboard }));
+
 import { TechnicianProfileInfoView } from "./TechnicianProfileInfoView";
 
-const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 const model: TechnicianProfileInfoModel = {
   publicId: "s0000000081",
@@ -67,6 +74,21 @@ function renderView(viewModel = model) {
 }
 
 describe("TechnicianProfileInfoView", () => {
+  it("copies the formal technician ID when its row is clicked", async () => {
+    clipboardMocks.copyTextToClipboard.mockReset().mockResolvedValue(true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => root.render(<MemoryRouter><TechnicianProfileInfoView model={model} /></MemoryRouter>));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="复制 NeeDo ID"]')?.click());
+
+    expect(clipboardMocks.copyTextToClipboard).toHaveBeenCalledWith("s0000000081");
+    expect(container.textContent).toContain("已复制");
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("renders the approved metrics and basic-information order", () => {
     const markup = renderView();
     const years = markup.indexOf("从业年数");
