@@ -188,6 +188,7 @@ describe("MembershipAnalyticsRepository", () => {
       "metadata",
       "card_public_id",
       "issued_by_id",
+      "event.actor_user_id IS NOT NULL",
       "JSON_LENGTH",
       "JSON_EXTRACT",
       "CONCAT"
