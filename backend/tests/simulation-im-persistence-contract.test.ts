@@ -55,6 +55,7 @@ describe("three-month simulation IM persistence", () => {
     expect(checkSource).toContain("fixedRealtimeContacts");
     expect(checkSource).toContain("fixedRealtimeConversations");
     expect(checkSource).toContain("activeExperienceAccounts");
+    expect(checkSource).toContain("const getRequiredId = <Key, Value>");
   });
 
   it("keeps the focused customer-100 account linked to an expanded real IM dataset", () => {

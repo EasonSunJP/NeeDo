@@ -30,6 +30,18 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
   }
 };
 
+const getRequiredId = <Key, Value>(
+  ids: ReadonlyMap<Key, Value>,
+  key: Key,
+  entity: string
+): Value => {
+  const value = ids.get(key);
+  if (value === undefined) {
+    throw new Error(`${entity} id is missing for ${String(key)}.`);
+  }
+  return value;
+};
+
 const readJsonRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
