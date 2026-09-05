@@ -868,6 +868,17 @@ export const authTrustGatewayTranslations: TranslationMap = {
 
 export const translations: TranslationMap = {
   "图片已过期": { "zh-Hant": "圖片已過期", ja: "画像の有効期限が切れました", en: "Image expired", ko: "이미지가 만료되었습니다" },
+  "聊天媒体本地缓存": fourLanguageTranslation("聊天媒體本機快取", "チャットメディアのローカルキャッシュ", "Local chat media cache", "채팅 미디어 로컬 캐시"),
+  "媒体已显示，但本地缓存不可用": fourLanguageTranslation("媒體已顯示，但本機快取無法使用", "メディアは表示されていますが、ローカルキャッシュは利用できません", "Media is visible, but local caching is unavailable", "미디어는 표시되지만 로컬 캐시를 사용할 수 없습니다"),
+  "查看本地副本": fourLanguageTranslation("查看本機副本", "ローカルコピーを表示", "View local copy", "로컬 사본 보기"),
+  "只有主动打开的聊天图片和视频会加密保存在当前设备；列表缩略图不会保存，清除不会删除服务器消息。": fourLanguageTranslation("只有主動開啟的聊天圖片和影片會加密儲存在目前裝置；列表縮圖不會儲存，清除不會刪除伺服器訊息。", "明示的に開いたチャットの画像と動画だけが、この端末に暗号化して保存されます。一覧のサムネイルは保存されず、キャッシュを消去してもサーバー上のメッセージは削除されません。", "Only chat images and videos you explicitly open are encrypted and saved on this device. List thumbnails are not saved, and clearing the cache does not delete server messages.", "직접 연 채팅 이미지와 동영상만 현재 기기에 암호화되어 저장됩니다. 목록 썸네일은 저장되지 않으며 캐시를 지워도 서버 메시지는 삭제되지 않습니다."),
+  "已使用": fourLanguageTranslation("已使用", "使用量", "Used", "사용 중"),
+  "本地媒体缓存读取失败": fourLanguageTranslation("無法讀取本機媒體快取", "ローカルメディアキャッシュを読み込めませんでした", "Could not read the local media cache", "로컬 미디어 캐시를 읽지 못했습니다"),
+  "本地媒体缓存清理失败，请在账户与安全中清除本机缓存": fourLanguageTranslation("本機媒體快取清理失敗，請前往帳戶與安全清除本機快取", "ローカルメディアキャッシュを消去できませんでした。アカウントとセキュリティからこの端末のキャッシュを消去してください", "Local media cache cleanup failed. Clear this device's cache in Account & Security", "로컬 미디어 캐시 정리에 실패했습니다. 계정 및 보안에서 이 기기의 캐시를 지워 주세요"),
+  "再次点击确认清除": fourLanguageTranslation("再次點擊以確認清除", "もう一度タップして消去を確定", "Tap again to confirm clearing", "다시 눌러 삭제 확인"),
+  "正在清除...": fourLanguageTranslation("正在清除...", "消去しています...", "Clearing...", "삭제 중..."),
+  "清除当前设备聊天媒体缓存": fourLanguageTranslation("清除目前裝置的聊天媒體快取", "この端末のチャットメディアキャッシュを消去", "Clear chat media cache on this device", "현재 기기의 채팅 미디어 캐시 삭제"),
+  "正在读取本地媒体...": fourLanguageTranslation("正在讀取本機媒體...", "ローカルメディアを読み込んでいます...", "Loading local media...", "로컬 미디어를 불러오는 중..."),
   "视频已过期": { "zh-Hant": "影片已過期", ja: "動画の有効期限が切れました", en: "Video expired", ko: "동영상이 만료되었습니다" },
   "图片加载失败，点击重试": { "zh-Hant": "圖片載入失敗，點擊重試", ja: "画像を読み込めませんでした。タップして再試行", en: "Image failed to load. Tap to retry", ko: "이미지를 불러오지 못했습니다. 탭하여 다시 시도하세요" },
   "视频加载失败，点击重试": { "zh-Hant": "影片載入失敗，點擊重試", ja: "動画を読み込めませんでした。タップして再試行", en: "Video failed to load. Tap to retry", ko: "동영상을 불러오지 못했습니다. 탭하여 다시 시도하세요" },

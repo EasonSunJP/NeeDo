@@ -857,6 +857,30 @@ function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage 
 }
 
 export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate {
+  if (event.type === "message.deleted" && event.payload && typeof event.payload === "object") {
+    const payload = event.payload as Partial<{
+      action: unknown;
+      conversationId: unknown;
+      messageId: unknown;
+    }>;
+    if (
+      payload.action === "privacy_expired" &&
+      typeof payload.conversationId === "number" &&
+      Number.isSafeInteger(payload.conversationId) &&
+      payload.conversationId > 0 &&
+      typeof payload.messageId === "number" &&
+      Number.isSafeInteger(payload.messageId) &&
+      payload.messageId > 0
+    ) {
+      return {
+        type: "message.deleted",
+        conversationId: String(payload.conversationId),
+        messageId: String(payload.messageId),
+        reason: "privacy_expired",
+      };
+    }
+  }
+
   if (
     ![
       "message.created",

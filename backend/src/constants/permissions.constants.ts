@@ -131,6 +131,13 @@ export const MERCHANT_NOTICE_PERMISSIONS = {
   send: "merchant-admin:notice:send"
 } as const;
 
+export const TRAVEL_FARE_PERMISSIONS = {
+  merchantRead: "merchant-admin:travel-fare-policy:read",
+  merchantWrite: "merchant-admin:travel-fare-policy:write",
+  backofficeRead: "backoffice:travel-fare:read",
+  estimateCreate: "booking:travel-estimate:create"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -1794,6 +1801,34 @@ export const SYSTEM_PERMISSIONS = [
     "立即或定时发送并重试当前店铺的正式通知"
   ),
   createPermission(
+    TRAVEL_FARE_PERMISSIONS.merchantRead,
+    "商户车费规则读取",
+    "api",
+    "travel-fare",
+    "读取当前店铺的车费规则与不可变版本历史"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.merchantWrite,
+    "商户车费规则发布",
+    "api",
+    "travel-fare",
+    "为当前店铺发布按行驶距离计算的车费规则版本"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.backofficeRead,
+    "运营车费读取",
+    "api",
+    "travel-fare",
+    "读取路线供应商状态与店铺车费规则"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.estimateCreate,
+    "预约路线估算创建",
+    "api",
+    "travel-fare",
+    "为当前顾客的上门预约创建服务端路线与车费估算"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.postList,
     "需求情报列表",
     "api",
@@ -2027,7 +2062,8 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:user-experience:read",
   "backoffice:user-group:read",
   "backoffice:user-policy:read",
-  "backoffice:ndp-experience-campaign:read"
+  "backoffice:ndp-experience-campaign:read",
+  TRAVEL_FARE_PERMISSIONS.backofficeRead
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -2037,6 +2073,7 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "customer-profile:read",
   "customer-profile:write",
   "booking:create",
+  TRAVEL_FARE_PERMISSIONS.estimateCreate,
   "order:list",
   "order:read",
   "order:cancel",
@@ -2242,6 +2279,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:shop:pricing-mode:read",
   "merchant-admin:shop:pricing-mode:update",
   "merchant-admin:shop:service-taxonomy:read",
+  TRAVEL_FARE_PERMISSIONS.merchantRead,
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -2408,6 +2446,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    TRAVEL_FARE_PERMISSIONS.merchantWrite,
     ...MERCHANT_NOTICE_PERMISSION_CODES,
     ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
     "merchant-admin:shop:service-taxonomy:write",
