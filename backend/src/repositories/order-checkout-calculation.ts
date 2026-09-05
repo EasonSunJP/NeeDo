@@ -18,6 +18,7 @@ export interface OrderCheckoutCalculationRateInput {
 export interface OrderCheckoutCalculationSource {
   currency: string;
   servicePrice: string | number;
+  travelFareAmountJpy?: number;
   addOns: Array<{
     id: number;
     status: string;
@@ -35,6 +36,7 @@ export interface OrderCheckoutCalculationSource {
 export interface OrderCheckoutCalculationSnapshot {
   baseAmountJpy: number;
   addOnAmountJpy: number;
+  travelFareAmountJpy: number;
   discountAmountJpy: number;
   checkoutAmountJpy: number;
   payableNdp: number;
@@ -47,10 +49,11 @@ export interface OrderCheckoutCalculationSnapshot {
     effectiveFrom: string;
   };
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount";
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount";
     baseAmountJpy: number;
     acceptedAddOnIds: number[];
     addOnAmountJpy: number;
+    travelFareAmountJpy: number;
     discountAmountJpy: number;
     checkoutAmountJpy: number;
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
@@ -98,6 +101,7 @@ export const calculateOrderCheckoutSnapshot = (
     ? persistedInt(affiliate.originalPriceJpy)
     : exactJpyInteger(source.servicePrice);
   const discountAmountJpy = affiliate ? persistedInt(affiliate.customerDiscountJpy) : 0;
+  const travelFareAmountJpy = persistedInt(source.travelFareAmountJpy ?? 0);
   if (
     affiliate &&
     (persistedInt(affiliate.finalPriceJpy) < 0 ||
@@ -120,7 +124,8 @@ export const calculateOrderCheckoutSnapshot = (
   }
 
   const addOnTotal = accepted.reduce((total, addOn) => total + BigInt(addOn.priceAmountJpy), 0n);
-  const checkoutAmount = BigInt(baseAmountJpy) + addOnTotal - BigInt(discountAmountJpy);
+  const checkoutAmount =
+    BigInt(baseAmountJpy) + addOnTotal + BigInt(travelFareAmountJpy) - BigInt(discountAmountJpy);
   if (
     checkoutAmount < 0n ||
     checkoutAmount > BigInt(ORDER_CHECKOUT_MAX_INT) ||
@@ -136,6 +141,7 @@ export const calculateOrderCheckoutSnapshot = (
   return {
     baseAmountJpy,
     addOnAmountJpy,
+    travelFareAmountJpy,
     discountAmountJpy,
     checkoutAmountJpy,
     payableNdp: Number(payable),
@@ -148,10 +154,11 @@ export const calculateOrderCheckoutSnapshot = (
       effectiveFrom: rate.effectiveFrom.toISOString()
     },
     calculation: {
-      formula: "base_plus_accepted_add_ons_minus_discount",
+      formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
       baseAmountJpy,
       acceptedAddOnIds: accepted.map((addOn) => addOn.id),
       addOnAmountJpy,
+      travelFareAmountJpy,
       discountAmountJpy,
       checkoutAmountJpy,
       rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"

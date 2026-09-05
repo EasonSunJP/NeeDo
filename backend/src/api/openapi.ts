@@ -9430,6 +9430,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "baseAmountJpy",
           "acceptedAddOnIds",
           "addOnAmountJpy",
+          "travelFareAmountJpy",
           "discountAmountJpy",
           "checkoutAmountJpy",
           "rateFormula"
@@ -9437,7 +9438,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           formula: {
             type: "string",
-            enum: ["base_plus_accepted_add_ons_minus_discount"]
+            enum: ["base_plus_accepted_add_ons_plus_travel_fare_minus_discount"]
           },
           baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           acceptedAddOnIds: {
@@ -9446,6 +9447,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { type: "integer", minimum: 1, maximum: safeIntegerMaximum }
           },
           addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          travelFareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           rateFormula: {
@@ -9465,6 +9467,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "status",
           "baseAmountJpy",
           "addOnAmountJpy",
+          "travelFareAmountJpy",
           "discountAmountJpy",
           "checkoutAmountJpy",
           "payableNdp",
@@ -9488,6 +9491,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          travelFareAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           payableNdp: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
@@ -18497,6 +18501,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
+                  fulfillmentAddress: { $ref: "#/components/schemas/JapaneseRouteAddress" },
+                  travelEstimatePublicId: { type: "string", format: "uuid" },
                   paymentMethod: {
                     type: "string",
                     enum: ["onsite", "bank_transfer"],
@@ -18509,7 +18515,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     minLength: 1,
                     maxLength: 512
                   }
-                }
+                },
+                allOf: [
+                  {
+                    if: { properties: { fulfillmentMode: { const: "home" } }, required: ["fulfillmentMode"] },
+                    then: { required: ["fulfillmentAddress", "travelEstimatePublicId"] }
+                  },
+                  {
+                    if: { properties: { fulfillmentMode: { const: "store" } }, required: ["fulfillmentMode"] },
+                    then: { not: { anyOf: [{ required: ["fulfillmentAddress"] }, { required: ["travelEstimatePublicId"] }] } }
+                  }
+                ]
               }
             }
           }
@@ -18531,11 +18547,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
+          "400": { description: "Validation failure or travel estimate fields on store service" },
+          "401": { description: "Authentication required" },
           "403": {
             description:
               "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
           },
-          "409": { description: "Slot unavailable or already booked" }
+          "409": { description: "Slot unavailable, estimate expired, or estimate already consumed" },
+          "422": { description: "Home estimate required, invalid, or mismatched" }
         }
       }
     },

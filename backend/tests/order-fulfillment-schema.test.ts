@@ -605,6 +605,7 @@ const expectedPrismaScalarFields: Record<string, string[]> = {
     'bookingOrderId Int @unique(map: "order_checkouts_booking_order_key") @map("booking_order_id")',
     'baseAmountJpy Int @map("base_amount_jpy")',
     'addOnAmountJpy Int @default(0) @map("add_on_amount_jpy")',
+    'travelFareAmountJpy Int @default(0) @map("travel_fare_amount_jpy")',
     'discountAmountJpy Int @default(0) @map("discount_amount_jpy")',
     'checkoutAmountJpy Int @map("checkout_amount_jpy")',
     'payableNdp Int @map("payable_ndp")',

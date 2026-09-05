@@ -13,6 +13,8 @@ import { env } from "../config/env";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
+import type { JapaneseRouteAddress } from "../services/route-distance.provider";
+import { hashRouteAddress, normalizeJapaneseRouteAddress } from "../services/route-estimate.service";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
@@ -46,6 +48,11 @@ class CheckoutTransactionAbort extends Error {
 class ReviewTransactionAbort extends Error {
   public constructor(public readonly outcome: OrderReviewMutationFailure) {
     super(outcome);
+  }
+}
+class BookingTravelEstimateAbort extends Error {
+  public constructor(public readonly reason: BookingTravelEstimateFailure) {
+    super(reason);
   }
 }
 
@@ -196,6 +203,8 @@ export interface BookingCreateRepositoryInput {
   fulfillmentMode: BookingFulfillmentMode;
   paymentMethod?: LegacyServicePaymentMethodPayload;
   note?: string | null;
+  fulfillmentAddress?: JapaneseRouteAddress;
+  travelEstimatePublicId?: string;
 }
 
 export interface BookingCreateAffiliatePreparationContext {
@@ -248,6 +257,11 @@ export interface BookingCreateMutationResult {
   order: BookingOrderPayload;
   recipientUserIds: number[];
   supersededOrders: BookingSupersededOrderNotification[];
+}
+
+export type BookingTravelEstimateFailure = "expired" | "consumed" | "mismatch" | "invalid";
+export interface BookingTravelEstimateFailureResult {
+  travelEstimateError: BookingTravelEstimateFailure;
 }
 
 export type ManualPaymentScope = { scope: "merchant"; shopId: number } | { scope: "backoffice" };
@@ -432,6 +446,7 @@ export interface OrderCheckoutPayload {
   status: BookingOrderStatusPayload;
   baseAmountJpy: number;
   addOnAmountJpy: number;
+  travelFareAmountJpy: number;
   discountAmountJpy: number;
   checkoutAmountJpy: number;
   payableNdp: number;
@@ -444,10 +459,11 @@ export interface OrderCheckoutPayload {
     effectiveFrom: string;
   };
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount";
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount";
     baseAmountJpy: number;
     acceptedAddOnIds: number[];
     addOnAmountJpy: number;
+    travelFareAmountJpy: number;
     discountAmountJpy: number;
     checkoutAmountJpy: number;
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
@@ -745,7 +761,9 @@ export interface BookingRepositoryPort {
   createBooking: (
     input: BookingCreateRepositoryInput,
     options?: BookingCreateRepositoryOptions
-  ) => Promise<BookingCreateMutationResult | BookingOrderPayload | null>;
+  ) => Promise<
+    BookingCreateMutationResult | BookingOrderPayload | BookingTravelEstimateFailureResult | null
+  >;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
   findTechnicianShopId?: (technicianProfileId: number) => Promise<number | null>;
   isShopSuspended?: (shopId: number) => Promise<boolean>;
@@ -885,9 +903,17 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
         id: true;
       };
     };
+    travelFareSnapshot: true;
   };
 }>;
 type CheckoutRecord = Prisma.OrderCheckoutGetPayload<Record<string, never>>;
+const bookingTravelEstimateInclude = {
+  policyVersion: { select: { publicId: true, version: true } },
+  matchedBand: { select: { maximumDistanceMeters: true } }
+};
+type BookingTravelEstimateRecord = Prisma.RouteEstimateGetPayload<{
+  include: typeof bookingTravelEstimateInclude;
+}>;
 type OrderReviewRecord = Prisma.OrderReviewGetPayload<{
   include: { tags: true };
 }>;
@@ -1223,7 +1249,7 @@ export class BookingRepository implements BookingRepositoryPort {
   public async createBooking(
     input: BookingCreateRepositoryInput,
     options: BookingCreateRepositoryOptions = {}
-  ): Promise<BookingCreateMutationResult | null> {
+  ): Promise<BookingCreateMutationResult | BookingTravelEstimateFailureResult | null> {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
       throw new Error("error.affiliate.checkout_hook_invalid");
     }
@@ -1391,6 +1417,55 @@ export class BookingRepository implements BookingRepositoryPort {
               return null;
             }
 
+            let travelEstimate: BookingTravelEstimateRecord | null = null;
+            if (input.fulfillmentMode === "home") {
+              if (!input.travelEstimatePublicId || !input.fulfillmentAddress) {
+                throw new BookingTravelEstimateAbort("invalid");
+              }
+              await tx.$queryRaw`
+                SELECT id FROM route_estimates
+                WHERE public_id = ${input.travelEstimatePublicId} AND deleted_at IS NULL
+                FOR UPDATE
+              `;
+              travelEstimate = await tx.routeEstimate.findUnique({
+                where: { publicId: input.travelEstimatePublicId },
+                include: bookingTravelEstimateInclude
+              });
+              if (!travelEstimate || travelEstimate.deletedAt) {
+                throw new BookingTravelEstimateAbort("invalid");
+              }
+              if (travelEstimate.consumedAt || travelEstimate.consumedByBookingOrderId) {
+                throw new BookingTravelEstimateAbort("consumed");
+              }
+              const travelValidationAt = new Date();
+              if (travelEstimate.expiresAt <= travelValidationAt) {
+                throw new BookingTravelEstimateAbort("expired");
+              }
+              const currentPolicy = await tx.shopTravelFarePolicyVersion.findFirst({
+                where: {
+                  shopId: slot.shopId,
+                  effectiveFrom: { lte: travelValidationAt },
+                  deletedAt: null
+                },
+                select: { id: true },
+                orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }]
+              });
+              const serviceId = serviceSource.affiliateServiceId;
+              if (
+                !serviceId ||
+                travelEstimate.customerUserId !== input.customerUserId ||
+                travelEstimate.shopId !== slot.shopId ||
+                travelEstimate.serviceId !== serviceId ||
+                travelEstimate.policyVersionId !== currentPolicy?.id ||
+                travelEstimate.destinationAddressHash !==
+                  hashRouteAddress(normalizeJapaneseRouteAddress(input.fulfillmentAddress))
+              ) {
+                throw new BookingTravelEstimateAbort("mismatch");
+              }
+            } else if (input.travelEstimatePublicId || input.fulfillmentAddress) {
+              throw new BookingTravelEstimateAbort("invalid");
+            }
+
             const conflict = await tx.bookingOrder.findFirst({
               where: {
                 deletedAt: null,
@@ -1525,6 +1600,43 @@ export class BookingRepository implements BookingRepositoryPort {
               include: this.orderInclude()
             });
 
+            if (travelEstimate && input.fulfillmentAddress) {
+              const consumedAt = new Date();
+              const consumed = await tx.routeEstimate.updateMany({
+                where: {
+                  id: travelEstimate.id,
+                  consumedAt: null,
+                  consumedByBookingOrderId: null,
+                  expiresAt: { gt: consumedAt },
+                  deletedAt: null
+                },
+                data: { consumedAt, consumedByBookingOrderId: order.id }
+              });
+              if (consumed.count !== 1) {
+                throw new BookingTravelEstimateAbort("consumed");
+              }
+              await tx.bookingTravelFareSnapshot.create({
+                data: {
+                  bookingOrderId: order.id,
+                  routeEstimateId: travelEstimate.id,
+                  policyVersionId: travelEstimate.policyVersionId,
+                  matchedBandId: travelEstimate.matchedBandId,
+                  policyVersionPublicId: travelEstimate.policyVersion.publicId,
+                  bandMaximumDistanceMeters: travelEstimate.matchedBand.maximumDistanceMeters,
+                  providerCode: travelEstimate.providerCode,
+                  providerRequestId: travelEstimate.providerRequestId,
+                  originAddressHash: travelEstimate.originAddressHash,
+                  destinationAddressHash: travelEstimate.destinationAddressHash,
+                  fulfillmentAddressJson: normalizeJapaneseRouteAddress(
+                    input.fulfillmentAddress
+                  ) as unknown as Prisma.InputJsonValue,
+                  distanceMeters: travelEstimate.distanceMeters,
+                  durationSeconds: travelEstimate.durationSeconds,
+                  fareAmountJpy: travelEstimate.fareAmountJpy
+                }
+              });
+            }
+
             if (supersededOrderIds.length > 0) {
               await tx.orderStatusHistory.createMany({
                 data: supersededOrderIds.map((bookingOrderId) => ({
@@ -1584,6 +1696,9 @@ export class BookingRepository implements BookingRepositoryPort {
         )
       );
     } catch (error) {
+      if (error instanceof BookingTravelEstimateAbort) {
+        return { travelEstimateError: error.reason };
+      }
       if (error instanceof BookingPendingReplacementUnavailableError) {
         return null;
       }
@@ -2148,6 +2263,7 @@ export class BookingRepository implements BookingRepositoryPort {
           bookingOrderId: current.id,
           baseAmountJpy: calculation.baseAmountJpy,
           addOnAmountJpy: calculation.addOnAmountJpy,
+          travelFareAmountJpy: calculation.travelFareAmountJpy,
           discountAmountJpy: calculation.discountAmountJpy,
           checkoutAmountJpy: calculation.checkoutAmountJpy,
           payableNdp: calculation.payableNdp,
@@ -2168,6 +2284,7 @@ export class BookingRepository implements BookingRepositoryPort {
           idempotencyKey: `checkout:${current.id}:created`,
           metadata: {
             checkoutAmountJpy: checkout.checkoutAmountJpy,
+            travelFareAmountJpy: checkout.travelFareAmountJpy,
             payableNdp: checkout.payableNdp,
             rateRuleId: checkout.ndpRateRuleId
           },
@@ -3483,7 +3600,8 @@ export class BookingRepository implements BookingRepositoryPort {
           currency: current.currency,
           servicePrice: (current.servicePriceSnapshot ?? current.priceAmount).toString(),
           addOns: current.serviceSession?.addOns ?? [],
-          affiliateAttribution: current.affiliateAttributions[0] ?? null
+          affiliateAttribution: current.affiliateAttributions[0] ?? null,
+          travelFareAmountJpy: current.travelFareSnapshot?.fareAmountJpy ?? 0
         },
         rate
       );
@@ -3723,6 +3841,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const amounts = [
       checkout.baseAmountJpy,
       checkout.addOnAmountJpy,
+      checkout.travelFareAmountJpy,
       checkout.discountAmountJpy,
       checkout.checkoutAmountJpy,
       checkout.payableNdp,
@@ -3737,15 +3856,19 @@ export class BookingRepository implements BookingRepositoryPort {
       rate.version === 0 ||
       rate.ndpUnits === 0 ||
       rate.jpyUnits === 0 ||
-      checkout.baseAmountJpy + checkout.addOnAmountJpy - checkout.discountAmountJpy !==
+      checkout.baseAmountJpy +
+          checkout.addOnAmountJpy +
+          checkout.travelFareAmountJpy -
+          checkout.discountAmountJpy !==
         checkout.checkoutAmountJpy ||
       BigInt(checkout.payableNdp) !==
         (BigInt(checkout.checkoutAmountJpy) * BigInt(rate.ndpUnits) + BigInt(rate.jpyUnits) - 1n) /
           BigInt(rate.jpyUnits) ||
-      calculation.formula !== "base_plus_accepted_add_ons_minus_discount" ||
+      calculation.formula !== "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" ||
       calculation.rateFormula !== "ceil(jpy_times_ndp_units_divided_by_jpy_units)" ||
       calculation.baseAmountJpy !== checkout.baseAmountJpy ||
       calculation.addOnAmountJpy !== checkout.addOnAmountJpy ||
+      calculation.travelFareAmountJpy !== checkout.travelFareAmountJpy ||
       calculation.discountAmountJpy !== checkout.discountAmountJpy ||
       calculation.checkoutAmountJpy !== checkout.checkoutAmountJpy ||
       !Array.isArray(calculation.acceptedAddOnIds) ||
@@ -3779,6 +3902,7 @@ export class BookingRepository implements BookingRepositoryPort {
       status: bookingOrderStatusFromDb(status),
       baseAmountJpy: checkout.baseAmountJpy,
       addOnAmountJpy: checkout.addOnAmountJpy,
+      travelFareAmountJpy: checkout.travelFareAmountJpy,
       discountAmountJpy: checkout.discountAmountJpy,
       checkoutAmountJpy: checkout.checkoutAmountJpy,
       payableNdp: checkout.payableNdp,
@@ -4154,7 +4278,8 @@ export class BookingRepository implements BookingRepositoryPort {
       },
       exchangeMatchParticipant: {
         select: { id: true }
-      }
+      },
+      travelFareSnapshot: true
     };
   }
 
