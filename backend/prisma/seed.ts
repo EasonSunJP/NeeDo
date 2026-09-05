@@ -1382,6 +1382,11 @@ const ensureSeedCustomerFoundation = async (
     scopeType: "customer_profile",
     scopeId: customerProfile.id
   });
+  await tx.userExperienceAccount.upsert({
+    where: { userId: input.userId },
+    create: { userId: input.userId, currentLevel: 1, totalExpUnits: 0n },
+    update: { deletedAt: null }
+  });
   return tx.user.update({
     where: { id: input.userId },
     data: {
