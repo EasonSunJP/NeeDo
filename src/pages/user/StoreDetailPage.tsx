@@ -736,7 +736,7 @@ function buildServiceMenuPriceRangeLabel(store: Store, industry: StoreIndustry) 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: string) {
@@ -752,7 +752,7 @@ function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: stri
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildMenuCards(store: Store, industry: StoreIndustry): MenuCard[] {
