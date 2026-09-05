@@ -25,16 +25,17 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     const updateFrame = () => {
       const viewport = window.visualViewport;
       const keyboardOpen = Boolean(viewport && isKeyboardEditor(document.activeElement));
-      const height = Math.max(
-        1,
-        Math.ceil(keyboardOpen ? viewport!.height : window.innerHeight)
-      );
+      const height = keyboardOpen
+        ? `${Math.max(1, Math.ceil(viewport!.height))}px`
+        : "100dvh";
       const top = Math.max(0, Math.floor(keyboardOpen ? viewport!.offsetTop : 0));
-      const width = Math.max(1, Math.floor(keyboardOpen ? viewport!.width : window.innerWidth));
+      const width = keyboardOpen
+        ? `${Math.max(1, Math.floor(viewport!.width))}px`
+        : "100vw";
       const left = Math.max(0, Math.floor(keyboardOpen ? viewport!.offsetLeft : 0));
-      element.style.setProperty("--im-visual-viewport-height", `${height}px`);
+      element.style.setProperty("--im-visual-viewport-height", height);
       element.style.setProperty("--im-visual-viewport-top", `${top}px`);
-      element.style.setProperty("--im-visual-viewport-width", `${width}px`);
+      element.style.setProperty("--im-visual-viewport-width", width);
       element.style.setProperty("--im-visual-viewport-left", `${left}px`);
       element.style.setProperty("--im-visual-viewport-right", keyboardOpen ? "auto" : "0px");
     };
