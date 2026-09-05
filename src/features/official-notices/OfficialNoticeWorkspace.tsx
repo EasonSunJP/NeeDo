@@ -87,6 +87,12 @@ function NoticeBlocks({ blocks }: { blocks: OfficialNoticeBlock[] | undefined })
     if (block.type === "image") return <figure key={block.id}><img alt={block.caption ?? "通知图片"} className="max-h-[420px] w-full rounded-lg object-contain" src={block.content} />{block.caption ? <figcaption className="mt-2 text-xs text-ink/50">{block.caption}</figcaption> : null}</figure>;
     if (block.type === "video") return <video className="max-h-[420px] w-full rounded-lg" controls key={block.id} src={block.content} />;
     if (block.type === "file") return <a className="font-bold text-moss underline" href={block.content} key={block.id} rel="noreferrer" target="_blank">{block.fileName ?? block.caption ?? "查看附件"}</a>;
+    if (block.type === "heading") return <h2 className="mt-4 text-xl font-black" key={block.id}>{block.content}</h2>;
+    if (block.type === "subheading") return <h3 className="mt-3 text-base font-black" key={block.id}>{block.content}</h3>;
+    if (block.type === "bullet") return <div className="flex gap-2" key={block.id}><span aria-hidden="true">•</span><p className="whitespace-pre-wrap">{block.content}</p></div>;
+    if (block.type === "numbered") return <div className="flex gap-2" key={block.id}><span aria-hidden="true">1.</span><p className="whitespace-pre-wrap">{block.content}</p></div>;
+    if (block.type === "quote") return <blockquote className="border-l-4 border-moss/40 pl-4 italic text-ink/70" key={block.id}>{block.content}</blockquote>;
+    if (block.type === "callout") return <aside className="rounded-lg border border-moss/30 bg-mint/10 p-3 font-bold" key={block.id}>{block.content}</aside>;
     return <p className="whitespace-pre-wrap" key={block.id}>{block.content}</p>;
   })}</>;
 }
