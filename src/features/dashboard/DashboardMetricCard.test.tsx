@@ -164,6 +164,9 @@ describe("DashboardMetricCard", () => {
     expect(markup).toContain('data-analytics-card-header="true"');
     expect(markup).toContain('data-analytics-detail-accessory="true"');
     expect(markup).toContain('aria-disabled="true"');
+    expect(markup).toContain("border-coral/40");
+    expect(markup).toContain("bg-coral/10");
+    expect(markup).toContain("text-coral");
     expect(markup).toMatch(/<span[^>]*data-analytics-disabled-detail="true"[^>]*>TEST<\/span>/);
     expect(markup).not.toMatch(/<button[^>]*>TEST<\/button>/);
     expect(markup.indexOf('data-analytics-detail-accessory="true"')).toBeLessThan(

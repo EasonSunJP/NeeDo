@@ -36,6 +36,9 @@ const response = (kind: "service" | "technician" | "customer", metric = "gmv") =
     categoryId: 7,
     gmvJpy: 12800,
     completedCount: 4,
+    testGmvJpy: kind === "service" ? 12800 : kind === "technician" ? 6400 : 0,
+    testCompletedCount: kind === "service" ? 4 : kind === "technician" ? 2 : 0,
+    dataComposition: kind === "service" ? "test" as const : kind === "technician" ? "mixed" as const : "formal" as const,
     registeredAt: "2026-01-01T00:00:00.000Z"
   }],
   total: 1,
@@ -79,6 +82,10 @@ describe("AnalyticsRankingPanel", () => {
     expect(container.textContent).toContain("美咲");
     expect(container.textContent).toContain("¥12,800");
     expect(container.textContent).toContain("4 单");
+    expect(
+      container.querySelector('[data-ranking-header-row="primary"]')?.classList.contains("min-h-9")
+    ).toBe(true);
+    expect(container.querySelector('[data-dashboard-test-badge="true"]')?.textContent).toBe("TEST");
 
     await act(async () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="技师排行 TOP10按完成次数排序"]')?.click();
@@ -86,6 +93,22 @@ describe("AnalyticsRankingPanel", () => {
     expect(apiMocks.analyticsRankings).toHaveBeenLastCalledWith("technician", {
       metric: "completedCount", period: "last7days", page: 1, pageSize: 10
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it.each([
+    ["service", true],
+    ["technician", true],
+    ["customer", false]
+  ] as const)("renders test composition for %s without labelling formal rows", async (kind, expected) => {
+    await act(async () => root.render(
+      <AnalyticsRankingPanel
+        kind={kind}
+        query={{ period: "last7days" }}
+        title="排行榜 TOP10"
+      />
+    ));
+
+    expect(Boolean(container.querySelector('[data-dashboard-test-badge="true"]'))).toBe(expected);
   });
 
   it("applies the selected formal service category without client-side ranking", async () => {

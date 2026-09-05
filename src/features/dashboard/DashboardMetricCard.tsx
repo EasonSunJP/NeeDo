@@ -11,6 +11,7 @@ import {
   formatDashboardValue,
   type DashboardValueUnit
 } from "./dashboardFormat";
+import { DashboardTestBadge } from "./DashboardTestBadge";
 
 export type DashboardMetricSecondary = {
   label: string;
@@ -149,15 +150,7 @@ export function DashboardMetricCard({
           </span>
         ) : metric && disabledAccessoryLabel ? (
           <span className="shrink-0" data-analytics-detail-accessory="true">
-            <span
-              aria-disabled="true"
-              aria-label={disabledAccessoryLabel}
-              className="inline-flex rounded-full border border-line bg-paper px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-ink/45"
-              data-analytics-disabled-detail="true"
-              title={disabledAccessoryLabel}
-            >
-              TEST
-            </span>
+            <DashboardTestBadge ariaLabel={disabledAccessoryLabel} disabled />
           </span>
         ) : null}
       </div>
