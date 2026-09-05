@@ -170,6 +170,8 @@ export const dashboardTranslations: Record<string, TranslationEntry> = {
   "当前范围暂无排行数据": fourLanguageTranslation("目前範圍暫無排行資料", "現在の範囲にはランキングデータがありません", "No ranking data in the current range", "현재 범위에 순위 데이터가 없습니다"),
   "排行榜数据来自测试订单": fourLanguageTranslation("排行榜資料來自測試訂單", "ランキングデータはテスト注文から取得しています", "Ranking data comes from test orders", "순위 데이터는 테스트 주문에서 가져옵니다"),
   "排行榜合计包含测试订单": fourLanguageTranslation("排行榜合計包含測試訂單", "ランキング集計にはテスト注文が含まれます", "Ranking totals include test orders", "순위 합계에 테스트 주문이 포함됩니다"),
+  "关闭数据提示": fourLanguageTranslation("關閉資料提示", "データヒントを閉じる", "Close data tooltip", "데이터 툴팁 닫기"),
+  "节点详细数据": fourLanguageTranslation("節點詳細資料", "ポイント詳細データ", "Point details", "포인트 상세 데이터"),
   "当前身份没有查看排行榜的权限": fourLanguageTranslation("目前身分沒有查看排行榜的權限", "このアカウントにはランキングを表示する権限がありません", "You do not have permission to view rankings", "현재 계정에는 순위 조회 권한이 없습니다"),
   "订单完成凭证不完整，暂时无法生成排行榜": fourLanguageTranslation("訂單完成憑證不完整，暫時無法生成排行榜", "注文完了の証跡が不完全なため、ランキングを生成できません", "Rankings cannot be generated because completion evidence is incomplete", "주문 완료 증빙이 불완전하여 순위를 생성할 수 없습니다"),
   "排行榜服务暂时不可用，请稍后重试": fourLanguageTranslation("排行榜服務暫時不可用，請稍後重試", "ランキングサービスは一時的に利用できません", "Rankings are temporarily unavailable", "순위 서비스를 일시적으로 사용할 수 없습니다"),
