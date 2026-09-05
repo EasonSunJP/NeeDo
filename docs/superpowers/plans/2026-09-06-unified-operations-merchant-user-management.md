@@ -807,7 +807,7 @@ git commit -m "feat: add scoped received reviews and amendments"
 - Produces: scoped order detail timeline based on existing order status history and comments.
 - Produces: operations comment and refund-amendment routes; no delete route.
 
-- [ ] **Step 1: Write failing date-range, scope, and append-only tests**
+- [x] **Step 1: Write failing date-range, scope, and append-only tests**
 
 Assert date presets resolve in `Asia/Tokyo` and repository bounds are half-open UTC instants:
 
@@ -820,7 +820,7 @@ expect(resolveUsagePeriod("last7days", now)).toEqual({
 
 Assert usage pages contain 10 items, merchant queries include authenticated `shopId`, and comment/refund amendment repositories only call `create`.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -831,7 +831,7 @@ npm test -- backoffice-user-usage-schema.test.ts backoffice-user-usage.repositor
 
 Expected: FAIL because user usage routes and refund amendment persistence do not exist.
 
-- [ ] **Step 3: Implement formal usage read routes**
+- [x] **Step 3: Implement formal usage read routes**
 
 Validate:
 
@@ -850,13 +850,13 @@ export const userUsageListQuerySchema = z.object({
 
 Expose platform and merchant user usage routes. Return order summary fields plus the existing formal order detail identifier. The detail route reuses `BackofficeRepository.findOrderById` and its existing timeline event mapper.
 
-- [ ] **Step 4: Add immutable refund amendment persistence**
+- [x] **Step 4: Add immutable refund amendment persistence**
 
 Create `OrderRefundAmendment` containing `bookingOrderId`, monotonic `version`, nullable corrected display reference and note, required `reason`, `revisedById`, and standard timestamps. This table changes administrative refund metadata only; payment status, ledger transactions, refund amount, and original `BookingOrder.paymentRefund*` facts remain unchanged.
 
 Use a strict body with `reason`, at least one amended metadata field, and `expectedVersion`. Create the amendment and audit row in one transaction.
 
-- [ ] **Step 5: Run backend tests and verify GREEN**
+- [x] **Step 5: Run backend tests and verify GREEN**
 
 Run:
 
@@ -868,7 +868,7 @@ npm test -- backoffice-user-usage-schema.test.ts backoffice-user-usage.repositor
 
 Expected: PASS; comments and amendments are append-only, and existing fulfillment behavior stays green.
 
-- [ ] **Step 6: Write failing UI tests and implement usage/timeline UI**
+- [x] **Step 6: Write failing UI tests and implement usage/timeline UI**
 
 Assert all presets, 10-row paging, timeline opening, and mandatory comments:
 
@@ -894,7 +894,7 @@ npm test -- src/features/platform-user-management/UserUsageList.test.tsx src/fea
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 6**
+- [x] **Step 7: Commit Task 6**
 
 ```bash
 git add backend/prisma backend/src backend/tests src/components/admin src/features/platform-user-management

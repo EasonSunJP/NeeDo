@@ -9,6 +9,7 @@ import { platformUserManagementApi } from "./api";
 import type { PlatformManagedUserDetail, UserDirectoryScope } from "./types";
 import { UserMembershipAdjustmentDialog } from "./UserMembershipAdjustmentDialog";
 import { UserReceivedReviews } from "./UserReceivedReviews";
+import { UserUsageList } from "./UserUsageList";
 
 type DetailState = {
   loading: boolean;
@@ -62,6 +63,7 @@ export function UnifiedUserDetailDrawer({
             multiplier: <UserMembershipAdjustmentDialog currentValue={user.membership.experienceMultiplier} expectedLockVersion={user.membership.lockVersion} kind="multiplier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />
           } : undefined}
           reviewContent={<UserReceivedReviews canAmend={scope === "operations" && user.capabilities.reviewAmend} scope={scope} userId={user.id} />}
+          usageContent={<UserUsageList canComment={scope === "operations" && user.capabilities.timelineCommentWrite} canRefundAmend={scope === "operations" && user.capabilities.refundAmend} scope={scope} userId={user.id} />}
         />
         {scope === "operations" && user.capabilities.partnerWrite ? <PartnerMarkerEditor userId={user.id} /> : null}
       </div> : null}

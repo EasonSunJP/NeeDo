@@ -6808,6 +6808,82 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           version: { type: "integer", minimum: 1 }
         }
       },
+      BackofficeUserUsageRefund: {
+        type: "object",
+        required: ["exists", "displayReference", "note", "amendmentVersion"],
+        properties: {
+          exists: { type: "boolean" },
+          displayReference: { type: ["string", "null"] },
+          note: { type: ["string", "null"] },
+          amendmentVersion: { type: "integer", minimum: 0 }
+        }
+      },
+      BackofficeUserUsage: {
+        type: "object",
+        required: ["id", "orderNo", "status", "paymentStatus", "serviceName", "shopName", "technicianName", "startsAt", "endsAt", "priceAmount", "currency", "refund"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          orderNo: { type: "string" },
+          status: { type: "string" },
+          paymentStatus: { type: "string" },
+          serviceName: { type: "string" },
+          shopName: { type: "string" },
+          technicianName: { type: ["string", "null"] },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          priceAmount: { type: "number" },
+          currency: { type: "string" },
+          refund: { $ref: "#/components/schemas/BackofficeUserUsageRefund" }
+        }
+      },
+      BackofficeUserUsagePage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/BackofficeUserUsage" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", enum: [10] }
+        }
+      },
+      BackofficeUserUsageTimelineEntry: {
+        type: "object",
+        required: ["id", "type", "code", "occurredAt", "actorName", "body"],
+        properties: {
+          id: { type: "string" },
+          type: { type: "string", enum: ["order_created", "status", "service", "comment", "refund"] },
+          code: { type: "string" },
+          occurredAt: { type: "string", format: "date-time" },
+          actorName: { type: ["string", "null"] },
+          body: { type: ["string", "null"] }
+        }
+      },
+      BackofficeUserUsageTimeline: {
+        type: "object",
+        required: ["order", "timeline"],
+        properties: {
+          order: { $ref: "#/components/schemas/BackofficeUserUsage" },
+          timeline: { type: "array", items: { $ref: "#/components/schemas/BackofficeUserUsageTimelineEntry" } }
+        }
+      },
+      BackofficeUserUsageCommentInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["body"],
+        properties: { body: { type: "string", minLength: 1, maxLength: 2000 } }
+      },
+      BackofficeUserRefundAmendmentInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason", "expectedVersion"],
+        anyOf: [{ required: ["displayReference"] }, { required: ["note"] }],
+        properties: {
+          displayReference: { type: ["string", "null"], maxLength: 120 },
+          note: { type: ["string", "null"], maxLength: 500 },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          expectedVersion: { type: "integer", minimum: 0 }
+        }
+      },
       PlatformPartnerProfile: {
         type: "object",
         additionalProperties: false,
@@ -21119,6 +21195,68 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/usages`]: {
+      get: {
+        operationId: "listBackofficeUserUsages",
+        tags: ["User Management"],
+        summary: "List a user's service usages in Tokyo natural-day ranges",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [
+          idPathParameter("userId"),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", enum: [10], default: 10 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "period", in: "query", schema: { type: "string", enum: ["last7days", "thisWeek", "last30days", "thisMonth", "thisYear", "custom"], default: "last30days" } },
+          { name: "from", in: "query", schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("User usage page", { $ref: "#/components/schemas/BackofficeUserUsagePage" }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/usages/{orderId}`]: {
+      get: {
+        operationId: "getBackofficeUserUsageTimeline",
+        tags: ["User Management"],
+        summary: "Read the immutable fulfillment timeline for one user order",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [idPathParameter("userId"), idPathParameter("orderId")],
+        responses: {
+          "200": jsonDataResponse("User usage timeline", { $ref: "#/components/schemas/BackofficeUserUsageTimeline" }),
+          "404": { description: "Order is not owned by this user" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/usages/{orderId}/comments`]: {
+      post: {
+        operationId: "appendBackofficeUserUsageComment",
+        tags: ["User Management"],
+        summary: "Append an operations-only timeline comment",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:user-usage:comment",
+        parameters: [idPathParameter("userId"), idPathParameter("orderId")],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeUserUsageCommentInput" } } } },
+        responses: { "201": { description: "Comment appended" }, "404": { description: "Order not found" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/users/{userId}/usages/{orderId}/refund-amendments`]: {
+      post: {
+        operationId: "appendBackofficeUserRefundAmendment",
+        tags: ["User Management"],
+        summary: "Append an administrative refund metadata correction",
+        description: "Does not alter payment status, refund amount, ledger transactions, or original booking refund facts.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:user-refund:amend",
+        parameters: [idPathParameter("userId"), idPathParameter("orderId")],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeUserRefundAmendmentInput" } } } },
+        responses: { "201": { description: "Refund amendment appended" }, "404": { description: "Order not found" }, "409": { description: "Version conflict" }, "422": { description: "No refund fact exists" } }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/reviews/{reviewId}/amendments`]: {
       post: {
         operationId: "amendBackofficeUserReview",
@@ -24416,6 +24554,36 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" }
         }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/users/{userId}/usages`]: {
+      get: {
+        operationId: "listMerchantUserUsages",
+        tags: ["User Management"],
+        summary: "List this shop's service usages for a user",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:customers:list",
+        parameters: [
+          idPathParameter("userId"),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", enum: [10], default: 10 } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "period", in: "query", schema: { type: "string", enum: ["last7days", "thisWeek", "last30days", "thisMonth", "thisYear", "custom"], default: "last30days" } },
+          { name: "from", in: "query", schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: { "200": jsonDataResponse("Scoped user usage page", { $ref: "#/components/schemas/BackofficeUserUsagePage" }) }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/users/{userId}/usages/{orderId}`]: {
+      get: {
+        operationId: "getMerchantUserUsageTimeline",
+        tags: ["User Management"],
+        summary: "Read one fulfillment timeline scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:customers:list",
+        parameters: [idPathParameter("userId"), idPathParameter("orderId")],
+        responses: { "200": jsonDataResponse("Scoped usage timeline", { $ref: "#/components/schemas/BackofficeUserUsageTimeline" }), "404": { description: "Order absent from this shop" } }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {

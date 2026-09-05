@@ -22,7 +22,10 @@ import {
   type UserDirectoryScope,
   type UserMembershipAdjustmentInput,
   type ReceivedUserReview,
-  type UserReviewAmendmentInput
+  type UserReviewAmendmentInput,
+  type UserUsage,
+  type UserUsageQuery,
+  type UserUsageTimeline
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -379,6 +382,42 @@ const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
   };
 };
 
+const decodeUserUsage = (value: unknown): UserUsage => {
+  const raw = record(value);
+  const refund = record(raw.refund);
+  return {
+    id: integer(raw.id), orderNo: string(raw.orderNo), status: string(raw.status),
+    paymentStatus: string(raw.paymentStatus), serviceName: string(raw.serviceName),
+    shopName: string(raw.shopName), technicianName: nullableString(raw.technicianName),
+    startsAt: timestamp(raw.startsAt), endsAt: timestamp(raw.endsAt),
+    priceAmount: number(raw.priceAmount), currency: string(raw.currency),
+    refund: {
+      exists: boolean(refund.exists),
+      displayReference: nullableString(refund.displayReference),
+      note: nullableString(refund.note),
+      amendmentVersion: integer(refund.amendmentVersion)
+    }
+  };
+};
+
+const decodeUserUsageTimeline = (value: unknown): UserUsageTimeline => {
+  const raw = record(value);
+  return {
+    order: decodeUserUsage(raw.order),
+    timeline: array(raw.timeline).map((item) => {
+      const event = record(item);
+      return {
+        id: string(event.id),
+        type: enumValue(event.type, ["order_created", "status", "service", "comment", "refund"] as const),
+        code: string(event.code),
+        occurredAt: timestamp(event.occurredAt),
+        actorName: nullableString(event.actorName),
+        body: nullableString(event.body)
+      };
+    })
+  };
+};
+
 const pageQuery = (query: PageQuery): Record<string, ApiQueryValue> => ({
   page: query.page,
   pageSize: query.page_size
@@ -425,6 +464,25 @@ export const platformUserManagementApi = {
       `/backoffice/reviews/${reviewId}/amendments`,
       { method: "POST", body }
     );
+  },
+  async listUsage(scope: UserDirectoryScope, userId: number, query: UserUsageQuery = {}) {
+    const prefix = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodePage(
+      await httpClient.request<unknown>(`${prefix}/${userId}/usages`, {
+        query: { ...query, page: query.page ?? 1, page_size: 10 }
+      }),
+      decodeUserUsage
+    );
+  },
+  async getUsageTimeline(scope: UserDirectoryScope, userId: number, orderId: number) {
+    const prefix = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodeUserUsageTimeline(await httpClient.request<unknown>(`${prefix}/${userId}/usages/${orderId}`));
+  },
+  appendUsageComment(userId: number, orderId: number, body: string) {
+    return httpClient.request<{ commentId: number }>(`/backoffice/users/${userId}/usages/${orderId}/comments`, { method: "POST", body: { body } });
+  },
+  amendUsageRefund(userId: number, orderId: number, body: { displayReference?: string | null; note?: string | null; reason: string; expectedVersion: number }) {
+    return httpClient.request<{ orderId: number; version: number }>(`/backoffice/users/${userId}/usages/${orderId}/refund-amendments`, { method: "POST", body });
   },
   async listGroups(query: PageQuery = {}) {
     return decodePage(

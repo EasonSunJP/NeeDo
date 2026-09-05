@@ -130,6 +130,28 @@ describe("platformUserManagementApi", () => {
     );
   });
 
+  it("uses scoped ten-row usage reads, timeline, comments and refund amendments", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 10 })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ commentId: 201 })
+      .mockResolvedValueOnce({ orderId: 88, version: 1 });
+    await platformUserManagementApi.listUsage("merchant", 41, { page: 1, page_size: 10, period: "thisMonth" });
+    await expect(platformUserManagementApi.getUsageTimeline("merchant", 41, 88)).rejects.toThrow("Invalid user management response");
+    await platformUserManagementApi.appendUsageComment(41, 88, "Customer contacted");
+    await platformUserManagementApi.amendUsageRefund(41, 88, { note: "Confirmed", reason: "Evidence", expectedVersion: 0 });
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/merchant-admin/users/41/usages", {
+      query: { page: 1, page_size: 10, period: "thisMonth" }
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/merchant-admin/users/41/usages/88");
+    expect(httpClient.request).toHaveBeenNthCalledWith(3, "/backoffice/users/41/usages/88/comments", {
+      method: "POST", body: { body: "Customer contacted" }
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(4, "/backoffice/users/41/usages/88/refund-amendments", {
+      method: "POST", body: { note: "Confirmed", reason: "Evidence", expectedVersion: 0 }
+    });
+  });
+
   it("rejects malformed responses instead of accepting legacy local data", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({ list: [{ id: "not-an-id" }], total: 1, page: 1, page_size: 20 });
 

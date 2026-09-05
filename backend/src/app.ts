@@ -23,6 +23,8 @@ import type { MerchantShopContextRepositoryPort } from "./repositories/merchant-
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
 import type { BackofficeUserReviewRepositoryPort } from "./repositories/backoffice-user-review.repository";
 import type { BackofficeUserReviewService } from "./services/backoffice-user-review.service";
+import type { BackofficeUserUsageRepositoryPort } from "./repositories/backoffice-user-usage.repository";
+import type { BackofficeUserUsageService } from "./services/backoffice-user-usage.service";
 import type {
   AffiliateTaskRepositoryPort,
   AffiliateTaskService
@@ -153,6 +155,7 @@ import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes"
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBackofficeUserReviewRoutes } from "./routes/backoffice-user-review.routes";
+import { createBackofficeUserUsageRoutes } from "./routes/backoffice-user-usage.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
@@ -381,6 +384,16 @@ export interface AppDependencies {
   backofficeUserReviewService?: Pick<
     BackofficeUserReviewService,
     "listForOperations" | "listForMerchant" | "amend"
+  >;
+  backofficeUserUsageRepository?: BackofficeUserUsageRepositoryPort;
+  backofficeUserUsageService?: Pick<
+    BackofficeUserUsageService,
+    | "listForOperations"
+    | "listForMerchant"
+    | "getTimelineForOperations"
+    | "getTimelineForMerchant"
+    | "appendComment"
+    | "amendRefund"
   >;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
   platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
@@ -623,6 +636,10 @@ export const createApp = (
   mount(
     ["backoffice", "merchant-admin"],
     createBackofficeUserReviewRoutes(config, resolvedDependencies)
+  );
+  mount(
+    ["backoffice", "merchant-admin"],
+    createBackofficeUserUsageRoutes(config, resolvedDependencies)
   );
   mount("backoffice", createMerchantSaasBillingRoutes(config, resolvedDependencies));
   mount("shared", createImMediaRoutes(config, resolvedDependencies));

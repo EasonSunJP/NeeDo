@@ -268,13 +268,15 @@ export function FormalManagedUserDetailPanel({
   detail,
   initialTab = "基础资料",
   membershipActions,
-  reviewContent
+  reviewContent,
+  usageContent
 }: {
   actionContent?: ReactNode;
   detail: PlatformManagedUserDetail;
   initialTab?: CustomerDetailTab;
   membershipActions?: { tier?: ReactNode; multiplier?: ReactNode };
   reviewContent?: ReactNode;
+  usageContent?: ReactNode;
 }) {
   const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
@@ -324,7 +326,7 @@ export function FormalManagedUserDetailPanel({
 
       <FormalTabs active={activeTab} idPrefix={panelId} items={customerTabs} localization={localization} onChange={setActiveTab} />
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
-        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent)}
+        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent)}
       </FormalTabPanels>
     </article>
   );
@@ -339,7 +341,8 @@ function renderManagedUserTab(
   detail: PlatformManagedUserDetail,
   review: BackofficeReviewSummaryPayload | null,
   localization: FormalLocalization,
-  reviewContent?: ReactNode
+  reviewContent?: ReactNode,
+  usageContent?: ReactNode
 ) {
   if (tab === "基础资料") return <FormalSectionCard localization={localization} title="基础资料"><DetailGrid items={localizeDetailItems([
     { label: "用户名", value: detail.username },
@@ -371,10 +374,10 @@ function renderManagedUserTab(
     <FormalSectionCard localization={localization} title="身份"><div className="flex flex-wrap gap-2">{detail.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`} tone="blue">{identity.displayName ?? identity.type}</Badge>)}</div></FormalSectionCard>
   </>;
 
-  return <AuditTimeline events={detail.audit.list.map((event) => ({
+  return <>{usageContent}<AuditTimeline events={detail.audit.list.map((event) => ({
     ...event,
     metadata: event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata as Record<string, unknown> : null
-  }))} localization={localization} title="用户动态" />;
+  }))} localization={localization} title="用户动态" /></>;
 }
 
 function useFormalLocalization(): FormalLocalization {

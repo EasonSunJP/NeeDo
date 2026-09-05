@@ -6,7 +6,15 @@ import { UnifiedUserDetailDrawer } from "./UnifiedUserDetailDrawer";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const state = vi.hoisted(() => ({ getUser: vi.fn(), listReceivedReviews: vi.fn(), amendReview: vi.fn() }));
+const state = vi.hoisted(() => ({
+  getUser: vi.fn(),
+  listReceivedReviews: vi.fn(),
+  amendReview: vi.fn(),
+  listUsage: vi.fn(),
+  getUsageTimeline: vi.fn(),
+  appendUsageComment: vi.fn(),
+  amendUsageRefund: vi.fn()
+}));
 
 vi.mock("./api", () => ({ platformUserManagementApi: state }));
 vi.mock("../../components/ui/Drawer", () => ({
@@ -60,6 +68,10 @@ describe("UnifiedUserDetailDrawer", () => {
     state.getUser.mockReset().mockResolvedValue(detail);
     state.listReceivedReviews.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
     state.amendReview.mockReset();
+    state.listUsage.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    state.getUsageTimeline.mockReset();
+    state.appendUsageComment.mockReset();
+    state.amendUsageRefund.mockReset();
     window.localStorage.setItem("needo.language", "zh");
     window.localStorage.setItem("needo.language.mode", "manual");
     container = document.createElement("div");

@@ -1170,6 +1170,7 @@ model User {
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
   revisedOrderReviewAmendments          OrderReviewAmendment[]              @relation("OrderReviewAmendmentReviser")
+  revisedOrderRefundAmendments          OrderRefundAmendment[]              @relation("OrderRefundAmendmentReviser")
   assignedBackofficeTags                BackofficeProfileTag[]              @relation("BackofficeProfileTagAssigner")
   orderTimelineComments                 OrderTimelineComment[]              @relation("OrderTimelineCommentActor")
   pricingModeUpdates                    Shop[]                              @relation("ShopPricingModeUpdatedBy")
@@ -3899,6 +3900,7 @@ model BookingOrder {
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
   performanceRevisions           OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionBookingOrder")
+  refundAmendments               OrderRefundAmendment[]
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -4430,6 +4432,29 @@ model OrderTimelineComment {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("order_timeline_comments")
+}
+
+model OrderRefundAmendment {
+  id               Int       @id @default(autoincrement())
+  publicId         String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  bookingOrderId   Int       @map("booking_order_id")
+  version          Int
+  displayReference String?   @map("display_reference") @db.VarChar(120)
+  note             String?   @db.VarChar(500)
+  reason           String    @db.VarChar(500)
+  revisedById      Int       @map("revised_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  bookingOrder BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  revisedBy   User         @relation("OrderRefundAmendmentReviser", fields: [revisedById], references: [id], onDelete: Restrict)
+
+  @@unique([bookingOrderId, version], map: "order_refund_amendments_order_version_key")
+  @@index([bookingOrderId, createdAt, deletedAt], map: "order_refund_amendments_order_created_idx")
+  @@index([revisedById])
+  @@index([deletedAt])
+  @@map("order_refund_amendments")
 }
 
 model OrderStatusHistory {

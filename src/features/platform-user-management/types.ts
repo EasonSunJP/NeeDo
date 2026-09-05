@@ -49,6 +49,45 @@ export type UserReviewAmendmentInput = {
   expectedVersion: number;
 };
 
+export type UserUsagePeriod = "last7days" | "thisWeek" | "last30days" | "thisMonth" | "thisYear" | "custom";
+export type UserUsageQuery = {
+  page?: number;
+  page_size?: 10;
+  keyword?: string;
+  period?: UserUsagePeriod;
+  from?: string;
+  to?: string;
+};
+export type UserUsageRefund = {
+  exists: boolean;
+  displayReference: string | null;
+  note: string | null;
+  amendmentVersion: number;
+};
+export type UserUsage = {
+  id: number;
+  orderNo: string;
+  status: string;
+  paymentStatus: string;
+  serviceName: string;
+  shopName: string;
+  technicianName: string | null;
+  startsAt: string;
+  endsAt: string;
+  priceAmount: number;
+  currency: string;
+  refund: UserUsageRefund;
+};
+export type UserUsageTimelineEntry = {
+  id: string;
+  type: "order_created" | "status" | "service" | "comment" | "refund";
+  code: string;
+  occurredAt: string;
+  actorName: string | null;
+  body: string | null;
+};
+export type UserUsageTimeline = { order: UserUsage; timeline: UserUsageTimelineEntry[] };
+
 export type PlatformManagedUser = {
   id: number;
   needoId: string;
