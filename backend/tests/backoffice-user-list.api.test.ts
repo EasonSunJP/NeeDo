@@ -9,6 +9,7 @@ describe("backoffice all-user API", () => {
           id: 41,
           needoId: "u0000000041",
           username: "Mia",
+          displayName: "Mia",
           email: "mia@example.test",
           phone: null,
           phoneBound: false,
@@ -25,6 +26,9 @@ describe("backoffice all-user API", () => {
           experience: { currentLevel: 1, totalExpUnits: "0" },
           ndpBalance: { available: 0, frozen: 0 },
           bookingCount: 0,
+          city: "Tokyo",
+          privacyMode: true,
+          privacyScope: "limited",
           lastLoginAt: null,
           createdAt: "2026-09-01T12:00:00.000Z",
           updatedAt: "2026-09-01T12:00:00.000Z"
@@ -41,19 +45,38 @@ describe("backoffice all-user API", () => {
     const token = await fixture.loginAsAdmin();
 
     const response = await request(fixture.app)
-      .get("/api/v1/backoffice/users?page=1&pageSize=20&identityType=customer&state=active")
+      .get(
+        "/api/v1/backoffice/users?page=1&pageSize=20&identityType=customer&state=active&city=Tokyo&emailState=set&privacy=enabled&minBookings=2&maxBookings=20&sortBy=city&sortDirection=desc"
+      )
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
     expect(response.body.data.list[0]).toMatchObject({ needoId: "u0000000041" });
     expect(JSON.stringify(response.body)).not.toMatch(/passwordHash|otp|accessToken|refreshToken/);
     expect(listManagedUsers).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 1, pageSize: 20, identityType: "customer", state: "active" }),
+      expect.objectContaining({
+        scope: "platform",
+        page: 1,
+        pageSize: 20,
+        identityType: "customer",
+        state: "active",
+        city: "Tokyo",
+        emailState: "set",
+        privacy: "enabled",
+        minBookings: 2,
+        maxBookings: 20,
+        sortBy: "city",
+        sortDirection: "desc"
+      }),
       expect.any(Date)
     );
 
     await request(fixture.app)
       .get("/api/v1/backoffice/users?minLevel=101")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/users?minBookings=10&maxBookings=2")
       .set("Authorization", `Bearer ${token}`)
       .expect(400);
     await request(fixture.app).get("/api/v1/backoffice/users").expect(401);

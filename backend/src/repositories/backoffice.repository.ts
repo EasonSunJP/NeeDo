@@ -96,7 +96,7 @@ const PAID_PLATFORM_TIER_CODES = [
   PlatformMembershipTierCode.BLACK_DIAMOND
 ];
 
-const buildManagedUserSelect = (occurredAt: Date) =>
+const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
   Prisma.validator<Prisma.UserSelect>()({
     id: true,
     needoId: true,
@@ -145,10 +145,13 @@ const buildManagedUserSelect = (occurredAt: Date) =>
         age: true,
         heightCm: true,
         languages: true,
+        visibility: true,
         deletedAt: true
       }
     },
-    technicianProfile: { select: { id: true, displayName: true, deletedAt: true } },
+    technicianProfile: {
+      select: { id: true, displayName: true, city: true, visibility: true, deletedAt: true }
+    },
     ownedShops: { where: { deletedAt: null }, select: { id: true, name: true } },
     experienceAccount: {
       select: { currentLevel: true, totalExpUnits: true, deletedAt: true }
@@ -200,7 +203,16 @@ const buildManagedUserSelect = (occurredAt: Date) =>
       orderBy: [{ provider: "asc" }, { id: "asc" }],
       select: { provider: true }
     },
-    _count: { select: { bookingOrders: { where: { deletedAt: null } } } }
+    _count: {
+      select: {
+        bookingOrders: {
+          where: {
+            deletedAt: null,
+            ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {})
+          }
+        }
+      }
+    }
   });
 
 type ManagedUserRecord = Prisma.UserGetPayload<{
@@ -408,7 +420,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public async listManagedUsers(
-    input: BackofficeManagedUserListQuery,
+    input: BackofficeScope & BackofficeManagedUserListQuery,
     occurredAt: Date
   ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
     const pagination = toPrismaPagination(input);
@@ -416,10 +428,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const [rows, total] = await Promise.all([
       this.client.user.findMany({
         where,
-        select: buildManagedUserSelect(occurredAt),
+        select: buildManagedUserSelect(occurredAt, input),
         skip: pagination.skip,
         take: pagination.take,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        orderBy: this.managedUserOrderBy(input)
       }),
       this.client.user.count({ where })
     ]);
@@ -437,7 +449,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Promise<BackofficeManagedUserDetailPayload | null> {
     const user = await this.client.user.findFirst({
       where: { id: userId, deletedAt: null },
-      select: buildManagedUserSelect(occurredAt)
+      select: buildManagedUserSelect(occurredAt, { scope: "platform" })
     });
     if (!user) return null;
     const [balances, totalBookings, completedBookings, completedSpend, auditTotal, auditRows] =
@@ -1719,10 +1731,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private async managedUserWhere(
-    input: BackofficeManagedUserListQuery,
+    input: BackofficeScope & BackofficeManagedUserListQuery,
     occurredAt: Date
   ): Promise<Prisma.UserWhereInput> {
     const conditions: Prisma.UserWhereInput[] = [];
+    if (input.scope === "merchant") {
+      conditions.push({
+        bookingOrders: { some: { shopId: input.shopId, deletedAt: null } }
+      });
+    }
     if (input.keyword) {
       conditions.push({
         OR: [
@@ -1731,7 +1748,50 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           { email: { contains: input.keyword } },
           { phone: { contains: input.keyword } },
           { customerProfile: { is: { displayName: { contains: input.keyword } } } },
-          { technicianProfile: { is: { displayName: { contains: input.keyword } } } }
+          { customerProfile: { is: { city: { contains: input.keyword } } } },
+          { technicianProfile: { is: { displayName: { contains: input.keyword } } } },
+          { technicianProfile: { is: { city: { contains: input.keyword } } } }
+        ]
+      });
+    }
+    if (input.city) {
+      conditions.push({
+        OR: [
+          {
+            customerProfile: {
+              is: { city: { contains: input.city }, deletedAt: null }
+            }
+          },
+          {
+            technicianProfile: {
+              is: { city: { contains: input.city }, deletedAt: null }
+            }
+          }
+        ]
+      });
+    }
+    if (input.emailState) {
+      conditions.push(input.emailState === "set" ? { email: { not: "" } } : { email: "" });
+    }
+    if (input.privacy) {
+      const visibility =
+        input.privacy === "enabled"
+          ? { not: "public" }
+          : input.privacy === "disabled"
+            ? "public"
+            : input.privacy;
+      conditions.push({
+        OR: [
+          {
+            customerProfile: {
+              is: { visibility, deletedAt: null }
+            }
+          },
+          {
+            technicianProfile: {
+              is: { visibility, deletedAt: null }
+            }
+          }
         ]
       });
     }
@@ -1819,7 +1879,55 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       });
       conditions.push({ id: { in: walletRows.map((wallet) => wallet.ownerId) } });
     }
+    if (input.minBookings !== undefined || input.maxBookings !== undefined) {
+      const bookingCounts = await this.client.bookingOrder.groupBy({
+        by: ["customerUserId"],
+        where: {
+          deletedAt: null,
+          ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+        },
+        _count: { _all: true }
+      });
+      if ((input.minBookings ?? 0) > 0) {
+        conditions.push({
+          id: {
+            in: bookingCounts
+              .filter(
+                (row) =>
+                  row._count._all >= (input.minBookings ?? 0) &&
+                  (input.maxBookings === undefined || row._count._all <= input.maxBookings)
+              )
+              .map((row) => row.customerUserId)
+          }
+        });
+      } else if (input.maxBookings !== undefined) {
+        conditions.push({
+          NOT: {
+            id: {
+              in: bookingCounts
+                .filter((row) => row._count._all > input.maxBookings!)
+                .map((row) => row.customerUserId)
+            }
+          }
+        });
+      }
+    }
     return { deletedAt: null, ...(conditions.length > 0 ? { AND: conditions } : {}) };
+  }
+
+  private managedUserOrderBy(
+    input: BackofficeManagedUserListQuery
+  ): Prisma.UserOrderByWithRelationInput[] {
+    const direction = input.sortDirection;
+    const primary: Prisma.UserOrderByWithRelationInput =
+      input.sortBy === "displayName"
+        ? { customerProfile: { displayName: direction } }
+        : input.sortBy === "email"
+          ? { email: direction }
+          : input.sortBy === "city"
+            ? { customerProfile: { city: direction } }
+            : { createdAt: direction };
+    return [primary, { id: "desc" }];
   }
 
   private managedUserTierWhere(
@@ -1937,6 +2045,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     ndpBalance: { available: number; frozen: number } | undefined
   ): BackofficeManagedUserPayload {
     const customerProfile = user.customerProfile?.deletedAt ? null : user.customerProfile;
+    const technicianProfile = user.technicianProfile?.deletedAt ? null : user.technicianProfile;
+    const rawPrivacyScope = customerProfile?.visibility ?? technicianProfile?.visibility ?? null;
+    const privacyScope =
+      rawPrivacyScope === "public" ||
+      rawPrivacyScope === "privateAll" ||
+      rawPrivacyScope === "limited" ||
+      rawPrivacyScope === "network"
+        ? rawPrivacyScope
+        : null;
     const entitlement = user.platformMembershipEntitlements[0] ?? null;
     const tierCode = entitlement
       ? entitlement.tierVersion.tier.code === PlatformMembershipTierCode.BLACK_DIAMOND
@@ -1956,6 +2073,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       id: user.id,
       needoId: user.needoId,
       username: user.username,
+      displayName: customerProfile?.displayName ?? technicianProfile?.displayName ?? user.username,
       email: user.email,
       phone: user.phone,
       emailBound: user.emailVerifiedAt !== null,
@@ -1993,6 +2111,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           : null,
       ndpBalance: ndpBalance ?? { available: 0, frozen: 0 },
       bookingCount: user._count.bookingOrders,
+      city: customerProfile?.city ?? technicianProfile?.city ?? null,
+      privacyMode: privacyScope !== null && privacyScope !== "public",
+      privacyScope,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString()

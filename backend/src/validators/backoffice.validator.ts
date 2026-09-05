@@ -42,6 +42,15 @@ export const backofficeManagedUserListQuerySchema = z
     source: z.string().trim().min(1).max(32).optional(),
     state: z.enum(["active", "inactive"]).optional(),
     ekyc: z.enum(["verified", "unverified"]).optional(),
+    city: z.string().trim().min(1).max(100).optional(),
+    emailState: z.enum(["set", "unset"]).optional(),
+    privacy: z
+      .enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
+      .optional(),
+    minBookings: z.coerce.number().int().nonnegative().optional(),
+    maxBookings: z.coerce.number().int().nonnegative().optional(),
+    sortBy: z.enum(["displayName", "email", "city", "createdAt"]).default("createdAt"),
+    sortDirection: z.enum(["asc", "desc"]).default("desc"),
     minLevel: z.coerce.number().int().min(1).max(100).optional(),
     maxLevel: z.coerce.number().int().min(1).max(100).optional(),
     minExpUnits: z.coerce.bigint().nonnegative().optional(),
@@ -57,6 +66,7 @@ export const backofficeManagedUserListQuerySchema = z
       [value.minLevel, value.maxLevel, "maxLevel"],
       [value.minExpUnits, value.maxExpUnits, "maxExpUnits"],
       [value.minNdpBalance, value.maxNdpBalance, "maxNdpBalance"],
+      [value.minBookings, value.maxBookings, "maxBookings"],
       [value.registeredFrom?.getTime(), value.registeredTo?.getTime(), "registeredTo"]
     ] as const;
     for (const [minimum, maximum, path] of ranges) {

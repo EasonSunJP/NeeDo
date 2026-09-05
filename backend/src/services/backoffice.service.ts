@@ -470,6 +470,7 @@ export interface BackofficeManagedUserPayload {
   id: number;
   needoId: string;
   username: string;
+  displayName: string;
   email: string;
   phone: string | null;
   emailBound: boolean;
@@ -486,6 +487,9 @@ export interface BackofficeManagedUserPayload {
   experience: BackofficeManagedUserExperiencePayload | null;
   ndpBalance: { available: number; frozen: number };
   bookingCount: number;
+  city: string | null;
+  privacyMode: boolean;
+  privacyScope: "public" | "privateAll" | "limited" | "network" | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -815,7 +819,7 @@ export interface BackofficeNdpSummaryPayload {
 export interface BackofficeRepositoryPort {
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
   listManagedUsers: (
-    input: BackofficeManagedUserListQuery,
+    input: BackofficeScope & BackofficeManagedUserListQuery,
     occurredAt: Date
   ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
   getManagedUser: (
@@ -1052,7 +1056,20 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.users.list", "User", {
       filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
     });
-    return this.repository.listManagedUsers(input, this.now());
+    return this.repository.listManagedUsers({ ...input, scope: "platform" }, this.now());
+  }
+
+  public async listMerchantManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.users.list", "User", {
+      shopId: scope.shopId,
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers({ ...input, ...scope }, this.now());
   }
 
   public async getManagedUser(

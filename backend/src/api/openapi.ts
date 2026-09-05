@@ -2831,14 +2831,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopTravelFarePolicyVersion: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "version", "effectiveFrom", "publishedByUserId", "reason", "bands", "createdAt"],
+        required: [
+          "publicId",
+          "version",
+          "effectiveFrom",
+          "publishedByUserId",
+          "reason",
+          "bands",
+          "createdAt"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           version: { type: "integer", minimum: 1 },
           effectiveFrom: { type: "string", format: "date-time" },
           publishedByUserId: { type: "integer", minimum: 1 },
           reason: { type: "string", minLength: 1, maxLength: 500 },
-          bands: { type: "array", minItems: 1, maxItems: 50, items: { $ref: "#/components/schemas/ShopTravelFareBand" } },
+          bands: {
+            type: "array",
+            minItems: 1,
+            maxItems: 50,
+            items: { $ref: "#/components/schemas/ShopTravelFareBand" }
+          },
           createdAt: { type: "string", format: "date-time" }
         }
       },
@@ -2847,8 +2860,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["current", "next"],
         properties: {
-          current: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] },
-          next: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] }
+          current: {
+            anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }]
+          },
+          next: {
+            anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }]
+          }
         }
       },
       ShopTravelFarePolicyPublishInput: {
@@ -2880,7 +2897,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["list", "total", "page", "page_size"],
         properties: {
-          list: { type: "array", items: { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" } },
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }
+          },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
@@ -2889,10 +2909,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       TravelRouteProviderStatus: {
         type: "object",
         additionalProperties: false,
-        required: ["providerCode", "status", "configured", "checkedAt", "routingProfile", "estimateTtlSeconds", "cacheTtlSeconds"],
+        required: [
+          "providerCode",
+          "status",
+          "configured",
+          "checkedAt",
+          "routingProfile",
+          "estimateTtlSeconds",
+          "cacheTtlSeconds"
+        ],
         properties: {
           providerCode: { type: "string", enum: ["disabled", "geoapify"] },
-          status: { type: "string", enum: ["configured", "unconfigured", "healthy", "rate_limited", "unavailable"] },
+          status: {
+            type: "string",
+            enum: ["configured", "unconfigured", "healthy", "rate_limited", "unavailable"]
+          },
           configured: { type: "boolean" },
           checkedAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
           routingProfile: { type: "string", enum: ["drive"] },
@@ -2909,8 +2940,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopPublicId: { anyOf: [{ type: "string" }, { type: "null" }] },
           shopName: { type: "string" },
           city: { type: "string" },
-          current: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] },
-          next: { anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }] }
+          current: {
+            anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }]
+          },
+          next: {
+            anyOf: [{ $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }, { type: "null" }]
+          }
         }
       },
       OperationsTravelFarePolicyPage: {
@@ -2918,7 +2953,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["list", "total", "page", "page_size"],
         properties: {
-          list: { type: "array", items: { $ref: "#/components/schemas/OperationsTravelFarePolicy" } },
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OperationsTravelFarePolicy" }
+          },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
@@ -2951,7 +2989,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       RouteEstimate: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "distanceMeters", "durationSeconds", "fareAmountJpy", "policyVersionPublicId", "policyVersion", "bandMaximumDistanceMeters", "expiresAt", "cached"],
+        required: [
+          "publicId",
+          "distanceMeters",
+          "durationSeconds",
+          "fareAmountJpy",
+          "policyVersionPublicId",
+          "policyVersion",
+          "bandMaximumDistanceMeters",
+          "expiresAt",
+          "cached"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           distanceMeters: { type: "integer", minimum: 1 },
@@ -3533,11 +3581,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           details: {
             type: "array",
             maxItems: 100,
-            description: "Redacted completed-order rows populated only for travel_fare; complete customer addresses are never returned.",
+            description:
+              "Redacted completed-order rows populated only for travel_fare; complete customer addresses are never returned.",
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["orderNo", "shopId", "shopName", "completedAt", "distanceMeters", "policyVersionPublicId", "policyVersion", "bandMaximumDistanceMeters", "fareAmountJpy", "paymentEvidence", "reversalState"],
+              required: [
+                "orderNo",
+                "shopId",
+                "shopName",
+                "completedAt",
+                "distanceMeters",
+                "policyVersionPublicId",
+                "policyVersion",
+                "bandMaximumDistanceMeters",
+                "fareAmountJpy",
+                "paymentEvidence",
+                "reversalState"
+              ],
               properties: {
                 orderNo: { type: "string" },
                 shopId: { type: "integer", minimum: 1 },
@@ -3548,7 +3609,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 policyVersion: { type: "integer", minimum: 1 },
                 bandMaximumDistanceMeters: { type: "integer", minimum: 1 },
                 fareAmountJpy: { type: "integer", minimum: 0 },
-                paymentEvidence: { type: "string", enum: ["ndp_ledger", "technician_receipt_confirmation", "operations_receipt_override"] },
+                paymentEvidence: {
+                  type: "string",
+                  enum: [
+                    "ndp_ledger",
+                    "technician_receipt_confirmation",
+                    "operations_receipt_override"
+                  ]
+                },
                 reversalState: { type: "string", const: "none" }
               }
             }
@@ -4530,10 +4598,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { type: "string", enum: ["request", "accept", "reject", "withdraw"] }
           },
           cancellation: {
-            oneOf: [
-              { $ref: "#/components/schemas/ExchangeCancellationRecord" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/ExchangeCancellationRecord" }, { type: "null" }]
           }
         }
       },
@@ -6509,6 +6574,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "id",
           "needoId",
           "username",
+          "displayName",
           "email",
           "phone",
           "emailBound",
@@ -6525,6 +6591,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "experience",
           "ndpBalance",
           "bookingCount",
+          "city",
+          "privacyMode",
+          "privacyScope",
           "lastLoginAt",
           "createdAt",
           "updatedAt"
@@ -6533,6 +6602,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "integer" },
           needoId: { type: "string" },
           username: { type: "string" },
+          displayName: { type: "string" },
           email: {
             type: "string",
             format: "email",
@@ -6601,6 +6671,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           bookingCount: { type: "integer", minimum: 0 },
+          city: { type: ["string", "null"] },
+          privacyMode: { type: "boolean" },
+          privacyScope: {
+            type: ["string", "null"],
+            enum: ["public", "privateAll", "limited", "network", null]
+          },
           lastLoginAt: { type: ["string", "null"], format: "date-time" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
@@ -14700,7 +14776,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:travel-fare-policy:read",
         responses: {
-          "200": jsonDataResponse("Current and next immutable travel-fare policy versions", { $ref: "#/components/schemas/ShopTravelFarePolicySummary" }),
+          "200": jsonDataResponse("Current and next immutable travel-fare policy versions", {
+            $ref: "#/components/schemas/ShopTravelFarePolicySummary"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden")
         }
@@ -14717,7 +14795,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated immutable travel-fare policy versions", { $ref: "#/components/schemas/ShopTravelFarePolicyVersionPage" }),
+          "200": jsonDataResponse("Paginated immutable travel-fare policy versions", {
+            $ref: "#/components/schemas/ShopTravelFarePolicyVersionPage"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden")
@@ -14725,17 +14805,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       post: {
         tags: ["Travel Fare"],
-        summary: "Publish the next immutable travel-fare policy version for the signed merchant shop",
+        summary:
+          "Publish the next immutable travel-fare policy version for the signed merchant shop",
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:travel-fare-policy:write",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ShopTravelFarePolicyPublishInput" } } } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopTravelFarePolicyPublishInput" }
+            }
+          }
+        },
         responses: {
-          "201": jsonDataResponse("Published immutable travel-fare policy version", { $ref: "#/components/schemas/ShopTravelFarePolicyVersion" }),
+          "201": jsonDataResponse("Published immutable travel-fare policy version", {
+            $ref: "#/components/schemas/ShopTravelFarePolicyVersion"
+          }),
           "400": jsonErrorResponse("error.validation or error.travel_fare_policy.invalid_bands"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.shop.not_found"),
-          "409": jsonErrorResponse("error.travel_fare_policy.version_conflict or error.travel_fare_policy.effective_time_conflict")
+          "409": jsonErrorResponse(
+            "error.travel_fare_policy.version_conflict or error.travel_fare_policy.effective_time_conflict"
+          )
         }
       }
     },
@@ -14743,18 +14835,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Travel Fare"],
         summary: "Create a short-lived driving-distance fare estimate for a home service",
-        description: "The shop origin, active policy, route distance, and fare are server-owned. The response never exposes address hashes, provider credentials, or raw provider data.",
+        description:
+          "The shop origin, active policy, route distance, and fare are server-owned. The response never exposes address hashes, provider credentials, or raw provider data.",
         security: [{ bearerAuth: [] }],
         "x-permission": "booking:travel-estimate:create",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RouteEstimateCreateInput" } } } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RouteEstimateCreateInput" }
+            }
+          }
+        },
         responses: {
-          "201": jsonDataResponse("Created or safely reused route estimate", { $ref: "#/components/schemas/RouteEstimate" }),
+          "201": jsonDataResponse("Created or safely reused route estimate", {
+            $ref: "#/components/schemas/RouteEstimate"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
-          "422": jsonErrorResponse("error.travel.home_service_not_eligible, error.travel.outside_service_area, or error.travel.route_not_found"),
+          "422": jsonErrorResponse(
+            "error.travel.home_service_not_eligible, error.travel.outside_service_area, or error.travel.route_not_found"
+          ),
           "429": jsonErrorResponse("error.rate_limited or error.travel.provider_rate_limited"),
-          "503": jsonErrorResponse("error.travel.provider_unconfigured, error.travel.provider_timeout, error.travel.provider_invalid_response, error.travel.provider_unavailable, or error.travel.policy_unavailable")
+          "503": jsonErrorResponse(
+            "error.travel.provider_unconfigured, error.travel.provider_timeout, error.travel.provider_invalid_response, error.travel.provider_unavailable, or error.travel.policy_unavailable"
+          )
         }
       }
     },
@@ -14762,11 +14868,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Travel Fare"],
         summary: "Read redacted route provider readiness",
-        description: "Returns operational readiness only; credentials and provider payloads are never exposed.",
+        description:
+          "Returns operational readiness only; credentials and provider payloads are never exposed.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:travel-fare:read",
         responses: {
-          "200": jsonDataResponse("Redacted route provider status", { $ref: "#/components/schemas/TravelRouteProviderStatus" }),
+          "200": jsonDataResponse("Redacted route provider status", {
+            $ref: "#/components/schemas/TravelRouteProviderStatus"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
           "503": jsonErrorResponse("error.dependency.redis_unavailable")
@@ -14786,7 +14895,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "shopKeyword", in: "query", schema: { type: "string", maxLength: 160 } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated shop travel-fare policy visibility", { $ref: "#/components/schemas/OperationsTravelFarePolicyPage" }),
+          "200": jsonDataResponse("Paginated shop travel-fare policy visibility", {
+            $ref: "#/components/schemas/OperationsTravelFarePolicyPage"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden")
@@ -18853,12 +18964,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 },
                 allOf: [
                   {
-                    if: { properties: { fulfillmentMode: { const: "home" } }, required: ["fulfillmentMode"] },
+                    if: {
+                      properties: { fulfillmentMode: { const: "home" } },
+                      required: ["fulfillmentMode"]
+                    },
                     then: { required: ["fulfillmentAddress", "travelEstimatePublicId"] }
                   },
                   {
-                    if: { properties: { fulfillmentMode: { const: "store" } }, required: ["fulfillmentMode"] },
-                    then: { not: { anyOf: [{ required: ["fulfillmentAddress"] }, { required: ["travelEstimatePublicId"] }] } }
+                    if: {
+                      properties: { fulfillmentMode: { const: "store" } },
+                      required: ["fulfillmentMode"]
+                    },
+                    then: {
+                      not: {
+                        anyOf: [
+                          { required: ["fulfillmentAddress"] },
+                          { required: ["travelEstimatePublicId"] }
+                        ]
+                      }
+                    }
                   }
                 ]
               }
@@ -18888,7 +19012,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description:
               "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
           },
-          "409": { description: "Slot unavailable, estimate expired, or estimate already consumed" },
+          "409": {
+            description: "Slot unavailable, estimate expired, or estimate already consumed"
+          },
           "422": { description: "Home estimate required, invalid, or mismatched" }
         }
       }
@@ -20766,7 +20892,37 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "minNdpBalance", in: "query", schema: { type: "integer", minimum: 0 } },
           { name: "maxNdpBalance", in: "query", schema: { type: "integer", minimum: 0 } },
           { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
-          { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } }
+          { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "emailState",
+            in: "query",
+            schema: { type: "string", enum: ["set", "unset"] }
+          },
+          {
+            name: "privacy",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
+            }
+          },
+          { name: "minBookings", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "maxBookings", in: "query", schema: { type: "integer", minimum: 0 } },
+          {
+            name: "sortBy",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["displayName", "email", "city", "createdAt"],
+              default: "createdAt"
+            }
+          },
+          {
+            name: "sortDirection",
+            in: "query",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" }
+          }
         ],
         responses: {
           "200": jsonDataResponse("Paginated all-user projection", {
@@ -23912,6 +24068,93 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated customers with bookings in the authenticated shop",
         security: [{ bearerAuth: [] }],
         responses: { "200": { description: "Paginated scoped customers" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/users`]: {
+      get: {
+        operationId: "listMerchantManagedUsers",
+        tags: ["User Management"],
+        summary: "Paginated canonical users in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:customers:list",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "tier",
+            in: "query",
+            schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
+          },
+          { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
+          { name: "identityType", in: "query", schema: { type: "string", maxLength: 50 } },
+          { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
+          { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
+          {
+            name: "ekyc",
+            in: "query",
+            schema: { type: "string", enum: ["verified", "unverified"] }
+          },
+          { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "maxExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "minNdpBalance", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "maxNdpBalance", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "emailState",
+            in: "query",
+            schema: { type: "string", enum: ["set", "unset"] }
+          },
+          {
+            name: "privacy",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
+            }
+          },
+          { name: "minBookings", in: "query", schema: { type: "integer", minimum: 0 } },
+          { name: "maxBookings", in: "query", schema: { type: "integer", minimum: 0 } },
+          {
+            name: "sortBy",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["displayName", "email", "city", "createdAt"],
+              default: "createdAt"
+            }
+          },
+          {
+            name: "sortDirection",
+            in: "query",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated authenticated-shop user projection", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/BackofficeManagedUser" }
+              },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              page_size: { type: "integer" }
+            }
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {

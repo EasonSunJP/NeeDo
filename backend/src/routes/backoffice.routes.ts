@@ -455,6 +455,13 @@ export const createBackofficeRoutes = (
     controller.deleteMerchantTechnician
   );
   router.get(
+    "/merchant-admin/users",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({ query: backofficeManagedUserListQuerySchema }),
+    controller.merchantManagedUsers
+  );
+  router.get(
     "/merchant-admin/customers",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),

@@ -114,6 +114,14 @@ export class BackofficeController {
     )
   );
 
+  public merchantManagedUsers = this.createListHandler((service, request, response) =>
+    service.listMerchantManagedUsers(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeManagedUserListQuerySchema.parse(request.query)
+    )
+  );
+
   public merchantDashboard = async (
     request: Request,
     response: Response,

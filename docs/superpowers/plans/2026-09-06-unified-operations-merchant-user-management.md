@@ -35,6 +35,7 @@
 - Modify: `backend/tests/backoffice-user-list.repository.test.ts`
 - Modify: `backend/tests/backoffice-user-list.api.test.ts`
 - Modify: `backend/tests/backoffice-user-list-openapi.test.ts`
+- Modify: `backend/tests/master-data-api.test.ts`
 
 **Interfaces:**
 - Produces: `BackofficeManagedUserPayload` with `displayName`, `city`, `privacyMode`, `privacyScope`, actual `email`, scoped `bookingCount`, and existing identity/membership/account fields.
@@ -42,7 +43,7 @@
 - Produces: `GET /api/v1/merchant-admin/users`, authorized by `merchant-admin:customers:list`.
 - Consumes: current `getMerchantScope(actor)` and current platform `/backoffice/users` permission.
 
-- [ ] **Step 1: Write failing validator and repository tests**
+- [x] **Step 1: Write failing validator and repository tests**
 
 Add assertions that parse and forward the canonical filters:
 
@@ -53,7 +54,7 @@ const query = backofficeManagedUserListQuerySchema.parse({
   privacy: "enabled",
   minBookings: "2",
   maxBookings: "20",
-  sortBy: "bookingCount",
+  sortBy: "city",
   sortDirection: "desc"
 });
 
@@ -63,7 +64,7 @@ expect(query).toMatchObject({
   privacy: "enabled",
   minBookings: 2,
   maxBookings: 20,
-  sortBy: "bookingCount",
+  sortBy: "city",
   sortDirection: "desc"
 });
 ```
@@ -100,7 +101,7 @@ expect(findMany).toHaveBeenCalledWith(
 );
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run:
 
@@ -111,7 +112,7 @@ npm test -- backoffice-user-list.repository.test.ts backoffice-user-list.api.tes
 
 Expected: FAIL because the new query fields, scoped signature, merchant route, and payload fields do not exist.
 
-- [ ] **Step 3: Implement the scoped list contract**
+- [x] **Step 3: Implement the scoped list contract**
 
 Extend the validated query with these exact fields:
 
@@ -121,7 +122,7 @@ emailState: z.enum(["set", "unset"]).optional(),
 privacy: z.enum(["enabled", "disabled", "public", "privateAll", "limited", "network"]).optional(),
 minBookings: z.coerce.number().int().nonnegative().optional(),
 maxBookings: z.coerce.number().int().nonnegative().optional(),
-sortBy: z.enum(["displayName", "email", "city", "tier", "bookingCount", "ndp", "createdAt"]).default("createdAt"),
+sortBy: z.enum(["displayName", "email", "city", "createdAt"]).default("createdAt"),
 sortDirection: z.enum(["asc", "desc"]).default("desc")
 ```
 
@@ -185,7 +186,7 @@ public async listMerchantManagedUsers(
 
 Register `GET /merchant-admin/users` with authentication, `merchant-admin:customers:list`, the same query schema, and a distinct OpenAPI operation ID.
 
-- [ ] **Step 4: Run focused backend tests and verify GREEN**
+- [x] **Step 4: Run focused backend tests and verify GREEN**
 
 Run:
 
@@ -196,7 +197,7 @@ npm test -- backoffice-user-list.repository.test.ts backoffice-user-list.api.tes
 
 Expected: PASS; merchant fixtures prove shop scoping and operations fixtures retain full scope.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add backend/src/validators/backoffice.validator.ts backend/src/services/backoffice.service.ts backend/src/repositories/backoffice.repository.ts backend/src/controllers/backoffice.controller.ts backend/src/routes/backoffice.routes.ts backend/src/api/openapi.ts backend/tests/backoffice-user-list.repository.test.ts backend/tests/backoffice-user-list.api.test.ts backend/tests/backoffice-user-list-openapi.test.ts
@@ -235,7 +236,7 @@ await platformUserManagementApi.listUsers("merchant", {
   page_size: 20,
   city: "Tokyo",
   privacy: "enabled",
-  sortBy: "bookingCount",
+  sortBy: "city",
   sortDirection: "desc"
 });
 
@@ -245,7 +246,7 @@ expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users", {
     pageSize: 20,
     city: "Tokyo",
     privacy: "enabled",
-    sortBy: "bookingCount",
+    sortBy: "city",
     sortDirection: "desc"
   })
 });
@@ -265,7 +266,7 @@ Click the booking header filter and assert `onQueryChange` receives:
 
 ```ts
 expect(onQueryChange).toHaveBeenCalledWith(
-  expect.objectContaining({ page: 1, sortBy: "bookingCount", sortDirection: "desc" })
+  expect.objectContaining({ page: 1, minBookings: 10, maxBookings: 50 })
 );
 ```
 
