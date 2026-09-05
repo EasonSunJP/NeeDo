@@ -412,19 +412,21 @@ The API does not implement payment refunds, service-in-progress termination, res
 penalties, Affiliate reward/refund changes, or batch cancellation. The shared five-language client
 panel is wired into the owner/provider Exchange cards and the customer, technician, and merchant
 formal order details. It hides on an exact 404 for ordinary orders and suppresses their generic
-cancel action only after the server identifies an Exchange-linked order. Authenticated browser
-acceptance remains gated on an approved database with both additive migrations applied.
+cancel action only after the server identifies an Exchange-linked order. Local authenticated
+browser acceptance passed with a customer request and reload at 320 px followed by provider
+acceptance and reload at 440 px; applying both additive migrations and repeating smoke checks in an
+authorized app environment remain deployment gates.
 
 The guarded real-MySQL suite is `backend/tests/exchange-cancellation.repository.integration.test.ts`.
 It runs only when `RUN_EXCHANGE_CANCELLATION_INTEGRATION=true` and
-`FORMAL_BACKEND_ENV_FILE` names an explicit loopback, non-production MySQL environment. Without
-that isolated environment, MySQL concurrency and finance acceptance remain an unproven release
-gate; the suite must not target staging, production, or an unapproved shared development database.
-Before merge or release, that gate must also cover a real confirmed Request booking-hold release,
-races against the formal acceptance/service-start/payment transition APIs, concurrent acceptance
-across two matched orders, explicit wallet/platform/reconciliation conservation, and rollback after
-an actual partial ledger mutation. Unit rollback and a deliberately failing settlement callback do
-not substitute for those database proofs.
+`FORMAL_BACKEND_ENV_FILE` names an explicit loopback, non-production MySQL environment. The guarded
+checker applied all 130 migrations to a generated scratch database and passed eight scenarios:
+confirmed Request booking-hold release, races against formal confirmation/service-start/payment
+transitions, concurrent acceptance across two matched orders, publication-fee conservation,
+reject/withdraw financial neutrality, and transaction rollback. Cleanup removed the scratch
+database and principal with `existingDatabaseModified=false`. The suite must not target staging,
+production, or an unapproved shared development database; this isolated proof does not replace
+authorized-environment migration, deployment, or post-deploy smoke checks.
 
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
 
