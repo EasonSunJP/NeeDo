@@ -3,6 +3,7 @@ import type {
   AnalyticsMetricSeries,
   DashboardBucketPayload
 } from "../../api/backofficeRealData";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
 import { createDashboardAxis, type DashboardAxis } from "./dashboardChartScale";
@@ -148,6 +149,7 @@ function ChartFrame({
   empty: boolean;
 }) {
   const { language } = useI18n();
+  const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
 
   return (
     <figure
@@ -155,9 +157,16 @@ function ChartFrame({
       data-dashboard-chart-frame="true"
       onKeyDown={onKeyDown}
     >
-      <figcaption>
-        <h3 className="text-base font-black text-ink">{title}</h3>
-        <p className="mt-1 text-xs font-bold text-ink/45">{description}</p>
+      <figcaption data-dashboard-chart-info="true">
+        <TitleWithInfo
+          as="h3"
+          info={<p>{description}</p>}
+          infoPanelMode="tooltip"
+          label={`${t("查看")}${title}${t("说明")}`}
+          title={title}
+          titleClassName="text-base font-black text-ink"
+          variant="paper"
+        />
       </figcaption>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2" aria-label="图例">
         {series.map((item, index) => (

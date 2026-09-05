@@ -77,6 +77,37 @@ describe("DashboardCharts", () => {
     expect(markup).not.toMatch(/NaN|Infinity/);
   });
 
+  it("keeps the chart description in the title information control", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(
+      <I18nProvider>
+        <DualAxisLineChart
+          buckets={buckets}
+          description="订单与服务金额趋势"
+          left={orderSeries}
+          right={gmvSeries}
+          title="订单总量与服务 GMV"
+        />
+      </I18nProvider>
+    ));
+
+    const figure = container.querySelector('[data-dashboard-chart-frame="true"]')!;
+    expect(figure.querySelector('[data-dashboard-chart-info="true"]')).not.toBeNull();
+    expect(figure.querySelector("figcaption > p")).toBeNull();
+    const info = figure.querySelector<HTMLButtonElement>(
+      '[data-dashboard-chart-info="true"] button[aria-label]'
+    );
+    expect(info).not.toBeNull();
+    expect(info?.getAttribute("aria-label")).toContain("订单总量与服务 GMV");
+    await act(async () => info?.click());
+    expect(document.body.textContent).toContain("订单与服务金额趋势");
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it.each([
     ["ja", "件", "1つ"],
     ["en", "orders", "One"],
