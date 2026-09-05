@@ -20,6 +20,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     const previousTop = element.style.getPropertyValue("--im-visual-viewport-top");
     const previousWidth = element.style.getPropertyValue("--im-visual-viewport-width");
     const previousLeft = element.style.getPropertyValue("--im-visual-viewport-left");
+    const previousRight = element.style.getPropertyValue("--im-visual-viewport-right");
 
     const updateFrame = () => {
       const viewport = window.visualViewport;
@@ -35,6 +36,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       element.style.setProperty("--im-visual-viewport-top", `${top}px`);
       element.style.setProperty("--im-visual-viewport-width", `${width}px`);
       element.style.setProperty("--im-visual-viewport-left", `${left}px`);
+      element.style.setProperty("--im-visual-viewport-right", keyboardOpen ? "auto" : "0px");
     };
 
     updateFrame();
@@ -73,6 +75,12 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         element.style.setProperty("--im-visual-viewport-left", previousLeft);
       } else {
         element.style.removeProperty("--im-visual-viewport-left");
+      }
+
+      if (previousRight) {
+        element.style.setProperty("--im-visual-viewport-right", previousRight);
+      } else {
+        element.style.removeProperty("--im-visual-viewport-right");
       }
     };
   }, [ref]);

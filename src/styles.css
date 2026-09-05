@@ -8100,7 +8100,7 @@ html.im-conversation-scroll-lock #root {
   top: var(--im-visual-viewport-top, 0px);
   bottom: auto;
   left: var(--im-visual-viewport-left, 0px);
-  right: auto;
+  right: var(--im-visual-viewport-right, 0px);
   width: var(--im-visual-viewport-width, 100vw);
   overscroll-behavior: none;
   overflow: hidden;

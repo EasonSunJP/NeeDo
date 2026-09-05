@@ -47,6 +47,7 @@ describe("useVisualViewportFrame", () => {
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("12px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("390px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("5px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("auto");
 
     input.blur();
     Object.defineProperties(visualViewport, {
@@ -61,6 +62,7 @@ describe("useVisualViewportFrame", () => {
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("430px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
 
     await act(async () => root.unmount());
   });
@@ -93,6 +95,7 @@ describe("useVisualViewportFrame", () => {
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("430px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
 
     await act(async () => root.unmount());
   });
