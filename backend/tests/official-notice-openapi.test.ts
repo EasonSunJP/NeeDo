@@ -32,6 +32,11 @@ describe("official notice OpenAPI", () => {
     expect(collection.get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          name: "search",
+          in: "query",
+          schema: { type: "string", minLength: 1, maxLength: 100 }
+        }),
+        expect.objectContaining({
           name: "X-NeeDo-Merchant-Preview-Shop-Id",
           in: "header"
         })
@@ -81,5 +86,20 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.MerchantOfficialNoticeCreate.properties.audience).toEqual({
       $ref: "#/components/schemas/MerchantOfficialNoticeAudience"
     });
+  });
+
+  it("documents the same bounded server search on operations notice management", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    expect(
+      response.body.paths["/api/v1/backoffice/official-notices"].get.parameters
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "search",
+          in: "query",
+          schema: { type: "string", minLength: 1, maxLength: 100 }
+        })
+      ])
+    );
   });
 });

@@ -12,7 +12,7 @@ The operations route manifest owns the following `/api/v1` management routes;
 the merchant API rejects this namespace with 404. The compatibility backend
 retains its existing combined manifest.
 
-- `GET /backoffice/official-notices`: paginated list, read permission.
+- `GET /backoffice/official-notices`: paginated, server-searched and filtered list, read permission.
 - `POST /backoffice/official-notices`: immediate or scheduled publication,
   both create and send permissions.
 - `POST /backoffice/official-notices/{publicId}/cancel`: pre-dispatch cancellation,
@@ -24,6 +24,9 @@ retains its existing combined manifest.
 
 The merchant route manifest owns the equivalent paginated create/list and
 cancel/archive/retry operations under `/merchant-admin/official-notices`.
+Both management list endpoints accept the same bounded `search` query and match
+persisted notice public IDs, audience summaries, and locale titles/summaries on
+the server; the browser never filters only the currently loaded page.
 Every merchant operation derives its shop and acting identity from the verified
 session. The request cannot supply a shop, issuer, recipient user or platform
 audience. Dedicated `merchant-admin:notice:*` permissions are granted to the

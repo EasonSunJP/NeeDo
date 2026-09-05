@@ -25850,6 +25850,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
+            name: "search",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
+          {
             name: "status",
             in: "query",
             schema: {
@@ -25988,6 +25993,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "search",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
           {
             name: "status",
             in: "query",
