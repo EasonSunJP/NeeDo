@@ -14,7 +14,10 @@ import {
   verifyExchangeCancellationSocketAdmin,
   runExchangeCancellationCommand
 } from "../scripts/check-exchange-cancellation-flow";
-import { resolveExchangeCancellationSchemaEnvironment } from "../scripts/check-exchange-cancellation-schema";
+import {
+  resolveExchangeCancellationSchemaEnvironment,
+  verifyExchangeCancellationSchemaSocketAdmin
+} from "../scripts/check-exchange-cancellation-schema";
 
 describe("Exchange cancellation isolated flow checker", () => {
   it("routes the schema checker through the same non-production and administrator guards", () => {
@@ -131,6 +134,22 @@ describe("Exchange cancellation isolated flow checker", () => {
         query: async () => [{ principal: "other@localhost" }]
       })
     ).rejects.toThrow("root@localhost");
+  });
+
+  it("closes the schema checker connection when socket administrator verification fails", async () => {
+    const end = jest.fn(async () => undefined);
+
+    await expect(
+      verifyExchangeCancellationSchemaSocketAdmin(
+        {
+          query: async () => [{ principal: "other@localhost" }],
+          end
+        },
+        "/tmp/mysql.sock"
+      )
+    ).rejects.toThrow("root@localhost");
+
+    expect(end).toHaveBeenCalledTimes(1);
   });
 
   it.each(["production", "mismatched-principal"])(

@@ -58,6 +58,26 @@ export const resolveExchangeCancellationSchemaEnvironment = (
   };
 };
 
+export async function verifyExchangeCancellationSchemaSocketAdmin(
+  connection: {
+    query(sql: string, values?: unknown[]): Promise<unknown>;
+    end(): Promise<void>;
+  },
+  socketPath?: string
+): Promise<void> {
+  if (!socketPath) {
+    return;
+  }
+  try {
+    await verifyExchangeCancellationSocketAdmin(connection);
+  } catch (error) {
+    // Preserve the verification error while ensuring a rejected socket identity
+    // cannot leave the CLI process alive through an open database connection.
+    await Promise.allSettled([connection.end()]);
+    throw error;
+  }
+}
+
 // Constraint acceptance only: parent-key fixtures are not a formal business-flow seed.
 // No existing table/data is copied, updated or migrated.
 async function main(): Promise<void> {
@@ -74,9 +94,7 @@ async function main(): Promise<void> {
     "utf8"
   );
   const connection = await mariadb.createConnection(connectionOptions);
-  if (socketPath) {
-    await verifyExchangeCancellationSocketAdmin(connection);
-  }
+  await verifyExchangeCancellationSchemaSocketAdmin(connection, socketPath);
   const extraConnections: Connection[] = [];
   let created = false;
   let passed = 0;
