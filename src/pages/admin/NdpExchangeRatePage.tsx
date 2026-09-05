@@ -116,19 +116,19 @@ function RateSummaryCard({
   locale: string;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-line bg-white p-5 shadow-panel" data-admin-surface="summary">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-slate-500">{label}</h2>
+        <h2 className="text-sm font-black text-ink/50">{label}</h2>
         {rate ? <Badge tone="blue">v{rate.version}</Badge> : null}
       </div>
       {rate ? (
         <>
-          <p className="font-mono text-2xl font-bold tracking-tight text-slate-950">{equation(rate)}</p>
-          <p className="mt-3 text-sm text-slate-500">生效：{formatDate(rate.effectiveFrom, locale)}</p>
-          <p className="mt-1 text-sm text-slate-500">结束：{formatDate(rate.effectiveTo, locale)}</p>
-          <p className="mt-3 text-sm text-slate-700">{rate.reason}</p>
+          <p className="font-mono text-2xl font-black tracking-tight text-ink">{equation(rate)}</p>
+          <p className="mt-3 text-sm font-semibold text-ink/50">生效：{formatDate(rate.effectiveFrom, locale)}</p>
+          <p className="mt-1 text-sm font-semibold text-ink/50">结束：{formatDate(rate.effectiveTo, locale)}</p>
+          <p className="mt-3 text-sm font-semibold text-ink/70">{rate.reason}</p>
         </>
-      ) : <p className="py-6 text-sm text-slate-500">{empty}</p>}
+      ) : <p className="py-6 text-sm font-semibold text-ink/50">{empty}</p>}
     </section>
   );
 }
@@ -279,26 +279,26 @@ export function NdpExchangeRatePage() {
         )}
       >
         {loadStatus === "loading" && !overview ? (
-          <section aria-live="polite" className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">正在加载汇率数据…</section>
+          <section aria-live="polite" className="rounded-2xl border border-line bg-white p-8 text-sm font-bold text-ink/50">正在加载汇率数据…</section>
         ) : null}
 
         {loadStatus === "error" && !overview ? (
-          <section role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6">
-            <h2 className="font-semibold text-red-900">汇率数据加载失败</h2>
-            <p className="mt-2 text-sm text-red-700">{loadError}</p>
+          <section role="alert" className="rounded-2xl border border-coral/30 bg-coral/10 p-6" data-admin-surface="error-banner">
+            <h2 className="font-black text-coral">汇率数据加载失败</h2>
+            <p className="mt-2 text-sm font-semibold text-coral">{loadError}</p>
             <Button className="mt-4" onClick={() => void loadOverview(1, true)} variant="secondary">重试</Button>
           </section>
         ) : null}
 
         {overview ? (
-          <div className="space-y-5">
+          <div className="space-y-5" data-admin-layout="responsive">
             {projectionError ? (
-              <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-lemon/40 bg-lemon/10 p-4 text-sm font-semibold text-ink">
                 <span>{projectionLock === "conflict" ? "版本冲突后最新数据刷新失败：" : "发布已受理，但最新只读数据刷新失败："}{projectionError}</span>
                 <Button onClick={() => void loadOverview(1, true, true, true)} variant="secondary">重试只读数据</Button>
               </section>
             ) : null}
-            {mutationError && !confirmation ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{mutationError}</p> : null}
+            {mutationError && !confirmation ? <p role="alert" className="rounded-xl border border-lemon/40 bg-lemon/10 p-3 text-sm font-semibold text-ink">{mutationError}</p> : null}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <RateSummaryCard label="当前生效" rate={overview.current} empty="当前没有生效汇率" locale={locale} />
@@ -306,40 +306,40 @@ export function NdpExchangeRatePage() {
             </div>
 
             {formOpen ? (
-              <section className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
+              <section className="rounded-2xl border border-line bg-white p-5 shadow-panel" data-admin-surface="editor">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-950">发布新汇率</h2>
-                    <p className="mt-1 text-sm text-slate-500">基于最新版本 v{overview.latestVersion} 创建不可变后继版本。</p>
+                    <h2 className="text-lg font-black text-ink">发布新汇率</h2>
+                    <p className="mt-1 text-sm font-semibold text-ink/50">基于最新版本 v{overview.latestVersion} 创建不可变后继版本。</p>
                   </div>
                   <Button onClick={() => { setFormOpen(false); setConfirmation(null); }} variant="ghost">关闭</Button>
                 </div>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <label className="text-sm font-medium text-slate-700">NDP 数量
-                    <input className="mt-2 h-11 w-full rounded-xl border border-slate-300 px-3" inputMode="numeric" min="1" max={maxInteger} value={draft.ndpUnits} onChange={(event) => setDraft((current) => ({ ...current, ndpUnits: event.target.value }))} />
+                  <label className="text-sm font-bold text-ink/70">NDP 数量
+                    <input className="focus-ring mt-2 h-11 w-full rounded-xl border border-line bg-paper px-3 font-semibold text-ink outline-none" inputMode="numeric" min="1" max={maxInteger} value={draft.ndpUnits} onChange={(event) => setDraft((current) => ({ ...current, ndpUnits: event.target.value }))} />
                   </label>
-                  <label className="text-sm font-medium text-slate-700">JPY 数量
-                    <input className="mt-2 h-11 w-full rounded-xl border border-slate-300 px-3" inputMode="numeric" min="1" max={maxInteger} value={draft.jpyUnits} onChange={(event) => setDraft((current) => ({ ...current, jpyUnits: event.target.value }))} />
+                  <label className="text-sm font-bold text-ink/70">JPY 数量
+                    <input className="focus-ring mt-2 h-11 w-full rounded-xl border border-line bg-paper px-3 font-semibold text-ink outline-none" inputMode="numeric" min="1" max={maxInteger} value={draft.jpyUnits} onChange={(event) => setDraft((current) => ({ ...current, jpyUnits: event.target.value }))} />
                   </label>
-                  <label className="text-sm font-medium text-slate-700">生效时间
-                    <input className="mt-2 h-11 w-full rounded-xl border border-slate-300 px-3" type="datetime-local" value={draft.effectiveFrom} onChange={(event) => setDraft((current) => ({ ...current, effectiveFrom: event.target.value }))} />
+                  <label className="text-sm font-bold text-ink/70">生效时间
+                    <input className="focus-ring mt-2 h-11 w-full rounded-xl border border-line bg-paper px-3 font-semibold text-ink outline-none" type="datetime-local" value={draft.effectiveFrom} onChange={(event) => setDraft((current) => ({ ...current, effectiveFrom: event.target.value }))} />
                   </label>
-                  <label className="text-sm font-medium text-slate-700 md:col-span-2">设置理由
-                    <textarea className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 p-3" value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))} />
+                  <label className="text-sm font-bold text-ink/70 md:col-span-2">设置理由
+                    <textarea className="focus-ring mt-2 min-h-24 w-full rounded-xl border border-line bg-paper p-3 font-semibold text-ink outline-none" value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))} />
                   </label>
                 </div>
-                {draftError ? <p role="alert" className="mt-3 text-sm text-red-700">{draftError}</p> : null}
+                {draftError ? <p role="alert" className="mt-3 text-sm font-bold text-coral">{draftError}</p> : null}
                 {!confirmation && projectionLock === null ? <Button className="mt-5" onClick={prepareConfirmation}>确认发布内容</Button> : null}
 
                 {confirmation ? (
-                  <div className="mt-5 rounded-2xl border border-slate-300 bg-slate-50 p-5">
-                    <h3 className="font-bold text-slate-950">发布确认</h3>
-                    <p className="mt-3 font-mono text-xl font-bold">{confirmation.input.ndpUnits} NDP = {confirmation.input.jpyUnits} JPY</p>
+                  <div className="mt-5 rounded-2xl border border-line bg-paper p-5">
+                    <h3 className="font-black text-ink">发布确认</h3>
+                    <p className="mt-3 font-mono text-xl font-black text-ink">{confirmation.input.ndpUnits} NDP = {confirmation.input.jpyUnits} JPY</p>
                     <dl className="mt-4 grid gap-2 text-sm">
-                      <div><dt className="inline text-slate-500">生效时间：</dt><dd className="inline text-slate-900">{formatDate(confirmation.input.effectiveFrom, locale)}</dd></div>
-                      <div><dt className="inline text-slate-500">设置理由：</dt><dd className="inline text-slate-900">{confirmation.input.reason}</dd></div>
+                      <div><dt className="inline font-bold text-ink/50">生效时间：</dt><dd className="inline font-semibold text-ink">{formatDate(confirmation.input.effectiveFrom, locale)}</dd></div>
+                      <div><dt className="inline font-bold text-ink/50">设置理由：</dt><dd className="inline font-semibold text-ink">{confirmation.input.reason}</dd></div>
                     </dl>
-                    {mutationError ? <p role="alert" className="mt-3 text-sm text-amber-800">{mutationError}</p> : null}
+                    {mutationError ? <p role="alert" className="mt-3 text-sm font-bold text-coral">{mutationError}</p> : null}
                     <div className="mt-5 flex flex-wrap gap-3">
                       <Button disabled={mutationStatus === "saving"} onClick={() => void publish()}>{mutationStatus === "saving" ? "正在发布…" : "确认并发布"}</Button>
                       <Button disabled={mutationStatus === "saving"} onClick={() => { setConfirmation(null); setMutationError(""); setMutationStatus("idle"); }} variant="secondary">返回修改</Button>
@@ -349,11 +349,11 @@ export function NdpExchangeRatePage() {
               </section>
             ) : null}
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+            <section className="overflow-hidden rounded-2xl border border-line bg-white shadow-panel" data-admin-surface="history">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper p-5">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-950">不可变版本历史</h2>
-                  <p className="mt-1 text-sm text-slate-500">{translateTemplate(
+                  <h2 className="text-lg font-black text-ink">不可变版本历史</h2>
+                  <p className="mt-1 text-sm font-semibold text-ink/50">{translateTemplate(
                     "时间状态以数据评估时间 {time} 为准。",
                     { time: formatDate(overview.evaluatedAt, locale) }
                   )}</p>
@@ -366,18 +366,18 @@ export function NdpExchangeRatePage() {
               {history.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[780px] text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-500"><tr><th className="px-5 py-3">版本</th><th className="px-5 py-3">时间状态</th><th className="px-5 py-3">汇率</th><th className="px-5 py-3">生效区间</th><th className="px-5 py-3">设置理由</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <thead className="bg-paper font-black text-ink/50"><tr><th className="px-5 py-3">版本</th><th className="px-5 py-3">时间状态</th><th className="px-5 py-3">汇率</th><th className="px-5 py-3">生效区间</th><th className="px-5 py-3">设置理由</th></tr></thead>
+                    <tbody className="divide-y divide-line">
                       {history.map((item) => {
                         const temporalState = classifyNdpExchangeRate(item, overview.evaluatedAt);
                         const temporalLabel = temporalState === "current" ? "当前" : temporalState === "scheduled" ? "计划中" : "历史";
-                        return <tr key={item.publicId} data-temporal-state={temporalState}><td className="px-5 py-4 font-semibold">v{item.version}</td><td className="px-5 py-4">{temporalLabel}</td><td className="px-5 py-4 font-mono font-semibold">{equation(item)}</td><td className="px-5 py-4 text-slate-600">{formatDate(item.effectiveFrom, locale)} — {formatDate(item.effectiveTo, locale)}</td><td className="px-5 py-4 text-slate-600">{item.reason}</td></tr>;
+                        return <tr key={item.publicId} data-temporal-state={temporalState}><td className="px-5 py-4 font-black text-ink">v{item.version}</td><td className="px-5 py-4 font-bold text-ink/70">{temporalLabel}</td><td className="px-5 py-4 font-mono font-black text-ink">{equation(item)}</td><td className="px-5 py-4 font-semibold text-ink/60">{formatDate(item.effectiveFrom, locale)} — {formatDate(item.effectiveTo, locale)}</td><td className="px-5 py-4 font-semibold text-ink/60">{item.reason}</td></tr>;
                       })}
                     </tbody>
                   </table>
                 </div>
-              ) : <p className="p-8 text-center text-sm text-slate-500">暂无汇率版本记录</p>}
-              <div className="flex items-center justify-between border-t border-slate-200 p-4 text-sm text-slate-600">
+              ) : <p className="p-8 text-center text-sm font-bold text-ink/50">暂无汇率版本记录</p>}
+              <div className="flex items-center justify-between border-t border-line bg-paper p-4 text-sm font-bold text-ink/60">
                 <span>{translateTemplate(
                   "第 {current} / {total} 页",
                   { current: String(page), total: String(totalPages) }

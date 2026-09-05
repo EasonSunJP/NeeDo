@@ -623,3 +623,56 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 - 后端 lint、后端 build、前端 typecheck lint 与前端 production build 均退出 0。
 
 本微步骤未执行正式数据库 migration、未 push、未部署 staging；聊天无痕撤回的实际 IM 行为仍属于后续独立微步骤。
+
+## 运营后台系统设置（2026-09-06）
+
+运营后台的“系统设置”已从角色管理中拆出，固定使用
+`/admin/settings/system?tab=basic|legal|storage|payment`；`/admin/roles` 继续只承载角色管理。
+四个插页共用运营后台的 `ink/paper/line/mist` 视觉契约，现有 NDP 汇率页也已对齐该视觉体系，汇率版本、幂等键、409 冲突刷新锁和按评估时间分页逻辑未改变。
+
+正式持久化与执行范围：
+
+- 基础设置：站点开关、自助注册入口、Google 登录入口、登录页 LOGO、主导航 Request 图片，以及密码登录邮箱验证码总开关。验证码时间规则为“仅初次 / 每月初次 / 每次”单选，“新 IP 登录”可叠加；验证码关闭时保持原密码登录。关闭自助注册不会阻止运营后台通过正式用户管理 API 创建用户。
+- 政策和协议：目录分页、五种语言（`zh-CN`、`zh-TW`、`ja`、`en`、`ko`）独立草稿、分别保存、不可变发布版本、发布日期、发布历史、内部显示路径和链接开关。公开条款与隐私页面只读取已发布的当前语言版本，不跨语言回退；商户与 Affiliate 的接受快照继续使用正式协议版本。
+- 储存设置：IM 消息默认 30 天、IM 媒体默认 3 天，只影响设置生效后创建的服务器记录；不要求或指示客户端删除本地聊天记录或媒体缓存。
+- 支付设置：线下支付和 NDP 支付是当前可正式启停的能力，后端结算/支付入口会读取已发布设置并拒绝被关闭的方法。线下支付仍是现场人员、技师或店铺人工确认；PayPay、PayPal 保留为 NeeDo 发起的外部支付入口，Stripe 保留聚合支付项目入口，Apple 与 LINE 保留未来入口，这五项均不可操作且没有新增假 API、供应商调用或凭据字段。
+
+正式 API：
+
+- `GET /api/v1/platform/settings/public`
+- `GET /api/v1/backoffice/system-settings`
+- `PUT /api/v1/backoffice/system-settings/basic`
+- `PUT /api/v1/backoffice/system-settings/payment`
+- `GET /api/v1/legal-documents/:slug/current`
+- `GET|POST /api/v1/backoffice/legal-documents`
+- `PATCH /api/v1/backoffice/legal-documents/:publicId`
+- `GET /api/v1/backoffice/legal-documents/:publicId/locales/:locale`
+- `PUT /api/v1/backoffice/legal-documents/:publicId/locales/:locale/draft`
+- `POST /api/v1/backoffice/legal-documents/:publicId/locales/:locale/publish`
+- `GET /api/v1/backoffice/legal-documents/:publicId/locales/:locale/releases`
+
+所有写入均经过 Zod、RBAC、乐观版本检查和审计。正式权限为
+`backoffice:system-settings:read|write`、
+`backoffice:system-brand-media:activate`、
+`backoffice:im-retention:read|write`、
+`backoffice:payment-settings:read|write`、
+`backoffice:legal-documents:read|write|publish`。迁移只向 `admin` 与预定的 `operator` 角色授予写入/发布权限，`viewer` 只获得读取权限。
+
+新增的加法迁移：
+
+- `20260906100000_operations_system_settings`：平台设置版本、政策协议目录/语言草稿/发布版本、初始正式设置、权限与角色授权。
+- `20260906110000_im_server_retention_defaults`：为既有 IM 服务器记录增加前瞻性的消息/媒体到期时间默认值与索引。
+
+本地自动验证结果：
+
+- 前端 `npm test`：354 个测试文件、2,473 项测试全部通过。
+- 前端 `npm run lint`、`npm run i18n:quality`、`npm run verify:production-build`：全部通过；正式生产包审计通过 8 个 HTML 入口和 36 个资源。
+- 后端系统设置定向测试：15 个套件、60 项测试全部通过。
+- 后端 `npm --prefix backend run lint` 与 `npm --prefix backend run build`：全部通过。
+- 后端全量基线运行暴露三个与本切片无关的既存问题：会员卡调整倒计时断言为 0、会员分析测试仍使用已不允许的 `operator` 身份类型，以及串行全量测试在约 4 GB 堆上最终 OOM；单独复跑 OpenAPI 超时项通过。本切片引入的两个 Auth repository 测试夹具已补齐登录证据端口并单独通过。
+
+数据库与浏览器验收状态：
+
+- 只读 `prisma migrate status` 确认本仓库有 120 个迁移，当前正式本地库尚未应用上述两个系统设置迁移；数据库还包含多条当前 checkout 不具备的历史迁移。由于不满足计划中“目标迁移是唯一待应用仓库迁移”的安全条件，本次没有执行 `prisma migrate deploy`、回填或任何数据库写入。
+- 因目标表尚未安全迁移，本次没有启动服务冒充正式运行验收，也没有声称浏览器、真实 MySQL 持久化或跨页面生效已验收。迁移历史先完成独立对账后，才可执行 `backfill:system-settings`、`check:system-settings-flow` 和认证浏览器验收。
+- 角色卡片人员列表与权限树/API 最新性对账不在本系统设置微步骤内，未修改；它们必须作为独立的小步骤，以最新 User Management、权限常量、路由声明和数据库授权为共同依据实施。
