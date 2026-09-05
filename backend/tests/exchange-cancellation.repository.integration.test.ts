@@ -260,7 +260,7 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
                 actorUserId: provider.actorUserId,
                 scope: "merchant",
                 shopId: fixture.shopId,
-                method: "cash",
+                method: "onsite",
                 amountJpy: Number(orderPrice),
                 reference: marker
               });

@@ -1,14 +1,96 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parse } from "dotenv";
+import childProcess from "node:child_process";
 import {
   createExchangeCancellationScratchTarget,
   validateExchangeCancellationBaseEnvironment,
   runExchangeCancellationScratchCheck,
-  requireExchangeCancellationScratchEnvironment
+  requireExchangeCancellationScratchEnvironment,
+  resolveExchangeCancellationAdminCredentials,
+  runExchangeCancellationCommand
 } from "../scripts/check-exchange-cancellation-flow";
 
 describe("Exchange cancellation isolated flow checker", () => {
+  it.each(["production", "mismatched-principal"])(
+    "rejects a scratch-looking environment with %s",
+    async (problem) => {
+      const directory = await mkdtemp(join(tmpdir(), "exchange-safety-test-"));
+      const path = join(directory, "test.env");
+      const databaseSuffix = "a".repeat(24);
+      const userSuffix = problem === "mismatched-principal" ? "b".repeat(24) : databaseSuffix;
+      try {
+        await writeFile(
+          path,
+          `NODE_ENV=${problem === "production" ? "production" : "test"}\nDEPLOY_ENV=test\nDATABASE_URL=mysql://neec_${userSuffix}:secret@localhost/needo_exchange_cancel_${databaseSuffix}\n`,
+          { mode: 0o600 }
+        );
+        expect(() => requireExchangeCancellationScratchEnvironment(path)).toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it("requires an explicit administrator and supports the source MYSQL_ROOT_PASSWORD", () => {
+    expect(() => resolveExchangeCancellationAdminCredentials({}, {})).toThrow(
+      "Explicit MySQL administrator credentials"
+    );
+    expect(
+      resolveExchangeCancellationAdminCredentials({ MYSQL_ROOT_PASSWORD: "source-secret" }, {})
+    ).toEqual({ user: "root", password: "source-secret" });
+    expect(
+      resolveExchangeCancellationAdminCredentials(
+        {},
+        {
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: "scratch-admin",
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD: "explicit-secret"
+        }
+      )
+    ).toEqual({ user: "scratch-admin", password: "explicit-secret" });
+    expect(() =>
+      resolveExchangeCancellationAdminCredentials(
+        { MYSQL_ROOT_PASSWORD: "root-secret" },
+        { EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: "someone-else" }
+      )
+    ).toThrow("Explicit MySQL administrator credentials");
+  });
+
+  it("captures and sanitizes child diagnostics before emitting them", () => {
+    const spawn = jest.spyOn(childProcess, "spawnSync").mockReturnValue({
+      pid: 1,
+      status: 1,
+      signal: null,
+      output: [],
+      stdout: "mysql://scratch:encoded%21secret@localhost/scratch encoded!secret",
+      stderr: "admin-secret"
+    });
+    const write = jest.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(() =>
+        runExchangeCancellationCommand("npm", ["run", "prisma:migrate:deploy"], {
+          DATABASE_URL: "mysql://scratch:encoded%21secret@localhost/scratch",
+          MYSQL_ROOT_PASSWORD: "admin-secret"
+        })
+      ).toThrow("migration or integration command failed");
+      expect(spawn).toHaveBeenCalledWith(
+        "npm",
+        expect.any(Array),
+        expect.objectContaining({ encoding: "utf8", stdio: "pipe" })
+      );
+      const output = write.mock.calls.map(([value]) => String(value)).join("");
+      expect(output).not.toContain("encoded");
+      expect(output).not.toContain("admin-secret");
+      expect(output).toContain("[redacted]");
+    } finally {
+      spawn.mockRestore();
+      write.mockRestore();
+    }
+  });
+
   it.each([false, true])(
     "uses a dedicated scratch principal and cleans up even when checks fail: %s",
     async (fail) => {
@@ -27,7 +109,9 @@ describe("Exchange cancellation isolated flow checker", () => {
           NODE_ENV: "test",
           DEPLOY_ENV: "local",
           DATABASE_URL: "mysql://existing:existing-secret@127.0.0.1:3307/needo_dev",
-          MYSQL_ROOT_PASSWORD: "admin-secret"
+          MYSQL_ROOT_PASSWORD: "admin-secret",
+          AUTH_ACCESS_TOKEN_SECRET: "source-auth-secret",
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: "admin"
         }
       });
       let scratchFile = "";
@@ -39,6 +123,8 @@ describe("Exchange cancellation isolated flow checker", () => {
         expect(url.username).toMatch(/^neec_[a-f0-9]{24}$/);
         expect(url.password).not.toBe("existing-secret");
         expect(parsed.MYSQL_ROOT_PASSWORD).toBeUndefined();
+        expect(parsed.AUTH_ACCESS_TOKEN_SECRET).toBeUndefined();
+        expect(parsed.EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER).toBeUndefined();
         expect(environment.EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD).toBeUndefined();
         expect(requireExchangeCancellationScratchEnvironment(scratchFile).databaseName).toBe(
           url.pathname.slice(1)
@@ -59,6 +145,36 @@ describe("Exchange cancellation isolated flow checker", () => {
           .every((sql) => !sql.includes("`needo_dev`"))
       ).toBe(true);
       expect(statements.some((sql) => sql.includes("TO 'existing'"))).toBe(false);
+      expect(statements.find((sql) => sql.startsWith("GRANT ALL"))).toContain(
+        "needo\\_exchange\\_cancel\\_"
+      );
+      expect(statements.some((sql) => sql.includes("FROM mysql.user"))).toBe(true);
+      expect(statements.some((sql) => sql.includes("FROM mysql.db"))).toBe(true);
+    }
+  );
+
+  it.each(["mysql.user", "mysql.db"])(
+    "fails cleanup verification when %s retains scratch authority",
+    async (remainingTable) => {
+      const base = validateExchangeCancellationBaseEnvironment({
+        envFile: "/tmp/needo.env",
+        fileExists: () => true,
+        parsedEnvironment: {
+          NODE_ENV: "test",
+          DEPLOY_ENV: "test",
+          DATABASE_URL: "mysql://existing:secret@localhost/needo_dev"
+        }
+      });
+      await expect(
+        runExchangeCancellationScratchCheck(
+          base,
+          {
+            query: async (sql) => [{ total: sql.includes(`FROM ${remainingTable}`) ? 1 : 0 }],
+            escape: (value) => `'${value}'`
+          },
+          async () => undefined
+        )
+      ).rejects.toThrow("scratch cleanup failed");
     }
   );
 
