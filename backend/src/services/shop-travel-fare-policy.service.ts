@@ -87,6 +87,16 @@ export class ShopTravelFarePolicyService {
       bands: Array<{ maximumDistanceMeters: number; fareAmountJpy: number }>;
     }
   ): Promise<TravelFarePolicyVersionPayload> {
+    if (
+      actor.currentIdentityType !== "merchant_owner" ||
+      !actor.roles.includes("merchant_owner")
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
     const shopId = requireMerchantShopId(actor);
     let bands: ValidatedTravelFareBand[];
     try {

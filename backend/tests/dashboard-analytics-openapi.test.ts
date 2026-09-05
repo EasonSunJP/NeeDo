@@ -373,7 +373,8 @@ describe("dashboard analytics OpenAPI contract", () => {
           previousValue: 300,
           comparisonPercent: 133.33,
           dataStatus: "ready",
-          comparisonDirection: "up"
+          comparisonDirection: "up",
+          detailRoute: "/admin/analytics/metrics/travel_fare"
         }),
         expect.objectContaining({
           metricKey: "supplier_onboarding",

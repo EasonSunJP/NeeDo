@@ -12,7 +12,7 @@ const actor: AuthenticatedAccessContext = {
   accessTokenJti: "jti",
   accessTokenExpiresAt: 2_000_000_000,
   currentIdentityId: 70,
-  currentIdentityType: "merchant",
+  currentIdentityType: "merchant_owner",
   currentIdentityScopeType: "shop",
   currentIdentityScopeId: 11,
   roles: ["merchant_owner"],
@@ -49,6 +49,30 @@ const repository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => ({
 });
 
 describe("ShopTravelFarePolicyService", () => {
+  it("rejects a shop-scoped merchant staff identity at the service boundary", async () => {
+    const repo = repository();
+    const service = new ShopTravelFarePolicyService(repo, { createInput: (input) => input as never });
+
+    await expect(service.publishVersion(
+      { ...actor, roles: ["merchant_staff"] },
+      { ip: "127.0.0.1" },
+      { expectedVersion: 1, effectiveFrom: "2026-09-07T00:00:00.000Z", reason: "Forbidden", bands: [{ maximumDistanceMeters: 5_000, fareAmountJpy: 0 }] }
+    )).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(repo.publishVersion).not.toHaveBeenCalled();
+  });
+
+  it("rejects a staff active identity even when the account also has an owner role", async () => {
+    const repo = repository();
+    const service = new ShopTravelFarePolicyService(repo, { createInput: (input) => input as never });
+
+    await expect(service.publishVersion(
+      { ...actor, currentIdentityType: "merchant_staff", roles: ["merchant_owner", "merchant_staff"] },
+      { ip: "127.0.0.1" },
+      { expectedVersion: 1, effectiveFrom: "2026-09-07T00:00:00.000Z", reason: "Forbidden", bands: [{ maximumDistanceMeters: 5_000, fareAmountJpy: 0 }] }
+    )).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(repo.publishVersion).not.toHaveBeenCalled();
+  });
+
   it("always scopes reads and immutable publication to the signed merchant shop", async () => {
     const repo = repository();
     const service = new ShopTravelFarePolicyService(repo, { createInput: (input) => input as never });

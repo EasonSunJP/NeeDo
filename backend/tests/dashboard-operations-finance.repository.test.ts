@@ -147,6 +147,10 @@ describe("DashboardOperationsFinanceRepository", () => {
     const sql = queryText(fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery);
     expect(sql).toContain("dashboard_travel_fare_details");
     expect(sql).toContain("booking_travel_fare_snapshots");
+    expect(sql).toContain("booking.payment_amount_jpy = checkout.checkout_amount_jpy");
+    expect(sql).toContain("ledger.actor_user_id = booking.payment_confirmed_by_id");
+    expect(sql).toContain("booking.payment_note = checkout.receipt_confirmation_reason");
+    expect(sql).toContain("checkout.receipt_confirmation_reason IS NULL");
     expect(sql).not.toContain("fulfillment_address_json");
   });
 
