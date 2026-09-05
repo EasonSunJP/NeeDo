@@ -25,6 +25,7 @@ import { DASHBOARD_METRIC_KEYS, type DashboardMetricKey } from "../validators/ba
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
@@ -793,6 +794,12 @@ export interface BackofficeServicePayload {
 export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
   ownerPasswordHash: string;
   verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
+}
+
+export interface BackofficeShopMutationContext {
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
 }
 
 export type ScopedTechnicianUpdateInput = BackofficeScope &
@@ -886,7 +893,7 @@ export interface BackofficeRepositoryPort {
   updateShop: (
     id: number,
     input: BackofficeShopUpdateBody,
-    verifiedById?: number
+    mutation?: BackofficeShopMutationContext
   ) => Promise<BackofficeShopPayload | null>;
   updateMerchantShopProfile?: (input: {
     avatar?: { mimeType: string; url: string };
@@ -1881,7 +1888,8 @@ export class BackofficeService {
       shop = await this.repository.createShop({
         ...input,
         ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS),
-        verifiedById: actor.userId
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
       });
     } catch (error) {
       if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
@@ -1896,7 +1904,6 @@ export class BackofficeService {
       shopId: shop.id,
       ownerUserId: shop.ownerUserId
     });
-    await this.recordVerifiedServiceLocation(input, shop, actor, context);
 
     return shop;
   }
@@ -1908,14 +1915,16 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
     const shop = this.requireResult(
-      await this.repository.updateShop(id, input, actor.userId),
+      await this.repository.updateShop(id, input, {
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
+      }),
       "error.shop.not_found"
     );
     await this.record(actor, context, "backoffice.shop.update", "Shop", {
       shopId: id,
       changedFields: Object.keys(input)
     });
-    await this.recordVerifiedServiceLocation(input, shop, actor, context);
     return shop;
   }
 
@@ -2420,24 +2429,29 @@ export class BackofficeService {
     return service;
   }
 
-  private recordVerifiedServiceLocation(
+  private createVerifiedServiceLocationAudit(
     input: {
       serviceCountryCode?: "JP";
       serviceAdmin1Code?: string;
       serviceAdmin2Code?: string;
     },
-    shop: BackofficeShopPayload,
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
-  ): Promise<void> {
+  ): AuditLogCreateInput | undefined {
     if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
-      return Promise.resolve();
+      return undefined;
     }
-    return this.record(actor, context, "backoffice.shop.service_location.verify", "shop", {
-      shopNo: shop.shopNo,
-      countryCode: input.serviceCountryCode,
-      admin1Code: input.serviceAdmin1Code,
-      admin2Code: input.serviceAdmin2Code
+    return this.auditLogService.createInput({
+      actor,
+      action: "backoffice.shop.service_location.verify",
+      targetType: "shop",
+      targetId: null,
+      context,
+      metadata: {
+        countryCode: input.serviceCountryCode,
+        admin1Code: input.serviceAdmin1Code,
+        admin2Code: input.serviceAdmin2Code
+      }
     });
   }
 

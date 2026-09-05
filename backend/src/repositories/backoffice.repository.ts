@@ -49,6 +49,7 @@ import {
   type BackofficeServicePayload,
   type BackofficeScope,
   type BackofficeShopCreateData,
+  type BackofficeShopMutationContext,
   type BackofficeShopPayload,
   type BackofficeTechnicianPayload,
   type BackofficeTechnicianRankingPayload,
@@ -61,6 +62,11 @@ import {
   type ScopedTechnicianUpdateInput,
   type TechnicianRankingRepositoryInput
 } from "../services/backoffice.service";
+import {
+  AuditLogRepository,
+  type AuditLogCreateInput,
+  type TransactionAwareAuditLogRepositoryPort
+} from "./audit-log.repository";
 import type {
   BackofficeCustomerUpdateBody,
   BackofficeListQuery,
@@ -70,6 +76,7 @@ import type {
 } from "../validators/backoffice.validator";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
+import { identifierNumberPartSchema } from "../validators/public-identifier.validator";
 
 type DecimalLike = {
   toString: () => string;
@@ -95,6 +102,12 @@ interface TechnicianRankingDatabaseRow {
   total_revenue_jpy: bigint | number | string | DecimalLike;
   total_completed_orders: bigint | number | string | DecimalLike;
   total_working_days: bigint | number | string | DecimalLike;
+}
+
+interface LockedShopRow {
+  id: number;
+  shop_no: string | null;
+  deleted_at: Date | null;
 }
 
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
@@ -465,17 +478,20 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 export class BackofficeRepository implements BackofficeRepositoryPort {
   private readonly dashboardRepository: DashboardRepository;
   private readonly administrativeRegionRepository: AdministrativeRegionRepositoryPort;
+  private readonly auditLogRepository: TransactionAwareAuditLogRepositoryPort;
 
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
       new IdentifierAllocator(new PublicIdentifierRepository(client)),
-    administrativeRegionRepository?: AdministrativeRegionRepositoryPort
+    administrativeRegionRepository?: AdministrativeRegionRepositoryPort,
+    auditLogRepository: TransactionAwareAuditLogRepositoryPort = new AuditLogRepository(client)
   ) {
     this.dashboardRepository = new DashboardRepository(client);
     this.administrativeRegionRepository =
       administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
+    this.auditLogRepository = auditLogRepository;
   }
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -1318,6 +1334,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
       this.client.$transaction(async (transaction) => {
         const verifiedScope = await this.resolveServiceLocation(input, transaction);
+        if (verifiedScope && (!input.verifiedById || !input.serviceLocationAudit)) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.administrative_region.verifier_required",
+            statusCode: 400
+          });
+        }
         const roles = await transaction.role.findMany({
           where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
           select: { id: true, code: true }
@@ -1383,12 +1406,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           }
         });
         if (verifiedScope) {
+          const shopNo = await this.provisionShopPublicNumber(transaction, shop.id, shop.name);
           await this.upsertShopServiceLocation(
             transaction,
             shop.id,
             verifiedScope,
             input.verifiedById
           );
+          await this.persistServiceLocationAudit(transaction, input.serviceLocationAudit, shopNo);
         }
         const merchantIdentity = await transaction.userIdentity.create({
           data: {
@@ -1440,15 +1465,28 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   public async updateShop(
     id: number,
     input: BackofficeShopUpdateBody,
-    verifiedById?: number
+    mutation?: BackofficeShopMutationContext
   ): Promise<BackofficeShopPayload | null> {
     return this.client.$transaction(async (transaction) => {
-      const existing = await transaction.shop.findFirst({
-        where: { id, deletedAt: null },
-        select: { id: true }
-      });
-      if (!existing) return null;
+      const [existing] = await transaction.$queryRaw<LockedShopRow[]>(Prisma.sql`
+        SELECT id, shop_no, deleted_at
+        FROM shops
+        WHERE id = ${id}
+        FOR UPDATE
+      `);
+      if (!existing || existing.deleted_at !== null) return null;
       const verifiedScope = await this.resolveServiceLocation(input, transaction);
+      let publicShopNo: string | undefined;
+      if (verifiedScope) {
+        publicShopNo = this.requirePublicShopNumber(existing.shop_no);
+        if (!mutation?.verifiedById) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.administrative_region.verifier_required",
+            statusCode: 400
+          });
+        }
+      }
       const shopFields = { ...input };
       delete shopFields.serviceCountryCode;
       delete shopFields.serviceAdmin1Code;
@@ -1456,15 +1494,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       if (Object.keys(shopFields).length > 0) {
         await transaction.shop.update({ where: { id }, data: shopFields });
       }
-      if (verifiedScope) {
-        if (!verifiedById) {
-          throw new AppError({
-            code: ERROR_CODES.VALIDATION,
-            message: "error.administrative_region.verifier_required",
-            statusCode: 400
-          });
-        }
-        await this.upsertShopServiceLocation(transaction, id, verifiedScope, verifiedById);
+      if (verifiedScope && mutation?.verifiedById && publicShopNo) {
+        await this.upsertShopServiceLocation(transaction, id, verifiedScope, mutation.verifiedById);
+        await this.persistServiceLocationAudit(
+          transaction,
+          mutation.serviceLocationAudit,
+          publicShopNo
+        );
       }
       return this.mapShop(
         await transaction.shop.findUniqueOrThrow({
@@ -2993,6 +3029,60 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         verifiedAt: new Date(),
         verifiedById,
         deletedAt: null
+      }
+    });
+  }
+
+  private async provisionShopPublicNumber(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    shopName: string
+  ): Promise<string> {
+    const supportAccount = await transaction.customerSupportAccount.create({
+      data: {
+        shopId,
+        type: "SHOP",
+        displayName: `${shopName} Customer Support`
+      }
+    });
+    const pair = await this.createIdentifierAllocator(transaction).allocateShopSupportPair({
+      shopId,
+      customerSupportAccountId: supportAccount.id
+    });
+    const shopNo = pair.shopIdentifier.numberPart;
+    await transaction.shop.update({ where: { id: shopId }, data: { shopNo } });
+    return shopNo;
+  }
+
+  private requirePublicShopNumber(shopNo: string | null): string {
+    const parsed = identifierNumberPartSchema.safeParse(shopNo);
+    if (!parsed.success) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.shop.public_number_required",
+        statusCode: 400
+      });
+    }
+    return parsed.data;
+  }
+
+  private async persistServiceLocationAudit(
+    transaction: Prisma.TransactionClient,
+    audit: AuditLogCreateInput | undefined,
+    shopNo: string
+  ): Promise<void> {
+    if (!audit) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.administrative_region.verifier_required",
+        statusCode: 400
+      });
+    }
+    await this.auditLogRepository.createInTransaction(transaction, {
+      ...audit,
+      metadata: {
+        ...(audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {}),
+        shopNo
       }
     });
   }

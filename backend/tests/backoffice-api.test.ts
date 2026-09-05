@@ -667,6 +667,39 @@ const createFixture = async (
     get shopState() {
       return shopState;
     },
+    findUserByEmail: jest.fn(async () => null),
+    createShop: jest.fn(
+      async (input: {
+        name: string;
+        serviceCountryCode?: "JP";
+        serviceAdmin1Code?: string;
+        serviceAdmin2Code?: string;
+        serviceLocationAudit?: Record<string, unknown>;
+      }) => {
+        shopState = {
+          ...shopState,
+          name: input.name,
+          serviceLocation: input.serviceCountryCode
+            ? {
+                countryCode: input.serviceCountryCode,
+                admin1Code: input.serviceAdmin1Code!,
+                admin2Code: input.serviceAdmin2Code!,
+                verifiedById: 1
+              }
+            : shopState.serviceLocation
+        };
+        if (input.serviceLocationAudit) {
+          auditLogs.push({
+            ...input.serviceLocationAudit,
+            metadata: {
+              ...(input.serviceLocationAudit.metadata as Record<string, unknown>),
+              shopNo: shopState.shopNo
+            }
+          });
+        }
+        return shopState;
+      }
+    ),
     updateShop: jest.fn(
       async (
         id: number,
@@ -676,7 +709,10 @@ const createFixture = async (
           serviceAdmin1Code?: string;
           serviceAdmin2Code?: string;
         },
-        verifiedById?: number
+        mutation?: {
+          verifiedById: number;
+          serviceLocationAudit?: Record<string, unknown>;
+        }
       ) => {
         if (
           input.serviceCountryCode &&
@@ -696,10 +732,19 @@ const createFixture = async (
                 countryCode: input.serviceCountryCode,
                 admin1Code: input.serviceAdmin1Code!,
                 admin2Code: input.serviceAdmin2Code!,
-                verifiedById: verifiedById!
+                verifiedById: mutation!.verifiedById
               }
             : shopState.serviceLocation
         };
+        if (mutation?.serviceLocationAudit) {
+          auditLogs.push({
+            ...mutation.serviceLocationAudit,
+            metadata: {
+              ...(mutation.serviceLocationAudit.metadata as Record<string, unknown>),
+              shopNo: shopState.shopNo
+            }
+          });
+        }
         return shopState;
       }
     ),
@@ -1758,7 +1803,53 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     expect(fixture.backofficeRepository.updateShop).not.toHaveBeenCalled();
   });
 
-  it("writes one verified service-region assignment and audits only public identifiers", async () => {
+  it("creates a shop with one verified service-region assignment and atomic public audit input", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/backoffice/shops")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        ownerEmail: "new-shop@example.com",
+        ownerUsername: "New Shop Owner",
+        ownerPassword: "Abcd@1234",
+        name: "New Formal Shop",
+        city: "Tokyo",
+        address: "Shinjuku",
+        serviceCountryCode: "JP",
+        serviceAdmin1Code: "13",
+        serviceAdmin2Code: "13104"
+      })
+      .expect(201);
+
+    expect(fixture.backofficeRepository.createShop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verifiedById: 1,
+        serviceLocationAudit: expect.objectContaining({
+          actorId: 1,
+          action: "backoffice.shop.service_location.verify",
+          targetType: "shop",
+          targetId: null,
+          metadata: {
+            countryCode: "JP",
+            admin1Code: "13",
+            admin2Code: "13104"
+          }
+        })
+      })
+    );
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "backoffice.shop.service_location.verify",
+          metadata: expect.objectContaining({ shopNo: "0000000011" })
+        })
+      ])
+    );
+  });
+
+  it("writes one verified service-region assignment and passes its audit into the mutation", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");
 
@@ -1779,7 +1870,19 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         serviceAdmin1Code: "13",
         serviceAdmin2Code: "13104"
       },
-      1
+      expect.objectContaining({
+        verifiedById: 1,
+        serviceLocationAudit: expect.objectContaining({
+          action: "backoffice.shop.service_location.verify",
+          targetType: "shop",
+          targetId: null,
+          metadata: {
+            countryCode: "JP",
+            admin1Code: "13",
+            admin2Code: "13104"
+          }
+        })
+      })
     );
     expect(fixture.backofficeRepository.shopState.serviceLocation).toEqual({
       countryCode: "JP",

@@ -316,11 +316,7 @@ const requireCompleteVerifiedServiceLocation = (
   },
   context: z.RefinementCtx
 ) => {
-  const fields = [
-    value.serviceCountryCode,
-    value.serviceAdmin1Code,
-    value.serviceAdmin2Code
-  ];
+  const fields = [value.serviceCountryCode, value.serviceAdmin1Code, value.serviceAdmin2Code];
   const supplied = fields.filter((field) => field !== undefined).length;
   if (supplied > 0 && supplied < fields.length) {
     context.addIssue({

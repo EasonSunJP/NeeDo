@@ -21786,6 +21786,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Pending shop created" },
+          "400": jsonErrorResponse(
+            "error.administrative_region.invalid_hierarchy; error.administrative_region.verifier_required"
+          ),
           "409": { description: "Owner email already exists" }
         }
       }
@@ -21808,6 +21811,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": { description: "Shop updated" },
+          "400": jsonErrorResponse(
+            "error.administrative_region.invalid_hierarchy; error.administrative_region.verifier_required"
+          ),
           "404": { description: "Shop not found" }
         }
       },

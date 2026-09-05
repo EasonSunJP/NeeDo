@@ -17,6 +17,62 @@ describe("GET /api/v1/openapi.json", () => {
     expect(`${document.servers[0].url.replace(/\/$/, "")}${loginPath}`).toBe(loginPath);
   });
 
+  it("documents formal administrative-region lookup and stable shop assignment failures", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: {
+        "/api/v1/reference/administrative-regions": {
+          get: {
+            security?: unknown;
+            responses: Record<
+              string,
+              { content: Record<string, { schema: { properties: { data: unknown } } }> }
+            >;
+          };
+        };
+        "/api/v1/backoffice/shops": {
+          post: { responses: Record<string, { description: string }> };
+        };
+        "/api/v1/backoffice/shops/{id}": {
+          patch: { responses: Record<string, { description: string }> };
+        };
+      };
+      components: { schemas: Record<string, unknown> };
+    };
+    const reference = document.paths["/api/v1/reference/administrative-regions"].get;
+    const createShop = document.paths["/api/v1/backoffice/shops"].post;
+    const updateShop = document.paths["/api/v1/backoffice/shops/{id}"].patch;
+
+    expect(reference.security).toBeUndefined();
+    expect(reference.responses["200"].content["application/json"].schema.properties.data).toEqual(
+      expect.objectContaining({
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AdministrativeRegionReference" }
+          }
+        }
+      })
+    );
+    expect(document.components.schemas.AdministrativeRegionReference).toMatchObject({
+      additionalProperties: false,
+      required: ["code", "name", "level", "parentCode", "centroid"]
+    });
+    expect(document.components.schemas.BackofficeShopUpdateInput).toMatchObject({
+      additionalProperties: false,
+      dependentRequired: expect.objectContaining({
+        serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"]
+      })
+    });
+    for (const operation of [createShop, updateShop]) {
+      expect(operation.responses["400"].description).toContain(
+        "error.administrative_region.invalid_hierarchy"
+      );
+      expect(operation.responses["400"].description).toContain(
+        "error.administrative_region.verifier_required"
+      );
+    }
+  });
+
   it("documents Exchange matching adjustment confirmations and previews", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, { post: { responses: Record<string, { description: string }> } }>;

@@ -1,7 +1,7 @@
 import {
   AdministrativeRegionLevel,
   ContentLocale,
-  type Prisma,
+  Prisma,
   type PrismaClient
 } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -13,6 +13,15 @@ import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 
 type AdministrativeRegionClient = PrismaClient | Prisma.TransactionClient;
+const ADMINISTRATIVE_REGION_DATASET_VERSION = "N03-20260101" as const;
+
+interface LockedAdministrativeRegionRow {
+  id: number;
+  official_code: string;
+  level: AdministrativeRegionLevel;
+  parent_id: number | null;
+  deleted_at: Date | null;
+}
 
 const localeByPublicCode = {
   "zh-CN": ContentLocale.ZH_CN,
@@ -60,6 +69,7 @@ export class AdministrativeRegionRepository implements AdministrativeRegionRepos
         where: {
           countryCode: input.country,
           officialCode: input.parent,
+          sourceVersion: ADMINISTRATIVE_REGION_DATASET_VERSION,
           deletedAt: null
         },
         select: { id: true }
@@ -71,6 +81,7 @@ export class AdministrativeRegionRepository implements AdministrativeRegionRepos
     const rows = await this.client.administrativeRegion.findMany({
       where: {
         countryCode: input.country,
+        sourceVersion: ADMINISTRATIVE_REGION_DATASET_VERSION,
         deletedAt: null,
         ...(parentId === undefined ? { level: AdministrativeRegionLevel.ADMIN1 } : { parentId })
       },
@@ -115,38 +126,41 @@ export class AdministrativeRegionRepository implements AdministrativeRegionRepos
     transaction?: Prisma.TransactionClient
   ): Promise<VerifiedAdministrativeRegionScope> {
     const client = transaction ?? this.client;
-    const rows = await client.administrativeRegion.findMany({
-      where: {
-        countryCode: input.countryCode,
-        officialCode: { in: [input.admin1Code, input.admin2Code] },
-        sourceVersion: "N03-20260101",
-        deletedAt: null
-      },
-      select: {
-        id: true,
-        officialCode: true,
-        level: true,
-        parentId: true,
-        locales: {
-          where: { locale: ContentLocale.JA, deletedAt: null },
-          select: { name: true },
-          take: 1
-        }
-      }
-    });
+    const rows = await client.$queryRaw<LockedAdministrativeRegionRow[]>(Prisma.sql`
+      SELECT id, official_code, level, parent_id, deleted_at
+      FROM administrative_regions
+      WHERE country_code = ${input.countryCode}
+        AND official_code IN (${input.admin1Code}, ${input.admin2Code})
+        AND source_version = ${ADMINISTRATIVE_REGION_DATASET_VERSION}
+      ORDER BY id ASC
+      FOR UPDATE
+    `);
     const admin1 = rows.find(
       (row) =>
-        row.officialCode === input.admin1Code && row.level === AdministrativeRegionLevel.ADMIN1
+        row.official_code === input.admin1Code &&
+        row.level === AdministrativeRegionLevel.ADMIN1 &&
+        row.deleted_at === null
     );
     const admin2 = rows.find(
       (row) =>
-        row.officialCode === input.admin2Code && row.level === AdministrativeRegionLevel.ADMIN2
+        row.official_code === input.admin2Code &&
+        row.level === AdministrativeRegionLevel.ADMIN2 &&
+        row.deleted_at === null
     );
-    const admin1NameJa = admin1?.locales[0]?.name;
-    const admin2NameJa = admin2?.locales[0]?.name;
-    if (!admin1 || !admin2 || admin2.parentId !== admin1.id || !admin1NameJa || !admin2NameJa) {
+    if (!admin1 || !admin2 || admin2.parent_id !== admin1.id) {
       throw this.invalidHierarchyError();
     }
+    const localeRows = await client.administrativeRegionLocale.findMany({
+      where: {
+        regionId: { in: [admin1.id, admin2.id] },
+        locale: ContentLocale.JA,
+        deletedAt: null
+      },
+      select: { regionId: true, name: true }
+    });
+    const admin1NameJa = localeRows.find((locale) => locale.regionId === admin1.id)?.name;
+    const admin2NameJa = localeRows.find((locale) => locale.regionId === admin2.id)?.name;
+    if (!admin1NameJa || !admin2NameJa) throw this.invalidHierarchyError();
 
     return {
       ...input,
@@ -154,7 +168,7 @@ export class AdministrativeRegionRepository implements AdministrativeRegionRepos
       admin1NameJa,
       admin2RegionId: admin2.id,
       admin2NameJa,
-      datasetVersion: "N03-20260101"
+      datasetVersion: ADMINISTRATIVE_REGION_DATASET_VERSION
     };
   }
 
