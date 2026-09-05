@@ -1,5 +1,6 @@
 import {
   BookingOrderStatus,
+  ConversationAccessPolicy,
   ConversationType,
   LedgerTransactionStatus,
   LedgerTransactionType,
@@ -58,6 +59,7 @@ import { PayrollRepository } from "../src/repositories/payroll.repository";
 import { AuditLogRepository } from "../src/repositories/audit-log.repository";
 import { AuditLogService } from "../src/services/audit-log.service";
 import { PayrollService } from "../src/services/payroll.service";
+import { toFriendshipPairKey } from "../src/repositories/realtime.repository";
 
 const BCRYPT_ROUNDS = 12;
 const LEGACY_SIMULATION_NAMESPACE = "needo_three_month_v1";
@@ -880,6 +882,14 @@ const main = async (): Promise<void> => {
               message: { conversationId: { in: existingSimulationConversationIds } }
             }
           });
+          await tx.messageUserDeletion.deleteMany({
+            where: {
+              message: { conversationId: { in: existingSimulationConversationIds } }
+            }
+          });
+          await tx.imDeletionSync.deleteMany({
+            where: { conversationId: { in: existingSimulationConversationIds } }
+          });
           await tx.message.deleteMany({
             where: { conversationId: { in: existingSimulationConversationIds } }
           });
@@ -898,6 +908,36 @@ const main = async (): Promise<void> => {
             ...customerUserIds.values()
           ])
         ];
+        const participantIdentities = await tx.userIdentity.findMany({
+          where: {
+            userId: { in: simulationParticipantUserIds },
+            isActive: true,
+            deletedAt: null
+          },
+          select: { id: true, userId: true, type: true }
+        });
+        const participantIdentityIds = new Map(
+          participantIdentities.map((identity) => [
+            `${identity.userId}:${identity.type}`,
+            identity.id
+          ])
+        );
+        const getParticipantIdentityId = (
+          type: "admin" | "customer" | "technician" | "shop_owner",
+          key: string
+        ): number => {
+          const userId = getParticipantUserId(type, key);
+          const identityType = type === "admin"
+            ? "platform"
+            : type === "shop_owner"
+              ? "merchant_owner"
+              : type;
+          return getRequiredId(
+            participantIdentityIds,
+            `${userId}:${identityType}`,
+            "IM participant identity"
+          );
+        };
         await tx.contact.deleteMany({
           where: {
             source: {
@@ -912,7 +952,12 @@ const main = async (): Promise<void> => {
         const contactRows = contactsToSeed.map(
           (contact): Prisma.ContactCreateManyInput => ({
             ownerUserId: getParticipantUserId(contact.ownerType, contact.ownerKey),
+            ownerIdentityId: getParticipantIdentityId(contact.ownerType, contact.ownerKey),
             contactUserId: getParticipantUserId(contact.contactType, contact.contactKey),
+            contactIdentityId: getParticipantIdentityId(
+              contact.contactType,
+              contact.contactKey
+            ),
             source: contact.key.startsWith("lifedance-staff-")
               ? "lifedance_staff_seed"
               : "lifedance_customer_service_seed",
@@ -922,14 +967,21 @@ const main = async (): Promise<void> => {
         const existingContacts = await tx.contact.findMany({
           where: {
             OR: contactRows.map((contact) => ({
-              ownerUserId: contact.ownerUserId,
-              contactUserId: contact.contactUserId
+              ownerIdentityId: contact.ownerIdentityId,
+              contactIdentityId: contact.contactIdentityId
             }))
           },
-          select: { id: true, ownerUserId: true, contactUserId: true, deletedAt: true }
+          select: {
+            id: true,
+            ownerIdentityId: true,
+            contactIdentityId: true,
+            deletedAt: true
+          }
         });
         const existingContactKeys = new Set(
-          existingContacts.map((contact) => `${contact.ownerUserId}:${contact.contactUserId}`)
+          existingContacts.map(
+            (contact) => `${contact.ownerIdentityId}:${contact.contactIdentityId}`
+          )
         );
         const deletedExistingContactIds = existingContacts
           .filter((contact) => contact.deletedAt)
@@ -941,7 +993,8 @@ const main = async (): Promise<void> => {
           });
         }
         const missingContactRows = contactRows.filter(
-          (contact) => !existingContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+          (contact) =>
+            !existingContactKeys.has(`${contact.ownerIdentityId}:${contact.contactIdentityId}`)
         );
         if (missingContactRows.length > 0) {
           await tx.contact.createMany({ data: missingContactRows, skipDuplicates: true });
@@ -969,6 +1022,14 @@ const main = async (): Promise<void> => {
             conversation.secondType,
             conversation.secondKey
           );
+          const firstIdentityId = getParticipantIdentityId(
+            conversation.firstType,
+            conversation.firstKey
+          );
+          const secondIdentityId = getParticipantIdentityId(
+            conversation.secondType,
+            conversation.secondKey
+          );
           const conversationMessages = messagePlansByConversation.get(conversation.key) ?? [];
           assert(
             conversationMessages.length >= 4,
@@ -981,13 +1042,17 @@ const main = async (): Promise<void> => {
           await tx.conversation.create({
             data: {
               type: ConversationType.DIRECT,
+              accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+              friendshipPairKey: toFriendshipPairKey(firstIdentityId, secondIdentityId),
               createdByUserId: firstUserId,
+              createdByIdentityId: firstIdentityId,
               createdAt: new Date(conversation.createdAt),
               updatedAt,
               participants: {
                 create: [
                   {
                     userId: firstUserId,
+                    identityId: firstIdentityId,
                     role: "member",
                     unreadCount: isStaffConversation ? conversationIndex % 3 : 1,
                     isPinned: isStaffConversation && conversationIndex % 4 === 0,
@@ -999,6 +1064,7 @@ const main = async (): Promise<void> => {
                   },
                   {
                     userId: secondUserId,
+                    identityId: secondIdentityId,
                     role: "member",
                     unreadCount: isStaffConversation ? conversationIndex % 2 : 0,
                     isPinned: isStaffConversation && conversationIndex % 5 === 0,
@@ -1015,6 +1081,10 @@ const main = async (): Promise<void> => {
                   const createdAt = new Date(message.createdAt);
                   return {
                     senderUserId: getParticipantUserId(message.senderType, message.senderKey),
+                    senderIdentityId: getParticipantIdentityId(
+                      message.senderType,
+                      message.senderKey
+                    ),
                     type: MessageType.TEXT,
                     content: message.content,
                     metadata: {
@@ -1058,6 +1128,33 @@ const main = async (): Promise<void> => {
           ])
         );
         const socialUserIds = [...socialUserIdByKey.values()];
+        const socialAccountByKey = new Map(
+          socialPlan.accounts.map((account) => [account.key, account])
+        );
+        const socialIdentities = await tx.userIdentity.findMany({
+          where: { userId: { in: socialUserIds }, isActive: true, deletedAt: null },
+          select: { id: true, userId: true, type: true }
+        });
+        const socialIdentityByUserAndType = new Map(
+          socialIdentities.map((identity) => [
+            `${identity.userId}:${identity.type}`,
+            identity.id
+          ])
+        );
+        const getSocialIdentityId = (accountKey: string): number => {
+          const account = getRequiredId(socialAccountByKey, accountKey, "social account");
+          const userId = getRequiredId(socialUserIdByKey, accountKey, "social user");
+          const preferredTypes = account.socialType === "shop"
+            ? ["merchant_owner", "merchant", "platform"]
+            : account.socialType === "technician"
+              ? ["technician"]
+              : ["customer"];
+          for (const identityType of preferredTypes) {
+            const identityId = socialIdentityByUserAndType.get(`${userId}:${identityType}`);
+            if (identityId !== undefined) return identityId;
+          }
+          throw new Error(`Social identity id is missing for ${accountKey}.`);
+        };
 
         const existingSocialPosts = await tx.socialPost.findMany({
           where: { authorUserId: { in: socialUserIds }, deletedAt: null },
@@ -1088,6 +1185,7 @@ const main = async (): Promise<void> => {
                   post.authorKey,
                   "social post author"
                 ),
+                authorIdentityId: getSocialIdentityId(post.authorKey),
                 content: post.content,
                 media: post.media as unknown as Prisma.InputJsonValue,
                 visibility:
@@ -1131,6 +1229,7 @@ const main = async (): Promise<void> => {
                   post.authorKey,
                   "social quote author"
                 ),
+                authorIdentityId: getSocialIdentityId(post.authorKey),
                 content: post.content,
                 media: {
                   ...post.media,
@@ -1149,15 +1248,21 @@ const main = async (): Promise<void> => {
         const directedFriendPairs = socialPlan.friendships.flatMap((friendship) => [
           {
             followerUserId: getRequiredId(socialUserIdByKey, friendship.leftKey, "friend"),
-            followingUserId: getRequiredId(socialUserIdByKey, friendship.rightKey, "friend")
+            followerIdentityId: getSocialIdentityId(friendship.leftKey),
+            followingUserId: getRequiredId(socialUserIdByKey, friendship.rightKey, "friend"),
+            followingIdentityId: getSocialIdentityId(friendship.rightKey)
           },
           {
             followerUserId: getRequiredId(socialUserIdByKey, friendship.rightKey, "friend"),
-            followingUserId: getRequiredId(socialUserIdByKey, friendship.leftKey, "friend")
+            followerIdentityId: getSocialIdentityId(friendship.rightKey),
+            followingUserId: getRequiredId(socialUserIdByKey, friendship.leftKey, "friend"),
+            followingIdentityId: getSocialIdentityId(friendship.leftKey)
           }
         ]);
         const plannedFollowKeys = new Set(
-          directedFriendPairs.map((pair) => `${pair.followerUserId}:${pair.followingUserId}`)
+          directedFriendPairs.map(
+            (pair) => `${pair.followerIdentityId}:${pair.followingIdentityId}`
+          )
         );
         const existingFollows = await tx.follow.findMany({
           where: {
@@ -1168,21 +1273,23 @@ const main = async (): Promise<void> => {
           },
           select: {
             id: true,
-            followerUserId: true,
-            followingUserId: true,
+            followerIdentityId: true,
+            followingIdentityId: true,
             deletedAt: true
           }
         });
         const existingFollowIdByKey = new Map(
           existingFollows.map((follow) => [
-            `${follow.followerUserId}:${follow.followingUserId}`,
+            `${follow.followerIdentityId}:${follow.followingIdentityId}`,
             follow.id
           ])
         );
         const obsoleteFollowIds = existingFollows
           .filter(
             (follow) =>
-              !plannedFollowKeys.has(`${follow.followerUserId}:${follow.followingUserId}`) &&
+              !plannedFollowKeys.has(
+                `${follow.followerIdentityId}:${follow.followingIdentityId}`
+              ) &&
               !follow.deletedAt
           )
           .map((follow) => follow.id);
@@ -1193,7 +1300,9 @@ const main = async (): Promise<void> => {
           });
         }
         const plannedExistingFollowIds = directedFriendPairs.flatMap((pair) => {
-          const id = existingFollowIdByKey.get(`${pair.followerUserId}:${pair.followingUserId}`);
+          const id = existingFollowIdByKey.get(
+            `${pair.followerIdentityId}:${pair.followingIdentityId}`
+          );
           return id ? [id] : [];
         });
         if (plannedExistingFollowIds.length > 0) {
@@ -1203,7 +1312,10 @@ const main = async (): Promise<void> => {
           });
         }
         const missingFollowRows = directedFriendPairs.filter(
-          (pair) => !existingFollowIdByKey.has(`${pair.followerUserId}:${pair.followingUserId}`)
+          (pair) =>
+            !existingFollowIdByKey.has(
+              `${pair.followerIdentityId}:${pair.followingIdentityId}`
+            )
         );
         for (const rows of chunkRows(missingFollowRows)) {
           await tx.follow.createMany({
@@ -1542,7 +1654,9 @@ const main = async (): Promise<void> => {
           data: plan.bookings.map(
             (booking): Prisma.NotificationCreateManyInput => ({
               recipientUserId: getRequiredId(customerUserIds, booking.customerKey, "customer user"),
+              recipientIdentityId: getParticipantIdentityId("customer", booking.customerKey),
               actorUserId: getRequiredId(ownerUserIds, booking.shopKey, "shop owner"),
+              actorIdentityId: getParticipantIdentityId("shop_owner", booking.shopKey),
               type: NotificationType.ORDER_STATUS,
               title: "ご予約状況のお知らせ",
               body: `${booking.orderNo} の予約状況が更新されました。`,

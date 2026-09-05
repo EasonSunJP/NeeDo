@@ -24,14 +24,32 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain("lastReadAt");
     expect(seedSource).toContain("isPinned");
     expect(seedSource).toContain("isMuted");
+    expect(seedSource).toContain("ConversationAccessPolicy.FRIENDSHIP_REQUIRED");
+    expect(seedSource).toContain("friendshipPairKey");
+    expect(seedSource).toContain("ownerIdentityId:");
+    expect(seedSource).toContain("contactIdentityId:");
+    expect(seedSource).toContain("identityId: firstIdentityId");
+    expect(seedSource).toContain("identityId: secondIdentityId");
+    expect(seedSource).toContain("senderIdentityId:");
+    expect(seedSource).toContain("authorIdentityId:");
+    expect(seedSource).toContain("followerIdentityId:");
+    expect(seedSource).toContain("followingIdentityId:");
+    expect(seedSource).toContain("recipientIdentityId:");
+    expect(seedSource).toContain("actorIdentityId:");
   });
 
-  it("removes dependent message reactions before replacing simulated messages", () => {
+  it("removes dependent reactions, user deletions and sync directives before replacing simulated IM", () => {
     const reactionCleanupIndex = seedSource.indexOf("messageReaction.deleteMany");
+    const userDeletionCleanupIndex = seedSource.indexOf("messageUserDeletion.deleteMany");
+    const deletionSyncCleanupIndex = seedSource.indexOf("imDeletionSync.deleteMany");
     const messageCleanupIndex = seedSource.indexOf("message.deleteMany");
+    const conversationCleanupIndex = seedSource.indexOf("conversation.deleteMany");
 
     expect(reactionCleanupIndex).toBeGreaterThan(-1);
-    expect(messageCleanupIndex).toBeGreaterThan(reactionCleanupIndex);
+    expect(userDeletionCleanupIndex).toBeGreaterThan(reactionCleanupIndex);
+    expect(messageCleanupIndex).toBeGreaterThan(userDeletionCleanupIndex);
+    expect(deletionSyncCleanupIndex).toBeGreaterThan(userDeletionCleanupIndex);
+    expect(conversationCleanupIndex).toBeGreaterThan(deletionSyncCleanupIndex);
   });
 
   it("keeps the shared formal customer preview account usable with profile and wallet data", () => {
@@ -57,6 +75,7 @@ describe("three-month simulation IM persistence", () => {
     expect(checkSource).toContain("simulationConversations");
     expect(checkSource).toContain("simulationMessages");
     expect(checkSource).toContain("simulationContacts");
+    expect(checkSource).toContain("simulationContactSources");
     expect(checkSource).toContain("plan.conversations.length");
     expect(checkSource).toContain("plan.messages.length");
     expect(checkSource).toContain("plan.contacts.length");

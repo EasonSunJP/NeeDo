@@ -768,8 +768,15 @@ const main = async (): Promise<void> => {
       },
       select: { ownerUserId: true, contactUserId: true, source: true }
     });
-    const simulationContacts = candidateContacts.filter((contact) =>
-      expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+    const simulationContactSources = new Set([
+      "simulation_seed",
+      "lifedance_customer_service_seed",
+      "lifedance_staff_seed"
+    ]);
+    const simulationContacts = candidateContacts.filter(
+      (contact) =>
+        simulationContactSources.has(contact.source) &&
+        expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
     );
     assert(
       simulationContacts.length === plan.contacts.length,
