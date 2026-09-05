@@ -140,6 +140,8 @@ export const EXCHANGE_PERMISSIONS = {
   matchingReadOwn: "exchange:matching:read-own",
   matchingSelectOwn: "exchange:matching:select-own",
   matchingBookOwn: "exchange:matching:book-own",
+  cancellationReadOwn: "exchange:cancellation:read-own",
+  cancellationWriteOwn: "exchange:cancellation:write-own",
   commentList: "exchange:comments:list",
   commentCreate: "exchange:comments:create",
   likeWrite: "exchange:likes:write",
@@ -1785,6 +1787,20 @@ export const SYSTEM_PERMISSIONS = [
     "将本人已匹配的需求原子转换为正式待接单预约"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.cancellationReadOwn,
+    "读取匹配预约取消状态",
+    "api",
+    "exchange",
+    "读取当前账号作为顾客或服务承接方参与的逐单双方取消状态"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.cancellationWriteOwn,
+    "处理匹配预约取消",
+    "api",
+    "exchange",
+    "发起、同意、拒绝或撤回当前账号参与的逐单双方取消申请"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.commentList,
     "需求情报评论列表",
     "api",
@@ -1861,14 +1877,18 @@ const EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES = [
-  EXCHANGE_PERMISSIONS.matchingReadOwn
+  EXCHANGE_PERMISSIONS.matchingReadOwn,
+  EXCHANGE_PERMISSIONS.cancellationReadOwn,
+  EXCHANGE_PERMISSIONS.cancellationWriteOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimListOwnedRequest,
   ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
   EXCHANGE_PERMISSIONS.matchingSelectOwn,
-  EXCHANGE_PERMISSIONS.matchingBookOwn
+  EXCHANGE_PERMISSIONS.matchingBookOwn,
+  EXCHANGE_PERMISSIONS.cancellationReadOwn,
+  EXCHANGE_PERMISSIONS.cancellationWriteOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [

@@ -1754,6 +1754,97 @@ const exchangeBookingConversionErrorResponses = {
   }
 };
 
+const exchangeCancellationErrorExamples = {
+  not_found: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_NOT_FOUND,
+      message: "error.exchange.cancellation_not_found",
+      data: null
+    }
+  },
+  not_allowed: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_NOT_ALLOWED,
+      message: "error.exchange.cancellation_not_allowed",
+      data: null
+    }
+  },
+  invalid_state: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_INVALID_STATE,
+      message: "error.exchange.cancellation_invalid_state",
+      data: null
+    }
+  },
+  version_conflict: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_VERSION_CONFLICT,
+      message: "error.exchange.cancellation_version_conflict",
+      data: { currentVersion: 1 }
+    }
+  },
+  pending_conflict: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_PENDING_CONFLICT,
+      message: "error.exchange.cancellation_pending_conflict",
+      data: null
+    }
+  },
+  idempotency_conflict: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_IDEMPOTENCY_CONFLICT,
+      message: "error.exchange.cancellation_idempotency_conflict",
+      data: null
+    }
+  },
+  slot_conflict: {
+    value: {
+      code: ERROR_CODES.EXCHANGE_CANCELLATION_SLOT_CONFLICT,
+      message: "error.exchange.cancellation_slot_conflict",
+      data: null
+    }
+  }
+} as const;
+
+const exchangeCancellationErrorResponses = {
+  "400": { description: "error.validation — strict cancellation request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description: "error.forbidden or error.exchange.cancellation_not_allowed",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/ApiError" },
+        examples: { not_allowed: exchangeCancellationErrorExamples.not_allowed }
+      }
+    }
+  },
+  "404": {
+    description: "error.exchange.cancellation_not_found — order is not visible to this party",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/ApiError" },
+        examples: { not_found: exchangeCancellationErrorExamples.not_found }
+      }
+    }
+  },
+  "409": {
+    description:
+      "error.exchange.cancellation_invalid_state, error.exchange.cancellation_version_conflict, error.exchange.cancellation_pending_conflict, error.exchange.cancellation_idempotency_conflict, or error.exchange.cancellation_slot_conflict",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/ApiError" },
+        examples: {
+          invalid_state: exchangeCancellationErrorExamples.invalid_state,
+          version_conflict: exchangeCancellationErrorExamples.version_conflict,
+          pending_conflict: exchangeCancellationErrorExamples.pending_conflict,
+          idempotency_conflict: exchangeCancellationErrorExamples.idempotency_conflict,
+          slot_conflict: exchangeCancellationErrorExamples.slot_conflict
+        }
+      }
+    }
+  }
+};
+
 const exchangeRequestFeeErrorResponses = {
   "400": { description: "error.validation — strict request validation failed" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
@@ -1795,6 +1886,7 @@ const exchangeOperation = (
 
 const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
   const base = `${config.API_PREFIX}/exchange/posts`;
+  const cancellationBase = `${config.API_PREFIX}/exchange/orders/{id}/cancellation`;
   const contextBase = `${config.API_PREFIX}/exchange/request-publication-context`;
   const feeBase = `${config.API_PREFIX}/backoffice/exchange-request-fee`;
   const postId = idPathParameter("id");
@@ -2087,6 +2179,60 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
         }
       )
     },
+    [cancellationBase]: {
+      get: exchangeOperation(
+        "Read this party's per-order Exchange cancellation state",
+        "exchange:cancellation:read-own",
+        {
+          description:
+            "Visible only to the exact Request customer identity or the linked technician/current selected shop provider scope.",
+          parameters: [postId],
+          responses: {
+            "200": jsonDataResponse("Per-order cancellation state", {
+              $ref: "#/components/schemas/ExchangeCancellation"
+            }),
+            ...exchangeCancellationErrorResponses
+          }
+        }
+      )
+    },
+    [`${cancellationBase}/requests`]: {
+      post: exchangeOperation(
+        "Request bilateral cancellation for one Exchange-linked order",
+        "exchange:cancellation:write-own",
+        {
+          parameters: [postId, exchangeIdempotencyKeyParameter],
+          requestBody: body("ExchangeCancellationRequest"),
+          responses: {
+            "200": jsonDataResponse("Cancellation request created or replayed", {
+              $ref: "#/components/schemas/ExchangeCancellation"
+            }),
+            ...exchangeCancellationErrorResponses
+          }
+        }
+      )
+    },
+    ...Object.fromEntries(
+      (["accept", "reject", "withdraw"] as const).map((action) => [
+        `${cancellationBase}/${action}`,
+        {
+          post: exchangeOperation(
+            `${action[0].toUpperCase()}${action.slice(1)} one pending bilateral cancellation request`,
+            "exchange:cancellation:write-own",
+            {
+              parameters: [postId, exchangeIdempotencyKeyParameter],
+              requestBody: body("ExchangeCancellationDecisionRequest"),
+              responses: {
+                "200": jsonDataResponse("Cancellation decision committed or replayed", {
+                  $ref: "#/components/schemas/ExchangeCancellation"
+                }),
+                ...exchangeCancellationErrorResponses
+              }
+            }
+          )
+        }
+      ])
+    ),
     [contextBase]: {
       get: exchangeOperation(
         "Read the active identity's Request publication capacity and fee",
@@ -4011,6 +4157,77 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           orders: {
             type: "array",
             items: { $ref: "#/components/schemas/ExchangeBookingConversionOrder" }
+          }
+        }
+      },
+      ExchangeCancellationRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "reason"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 0, maximum: 2147483645 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ExchangeCancellationDecisionRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1, maximum: 2147483646 }
+        }
+      },
+      ExchangeCancellationRecord: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "status",
+          "reason",
+          "initiatorParty",
+          "version",
+          "requestedAt",
+          "resolvedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["pending", "accepted", "rejected", "withdrawn"] },
+          reason: { type: "string", minLength: 1, maxLength: 500 },
+          initiatorParty: { type: "string", enum: ["customer", "provider"] },
+          version: { type: "integer", minimum: 1, maximum: 2147483647 },
+          requestedAt: { type: "string", format: "date-time" },
+          resolvedAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      ExchangeCancellation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["orderId", "orderStatus", "viewerParty", "allowedActions", "cancellation"],
+        properties: {
+          orderId: { type: "integer", minimum: 1 },
+          orderStatus: {
+            type: "string",
+            enum: [
+              "pending",
+              "confirmed",
+              "in_service",
+              "awaiting_checkout",
+              "awaiting_payment_confirmation",
+              "completed",
+              "cancelled"
+            ]
+          },
+          viewerParty: { type: "string", enum: ["customer", "provider"] },
+          allowedActions: {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "string", enum: ["request", "accept", "reject", "withdraw"] }
+          },
+          cancellation: {
+            oneOf: [
+              { $ref: "#/components/schemas/ExchangeCancellationRecord" },
+              { type: "null" }
+            ]
           }
         }
       },

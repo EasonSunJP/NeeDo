@@ -21,6 +21,35 @@ export const exchangeCancellationDecisionBodySchema = z
   .object({ expectedVersion: expectedVersion.min(1) })
   .strict();
 
+export const exchangeCancellationPayloadSchema = z
+  .object({
+    orderId: z.number().int().positive(),
+    orderStatus: z.enum([
+      "pending",
+      "confirmed",
+      "in_service",
+      "awaiting_checkout",
+      "awaiting_payment_confirmation",
+      "completed",
+      "cancelled"
+    ]),
+    viewerParty: z.enum(["customer", "provider"]),
+    allowedActions: z.array(z.enum(["request", "accept", "reject", "withdraw"])),
+    cancellation: z
+      .object({
+        id: z.number().int().positive(),
+        status: z.enum(["pending", "accepted", "rejected", "withdrawn"]),
+        reason: z.string(),
+        initiatorParty: z.enum(["customer", "provider"]),
+        version: z.number().int().positive(),
+        requestedAt: z.string().datetime(),
+        resolvedAt: z.string().datetime().nullable()
+      })
+      .strict()
+      .nullable()
+  })
+  .strict();
+
 export type ExchangeCancellationRequestBody = z.infer<typeof exchangeCancellationRequestBodySchema>;
 export type ExchangeCancellationDecisionBody = z.infer<
   typeof exchangeCancellationDecisionBodySchema

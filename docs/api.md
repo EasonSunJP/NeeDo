@@ -382,6 +382,47 @@ The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, 
 
 Top-up, redemption, refund, and reward ledger settlement remain outside these configuration, issuance, and adjustment endpoints and must be implemented as separate state-machine microsteps.
 
+## Exchange Matched-Order Bilateral Cancellation
+
+Cancellation is scoped to one persisted Exchange-linked Request order. Cancelling one selected
+provider's order does not cancel or modify any other participant order.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/exchange/orders/:id/cancellation` | Read the current party's cancellation state and allowed actions | `exchange:cancellation:read-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/requests` | Request cancellation with a reason | `exchange:cancellation:write-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/accept` | Accept the opposite party's pending request | `exchange:cancellation:write-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/reject` | Reject the opposite party's pending request | `exchange:cancellation:write-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/withdraw` | Withdraw the exact initiating identity's pending request | `exchange:cancellation:write-own` |
+
+Every command requires `Idempotency-Key` and `expectedVersion`; request creation additionally
+requires a 1–500 character reason. The server resolves the actor, identity, customer/provider
+party, technician profile, and selected shop scope. Client-supplied actor, party, status, order,
+or financial fields fail strict validation.
+
+Only linked `REQUEST` orders in `PENDING` or `CONFIRMED` state are eligible, and only before service
+start or confirmed/refunded payment. Request, rejection, and withdrawal do not mutate orders,
+slots, wallets, or ledgers. Acceptance atomically updates the request, cancels that order, releases
+one unit of slot capacity, appends order status history and cancellation event history, writes
+audit and notification evidence, captures the Demand publication fee through its existing
+idempotent ledger authority, and releases the existing Request booking hold only when the order
+was confirmed. Any failure rolls back the transaction.
+
+The API does not implement payment refunds, service-in-progress termination, responsibility
+penalties, Affiliate reward/refund changes, or batch cancellation. The user-facing controls and
+authenticated browser acceptance are separate later microsteps.
+
+The guarded real-MySQL suite is `backend/tests/exchange-cancellation.repository.integration.test.ts`.
+It runs only when `RUN_EXCHANGE_CANCELLATION_INTEGRATION=true` and
+`FORMAL_BACKEND_ENV_FILE` names an explicit loopback, non-production MySQL environment. Without
+that isolated environment, MySQL concurrency and finance acceptance remain an unproven release
+gate; the suite must not target staging, production, or an unapproved shared development database.
+Before merge or release, that gate must also cover a real confirmed Request booking-hold release,
+races against the formal acceptance/service-start/payment transition APIs, concurrent acceptance
+across two matched orders, explicit wallet/platform/reconciliation conservation, and rollback after
+an actual partial ledger mutation. Unit rollback and a deliberately failing settlement callback do
+not substitute for those database proofs.
+
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
 
 ## Shop Service Taxonomy
