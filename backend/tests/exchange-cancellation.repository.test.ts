@@ -63,6 +63,7 @@ const command = (
 });
 
 interface HarnessOptions {
+  denyNeedoIdFallback?: boolean;
   missingPublicIdentifier?: boolean;
   orderStatus?: "PENDING" | "CONFIRMED" | "CANCELLED";
   latest?: null | {
@@ -184,6 +185,7 @@ const createHarness = (options: HarnessOptions = {}) => {
       const sql = query.sql ?? query.strings?.join("?") ?? "";
       lockSql.push(sql);
       if (options.missingPublicIdentifier && sql.includes("SELECT id FROM public_identifiers")) return [];
+      if (options.denyNeedoIdFallback && sql.includes("AND needo_id =")) return [];
       return [{ id: 1 }];
     }),
     exchangeMatchParticipant: {
@@ -511,6 +513,34 @@ describe("ExchangeCancellationRepository", () => {
     ).resolves.toMatchObject({ outcome: "created", payload: { viewerParty: "customer" } });
     expect(state.lockSql.some((sql) => sql.includes("needo_id"))).toBe(true);
   });
+
+  it.each([
+    ["a wrong NeeDo ID", { actorPublicId: "needo-wrong" }],
+    ["another active public ID", {}]
+  ])("denies the customer fallback for %s", async (_label, actorOverrides) => {
+    const state = createHarness({ denyNeedoIdFallback: true, missingPublicIdentifier: true });
+    await expect(
+      state.repository.command(
+        command({ ...customer, ...actorOverrides }, "request", 0),
+        state.settlement
+      )
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    expect(state.lockSql.some((sql) => sql.includes("AND needo_id ="))).toBe(true);
+    expect(state.lockSql.some((sql) => sql.includes("NOT EXISTS") && sql.includes("status = 'active'"))).toBe(true);
+    expect(state.cancellations).toHaveLength(0);
+  });
+
+  it.each([provider, merchantProvider])(
+    "does not grant the customer NeeDo ID fallback to $actorIdentityType",
+    async (actor) => {
+      const state = createHarness({ missingPublicIdentifier: true });
+      await expect(
+        state.repository.command(command(actor, "request", 0), state.settlement)
+      ).resolves.toEqual({ outcome: "not_allowed" });
+      expect(state.lockSql.some((sql) => sql.includes("needo_id"))).toBe(false);
+      expect(state.cancellations).toHaveLength(0);
+    }
+  );
 
   it("locks the exact actor, order graph, provider authority, cancellation, and slot in deterministic order", async () => {
     const state = createHarness();
