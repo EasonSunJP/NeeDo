@@ -8,6 +8,13 @@ import {
 import source from "./MerchantAdminLayout.tsx?raw";
 
 describe("MerchantAdminLayout formal shop summary", () => {
+  it("uses the same formal notice bell as operations instead of a text button", () => {
+    expect(source).toContain(
+      '<OfficialNoticeBell to="/merchant-admin/notifications/inbox"'
+    );
+    expect(source).not.toContain(">\n                  通知\n                </NavLink>");
+  });
+
   it("does not render the obstructive bottom-left store notice", () => {
     expect(source).not.toContain("本店经营提醒");
     expect(source).not.toContain("高频入口只保留本店自己能处理的事务，不显示平台运营后台模块。");
