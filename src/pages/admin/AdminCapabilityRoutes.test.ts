@@ -34,6 +34,15 @@ const merchantAdminLayoutSource = readFileSync(
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
 
+describe("operations system settings route", () => {
+  it("separates system settings from role management", () => {
+    expect(adminLayoutSource).toContain('to: "/admin/settings/system"');
+    expect(adminLayoutSource).not.toContain('to: "/admin/roles?module=system"');
+    expect(appSource).toContain('path="/admin/settings/system" element={protectPermission("admin", "backoffice:system-settings:read"');
+    expect(appSource).toContain('path="/admin/roles" element={protectPermission("admin", "page:role-management"');
+  });
+});
+
 describe("formal platform user-management routes", () => {
   it("registers five independently permissioned lazy workspaces", () => {
     for (const [path, permission, component] of [
