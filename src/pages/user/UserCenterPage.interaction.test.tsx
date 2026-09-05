@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "../../api/httpClient";
 import type { CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
 import { UserCenterPage } from "./UserCenterPage";
 
@@ -242,6 +243,17 @@ describe("UserCenterPage inline profile editing", () => {
 
     expect(container.textContent).toContain("Test NDP");
     expect(container.textContent).toContain("100,000");
+  });
+
+  it("keeps the formal personal center available when an imported customer has no experience account", async () => {
+    testState.getMyExperience.mockRejectedValue(
+      new ApiClientError("error.user_experience.not_applicable", 422, 422)
+    );
+
+    await renderUserCenter();
+
+    expect(container.textContent).toContain("Lv.1");
+    expect(container.textContent).not.toContain("我的数据加载失败");
   });
 
   it("keeps the saved privacy value in view and restores it after cancelling an edited draft", async () => {

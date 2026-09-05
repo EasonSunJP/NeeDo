@@ -31,7 +31,7 @@ const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
   activeShopMembershipCount: number | null;
-  experience: MyExperienceSummary;
+  experience: MyExperienceSummary | null;
   membership: MyPlatformMembership;
   orderCounts: FormalOrderCounts;
   profile: CustomerSelfProfile;
@@ -45,6 +45,22 @@ const emptyFormalOrderCounts: FormalOrderCounts = {
   completed: 0,
   cancelled: 0
 };
+
+async function getMyExperienceIfProvisioned(): Promise<MyExperienceSummary | null> {
+  try {
+    return await platformMembershipSelfApi.getMyExperience();
+  } catch (error) {
+    if (
+      error instanceof ApiClientError &&
+      error.status === 422 &&
+      error.message === "error.user_experience.not_applicable"
+    ) {
+      return null;
+    }
+
+    throw error;
+  }
+}
 
 const userCenterCollectionInfo: Record<Language, string> = {
   zh: "已收藏的动态与聊天记录",
@@ -552,7 +568,7 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
       customerShopMembershipApi.list({ page: 1, pageSize: 1, status: "active" })
         .then((result) => result.total)
         .catch(() => null),
-      platformMembershipSelfApi.getMyExperience(),
+      getMyExperienceIfProvisioned(),
       platformMembershipSelfApi.getMine()
     ])
       .then(([profile, wallet, counts, activeShopMembershipCount, experience, membership]) => {
@@ -640,7 +656,8 @@ function CompleteUserCenterPage({
   const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
-  const levelLabel = `Lv.${formalData.experience.level}`;
+  const customerLevel = formalData.experience?.level ?? formalData.profile.level;
+  const levelLabel = `Lv.${customerLevel}`;
   const membershipSurface = getThemeProfileSurfaceClassNames();
   const savedProfilePrivacy = getPersistedUserProfilePrivacy(formalData.profile.visibility);
   const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;
@@ -1024,7 +1041,7 @@ function CompleteUserCenterPage({
                 gender={visibleProfile.gender}
                 heightCm={formatUserHeightInput(visibleProfile.height) || null}
                 languages={visibleProfile.languages}
-                level={formalData.experience.level}
+                level={customerLevel}
                 needoId={currentCustomer.systemId}
                 onNeedoIdClick={() => void copyNeedoId()}
                 points={points.toLocaleString("en-US")}

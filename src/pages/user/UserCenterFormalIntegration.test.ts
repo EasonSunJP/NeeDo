@@ -11,7 +11,7 @@ describe("formal customer center integration", () => {
     expect(centerSource).toContain("walletApi.getMyWallet()");
     expect(centerSource).toContain("platformMembershipSelfApi.getMyExperience()");
     expect(centerSource).toContain("platformMembershipSelfApi.getMine()");
-    expect(centerSource).toContain("formalData.experience.level");
+    expect(centerSource).toContain("formalData.experience?.level ?? formalData.profile.level");
     expect(centerSource).toContain("formalData.membership.theme");
     expect(centerSource).toContain("<PlatformMembershipDetailCard");
     expect(centerSource).not.toContain("getCustomerLevelLabel");
