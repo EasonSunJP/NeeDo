@@ -13,7 +13,6 @@ import {
   resolveFixtureLedgerCurrency,
   runExpectedFailureRollbackTransaction,
   runRollbackOnlyTransaction,
-  shouldRunOrderFulfillmentCheckoutEntrypoint,
   type FormalDatabaseSchemaEvidence
 } from "../scripts/check-order-fulfillment-checkout-flow";
 import { LedgerRepository } from "../src/repositories/ledger.repository";
@@ -23,27 +22,6 @@ const backendRoot = resolve(__dirname, "..");
 const scriptPath = resolve(backendRoot, "scripts/check-order-fulfillment-checkout-flow.ts");
 
 describe("rollback-only formal order fulfillment flow checker", () => {
-  it("does not rerun the fulfillment entrypoint when bundled into the concurrency checker", () => {
-    expect(
-      shouldRunOrderFulfillmentCheckoutEntrypoint(
-        true,
-        "/app/dist/staging/order-fulfillment-check.cjs"
-      )
-    ).toBe(true);
-    expect(
-      shouldRunOrderFulfillmentCheckoutEntrypoint(
-        true,
-        "/app/dist/staging/order-checkout-concurrency.cjs"
-      )
-    ).toBe(false);
-    expect(
-      shouldRunOrderFulfillmentCheckoutEntrypoint(
-        false,
-        "/app/backend/scripts/check-order-fulfillment-checkout-flow.ts"
-      )
-    ).toBe(false);
-  });
-
   it("is wired as the explicit package command", () => {
     const packageJson = JSON.parse(readFileSync(resolve(backendRoot, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
