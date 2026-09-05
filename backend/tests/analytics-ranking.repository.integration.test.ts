@@ -382,7 +382,7 @@ describeIntegration("AnalyticsRankingRepository against guarded local MySQL", ()
                     referenceId: checkout.id,
                     actorUserId: orderCustomer.id,
                     amount: payableNdp,
-                    currency: "NDP",
+                    currency: orderCustomer.isTestAccount ? "TEST_NDP" : "NDP",
                     createdAt: confirmedAt
                   }
                 });

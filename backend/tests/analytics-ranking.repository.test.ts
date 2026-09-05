@@ -142,6 +142,13 @@ describe("AnalyticsRankingRepository", () => {
     expect(validationSql).toContain(
       "candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE"
     );
+    expect(validationSql).toContain(
+      "WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE"
+    );
+    expect(validationSql).toMatch(/THEN \?\s+ELSE \?\s+END/u);
+    expect(test.queryRaw.mock.calls[0]?.[0].values).toEqual(
+      expect.arrayContaining(["TEST_NDP", "NDP"])
+    );
     expect(validationSql).not.toContain("candidate.customer_is_test = FALSE");
     expect(validationSql).not.toContain("candidate.technician_user_is_test = FALSE");
 
@@ -216,6 +223,8 @@ describe("AnalyticsRankingRepository", () => {
     await test.repository.listRankings({ ...input, kind: "customer", categoryId: null });
     const sql = queryText(test.queryRaw.mock.calls[0]?.[0] as SqlQuery);
     expect(sql).toContain("candidate.payment_selected_at = candidate.payment_confirmed_at");
+    expect(sql).toContain("THEN candidate.session_ended_at");
+    expect(sql).toContain("ELSE candidate.payment_selected_at");
     expect(sql).toMatch(
       /JSON_LENGTH\(event\.metadata\)[\s\S]*?= 0[\s\S]*?booking_order_id = candidate\.id[\s\S]*?= 0\)/u
     );

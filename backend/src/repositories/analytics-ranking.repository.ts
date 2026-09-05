@@ -352,12 +352,24 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
         AND (SELECT COUNT(*) FROM ledger_transactions AS ledger
              WHERE ledger.id = candidate.ledger_transaction_id
                AND ledger.type = ${"booking_complete_settlement"}
-               AND ledger.status = ${"applied"} AND BINARY ledger.currency = BINARY ${"NDP"}
+               AND ledger.status = ${"applied"}
+               AND BINARY ledger.currency = BINARY CASE
+                 WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE
+                 THEN ${"TEST_NDP"} ELSE ${"NDP"}
+               END
                AND ledger.reference_type = ${"order_checkout_payment"}
                AND ledger.reference_id = candidate.checkout_id
                AND ledger.amount = candidate.payable_ndp
                AND ledger.actor_user_id = candidate.payment_confirmed_by_id
-               AND ledger.created_at >= candidate.payment_selected_at
+               AND ledger.created_at >= CASE
+                 WHEN candidate.payment_selected_at = candidate.payment_confirmed_at
+                   AND (SELECT COUNT(*) FROM order_service_events AS direct_event
+                        WHERE direct_event.event_type = ${"payment_method_selected"}
+                          AND direct_event.booking_order_id = candidate.id
+                          AND direct_event.deleted_at IS NULL) = 0
+                 THEN candidate.session_ended_at
+                 ELSE candidate.payment_selected_at
+               END
                AND ledger.created_at <= candidate.payment_confirmed_at
                AND ledger.deleted_at IS NULL) = 1
         AND candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id,
