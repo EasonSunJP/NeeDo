@@ -7,6 +7,7 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ImMediaFileStorage } from "../services/im-media.storage";
 import { ImMediaService } from "../services/im-media.service";
+import { ImServerRetentionRepository } from "../repositories/im-server-retention.repository";
 import {
   imMediaUploadParamSchema,
   imMediaUploadQuerySchema
@@ -27,7 +28,8 @@ export const createImMediaRoutes = (config: AppConfig, dependencies: AppDependen
         dependencies.realtimeRepository!,
         dependencies.imMediaStorage ?? new ImMediaFileStorage(config.IM_MEDIA_STORAGE_DIR),
         publicBaseUrl,
-        dependencies.personalIdentityScopeService
+        dependencies.personalIdentityScopeService,
+        dependencies.imMediaLifecycleRepository ?? new ImServerRetentionRepository()
       )
   );
 

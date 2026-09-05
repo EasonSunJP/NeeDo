@@ -16,6 +16,7 @@ import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
 import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repository";
+import { ImServerRetentionRepository } from "./repositories/im-server-retention.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
 import { OfficialNoticeRepository } from "./repositories/official-notice.repository";
@@ -35,6 +36,8 @@ import { FriendRequestExpiryService } from "./services/friend-request-expiry.ser
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
+import { ImServerRetentionService } from "./services/im-server-retention.service";
+import { ImMediaFileStorage } from "./services/im-media.storage";
 import { RedisAuthSessionStore } from "./services/auth-session.store";
 import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
 import { OrderServiceExpiryService } from "./services/order-service-expiry.service";
@@ -60,6 +63,7 @@ import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
+import { ImServerRetentionWorker } from "./workers/im-server-retention.worker";
 import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
 import { OrderServiceExpiryWorker } from "./workers/order-service-expiry.worker";
 import { OfficialNoticeWorker } from "./workers/official-notice.worker";
@@ -289,6 +293,15 @@ const imPrivacyExpiryWorker = new ImPrivacyExpiryWorker(
   env.IM_PRIVACY_EXPIRY_INTERVAL_MS,
   env.IM_PRIVACY_EXPIRY_BATCH_SIZE
 );
+const imServerRetentionWorker = new ImServerRetentionWorker(
+  new ImServerRetentionService(
+    new ImServerRetentionRepository(),
+    new ImMediaFileStorage(env.IM_MEDIA_STORAGE_DIR)
+  ),
+  logger,
+  env.IM_SERVER_RETENTION_INTERVAL_MS,
+  env.IM_SERVER_RETENTION_BATCH_SIZE
+);
 
 const server = app.listen(env.PORT, () => {
   logger.info(
@@ -312,6 +325,7 @@ const server = app.listen(env.PORT, () => {
   contentPublicationWorker.start();
   officialNoticeWorker.start();
   imPrivacyExpiryWorker.start();
+  imServerRetentionWorker.start();
   merchantShopAuditOutboxWorker.start();
 });
 
@@ -339,6 +353,7 @@ const shutdown = createShutdownHandler({
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
+    imServerRetentionWorker.stop();
     await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain()]);
   }
 });

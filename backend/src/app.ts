@@ -58,6 +58,14 @@ import {
   PlatformSettingsRepository,
   type PlatformSettingsRepositoryPort
 } from "./repositories/platform-settings.repository";
+import {
+  ImServerRetentionRepository,
+  type ImMediaLifecycleRepositoryPort
+} from "./repositories/im-server-retention.repository";
+import {
+  ImPolicyRepository,
+  type ImPolicyRepositoryPort
+} from "./repositories/im-policy.repository";
 import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
@@ -190,6 +198,7 @@ import { createPlatformMembershipRoutes } from "./routes/platform-membership.rou
 import { createPlatformSettingsRoutes } from "./routes/platform-settings.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
+import { createImPolicyRoutes } from "./routes/im-policy.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
@@ -275,6 +284,7 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import { ImPolicyService } from "./services/im-policy.service";
 import type { ImChatRecordMediaStoragePort } from "./services/im-chat-record-media.storage";
 import type { ImChatRecordService } from "./services/im-chat-record.service";
 import type { ImMessageTranslationService } from "./services/im-message-translation.service";
@@ -444,6 +454,8 @@ export interface AppDependencies {
     "getPublic" | "getForOperations" | "updateBasic" | "updatePayment"
   >;
   platformAccessPolicyService?: PlatformAccessPolicyPort;
+  imPolicyRepository?: ImPolicyRepositoryPort;
+  imPolicyService?: Pick<ImPolicyService, "get" | "update">;
   backofficeUserGroupService?: Pick<
     BackofficeUserGroupService,
     | "listGroups"
@@ -480,6 +492,7 @@ export interface AppDependencies {
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imMediaLifecycleRepository?: ImMediaLifecycleRepositoryPort;
   imChatRecordRepository?: ImChatRecordRepositoryPort;
   imChatRecordMediaStorage?: ImChatRecordMediaStoragePort;
   imChatRecordService?: ImChatRecordService;
@@ -569,6 +582,15 @@ export const createApp = (
     (config.NODE_ENV === "test"
       ? undefined
       : new PlatformAccessPolicyService(platformSettingsResolver));
+  const imPolicyRepository = dependencies.imPolicyRepository ?? new ImPolicyRepository();
+  const imPolicyService =
+    dependencies.imPolicyService ??
+    new ImPolicyService(
+      imPolicyRepository,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const imMediaLifecycleRepository =
+    dependencies.imMediaLifecycleRepository ?? new ImServerRetentionRepository();
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
@@ -590,6 +612,9 @@ export const createApp = (
     platformSettingsRepository,
     platformSettingsResolver,
     platformSettingsService,
+    imPolicyRepository,
+    imPolicyService,
+    imMediaLifecycleRepository,
     ...(platformAccessPolicyService ? { platformAccessPolicyService } : {})
   };
 
@@ -607,6 +632,7 @@ export const createApp = (
   mount("shared", createHealthRoutes(config, resolvedDependencies));
   mount("shared", createObservabilityRoutes(config, metricsService));
   mount("shared", createPlatformSettingsRoutes(config, resolvedDependencies));
+  mount("shared", createImPolicyRoutes(config, resolvedDependencies));
   mount("shared", createAuthRoutes(config, resolvedDependencies));
   if (platformAccessPolicyService) {
     apiRouter.use(createPlatformMaintenanceMiddleware(platformAccessPolicyService));

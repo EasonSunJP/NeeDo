@@ -3177,6 +3177,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ndpPaymentEnabled: { type: "boolean" }
         }
       },
+      ImRetentionSettings: {
+        type: "object",
+        additionalProperties: false,
+        required: ["version", "messageDays", "mediaDays", "updatedAt"],
+        properties: {
+          version: { type: "integer", minimum: 1 },
+          messageDays: { type: "integer", minimum: 1, maximum: 3650 },
+          mediaDays: { type: "integer", minimum: 1, maximum: 3650 },
+          updatedAt: { type: "string", format: "date-time" }
+        },
+        description: "Prospective server retention only. Device-local chat records and media caches are not deleted."
+      },
+      ImRetentionSettingsUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "messageDays", "mediaDays"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          messageDays: { type: "integer", minimum: 1, maximum: 3650 },
+          mediaDays: { type: "integer", minimum: 1, maximum: 3650 }
+        }
+      },
       TrimmedVisibleIdempotencyKey: {
         type: "string",
         "x-min-utf16-code-units": 16,
@@ -15081,6 +15103,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
           "409": jsonErrorResponse("error.platform_settings.version_conflict"),
           "503": jsonErrorResponse("error.platform_settings.unavailable")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/system-settings/im-retention`]: {
+      get: {
+        operationId: "getImRetentionSettings",
+        tags: ["Platform Settings"],
+        summary: "Read prospective IM server-retention settings",
+        description: "These limits affect only server copies created after a policy version is published; they do not delete device-local records or caches.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:system-settings:read",
+        responses: {
+          "200": jsonDataResponse("Active IM retention settings", {
+            $ref: "#/components/schemas/ImRetentionSettings"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "503": jsonErrorResponse("error.dependency_unavailable")
+        }
+      },
+      put: {
+        operationId: "updateImRetentionSettings",
+        tags: ["Platform Settings"],
+        summary: "Publish the next prospective IM server-retention policy",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:system-settings:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ImRetentionSettingsUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Published IM retention settings", {
+            $ref: "#/components/schemas/ImRetentionSettings"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
+          "409": jsonErrorResponse("error.im.policy_version_conflict"),
+          "503": jsonErrorResponse("error.dependency_unavailable")
         }
       }
     },

@@ -247,6 +247,8 @@ const envSchema = z
     IM_MEDIA_PUBLIC_BASE_URL: optionalUrlSchema,
     IM_PRIVACY_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(100).default(1_000),
     IM_PRIVACY_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(50),
+    IM_SERVER_RETENTION_INTERVAL_MS: z.coerce.number().int().min(1_000).default(60_000),
+    IM_SERVER_RETENTION_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(50),
     IM_TRANSLATION_PROVIDER: z.enum(["disabled", "deepl"]).default("disabled"),
     IM_TRANSLATION_API_BASE_URL: optionalUrlSchema,
     IM_TRANSLATION_API_KEY: optionalSecretSchema,

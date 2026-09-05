@@ -25,6 +25,7 @@ import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
 import { AppError } from "../utils/app-error";
 import {
+  ImMediaBindingError,
   imMessageInclude as messageInclude,
   persistImMessageInTransaction
 } from "./im-message-send.transaction";
@@ -466,7 +467,8 @@ export type CreateMessageOutcome =
   | { status: "created"; message: MessagePayload }
   | { status: "not_found" }
   | { status: "recipient_blocked" }
-  | { status: "not_friends" };
+  | { status: "not_friends" }
+  | { status: "media_invalid" };
 
 export interface CreateNeedoEntityShareInput {
   actorUserId: number;
@@ -1535,24 +1537,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {
-    return this.client.$transaction(async (tx) => {
-      const transactionNow = new Date();
-      const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
-      const outcome = await persistImMessageInTransaction(tx, {
-        conversationId: input.conversationId,
-        senderUserId: input.senderUserId,
-        senderIdentityId,
-        type: this.messageTypeToDb(input.type),
-        content: input.content,
-        metadata: input.metadata,
-        transactionNow
+    try {
+      return await this.client.$transaction(async (tx) => {
+        const transactionNow = new Date();
+        const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
+        const outcome = await persistImMessageInTransaction(tx, {
+          conversationId: input.conversationId,
+          senderUserId: input.senderUserId,
+          senderIdentityId,
+          type: this.messageTypeToDb(input.type),
+          content: input.content,
+          metadata: input.metadata,
+          transactionNow
+        });
+        if (outcome.status !== "created") return outcome;
+        return {
+          status: "created" as const,
+          message: this.mapMessage(outcome.message, senderIdentityId)
+        };
       });
-      if (outcome.status !== "created") return outcome;
-      return {
-        status: "created",
-        message: this.mapMessage(outcome.message, senderIdentityId)
-      };
-    });
+    } catch (error) {
+      if (error instanceof ImMediaBindingError) return { status: "media_invalid" };
+      throw error;
+    }
   }
 
   public async createNeedoEntityShare(
