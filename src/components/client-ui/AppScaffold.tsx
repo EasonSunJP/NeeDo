@@ -568,6 +568,7 @@ export function AppTopBar({
   closeLabel = "关闭",
   controlButtonClassName,
   className,
+  frameClassName,
   fixed = false
 }: {
   title: ReactNode;
@@ -586,6 +587,7 @@ export function AppTopBar({
   closeLabel?: string;
   controlButtonClassName?: string;
   className?: string;
+  frameClassName?: string;
   fixed?: boolean;
 }) {
   const navigate = useNavigate();
@@ -655,7 +657,7 @@ export function AppTopBar({
   return (
     <FloatingHomeHeader
       className="gap-0"
-      frameClassName="z-40"
+      frameClassName={cn("z-40", frameClassName)}
       maxWidth="1600px"
       panelClassName={cn(appTopBarPanelClassName, className)}
       showSpacer={!fixed}

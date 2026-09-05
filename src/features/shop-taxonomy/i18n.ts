@@ -2,6 +2,7 @@ import type { Language } from "../../i18n/translations";
 
 type Copy = {
   title: string;
+  infoLabel: string;
   description: string;
   loading: string;
   loadFailed: string;
@@ -21,6 +22,7 @@ type Copy = {
 export const shopTaxonomyCopy: Record<Language, Copy> = {
   zh: {
     title: "服务种类与关键词",
+    infoLabel: "服务种类与关键词 说明",
     description: "先选择服务种类，再从对应的常用关键词中选择。服务种类可被搜索，但不会显示在店铺关键词框内。",
     loading: "正在读取正式标签库…",
     loadFailed: "服务标签读取失败，请稍后重试。",
@@ -38,6 +40,7 @@ export const shopTaxonomyCopy: Record<Language, Copy> = {
   },
   "zh-Hant": {
     title: "服務種類與關鍵詞",
+    infoLabel: "服務種類與關鍵詞 說明",
     description: "先選擇服務種類，再從對應的常用關鍵詞中選擇。服務種類可被搜尋，但不會顯示在店鋪關鍵詞框內。",
     loading: "正在讀取正式標籤庫…",
     loadFailed: "服務標籤讀取失敗，請稍後重試。",
@@ -55,6 +58,7 @@ export const shopTaxonomyCopy: Record<Language, Copy> = {
   },
   ja: {
     title: "サービス種類とキーワード",
+    infoLabel: "サービス種類とキーワードの説明",
     description: "サービス種類を選び、その種類の一般的なキーワードを選択します。種類名は検索対象ですが、店舗のキーワード欄には表示されません。",
     loading: "正式タグを読み込んでいます…",
     loadFailed: "サービスタグを読み込めませんでした。しばらくしてから再試行してください。",
@@ -72,6 +76,7 @@ export const shopTaxonomyCopy: Record<Language, Copy> = {
   },
   en: {
     title: "Service types and keywords",
+    infoLabel: "Service types and keywords information",
     description: "Choose service types first, then common keywords from those types. Type names are searchable but do not appear in the shop keyword row.",
     loading: "Loading the formal tag catalog…",
     loadFailed: "Service tags could not be loaded. Try again shortly.",
@@ -89,6 +94,7 @@ export const shopTaxonomyCopy: Record<Language, Copy> = {
   },
   ko: {
     title: "서비스 종류와 키워드",
+    infoLabel: "서비스 종류와 키워드 안내",
     description: "서비스 종류를 먼저 선택한 뒤 해당 종류의 자주 쓰는 키워드를 선택하세요. 종류명은 검색되지만 매장 키워드 영역에는 표시되지 않습니다.",
     loading: "정식 태그 목록을 불러오는 중…",
     loadFailed: "서비스 태그를 불러오지 못했습니다. 잠시 후 다시 시도하세요.",

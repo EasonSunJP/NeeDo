@@ -36,6 +36,7 @@ describe("identity application form model", () => {
     expect(validateMerchantShowcase({ ...common, corporateLegalName: "株式会社銀座ケア", corporateLegalNameKana: "" })).toBe("请输入法人名称片假名");
     expect(validateMerchantShowcase({ ...common, applicantKind: "individual" })).toBeNull();
     expect(validateMerchantShowcase({ ...common, applicantKind: "individual", serviceCategoryIds: [] })).toBe("请至少选择一个服务种类");
+    expect(validateMerchantShowcase({ ...common, applicantKind: "individual", responsiblePersonName: "" })).toBe("请输入申请人姓名");
   });
 
   it("maps the app locale to the three signed contract languages", () => {

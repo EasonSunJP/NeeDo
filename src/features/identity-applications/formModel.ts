@@ -55,7 +55,7 @@ export function validateMerchantShowcase(input: MerchantShowcaseForm) {
     [input.shopName, "请输入店铺名称"],
     [input.businessAddress, "请输入店铺地址"],
     [input.contactPhone, "请输入联系电话"],
-    [input.responsiblePersonName, "请输入负责人姓名"],
+    [input.responsiblePersonName, "请输入申请人姓名"],
     [input.description, "请输入服务展示说明"]
   ];
 
