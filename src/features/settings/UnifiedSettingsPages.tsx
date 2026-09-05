@@ -2016,7 +2016,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
                         : row.kind === "affiliate"
                           ? t("确认并开启")
                           : t("申请");
-            const disabled = row.action === "current" || row.action === "pending" || switchingPortal !== null;
+            const disabled = row.action === "current" || switchingPortal !== null;
 
             return (
               <SettingsPortalActionRow

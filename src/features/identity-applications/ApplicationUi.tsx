@@ -129,6 +129,19 @@ export function ApplicationField({ label, hint, required, children }: { label: s
   );
 }
 
+export function ApplicationReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  const isEmpty = value === null || value === undefined || value === "";
+
+  return (
+    <div className="min-w-0 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 py-3 text-left">
+      <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t(label)}</p>
+      <p className="mt-1 break-words whitespace-pre-wrap text-sm font-bold text-[color:var(--client-text)]">{isEmpty ? "—" : value}</p>
+    </div>
+  );
+}
+
 export function ApplicationInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(controlClassName, props.className)} />;
 }
