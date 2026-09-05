@@ -15,4 +15,19 @@ describe("identity application page chrome", () => {
     expect(merchantApplicationSource).toContain("businessKeywordIds: form.businessKeywordIds");
     expect(merchantApplicationSource).not.toContain('updateForm("tags"');
   });
+
+  it("provides independent titled containers and a themed file chooser", () => {
+    expect(applicationUiSource).toContain("export function ApplicationSection");
+    expect(applicationUiSource).toContain("TitleWithInfo");
+    expect(applicationUiSource).toContain("export function ApplicationFileUpload");
+    expect(applicationUiSource).toContain('type="file"');
+    expect(applicationUiSource).toContain("sr-only");
+  });
+
+  it("keeps the application header above preview chrome and fixes the action at home-nav position", () => {
+    expect(applicationUiSource).toContain('headerFrameClassName="z-[140]"');
+    expect(applicationUiSource).toContain("export function ApplicationBottomAction");
+    expect(applicationUiSource).toContain("fixed inset-x-0 bottom-0 z-[100]");
+    expect(applicationUiSource).toContain("--client-bottom-nav-inline-gap");
+  });
 });

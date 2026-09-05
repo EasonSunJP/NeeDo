@@ -1,5 +1,6 @@
 import { useEffect, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { SettingsDetailPage } from "../../components/client-ui/SettingsDirectory";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -31,7 +32,8 @@ export function ApplicationShell({
       backTo={backTo}
       closeLabel={t("关闭")}
       closeTo="/me/settings/portal"
-      contentClassName="pb-[calc(env(safe-area-inset-bottom)+2rem)]"
+      contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
+      headerFrameClassName="z-[140]"
       info={t(info)}
       navItems={hideNavigation ? [] : undefined}
       onBack={onBack}
@@ -52,6 +54,45 @@ export function ApplicationCard({ children, className }: { children: ReactNode; 
     >
       {children}
     </section>
+  );
+}
+
+export function ApplicationSection({ title, info, children, className }: {
+  title: string;
+  info?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  return (
+    <ApplicationCard className={cn("space-y-4", className)}>
+      <TitleWithInfo as="h2" info={info ? t(info) : undefined} label={`${t(title)} 说明`} title={t(title)} titleClassName="text-[17px] font-black text-[color:var(--client-text)]" variant="client" />
+      {children}
+    </ApplicationCard>
+  );
+}
+
+export function ApplicationFileUpload({ accept, file, label, onChange }: {
+  accept: string;
+  file: File | null;
+  label: string;
+  onChange: (file: File | null) => void;
+}) {
+  return (
+    <label className="focus-ring flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4">
+      <span className="truncate text-sm font-bold text-[color:var(--client-text)]">{file?.name ?? label}</span>
+      <span className="rounded-full bg-[color:var(--client-primary)] px-4 py-2 text-xs font-black text-[color:var(--client-primary-contrast)]">{label}</span>
+      <input accept={accept} className="sr-only" onChange={(event) => onChange(event.target.files?.[0] ?? null)} type="file" />
+    </label>
+  );
+}
+
+export function ApplicationBottomAction({ children }: { children: ReactNode }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full max-w-[880px] px-[var(--client-bottom-nav-inline-gap,12px)] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8">
+      <div className="pointer-events-auto rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">{children}</div>
+    </div>
   );
 }
 
