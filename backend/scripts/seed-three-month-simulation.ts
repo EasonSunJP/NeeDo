@@ -774,6 +774,45 @@ const main = async (): Promise<void> => {
           );
         }
 
+        const experienceEligibleUsers = await tx.user.findMany({
+          where: {
+            isTestAccount: true,
+            isActive: true,
+            deletedAt: null,
+            customerProfile: { is: { deletedAt: null } }
+          },
+          select: { id: true }
+        });
+        for (const user of experienceEligibleUsers) {
+          await tx.userExperienceAccount.upsert({
+            where: { userId: user.id },
+            create: { userId: user.id, currentLevel: 1, totalExpUnits: 0n },
+            update: { deletedAt: null }
+          });
+        }
+
+        const fixedRealtimeUsers = await tx.user.findMany({
+          where: {
+            email: { in: ["technician@example.com", "merchant@example.com"] },
+            isActive: true,
+            deletedAt: null
+          },
+          select: { id: true, email: true }
+        });
+        const fixedRealtimeUserByEmail = new Map(
+          fixedRealtimeUsers.map((user) => [user.email, user.id])
+        );
+        const fixedTechnicianKey = "fixed-technician-account";
+        const fixedMerchantKey = "fixed-merchant-account";
+        technicianUserIds.set(
+          fixedTechnicianKey,
+          getRequiredId(fixedRealtimeUserByEmail, "technician@example.com", "fixed technician user")
+        );
+        ownerUserIds.set(
+          fixedMerchantKey,
+          getRequiredId(fixedRealtimeUserByEmail, "merchant@example.com", "fixed merchant user")
+        );
+
         const formalSocialUsers = await tx.user.findMany({
           where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
           select: { id: true, email: true }
@@ -819,6 +858,55 @@ const main = async (): Promise<void> => {
             }
           ];
         });
+        const fixedPreviewSpecifications = hasPreviewCustomer
+          ? [
+              {
+                counterpartKey: fixedTechnicianKey,
+                counterpartType: "technician" as const,
+                source: previewSourceConversations.find(
+                  (conversation) => conversation.secondType === "technician"
+                )
+              },
+              {
+                counterpartKey: fixedMerchantKey,
+                counterpartType: "shop_owner" as const,
+                source: previewSourceConversations.find(
+                  (conversation) => conversation.secondType === "shop_owner"
+                )
+              }
+            ]
+          : [];
+        fixedPreviewSpecifications.forEach((specification) => {
+          assert(
+            specification.source,
+            `Fixed ${specification.counterpartType} preview source conversation is missing.`
+          );
+        });
+        const fixedPreviewConversations = fixedPreviewSpecifications.map((specification) => ({
+          ...specification.source!,
+          key: `conversation-${previewCustomerKey}-${specification.counterpartKey}`,
+          firstKey: previewCustomerKey,
+          secondKey: specification.counterpartKey,
+          secondType: specification.counterpartType
+        }));
+        const fixedPreviewConversationBySource = new Map(
+          fixedPreviewSpecifications.map((specification, index) => [
+            specification.source!.key,
+            fixedPreviewConversations[index]!
+          ])
+        );
+        const fixedPreviewMessages = plan.messages.flatMap((message) => {
+          const conversation = fixedPreviewConversationBySource.get(message.conversationKey);
+          if (!conversation) return [];
+          return [{
+            ...message,
+            key: `${conversation.key}-${message.key}`,
+            conversationKey: conversation.key,
+            senderKey: message.senderType === "customer"
+              ? previewCustomerKey
+              : conversation.secondKey
+          }];
+        });
         const previewContacts = previewConversations.flatMap((conversation) => [
           {
             key: `${conversation.key}-contact-customer`,
@@ -835,9 +923,29 @@ const main = async (): Promise<void> => {
             contactKey: previewCustomerKey
           }
         ]);
-        const conversationsToSeed = [...plan.conversations, ...previewConversations];
-        const contactsToSeed = [...plan.contacts, ...previewContacts];
-        const messagesToSeed = [...plan.messages, ...previewMessages];
+        const fixedPreviewContacts = fixedPreviewConversations.flatMap((conversation) => [
+          {
+            key: `${conversation.key}-contact-customer`,
+            ownerType: "customer" as const,
+            ownerKey: previewCustomerKey,
+            contactType: conversation.secondType,
+            contactKey: conversation.secondKey
+          },
+          {
+            key: `${conversation.key}-contact-counterpart`,
+            ownerType: conversation.secondType,
+            ownerKey: conversation.secondKey,
+            contactType: "customer" as const,
+            contactKey: previewCustomerKey
+          }
+        ]);
+        const conversationsToSeed = [
+          ...plan.conversations,
+          ...previewConversations,
+          ...fixedPreviewConversations
+        ];
+        const contactsToSeed = [...plan.contacts, ...previewContacts, ...fixedPreviewContacts];
+        const messagesToSeed = [...plan.messages, ...previewMessages, ...fixedPreviewMessages];
         const getParticipantUserId = (
           type: "admin" | "customer" | "technician" | "shop_owner",
           key: string
