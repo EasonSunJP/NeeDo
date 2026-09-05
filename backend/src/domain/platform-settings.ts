@@ -28,3 +28,32 @@ export interface PlatformSettingsSnapshot {
   createdByUserId: number | null;
   createdAt: Date;
 }
+
+export interface PlatformBrandMedia {
+  publicId: string;
+  url: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  altText: string | null;
+}
+
+export interface PublicPlatformSettings {
+  version: number;
+  siteEnabled: boolean;
+  selfRegistrationEnabled: boolean;
+  loginMethods: {
+    password: true;
+    google: boolean;
+  };
+  loginLogo: PlatformBrandMedia | null;
+  requestButton: PlatformBrandMedia | null;
+  paymentMethods: PlatformPaymentMethod[];
+}
+
+export interface PlatformCapabilityProject {
+  code: "apple" | "line" | "paypay" | "paypal" | "stripe";
+  configured: false;
+  enabled: false;
+  actionable: false;
+}
