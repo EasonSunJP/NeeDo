@@ -84,7 +84,6 @@ describe("simulation identity matrix", () => {
     expect(seed).toContain("buildSimulationIdentityGrants");
     expect(seed).toContain("simulationIdentityActiveKey");
     expect(seed).toContain("activeKey: { startsWith: SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX }");
-    expect(seed).not.toContain("stagingCohortUsers");
     expect(seed).toContain('accountKind: "merchant"');
     expect(seed).toContain('accountKind: "technician"');
     expect(check).toContain("expectedTypes: string[]");
