@@ -24,6 +24,7 @@ import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../exchange/types";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 import {
@@ -686,6 +687,12 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
     const latestOrder = await bookingApi.getOrder(orderId);
     setOrder(latestOrder);
   }, [orderId]);
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
 
   useOrderRealtimeRefresh({ onRefresh: refreshOrder, orderId });
 
@@ -947,8 +954,9 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           }}
         />
 
-        {canCancel ? (
+        {canCancel || order.status === "cancelled" ? (
           <ExchangeOrderCancellationPanel
+            onCancellationChange={handleExchangeCancellationChange}
             onLinkedChange={setExchangeOrderLinked}
             orderId={order.id}
           />

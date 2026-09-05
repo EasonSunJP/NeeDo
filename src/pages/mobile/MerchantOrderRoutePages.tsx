@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
@@ -32,6 +32,7 @@ import {
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../../features/exchange/types";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId } from "../../lib/messageCenter";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";
@@ -1105,6 +1106,12 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const technician = technicianProfile ? mapCoreTechnicianToTechnician(technicianProfile) : null;
   const customer = customerProfile ? mapCoreCustomerToCustomer(customerProfile) : null;
   const totalAmount = checkout?.checkoutAmountJpy ?? order?.paymentAmountJpy ?? 0;
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
 
   return (
     <MobileFullscreenPage>
@@ -1217,8 +1224,11 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
             ) : null}
 
             <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="联系信息" />
-            {order.status === "pending" || order.status === "confirmed" ? (
-              <ExchangeOrderCancellationPanel orderId={order.id} />
+            {order.status === "pending" || order.status === "confirmed" || order.status === "cancelled" ? (
+              <ExchangeOrderCancellationPanel
+                onCancellationChange={handleExchangeCancellationChange}
+                orderId={order.id}
+              />
             ) : null}
           </>
         ) : null}

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   createSlot: vi.fn(),
   deleteSlot: vi.fn(),
   endService: vi.fn(),
+  exchangeOrderLinked: false,
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
@@ -33,9 +34,24 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
 vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
 vi.mock("../exchange/ExchangeOrderCancellationPanel", () => ({
-  ExchangeOrderCancellationPanel: ({ onLinkedChange }: { onLinkedChange?: (linked: boolean) => void }) => {
-    useEffect(() => onLinkedChange?.(false), [onLinkedChange]);
-    return null;
+  ExchangeOrderCancellationPanel: ({
+    onCancellationChange,
+    onLinkedChange,
+    orderId
+  }: {
+    onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    onLinkedChange?: (linked: boolean) => void;
+    orderId: number;
+  }) => {
+    useEffect(() => onLinkedChange?.(mocks.exchangeOrderLinked), [onLinkedChange]);
+    return (
+      <button
+        onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+        type="button"
+      >
+        模拟双方同意取消
+      </button>
+    );
   }
 }));
 vi.mock("../../theme/ClientThemeProvider", async () => {
@@ -585,6 +601,7 @@ describe("formal technician schedule routes", () => {
 describe("formal technician order detail route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.exchangeOrderLinked = false;
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.getOwnReview.mockResolvedValue({ review: null });
     container = document.createElement("div");
@@ -638,6 +655,20 @@ describe("formal technician order detail route", () => {
     await click("确认接单");
     await waitFor(() => expect(mocks.confirmOrder).toHaveBeenCalledWith(29));
     expect(container.textContent).toContain("已确认");
+  });
+
+  it("immediately adopts an accepted Exchange cancellation and removes stale provider actions", async () => {
+    mocks.exchangeOrderLinked = true;
+    await renderOrder(makeOrder("pending"));
+    expect(container.textContent).toContain("确认接单");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+
+    await click("模拟双方同意取消");
+
+    await waitFor(() => expect(container.textContent).toContain("已取消"));
+    expect(container.textContent).not.toContain("确认接单");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+    expect(container.textContent).toContain("模拟双方同意取消");
   });
 
   it("requires an explicit second confirmation when the shop platform-fee balance is insufficient", async () => {

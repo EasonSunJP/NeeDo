@@ -25,11 +25,13 @@ function isAmbiguousMutationError(error: unknown) {
 
 export function ExchangeOrderCancellationPanel({
   language,
+  onCancellationChange,
   onLinkedChange,
   orderId
 }: {
   language?: Language;
-  onLinkedChange?: (linked: boolean) => void;
+  onCancellationChange?: (payload: ExchangeCancellation) => void;
+  onLinkedChange?: (linked: boolean | null) => void;
   orderId: number;
 }) {
   const optionalI18n = useOptionalI18n();
@@ -49,6 +51,7 @@ export function ExchangeOrderCancellationPanel({
       if (signal?.aborted) return;
       setCancellation(payload);
       setLoadState("linked");
+      onCancellationChange?.(payload);
       onLinkedChange?.(true);
     } catch (error) {
       if (signal?.aborted) return;
@@ -60,16 +63,17 @@ export function ExchangeOrderCancellationPanel({
       }
       setLoadState("error");
     }
-  }, [onLinkedChange, orderId]);
+  }, [onCancellationChange, onLinkedChange, orderId]);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoadState("loading");
     setMutationError(false);
     attemptRef.current = null;
+    onLinkedChange?.(null);
     void load(controller.signal);
     return () => controller.abort();
-  }, [load, revision]);
+  }, [load, onLinkedChange, revision]);
 
   async function mutate(action: ExchangeCancellationAction) {
     if (!cancellation || pending || !cancellation.allowedActions.includes(action)) return;
@@ -99,6 +103,7 @@ export function ExchangeOrderCancellationPanel({
       setCancellation(payload);
       setReason("");
       attemptRef.current = null;
+      onCancellationChange?.(payload);
     } catch (error) {
       if (!isAmbiguousMutationError(error)) attemptRef.current = null;
       setMutationError(true);

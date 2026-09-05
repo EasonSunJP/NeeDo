@@ -26,6 +26,7 @@ import {
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../../features/exchange/types";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
@@ -477,6 +478,12 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     navigate(-1);
   };
   const canCancel = order?.status === "pending" || order?.status === "confirmed";
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
 
   return (
     <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
@@ -560,8 +567,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             }}
           />
 
-          {canCancel ? (
+          {canCancel || order.status === "cancelled" ? (
             <ExchangeOrderCancellationPanel
+              onCancellationChange={handleExchangeCancellationChange}
               onLinkedChange={setExchangeOrderLinked}
               orderId={orderId}
             />
