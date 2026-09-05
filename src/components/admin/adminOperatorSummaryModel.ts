@@ -35,7 +35,8 @@ function reviewTimestamp(review: MerchantReview) {
 
 export function mergePendingMerchantReviews(
   submitted: Paginated<MerchantReview>,
-  underReview: Paginated<MerchantReview>
+  underReview: Paginated<MerchantReview>,
+  limit = 5
 ) {
   const uniqueReviews = new Map<number, MerchantReview>();
   [...submitted.list, ...underReview.list].forEach((review) => {
@@ -50,6 +51,6 @@ export function mergePendingMerchantReviews(
           reviewTimestamp(right) - reviewTimestamp(left) ||
           right.applicationId - left.applicationId
       )
-      .slice(0, 5)
+      .slice(0, limit)
   };
 }

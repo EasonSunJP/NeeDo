@@ -963,6 +963,7 @@ export const translations: TranslationMap = {
   "运营后台成员": fourLanguageTranslation("營運後台成員", "運営管理メンバー", "Operations member", "운영 관리자"),
   "暂无待处理订单": fourLanguageTranslation("暫無待處理訂單", "対応待ちの注文はありません", "No pending orders", "처리 대기 주문이 없습니다"),
   "暂无待审核申请": fourLanguageTranslation("暫無待審核申請", "審査待ちの申請はありません", "No applications awaiting review", "검토 대기 신청이 없습니다"),
+  "待审核共": fourLanguageTranslation("待審核共", "審査待ち", "Awaiting review", "검토 대기"),
   "正在加载…": fourLanguageTranslation("正在載入…", "読み込み中…", "Loading…", "불러오는 중…"),
   "加载失败，请重试": fourLanguageTranslation("載入失敗，請重試", "読み込みに失敗しました。再試行してください", "Failed to load. Try again", "불러오지 못했습니다. 다시 시도해 주세요"),
   "权限已变化，请刷新页面": fourLanguageTranslation("權限已變更，請重新整理頁面", "権限が変更されました。ページを更新してください", "Permissions changed. Refresh the page", "권한이 변경되었습니다. 페이지를 새로고침해 주세요"),
