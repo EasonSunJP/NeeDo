@@ -75,6 +75,7 @@ describe("three-month simulation IM persistence", () => {
     expect(checkSource).toContain("fixedRealtimeContacts");
     expect(checkSource).toContain("fixedRealtimeConversations");
     expect(checkSource).toContain("activeExperienceAccounts");
+    expect(checkSource).toContain("const getRequiredId = <Key, Value>");
   });
 
   it("does not compare preserved staging passwords against the local export password", () => {
