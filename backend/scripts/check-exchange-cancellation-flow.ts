@@ -361,9 +361,6 @@ async function main(): Promise<void> {
         }
       : {}),
     ...credentials,
-    ...(!credentials.socketPath && base.parsedEnvironment.MYSQL_SOCKET_PATH
-      ? { socketPath: base.parsedEnvironment.MYSQL_SOCKET_PATH }
-      : {}),
     ...(base.parsedEnvironment.DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL === "true"
       ? { allowPublicKeyRetrieval: true }
       : {}),

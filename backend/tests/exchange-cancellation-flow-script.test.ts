@@ -16,6 +16,26 @@ import {
 } from "../scripts/check-exchange-cancellation-flow";
 
 describe("Exchange cancellation isolated flow checker", () => {
+  it("never lets source MYSQL_SOCKET_PATH bypass explicit socket validation", () => {
+    const source = readFileSync(
+      join(__dirname, "../scripts/check-exchange-cancellation-flow.ts"),
+      "utf8"
+    );
+    expect(source).not.toContain("base.parsedEnvironment.MYSQL_SOCKET_PATH");
+    expect(
+      resolveExchangeCancellationAdminCredentials(
+        { MYSQL_ROOT_PASSWORD: "explicit-password", MYSQL_SOCKET_PATH: "relative/untrusted.sock" },
+        {},
+        () => {
+          throw new Error("implicit socket must not be consulted");
+        }
+      )
+    ).toEqual({ user: "root", password: "explicit-password" });
+    expect(() =>
+      resolveExchangeCancellationAdminCredentials({ MYSQL_SOCKET_PATH: "/tmp/mysql.sock" }, {})
+    ).toThrow("Explicit MySQL administrator credentials");
+  });
+
   it("requires root@localhost identity on the explicit socket connection", async () => {
     const query = jest.fn(async () => [{ principal: "root@localhost" }]);
     await expect(verifyExchangeCancellationSocketAdmin({ query })).resolves.toBeUndefined();

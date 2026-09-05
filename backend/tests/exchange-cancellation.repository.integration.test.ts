@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- guarded real-MySQL fixture coordination */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import {
   cleanupExchangeBookingFixture,
   countExchangeBookingMarkerRows,
@@ -136,6 +137,124 @@ const noSettlement: ExchangeCancellationSettlementOptions = {
   releaseBookingHold: async () => undefined
 };
 
+type FinanceClient = PrismaClient | Prisma.TransactionClient;
+const platformWalletKey = {
+  ownerType_ownerId_currency: { ownerType: "PLATFORM" as const, ownerId: 1, currency: "TEST_NDP" }
+};
+
+async function financeEvidence(client: FinanceClient, fixture: ExchangeBookingFixture) {
+  const orders = await client.bookingOrder.findMany({
+    where: { customerUserId: fixture.ownerUserId },
+    select: { id: true }
+  });
+  return {
+    payer: await client.wallet.findUniqueOrThrow({ where: { id: fixture.walletId } }),
+    platform: await client.wallet.findUnique({ where: platformWalletKey }),
+    transactions: await client.ledgerTransaction.findMany({
+      where: {
+        OR: [
+          { referenceType: "exchange_request", referenceId: fixture.exchangePostId },
+          { referenceType: "booking_order", referenceId: { in: orders.map(({ id }) => id) } }
+        ]
+      },
+      include: { entries: { orderBy: { id: "asc" } }, reconciliation: true },
+      orderBy: { id: "asc" }
+    })
+  };
+}
+
+function expectPublicationConservation(
+  before: Awaited<ReturnType<typeof financeEvidence>>,
+  after: Awaited<ReturnType<typeof financeEvidence>>
+) {
+  expect(after.platform).not.toBeNull();
+  expect(after.platform!.availableBalance - (before.platform?.availableBalance ?? 0)).toBe(500);
+  expect(after.platform!.frozenBalance - (before.platform?.frozenBalance ?? 0)).toBe(0);
+  const total = (e: typeof before) =>
+    e.payer.availableBalance +
+    e.payer.frozenBalance +
+    (e.platform?.availableBalance ?? 0) +
+    (e.platform?.frozenBalance ?? 0);
+  expect(total(after)).toBe(total(before));
+  const captures = after.transactions.filter(
+    (row) => row.type === "EXCHANGE_REQUEST_PUBLICATION_CAPTURE"
+  );
+  expect(captures).toHaveLength(1);
+  const capture = captures[0]!;
+  expect(capture).toMatchObject({ amount: 500, currency: "TEST_NDP", status: "APPLIED" });
+  expect(capture.entries).toHaveLength(2);
+  expect(capture.entries).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        walletId: after.payer.id,
+        direction: "FROZEN_DEBIT",
+        amount: 500,
+        availableDelta: 0,
+        frozenDelta: -500
+      }),
+      expect.objectContaining({
+        walletId: after.platform!.id,
+        direction: "AVAILABLE_CREDIT",
+        amount: 500,
+        availableDelta: 500,
+        frozenDelta: 0
+      })
+    ])
+  );
+  expect(
+    capture.entries.reduce((sum, entry) => sum + entry.availableDelta + entry.frozenDelta, 0)
+  ).toBe(0);
+  expect(capture.reconciliation).toMatchObject({
+    transactionId: capture.id,
+    referenceType: "exchange_request",
+    referenceId: capture.referenceId,
+    status: "TEST_ONLY",
+    currency: "TEST_NDP",
+    expectedAmount: 500,
+    actualAmount: 500,
+    differenceAmount: 0
+  });
+}
+
+// Only fixture-referenced ledger rows are removed. Undo their platform delta, never reset the
+// shared platform wallet to a stale snapshot. This helper is used only inside the guarded scratch DB.
+async function cleanupCommittedCancellation(client: PrismaClient, fixture: ExchangeBookingFixture) {
+  await client.$transaction(
+    async (tx) => {
+      const evidence = await financeEvidence(tx, fixture);
+      const ids = evidence.transactions.map(({ id }) => id);
+      if (evidence.platform) {
+        const entries = evidence.transactions
+          .flatMap(({ entries }) => entries)
+          .filter(({ walletId }) => walletId === evidence.platform!.id);
+        await tx.wallet.update({
+          where: { id: evidence.platform.id },
+          data: {
+            availableBalance: {
+              decrement: entries.reduce((sum, entry) => sum + entry.availableDelta, 0)
+            },
+            frozenBalance: { decrement: entries.reduce((sum, entry) => sum + entry.frozenDelta, 0) }
+          }
+        });
+      }
+      await tx.auditLog.deleteMany({
+        where: { targetType: "ledger_transaction", targetId: { in: ids } }
+      });
+      await tx.financeReconciliation.deleteMany({ where: { transactionId: { in: ids } } });
+      await tx.walletLedger.deleteMany({ where: { transactionId: { in: ids } } });
+      await tx.ledgerTransaction.deleteMany({ where: { id: { in: ids } } });
+      await cleanupExchangeBookingFixture(tx, fixture);
+      expect(await tx.financeReconciliation.count({ where: { transactionId: { in: ids } } })).toBe(
+        0
+      );
+      expect(await tx.walletLedger.count({ where: { transactionId: { in: ids } } })).toBe(0);
+      expect(await tx.ledgerTransaction.count({ where: { id: { in: ids } } })).toBe(0);
+    },
+    { timeout: 30_000 }
+  );
+  expect(await countExchangeBookingMarkerRows(client, fixture.marker)).toBe(0);
+}
+
 describeIntegration("Exchange cancellation guarded MySQL integration", () => {
   let rootClient: PrismaClient;
   let clientA: PrismaClient;
@@ -156,6 +275,133 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
     await Promise.all(
       [rootClient, clientA, clientB].filter(Boolean).map((client) => client.$disconnect())
     );
+  });
+
+  it("concurrently accepts two matched orders on independent connections and captures one balanced Demand fee", async () => {
+    const marker = `exchange-cancel-two-accept-${randomUUID()}`;
+    let fixture: ExchangeBookingFixture | null = null;
+    try {
+      fixture = await rootClient.$transaction((tx) => createExchangeBookingFixture(tx, marker));
+      const currentFixture = fixture;
+      const orderIds = await convertFixture(rootClient, fixture);
+      expect(orderIds).toHaveLength(2);
+      const customer = customerActor(fixture);
+      const providers = await Promise.all(
+        orderIds.map((_, index) => providerActor(rootClient, currentFixture, index))
+      );
+      for (const [index, orderId] of orderIds.entries()) {
+        await expect(
+          new ExchangeCancellationRepository(rootClient).command(
+            cancellationInput(
+              fixture,
+              customer,
+              orderId,
+              "request",
+              0,
+              `concurrent-request-${index}`
+            ),
+            noSettlement
+          )
+        ).resolves.toMatchObject({ outcome: "created" });
+      }
+      const before = await financeEvidence(rootClient, fixture);
+      const connections = new Set<string>();
+      let ready = 0;
+      let start!: () => void;
+      const bothConnected = new Promise<void>((resolve) => {
+        start = resolve;
+      });
+      const results = await Promise.allSettled(
+        [clientA, clientB].map((client, index) =>
+          // Two root clients each own a transaction. The barrier proves both connections are
+          // open together before either accept; there is no encompassing rollback transaction.
+          client.$transaction(
+            async (tx) => {
+              const [connection] = await tx.$queryRaw<
+                Array<{ id: bigint }>
+              >`SELECT CONNECTION_ID() AS id`;
+              connections.add(String(connection!.id));
+              if (++ready === 2) start();
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              try {
+                await Promise.race([
+                  bothConnected,
+                  new Promise<never>((_, reject) => {
+                    timer = setTimeout(
+                      () => reject(new Error("both MySQL connections did not open")),
+                      10_000
+                    );
+                  })
+                ]);
+              } finally {
+                clearTimeout(timer);
+              }
+              const ledger = new LedgerService(
+                new LedgerRepository(tx),
+                undefined,
+                undefined,
+                () => currentFixture.now
+              );
+              return new ExchangeCancellationRepository(tx).command(
+                cancellationInput(
+                  currentFixture,
+                  providers[index]!,
+                  orderIds[index]!,
+                  "accept",
+                  1,
+                  `concurrent-accept-${index}`
+                ),
+                {
+                  capturePublicationFee: async (input) => {
+                    await ledger.captureExchangeRequestPublication(
+                      { exchangePostId: input.exchangePostId, actorUserId: input.actorUserId },
+                      { transactionClient: input.transactionClient }
+                    );
+                  },
+                  releaseBookingHold: async () => {
+                    throw new Error("pending order has no booking hold");
+                  }
+                }
+              );
+            },
+            { maxWait: 10_000, timeout: 30_000 }
+          )
+        )
+      );
+      expect(connections.size).toBe(2);
+      expect(results).toEqual([
+        { status: "fulfilled", value: expect.objectContaining({ outcome: "created" }) },
+        { status: "fulfilled", value: expect.objectContaining({ outcome: "created" }) }
+      ]);
+      expect(
+        await rootClient.bookingOrder.count({
+          where: { id: { in: orderIds }, status: "CANCELLED" }
+        })
+      ).toBe(2);
+      expect(
+        await rootClient.exchangeBookingCancellation.count({
+          where: { bookingOrderId: { in: orderIds }, status: "ACCEPTED" }
+        })
+      ).toBe(2);
+      expect(
+        await rootClient.scheduleSlot.count({
+          where: { id: { in: fixture.participantSlotIds }, bookedCount: 0, status: "AVAILABLE" }
+        })
+      ).toBe(2);
+      const after = await financeEvidence(rootClient, fixture);
+      expectPublicationConservation(before, after);
+      expect(after.payer).toMatchObject({ availableBalance: 99_500, frozenBalance: 0 });
+      expect(
+        await rootClient.exchangeRequestFinancial.findUniqueOrThrow({
+          where: { id: fixture.requestFinancialId }
+        })
+      ).toMatchObject({ state: "CAPTURED" });
+      expect(
+        await rootClient.walletHold.findUniqueOrThrow({ where: { id: fixture.walletHoldId } })
+      ).toMatchObject({ status: "captured", capturedAmountNdp: 500 });
+    } finally {
+      if (fixture) await cleanupCommittedCancellation(rootClient, fixture);
+    }
   });
 
   it.each(["confirm", "start", "payment"] as const)(
@@ -384,6 +630,7 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
       const holdBefore = await rootClient.walletHold.findUniqueOrThrow({
         where: { id: fixture.walletHoldId }
       });
+      const financeBefore = await financeEvidence(rootClient, fixture);
       const ledger = new LedgerService(
         new LedgerRepository(rootClient),
         undefined,
@@ -399,12 +646,19 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
                 { exchangePostId: input.exchangePostId, actorUserId: input.actorUserId },
                 { transactionClient: input.transactionClient }
               );
+              // Verify real payer debit, platform credit and reconciliation exist inside the
+              // doomed transaction before injecting failure, then prove all are rolled back.
+              expectPublicationConservation(
+                financeBefore,
+                await financeEvidence(input.transactionClient as Prisma.TransactionClient, fixture!)
+              );
               throw settlementFailure;
             },
             releaseBookingHold: async () => undefined
           }
         )
       ).rejects.toBe(settlementFailure);
+      expect(await financeEvidence(rootClient, fixture)).toEqual(financeBefore);
       await expect(
         rootClient.wallet.findUniqueOrThrow({ where: { id: fixture.walletId } })
       ).resolves.toEqual(walletBefore);
@@ -479,6 +733,7 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
             }
           };
           const financeSnapshot = async () => ({
+            conservation: await financeEvidence(transaction, fixture),
             wallet: await transaction.wallet.findUniqueOrThrow({ where: { id: fixture.walletId } }),
             hold: await transaction.walletHold.findUniqueOrThrow({
               where: { id: fixture.walletHoldId }
@@ -558,6 +813,10 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
             }
           });
           expect(captureCount).toBe(1);
+          expectPublicationConservation(
+            before.conservation,
+            await financeEvidence(transaction, fixture)
+          );
           await expect(
             transaction.exchangeRequestFinancial.findUniqueOrThrow({
               where: { id: fixture.requestFinancialId }
@@ -663,6 +922,7 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
           await expect(
             transaction.wallet.findUniqueOrThrow({ where: { id: fixture.walletId } })
           ).resolves.toMatchObject({ availableBalance: 99_200, frozenBalance: 800 });
+          const beforeCancellation = await financeEvidence(transaction, fixture);
 
           const settlement: ExchangeCancellationSettlementOptions = {
             capturePublicationFee: async (input) => {
@@ -733,6 +993,39 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
           });
           expect(publicationCaptureCount).toBe(1);
           expect(bookingReleaseCount).toBe(1);
+          const afterCancellation = await financeEvidence(transaction, fixture);
+          expectPublicationConservation(beforeCancellation, afterCancellation);
+          const release = afterCancellation.transactions.filter(
+            (row) => row.type === "BOOKING_CANCEL_UNFREEZE"
+          );
+          expect(release).toHaveLength(1);
+          expect(release[0]).toMatchObject({
+            amount: 300,
+            currency: "TEST_NDP",
+            reconciliation: null
+          });
+          expect(release[0]!.entries).toEqual([
+            expect.objectContaining({
+              walletId: wallet.id,
+              direction: "UNFREEZE",
+              amount: 300,
+              availableDelta: 300,
+              frozenDelta: -300
+            })
+          ]);
+          // Formal booking TEST_NDP mutations have no FinanceReconciliation; publication
+          // capture has its dedicated TEST_ONLY record. Neither can enter NDP reconciliation.
+          expect(
+            afterCancellation.transactions.flatMap((row) =>
+              row.reconciliation ? [row.reconciliation] : []
+            )
+          ).toEqual([
+            expect.objectContaining({
+              currency: "TEST_NDP",
+              status: "TEST_ONLY",
+              differenceAmount: 0
+            })
+          ]);
           report = {
             availableBalance: wallet.availableBalance,
             frozenBalance: wallet.frozenBalance,
