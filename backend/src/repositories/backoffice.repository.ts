@@ -25,6 +25,11 @@ import type {
 } from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
 import {
+  AdministrativeRegionRepository,
+  type AdministrativeRegionRepositoryPort,
+  type VerifiedAdministrativeRegionScope
+} from "./administrative-region.repository";
+import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
   type BackofficeAuditEventPayload,
@@ -459,14 +464,18 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 
 export class BackofficeRepository implements BackofficeRepositoryPort {
   private readonly dashboardRepository: DashboardRepository;
+  private readonly administrativeRegionRepository: AdministrativeRegionRepositoryPort;
 
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
-      new IdentifierAllocator(new PublicIdentifierRepository(client))
+      new IdentifierAllocator(new PublicIdentifierRepository(client)),
+    administrativeRegionRepository?: AdministrativeRegionRepositoryPort
   ) {
     this.dashboardRepository = new DashboardRepository(client);
+    this.administrativeRegionRepository =
+      administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
   }
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -1308,6 +1317,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   public createShop(input: BackofficeShopCreateData): Promise<BackofficeShopPayload> {
     return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
       this.client.$transaction(async (transaction) => {
+        const verifiedScope = await this.resolveServiceLocation(input, transaction);
         const roles = await transaction.role.findMany({
           where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
           select: { id: true, code: true }
@@ -1372,6 +1382,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             isRecommended: input.isRecommended ?? false
           }
         });
+        if (verifiedScope) {
+          await this.upsertShopServiceLocation(
+            transaction,
+            shop.id,
+            verifiedScope,
+            input.verifiedById
+          );
+        }
         const merchantIdentity = await transaction.userIdentity.create({
           data: {
             userId: owner.id,
@@ -1421,13 +1439,40 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   public async updateShop(
     id: number,
-    input: BackofficeShopUpdateBody
+    input: BackofficeShopUpdateBody,
+    verifiedById?: number
   ): Promise<BackofficeShopPayload | null> {
-    const existing = await this.client.shop.findFirst({ where: { id, deletedAt: null } });
-    if (!existing) return null;
-    return this.mapShop(
-      await this.client.shop.update({ where: { id }, data: input, include: this.shopInclude() })
-    );
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.shop.findFirst({
+        where: { id, deletedAt: null },
+        select: { id: true }
+      });
+      if (!existing) return null;
+      const verifiedScope = await this.resolveServiceLocation(input, transaction);
+      const shopFields = { ...input };
+      delete shopFields.serviceCountryCode;
+      delete shopFields.serviceAdmin1Code;
+      delete shopFields.serviceAdmin2Code;
+      if (Object.keys(shopFields).length > 0) {
+        await transaction.shop.update({ where: { id }, data: shopFields });
+      }
+      if (verifiedScope) {
+        if (!verifiedById) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.administrative_region.verifier_required",
+            statusCode: 400
+          });
+        }
+        await this.upsertShopServiceLocation(transaction, id, verifiedScope, verifiedById);
+      }
+      return this.mapShop(
+        await transaction.shop.findUniqueOrThrow({
+          where: { id },
+          include: this.shopInclude()
+        })
+      );
+    });
   }
 
   public async updateMerchantShopProfile(input: {
@@ -2902,6 +2947,56 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     } satisfies Prisma.ShopInclude;
   }
 
+  private resolveServiceLocation(
+    input: {
+      serviceCountryCode?: "JP";
+      serviceAdmin1Code?: string;
+      serviceAdmin2Code?: string;
+    },
+    transaction: Prisma.TransactionClient
+  ): Promise<VerifiedAdministrativeRegionScope | null> {
+    if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
+      return Promise.resolve(null);
+    }
+    return this.administrativeRegionRepository.resolveVerifiedScope(
+      {
+        countryCode: input.serviceCountryCode,
+        admin1Code: input.serviceAdmin1Code,
+        admin2Code: input.serviceAdmin2Code
+      },
+      transaction
+    );
+  }
+
+  private async upsertShopServiceLocation(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    scope: VerifiedAdministrativeRegionScope,
+    verifiedById: number
+  ): Promise<void> {
+    await transaction.shopServiceLocation.upsert({
+      where: { shopId },
+      create: {
+        shopId,
+        countryCode: scope.countryCode,
+        admin1RegionId: scope.admin1RegionId,
+        admin2RegionId: scope.admin2RegionId,
+        datasetVersion: scope.datasetVersion,
+        verifiedAt: new Date(),
+        verifiedById
+      },
+      update: {
+        countryCode: scope.countryCode,
+        admin1RegionId: scope.admin1RegionId,
+        admin2RegionId: scope.admin2RegionId,
+        datasetVersion: scope.datasetVersion,
+        verifiedAt: new Date(),
+        verifiedById,
+        deletedAt: null
+      }
+    });
+  }
+
   private mapOrder(order: OrderRecord): BackofficeOrderPayload {
     return {
       id: order.id,
@@ -3114,6 +3209,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private mapShop(shop: ShopRecord): BackofficeShopPayload {
     return {
       id: shop.id,
+      shopNo: shop.shopNo,
       ownerUserId: shop.ownerUserId,
       ownerEmail: shop.owner?.email ?? null,
       avatarUrl: shop.mediaAssets?.[0]?.url ?? shop.owner?.avatarBootstrapUrl ?? null,

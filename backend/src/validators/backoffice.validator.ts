@@ -4,6 +4,7 @@ import {
   MAX_DASHBOARD_CUSTOM_RANGE_DAYS,
   type DashboardPeriod
 } from "../domain/dashboard-period";
+import { verifiedServiceLocationSchema } from "./administrative-region.validator";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -305,17 +306,46 @@ export const backofficeShopIdParamSchema = z.object({
   shopId: z.coerce.number().int().positive()
 });
 
-export const backofficeShopCreateBodySchema = z.object({
-  ownerEmail: emailSchema,
-  ownerUsername: z.string().trim().min(1).max(100),
-  ownerPassword: passwordSchema,
-  name: z.string().trim().min(1).max(160),
-  description: z.string().trim().max(5000).nullable().optional(),
-  city: z.string().trim().min(1).max(100),
-  address: z.string().trim().min(1).max(255),
-  phone: z.string().trim().min(5).max(32).nullable().optional(),
-  isRecommended: z.boolean().optional()
-});
+const optionalVerifiedServiceLocationFields = verifiedServiceLocationSchema.partial().shape;
+
+const requireCompleteVerifiedServiceLocation = (
+  value: {
+    serviceCountryCode?: "JP";
+    serviceAdmin1Code?: string;
+    serviceAdmin2Code?: string;
+  },
+  context: z.RefinementCtx
+) => {
+  const fields = [
+    value.serviceCountryCode,
+    value.serviceAdmin1Code,
+    value.serviceAdmin2Code
+  ];
+  const supplied = fields.filter((field) => field !== undefined).length;
+  if (supplied > 0 && supplied < fields.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["serviceCountryCode"],
+      message: "service location fields must be supplied together"
+    });
+  }
+};
+
+export const backofficeShopCreateBodySchema = z
+  .object({
+    ownerEmail: emailSchema,
+    ownerUsername: z.string().trim().min(1).max(100),
+    ownerPassword: passwordSchema,
+    name: z.string().trim().min(1).max(160),
+    description: z.string().trim().max(5000).nullable().optional(),
+    city: z.string().trim().min(1).max(100),
+    address: z.string().trim().min(1).max(255),
+    phone: z.string().trim().min(5).max(32).nullable().optional(),
+    isRecommended: z.boolean().optional(),
+    ...optionalVerifiedServiceLocationFields
+  })
+  .strict()
+  .superRefine(requireCompleteVerifiedServiceLocation);
 
 const merchantShopUpdateFields = {
   name: z.string().trim().min(1).max(160).optional(),
@@ -333,8 +363,11 @@ const merchantShopUpdateFields = {
 export const backofficeShopUpdateBodySchema = z
   .object({
     ...merchantShopUpdateFields,
-    isRecommended: z.boolean().optional()
+    isRecommended: z.boolean().optional(),
+    ...optionalVerifiedServiceLocationFields
   })
+  .strict()
+  .superRefine(requireCompleteVerifiedServiceLocation)
   .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export const merchantShopUpdateBodySchema = z

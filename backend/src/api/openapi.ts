@@ -7932,16 +7932,50 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           updatedAt: { type: "string", format: "date-time" }
         }
       },
+      AdministrativeRegionReference: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "name", "level", "parentCode", "centroid"],
+        properties: {
+          code: { type: "string", example: "13104" },
+          name: { type: "string", example: "新宿区" },
+          level: { type: "string", enum: ["country", "admin1", "admin2"] },
+          parentCode: { type: ["string", "null"], example: "13" },
+          centroid: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["lat", "lng"],
+                properties: {
+                  lat: { type: "number" },
+                  lng: { type: "number" }
+                }
+              },
+              { type: "null" }
+            ]
+          }
+        }
+      },
       BackofficeShopUpdateInput: {
         type: "object",
+        additionalProperties: false,
         minProperties: 1,
+        dependentRequired: {
+          serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"],
+          serviceAdmin1Code: ["serviceCountryCode", "serviceAdmin2Code"],
+          serviceAdmin2Code: ["serviceCountryCode", "serviceAdmin1Code"]
+        },
         properties: {
           name: { type: "string", minLength: 1, maxLength: 160 },
           description: { type: ["string", "null"], maxLength: 5000 },
           city: { type: "string", minLength: 1, maxLength: 100 },
           address: { type: "string", minLength: 1, maxLength: 255 },
           phone: { type: ["string", "null"], maxLength: 50 },
-          isRecommended: { type: "boolean" }
+          isRecommended: { type: "boolean" },
+          serviceCountryCode: { type: "string", enum: ["JP"] },
+          serviceAdmin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+          serviceAdmin2Code: { type: "string", pattern: "^[0-9]{5}$" }
         }
       },
       MerchantShopUpdateInput: {
@@ -21657,6 +21691,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/reference/administrative-regions`]: {
+      get: {
+        tags: ["Reference Data"],
+        summary: "List verified Japan administrative-region children",
+        parameters: [
+          {
+            name: "country",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["JP"] }
+          },
+          {
+            name: "parent",
+            in: "query",
+            schema: { type: "string", pattern: "^[0-9]{2,5}$" }
+          },
+          {
+            name: "locale",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["zh-CN", "zh-TW", "ja", "en", "ko"],
+              default: "ja"
+            }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Administrative-region children", {
+            type: "object",
+            additionalProperties: false,
+            required: ["list"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AdministrativeRegionReference" }
+              }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation")
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/shops`]: {
       get: {
         tags: ["Step 12 Backoffice"],
@@ -21676,6 +21752,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
+                dependentRequired: {
+                  serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"],
+                  serviceAdmin1Code: ["serviceCountryCode", "serviceAdmin2Code"],
+                  serviceAdmin2Code: ["serviceCountryCode", "serviceAdmin1Code"]
+                },
                 required: [
                   "ownerEmail",
                   "ownerUsername",
@@ -21693,7 +21775,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   city: { type: "string" },
                   address: { type: "string" },
                   phone: { type: ["string", "null"] },
-                  isRecommended: { type: "boolean" }
+                  isRecommended: { type: "boolean" },
+                  serviceCountryCode: { type: "string", enum: ["JP"] },
+                  serviceAdmin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+                  serviceAdmin2Code: { type: "string", pattern: "^[0-9]{5}$" }
                 }
               }
             }

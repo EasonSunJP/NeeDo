@@ -610,6 +610,7 @@ export type TechnicianRankingRepositoryInput = BackofficeScope &
 
 export interface BackofficeShopPayload {
   id: number;
+  shopNo: string | null;
   ownerUserId: number | null;
   ownerEmail: string | null;
   avatarUrl: string | null;
@@ -791,6 +792,7 @@ export interface BackofficeServicePayload {
 
 export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
   ownerPasswordHash: string;
+  verifiedById: number;
 }
 
 export type ScopedTechnicianUpdateInput = BackofficeScope &
@@ -883,7 +885,8 @@ export interface BackofficeRepositoryPort {
   createShop: (input: BackofficeShopCreateData) => Promise<BackofficeShopPayload>;
   updateShop: (
     id: number,
-    input: BackofficeShopUpdateBody
+    input: BackofficeShopUpdateBody,
+    verifiedById?: number
   ) => Promise<BackofficeShopPayload | null>;
   updateMerchantShopProfile?: (input: {
     avatar?: { mimeType: string; url: string };
@@ -1877,7 +1880,8 @@ export class BackofficeService {
     try {
       shop = await this.repository.createShop({
         ...input,
-        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
+        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS),
+        verifiedById: actor.userId
       });
     } catch (error) {
       if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
@@ -1892,6 +1896,7 @@ export class BackofficeService {
       shopId: shop.id,
       ownerUserId: shop.ownerUserId
     });
+    await this.recordVerifiedServiceLocation(input, shop, actor, context);
 
     return shop;
   }
@@ -1903,13 +1908,14 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
     const shop = this.requireResult(
-      await this.repository.updateShop(id, input),
+      await this.repository.updateShop(id, input, actor.userId),
       "error.shop.not_found"
     );
     await this.record(actor, context, "backoffice.shop.update", "Shop", {
       shopId: id,
       changedFields: Object.keys(input)
     });
+    await this.recordVerifiedServiceLocation(input, shop, actor, context);
     return shop;
   }
 
@@ -2412,6 +2418,27 @@ export class BackofficeService {
     );
     await this.record(actor, context, action, "Service", { serviceId, shopId: service.shopId });
     return service;
+  }
+
+  private recordVerifiedServiceLocation(
+    input: {
+      serviceCountryCode?: "JP";
+      serviceAdmin1Code?: string;
+      serviceAdmin2Code?: string;
+    },
+    shop: BackofficeShopPayload,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<void> {
+    if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
+      return Promise.resolve();
+    }
+    return this.record(actor, context, "backoffice.shop.service_location.verify", "shop", {
+      shopNo: shop.shopNo,
+      countryCode: input.serviceCountryCode,
+      admin1Code: input.serviceAdmin1Code,
+      admin2Code: input.serviceAdmin2Code
+    });
   }
 
   private requireResult<T>(value: T | null, message: string): T {
