@@ -27,6 +27,7 @@ import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
+import { useVisualViewportFrame } from "../../lib/useVisualViewportFrame";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
@@ -820,7 +821,7 @@ export function ImChatComposer({
   return (
     <div
       className={cn(
-        "im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]",
+        "im-chat-composer-root safe-nav-bottom relative z-10 max-w-full px-3 pt-2 [overflow-x:clip]",
         disabled ? "cursor-not-allowed opacity-60" : ""
       )}
       data-im-composer-disabled={disabled ? "true" : undefined}
@@ -956,6 +957,9 @@ export function ImStandaloneShell({
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useVisualViewportFrame(shellRef);
 
   useEffect(() => {
     let frame = 0;
@@ -1017,6 +1021,7 @@ export function ImStandaloneShell({
       )}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
+      ref={shellRef}
     >
       <div className="mx-auto min-h-[100dvh] w-full min-w-0 overflow-x-hidden [overflow-x:clip] bg-transparent" style={{ maxWidth: "min(880px, 100%)" }}>
         {children}
