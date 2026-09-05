@@ -18,6 +18,7 @@ import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCar
 import type { DashboardMetricSparklinePoint } from "../../features/dashboard/DashboardMetricSparkline";
 import { AnalyticsMetricGrid } from "../../features/dashboard/AnalyticsMetricGrid";
 import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";
+import { buildAnalyticsRankingDetailLocation } from "../../features/dashboard/analyticsRankingDetailRoute";
 import { useI18n } from "../../i18n/I18nProvider";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
@@ -376,7 +377,10 @@ export function DashboardPage() {
               </div>
             ) : null}
 
-            <AnalyticsRankingsSection query={committedQuery} />
+            <AnalyticsRankingsSection
+              onOpenDetail={(item) => navigate(buildAnalyticsRankingDetailLocation(item))}
+              query={committedQuery}
+            />
           </>
         ) : null}
       </div>

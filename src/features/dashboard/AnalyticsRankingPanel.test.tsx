@@ -67,10 +67,12 @@ describe("AnalyticsRankingPanel", () => {
   });
 
   it("switches technician ranking between GMV and completed count using the formal API", async () => {
+    const onOpenDetail = vi.fn();
     await act(async () => root.render(
       <AnalyticsRankingPanel
         categories={[{ id: 7, name: "放松休闲" }]}
         kind="technician"
+        onOpenDetail={onOpenDetail}
         query={{ period: "last7days" }}
         title="技师排行 TOP10"
       />
@@ -86,6 +88,13 @@ describe("AnalyticsRankingPanel", () => {
       container.querySelector('[data-ranking-header-row="primary"]')?.classList.contains("min-h-9")
     ).toBe(true);
     expect(container.querySelector('[data-dashboard-test-badge="true"]')?.textContent).toBe("TEST");
+    const detail = container.querySelector<HTMLButtonElement>(
+      '[data-ranking-detail-control="true"]'
+    );
+    expect(detail).not.toBeNull();
+    expect(detail?.getAttribute("aria-label")).toContain("美咲");
+    await act(async () => detail?.click());
+    expect(onOpenDetail).toHaveBeenCalledWith(response("technician").list[0]);
 
     await act(async () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="技师排行 TOP10按完成次数排序"]')?.click();
@@ -103,6 +112,7 @@ describe("AnalyticsRankingPanel", () => {
     await act(async () => root.render(
       <AnalyticsRankingPanel
         kind={kind}
+        onOpenDetail={() => undefined}
         query={{ period: "last7days" }}
         title="排行榜 TOP10"
       />
@@ -116,6 +126,7 @@ describe("AnalyticsRankingPanel", () => {
       <AnalyticsRankingPanel
         categories={[{ id: 7, name: "放松休闲" }]}
         kind="customer"
+        onOpenDetail={() => undefined}
         query={{ period: "last7days", city: "东京" }}
         title="用户消费排行 TOP10"
       />
@@ -135,6 +146,7 @@ describe("AnalyticsRankingPanel", () => {
       <AnalyticsRankingPanel
         categories={[{ id: 7, name: "放松休闲" }]}
         kind="technician"
+        onOpenDetail={() => undefined}
         query={{ period: "last7days" }}
         title="技师排行 TOP10"
       />
@@ -152,6 +164,7 @@ describe("AnalyticsRankingPanel", () => {
       <AnalyticsRankingPanel
         categories={[{ id: 8, name: "宠物相关" }]}
         kind="technician"
+        onOpenDetail={() => undefined}
         query={{ period: "last7days" }}
         title="技师排行 TOP10"
       />
