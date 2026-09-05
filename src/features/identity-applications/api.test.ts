@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
-import { identityApplicationsApi } from "./api";
+import { identityApplicationsApi, type MerchantReview } from "./api";
 
 vi.mock("../../api/httpClient", () => ({
   httpClient: {
@@ -96,5 +96,23 @@ describe("identity application API client", () => {
       body: { expectedVersion: 4 },
       method: "POST"
     });
+  });
+
+  it("preserves merchant review submission and creation timestamps", async () => {
+    const result = {
+      list: [{
+        applicationId: 91,
+        submittedAt: "2026-09-06T01:00:00.000Z",
+        createdAt: "2026-09-05T01:00:00.000Z"
+      } as MerchantReview],
+      total: 1,
+      page: 1,
+      page_size: 5
+    };
+    vi.mocked(httpClient.request).mockResolvedValueOnce(result);
+
+    await expect(
+      identityApplicationsApi.listMerchantReviews({ page: 1, pageSize: 5, status: "submitted" })
+    ).resolves.toEqual(result);
   });
 });
