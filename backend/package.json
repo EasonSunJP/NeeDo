@@ -15,6 +15,8 @@
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" \"prisma/**/*.ts\" \"scripts/**/*.ts\"",
     "test": "node scripts/run-jest-suite.cjs",
+    "admin-regions:build": "tsx scripts/build-jp-administrative-catalog.ts",
+    "admin-regions:verify": "tsx scripts/build-jp-administrative-catalog.ts --verify",
     "membership:preflight": "tsx scripts/preflight-platform-membership-values.ts",
     "check:friendship-conversation-pairs": "tsx scripts/check-friendship-conversation-pairs.ts",
     "check:social-reply-relations": "ENV_FILE=.env.dev tsx scripts/check-social-reply-relations.ts",
