@@ -1,5 +1,13 @@
 import { useLayoutEffect, type RefObject } from "react";
 
+const isKeyboardEditor = (element: Element | null): boolean => {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    return !element.disabled && !element.readOnly;
+  }
+
+  return element instanceof HTMLElement && element.isContentEditable;
+};
+
 export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T | null>) {
   useLayoutEffect(() => {
     const element = ref.current;
@@ -15,10 +23,14 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     const updateFrame = () => {
       const viewport = window.visualViewport;
-      const height = Math.max(1, Math.ceil(viewport?.height ?? window.innerHeight));
-      const top = Math.max(0, Math.floor(viewport?.offsetTop ?? 0));
-      const width = Math.max(1, Math.floor(viewport?.width ?? window.innerWidth));
-      const left = Math.max(0, Math.floor(viewport?.offsetLeft ?? 0));
+      const keyboardOpen = Boolean(viewport && isKeyboardEditor(document.activeElement));
+      const height = Math.max(
+        1,
+        Math.ceil(keyboardOpen ? viewport!.height : window.innerHeight)
+      );
+      const top = Math.max(0, Math.floor(keyboardOpen ? viewport!.offsetTop : 0));
+      const width = Math.max(1, Math.floor(keyboardOpen ? viewport!.width : window.innerWidth));
+      const left = Math.max(0, Math.floor(keyboardOpen ? viewport!.offsetLeft : 0));
       element.style.setProperty("--im-visual-viewport-height", `${height}px`);
       element.style.setProperty("--im-visual-viewport-top", `${top}px`);
       element.style.setProperty("--im-visual-viewport-width", `${width}px`);
@@ -27,11 +39,15 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     updateFrame();
     window.addEventListener("resize", updateFrame);
+    document.addEventListener("focusin", updateFrame);
+    document.addEventListener("focusout", updateFrame);
     window.visualViewport?.addEventListener("resize", updateFrame);
     window.visualViewport?.addEventListener("scroll", updateFrame, { passive: true });
 
     return () => {
       window.removeEventListener("resize", updateFrame);
+      document.removeEventListener("focusin", updateFrame);
+      document.removeEventListener("focusout", updateFrame);
       window.visualViewport?.removeEventListener("resize", updateFrame);
       window.visualViewport?.removeEventListener("scroll", updateFrame);
 
