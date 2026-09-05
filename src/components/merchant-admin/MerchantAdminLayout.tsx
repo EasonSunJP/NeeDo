@@ -40,6 +40,7 @@ import { AdminAccountMenu } from "../admin/AdminAccountMenu";
 import { AdminThemeMenu } from "../admin/AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
 import { LanguageSwitcher } from "../ui/LanguageSwitcher";
+import { OfficialNoticeBell } from "../ui/OfficialNoticeBell";
 
 type MerchantAdminNavItem = {
   label: string;
@@ -832,12 +833,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
                 </label>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <NavLink
-                  className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
-                  to="/merchant-admin/notifications/inbox"
-                >
-                  通知
-                </NavLink>
+                <OfficialNoticeBell to="/merchant-admin/notifications/inbox" />
                 <NavLink
                   className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
                   to="/merchant-admin/settings"

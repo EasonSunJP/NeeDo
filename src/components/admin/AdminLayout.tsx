@@ -7,7 +7,7 @@ import { AdminAccountMenu } from "./AdminAccountMenu";
 import { AdminThemeMenu } from "./AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
 import { LanguageSwitcher } from "../ui/LanguageSwitcher";
-import { NotificationBadge } from "../ui/NotificationBadge";
+import { OfficialNoticeBell } from "../ui/OfficialNoticeBell";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { contentPublicationEditorText } from "../../features/content-publication/i18n";
 import { translateText } from "../../i18n/translations";
@@ -511,17 +511,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <div className="flex items-center gap-2 text-sm">
                 <LanguageSwitcher className="shrink-0" iconOnly />
                 <AdminThemeMenu onThemeChange={setTheme} options={platformAdminThemeOptions} theme={theme} />
-                <NavLink
-                  aria-label="消息"
-                  className="focus-ring relative grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"
-                  to="/admin/notifications"
-                >
-                  <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <path d="M12 4a6 6 0 0 0-6 6v2.5L4.7 15a1 1 0 0 0 .7 1.7H18.6a1 1 0 0 0 .7-1.7L18 12.5V10a6 6 0 0 0-6-6Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-                    <path d="M9.5 19a2.5 2.5 0 0 0 5 0" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-                  </svg>
-                  <NotificationBadge className="absolute right-1.5 top-1.5" count={12} size="sm" />
-                </NavLink>
+                <OfficialNoticeBell to="/admin/notifications" />
                 <NavLink
                   aria-label="客服台"
                   className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"
