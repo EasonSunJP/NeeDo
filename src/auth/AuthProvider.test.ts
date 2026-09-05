@@ -92,6 +92,10 @@ const mocked = vi.hoisted(() => {
       verifyOtp: vi.fn(),
       verifyRegistration: vi.fn()
     },
+    imCache: {
+      lock: vi.fn((_accountId: string) => undefined),
+      unlock: vi.fn(async (_accountId: string) => undefined),
+    },
     clearAuthTokens: vi.fn(() => {
       tokenState.epoch += 1;
       tokenState.accessToken = null;
@@ -107,6 +111,17 @@ const mocked = vi.hoisted(() => {
 });
 
 vi.mock("../api/auth", () => ({ authApi: mocked.authApi }));
+vi.mock("../features/im/local-cache/service", () => ({
+  getImOpenedMediaCacheService: () => mocked.imCache,
+  transitionImOpenedMediaCacheAccount: async (
+    previousAccountId: string | null,
+    nextAccountId: string | null,
+  ) => {
+    if (previousAccountId === nextAccountId) return;
+    if (previousAccountId) mocked.imCache.lock(previousAccountId);
+    if (nextAccountId) await mocked.imCache.unlock(nextAccountId);
+  },
+}));
 vi.mock("./authCredentialCoordinator", () => ({
   abandonAuthOperation: (operation: {
     generation: number;
@@ -758,6 +773,36 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(mocked.authApi.me).toHaveBeenCalledTimes(1);
     expect(mocked.setExpectedAuthUserId).toHaveBeenCalledWith(customerMe.id);
     expect(auth.session?.loginMethod).toBe("google");
+  });
+
+  it("locks the previous account cache before committing replacement credentials", async () => {
+    mocked.authApi.me.mockResolvedValueOnce(customerMe);
+    await renderProvider();
+    persistTokens("google-access-token", "google-refresh-token");
+    await invoke(() => authenticateGoogle());
+    mocked.imCache.lock.mockClear();
+    mocked.imCache.unlock.mockClear();
+    mocked.setExpectedAuthUserId.mockClear();
+
+    const replacementMe = {
+      ...merchantOrganizationMe,
+      id: 8,
+      needoId: "u0000000008",
+      primaryPublicId: "u0000000008",
+    };
+    mocked.authApi.loginFormal.mockResolvedValueOnce(
+      formalLoginPayload(replacementMe),
+    );
+    await invoke(() => auth.loginWithFormalPassword(
+      "merchant",
+      "o5831047296",
+      "secret",
+    ));
+
+    expect(mocked.imCache.lock).toHaveBeenCalledWith(String(customerMe.id));
+    expect(mocked.imCache.lock.mock.invocationCallOrder[0])
+      .toBeLessThan(mocked.setExpectedAuthUserId.mock.invocationCallOrder[0]!);
+    expect(mocked.imCache.unlock).toHaveBeenCalledWith(String(replacementMe.id));
   });
 
   it("never uses an inline login me and requires the caller-owned /auth/me response", async () => {

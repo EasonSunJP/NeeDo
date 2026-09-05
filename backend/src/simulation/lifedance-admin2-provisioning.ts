@@ -116,10 +116,7 @@ const activeIdentityKey = (
   scopeId: number | null
 ): string => ["lifedance-admin2-identity", userId, type, scopeType, scopeId ?? "global"].join(":");
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
@@ -151,10 +148,7 @@ export const resolveLifeDanceAdmin2Password = (env: {
   return password;
 };
 
-export const buildLifeDanceAdmin2UserData = (
-  passwordHash: string,
-  sessionGeneration: number
-) => ({
+export const buildLifeDanceAdmin2UserData = (passwordHash: string, sessionGeneration: number) => ({
   email: LIFEDANCE_ADMIN2_PLAN.email,
   needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
   accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
@@ -186,20 +180,16 @@ export const buildLifeDanceAdmin2BookingSlotStarts = (
   const month = jstNow.getUTCMonth();
   const date = jstNow.getUTCDate();
 
-  return Array.from({ length: 7 }, (_, dayIndex) => dayIndex + 1).flatMap(
-    (dayOffset) =>
-      [10, 14].map((jstHour) => {
-        const startsAt = new Date(
-          Date.UTC(year, month, date + dayOffset, jstHour - 9, 0, 0, 0)
-        );
-        return {
-          startsAt,
-          endsAt: new Date(
-            startsAt.getTime() +
-              LIFEDANCE_ADMIN2_PLAN.bookingService.durationMinutes * 60 * 1000
-          )
-        };
-      })
+  return Array.from({ length: 7 }, (_, dayIndex) => dayIndex + 1).flatMap((dayOffset) =>
+    [10, 14].map((jstHour) => {
+      const startsAt = new Date(Date.UTC(year, month, date + dayOffset, jstHour - 9, 0, 0, 0));
+      return {
+        startsAt,
+        endsAt: new Date(
+          startsAt.getTime() + LIFEDANCE_ADMIN2_PLAN.bookingService.durationMinutes * 60 * 1000
+        )
+      };
+    })
   );
 };
 
@@ -386,12 +376,7 @@ const ensureIdentity = async (
     displayName: input.displayName,
     isDefault: input.isDefault,
     isActive: true,
-    activeKey: activeIdentityKey(
-      input.userId,
-      input.type,
-      input.scopeType,
-      input.scopeId
-    ),
+    activeKey: activeIdentityKey(input.userId, input.type, input.scopeType, input.scopeId),
     deletedAt: null
   };
 
@@ -837,7 +822,10 @@ export const provisionLifeDanceAdmin2 = async (
   const allocator = new IdentifierAllocator(new PublicIdentifierRepository(tx));
   const persistedShop = await tx.shop.findUniqueOrThrow({
     where: { id: shop.id },
-    include: { publicIdentifier: true, customerSupportAccount: { include: { publicIdentifier: true } } }
+    include: {
+      publicIdentifier: true,
+      customerSupportAccount: { include: { publicIdentifier: true } }
+    }
   });
   const supportAccount = persistedShop.customerSupportAccount
     ? await tx.customerSupportAccount.update({
@@ -907,7 +895,10 @@ export const provisionLifeDanceAdmin2 = async (
     select: { id: true, code: true }
   });
   const roleIds = new Map(roles.map((role) => [role.code, role.id]));
-  assert(roleIds.size === LIFEDANCE_ADMIN2_PLAN.roleCodes.length, "LifeDance admin2 roles are incomplete.");
+  assert(
+    roleIds.size === LIFEDANCE_ADMIN2_PLAN.roleCodes.length,
+    "LifeDance admin2 roles are incomplete."
+  );
   for (const grant of [
     { code: "admin", scopeType: "global", scopeId: null },
     { code: "customer", scopeType: "customer_profile", scopeId: customerProfile.id },
@@ -917,7 +908,12 @@ export const provisionLifeDanceAdmin2 = async (
   ] as const) {
     const roleId = roleIds.get(grant.code);
     assert(roleId, `LifeDance admin2 role is missing: ${grant.code}`);
-    await ensureRole(tx, { userId: user.id, roleId, scopeType: grant.scopeType, scopeId: grant.scopeId });
+    await ensureRole(tx, {
+      userId: user.id,
+      roleId,
+      scopeType: grant.scopeType,
+      scopeId: grant.scopeId
+    });
   }
 
   const friendCandidates = await tx.user.findMany({

@@ -1,7 +1,5 @@
-import {
-  OfficialNotificationCapabilityGate,
-  OfficialNotificationCapabilityGateContent
-} from "./OfficialNotificationCapabilityGate";
+import { AdminLayout } from "../../components/admin/AdminLayout";
+import { OfficialNoticeManagement } from "../../features/official-notices/OfficialNoticeWorkspace";
 
 type AdminNotificationsContentProps = {
   title?: string;
@@ -15,9 +13,10 @@ type AdminNotificationsContentProps = {
 };
 
 export function AdminNotificationsContent({ title = "官方通知" }: AdminNotificationsContentProps) {
-  return <OfficialNotificationCapabilityGateContent title={title} />;
+  void title;
+  return <OfficialNoticeManagement composePath="/admin/notifications/compose" scope="platform" />;
 }
 
 export function AdminNotificationsPage() {
-  return <OfficialNotificationCapabilityGate title="官方通知" />;
+  return <AdminLayout><AdminNotificationsContent /></AdminLayout>;
 }

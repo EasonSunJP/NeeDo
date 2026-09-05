@@ -32,9 +32,6 @@ import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
 import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
 import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";
-import { AgentsPage } from "./pages/admin/AgentsPage";
-import { OperatingCostsPage } from "./pages/admin/OperatingCostsPage";
-import { ServiceSearchAnalyticsPage } from "./pages/admin/ServiceSearchAnalyticsPage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
 import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
@@ -73,6 +70,7 @@ import {
 } from "./pages/merchant-admin/dispatch-center/DispatchCenterRoutePages";
 import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsPage";
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
+import { MerchantAdminNotificationsPage } from "./pages/merchant-admin/MerchantAdminNotificationsPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
 import {
@@ -149,7 +147,6 @@ import { AffiliateAnnouncementDetailPage } from "./features/content-publication/
 import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
-import { OfficialNoticeAutoPopup } from "./components/ui/OfficialNoticeAutoPopup";
 import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
@@ -218,6 +215,9 @@ import {
 } from "./assets/runtime/images";
 
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
+const AgentsPage = lazy(() => import("./pages/admin/AgentsPage").then((module) => ({ default: module.AgentsPage })));
+const OperatingCostsPage = lazy(() => import("./pages/admin/OperatingCostsPage").then((module) => ({ default: module.OperatingCostsPage })));
+const ServiceSearchAnalyticsPage = lazy(() => import("./pages/admin/ServiceSearchAnalyticsPage").then((module) => ({ default: module.ServiceSearchAnalyticsPage })));
 const PlatformUserListPage = lazy(() => import("./features/platform-user-management/UserListPage").then((module) => ({ default: module.UserListPage })));
 const UserGroupsPage = lazy(() => import("./features/platform-user-management/UserGroupsPage").then((module) => ({ default: module.UserGroupsPage })));
 const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-management/UserGlobalSettingsPage").then((module) => ({ default: module.UserGlobalSettingsPage })));
@@ -1048,6 +1048,14 @@ export default function App() {
         {element}
       </RequirePermission>
     );
+  const protectPermissions = (portal: PortalScope, permissions: string[], element: ReactElement) =>
+    protect(
+      portal,
+      permissions.reduceRight<ReactElement>(
+        (child, permission) => <RequirePermission permission={permission}>{child}</RequirePermission>,
+        element
+      )
+    );
   const protectFeature = (portal: PortalScope, permission: FeaturePermission, element: ReactElement, fallbackTo?: string) =>
     protect(
       portal,
@@ -1086,7 +1094,6 @@ export default function App() {
                 {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} /> : null}
                 <ScrollToTop />
                 <ShareFeedbackViewport />
-                <OfficialNoticeAutoPopup disabled={Boolean(splashPortal)} />
                 <NeedoPet disabled={Boolean(splashPortal)} />
                 <AccountComplianceGate>
                 <Routes>
@@ -1339,6 +1346,9 @@ export default function App() {
               <Route path="/merchant-admin/inventory" element={protectFeature("merchant", "store.inventory.view", <MerchantAdminInventoryPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
+              <Route path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read", <MerchantAdminNotificationsPage view="list" />)} />
+              <Route path="/merchant-admin/notifications/compose" element={protectPermissions("merchant", ["merchant-admin:notice:create", "merchant-admin:notice:send"], <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/inbox" element={protect("merchant", <MerchantAdminNotificationsPage view="inbox" />)} />
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
@@ -1406,8 +1416,8 @@ export default function App() {
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <MembershipAnalyticsPage scope="backoffice" />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
-              <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
-              <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />
+              <Route path="/admin/notifications/compose" element={protectPermissions("admin", ["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"], <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
               <Route path="/admin/docs" element={protect("admin", <AdminDocsPage />)} />
               <Route path="/admin/docs/api" element={protect("admin", <AdminDocsPage />)} />
@@ -1433,11 +1443,11 @@ export default function App() {
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
               <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
-              <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <OperatingCostsPage />)} />
+              <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
-              <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)} />
-              <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)} />
+              <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
+              <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
               <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />
               <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
@@ -1445,7 +1455,7 @@ export default function App() {
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
               <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
-              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <ServiceSearchAnalyticsPage />)} />
+              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>

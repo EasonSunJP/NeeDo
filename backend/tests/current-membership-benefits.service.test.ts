@@ -129,8 +129,9 @@ describe("current membership benefits", () => {
     const repo = repository(null);
     const service = new PlatformMembershipService(repo, undefined, () => now);
 
-    await expect(service.getMyMembershipBenefits({ userId: 42 } as never, "en"))
-      .resolves.toMatchObject({ tierCode: "free" });
+    await expect(
+      service.getMyMembershipBenefits({ userId: 42 } as never, "en")
+    ).resolves.toMatchObject({ tierCode: "free" });
     expect(repo.findPublishedTierAt).toHaveBeenCalledWith("free", now);
   });
 });

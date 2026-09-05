@@ -46,5 +46,10 @@ export const customerShopMembershipListQuerySchema = z
   .strict();
 
 export const shopMembershipCreateBodySchema = z
-  .object({ customerNeedoId: z.string().trim().regex(/^u\d{10}$/i) })
+  .object({
+    customerNeedoId: z
+      .string()
+      .trim()
+      .regex(/^u\d{10}$/i)
+  })
   .strict();

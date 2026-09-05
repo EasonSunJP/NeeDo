@@ -27,7 +27,9 @@ describe("AffiliateWithdrawalEligibilityRepository", () => {
         ]
       })
     };
-    const repository = new AffiliateWithdrawalEligibilityRepository({ user } as unknown as PrismaClient);
+    const repository = new AffiliateWithdrawalEligibilityRepository({
+      user
+    } as unknown as PrismaClient);
 
     await expect(repository.findEligibility(7, now)).resolves.toEqual({
       affiliateIdentityActive: true,

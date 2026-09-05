@@ -12,7 +12,9 @@ const cardPublicId = "00000000-0000-4000-8000-000000000801";
 const redemptionPublicId = "00000000-0000-4000-8000-000000000802";
 const requestContext = { ip: "127.0.0.1", userAgent: "jest" };
 
-const actor = (overrides: Partial<AuthenticatedAccessContext> = {}): AuthenticatedAccessContext => ({
+const actor = (
+  overrides: Partial<AuthenticatedAccessContext> = {}
+): AuthenticatedAccessContext => ({
   userId: 9,
   email: "staff@example.com",
   accessTokenJti: "jti",
@@ -71,14 +73,18 @@ const candidate = (): ShopMembershipCardRedemptionCandidateContext => ({
   }
 });
 
-const record = (overrides: Partial<ShopMembershipCardRedemptionRecord> = {}): ShopMembershipCardRedemptionRecord => ({
+const record = (
+  overrides: Partial<ShopMembershipCardRedemptionRecord> = {}
+): ShopMembershipCardRedemptionRecord => ({
   internalId: 191,
   publicId: redemptionPublicId,
   requestFingerprint: "fingerprint",
   status: "applied",
   rewardStatus: "paid",
   rewardFacts: candidate().facts,
-  rewardHits: [{ ruleIndex: 0, kind: "fixed_per_completion", basis: { rewardNdp: 1_000 }, rewardNdp: 1_000 }],
+  rewardHits: [
+    { ruleIndex: 0, kind: "fixed_per_completion", basis: { rewardNdp: 1_000 }, rewardNdp: 1_000 }
+  ],
   rawRewardNdp: 1_000,
   customerRewardNdp: 1_000,
   platformFeeRateBps: 1_000,
@@ -127,37 +133,46 @@ const record = (overrides: Partial<ShopMembershipCardRedemptionRecord> = {}): Sh
   ...overrides
 });
 
-const repository = (overrides: Partial<ShopMembershipCardRedemptionRepositoryPort> = {}) => ({
-  findByIdempotencyKey: jest.fn(async () => null),
-  listCandidates: jest.fn(async () => ({ list: [candidate()], total: 1, page: 1, page_size: 20 })),
-  createWithEvaluationAndSettlement: jest.fn(async (input, evaluate, settle) => {
-    const context = candidate();
-    const reward = evaluate(context);
-    const settlement = await settle({
-      redemptionId: 191,
-      shopId: input.shopId,
-      customerUserId: 41,
-      customerRewardNdp: reward.customerRewardNdp,
-      platformFeeNdp: reward.platformFeeNdp,
-      platformFeeRateBps: reward.platformFeeRateBps,
-      idempotencyKey: "membership-redemption:191:reward:settlement",
-      actorUserId: input.actorId
-    }, { transaction: true });
-    return {
-      kind: "created" as const,
-      value: record({
-        requestFingerprint: input.requestFingerprint,
-        rewardStatus: settlement ? "paid" : "pending_funds",
-        outstandingRewardNdp: settlement ? 0 : reward.totalShopDebitNdp,
-        rewardSettledAt: settlement ? now : null,
-        ledgerTransactionNo: settlement?.transaction.transactionNo ?? null
-      })
-    };
-  }),
-  listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
-  ...overrides
-}) as jest.Mocked<ShopMembershipCardRedemptionRepositoryPort>;
+const repository = (overrides: Partial<ShopMembershipCardRedemptionRepositoryPort> = {}) =>
+  ({
+    findByIdempotencyKey: jest.fn(async () => null),
+    listCandidates: jest.fn(async () => ({
+      list: [candidate()],
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
+    createWithEvaluationAndSettlement: jest.fn(async (input, evaluate, settle) => {
+      const context = candidate();
+      const reward = evaluate(context);
+      const settlement = await settle(
+        {
+          redemptionId: 191,
+          shopId: input.shopId,
+          customerUserId: 41,
+          customerRewardNdp: reward.customerRewardNdp,
+          platformFeeNdp: reward.platformFeeNdp,
+          platformFeeRateBps: reward.platformFeeRateBps,
+          idempotencyKey: "membership-redemption:191:reward:settlement",
+          actorUserId: input.actorId
+        },
+        { transaction: true }
+      );
+      return {
+        kind: "created" as const,
+        value: record({
+          requestFingerprint: input.requestFingerprint,
+          rewardStatus: settlement ? "paid" : "pending_funds",
+          outstandingRewardNdp: settlement ? 0 : reward.totalShopDebitNdp,
+          rewardSettledAt: settlement ? now : null,
+          ledgerTransactionNo: settlement?.transaction.transactionNo ?? null
+        })
+      };
+    }),
+    listMerchant: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    listCustomer: jest.fn(async () => ({ list: [record()], total: 1, page: 1, page_size: 20 })),
+    ...overrides
+  }) as jest.Mocked<ShopMembershipCardRedemptionRepositoryPort>;
 
 const settlement = {
   settleShopMembershipReward: jest.fn(async () => ({
@@ -199,10 +214,12 @@ describe("ShopMembershipCardRedemptionService", () => {
     const repo = repository();
     const service = new ShopMembershipCardRedemptionService(repo, settlement, audit);
 
-    await expect(service.create(actor(), requestContext, cardPublicId, {
-      orderNo: " B202609010001 ",
-      idempotencyKey: "redemption-service-001"
-    })).resolves.toMatchObject({
+    await expect(
+      service.create(actor(), requestContext, cardPublicId, {
+        orderNo: " B202609010001 ",
+        idempotencyKey: "redemption-service-001"
+      })
+    ).resolves.toMatchObject({
       publicId: redemptionPublicId,
       consumedPrincipalJpy: 10_000,
       consumedUses: 0,
@@ -214,7 +231,11 @@ describe("ShopMembershipCardRedemptionService", () => {
       card: { cardNoMasked: "NMC-********************AABB", bonusBalanceJpy: 3_000 }
     });
     expect(settlement.settleShopMembershipReward).toHaveBeenCalledWith(
-      expect.objectContaining({ customerRewardNdp: 1_000, platformFeeNdp: 100, platformFeeRateBps: 1_000 }),
+      expect.objectContaining({
+        customerRewardNdp: 1_000,
+        platformFeeNdp: 100,
+        platformFeeRateBps: 1_000
+      }),
       expect.objectContaining({ transactionClient: { transaction: true } })
     );
     expect(repo.createWithEvaluationAndSettlement).toHaveBeenCalledWith(
@@ -223,7 +244,9 @@ describe("ShopMembershipCardRedemptionService", () => {
         actorId: 9,
         cardPublicId,
         orderNo: "B202609010001",
-        audit: expect.objectContaining({ action: "merchant.shop_membership_card.redemption.create" })
+        audit: expect.objectContaining({
+          action: "merchant.shop_membership_card.redemption.create"
+        })
       }),
       expect.any(Function),
       expect.any(Function)
@@ -232,15 +255,18 @@ describe("ShopMembershipCardRedemptionService", () => {
 
   it("previews candidates using the same rule evaluator as the write path", async () => {
     const service = new ShopMembershipCardRedemptionService(repository(), settlement, audit);
-    await expect(service.listCandidates(actor(), cardPublicId, { page: 1, pageSize: 20 }))
-      .resolves.toMatchObject({
-        list: [{
+    await expect(
+      service.listCandidates(actor(), cardPublicId, { page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({
+      list: [
+        {
           orderNo: "B202609010001",
           consumption: { principalJpy: 10_000, uses: 0 },
           reward: { customerRewardNdp: 1_000, platformFeeNdp: 100, totalShopDebitNdp: 1_100 }
-        }],
-        total: 1
-      });
+        }
+      ],
+      total: 1
+    });
   });
 
   it("replays only an identical normalized request and rejects invalid input before mutation", async () => {
@@ -248,21 +274,43 @@ describe("ShopMembershipCardRedemptionService", () => {
     const firstService = new ShopMembershipCardRedemptionService(firstRepo, settlement, audit);
     const input = { orderNo: "B202609010001", idempotencyKey: "redemption-service-002" };
     await firstService.create(actor(), requestContext, cardPublicId, input);
-    const fingerprint = firstRepo.createWithEvaluationAndSettlement.mock.calls[0][0].requestFingerprint;
-    const replayRepo = repository({ findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: fingerprint })) });
-    await expect(new ShopMembershipCardRedemptionService(replayRepo, settlement, audit)
-      .create(actor(), requestContext, cardPublicId, input))
-      .resolves.toMatchObject({ replayed: true });
+    const fingerprint =
+      firstRepo.createWithEvaluationAndSettlement.mock.calls[0][0].requestFingerprint;
+    const replayRepo = repository({
+      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: fingerprint }))
+    });
+    await expect(
+      new ShopMembershipCardRedemptionService(replayRepo, settlement, audit).create(
+        actor(),
+        requestContext,
+        cardPublicId,
+        input
+      )
+    ).resolves.toMatchObject({ replayed: true });
 
-    const conflictRepo = repository({ findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" })) });
-    await expect(new ShopMembershipCardRedemptionService(conflictRepo, settlement, audit)
-      .create(actor(), requestContext, cardPublicId, input))
-      .rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_IDEMPOTENCY_CONFLICT });
+    const conflictRepo = repository({
+      findByIdempotencyKey: jest.fn(async () => record({ requestFingerprint: "different" }))
+    });
+    await expect(
+      new ShopMembershipCardRedemptionService(conflictRepo, settlement, audit).create(
+        actor(),
+        requestContext,
+        cardPublicId,
+        input
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_IDEMPOTENCY_CONFLICT
+    });
 
     const invalidRepo = repository();
-    await expect(new ShopMembershipCardRedemptionService(invalidRepo, settlement, audit)
-      .create(actor(), requestContext, cardPublicId, { orderNo: "", idempotencyKey: "short" }))
-      .rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INVALID_VALUE });
+    await expect(
+      new ShopMembershipCardRedemptionService(invalidRepo, settlement, audit).create(
+        actor(),
+        requestContext,
+        cardPublicId,
+        { orderNo: "", idempotencyKey: "short" }
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.SHOP_MEMBERSHIP_CARD_REDEMPTION_INVALID_VALUE });
     expect(invalidRepo.findByIdempotencyKey).not.toHaveBeenCalled();
   });
 });

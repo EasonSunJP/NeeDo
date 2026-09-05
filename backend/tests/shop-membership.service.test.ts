@@ -4,7 +4,9 @@ import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import { ShopMembershipService } from "../src/services/shop-membership.service";
 
 const now = new Date("2026-08-31T03:00:00.000Z");
-const merchant = (overrides: Partial<AuthenticatedAccessContext> = {}): AuthenticatedAccessContext => ({
+const merchant = (
+  overrides: Partial<AuthenticatedAccessContext> = {}
+): AuthenticatedAccessContext => ({
   userId: 9,
   email: "owner@example.com",
   accessTokenJti: "jti",
@@ -44,7 +46,15 @@ function repository(overrides: Partial<jest.Mocked<ShopMembershipRepositoryPort>
     listMemberships: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
     findMembershipDetail: jest.fn(async () => detail),
     listCandidates: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
-    findCandidateByNeedoId: jest.fn(async () => ({ customerProfileId: 41, customerNeedoId: "u0000000041", displayName: "王小美", avatarUrl: null, city: "东京", lastOrderAt: now, shopNo: "s000000071" })),
+    findCandidateByNeedoId: jest.fn(async () => ({
+      customerProfileId: 41,
+      customerNeedoId: "u0000000041",
+      displayName: "王小美",
+      avatarUrl: null,
+      city: "东京",
+      lastOrderAt: now,
+      shopNo: "s000000071"
+    })),
     createMembershipWithAudit: jest.fn(async () => detail),
     listCards: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
     listActivities: jest.fn(async () => ({ list: [], total: 0, page: 1, page_size: 20 })),
@@ -62,29 +72,48 @@ describe("ShopMembershipService", () => {
       const repo = repository();
       const service = new ShopMembershipService(repo, { createInput: jest.fn() }, () => now);
 
-      await service.listMerchantMemberships(
-        merchant({ currentIdentityType }),
-        { page: 1, pageSize: 20 }
-      );
+      await service.listMerchantMemberships(merchant({ currentIdentityType }), {
+        page: 1,
+        pageSize: 20
+      });
 
       expect(repo.listMemberships).toHaveBeenCalledWith(71, { page: 1, pageSize: 20 });
     }
   );
 
   it("does not expose operation activity through the read-only overview permission", async () => {
-    const activity = { id: "membership:31:created", action: "membership_created" as const, membershipPublicId: "membership-31", customerNeedoId: "u0000000041", customerDisplayName: "王小美", actorName: "店主", occurredAt: now };
+    const activity = {
+      id: "membership:31:created",
+      action: "membership_created" as const,
+      membershipPublicId: "membership-31",
+      customerNeedoId: "u0000000041",
+      customerDisplayName: "王小美",
+      actorName: "店主",
+      occurredAt: now
+    };
     const repo = repository({
       getOverview: jest.fn(async (shopId, todayStart, expiryCutoff) => {
         void shopId;
         void todayStart;
         void expiryCutoff;
-        return { shop: detail.shop, activeMemberCount: 1, todayNewMemberCount: 1, activeCardCount: 0, expiringSoonCardCount: 0, recentActivities: [activity] };
+        return {
+          shop: detail.shop,
+          activeMemberCount: 1,
+          todayNewMemberCount: 1,
+          activeCardCount: 0,
+          expiringSoonCardCount: 0,
+          recentActivities: [activity]
+        };
       })
     });
     const service = new ShopMembershipService(repo, { createInput: jest.fn() }, () => now);
 
-    const staffOverview = await service.getMerchantOverview(merchant({ permissions: ["shop.member.view"] }));
-    const ownerOverview = await service.getMerchantOverview(merchant({ permissions: ["shop.member.view", "shop.member.operation_log.view"] }));
+    const staffOverview = await service.getMerchantOverview(
+      merchant({ permissions: ["shop.member.view"] })
+    );
+    const ownerOverview = await service.getMerchantOverview(
+      merchant({ permissions: ["shop.member.view", "shop.member.operation_log.view"] })
+    );
 
     expect(staffOverview.recentActivities).toEqual([]);
     expect(ownerOverview.recentActivities).toEqual([activity]);
@@ -105,17 +134,23 @@ describe("ShopMembershipService", () => {
 
   it("resolves enrollment from the current shop and passes safe transactional audit metadata", async () => {
     const repo = repository();
-    const audit = { createInput: jest.fn((input) => ({
-      actorId: input.actor.userId,
-      action: input.action,
-      targetType: input.targetType,
-      ip: input.context.ip,
-      userAgent: input.context.userAgent,
-      metadata: input.metadata
-    })) };
+    const audit = {
+      createInput: jest.fn((input) => ({
+        actorId: input.actor.userId,
+        action: input.action,
+        targetType: input.targetType,
+        ip: input.context.ip,
+        userAgent: input.context.userAgent,
+        metadata: input.metadata
+      }))
+    };
     const service = new ShopMembershipService(repo, audit, () => now);
 
-    await service.enrollMerchantMembership(merchant(), { ip: "127.0.0.1", userAgent: "jest" }, { customerNeedoId: "U0000000041" });
+    await service.enrollMerchantMembership(
+      merchant(),
+      { ip: "127.0.0.1", userAgent: "jest" },
+      { customerNeedoId: "U0000000041" }
+    );
 
     expect(repo.findCandidateByNeedoId).toHaveBeenCalledWith(71, "u0000000041");
     expect(repo.createMembershipWithAudit).toHaveBeenCalledWith(
@@ -146,10 +181,18 @@ describe("ShopMembershipService", () => {
         throw error;
       })
     });
-    const service = new ShopMembershipService(repo, { createInput: jest.fn((input) => input) }, () => now);
+    const service = new ShopMembershipService(
+      repo,
+      { createInput: jest.fn((input) => input) },
+      () => now
+    );
 
     await expect(
-      service.enrollMerchantMembership(merchant(), { ip: "127.0.0.1" }, { customerNeedoId: "u0000000041" })
+      service.enrollMerchantMembership(
+        merchant(),
+        { ip: "127.0.0.1" },
+        { customerNeedoId: "u0000000041" }
+      )
     ).rejects.toMatchObject({
       code: ERROR_CODES.SHOP_MEMBERSHIP_ALREADY_ACTIVE,
       message: "error.shop_membership.already_active",
@@ -169,7 +212,11 @@ describe("ShopMembershipService", () => {
     await service.listCustomerMemberships(customer, { page: 1, pageSize: 20, status: "active" });
     await service.getCustomerMembershipDetail(customer, "membership-31");
 
-    expect(repo.listCustomerMemberships).toHaveBeenCalledWith(41, { page: 1, pageSize: 20, status: "active" });
+    expect(repo.listCustomerMemberships).toHaveBeenCalledWith(41, {
+      page: 1,
+      pageSize: 20,
+      status: "active"
+    });
     expect(repo.findCustomerMembershipDetail).toHaveBeenCalledWith(41, "membership-31");
   });
 });

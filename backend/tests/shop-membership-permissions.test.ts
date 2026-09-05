@@ -26,7 +26,9 @@ describe("shop membership permissions", () => {
       customerRead: "customer-profile:read"
     });
     expect(SYSTEM_PERMISSION_CODES).toEqual(expect.arrayContaining(membershipPermissions));
-    expect(SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS).toEqual({ issue: "shop.member.card.issue" });
+    expect(SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS).toEqual({
+      issue: "shop.member.card.issue"
+    });
     expect(SHOP_MEMBERSHIP_CARD_TOPUP_ROUTE_PERMISSIONS).toEqual({
       create: "shop.member.card.topup.create",
       merchantRead: "shop.member.view",
@@ -67,17 +69,25 @@ describe("shop membership permissions", () => {
       if (role !== "admin" && role !== "operator") expect(permissions).not.toContain(permission);
     }
     const migration = readFileSync(
-      join(process.cwd(), "prisma/migrations/20260901103000_membership_acquisition_sources/migration.sql"),
+      join(
+        process.cwd(),
+        "prisma/migrations/20260901103000_membership_acquisition_sources/migration.sql"
+      ),
       "utf8"
     );
-    expect(migration).toMatch(/VALUES \(\s*'平台会员分析读取', 'backoffice\.member\.analytics\.view', 'api', 'shop-membership'/u);
+    expect(migration).toMatch(
+      /VALUES \(\s*'平台会员分析读取', 'backoffice\.member\.analytics\.view', 'api', 'shop-membership'/u
+    );
     expect(migration).toContain("`roles`.`code` IN ('admin', 'operator')");
     expect(migration).not.toMatch(/merchant_(?:owner|staff).*backoffice\.member\.analytics\.view/u);
   });
 
   it("deploys the same role grants when migrations run without a seed", () => {
     const migration = readFileSync(
-      join(process.cwd(), "prisma/migrations/20260831123000_shop_membership_permissions/migration.sql"),
+      join(
+        process.cwd(),
+        "prisma/migrations/20260831123000_shop_membership_permissions/migration.sql"
+      ),
       "utf8"
     );
     for (const permission of membershipPermissions) expect(migration).toContain(`'${permission}'`);

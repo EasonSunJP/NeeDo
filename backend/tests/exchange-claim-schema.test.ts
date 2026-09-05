@@ -77,8 +77,12 @@ describe("Exchange selective claim persistence contract", () => {
     expect(migration).toContain("CREATE TABLE `exchange_claims`");
     expect(migration).toContain("exchange_claims_exactly_one_service_ref");
     expect(migration).toContain("exchange_claims_active_key_matches_status");
-    expect(migration).toMatch(/FOREIGN KEY \(`exchange_post_id`\)[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/);
-    expect(migration).toMatch(/FOREIGN KEY \(`schedule_slot_id`\)[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/);
+    expect(migration).toMatch(
+      /FOREIGN KEY \(`exchange_post_id`\)[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/
+    );
+    expect(migration).toMatch(
+      /FOREIGN KEY \(`schedule_slot_id`\)[\s\S]*ON DELETE RESTRICT ON UPDATE RESTRICT/
+    );
     expect(migration).not.toMatch(/ON DELETE CASCADE/);
   });
 

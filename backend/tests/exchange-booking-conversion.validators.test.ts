@@ -17,9 +17,12 @@ describe("Exchange matched-result booking conversion contracts", () => {
     expect(exchangeBookingConversionBodySchema.parse({ expectedVersion: 7 })).toEqual({
       expectedVersion: 7
     });
-    expect(exchangeBookingConversionBodySchema.safeParse({ expectedVersion: 0 }).success).toBe(false);
+    expect(exchangeBookingConversionBodySchema.safeParse({ expectedVersion: 0 }).success).toBe(
+      false
+    );
     expect(
-      exchangeBookingConversionBodySchema.safeParse({ expectedVersion: 7, createBooking: true }).success
+      exchangeBookingConversionBodySchema.safeParse({ expectedVersion: 7, createBooking: true })
+        .success
     ).toBe(false);
   });
 

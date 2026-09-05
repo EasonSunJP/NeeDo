@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  IM_PRIVACY_TTL_MAX_SECONDS,
-  IM_PRIVACY_TTL_MIN_SECONDS
-} from "../constants/im-privacy";
+import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
 import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
 import { messageIdsSchema, safePositiveIntegerSchema } from "./im-chat-record.validator";
 
@@ -141,7 +138,10 @@ export const contactCardCandidateListQuerySchema = z
 
 export const contactCardSendBodySchema = z
   .object({
-    targetUserId: z.string().trim().regex(/^u[0-9]{10}$/u)
+    targetUserId: z
+      .string()
+      .trim()
+      .regex(/^u[0-9]{10}$/u)
   })
   .strict();
 
@@ -203,15 +203,17 @@ export const socialPostListQuerySchema = z.object({
   bookmarked: booleanQuerySchema.optional()
 });
 
-export const socialPostShareBodySchema = z.object({
-  targetUserIds: z
-    .array(z.coerce.number().int().positive())
-    .min(1)
-    .max(20)
-    .refine((ids) => new Set(ids).size === ids.length, {
-      message: "error.social.duplicate_share_target"
-    })
-}).strict();
+export const socialPostShareBodySchema = z
+  .object({
+    targetUserIds: z
+      .array(z.coerce.number().int().positive())
+      .min(1)
+      .max(20)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "error.social.duplicate_share_target"
+      })
+  })
+  .strict();
 
 export const socialPostIdempotencyKeySchema = z.string().trim().min(8).max(191);
 
@@ -236,15 +238,19 @@ const socialRichTextSchema = z
   })
   .strict();
 
-const socialCreateMediaEnvelopeSchema = z.object({
-  items: z.array(socialCreateMediaItemSchema).max(9),
-  quotePostId: z.coerce.number().int().positive().optional(),
-  replyToPostId: z.coerce.number().int().positive().optional(),
-  repostPostId: z.coerce.number().int().positive().optional(),
-  postType: z.enum(["post", "reply", "quote", "repost", "announcement", "technician-daily"]).optional(),
-  locationLabel: z.string().trim().max(160).optional(),
-  richText: socialRichTextSchema.optional()
-}).strict();
+const socialCreateMediaEnvelopeSchema = z
+  .object({
+    items: z.array(socialCreateMediaItemSchema).max(9),
+    quotePostId: z.coerce.number().int().positive().optional(),
+    replyToPostId: z.coerce.number().int().positive().optional(),
+    repostPostId: z.coerce.number().int().positive().optional(),
+    postType: z
+      .enum(["post", "reply", "quote", "repost", "announcement", "technician-daily"])
+      .optional(),
+    locationLabel: z.string().trim().max(160).optional(),
+    richText: socialRichTextSchema.optional()
+  })
+  .strict();
 
 export const socialPostCreateBodySchema = z
   .object({

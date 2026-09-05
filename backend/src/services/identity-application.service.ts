@@ -161,9 +161,7 @@ export interface IdentityApplicationRepositoryPort {
   updateMerchantDraft: (
     input: UpdateMerchantDraftRepositoryInput
   ) => Promise<IdentityApplicationRecord>;
-  submit: (
-    input: SubmitIdentityApplicationRepositoryInput
-  ) => Promise<IdentityApplicationRecord>;
+  submit: (input: SubmitIdentityApplicationRepositoryInput) => Promise<IdentityApplicationRecord>;
   close: (input: CloseIdentityApplicationRepositoryInput) => Promise<IdentityApplicationRecord>;
 }
 
@@ -398,7 +396,10 @@ export class IdentityApplicationService {
     }
   }
 
-  private async loadOwned(userId: number, applicationId: number): Promise<IdentityApplicationRecord> {
+  private async loadOwned(
+    userId: number,
+    applicationId: number
+  ): Promise<IdentityApplicationRecord> {
     const application = await this.repository.findById(applicationId);
     if (!application || application.userId !== userId) {
       throw new AppError({

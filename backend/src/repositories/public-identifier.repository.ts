@@ -52,10 +52,7 @@ export class PublicIdentifierRepository implements PublicIdentifierRepositoryPor
     input: PublicIdentifierCreateInput
   ): Promise<PublicIdentifierRecord> {
     return this.runInTransaction(async (client) => {
-      if (
-        (input.kind === "U" || input.kind === "NEEDO") &&
-        input.userIdentityId !== undefined
-      ) {
+      if ((input.kind === "U" || input.kind === "NEEDO") && input.userIdentityId !== undefined) {
         await client.userIdentity.update({
           where: { id: input.userIdentityId },
           data: {

@@ -19,7 +19,9 @@ describe("Entity engagement and nearby-ranking schema", () => {
     expect(favorite).toMatch(/userId\s+Int\s+@map\("user_id"\)/u);
     expect(favorite).toMatch(/shopId\s+Int\?\s+@map\("shop_id"\)/u);
     expect(favorite).toMatch(/technicianProfileId\s+Int\?\s+@map\("technician_profile_id"\)/u);
-    expect(favorite).toMatch(/activeKey\s+String\?\s+@unique.*@map\("active_key"\).*@db\.VarChar\(191\)/u);
+    expect(favorite).toMatch(
+      /activeKey\s+String\?\s+@unique.*@map\("active_key"\).*@db\.VarChar\(191\)/u
+    );
     expect(favorite).toContain('@@map("entity_favorites")');
 
     const share = schema.match(/model EntityShareEvent \{([\s\S]*?)\n\}/u)?.[1];
@@ -27,10 +29,18 @@ describe("Entity engagement and nearby-ranking schema", () => {
     expect(share).toMatch(/actorUserId\s+Int\s+@map\("actor_user_id"\)/u);
     expect(share).toMatch(/actorIdentityId\s+Int\s+@map\("actor_identity_id"\)/u);
     expect(share).toMatch(/channel\s+EntityShareChannel/u);
-    expect(share).toMatch(/messageId\s+Int\?\s+@unique(?:\(map: "entity_share_events_message_id_key"\))? @map\("message_id"\)/u);
-    expect(share).toMatch(/idempotencyKey\s+String\s+@map\("idempotency_key"\) @db\.VarChar\(160\)/u);
-    expect(share).toMatch(/requestFingerprint\s+String\s+@map\("request_fingerprint"\) @db\.Char\(64\)/u);
-    expect(share).toContain('@@unique([actorUserId, idempotencyKey], map: "entity_share_actor_idempotency_key")');
+    expect(share).toMatch(
+      /messageId\s+Int\?\s+@unique(?:\(map: "entity_share_events_message_id_key"\))? @map\("message_id"\)/u
+    );
+    expect(share).toMatch(
+      /idempotencyKey\s+String\s+@map\("idempotency_key"\) @db\.VarChar\(160\)/u
+    );
+    expect(share).toMatch(
+      /requestFingerprint\s+String\s+@map\("request_fingerprint"\) @db\.Char\(64\)/u
+    );
+    expect(share).toContain(
+      '@@unique([actorUserId, idempotencyKey], map: "entity_share_actor_idempotency_key")'
+    );
     expect(share).toContain('@@map("entity_share_events")');
 
     for (const model of [favorite, share]) {
@@ -40,9 +50,15 @@ describe("Entity engagement and nearby-ranking schema", () => {
     }
 
     const technician = schema.match(/model TechnicianProfile \{([\s\S]*?)\n\}/u)?.[1];
-    expect(technician).toMatch(/baseLatitude\s+Decimal\?\s+@map\("base_latitude"\) @db\.Decimal\(10, 7\)/u);
-    expect(technician).toMatch(/baseLongitude\s+Decimal\?\s+@map\("base_longitude"\) @db\.Decimal\(10, 7\)/u);
-    expect(technician).toContain('@@index([baseLatitude, baseLongitude], map: "technician_profiles_base_coordinates_idx")');
+    expect(technician).toMatch(
+      /baseLatitude\s+Decimal\?\s+@map\("base_latitude"\) @db\.Decimal\(10, 7\)/u
+    );
+    expect(technician).toMatch(
+      /baseLongitude\s+Decimal\?\s+@map\("base_longitude"\) @db\.Decimal\(10, 7\)/u
+    );
+    expect(technician).toContain(
+      '@@index([baseLatitude, baseLongitude], map: "technician_profiles_base_coordinates_idx")'
+    );
 
     const shop = schema.match(/model Shop \{([\s\S]*?)\n\}/u)?.[1];
     expect(shop).toContain('@@index([latitude, longitude], map: "shops_coordinates_idx")');
@@ -58,19 +74,37 @@ describe("Entity engagement and nearby-ranking schema", () => {
     expect(migration).toContain("entity_share_events_exactly_one_target_chk");
     expect(migration).toContain("entity_share_events_channel_payload_chk");
     expect(migration).toContain("technician_profiles_base_coordinate_pair_chk");
-    expect(migration).toContain("(`shop_id` IS NOT NULL) + (`technician_profile_id` IS NOT NULL) = 1");
+    expect(migration).toContain(
+      "(`shop_id` IS NOT NULL) + (`technician_profile_id` IS NOT NULL) = 1"
+    );
     expect(migration).toContain("(`base_latitude` IS NULL) = (`base_longitude` IS NULL)");
 
     expect(migration).toContain("UNIQUE INDEX `entity_favorites_active_key_key` (`active_key`)");
     expect(migration).toContain("UNIQUE INDEX `entity_share_events_message_id_key` (`message_id`)");
-    expect(migration).toContain("UNIQUE INDEX `entity_share_actor_idempotency_key` (`actor_user_id`, `idempotency_key`)");
-    expect(migration).toContain("INDEX `entity_favorites_user_deleted_idx` (`user_id`, `deleted_at`)");
-    expect(migration).toContain("INDEX `entity_favorites_shop_deleted_idx` (`shop_id`, `deleted_at`)");
-    expect(migration).toContain("INDEX `entity_favorites_technician_deleted_idx` (`technician_profile_id`, `deleted_at`)");
-    expect(migration).toContain("INDEX `entity_share_events_shop_created_idx` (`shop_id`, `created_at`)");
-    expect(migration).toContain("INDEX `entity_share_events_technician_created_idx` (`technician_profile_id`, `created_at`)");
-    expect(migration).toMatch(/CREATE INDEX `technician_profiles_base_coordinates_idx`\s+ON `technician_profiles` \(`base_latitude`, `base_longitude`\)/u);
-    expect(migration).toMatch(/CREATE INDEX `shops_coordinates_idx`\s+ON `shops` \(`latitude`, `longitude`\)/u);
+    expect(migration).toContain(
+      "UNIQUE INDEX `entity_share_actor_idempotency_key` (`actor_user_id`, `idempotency_key`)"
+    );
+    expect(migration).toContain(
+      "INDEX `entity_favorites_user_deleted_idx` (`user_id`, `deleted_at`)"
+    );
+    expect(migration).toContain(
+      "INDEX `entity_favorites_shop_deleted_idx` (`shop_id`, `deleted_at`)"
+    );
+    expect(migration).toContain(
+      "INDEX `entity_favorites_technician_deleted_idx` (`technician_profile_id`, `deleted_at`)"
+    );
+    expect(migration).toContain(
+      "INDEX `entity_share_events_shop_created_idx` (`shop_id`, `created_at`)"
+    );
+    expect(migration).toContain(
+      "INDEX `entity_share_events_technician_created_idx` (`technician_profile_id`, `created_at`)"
+    );
+    expect(migration).toMatch(
+      /CREATE INDEX `technician_profiles_base_coordinates_idx`\s+ON `technician_profiles` \(`base_latitude`, `base_longitude`\)/u
+    );
+    expect(migration).toMatch(
+      /CREATE INDEX `shops_coordinates_idx`\s+ON `shops` \(`latitude`, `longitude`\)/u
+    );
 
     for (const foreignKey of [
       "entity_favorites_user_id_fkey",

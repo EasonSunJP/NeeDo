@@ -2,8 +2,10 @@
 
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
-import { UnifiedConversationPreviewText } from "./chat-home";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { UnifiedConversationItem, UnifiedConversationPreviewText } from "./chat-home";
 import source from "./chat-home.tsx?raw";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,6 +15,56 @@ afterEach(() => {
 });
 
 describe("UnifiedChatHomePage spacing", () => {
+  it("reveals and runs the delete action after a left swipe", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onDelete = vi.fn();
+
+    await act(async () => {
+      root.render(
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(
+            ClientThemeProvider,
+            null,
+            createElement(UnifiedConversationItem, {
+              actions: [{ key: "delete", label: "删除", onClick: onDelete, tone: "danger", width: 64 }],
+              avatar: "",
+              group: true,
+              preview: { text: "旧消息" },
+              time: "今天",
+              title: "测试群聊",
+              unreadCount: 0,
+            })
+          )
+        )
+      );
+    });
+
+    const row = container.querySelector<HTMLElement>("div[style*='touch-action']");
+    const dispatchPointer = async (type: string, clientX: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY: 20 });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: "touch" },
+      });
+      await act(async () => row?.dispatchEvent(event));
+    };
+    await dispatchPointer("pointerdown", 120);
+    await dispatchPointer("pointermove", 20);
+    await dispatchPointer("pointerup", 20);
+
+    const deleteButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "删除");
+    expect(deleteButton?.style.opacity).toBe("1");
+    await act(async () => deleteButton?.click());
+    expect(onDelete).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
   it("lets chat and contact list content scroll behind the fixed glass header", () => {
     const componentStart = source.indexOf("export function UnifiedChatHomePage");
     const componentEnd = source.indexOf("export function UnifiedChatHeaderAction");

@@ -155,9 +155,7 @@ const maskHolder = (holderName: string): string => {
   return `${characters[0]}${"•".repeat(characters.length - 2)}${characters.at(-1)}`;
 };
 
-export class MerchantApplicationReviewRepository
-  implements MerchantApplicationReviewRepositoryPort
-{
+export class MerchantApplicationReviewRepository implements MerchantApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
   private readonly holder = new BankAccountHolderService();
 
@@ -555,23 +553,27 @@ export class MerchantApplicationReviewRepository
       showcaseDraft: asRecord(detail.showcaseDraft),
       serviceCategories: (row.serviceCategories ?? []).flatMap(({ category }) =>
         category.translations[0]
-          ? [{
-              id: category.id,
-              code: category.code,
-              label: category.translations[0].name,
-              qualificationPolicy: category.qualificationPolicy
-            }]
+          ? [
+              {
+                id: category.id,
+                code: category.code,
+                label: category.translations[0].name,
+                qualificationPolicy: category.qualificationPolicy
+              }
+            ]
           : []
       ),
       businessKeywords: (row.businessKeywords ?? []).flatMap(({ businessKeyword }) =>
         businessKeyword.translations[0]
-          ? [{
-              id: businessKeyword.id,
-              code: businessKeyword.code,
-              categoryId: businessKeyword.categoryId,
-              label: businessKeyword.translations[0].label,
-              qualificationPolicy: businessKeyword.qualificationPolicy
-            }]
+          ? [
+              {
+                id: businessKeyword.id,
+                code: businessKeyword.code,
+                categoryId: businessKeyword.categoryId,
+                label: businessKeyword.translations[0].label,
+                qualificationPolicy: businessKeyword.qualificationPolicy
+              }
+            ]
           : []
       ),
       bankAccount: bank

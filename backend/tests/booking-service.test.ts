@@ -37,11 +37,12 @@ const technicianActor: AuthenticatedAccessContext = {
 
 type Assert<T extends true> = T;
 type IsEqual<TLeft, TRight> =
-  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
-    ? true
-    : false;
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
 type BookingCreationPaymentBoundary = Assert<
-  IsEqual<NonNullable<BookingCreateRepositoryInput["paymentMethod"]>, LegacyServicePaymentMethodPayload>
+  IsEqual<
+    NonNullable<BookingCreateRepositoryInput["paymentMethod"]>,
+    LegacyServicePaymentMethodPayload
+  >
 >;
 type ManualConfirmationPaymentBoundary = Assert<
   IsEqual<ConfirmManualPaymentRepositoryInput["method"], LegacyServicePaymentMethodPayload>
@@ -274,11 +275,13 @@ describe("BookingService state machine", () => {
     };
     const service = new BookingService(repository, ledgerService);
 
-    await expect(service.transitionOrder(actor, 1, "cancel", "changed mind")).rejects.toMatchObject({
-      code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
-      message: "error.exchange.match_cancellation_required",
-      statusCode: 409
-    });
+    await expect(service.transitionOrder(actor, 1, "cancel", "changed mind")).rejects.toMatchObject(
+      {
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      }
+    );
     expect(repository.transitionOrder).not.toHaveBeenCalled();
     expect(ledgerService.releaseBookingHold).not.toHaveBeenCalled();
   });
@@ -704,9 +707,9 @@ describe("BookingService state machine", () => {
     await expect(service.getOrder(providerActor, 1)).resolves.toMatchObject({
       fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
     });
-    await expect(
-      service.getOrder({ userId: 99, roles: ["customer"] }, 1)
-    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.getOrder({ userId: 99, roles: ["customer"] }, 1)).rejects.toMatchObject({
+      statusCode: 404
+    });
   });
 
   it("hides other customers' orders from customer actors", async () => {

@@ -40,20 +40,24 @@ describe("MerchantProfileRepository identity scope", () => {
       avatarUrl: "/media/merchant/avatar.webp",
       displayName: "佐藤 美咲"
     });
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: 9, identityId: 109, deletedAt: null }
-    }));
-    expect(mediaFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        entityId: 61,
-        entityType: "merchant_identity_profile",
-        ownerIdentityId: 109,
-        ownerUserId: 9,
-        usageType: "avatar",
-        isActive: true,
-        deletedAt: null
-      }
-    }));
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 9, identityId: 109, deletedAt: null }
+      })
+    );
+    expect(mediaFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          entityId: 61,
+          entityType: "merchant_identity_profile",
+          ownerIdentityId: 109,
+          ownerUserId: 9,
+          usageType: "avatar",
+          isActive: true,
+          deletedAt: null
+        }
+      })
+    );
   });
 
   it("updates only the exact user and merchant identity pair", async () => {
@@ -70,28 +74,34 @@ describe("MerchantProfileRepository identity scope", () => {
       $transaction: jest.fn(async (callback) => callback(transaction))
     } as never);
 
-    await expect(repository.updateMine(
-      9,
-      109,
-      { displayName: "美咲", languages: [] },
-      {
-        action: "merchant_profile.self_update",
-        actorId: 9,
-        ip: "127.0.0.1",
-        metadata: { changedFields: ["displayName", "languages"] },
-        targetId: 61,
-        targetType: "merchant_identity_profile",
-        userAgent: "jest"
-      }
-    )).resolves.toMatchObject({ displayName: "美咲" });
+    await expect(
+      repository.updateMine(
+        9,
+        109,
+        { displayName: "美咲", languages: [] },
+        {
+          action: "merchant_profile.self_update",
+          actorId: 9,
+          ip: "127.0.0.1",
+          metadata: { changedFields: ["displayName", "languages"] },
+          targetId: 61,
+          targetType: "merchant_identity_profile",
+          userAgent: "jest"
+        }
+      )
+    ).resolves.toMatchObject({ displayName: "美咲" });
 
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: 9, identityId: 109, deletedAt: null }
-    }));
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 61 },
-      data: expect.objectContaining({ displayName: "美咲", languages: [] })
-    }));
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 9, identityId: 109, deletedAt: null }
+      })
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 61 },
+        data: expect.objectContaining({ displayName: "美咲", languages: [] })
+      })
+    );
     expect(auditCreate).toHaveBeenCalledTimes(1);
   });
 });

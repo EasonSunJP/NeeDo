@@ -141,10 +141,7 @@ describe("NDP experience reversal persistence", () => {
       accumulatorBeforeNumerator: 0n,
       accumulatorAfterNumerator: 0n
     };
-    const findFirst = jest
-      .fn()
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(originalEntry);
+    const findFirst = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(originalEntry);
     const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
       publicId: "entry-reversal",
       ...data

@@ -10,7 +10,10 @@ const membershipRewardFeeSource = readFileSync(new URL("./MembershipRewardFeePag
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
-const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
+const notificationWorkspaceSource = readFileSync(
+  new URL("../../features/official-notices/OfficialNoticeWorkspace.tsx", import.meta.url),
+  "utf8"
+);
 const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
@@ -22,6 +25,10 @@ const affiliateSource = readFileSync(new URL("./AffiliateAdminPage.tsx", import.
 const affiliateCopySource = readFileSync(new URL("./affiliateAdminCopy.ts", import.meta.url), "utf8");
 const adminLayoutSource = readFileSync(
   new URL("../../components/admin/AdminLayout.tsx", import.meta.url),
+  "utf8"
+);
+const merchantAdminLayoutSource = readFileSync(
+  new URL("../../components/merchant-admin/MerchantAdminLayout.tsx", import.meta.url),
   "utf8"
 );
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
@@ -51,15 +58,25 @@ describe("formal platform user-management routes", () => {
 });
 
 describe("formal partner finance administration routes", () => {
+  it("loads management workspaces on demand behind their permissions", () => {
+    for (const component of ["AgentsPage", "OperatingCostsPage", "ServiceSearchAnalyticsPage"]) {
+      expect(appSource).toContain(`const ${component} = lazy(() => import("./pages/admin/${component}")`);
+      expect(appSource).not.toContain(`import { ${component} } from`);
+    }
+    expect(appSource).toContain(
+      'path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)}'
+    );
+  });
+
   it("registers read-permissioned agent detail and operating-cost pages", () => {
     expect(appSource).toContain(
-      'path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)}'
+      'path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)}'
+      'path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <OperatingCostsPage />)}'
+      'path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)}'
     );
   });
 });
@@ -99,7 +116,7 @@ describe("operations timeline production capability gate", () => {
   });
 });
 
-describe("official notification production capability gate", () => {
+describe("formal official notification workspaces", () => {
   it("does not treat bundled updates or browser storage as sent notices", () => {
     expect(notificationsSource).not.toContain("readStoredOfficialNotices");
     expect(notificationsSource).not.toContain("updateNotices");
@@ -107,14 +124,26 @@ describe("official notification production capability gate", () => {
     expect(notificationComposeSource).not.toContain("useEntityStore");
   });
 
-  it("states the formal broadcast delivery prerequisites on list and compose routes", () => {
-    for (const pageSource of [notificationsSource, notificationComposeSource]) {
-      expect(pageSource).toContain("OfficialNotificationCapabilityGate");
+  it("uses the formal paginated management, lifecycle, and inbox APIs", () => {
+    expect(notificationsSource).toContain("OfficialNoticeManagement");
+    expect(notificationComposeSource).toContain("OfficialNoticeComposer");
+    for (const method of ["listManaged", "createManaged", "cancelManaged", "archiveManaged", "retryManaged", "listInbox", "markRead"]) {
+      expect(notificationWorkspaceSource).toContain(`officialNoticesApi.${method}`);
     }
-    expect(notificationGateSource).toContain("OfficialNotice、NoticeAudience 与 NoticeDelivery 表和 migration");
-    expect(notificationGateSource).toContain("草稿、审核、定时发送、取消与归档状态机 API");
-    expect(notificationGateSource).toContain("目标快照、幂等投递、重试、失败回执与审计");
-    expect(notificationGateSource).toContain("当前不会展示模拟通知、更新记录、目标账号或发送状态");
+    expect(notificationWorkspaceSource).toContain("受众由服务端按当前权限与店铺范围生成快照");
+    expect(notificationWorkspaceSource).not.toMatch(/localStorage|sessionStorage|data\/mock|userIds|shopId/);
+    expect(appSource).not.toContain("OfficialNoticeAutoPopup");
+  });
+
+  it("registers separately permissioned platform and merchant management routes", () => {
+    expect(appSource).toContain('path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice"');
+    expect(appSource).toContain('["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"]');
+    expect(appSource).toContain('path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read"');
+    expect(appSource).toContain('["merchant-admin:notice:create", "merchant-admin:notice:send"]');
+    expect(appSource).toContain('path="/merchant-admin/notifications/inbox" element={protect("merchant"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-official-notice"');
+    expect(merchantAdminLayoutSource).toContain('rbacPermission: "merchant-admin:notice:read"');
+    expect(merchantAdminLayoutSource).toContain('to="/merchant-admin/notifications/inbox"');
   });
 });
 

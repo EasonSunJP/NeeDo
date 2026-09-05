@@ -25,25 +25,43 @@ export class ShopMembershipCardRedemptionController {
 
   public candidates = this.handle(async (request, response) => {
     const { publicId } = shopMembershipCardRedemptionPublicIdParamSchema.parse(request.params);
-    response.status(200).json(successResponse(await this.service.listCandidates(
-      getAuthenticatedAccess(response),
-      publicId,
-      shopMembershipCardRedemptionCandidateQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listCandidates(
+            getAuthenticatedAccess(response),
+            publicId,
+            shopMembershipCardRedemptionCandidateQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   public merchantList = this.handle(async (request, response) => {
-    response.status(200).json(successResponse(await this.service.listMerchant(
-      getAuthenticatedAccess(response),
-      shopMembershipCardRedemptionListQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listMerchant(
+            getAuthenticatedAccess(response),
+            shopMembershipCardRedemptionListQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   public customerList = this.handle(async (request, response) => {
-    response.status(200).json(successResponse(await this.service.listCustomer(
-      getAuthenticatedAccess(response),
-      shopMembershipCardRedemptionListQuerySchema.parse(request.query)
-    )));
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listCustomer(
+            getAuthenticatedAccess(response),
+            shopMembershipCardRedemptionListQuerySchema.parse(request.query)
+          )
+        )
+      );
   });
 
   private handle(handler: (request: Request, response: Response) => Promise<void>) {

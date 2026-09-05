@@ -113,14 +113,15 @@ function createConcurrentFixture(
         },
         messageReaction: {
           findMany: jest.fn(
-            async ({ where }: {
+            async ({
+              where
+            }: {
               where: { userId?: number; identityId?: number; deletedAt: null };
             }) =>
               committedReactions
                 .filter(
                   (reaction) =>
-                    (where.identityId === undefined ||
-                      reaction.identityId === where.identityId) &&
+                    (where.identityId === undefined || reaction.identityId === where.identityId) &&
                     (where.userId === undefined || reaction.userId === where.userId) &&
                     reaction.deletedAt === where.deletedAt
                 )
@@ -131,7 +132,9 @@ function createConcurrentFixture(
                 .map(({ emoji }) => ({ emoji }))
           ),
           upsert: jest.fn(
-            async ({ create }: {
+            async ({
+              create
+            }: {
               create: { userId: number; identityId: number; emoji: string };
             }) => {
               const existing = committedReactions.find(
@@ -162,7 +165,10 @@ function createConcurrentFixture(
             }
           ),
           updateMany: jest.fn(
-            async ({ where, data }: {
+            async ({
+              where,
+              data
+            }: {
               where: {
                 userId?: number;
                 identityId?: number;
@@ -173,8 +179,7 @@ function createConcurrentFixture(
             }) => {
               const matching = committedReactions.filter(
                 (reaction) =>
-                  (where.identityId === undefined ||
-                    reaction.identityId === where.identityId) &&
+                  (where.identityId === undefined || reaction.identityId === where.identityId) &&
                   (where.userId === undefined || reaction.userId === where.userId) &&
                   reaction.emoji === where.emoji &&
                   reaction.deletedAt === where.deletedAt
@@ -226,10 +231,9 @@ describe("RealtimeRepository message reactions", () => {
 
     expect(judgement.status).toBe("updated");
     expect(emoji.status).toBe("updated");
-    expect(emoji.status === "updated" ? emoji.message.reactions.map(({ emoji }) => emoji) : []).toEqual([
-      "OK",
-      "😂"
-    ]);
+    expect(
+      emoji.status === "updated" ? emoji.message.reactions.map(({ emoji }) => emoji) : []
+    ).toEqual(["OK", "😂"]);
     expect(fixture.getReactionVersion()).toBe(2);
     expect(fixture.lockCalls).toHaveLength(2);
   });
@@ -265,7 +269,12 @@ describe("RealtimeRepository message reactions", () => {
   it("returns slot_occupied for a second different emoji and preserves the first", async () => {
     const fixture = createConcurrentFixture();
 
-    await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "😂" });
+    await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "😂"
+    });
     const blocked = await fixture.repository.setMessageReaction({
       conversationId: 3,
       messageId: 41,
@@ -294,9 +303,24 @@ describe("RealtimeRepository message reactions", () => {
   it("allows a new same-category value after the selected value is removed", async () => {
     const fixture = createConcurrentFixture();
 
-    await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "OK" });
-    const removed = await fixture.repository.removeMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "OK" });
-    const replacement = await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "NO" });
+    await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "OK"
+    });
+    const removed = await fixture.repository.removeMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "OK"
+    });
+    const replacement = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "NO"
+    });
 
     expect(removed.status).toBe("updated");
     expect(replacement.status).toBe("updated");
@@ -308,8 +332,18 @@ describe("RealtimeRepository message reactions", () => {
     const fixture = createConcurrentFixture();
 
     const outcomes = await Promise.all([
-      fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "😂" }),
-      fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "👍" })
+      fixture.repository.setMessageReaction({
+        conversationId: 3,
+        messageId: 41,
+        userId: 7,
+        emoji: "😂"
+      }),
+      fixture.repository.setMessageReaction({
+        conversationId: 3,
+        messageId: 41,
+        userId: 7,
+        emoji: "👍"
+      })
     ]);
 
     expect(outcomes.map(({ status }) => status).sort()).toEqual(["slot_occupied", "updated"]);
@@ -321,7 +355,12 @@ describe("RealtimeRepository message reactions", () => {
   it("keeps another user's reaction untouched", async () => {
     const fixture = createConcurrentFixture([{ userId: 8, emoji: "👍" }], 1);
 
-    const outcome = await fixture.repository.setMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "😂" });
+    const outcome = await fixture.repository.setMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "😂"
+    });
 
     expect(outcome.status).toBe("updated");
     expect(fixture.activeReactions().map(({ userId, emoji }) => ({ userId, emoji }))).toEqual([
@@ -333,7 +372,12 @@ describe("RealtimeRepository message reactions", () => {
   it("returns unchanged when the exact DELETE has no active value", async () => {
     const fixture = createConcurrentFixture();
 
-    const outcome = await fixture.repository.removeMessageReaction({ conversationId: 3, messageId: 41, userId: 7, emoji: "OK" });
+    const outcome = await fixture.repository.removeMessageReaction({
+      conversationId: 3,
+      messageId: 41,
+      userId: 7,
+      emoji: "OK"
+    });
 
     expect(outcome.status).toBe("unchanged");
     expect(fixture.getReactionVersion()).toBe(0);

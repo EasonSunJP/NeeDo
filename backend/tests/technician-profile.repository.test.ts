@@ -39,14 +39,16 @@ const record = {
   mediaAssets: [],
   user: {
     avatarBootstrapUrl: null,
-    identities: [{
-      publicIdentifier: {
-        publicId: "s1234567890",
-        kind: "S",
-        status: "ACTIVE",
-        deletedAt: null
+    identities: [
+      {
+        publicIdentifier: {
+          publicId: "s1234567890",
+          kind: "S",
+          status: "ACTIVE",
+          deletedAt: null
+        }
       }
-    }]
+    ]
   }
 };
 
@@ -108,23 +110,28 @@ describe("TechnicianProfileRepository", () => {
     } as unknown as PrismaClient;
     const repository = new TechnicianProfileRepository(client);
 
-    await expect(repository.updateMine(
-      9,
-      31,
-      19,
-      {
-        displayName: "彩",
-        gender: "female",
-        serviceBase: { latitude: 35.6895, longitude: 139.6917 },
-        avatar: { url: "/media/customer-avatars/avatar.png", mimeType: "image/png" }
-      },
-      {
-        actorId: 9,
-        action: "technician_profile.self_update",
-        targetType: "TechnicianProfile",
-        targetId: 31
-      }
-    )).resolves.toMatchObject({ displayName: "彩", avatarUrl: "/media/customer-avatars/avatar.png" });
+    await expect(
+      repository.updateMine(
+        9,
+        31,
+        19,
+        {
+          displayName: "彩",
+          gender: "female",
+          serviceBase: { latitude: 35.6895, longitude: 139.6917 },
+          avatar: { url: "/media/customer-avatars/avatar.png", mimeType: "image/png" }
+        },
+        {
+          actorId: 9,
+          action: "technician_profile.self_update",
+          targetType: "TechnicianProfile",
+          targetId: 31
+        }
+      )
+    ).resolves.toMatchObject({
+      displayName: "彩",
+      avatarUrl: "/media/customer-avatars/avatar.png"
+    });
 
     expect(transaction.technicianProfile.findFirst).toHaveBeenCalledWith({
       where: { id: 31, userId: 9, deletedAt: null }
@@ -169,12 +176,18 @@ describe("TechnicianProfileRepository", () => {
     } as unknown as PrismaClient;
     const repository = new TechnicianProfileRepository(client);
 
-    await repository.updateMine(9, 31, 19, { serviceBase: null }, {
-      actorId: 9,
-      action: "technician_profile.self_update",
-      targetType: "TechnicianProfile",
-      targetId: 31
-    });
+    await repository.updateMine(
+      9,
+      31,
+      19,
+      { serviceBase: null },
+      {
+        actorId: 9,
+        action: "technician_profile.self_update",
+        targetType: "TechnicianProfile",
+        targetId: 31
+      }
+    );
 
     expect(transaction.technicianProfile.update).toHaveBeenCalledWith({
       where: { id: 31 },

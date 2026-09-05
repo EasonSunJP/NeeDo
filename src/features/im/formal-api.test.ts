@@ -50,6 +50,17 @@ function chatRecordItem(position: number, overrides: Record<string, unknown> = {
 }
 
 describe("formal IM adapter", () => {
+  it("does not accept a sender-supplied media expiry flag as server state", () => {
+    const result = toFormalImStoreUpdate({
+      id: "media-state-untrusted", type: "message.created",
+      payload: {
+        id: 700, conversationId: 91, senderUserId: 100, type: "text", content: "/media/im/a.jpg", createdAt: now,
+        metadata: { needoMessageType: "image", needoMessageExt: { mediaState: "expired", caption: "keep caption" } }
+      }
+    });
+    expect(result).toMatchObject({ type: "message.created", message: { type: "image", ext: { caption: "keep caption" } } });
+    if (result?.type === "message.created") expect(result.message.ext?.mediaState).toBeUndefined();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -947,6 +958,27 @@ describe("formal IM adapter", () => {
         conversationId: "91",
         content: "即时到达的信息",
       },
+    });
+  });
+
+  it("preserves content-free privacy deletion identity for local cache eviction", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-deleted-44",
+        type: "message.deleted",
+        payload: {
+          action: "privacy_expired",
+          conversationId: 91,
+          id: 44,
+          messageId: 702,
+          occurredAt: "2026-09-05T00:00:00.000Z",
+        },
+      }),
+    ).toEqual({
+      type: "message.deleted",
+      conversationId: "91",
+      messageId: "702",
+      reason: "privacy_expired",
     });
   });
 

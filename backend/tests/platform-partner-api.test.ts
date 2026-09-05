@@ -49,9 +49,7 @@ const agentListProfile = {
   ...profile,
   administration: {
     referralCount: 1,
-    referredShops: [
-      { publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }
-    ],
+    referredShops: [{ publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }],
     currentRule: null,
     latestSettlement: null
   }
@@ -142,9 +140,7 @@ const createFixture = (
 describe("platform partner HTTP API", () => {
   it("requires authentication and dedicated permissions", async () => {
     const fixture = createFixture([]);
-    await request(fixture.app)
-      .get("/api/v1/backoffice/agents")
-      .expect(401);
+    await request(fixture.app).get("/api/v1/backoffice/agents").expect(401);
     await request(fixture.app)
       .get("/api/v1/backoffice/agents")
       .set("Authorization", `Bearer ${fixture.token}`)
@@ -233,9 +229,7 @@ describe("platform partner HTTP API", () => {
     const fixture = createFixture();
 
     await request(fixture.app)
-      .post(
-        "/api/v1/backoffice/agents/11111111-1111-4111-8111-111111111111/shop-referrals"
-      )
+      .post("/api/v1/backoffice/agents/11111111-1111-4111-8111-111111111111/shop-referrals")
       .set("Authorization", `Bearer ${fixture.token}`)
       .send({
         shopPublicId: "shop0000000019",

@@ -42,8 +42,7 @@ export const createMerchantContractAcceptanceServiceForRoutes = (
   dependencies.merchantContractAcceptanceService ??
   new MerchantContractAcceptanceService(
     catalog,
-    dependencies.merchantContractAcceptanceRepository ??
-      new MerchantContractAcceptanceRepository()
+    dependencies.merchantContractAcceptanceRepository ?? new MerchantContractAcceptanceRepository()
   );
 
 export const createContractReceiptServiceForRoutes = (

@@ -29,9 +29,14 @@ export const SHOP_MEMBERSHIP_ROUTE_PERMISSIONS = {
   customerRead: "customer-profile:read"
 } as const;
 
-export const createShopMembershipRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
+export const createShopMembershipRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new ShopMembershipService(
     dependencies.shopMembershipRepository ?? new ShopMembershipRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())

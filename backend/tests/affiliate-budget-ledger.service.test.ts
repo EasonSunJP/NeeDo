@@ -204,11 +204,7 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
     this.auditRows.push(input);
   }
 
-  private walletKey(
-    ownerType: WalletOwnerType,
-    ownerId: number,
-    currency: LedgerCurrency
-  ): string {
+  private walletKey(ownerType: WalletOwnerType, ownerId: number, currency: LedgerCurrency): string {
     return `${ownerType}:${ownerId}:${currency}`;
   }
 }
@@ -264,34 +260,37 @@ describe("LedgerService affiliate task budget operations", () => {
   it.each([
     [false, "NDP"],
     [true, "TEST_NDP"]
-  ] as const)("routes isTestAccount=%s affiliate budget freeze through %s", async (isTestAccount, currency) => {
-    const repository = new AffiliateBudgetLedgerRepository();
-    repository.accountClassifications.set(7, isTestAccount);
-    repository.seedWallet({
-      ownerType: "merchant_account",
-      ownerId: 41,
-      availableBalance: 2_500_000,
-      currency
-    });
-    const service = new LedgerService(repository);
+  ] as const)(
+    "routes isTestAccount=%s affiliate budget freeze through %s",
+    async (isTestAccount, currency) => {
+      const repository = new AffiliateBudgetLedgerRepository();
+      repository.accountClassifications.set(7, isTestAccount);
+      repository.seedWallet({
+        ownerType: "merchant_account",
+        ownerId: 41,
+        availableBalance: 2_500_000,
+        currency
+      });
+      const service = new LedgerService(repository);
 
-    const result = await service.freezeAffiliateTaskBudget({
-      taskId: isTestAccount ? 181 : 180,
-      ownerType: "merchant_account",
-      ownerId: 41,
-      amountNdp: 2_000_000,
-      idempotencyKey: `affiliate-task:${isTestAccount ? 181 : 180}:v1:freeze`,
-      actorUserId: 7
-    });
+      const result = await service.freezeAffiliateTaskBudget({
+        taskId: isTestAccount ? 181 : 180,
+        ownerType: "merchant_account",
+        ownerId: 41,
+        amountNdp: 2_000_000,
+        idempotencyKey: `affiliate-task:${isTestAccount ? 181 : 180}:v1:freeze`,
+        actorUserId: 7
+      });
 
-    expect(result.transaction).toMatchObject({ currency });
-    expect(repository.wallets.get(`merchant_account:41:${currency}`)).toMatchObject({
-      availableBalance: 500_000,
-      frozenBalance: 2_000_000,
-      currency
-    });
-    expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
-  });
+      expect(result.transaction).toMatchObject({ currency });
+      expect(repository.wallets.get(`merchant_account:41:${currency}`)).toMatchObject({
+        availableBalance: 500_000,
+        frozenBalance: 2_000_000,
+        currency
+      });
+      expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
+    }
+  );
 
   it("freezes the complete task budget once and records immutable finance evidence", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
@@ -1082,9 +1081,21 @@ describe("LedgerService shop membership reward settlement", () => {
     expect(repository.wallets.get("user:81:NDP")?.availableBalance).toBe(1_000);
     expect(repository.wallets.get("platform:1:NDP")?.availableBalance).toBe(100);
     expect(repository.entries).toEqual([
-      expect.objectContaining({ direction: "available_debit", amount: 1_100, reason: "shop_membership_reward_shop_debit" }),
-      expect.objectContaining({ direction: "available_credit", amount: 1_000, reason: "shop_membership_reward_customer_credit" }),
-      expect.objectContaining({ direction: "available_credit", amount: 100, reason: "shop_membership_reward_platform_credit" })
+      expect.objectContaining({
+        direction: "available_debit",
+        amount: 1_100,
+        reason: "shop_membership_reward_shop_debit"
+      }),
+      expect.objectContaining({
+        direction: "available_credit",
+        amount: 1_000,
+        reason: "shop_membership_reward_customer_credit"
+      }),
+      expect.objectContaining({
+        direction: "available_credit",
+        amount: 100,
+        reason: "shop_membership_reward_platform_credit"
+      })
     ]);
     expect(repository.reconciliationRows).toEqual([
       expect.objectContaining({ expectedAmount: 1_100, actualAmount: 1_100 })
@@ -1155,9 +1166,21 @@ describe("LedgerService shop membership reward reversal", () => {
 
   it("reverses customer reward and platform fee exactly while allowing a negative customer balance", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
-    const shopWallet = repository.seedWallet({ ownerType: "shop", ownerId: 64, availableBalance: 0 });
-    const customerWallet = repository.seedWallet({ ownerType: "user", ownerId: 84, availableBalance: 500 });
-    const platformWallet = repository.seedWallet({ ownerType: "platform", ownerId: 1, availableBalance: 20 });
+    const shopWallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 64,
+      availableBalance: 0
+    });
+    const customerWallet = repository.seedWallet({
+      ownerType: "user",
+      ownerId: 84,
+      availableBalance: 500
+    });
+    const platformWallet = repository.seedWallet({
+      ownerType: "platform",
+      ownerId: 1,
+      availableBalance: 20
+    });
     const service = new LedgerService(repository);
 
     const result = await service.reverseShopMembershipReward({
@@ -1187,9 +1210,21 @@ describe("LedgerService shop membership reward reversal", () => {
     expect(repository.wallets.get("platform:1:NDP")?.availableBalance).toBe(-80);
     expect(repository.wallets.get("shop:64:NDP")?.availableBalance).toBe(1_100);
     expect(repository.entries).toEqual([
-      expect.objectContaining({ direction: "available_debit", amount: 1_000, reason: "shop_membership_reward_refund_customer_debit" }),
-      expect.objectContaining({ direction: "available_debit", amount: 100, reason: "shop_membership_reward_refund_platform_debit" }),
-      expect.objectContaining({ direction: "available_credit", amount: 1_100, reason: "shop_membership_reward_refund_shop_credit" })
+      expect.objectContaining({
+        direction: "available_debit",
+        amount: 1_000,
+        reason: "shop_membership_reward_refund_customer_debit"
+      }),
+      expect.objectContaining({
+        direction: "available_debit",
+        amount: 100,
+        reason: "shop_membership_reward_refund_platform_debit"
+      }),
+      expect.objectContaining({
+        direction: "available_credit",
+        amount: 1_100,
+        reason: "shop_membership_reward_refund_shop_credit"
+      })
     ]);
     expect(repository.reconciliationRows).toEqual([
       expect.objectContaining({ expectedAmount: 1_100, actualAmount: 1_100 })
@@ -1201,8 +1236,16 @@ describe("LedgerService shop membership reward reversal", () => {
 
   it("replays the exact reversal without a second wallet mutation", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
-    const shopWallet = repository.seedWallet({ ownerType: "shop", ownerId: 65, availableBalance: 0 });
-    const customerWallet = repository.seedWallet({ ownerType: "user", ownerId: 85, availableBalance: 1_000 });
+    const shopWallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 65,
+      availableBalance: 0
+    });
+    const customerWallet = repository.seedWallet({
+      ownerType: "user",
+      ownerId: 85,
+      availableBalance: 1_000
+    });
     const service = new LedgerService(repository);
     const input = {
       redemptionId: 75,

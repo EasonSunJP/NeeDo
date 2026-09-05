@@ -1,32 +1,39 @@
 import { z } from "zod";
 
 const boundedRequiredString = (max: number) => z.string().trim().min(1).max(max);
-const safeDisplayUrlSchema = z.string().max(2_048).refine(
-  (value) => /^(?:https?:\/\/[^\s]+|\/(?!\/)[^\s]*)$/iu.test(value),
-  "Contact-card display URLs must be HTTP(S) or root-relative"
-);
+const safeDisplayUrlSchema = z
+  .string()
+  .max(2_048)
+  .refine(
+    (value) => /^(?:https?:\/\/[^\s]+|\/(?!\/)[^\s]*)$/iu.test(value),
+    "Contact-card display URLs must be HTTP(S) or root-relative"
+  );
 const colorSchema = z.string().regex(/^#[0-9a-f]{6}$/iu);
 
-const imContactCardV2Schema = z.object({
-  targetUserPublicId: boundedRequiredString(191),
-  needoId: boundedRequiredString(160),
-  nickname: boundedRequiredString(160),
-  avatarUrl: safeDisplayUrlSchema.nullable(),
-  entityKind: z.enum(["customer", "technician", "shop", "service"]),
-  ekycVerified: z.boolean(),
-  level: z.number().int().min(1).max(100).nullable(),
-  bio: z.string().max(500).nullable(),
-  tierCode: z.enum(["free", "silver", "gold", "black_diamond"]).nullable(),
-  themeVersionPublicId: boundedRequiredString(191).nullable(),
-  simpleTopColor: colorSchema.nullable(),
-  simpleBottomColor: colorSchema.nullable()
-}).strict();
+const imContactCardV2Schema = z
+  .object({
+    targetUserPublicId: boundedRequiredString(191),
+    needoId: boundedRequiredString(160),
+    nickname: boundedRequiredString(160),
+    avatarUrl: safeDisplayUrlSchema.nullable(),
+    entityKind: z.enum(["customer", "technician", "shop", "service"]),
+    ekycVerified: z.boolean(),
+    level: z.number().int().min(1).max(100).nullable(),
+    bio: z.string().max(500).nullable(),
+    tierCode: z.enum(["free", "silver", "gold", "black_diamond"]).nullable(),
+    themeVersionPublicId: boundedRequiredString(191).nullable(),
+    simpleTopColor: colorSchema.nullable(),
+    simpleBottomColor: colorSchema.nullable()
+  })
+  .strict();
 
-const imContactCardSnapshotV2Schema = z.object({
-  snapshotVersion: z.literal(2),
-  type: z.literal("contact-card"),
-  contactCard: imContactCardV2Schema
-}).strict();
+const imContactCardSnapshotV2Schema = z
+  .object({
+    snapshotVersion: z.literal(2),
+    type: z.literal("contact-card"),
+    contactCard: imContactCardV2Schema
+  })
+  .strict();
 
 export type ImContactCardV2 = z.infer<typeof imContactCardV2Schema>;
 export type ImContactCardSnapshotV2 = z.infer<typeof imContactCardSnapshotV2Schema>;
@@ -72,9 +79,12 @@ export function parseContactCardSnapshot(metadata: unknown): ParsedContactCardSn
   const displayName = requiredString(card.displayName, 160);
   const profileKind = card.profileKind;
   if (
-    !userId || !displayName ||
-    (profileKind !== "person" && profileKind !== "technician" &&
-      profileKind !== "store" && profileKind !== "service")
+    !userId ||
+    !displayName ||
+    (profileKind !== "person" &&
+      profileKind !== "technician" &&
+      profileKind !== "store" &&
+      profileKind !== "service")
   ) {
     return { kind: "invalid" };
   }
@@ -95,9 +105,7 @@ export function parseContactCardSnapshot(metadata: unknown): ParsedContactCardSn
 }
 
 function requiredString(value: unknown, max: number): string | null {
-  return typeof value === "string" && value.trim().length > 0 && value.length <= max
-    ? value
-    : null;
+  return typeof value === "string" && value.trim().length > 0 && value.length <= max ? value : null;
 }
 
 function optionalString(value: unknown, max: number): string | undefined {
@@ -111,7 +119,7 @@ function optionalSafeDisplayUrl(value: unknown): string | undefined {
 }
 
 function optionalEnum<T extends string>(value: unknown, values: readonly T[]): T | undefined {
-  return typeof value === "string" && values.includes(value as T) ? value as T : undefined;
+  return typeof value === "string" && values.includes(value as T) ? (value as T) : undefined;
 }
 
 function compact(value: Record<string, unknown>): Record<string, unknown> {

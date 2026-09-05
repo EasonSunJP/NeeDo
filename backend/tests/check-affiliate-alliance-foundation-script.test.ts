@@ -4,9 +4,9 @@ import { assertSafeAffiliateAllianceFoundationEnvironment } from "../scripts/sup
 
 describe("affiliate alliance foundation acceptance script", () => {
   const backendRoot = join(__dirname, "..");
-  const packageJson = JSON.parse(
-    readFileSync(join(backendRoot, "package.json"), "utf8")
-  ) as { scripts: Record<string, string> };
+  const packageJson = JSON.parse(readFileSync(join(backendRoot, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
   const source = readFileSync(
     join(backendRoot, "scripts/check-affiliate-alliance-foundation-flow.ts"),
     "utf8"
@@ -20,13 +20,67 @@ describe("affiliate alliance foundation acceptance script", () => {
   });
 
   it.each([
-    ["missing ENV_FILE", { envFile: "", envFileExists: false, databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "requires ENV_FILE"],
-    ["missing file", { envFile: "/tmp/not-there", envFileExists: false, databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "environment file was not found"],
-    ["production NODE_ENV", { envFile: "/tmp/local.env", envFileExists: true, nodeEnv: " Production ", databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "rejects production and staging environments"],
-    ["staging DEPLOY_ENV", { envFile: "/tmp/local.env", envFileExists: true, deployEnv: " STAGING ", databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "rejects production and staging environments"],
-    ["non-MySQL URL", { envFile: "/tmp/local.env", envFileExists: true, databaseUrl: "postgresql://root@127.0.0.1/needo_dev" }, "only accepts MySQL"],
-    ["remote host", { envFile: "/tmp/local.env", envFileExists: true, databaseUrl: "mysql://root@db.example.com/needo_dev" }, "only accepts a local MySQL host"],
-    ["production database", { envFile: "/tmp/local.env", envFileExists: true, databaseUrl: "mysql://root@127.0.0.1/needo-production" }, "rejects production-looking database names"]
+    [
+      "missing ENV_FILE",
+      { envFile: "", envFileExists: false, databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" },
+      "requires ENV_FILE"
+    ],
+    [
+      "missing file",
+      {
+        envFile: "/tmp/not-there",
+        envFileExists: false,
+        databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev"
+      },
+      "environment file was not found"
+    ],
+    [
+      "production NODE_ENV",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        nodeEnv: " Production ",
+        databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev"
+      },
+      "rejects production and staging environments"
+    ],
+    [
+      "staging DEPLOY_ENV",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        deployEnv: " STAGING ",
+        databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev"
+      },
+      "rejects production and staging environments"
+    ],
+    [
+      "non-MySQL URL",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        databaseUrl: "postgresql://root@127.0.0.1/needo_dev"
+      },
+      "only accepts MySQL"
+    ],
+    [
+      "remote host",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        databaseUrl: "mysql://root@db.example.com/needo_dev"
+      },
+      "only accepts a local MySQL host"
+    ],
+    [
+      "production database",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        databaseUrl: "mysql://root@127.0.0.1/needo-production"
+      },
+      "rejects production-looking database names"
+    ]
   ])("rejects %s", (_label, input, expectedMessage) => {
     expect(() => assertSafeAffiliateAllianceFoundationEnvironment(input)).toThrow(expectedMessage);
   });

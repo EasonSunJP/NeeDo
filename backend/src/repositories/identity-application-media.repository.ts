@@ -10,9 +10,7 @@ import type {
 } from "../services/identity-application-media.service";
 import { AppError } from "../utils/app-error";
 
-export class IdentityApplicationMediaRepository
-  implements IdentityApplicationMediaRepositoryPort
-{
+export class IdentityApplicationMediaRepository implements IdentityApplicationMediaRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findEditableContext(

@@ -45,9 +45,10 @@ describe("RealtimeRepository Social friends", () => {
       socialPostShare: { findMany: jest.fn(async () => []) }
     };
 
-    const result = await new RealtimeRepository(
-      client as unknown as PrismaClient
-    ).listSocialPosts(787, { page: 1, pageSize: 20 });
+    const result = await new RealtimeRepository(client as unknown as PrismaClient).listSocialPosts(
+      787,
+      { page: 1, pageSize: 20 }
+    );
 
     expect(result.list[0]).toMatchObject({
       authorUserId: 1,
@@ -108,9 +109,10 @@ describe("RealtimeRepository Social friends", () => {
       socialPostShare: { findMany: jest.fn(async () => []) }
     };
 
-    const result = await new RealtimeRepository(
-      client as unknown as PrismaClient
-    ).listSocialPosts(787, { page: 1, pageSize: 20 });
+    const result = await new RealtimeRepository(client as unknown as PrismaClient).listSocialPosts(
+      787,
+      { page: 1, pageSize: 20 }
+    );
 
     expect(result.list[0]).toMatchObject({ viewerIsFriend: false });
   });

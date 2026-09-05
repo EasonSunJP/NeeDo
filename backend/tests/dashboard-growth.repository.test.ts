@@ -54,30 +54,48 @@ describe("DashboardGrowthRepository", () => {
     ["missing customer profile for city scope", { customerProfileActive: false }],
     ["different customer city", { customerCity: "Osaka" }]
   ])("excludes a new user for each independent %s condition", (_label, change) => {
-    expect(countNewUserEvents({
-      events: [{ ...newUser, ...change }],
-      range,
-      scope: { kind: "platform" },
-      city: "Tokyo"
-    })).toBe(0);
+    expect(
+      countNewUserEvents({
+        events: [{ ...newUser, ...change }],
+        range,
+        scope: { kind: "platform" },
+        city: "Tokyo"
+      })
+    ).toBe(0);
   });
 
   it.each([
     ["inactive membership", { active: false }],
     ["deleted membership", { deleted: true }],
     ["different merchant shop", { shopId: 92 }]
-  ])("excludes a shop-scoped new user for each independent %s condition", (_label, membershipChange) => {
-    expect(countNewUserEvents({
-      events: [{ ...newUser, memberships: [{ ...newUser.memberships[0]!, ...membershipChange }] }],
-      range,
-      scope: { kind: "shop", shopId: 91 },
-      city: null
-    })).toBe(0);
-  });
+  ])(
+    "excludes a shop-scoped new user for each independent %s condition",
+    (_label, membershipChange) => {
+      expect(
+        countNewUserEvents({
+          events: [
+            { ...newUser, memberships: [{ ...newUser.memberships[0]!, ...membershipChange }] }
+          ],
+          range,
+          scope: { kind: "shop", shopId: 91 },
+          city: null
+        })
+      ).toBe(0);
+    }
+  );
 
   it("counts a formally eligible new user for platform city and merchant shop scope", () => {
-    expect(countNewUserEvents({ events: [newUser], range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
-    expect(countNewUserEvents({ events: [newUser], range, scope: { kind: "shop", shopId: 91 }, city: null })).toBe(1);
+    expect(
+      countNewUserEvents({ events: [newUser], range, scope: { kind: "platform" }, city: "Tokyo" })
+    ).toBe(1);
+    expect(
+      countNewUserEvents({
+        events: [newUser],
+        range,
+        scope: { kind: "shop", shopId: 91 },
+        city: null
+      })
+    ).toBe(1);
   });
 
   const paidMember = {
@@ -106,49 +124,103 @@ describe("DashboardGrowthRepository", () => {
     ["renewal source", { issuanceSource: "renewal" }],
     ["different city", { shopCity: "Osaka" }]
   ])("excludes a paid-member event for each independent %s condition", (_label, change) => {
-    expect(countFirstPaidMemberEvents({
-      events: [{ ...paidMember, ...change }],
-      range,
-      scope: { kind: "platform" },
-      city: "Tokyo"
-    })).toBe(0);
+    expect(
+      countFirstPaidMemberEvents({
+        events: [{ ...paidMember, ...change }],
+        range,
+        scope: { kind: "platform" },
+        city: "Tokyo"
+      })
+    ).toBe(0);
   });
 
   it("does not erase the winning acquisition after card or membership mutation", () => {
-    expect(countFirstPaidMemberEvents({
-      events: [{ ...paidMember, cardStatus: "void", cardDeleted: true, membershipStatus: "ended", membershipDeleted: true }],
-      range, scope: { kind: "platform" }, city: "Tokyo"
-    })).toBe(1);
+    expect(
+      countFirstPaidMemberEvents({
+        events: [
+          {
+            ...paidMember,
+            cardStatus: "void",
+            cardDeleted: true,
+            membershipStatus: "ended",
+            membershipDeleted: true
+          }
+        ],
+        range,
+        scope: { kind: "platform" },
+        city: "Tokyo"
+      })
+    ).toBe(1);
   });
 
   it("treats online paid as first-paid acquisition and groups history platform-wide", () => {
     const online = { ...paidMember, userId: 33, issuanceSource: "online_paid" };
-    expect(countFirstPaidMemberEvents({ events: [online], range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(1);
-    expect(countFirstPaidMemberEvents({ events: [
-      { ...online, cardId: 1, issuedAt: "2026-08-01T00:00:00.000Z", shopId: 92, shopCity: "Osaka", cardDeleted: true },
-      { ...paidMember, userId: 33, cardId: 2 }
-    ], range, scope: { kind: "platform" }, city: "Tokyo" })).toBe(0);
+    expect(
+      countFirstPaidMemberEvents({
+        events: [online],
+        range,
+        scope: { kind: "platform" },
+        city: "Tokyo"
+      })
+    ).toBe(1);
+    expect(
+      countFirstPaidMemberEvents({
+        events: [
+          {
+            ...online,
+            cardId: 1,
+            issuedAt: "2026-08-01T00:00:00.000Z",
+            shopId: 92,
+            shopCity: "Osaka",
+            cardDeleted: true
+          },
+          { ...paidMember, userId: 33, cardId: 2 }
+        ],
+        range,
+        scope: { kind: "platform" },
+        city: "Tokyo"
+      })
+    ).toBe(0);
   });
 
   it("uses card id as the deterministic tie breaker and attributes the winning shop", () => {
     const sameTime = "2026-08-25T00:00:00.000Z";
-    expect(countFirstPaidMemberEvents({
-      events: [
-        { ...paidMember, userId: 44, cardId: 20, issuedAt: sameTime, shopId: 91 },
-        { ...paidMember, userId: 44, cardId: 10, issuedAt: sameTime, shopId: 92 }
-      ], range, scope: { kind: "shop", shopId: 91 }, city: null
-    })).toBe(0);
+    expect(
+      countFirstPaidMemberEvents({
+        events: [
+          { ...paidMember, userId: 44, cardId: 20, issuedAt: sameTime, shopId: 91 },
+          { ...paidMember, userId: 44, cardId: 10, issuedAt: sameTime, shopId: 92 }
+        ],
+        range,
+        scope: { kind: "shop", shopId: 91 },
+        city: null
+      })
+    ).toBe(0);
   });
 
   it.each([
-    ["a prior deleted paid card", [
-      { ...paidMember, cardId: 29, issuedAt: "2026-08-01T00:00:00.000Z", cardStatus: "void", cardDeleted: true },
-      paidMember
-    ], { kind: "platform" } as const, "Tokyo"],
+    [
+      "a prior deleted paid card",
+      [
+        {
+          ...paidMember,
+          cardId: 29,
+          issuedAt: "2026-08-01T00:00:00.000Z",
+          cardStatus: "void",
+          cardDeleted: true
+        },
+        paidMember
+      ],
+      { kind: "platform" } as const,
+      "Tokyo"
+    ],
     ["a different merchant shop", [paidMember], { kind: "shop", shopId: 92 } as const, null]
-  ])("excludes paid-member growth for independent %s history/scope evidence", (_label, events, scope, city) => {
-    expect(countFirstPaidMemberEvents({ events, range, scope, city })).toBe(0);
-  });
+  ])(
+    "excludes paid-member growth for independent %s history/scope evidence",
+    (_label, events, scope, city) => {
+      expect(countFirstPaidMemberEvents({ events, range, scope, city })).toBe(0);
+    }
+  );
 
   it.each([
     [{ kind: "platform" } as const, "Tokyo"],
@@ -166,7 +238,9 @@ describe("DashboardGrowthRepository", () => {
     userDeleted: false,
     isTestUser: false,
     profileValid: true,
-    shops: [{ shopId: 91, city: "Tokyo", source: "direct", active: true, deleted: false, effective: true }]
+    shops: [
+      { shopId: 91, city: "Tokyo", source: "direct", active: true, deleted: false, effective: true }
+    ]
   };
 
   it.each([
@@ -177,12 +251,14 @@ describe("DashboardGrowthRepository", () => {
     ["deleted identity", { identityDeleted: true }],
     ["invalid technician profile", { profileValid: false }]
   ])("excludes technician onboarding for each independent %s condition", (_label, change) => {
-    expect(countFirstTechnicianOnboardingEvents({
-      events: [{ ...technician, ...change }],
-      range,
-      scope: { kind: "platform" },
-      city: "Tokyo"
-    })).toBe(0);
+    expect(
+      countFirstTechnicianOnboardingEvents({
+        events: [{ ...technician, ...change }],
+        range,
+        scope: { kind: "platform" },
+        city: "Tokyo"
+      })
+    ).toBe(0);
   });
 
   it.each([
@@ -200,37 +276,82 @@ describe("DashboardGrowthRepository", () => {
       effective: true,
       ...shopChange
     };
-    expect(countFirstTechnicianOnboardingEvents({
-      events: [{ ...technician, shops: [affiliation] }],
-      range,
-      scope: { kind: "shop", shopId: 91 },
-      city: null
-    })).toBe(0);
+    expect(
+      countFirstTechnicianOnboardingEvents({
+        events: [{ ...technician, shops: [affiliation] }],
+        range,
+        scope: { kind: "shop", shopId: 91 },
+        city: null
+      })
+    ).toBe(0);
   });
 
   it.each([
-    ["a prior deleted identity", [
-      { ...technician, activatedAt: "2026-08-01T00:00:00.000Z", identityActive: false, identityDeleted: true },
-      technician
-    ], { kind: "platform" } as const, "Tokyo"],
+    [
+      "a prior deleted identity",
+      [
+        {
+          ...technician,
+          activatedAt: "2026-08-01T00:00:00.000Z",
+          identityActive: false,
+          identityDeleted: true
+        },
+        technician
+      ],
+      { kind: "platform" } as const,
+      "Tokyo"
+    ],
     ["a different city", [technician], { kind: "platform" } as const, "Osaka"],
-    ["a missing direct shop", [{ ...technician, shops: [] }], { kind: "shop", shopId: 91 } as const, null],
-    ["a different direct shop", [{ ...technician, shops: [{ ...technician.shops[0]!, shopId: 92 }] }], { kind: "shop", shopId: 91 } as const, null]
-  ])("excludes technician onboarding for independent %s evidence", (_label, events, scope, city) => {
-    expect(countFirstTechnicianOnboardingEvents({ events, range, scope, city })).toBe(0);
-  });
+    [
+      "a missing direct shop",
+      [{ ...technician, shops: [] }],
+      { kind: "shop", shopId: 91 } as const,
+      null
+    ],
+    [
+      "a different direct shop",
+      [{ ...technician, shops: [{ ...technician.shops[0]!, shopId: 92 }] }],
+      { kind: "shop", shopId: 91 } as const,
+      null
+    ]
+  ])(
+    "excludes technician onboarding for independent %s evidence",
+    (_label, events, scope, city) => {
+      expect(countFirstTechnicianOnboardingEvents({ events, range, scope, city })).toBe(0);
+    }
+  );
 
   it.each([
     [[technician], { kind: "platform" } as const, "Tokyo"],
     [[technician], { kind: "shop", shopId: 91 } as const, null],
-    [[{ ...technician, shops: [{ ...technician.shops[0]!, source: "affiliation" as const }] }], { kind: "shop", shopId: 91 } as const, null]
+    [
+      [{ ...technician, shops: [{ ...technician.shops[0]!, source: "affiliation" as const }] }],
+      { kind: "shop", shopId: 91 } as const,
+      null
+    ]
   ])("counts one eligible technician for direct or affiliation scope", (events, scope, city) => {
     expect(countFirstTechnicianOnboardingEvents({ events, range, scope, city })).toBe(1);
   });
   it("maps current and previous first-event growth facts from one bounded query", async () => {
     const fixture = createReader([
-      { periodKey: "current", newUsers: 18n, newPaidMembers: "1", technicianOnboarding: 4, agentOnboarding: 2, franchiseeOnboarding: 1, supplierOnboarding: 1 },
-      { period_key: "previous", new_users: 12, new_paid_members: 3, technician_onboarding: 2, agent_onboarding: 1, franchisee_onboarding: 0, supplier_onboarding: 2 }
+      {
+        periodKey: "current",
+        newUsers: 18n,
+        newPaidMembers: "1",
+        technicianOnboarding: 4,
+        agentOnboarding: 2,
+        franchiseeOnboarding: 1,
+        supplierOnboarding: 1
+      },
+      {
+        period_key: "previous",
+        new_users: 12,
+        new_paid_members: 3,
+        technician_onboarding: 2,
+        agent_onboarding: 1,
+        franchisee_onboarding: 0,
+        supplier_onboarding: 2
+      }
     ]);
 
     await expect(fixture.reader.getGrowthFacts(input)).resolves.toEqual({
@@ -274,10 +395,20 @@ describe("DashboardGrowthRepository", () => {
     expect(sql).toContain("partner_user.is_test_account =");
     expect(sql).toContain("partner_user.deleted_at IS NULL");
     expect(sql).toContain("TRIM(shop.city) =");
-    expect(query.values).toEqual(expect.arrayContaining([
-      "current", "previous", "offline_paid", "online_paid", "active", "technician", "Tokyo"
-    ]));
-    expect(query.values).not.toEqual(expect.arrayContaining(["manual_grant", "historical_replacement"]));
+    expect(query.values).toEqual(
+      expect.arrayContaining([
+        "current",
+        "previous",
+        "offline_paid",
+        "online_paid",
+        "active",
+        "technician",
+        "Tokyo"
+      ])
+    );
+    expect(query.values).not.toEqual(
+      expect.arrayContaining(["manual_grant", "historical_replacement"])
+    );
 
     const firstPaidDefinition = sql.slice(
       sql.indexOf("historical_paid_ranked AS"),
@@ -289,7 +420,11 @@ describe("DashboardGrowthRepository", () => {
 
   it("uses authoritative membership/affiliation shops for merchant scope", async () => {
     const fixture = createReader([]);
-    await fixture.reader.getGrowthFacts({ scope: { kind: "shop", shopId: 91 }, city: null, window });
+    await fixture.reader.getGrowthFacts({
+      scope: { kind: "shop", shopId: 91 },
+      city: null,
+      window
+    });
     const query = fixture.queryRaw.mock.calls[0]![0] as SqlQuery;
     const sql = queryText(query);
     expect(sql).toContain("membership.shop_id =");
@@ -311,8 +446,19 @@ describe("DashboardGrowthRepository", () => {
     });
 
     for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1.5"]) {
-      await expect(createReader([{ periodKey: "current", newUsers: value, newPaidMembers: 0, technicianOnboarding: 0, agentOnboarding: 0, franchiseeOnboarding: 0, supplierOnboarding: 0 }]).reader.getGrowthFacts(input))
-        .rejects.toThrow("Dashboard growth aggregate must be a non-negative safe integer");
+      await expect(
+        createReader([
+          {
+            periodKey: "current",
+            newUsers: value,
+            newPaidMembers: 0,
+            technicianOnboarding: 0,
+            agentOnboarding: 0,
+            franchiseeOnboarding: 0,
+            supplierOnboarding: 0
+          }
+        ]).reader.getGrowthFacts(input)
+      ).rejects.toThrow("Dashboard growth aggregate must be a non-negative safe integer");
     }
   });
 
@@ -325,7 +471,9 @@ describe("DashboardGrowthRepository", () => {
       franchiseeOnboarding: { current: 5, previous: 0, dataStatus: "ready" },
       supplierOnboarding: { current: 6, previous: 0, dataStatus: "ready" }
     } satisfies GrowthFacts;
-    const growthReader = { getGrowthFacts: jest.fn(async () => facts) } satisfies DashboardGrowthReader;
+    const growthReader = {
+      getGrowthFacts: jest.fn(async () => facts)
+    } satisfies DashboardGrowthReader;
     const repository = new DashboardRepository(
       {} as PrismaClient,
       { getFinanceFacts: jest.fn() },

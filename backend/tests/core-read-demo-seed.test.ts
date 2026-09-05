@@ -29,11 +29,15 @@ describe("core read formal test seed contract", () => {
     expect(CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS).toHaveLength(20);
 
     const shopSlugs = new Set(CORE_READ_FORMAL_TEST_SHOP_SEEDS.map((shop) => shop.slug));
-    const categoryCodes = new Set(CORE_READ_FORMAL_TEST_CATEGORY_SEEDS.map((category) => category.code));
+    const categoryCodes = new Set(
+      CORE_READ_FORMAL_TEST_CATEGORY_SEEDS.map((category) => category.code)
+    );
 
     expect(shopSlugs.size).toBe(CORE_READ_FORMAL_TEST_SHOP_SEEDS.length);
     expect(
-      CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.every((technician) => shopSlugs.has(technician.shopSlug))
+      CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.every((technician) =>
+        shopSlugs.has(technician.shopSlug)
+      )
     ).toBe(true);
     expect(
       CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.every((technician) =>

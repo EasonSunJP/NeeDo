@@ -9,8 +9,7 @@ const read = (path: string): string => readFileSync(join(process.cwd(), path), "
 
 describe("formal service taxonomy and search analytics schema", () => {
   const schema = read("prisma/schema.prisma");
-  const migrationPath =
-    "prisma/migrations/20260903160000_service_search_analytics/migration.sql";
+  const migrationPath = "prisma/migrations/20260903160000_service_search_analytics/migration.sql";
 
   it("versions the formal taxonomy and stores aliases plus real search events", () => {
     expect(schema.replace(/\s+/gu, " ")).toContain(

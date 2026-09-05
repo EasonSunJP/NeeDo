@@ -3,7 +3,10 @@ import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { MerchantSaasBillingController } from "../controllers/merchant-saas-billing.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
-import { createAuthorizeAnyMiddleware, createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
+import {
+  createAuthorizeAnyMiddleware,
+  createAuthorizeMiddleware
+} from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { MerchantSaasBillingRepository } from "../repositories/merchant-saas-billing.repository";

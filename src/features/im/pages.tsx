@@ -114,6 +114,7 @@ import {
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
 import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
+import { OpenedImMediaViewer } from "./OpenedImMediaViewer";
 import { MembershipSupportEntry } from "./MembershipSupportEntry";
 import {
   ImMessageMultiSelectCircle,
@@ -4902,6 +4903,7 @@ export function ImConversationRoomPage({
   const [manualTranslationPendingIds, setManualTranslationPendingIds] = useState<Set<string>>(() => new Set());
   const [mediaPreview, setMediaPreview] = useState<ConversationMessage | null>(null);
   const [mediaPreviewScale, setMediaPreviewScale] = useState(1);
+  const [mediaPreviewResolvedSource, setMediaPreviewResolvedSource] = useState<string | undefined>();
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
   const [contactCardQuery, setContactCardQuery] = useState("");
   const [contactCardCandidates, setContactCardCandidates] = useState<ImContactCardCandidate[]>([]);
@@ -5306,6 +5308,12 @@ export function ImConversationRoomPage({
     const timer = window.setTimeout(() => setActionNotice(null), 2_600);
     return () => window.clearTimeout(timer);
   }, [actionNotice]);
+
+  useEffect(() => {
+    if (store.error === "error.im.local_cache_purge_failed") {
+      setActionNotice("本地媒体缓存清理失败，请在账户与安全中清除本机缓存");
+    }
+  }, [store.error]);
 
   useEffect(() => () => voiceRecording.cancel(), [conversationId, voiceRecording.cancel]);
 
@@ -6374,12 +6382,14 @@ export function ImConversationRoomPage({
 
   const openMediaPreview = (message: ConversationMessage) => {
     setMediaPreviewScale(1);
+    setMediaPreviewResolvedSource(undefined);
     setMediaPreview(message);
   };
 
   const closeMediaPreview = () => {
     setMediaPreview(null);
     setMediaPreviewScale(1);
+    setMediaPreviewResolvedSource(undefined);
   };
 
   const createMessageActions = (message: ConversationMessage) => {
@@ -7356,24 +7366,14 @@ export function ImConversationRoomPage({
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={() => setMediaPreviewScale((scale) => (scale > 1 ? 1 : 2))}
           >
-            {mediaPreview.type === "image" ? (
-              <img
-                alt={mediaPreview.ext?.fileName ?? "图片"}
-                className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
-                draggable={false}
-                src={mediaPreview.ext?.url ?? mediaPreview.content}
-                style={{ transform: `scale(${mediaPreviewScale})` }}
-              />
-            ) : mediaPreview.type === "video" ? (
-              <video
-                className="max-h-full max-w-full object-contain transition-transform duration-150"
-                controls
-                playsInline
-                poster={mediaPreview.ext?.thumbnailUrl}
-                src={mediaPreview.ext?.url ?? mediaPreview.content}
-                style={{ transform: `scale(${mediaPreviewScale})` }}
-              />
-            ) : null}
+            {mediaPreview.type === "image" || mediaPreview.type === "video" ? <OpenedImMediaViewer
+              cache={store}
+              className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
+              message={mediaPreview}
+              onResolvedSourceChange={setMediaPreviewResolvedSource}
+              poster={mediaPreview.ext?.thumbnailUrl}
+              style={{ transform: `scale(${mediaPreviewScale})` }}
+            /> : null}
           </div>
 
           <footer
@@ -7407,9 +7407,10 @@ export function ImConversationRoomPage({
               +
             </button>
             <a
+              aria-disabled={!mediaPreviewResolvedSource}
               className="grid min-h-11 place-items-center rounded-full bg-white/12 text-xs font-black"
               download={mediaPreview.ext?.fileName ?? (mediaPreview.type === "video" ? "needo-video" : "needo-image")}
-              href={mediaPreview.ext?.url ?? mediaPreview.content}
+              href={mediaPreviewResolvedSource ?? undefined}
             >
               下载
             </a>

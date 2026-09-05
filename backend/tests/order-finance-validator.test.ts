@@ -2,14 +2,16 @@ import { serviceIncomeReportBodySchema } from "../src/validators/order-finance.v
 
 describe("service income component validation", () => {
   it("accepts an exact persisted service, extension, and nomination breakdown", () => {
-    expect(serviceIncomeReportBodySchema.parse({
-      serviceAmountJpy: 15_500,
-      baseServiceAmountJpy: 10_000,
-      extensionAmountJpy: 4_000,
-      nominationChargeAmountJpy: 1_500,
-      wasTechnicianNominated: true,
-      platformCollectedServiceAmountJpy: 15_500
-    })).toMatchObject({
+    expect(
+      serviceIncomeReportBodySchema.parse({
+        serviceAmountJpy: 15_500,
+        baseServiceAmountJpy: 10_000,
+        extensionAmountJpy: 4_000,
+        nominationChargeAmountJpy: 1_500,
+        wasTechnicianNominated: true,
+        platformCollectedServiceAmountJpy: 15_500
+      })
+    ).toMatchObject({
       baseServiceAmountJpy: 10_000,
       extensionAmountJpy: 4_000,
       nominationChargeAmountJpy: 1_500,
@@ -18,12 +20,14 @@ describe("service income component validation", () => {
   });
 
   it("rejects a component breakdown that does not equal total service income", () => {
-    expect(() => serviceIncomeReportBodySchema.parse({
-      serviceAmountJpy: 15_500,
-      baseServiceAmountJpy: 10_000,
-      extensionAmountJpy: 4_000,
-      nominationChargeAmountJpy: 0
-    })).toThrow();
+    expect(() =>
+      serviceIncomeReportBodySchema.parse({
+        serviceAmountJpy: 15_500,
+        baseServiceAmountJpy: 10_000,
+        extensionAmountJpy: 4_000,
+        nominationChargeAmountJpy: 0
+      })
+    ).toThrow();
   });
 
   it("keeps aggregate-only historical reports valid without inventing components", () => {

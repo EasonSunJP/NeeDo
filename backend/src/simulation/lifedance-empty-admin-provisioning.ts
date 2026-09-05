@@ -70,10 +70,7 @@ export const getProvisionedSessionGenerationTargets = (
   }
 ];
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
@@ -107,7 +104,9 @@ export const assertLocalEmptyAdminProvisioningTarget = (env: {
   DATABASE_URL?: string;
 }): void => {
   const fail = (): never => {
-    throw new Error("LifeDance empty-admin provisioning is allowed only for local needo_dev MySQL.");
+    throw new Error(
+      "LifeDance empty-admin provisioning is allowed only for local needo_dev MySQL."
+    );
   };
 
   if (env.NODE_ENV === "production" || env.DEPLOY_ENV === "prod") fail();
@@ -420,7 +419,9 @@ const provisionEmptyAdmin = async (
   await tx.auditLog.create({
     data: {
       actorId: input.actorUserId,
-      action: candidate ? "user.empty_admin_test_account.refresh" : "user.empty_admin_test_account.create",
+      action: candidate
+        ? "user.empty_admin_test_account.refresh"
+        : "user.empty_admin_test_account.create",
       targetType: "user",
       targetId: user.id,
       metadata: {
@@ -517,11 +518,17 @@ const repairOperatorIdentifier = async (
       oldIdentifier.kind === "NEEDO",
     "operator@example.com platform identifier is not the expected NEEDO identifier."
   );
-  assert(!customerIdentity.publicIdentifier, "operator@example.com customer identity already has another identifier.");
+  assert(
+    !customerIdentity.publicIdentifier,
+    "operator@example.com customer identity already has another identifier."
+  );
   const conflictingU = await tx.publicIdentifier.findUnique({
     where: { publicId: OPERATOR_U_IDENTIFIER_REPAIR.publicId }
   });
-  assert(!conflictingU, `${OPERATOR_U_IDENTIFIER_REPAIR.publicId} already belongs to another identity.`);
+  assert(
+    !conflictingU,
+    `${OPERATOR_U_IDENTIFIER_REPAIR.publicId} already belongs to another identity.`
+  );
 
   await tx.publicIdentifier.update({
     where: { id: oldIdentifier.id },

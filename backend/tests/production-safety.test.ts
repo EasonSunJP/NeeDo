@@ -7,6 +7,8 @@ describe("production safety", () => {
     process.env = {
       ...originalEnv,
       NODE_ENV: "production",
+      IM_MEDIA_STORAGE_DIR: "/var/lib/needo/im-media",
+      CONTENT_MEDIA_STORAGE_DIR: "/var/lib/needo/content-media",
       DEPLOY_ENV: "prod",
       ALLOW_TEST_LOGIN: "false",
       ALLOW_FORMAL_TEST_SEED: "false",
@@ -93,6 +95,15 @@ describe("production safety", () => {
 
     await expect(importEnv()).resolves.toBeUndefined();
   });
+
+  it.each(["IM_MEDIA_STORAGE_DIR", "CONTENT_MEDIA_STORAGE_DIR"])(
+    "rejects relative %s in production",
+    async (field) => {
+      setValidProductionEnv();
+      process.env[field] = "runtime/media";
+      await expect(importEnv()).rejects.toThrow(`${field} must be an absolute path`);
+    }
+  );
 
   it("accepts a production Google Web OAuth client ID without a hyphen", async () => {
     setValidProductionEnv();

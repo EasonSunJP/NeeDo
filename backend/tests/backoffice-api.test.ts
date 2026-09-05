@@ -421,9 +421,7 @@ const createFixture = async (
               }
             : null,
         membership:
-          input.scope.kind === "shop"
-            ? { memberCount: 6, completedCustomerCount: 4 }
-            : null,
+          input.scope.kind === "shop" ? { memberCount: 6, completedCustomerCount: 4 } : null,
         availableCities: input.scope.kind === "platform" ? ["Osaka", "Tokyo"] : []
       })
     ),
@@ -665,24 +663,29 @@ const createFixture = async (
     }))
   };
   const platformMembershipService = {
-    changeEntitlement: jest.fn(async (
-      _actor: unknown,
-      _context: unknown,
-      _userId: number,
-      command: { targetTierCode: "silver" | "gold" | "black_diamond"; billingCycle: "monthly" | "annual" }
-    ) => ({
-      kind: "grant" as const,
-      tierCode: command.targetTierCode,
-      tierVersionPublicId: `tier-${command.targetTierCode}-v1`,
-      entitlementPublicId: `entitlement-${command.targetTierCode}-1`,
-      startsAt: now,
-      expiresAt:
-        command.billingCycle === "annual"
-          ? new Date("2027-05-25T00:00:00.000Z")
-          : new Date("2026-06-24T00:00:00.000Z"),
-      experienceValueNdp: command.targetTierCode === "gold" ? 1_999 : 0,
-      idempotent: false
-    }))
+    changeEntitlement: jest.fn(
+      async (
+        _actor: unknown,
+        _context: unknown,
+        _userId: number,
+        command: {
+          targetTierCode: "silver" | "gold" | "black_diamond";
+          billingCycle: "monthly" | "annual";
+        }
+      ) => ({
+        kind: "grant" as const,
+        tierCode: command.targetTierCode,
+        tierVersionPublicId: `tier-${command.targetTierCode}-v1`,
+        entitlementPublicId: `entitlement-${command.targetTierCode}-1`,
+        startsAt: now,
+        expiresAt:
+          command.billingCycle === "annual"
+            ? new Date("2027-05-25T00:00:00.000Z")
+            : new Date("2026-06-24T00:00:00.000Z"),
+        experienceValueNdp: command.targetTierCode === "gold" ? 1_999 : 0,
+        idempotent: false
+      })
+    )
   };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),

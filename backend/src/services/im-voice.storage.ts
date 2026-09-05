@@ -8,16 +8,17 @@ const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 const voiceMetadata = {
   "audio/webm": {
     extension: "webm",
-    matches: (bytes: Buffer) => bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
+    matches: (bytes: Buffer) => bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
   },
   "audio/mp4": {
     extension: "mp4",
-    matches: (bytes: Buffer) => bytes.length >= 12 && bytes.subarray(4, 8).toString("ascii") === "ftyp",
+    matches: (bytes: Buffer) =>
+      bytes.length >= 12 && bytes.subarray(4, 8).toString("ascii") === "ftyp"
   },
   "audio/ogg": {
     extension: "ogg",
-    matches: (bytes: Buffer) => bytes.subarray(0, 4).toString("ascii") === "OggS",
-  },
+    matches: (bytes: Buffer) => bytes.subarray(0, 4).toString("ascii") === "OggS"
+  }
 } as const;
 
 export type ImVoiceMimeType = keyof typeof voiceMetadata;
@@ -30,12 +31,17 @@ export interface ImVoiceStoragePort {
 export class ImVoiceFileStorage implements ImVoiceStoragePort {
   public constructor(
     private readonly directory: string,
-    private readonly maxBytes = DEFAULT_MAX_BYTES,
+    private readonly maxBytes = DEFAULT_MAX_BYTES
   ) {}
 
   public async save(bytes: Buffer, mimeType: ImVoiceMimeType): Promise<StoredImVoice> {
     const metadata = voiceMetadata[mimeType];
-    if (!metadata || bytes.length === 0 || bytes.length > this.maxBytes || !metadata.matches(bytes)) {
+    if (
+      !metadata ||
+      bytes.length === 0 ||
+      bytes.length > this.maxBytes ||
+      !metadata.matches(bytes)
+    ) {
       throw this.invalid();
     }
     const fileKey = `${randomBytes(32).toString("hex")}.${metadata.extension}`;
@@ -66,7 +72,7 @@ export class ImVoiceFileStorage implements ImVoiceStoragePort {
     return new AppError({
       code: ERROR_CODES.VALIDATION,
       message: "error.im.voice_invalid",
-      statusCode: 400,
+      statusCode: 400
     });
   }
 }

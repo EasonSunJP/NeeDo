@@ -19,17 +19,9 @@ describe("Exchange selective claim OpenAPI", () => {
     const expected = [
       ["/api/v1/exchange/posts/{id}/claim-options", "get", "exchange:claim-options:list"],
       ["/api/v1/exchange/posts/{id}/claims", "post", "exchange:claims:create"],
-      [
-        "/api/v1/exchange/posts/{id}/claims",
-        "get",
-        "exchange:claims:list-owned-request"
-      ],
+      ["/api/v1/exchange/posts/{id}/claims", "get", "exchange:claims:list-owned-request"],
       ["/api/v1/exchange/posts/{id}/claims/mine", "get", "exchange:claims:read-own"],
-      [
-        "/api/v1/exchange/claims/{claimId}/withdraw",
-        "post",
-        "exchange:claims:withdraw-own"
-      ]
+      ["/api/v1/exchange/claims/{claimId}/withdraw", "post", "exchange:claims:withdraw-own"]
     ] as const;
     for (const [path, method, permission] of expected) {
       expect(document.paths[path]?.[method]).toEqual(
@@ -122,8 +114,9 @@ describe("Exchange selective claim OpenAPI", () => {
         }
       }
     });
-    const mineResponse = document.paths["/api/v1/exchange/posts/{id}/claims/mine"].get
-      .responses["200"] as unknown as {
+    const mineResponse = document.paths["/api/v1/exchange/posts/{id}/claims/mine"].get.responses[
+      "200"
+    ] as unknown as {
       content: { "application/json": { schema: { properties: { data: unknown } } } };
     };
     expect(mineResponse.content["application/json"].schema.properties.data).toEqual({

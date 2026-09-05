@@ -26,10 +26,7 @@ import {
   type PaginationInput
 } from "../utils/pagination";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 export type ExchangeClaimProviderScope =
   | { kind: "merchant"; shopId: number }
@@ -167,10 +164,9 @@ export class ExchangeClaimRepository {
     }
     if (!this.canStartTransaction(this.client)) return handler(this);
     return runWithTransactionConflictRetry(() =>
-      this.client.$transaction(
-        (transaction) => handler(new ExchangeClaimRepository(transaction)),
-        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
-      )
+      this.client.$transaction((transaction) => handler(new ExchangeClaimRepository(transaction)), {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
+      })
     );
   }
 
@@ -275,9 +271,7 @@ export class ExchangeClaimRepository {
     );
     if (input.shopId) filters.push(Prisma.sql`slot.\`shop_id\` = ${input.shopId}`);
     if (input.technicianProfileId) {
-      filters.push(
-        Prisma.sql`slot.\`technician_profile_id\` = ${input.technicianProfileId}`
-      );
+      filters.push(Prisma.sql`slot.\`technician_profile_id\` = ${input.technicianProfileId}`);
     }
     if (input.serviceRef) {
       const [kind, rawId] = input.serviceRef.split(":") as ["shop" | "technician", string];
@@ -396,9 +390,7 @@ export class ExchangeClaimRepository {
       demand: row.demand
         ? {
             matchMode:
-              row.demand.matchMode === DatabaseExchangeMatchMode.SELECTIVE
-                ? "selective"
-                : "quick",
+              row.demand.matchMode === DatabaseExchangeMatchMode.SELECTIVE ? "selective" : "quick",
             budgetMinJpy: row.demand.budgetMinJpy,
             budgetMaxJpy: row.demand.budgetMaxJpy
           }
@@ -491,9 +483,7 @@ export class ExchangeClaimRepository {
       },
       select: { technicianProfileId: true }
     });
-    return row?.technicianProfileId
-      ? { technicianProfileId: row.technicianProfileId }
-      : null;
+    return row?.technicianProfileId ? { technicianProfileId: row.technicianProfileId } : null;
   }
 
   public async lockTechnician(technicianProfileId: number): Promise<boolean> {
@@ -748,9 +738,7 @@ export class ExchangeClaimRepository {
       where: { idempotencyKey, deletedAt: null },
       include: claimInclude
     });
-    return row
-      ? { claim: this.mapClaim(row), fingerprint: row.payloadFingerprint }
-      : null;
+    return row ? { claim: this.mapClaim(row), fingerprint: row.payloadFingerprint } : null;
   }
 
   public async findMine(
@@ -797,7 +785,11 @@ export class ExchangeClaimRepository {
         include: claimInclude
       })
     ]);
-    return buildPaginatedResponse(rows.map((row) => this.mapClaim(row)), total, pagination);
+    return buildPaginatedResponse(
+      rows.map((row) => this.mapClaim(row)),
+      total,
+      pagination
+    );
   }
 
   public async lockClaim(claimId: number): Promise<ExchangeClaimLockedRecord | null> {
@@ -915,21 +907,17 @@ export class ExchangeClaimRepository {
                     : "matching_closed",
       provider: {
         publicId: providerPublicId,
-        displayName:
-          row.claimantIdentity.displayName ?? row.claimantIdentity.user.username,
+        displayName: row.claimantIdentity.displayName ?? row.claimantIdentity.user.username,
         avatarUrl: row.claimantIdentity.user.avatarUrl
       },
       shop: row.shop,
       technician: {
         profileId: row.technicianProfile.id,
         publicId: technicianPublicId,
-        displayName:
-          row.technicianProfile.displayName ?? technicianIdentity?.displayName ?? ""
+        displayName: row.technicianProfile.displayName ?? technicianIdentity?.displayName ?? ""
       },
       service: {
-        ref: row.service
-          ? `shop:${row.service.id}`
-          : `technician:${row.technicianService!.id}`,
+        ref: row.service ? `shop:${row.service.id}` : `technician:${row.technicianService!.id}`,
         name: selectedService.name,
         durationMinutes: selectedService.durationMinutes
       },

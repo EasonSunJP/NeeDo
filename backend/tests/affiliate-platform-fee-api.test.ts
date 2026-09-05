@@ -210,9 +210,7 @@ describe("Affiliate platform fee rule HTTP API", () => {
   it("returns only minimal published-shop options through the fee-rule permission", async () => {
     const fixture = createFixture();
     const response = await request(fixture.app)
-      .get(
-        "/api/v1/backoffice/affiliate/fee-rule-shops?keyword=GINZA&page=1&pageSize=10"
-      )
+      .get("/api/v1/backoffice/affiliate/fee-rule-shops?keyword=GINZA&page=1&pageSize=10")
       .set("Authorization", `Bearer ${fixture.tokens[2]}`)
       .expect(200);
 

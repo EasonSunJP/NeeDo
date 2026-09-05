@@ -69,9 +69,7 @@ const actor: AuthenticatedAccessContext = {
   permissions: ["backoffice:membership-tier:publish"]
 };
 const context = { ip: "127.0.0.1", userAgent: "jest" };
-type SaveDraftArgument = Parameters<
-  PlatformMembershipRepositoryPort["saveTierDraftWithAudit"]
->[0];
+type SaveDraftArgument = Parameters<PlatformMembershipRepositoryPort["saveTierDraftWithAudit"]>[0];
 type PublishDraftArgument = Parameters<
   PlatformMembershipRepositoryPort["publishTierDraftWithAudit"]
 >[0];
@@ -128,22 +126,26 @@ describe("PlatformMembershipService tier versioning", () => {
       status: "draft",
       version: 2
     });
-    expect(repo.saveTierDraftWithAudit).toHaveBeenCalledWith(expect.objectContaining({
-      actorId: 9,
-      tierCode: "gold",
-      draft: expect.objectContaining({ benefits }),
-      audit: expect.objectContaining({ action: "platform.membership_tier.draft_save" })
-    }));
+    expect(repo.saveTierDraftWithAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 9,
+        tierCode: "gold",
+        draft: expect.objectContaining({ benefits }),
+        audit: expect.objectContaining({ action: "platform.membership_tier.draft_save" })
+      })
+    );
   });
 
   it("rejects an incomplete benefit catalog before persistence", async () => {
     const repo = repository();
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.saveTierDraft(actor, context, "gold", {
-      ...draft,
-      benefits: benefits.slice(0, 2)
-    })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      service.saveTierDraft(actor, context, "gold", {
+        ...draft,
+        benefits: benefits.slice(0, 2)
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
     expect(repo.saveTierDraftWithAudit).not.toHaveBeenCalled();
   });
 
@@ -159,10 +161,12 @@ describe("PlatformMembershipService tier versioning", () => {
     });
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.publishTierVersion(actor, context, "gold", {
-      expectedVersion: 2,
-      expectedLockVersion: 1
-    })).rejects.toMatchObject({
+    await expect(
+      service.publishTierVersion(actor, context, "gold", {
+        expectedVersion: 2,
+        expectedLockVersion: 1
+      })
+    ).rejects.toMatchObject({
       message: "error.platform_membership.theme_contrast",
       statusCode: 400
     });
@@ -178,9 +182,11 @@ describe("PlatformMembershipService tier versioning", () => {
     });
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.publishTierVersion(actor, context, "gold", {
-      expectedVersion: 2,
-      expectedLockVersion: 1
-    })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      service.publishTierVersion(actor, context, "gold", {
+        expectedVersion: 2,
+        expectedLockVersion: 1
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });

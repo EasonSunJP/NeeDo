@@ -26,9 +26,7 @@ describe("Exchange selective exact matching persistence contract", () => {
     expect(enumBlock("ExchangePostStatus")).toMatch(/CLOSED\s+@map\("closed"\)/);
     expect(enumBlock("ExchangeClaimStatus")).toMatch(/MATCHED\s+@map\("matched"\)/);
     expect(enumBlock("ExchangeClaimStatus")).toMatch(/NOT_SELECTED\s+@map\("not_selected"\)/);
-    expect(enumBlock("ExchangeClaimStatus")).toMatch(
-      /MATCHING_CLOSED\s+@map\("matching_closed"\)/
-    );
+    expect(enumBlock("ExchangeClaimStatus")).toMatch(/MATCHING_CLOSED\s+@map\("matching_closed"\)/);
   });
 
   it("defines one matching aggregate per request with optimistic versioning", () => {
@@ -67,7 +65,9 @@ describe("Exchange selective exact matching persistence contract", () => {
     expect(event).toMatch(/payloadFingerprint\s+String\?/);
     expect(event).toMatch(/@@unique\(\[matchingId, sequence\]/);
     expect(event).toMatch(/@@map\("exchange_match_events"\)/);
-    expect(enumBlock("ExchangeMatchEventType")).toMatch(/BOOKINGS_CREATED\s+@map\("bookings_created"\)/);
+    expect(enumBlock("ExchangeMatchEventType")).toMatch(
+      /BOOKINGS_CREATED\s+@map\("bookings_created"\)/
+    );
   });
 
   it("creates, backfills, and restricts the three matching tables", () => {

@@ -15,9 +15,7 @@ describe("friendship identity-scope reconciliation", () => {
     expect(migration).toContain("MIN(`participant`.`identity_id`)");
     expect(migration).toContain("MAX(`participant`.`identity_id`)");
     expect(migration).toContain("ROW_NUMBER() OVER");
-    expect(migration).toMatch(
-      /PARTITION BY\s+`low_identity_id`,\s+`high_identity_id`/
-    );
+    expect(migration).toMatch(/PARTITION BY\s+`low_identity_id`,\s+`high_identity_id`/);
     expect(migration).toContain("`pair_rank` = 1");
     expect(migration).toContain("friendship_pair_key");
     expect(migration).toContain("requester_identity_id");
@@ -28,8 +26,6 @@ describe("friendship identity-scope reconciliation", () => {
     expect(schema).toContain(
       "@@index([requesterIdentityId, targetIdentityId, status, expiresAt, deletedAt]"
     );
-    expect(schema).toContain(
-      "@@index([targetIdentityId, status, expiresAt, deletedAt]"
-    );
+    expect(schema).toContain("@@index([targetIdentityId, status, expiresAt, deletedAt]");
   });
 });

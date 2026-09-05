@@ -15,7 +15,9 @@ const counts = (
   ...overrides
 });
 
-const repository = (result: ShopEmployeeFoundationCounts): ShopEmployeeFoundationCheckRepository => ({
+const repository = (
+  result: ShopEmployeeFoundationCounts
+): ShopEmployeeFoundationCheckRepository => ({
   countIssues: jest.fn().mockResolvedValue(result)
 });
 

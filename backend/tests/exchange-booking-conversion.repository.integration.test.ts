@@ -70,7 +70,9 @@ describeIntegration("Exchange booking conversion concurrency", () => {
         )
       ]);
       const fulfilled = results.filter(
-        (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof serviceA.createBookings>>> =>
+        (
+          result
+        ): result is PromiseFulfilledResult<Awaited<ReturnType<typeof serviceA.createBookings>>> =>
           result.status === "fulfilled"
       );
       const rejected = results.filter(

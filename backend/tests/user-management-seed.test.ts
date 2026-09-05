@@ -178,13 +178,17 @@ describe("user management seed contract", () => {
       scopeId: 22
     });
 
-    expect(tx.merchantIdentityProfile.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { identityId: 12 },
-      create: expect.objectContaining({ identityId: 12, userId: 7, displayName: "Merchant" })
-    }));
-    expect(tx.technicianShopAffiliation.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { activeKey: "technician:22:shop:5" }
-    }));
+    expect(tx.merchantIdentityProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { identityId: 12 },
+        create: expect.objectContaining({ identityId: 12, userId: 7, displayName: "Merchant" })
+      })
+    );
+    expect(tx.technicianShopAffiliation.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { activeKey: "technician:22:shop:5" }
+      })
+    );
     expect(tx.technicianCompensationProfile.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         shopId: 5,

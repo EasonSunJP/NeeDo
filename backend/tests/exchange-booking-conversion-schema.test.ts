@@ -23,6 +23,8 @@ describe("Exchange matched booking conversion schema", () => {
     expect(migration).toContain("UPDATE `exchange_match_participants` AS `participant`");
     expect(migration).toContain("exchange:matching:book-own");
     expect(migration).toContain("WHERE `roles`.`code` IN ('admin', 'customer', 'merchant_owner')");
-    expect(migration).toContain("WHERE `roles`.`code` IN ('admin', 'technician', 'merchant_staff')");
+    expect(migration).toContain(
+      "WHERE `roles`.`code` IN ('admin', 'technician', 'merchant_staff')"
+    );
   });
 });

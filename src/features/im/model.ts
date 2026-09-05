@@ -289,6 +289,7 @@ export type ImContactCardSnapshot = {
 };
 
 export type MessageExt = {
+  mediaState?: "available" | "expired";
   width?: number;
   height?: number;
   duration?: number;
@@ -400,6 +401,7 @@ export type ImStoreUpdate =
   | { type: "message.created"; message: ConversationMessage }
   | { type: "message.updated"; message: ConversationMessage }
   | { type: "message.recalled"; message: ConversationMessage }
+  | { type: "message.deleted"; conversationId: string; messageId: string; reason: "privacy_expired" }
   | { type: "refresh" };
 
 export type ReadCursor = {

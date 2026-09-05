@@ -74,6 +74,10 @@ import {
   type LoginMethod
 } from "./rbac";
 import { purgeLegacyRememberedCredentials } from "./rememberCredentials";
+import {
+  getImOpenedMediaCacheService,
+  transitionImOpenedMediaCacheAccount,
+} from "../features/im/local-cache/service";
 
 export type { PortalScope } from "./portal";
 export type { AuthSession } from "./rbac";
@@ -259,19 +263,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const envelopeRef = useRef<PersistedAuthEnvelopeV8 | null>(initialEnvelope);
   const envelopeRawRef = useRef<string | null>(initialEnvelopeSnapshot?.raw ?? null);
 
-  const publishSession = useCallback((nextSession: AuthSession | null) => {
+  const publishSession = useCallback((
+    nextSession: AuthSession | null,
+    previousAccountAlreadyLocked = false,
+  ) => {
+    const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
+    const nextAccountId = nextSession ? String(nextSession.id) : null;
+    void transitionImOpenedMediaCacheAccount(
+      previousAccountAlreadyLocked ? null : previousAccountId,
+      nextAccountId,
+    )
+      .catch(() => undefined);
     sessionRef.current = nextSession;
     setSession(nextSession);
   }, []);
 
-  const publishAnonymous = useCallback(() => {
-    publishSession(null);
+  const publishAnonymous = useCallback((previousAccountAlreadyLocked = false) => {
+    publishSession(null, previousAccountAlreadyLocked);
     setRestoreError(null);
   }, [publishSession]);
 
   const terminateLocalSession = useCallback(() => {
+    const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
+    if (previousAccountId) getImOpenedMediaCacheService().lock(previousAccountId);
     const credentials = terminateAuthImmediately();
-    publishAnonymous();
+    publishAnonymous(Boolean(previousAccountId));
     setIsRestoring(false);
     return credentials;
   }, [publishAnonymous]);
@@ -369,6 +385,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           operation.kind === "startup-restore" ||
           operation.kind === "remembered-portal-restore"
       );
+      const previousAccountId = sessionRef.current
+        ? String(sessionRef.current.id)
+        : null;
+      const replacementAccountId = String(nextSession.id);
+      const previousAccountLocked = Boolean(
+        previousAccountId && previousAccountId !== replacementAccountId,
+      );
+      if (previousAccountLocked) {
+        getImOpenedMediaCacheService().lock(previousAccountId!);
+      }
       const committed = await commitRotatedAuthOperation(operation, {
         expectedUserId: nextSession.id,
         persistClient: async () =>
@@ -378,12 +404,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
       });
       if (!committed) {
-        publishAnonymous();
+        publishAnonymous(previousAccountLocked);
         return "storage_failed" as const;
       }
       envelopeRef.current = nextEnvelope;
       envelopeRawRef.current = JSON.stringify(nextEnvelope);
-      publishSession(nextSession);
+      publishSession(nextSession, previousAccountLocked);
       setRestoreError(null);
       return "committed" as const;
     },

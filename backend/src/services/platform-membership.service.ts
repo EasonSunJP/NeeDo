@@ -9,9 +9,7 @@ import {
   type PlatformMembershipEntitlementChangeResult,
   type PlatformMembershipEntitlementCommand
 } from "../domain/platform-membership-entitlement";
-import type {
-  MembershipRenewalExperienceSource
-} from "../domain/user-experience";
+import type { MembershipRenewalExperienceSource } from "../domain/user-experience";
 import type {
   PlatformMembershipBenefitAdministrationPayload,
   PlatformMembershipLocalizedText,
@@ -41,8 +39,7 @@ export interface PlatformMembershipExperienceRecorderPort {
   ) => Promise<unknown>;
 }
 
-export type PlatformMembershipTierDraftInput =
-  PlatformMembershipTierDraftPersistenceInput;
+export type PlatformMembershipTierDraftInput = PlatformMembershipTierDraftPersistenceInput;
 
 export type MembershipBenefitLocale = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 
@@ -205,9 +202,7 @@ export class PlatformMembershipService {
     const benefits = await this.repository.listBenefitsForAdministration();
     if (
       benefits.length !== PLATFORM_MEMBERSHIP_BENEFIT_CODES.length ||
-      benefits.some(
-        (benefit, index) => benefit.code !== PLATFORM_MEMBERSHIP_BENEFIT_CODES[index]
-      )
+      benefits.some((benefit, index) => benefit.code !== PLATFORM_MEMBERSHIP_BENEFIT_CODES[index])
     ) {
       throw this.catalogInvalid();
     }
@@ -233,7 +228,10 @@ export class PlatformMembershipService {
       throw this.validationError();
     }
     const nameTranslations = this.normalizeLocalizedText(input.nameTranslations, 120);
-    const descriptionTranslations = this.normalizeLocalizedText(input.descriptionTranslations, 1_000);
+    const descriptionTranslations = this.normalizeLocalizedText(
+      input.descriptionTranslations,
+      1_000
+    );
     const result = await this.repository.updateBenefitWithAudit({
       actorId: actor.userId,
       benefitCode: normalizedBenefitCode,
@@ -536,7 +534,9 @@ export class PlatformMembershipService {
 
   private contrastRatio(first: string, second: string): number {
     const luminance = (value: string): number => {
-      const channels = [1, 3, 5].map((offset) => parseInt(value.slice(offset, offset + 2), 16) / 255);
+      const channels = [1, 3, 5].map(
+        (offset) => parseInt(value.slice(offset, offset + 2), 16) / 255
+      );
       const linear = channels.map((channel) =>
         channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
       );
@@ -586,7 +586,10 @@ export class PlatformMembershipService {
   }
 
   private assertOperationsIdentity(actor: AuthenticatedAccessContext): void {
-    if (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform") {
+    if (
+      actor.currentIdentityScopeType === "global" ||
+      actor.currentIdentityScopeType === "platform"
+    ) {
       return;
     }
     throw new AppError({

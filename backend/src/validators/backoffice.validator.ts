@@ -70,9 +70,7 @@ export const backofficeManagedUserListQuerySchema = z
     }
   });
 
-export type BackofficeManagedUserListQuery = z.infer<
-  typeof backofficeManagedUserListQuerySchema
->;
+export type BackofficeManagedUserListQuery = z.infer<typeof backofficeManagedUserListQuerySchema>;
 
 export const backofficeManagedUserParamSchema = z
   .object({ userId: z.coerce.number().int().positive() })

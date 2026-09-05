@@ -428,21 +428,22 @@ export class ImChatRecordService {
     const sourcePolicy = parseChatRecordSourcePolicy(message.messageType, message.metadata);
     if (!sourcePolicy) throw this.sourceUnavailable();
     const display = sourcePolicy.snapshotMetadata.display;
-    const text = sourcePolicy.messageType === "text" || sourcePolicy.messageType === "emoji"
-      ? this.safeTextPreview(message.content)
-      : sourcePolicy.messageType === "image" || sourcePolicy.messageType === "video"
-        ? this.recordString(display?.caption)
-        : sourcePolicy.messageType === "file"
-          ? this.recordString(display?.fileName)
-          : sourcePolicy.messageType === "location"
-            ? this.nestedRecordString(display?.location, "title")
-            : sourcePolicy.messageType === "contact-card"
-              ? this.nestedRecordString(display?.contactCard, "displayName")
-              : sourcePolicy.messageType === "service-card"
-                ? this.nestedRecordString(display?.serviceCard, "name")
-                : sourcePolicy.messageType === "schedule-invite"
-                  ? this.nestedRecordString(display?.scheduleInvite, "title")
-                  : undefined;
+    const text =
+      sourcePolicy.messageType === "text" || sourcePolicy.messageType === "emoji"
+        ? this.safeTextPreview(message.content)
+        : sourcePolicy.messageType === "image" || sourcePolicy.messageType === "video"
+          ? this.recordString(display?.caption)
+          : sourcePolicy.messageType === "file"
+            ? this.recordString(display?.fileName)
+            : sourcePolicy.messageType === "location"
+              ? this.nestedRecordString(display?.location, "title")
+              : sourcePolicy.messageType === "contact-card"
+                ? this.nestedRecordString(display?.contactCard, "displayName")
+                : sourcePolicy.messageType === "service-card"
+                  ? this.nestedRecordString(display?.serviceCard, "name")
+                  : sourcePolicy.messageType === "schedule-invite"
+                    ? this.nestedRecordString(display?.scheduleInvite, "title")
+                    : undefined;
     return {
       sender: message.senderDisplayName.trim().slice(0, 60) || "NeeDo",
       type: sourcePolicy.messageType,

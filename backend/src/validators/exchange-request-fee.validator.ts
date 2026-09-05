@@ -18,9 +18,7 @@ export const createExchangeRequestFeeVersionSchema = z
   })
   .strict();
 
-export type ExchangeRequestFeeHistoryQuery = z.infer<
-  typeof exchangeRequestFeeHistoryQuerySchema
->;
+export type ExchangeRequestFeeHistoryQuery = z.infer<typeof exchangeRequestFeeHistoryQuerySchema>;
 export type CreateExchangeRequestFeeVersionBody = z.infer<
   typeof createExchangeRequestFeeVersionSchema
 >;

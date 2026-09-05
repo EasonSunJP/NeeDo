@@ -7,11 +7,7 @@ import { AppError } from "../utils/app-error";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import { socialMediaUploadQuerySchema } from "../validators/social-media.validator";
 
-const supportedMimeTypes = new Set<ContentMediaMimeType>([
-  "image/jpeg",
-  "image/png",
-  "image/webp"
-]);
+const supportedMimeTypes = new Set<ContentMediaMimeType>(["image/jpeg", "image/png", "image/webp"]);
 
 export class SocialMediaController {
   public constructor(private readonly service: SocialMediaService) {}

@@ -30,10 +30,7 @@ interface Operation {
         string,
         {
           schema: Schema;
-          examples?: Record<
-            string,
-            { value: { code: number; message: string; data: unknown } }
-          >;
+          examples?: Record<string, { value: { code: number; message: string; data: unknown } }>;
         }
       >;
     }
@@ -57,17 +54,23 @@ const matchesDocumentedSchema = (
     return Boolean(name && schemas[name] && matchesDocumentedSchema(schemas[name], value, schemas));
   }
   if (schema.oneOf) {
-    return schema.oneOf.filter((candidate) => matchesDocumentedSchema(candidate, value, schemas)).length === 1;
+    return (
+      schema.oneOf.filter((candidate) => matchesDocumentedSchema(candidate, value, schemas))
+        .length === 1
+    );
   }
-  if (schema.anyOf) return schema.anyOf.some((candidate) => matchesDocumentedSchema(candidate, value, schemas));
-  if (schema.allOf) return schema.allOf.every((candidate) => matchesDocumentedSchema(candidate, value, schemas));
+  if (schema.anyOf)
+    return schema.anyOf.some((candidate) => matchesDocumentedSchema(candidate, value, schemas));
+  if (schema.allOf)
+    return schema.allOf.every((candidate) => matchesDocumentedSchema(candidate, value, schemas));
   if (schema.enum && !schema.enum.some((candidate) => Object.is(candidate, value))) return false;
 
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
   const typeMatches = types.some((type) => {
     if (type === undefined) return true;
     if (type === "null") return value === null;
-    if (type === "object") return typeof value === "object" && value !== null && !Array.isArray(value);
+    if (type === "object")
+      return typeof value === "object" && value !== null && !Array.isArray(value);
     if (type === "array") return Array.isArray(value);
     if (type === "integer") return Number.isInteger(value);
     return type === typeof value;
@@ -84,7 +87,9 @@ const matchesDocumentedSchema = (
     }
     if (
       schema.additionalProperties === false &&
-      Object.keys(record).some((key) => !Object.prototype.hasOwnProperty.call(schema.properties, key))
+      Object.keys(record).some(
+        (key) => !Object.prototype.hasOwnProperty.call(schema.properties, key)
+      )
     ) {
       return false;
     }
@@ -181,13 +186,55 @@ describe("Exchange matched booking conversion OpenAPI", () => {
 
   it("makes all seven stable errors and their exact data shapes machine-visible", () => {
     const expected = [
-      ["404", "not_found", ERROR_CODES.EXCHANGE_MATCH_BOOKING_NOT_FOUND, "error.exchange.match_booking_not_found", null],
-      ["403", "not_allowed", ERROR_CODES.EXCHANGE_MATCH_BOOKING_NOT_ALLOWED, "error.exchange.match_booking_not_allowed", null],
-      ["409", "invalid_state", ERROR_CODES.EXCHANGE_MATCH_BOOKING_INVALID_STATE, "error.exchange.match_booking_invalid_state", null],
-      ["409", "version_conflict", ERROR_CODES.EXCHANGE_MATCH_BOOKING_VERSION_CONFLICT, "error.exchange.match_booking_version_conflict", { currentVersion: 8 }],
-      ["409", "already_created", ERROR_CODES.EXCHANGE_MATCH_BOOKING_ALREADY_CREATED, "error.exchange.match_booking_already_created", null],
-      ["409", "slot_unavailable", ERROR_CODES.EXCHANGE_MATCH_BOOKING_SLOT_UNAVAILABLE, "error.exchange.match_booking_slot_unavailable", null],
-      ["409", "idempotency_conflict", ERROR_CODES.EXCHANGE_MATCH_BOOKING_IDEMPOTENCY_CONFLICT, "error.exchange.match_booking_idempotency_conflict", null]
+      [
+        "404",
+        "not_found",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_NOT_FOUND,
+        "error.exchange.match_booking_not_found",
+        null
+      ],
+      [
+        "403",
+        "not_allowed",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_NOT_ALLOWED,
+        "error.exchange.match_booking_not_allowed",
+        null
+      ],
+      [
+        "409",
+        "invalid_state",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_INVALID_STATE,
+        "error.exchange.match_booking_invalid_state",
+        null
+      ],
+      [
+        "409",
+        "version_conflict",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_VERSION_CONFLICT,
+        "error.exchange.match_booking_version_conflict",
+        { currentVersion: 8 }
+      ],
+      [
+        "409",
+        "already_created",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_ALREADY_CREATED,
+        "error.exchange.match_booking_already_created",
+        null
+      ],
+      [
+        "409",
+        "slot_unavailable",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_SLOT_UNAVAILABLE,
+        "error.exchange.match_booking_slot_unavailable",
+        null
+      ],
+      [
+        "409",
+        "idempotency_conflict",
+        ERROR_CODES.EXCHANGE_MATCH_BOOKING_IDEMPOTENCY_CONFLICT,
+        "error.exchange.match_booking_idempotency_conflict",
+        null
+      ]
     ] as const;
 
     for (const [status, outcome, code, message, data] of expected) {

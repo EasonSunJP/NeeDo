@@ -10,7 +10,9 @@ const localeMap = {
   ko: "KO"
 } as const satisfies Record<string, TaxonomyLocale>;
 const localeSchema = z.union([
-  z.enum(["zh-CN", "zh-TW", "ja", "en", "ko"]).transform((value): TaxonomyLocale => localeMap[value]),
+  z
+    .enum(["zh-CN", "zh-TW", "ja", "en", "ko"])
+    .transform((value): TaxonomyLocale => localeMap[value]),
   z.enum(["ZH_CN", "ZH_TW", "JA", "EN", "KO"])
 ]);
 const reasonSchema = z.string().trim().min(1).max(500);
@@ -21,9 +23,7 @@ const codeSchema = z
   .max(120)
   .regex(/^[a-z0-9][a-z0-9._-]*$/u);
 const translationsSchema = z
-  .array(
-    z.object({ locale: localeSchema, value: z.string().trim().min(1).max(120) }).strict()
-  )
+  .array(z.object({ locale: localeSchema, value: z.string().trim().min(1).max(120) }).strict())
   .min(1)
   .max(5)
   .superRefine((values, context) => {

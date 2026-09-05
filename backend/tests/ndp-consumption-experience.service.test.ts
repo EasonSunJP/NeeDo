@@ -67,9 +67,7 @@ const policy = () => ({
 const campaign = (factorBps = 10_000) => ({
   resolveCampaignAt: jest.fn(async (occurredAt: Date) => {
     const effectiveFactor =
-      occurredAt.getTime() < new Date("2026-09-02T00:00:00.000Z").getTime()
-        ? factorBps
-        : 10_000;
+      occurredAt.getTime() < new Date("2026-09-02T00:00:00.000Z").getTime() ? factorBps : 10_000;
     return {
       factorBps: effectiveFactor,
       versionPublicId: effectiveFactor === 10_000 ? null : "campaign-version-10x"
@@ -114,12 +112,8 @@ const repository = () => {
       const numerator = event.extraThresholdNdp
         ? before + BigInt(event.ndpAmount) * event.extraAwardUnits
         : 0n;
-      const extraUnits = event.extraThresholdNdp
-        ? numerator / BigInt(event.extraThresholdNdp)
-        : 0n;
-      const after = event.extraThresholdNdp
-        ? numerator % BigInt(event.extraThresholdNdp)
-        : 0n;
+      const extraUnits = event.extraThresholdNdp ? numerator / BigInt(event.extraThresholdNdp) : 0n;
+      const after = event.extraThresholdNdp ? numerator % BigInt(event.extraThresholdNdp) : 0n;
       remainders.set(accumulatorKey, after);
       const finalUnits =
         (event.baseUnits *
@@ -181,16 +175,19 @@ describe("NDP consumption experience", () => {
     [2, 20_000],
     [5, 50_000],
     [10, 100_000]
-  ])("uses the x%i tier multiplier for one NDP fractional base units", async (multiplier, expectedBps) => {
-    const repo = repository();
-    const service = new UserExperienceService(repo, membership(multiplier), policy(), campaign());
-    const result = await service.recordNdpConsumption(source(1, `TX-${multiplier}`));
-    expect(repo.recordNdpConsumptionEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ baseUnits: 100n, membershipMultiplierBps: expectedBps }),
-      undefined
-    );
-    expect(result.entry?.finalUnits).toBe(BigInt(100 * multiplier));
-  });
+  ])(
+    "uses the x%i tier multiplier for one NDP fractional base units",
+    async (multiplier, expectedBps) => {
+      const repo = repository();
+      const service = new UserExperienceService(repo, membership(multiplier), policy(), campaign());
+      const result = await service.recordNdpConsumption(source(1, `TX-${multiplier}`));
+      expect(repo.recordNdpConsumptionEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ baseUnits: 100n, membershipMultiplierBps: expectedBps }),
+        undefined
+      );
+      expect(result.entry?.finalUnits).toBe(BigInt(100 * multiplier));
+    }
+  );
 
   it("adds the tier bonus without campaign or membership multiplication and keeps split-payment remainder", async () => {
     const repo = repository();

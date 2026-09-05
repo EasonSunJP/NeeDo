@@ -1,8 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type {
-  DashboardAggregateInput,
-  DashboardMembershipFacts
-} from "../domain/dashboard";
+import type { DashboardAggregateInput, DashboardMembershipFacts } from "../domain/dashboard";
 
 type DashboardQueryClient = Pick<PrismaClient, "$queryRaw">;
 type NumericValue = bigint | number | string | { toString: () => string } | null | undefined;
@@ -171,7 +168,8 @@ export class DashboardMembershipRepository implements DashboardMembershipReader 
   private toSafeAggregate(value: NumericValue): number {
     if (value === null || value === undefined) throw new RangeError(aggregateError);
     if (typeof value === "bigint") {
-      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError(aggregateError);
+      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
+        throw new RangeError(aggregateError);
       return Number(value);
     }
     if (typeof value === "number") {

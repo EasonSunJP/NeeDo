@@ -182,6 +182,15 @@ import { createImVoiceMessageRoutes } from "./routes/im-voice-message.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createSocialMediaRoutes } from "./routes/social-media.routes";
 import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
+import {
+  createMerchantOfficialNoticeManagementRoutes,
+  createOfficialNoticeManagementRoutes,
+  createOfficialNoticeRecipientRoutes
+} from "./routes/official-notice.routes";
+import type {
+  OfficialNoticeRepositoryPort,
+  OfficialNoticeService
+} from "./services/official-notice.service";
 import { createCarouselPublicationRoutes } from "./routes/carousel-publication.routes";
 import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
@@ -325,6 +334,8 @@ export interface AppDependencies {
   socialMediaStorage?: ContentMediaStoragePort;
   officialAnnouncementRepository?: OfficialAnnouncementRepositoryPort;
   officialAnnouncementService?: OfficialAnnouncementService;
+  officialNoticeRepository?: OfficialNoticeRepositoryPort;
+  officialNoticeService?: OfficialNoticeService;
   carouselPublicationRepository?: CarouselPublicationRepositoryPort;
   carouselPublicationService?: CarouselPublicationService;
   affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
@@ -568,6 +579,12 @@ export const createApp = (
   mount("backoffice", createIdentityApplicationMediaRoutes(config, resolvedDependencies));
   mount("backoffice", createContentMediaRoutes(config, resolvedDependencies));
   mount("backoffice", createOfficialAnnouncementRoutes(config, resolvedDependencies));
+  mount("backoffice", createOfficialNoticeManagementRoutes(config, resolvedDependencies));
+  mount(
+    "merchant-admin",
+    createMerchantOfficialNoticeManagementRoutes(config, resolvedDependencies)
+  );
+  mount("shared", createOfficialNoticeRecipientRoutes(config, resolvedDependencies));
   mount("backoffice", createCarouselPublicationRoutes(config, resolvedDependencies));
   mount("shared", createIdentityActivationRoutes(config, resolvedDependencies));
   mount("shared", createAffiliateProfileRoutes(config, resolvedDependencies));
@@ -673,7 +690,7 @@ const createImMediaStaticMiddleware = (directory: string) => {
     index: false,
     redirect: false,
     setHeaders: (response) => {
-      response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      response.setHeader("Cache-Control", "private, no-store");
       response.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       response.setHeader("X-Content-Type-Options", "nosniff");
     }

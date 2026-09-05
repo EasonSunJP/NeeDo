@@ -92,7 +92,9 @@ describe("shop membership card plan schema contract", () => {
     expect(correction).toContain("UTC_TIMESTAMP(3)");
     expect(correction).toContain("`version` = 1");
     expect(correction).toContain("Initial membership reward platform fee");
-    expect(correction).not.toMatch(/UPDATE\s+`?(wallets|wallet_ledger|ledger_transactions|shop_membership_cards)`?/i);
+    expect(correction).not.toMatch(
+      /UPDATE\s+`?(wallets|wallet_ledger|ledger_transactions|shop_membership_cards)`?/i
+    );
   });
 
   it("grants read-only plans to staff, full plan control to owners, and fee writes to finance", () => {

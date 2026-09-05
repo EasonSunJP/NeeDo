@@ -35,16 +35,12 @@ export const technicianProfileUpdateBodySchema = z
     canServeForeigners: z.boolean().optional(),
     bidBudgetMinJpy: z.number().int().min(0).max(100_000_000).nullable().optional(),
     bidBudgetMaxJpy: z.number().int().min(0).max(100_000_000).nullable().optional(),
-    paymentMethods: z.array(z.enum([
-      "platform",
-      "offline",
-      "prepay",
-      "cash",
-      "paypay",
-      "paypal",
-      "wechatpay",
-      "alipay"
-    ])).max(8).optional(),
+    paymentMethods: z
+      .array(
+        z.enum(["platform", "offline", "prepay", "cash", "paypay", "paypal", "wechatpay", "alipay"])
+      )
+      .max(8)
+      .optional(),
     serviceBase: technicianServiceBaseSchema.nullable().optional(),
     visibility: technicianProfileVisibilitySchema.optional()
   })

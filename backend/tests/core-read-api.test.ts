@@ -131,13 +131,19 @@ describe("Step 08 core read API", () => {
         ];
         return radiusKm >= 4 ? candidates : candidates.slice(0, 2);
       }),
-      loadTechnicianCardsByRankedIds: jest.fn(async (ids: number[]) =>
-        new Map(ids.map((id) => [id, {
-          ...technicianCard,
-          id,
-          publicId: `s${String(id).padStart(10, "0")}`,
-          displayName: `Technician ${id}`
-        }]))
+      loadTechnicianCardsByRankedIds: jest.fn(
+        async (ids: number[]) =>
+          new Map(
+            ids.map((id) => [
+              id,
+              {
+                ...technicianCard,
+                id,
+                publicId: `s${String(id).padStart(10, "0")}`,
+                displayName: `Technician ${id}`
+              }
+            ])
+          )
       ),
       findShopDetail: jest.fn(async () => ({
         ...shopCard,
@@ -259,7 +265,9 @@ describe("Step 08 core read API", () => {
     const fixture = createFixture();
 
     const shopResponse = await request(fixture.app)
-      .get("/api/v1/search?entityType=shop&keywords=LifeDance&keywords=%E5%AE%B6%E6%94%BF&categoryIds=3&categoryIds=9")
+      .get(
+        "/api/v1/search?entityType=shop&keywords=LifeDance&keywords=%E5%AE%B6%E6%94%BF&categoryIds=3&categoryIds=9"
+      )
       .expect(200);
     expect(shopResponse.body.data).toEqual(paginated([shopCard]));
     expect(fixture.coreReadRepository.searchShops).toHaveBeenCalledWith(
@@ -297,7 +305,9 @@ describe("Step 08 core read API", () => {
 
     await request(fixture.app).get("/api/v1/search?entityType=customer").expect(400);
     await request(fixture.app)
-      .get(`/api/v1/search?${Array.from({ length: 21 }, (_, index) => `keywords=k${index}`).join("&")}`)
+      .get(
+        `/api/v1/search?${Array.from({ length: 21 }, (_, index) => `keywords=k${index}`).join("&")}`
+      )
       .expect(400);
 
     expect(fixture.coreReadRepository.search).not.toHaveBeenCalled();
@@ -437,9 +447,7 @@ describe("Step 08 core read API", () => {
       publicId: shopCard.publicId,
       name: "Aoyama Care Studio"
     });
-    expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(
-      shopCard.publicId
-    );
+    expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(shopCard.publicId);
   });
 
   it("resolves formal technician identifiers to the same complete public detail", async () => {

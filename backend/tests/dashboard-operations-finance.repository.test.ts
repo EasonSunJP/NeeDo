@@ -42,7 +42,11 @@ describe("DashboardOperationsFinanceRepository", () => {
   it("aggregates current and previous immutable checkout totals in one bounded query", async () => {
     const fixture = createReader([
       { periodKey: "current", grossRevenueJpy: 12_000n, discountAmountJpy: "1500" },
-      { period_key: "previous", gross_revenue_jpy: { toString: () => "8000" }, discount_amount_jpy: 500 }
+      {
+        period_key: "previous",
+        gross_revenue_jpy: { toString: () => "8000" },
+        discount_amount_jpy: 500
+      }
     ]);
 
     await expect(fixture.reader.getOperationsFinance(platformInput)).resolves.toEqual({
@@ -71,7 +75,9 @@ describe("DashboardOperationsFinanceRepository", () => {
     expect(sql).toContain("booking.payment_refund_reference IS NULL");
     expect(sql).toContain("booking.payment_refund_reason IS NULL");
     expect(sql).toContain("booking.payment_amount_jpy = checkout.checkout_amount_jpy");
-    expect(sql).toContain("checkout.base_amount_jpy + checkout.add_on_amount_jpy - checkout.discount_amount_jpy");
+    expect(sql).toContain(
+      "checkout.base_amount_jpy + checkout.add_on_amount_jpy - checkout.discount_amount_jpy"
+    );
     expect(sql).toContain("checkout.checkout_amount_jpy");
     expect(sql).toContain("checkout.payment_selected_at <= booking.payment_confirmed_at");
     expect(sql).toContain("checkout.payment_method = booking.payment_method");

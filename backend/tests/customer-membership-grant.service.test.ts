@@ -46,18 +46,20 @@ describe("BackofficeService formal customer membership bridge", () => {
       platformMembershipService
     );
 
-    await expect(service.assignPlatformCustomerMembership(
-      44,
-      {
-        membershipLevel: "gold",
-        grantMode: "operator_complimentary",
-        durationUnit: "month",
-        durationValue: 1,
-        startsAt: now.toISOString()
-      },
-      actor,
-      { ip: "127.0.0.1" }
-    )).resolves.toEqual({
+    await expect(
+      service.assignPlatformCustomerMembership(
+        44,
+        {
+          membershipLevel: "gold",
+          grantMode: "operator_complimentary",
+          durationUnit: "month",
+          durationValue: 1,
+          startsAt: now.toISOString()
+        },
+        actor,
+        { ip: "127.0.0.1" }
+      )
+    ).resolves.toEqual({
       membershipLevel: "gold",
       membershipGrantMode: "operator_complimentary",
       membershipDurationUnit: "month",

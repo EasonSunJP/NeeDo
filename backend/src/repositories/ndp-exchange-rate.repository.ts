@@ -151,15 +151,15 @@ export class NdpExchangeRateRepository implements NdpExchangeRateRepositoryPort 
     };
   }
 
-  public async publish(
-    input: NdpExchangeRatePublishInput
-  ): Promise<NdpExchangeRatePublishResult> {
+  public async publish(input: NdpExchangeRatePublishInput): Promise<NdpExchangeRatePublishResult> {
     try {
       if (!("$transaction" in this.client)) {
         throw new Error("error.ndp_exchange_rate.transaction_required");
       }
       return await runWithTransactionConflictRetry(() =>
-        this.client.$transaction(async (transaction) => this.publishInTransaction(transaction, input))
+        this.client.$transaction(async (transaction) =>
+          this.publishInTransaction(transaction, input)
+        )
       );
     } catch (error) {
       if (
@@ -240,9 +240,7 @@ export class NdpExchangeRateRepository implements NdpExchangeRateRepositoryPort 
       select: rateSelect
     });
     const baseMetadata =
-      input.audit.metadata && typeof input.audit.metadata === "object"
-        ? input.audit.metadata
-        : {};
+      input.audit.metadata && typeof input.audit.metadata === "object" ? input.audit.metadata : {};
     await transaction.auditLog.create({
       data: toAuditLogCreateData({
         ...input.audit,
@@ -297,8 +295,7 @@ export class NdpExchangeRateRepository implements NdpExchangeRateRepositoryPort 
   private mapRecord(rate: StoredRate): NdpExchangeRateRecord {
     return {
       ...this.mapEffective(rate),
-      status:
-        rate.status === PrismaNdpExchangeRateRuleStatus.ACTIVE ? "active" : "superseded",
+      status: rate.status === PrismaNdpExchangeRateRuleStatus.ACTIVE ? "active" : "superseded",
       effectiveTo: rate.effectiveTo,
       reason: rate.reason,
       createdById: rate.createdById,

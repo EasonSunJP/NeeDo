@@ -62,9 +62,7 @@ const orderPerformanceCommandOperation = (summary: string) => ({
   summary,
   security: [{ bearerAuth: [] }],
   "x-permission": "backoffice:order-performance:write",
-  parameters: [
-    { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
-  ],
+  parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
   requestBody: {
     required: true,
     content: {
@@ -327,25 +325,46 @@ const shopMembershipCardAdjustmentErrorResponses = {
 const shopMembershipCardTopUpErrorResponses = {
   "400": { description: "error.validation or error.shop_membership_card_topup.invalid_value" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
-  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
-  "404": { description: "error.shop_membership_card_topup.not_found — card is outside the active shop or customer scope" },
-  "409": { description: "invalid card state, live adjustment, concurrency, or idempotency conflict" }
+  "403": {
+    description: "error.forbidden or error.identity.forbidden — denied permission or identity scope"
+  },
+  "404": {
+    description:
+      "error.shop_membership_card_topup.not_found — card is outside the active shop or customer scope"
+  },
+  "409": {
+    description: "invalid card state, live adjustment, concurrency, or idempotency conflict"
+  }
 };
 
 const shopMembershipCardRedemptionErrorResponses = {
   "400": { description: "error.validation or error.shop_membership_card_redemption.invalid_value" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
-  "403": { description: "error.forbidden or error.identity.forbidden — denied permission or identity scope" },
-  "404": { description: "error.shop_membership_card_redemption.not_found — card is outside the active scope" },
-  "409": { description: "invalid card, order, pending adjustment, card balance, concurrency, or idempotency conflict" }
+  "403": {
+    description: "error.forbidden or error.identity.forbidden — denied permission or identity scope"
+  },
+  "404": {
+    description:
+      "error.shop_membership_card_redemption.not_found — card is outside the active scope"
+  },
+  "409": {
+    description:
+      "invalid card, order, pending adjustment, card balance, concurrency, or idempotency conflict"
+  }
 };
 
 const shopMembershipCardRefundErrorResponses = {
   "400": { description: "error.validation or error.shop_membership_card_refund.invalid_value" },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
   "403": { description: "error.forbidden — shop.member.card.refund is owner/admin only" },
-  "404": { description: "error.shop_membership_card_refund.not_found — redemption is outside the active shop" },
-  "409": { description: "order not refunded, terminal redemption, live adjustment, concurrency, or idempotency conflict" }
+  "404": {
+    description:
+      "error.shop_membership_card_refund.not_found — redemption is outside the active shop"
+  },
+  "409": {
+    description:
+      "order not refunded, terminal redemption, live adjustment, concurrency, or idempotency conflict"
+  }
 };
 
 const membershipRewardScopeOpenApiSchema = {
@@ -574,11 +593,30 @@ const shopMembershipCardPlanOpenApiSchemas = {
       initialUses: nullableNonNegativeInteger,
       issuanceSource: {
         type: "string",
-        enum: ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"],
-        description: "offline_paid/online_paid are platform-global first-paid acquisitions; renewal requires historical paid evidence; gift/trial/replacement/grant are non-paid."
+        enum: [
+          "offline_paid",
+          "online_paid",
+          "gift",
+          "trial",
+          "renewal",
+          "historical_replacement",
+          "manual_grant"
+        ],
+        description:
+          "offline_paid/online_paid are platform-global first-paid acquisitions; renewal requires historical paid evidence; gift/trial/replacement/grant are non-paid."
       },
-      issuanceReference: { type: ["string", "null"], maxLength: 160, description: "Trimmed payment or renewal evidence. Paid and renewal sources require this or issuanceNote." },
-      issuanceNote: { type: ["string", "null"], maxLength: 500, description: "Trimmed visible evidence. Gift, trial, historical replacement and manual grant require this field." },
+      issuanceReference: {
+        type: ["string", "null"],
+        maxLength: 160,
+        description:
+          "Trimmed payment or renewal evidence. Paid and renewal sources require this or issuanceNote."
+      },
+      issuanceNote: {
+        type: ["string", "null"],
+        maxLength: 500,
+        description:
+          "Trimmed visible evidence. Gift, trial, historical replacement and manual grant require this field."
+      },
       idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
     }
   },
@@ -623,7 +661,18 @@ const shopMembershipCardPlanOpenApiSchemas = {
       totalUses: nullableNonNegativeInteger,
       initialPrincipalJpy: nullableNonNegativeInteger,
       initialUses: nullableNonNegativeInteger,
-      issuanceSource: { type: "string", enum: ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"] },
+      issuanceSource: {
+        type: "string",
+        enum: [
+          "offline_paid",
+          "online_paid",
+          "gift",
+          "trial",
+          "renewal",
+          "historical_replacement",
+          "manual_grant"
+        ]
+      },
       issuanceReference: { type: ["string", "null"], maxLength: 160 },
       issuanceNote: { type: ["string", "null"], maxLength: 500 },
       issuedAt: { type: "string", format: "date-time" },
@@ -1031,7 +1080,9 @@ const ndpExchangeRateErrorResponses = {
 };
 const formalOrderCommonErrorResponses = {
   "400": jsonErrorResponse("40001 error.validation — strict request validation failed"),
-  "401": jsonErrorResponse("40105 error.auth.token_invalid — missing, expired, or invalid bearer token"),
+  "401": jsonErrorResponse(
+    "40105 error.auth.token_invalid — missing, expired, or invalid bearer token"
+  ),
   "403": jsonErrorResponse("40301 error.forbidden — missing required permission"),
   "404": jsonErrorResponse(
     "40401 error.order.not_found — the order or participant is deliberately hidden from this actor"
@@ -2409,11 +2460,7 @@ const membershipAnalyticsPageQueryParameters = [
   }
 ];
 
-const membershipAnalyticsErrorResponse = (
-  code: number,
-  message: string,
-  description: string
-) => ({
+const membershipAnalyticsErrorResponse = (code: number, message: string, description: string) => ({
   description: `${code} ${message} — ${description}`,
   content: {
     "application/json": {
@@ -2468,9 +2515,24 @@ const membershipTrendSuccessResponse = (city: string | null) => {
         dataStatus: "ready",
         filter: { ...membershipAnalyticsExampleFilter, city },
         series: [
-          { seriesKey: "added", label: "Added members", unit: "people", points: [{ key: "2026-09-01", label: "09/01", value: 2 }] },
-          { seriesKey: "removed", label: "Removed members", unit: "people", points: [{ key: "2026-09-01", label: "09/01", value: 3 }] },
-          { seriesKey: "net", label: "Net members", unit: "people", points: [{ key: "2026-09-01", label: "09/01", value: -1 }] }
+          {
+            seriesKey: "added",
+            label: "Added members",
+            unit: "people",
+            points: [{ key: "2026-09-01", label: "09/01", value: 2 }]
+          },
+          {
+            seriesKey: "removed",
+            label: "Removed members",
+            unit: "people",
+            points: [{ key: "2026-09-01", label: "09/01", value: 3 }]
+          },
+          {
+            seriesKey: "net",
+            label: "Net members",
+            unit: "people",
+            points: [{ key: "2026-09-01", label: "09/01", value: -1 }]
+          }
         ]
       }
     }
@@ -2485,23 +2547,25 @@ const membershipListSuccessResponse = () => {
       code: 0,
       message: "success",
       data: {
-        list: [{
-          userNeedoId: "u0000000041",
-          nickname: "美咲",
-          city: "东京",
-          shopPublicId: "shop0000000071",
-          shopName: "青山护理店",
-          membershipPublicId: "00000000-0000-4000-8000-000000000031",
-          planName: "月度会员",
-          cardPublicId: "00000000-0000-4000-8000-000000000481",
-          cardNoMasked: "•••• •••• •••• AABB",
-          acquisitionSource: "offline_paid",
-          addedAt: "2026-08-30T03:00:00.000Z",
-          firstPaidAt: "2026-05-01T03:00:00.000Z",
-          memberStatus: "active",
-          cardStatus: "active",
-          expiresAt: "2026-09-30T03:00:00.000Z"
-        }],
+        list: [
+          {
+            userNeedoId: "u0000000041",
+            nickname: "美咲",
+            city: "东京",
+            shopPublicId: "shop0000000071",
+            shopName: "青山护理店",
+            membershipPublicId: "00000000-0000-4000-8000-000000000031",
+            planName: "月度会员",
+            cardPublicId: "00000000-0000-4000-8000-000000000481",
+            cardNoMasked: "•••• •••• •••• AABB",
+            acquisitionSource: "offline_paid",
+            addedAt: "2026-08-30T03:00:00.000Z",
+            firstPaidAt: "2026-05-01T03:00:00.000Z",
+            memberStatus: "active",
+            cardStatus: "active",
+            expiresAt: "2026-09-30T03:00:00.000Z"
+          }
+        ],
         total: 1,
         page: 1,
         page_size: 20
@@ -2612,10 +2676,7 @@ const dashboardAnalyticsErrorResponses = {
   )
 };
 
-const dashboardAnalyticsSuccessResponse = (
-  description: string,
-  schemaRef: string
-) => ({
+const dashboardAnalyticsSuccessResponse = (description: string, schemaRef: string) => ({
   description: `${description}; not_connected and not_available are HTTP 200 data states`,
   content: {
     "application/json": {
@@ -2825,14 +2886,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ShopServiceTaxonomySelection: {
         type: "object",
         additionalProperties: false,
-        required: ["revision", "categoryLimit", "keywordLimit", "selectedCategories", "selectedKeywords", "removedKeywordIds"],
+        required: [
+          "revision",
+          "categoryLimit",
+          "keywordLimit",
+          "selectedCategories",
+          "selectedKeywords",
+          "removedKeywordIds"
+        ],
         properties: {
           revision: { type: "integer", minimum: 0 },
           categoryLimit: { type: "integer", minimum: 1 },
           keywordLimit: { type: "integer", minimum: 1 },
-          selectedCategories: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopServiceCategory" } },
-          selectedKeywords: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopBusinessKeyword" } },
-          removedKeywordIds: { type: "array", uniqueItems: true, items: { type: "integer", minimum: 1 } }
+          selectedCategories: {
+            type: "array",
+            items: { $ref: "#/components/schemas/LocalizedShopServiceCategory" }
+          },
+          selectedKeywords: {
+            type: "array",
+            items: { $ref: "#/components/schemas/LocalizedShopBusinessKeyword" }
+          },
+          removedKeywordIds: {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          }
         }
       },
       DashboardPeriod: {
@@ -2844,12 +2922,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "rank", "entityType", "entityPublicId", "entityNumericId", "displayName", "avatarUrl",
-          "categoryId", "gmvJpy", "completedCount", "registeredAt"
+          "rank",
+          "entityType",
+          "entityPublicId",
+          "entityNumericId",
+          "displayName",
+          "avatarUrl",
+          "categoryId",
+          "gmvJpy",
+          "completedCount",
+          "registeredAt"
         ],
         properties: {
-          rank: { type: "integer", minimum: 1, description: "Global one-based rank before pagination." },
-          entityType: { type: "string", enum: ["service", "technician_service", "technician", "customer"] },
+          rank: {
+            type: "integer",
+            minimum: 1,
+            description: "Global one-based rank before pagination."
+          },
+          entityType: {
+            type: "string",
+            enum: ["service", "technician_service", "technician", "customer"]
+          },
           entityPublicId: { type: "string", minLength: 1 },
           entityNumericId: { type: "integer", minimum: 1 },
           displayName: { type: "string", minLength: 1 },
@@ -2863,7 +2956,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       AnalyticsRankingFilter: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "metric", "period", "from", "to", "timeZone", "city", "categoryId", "evaluatedAt"],
+        required: [
+          "kind",
+          "metric",
+          "period",
+          "from",
+          "to",
+          "timeZone",
+          "city",
+          "categoryId",
+          "evaluatedAt"
+        ],
         properties: {
           kind: { type: "string", enum: ["service", "technician", "customer"] },
           metric: { type: "string", enum: ["gmv", "completedCount"] },
@@ -2871,9 +2974,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           from: { type: "string", format: "date" },
           to: { type: "string", format: "date" },
           timeZone: { type: "string", const: "Asia/Tokyo" },
-          city: { oneOf: [{ type: "string", "x-min-utf16-code-units": 1,
-            "x-max-utf16-code-units": 100, "x-normalization": "trim" }, { type: "null" }] },
-          categoryId: { oneOf: [{ type: "integer", minimum: 1, maximum: 2147483647 }, { type: "null" }] },
+          city: {
+            oneOf: [
+              {
+                type: "string",
+                "x-min-utf16-code-units": 1,
+                "x-max-utf16-code-units": 100,
+                "x-normalization": "trim"
+              },
+              { type: "null" }
+            ]
+          },
+          categoryId: {
+            oneOf: [{ type: "integer", minimum: 1, maximum: 2147483647 }, { type: "null" }]
+          },
           evaluatedAt: { type: "string", format: "date-time" }
         }
       },
@@ -2884,7 +2998,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           dataStatus: { type: "string", const: "ready" },
           filter: { $ref: "#/components/schemas/AnalyticsRankingFilter" },
-          list: { type: "array", maxItems: 10, items: { $ref: "#/components/schemas/AnalyticsRankingItem" } },
+          list: {
+            type: "array",
+            maxItems: 10,
+            items: { $ref: "#/components/schemas/AnalyticsRankingItem" }
+          },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1, maximum: MAX_ANALYTICS_RANKING_PAGE },
           page_size: { type: "integer", minimum: 1, maximum: 10 }
@@ -3192,9 +3310,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   metricKey: { type: "string", const: metricKey },
                   detailRoute: {
                     type: "string",
-                    const: metricKey === "new_paid_members"
-                      ? "/admin/analytics/members"
-                      : `/admin/analytics/metrics/${metricKey}`
+                    const:
+                      metricKey === "new_paid_members"
+                        ? "/admin/analytics/members"
+                        : `/admin/analytics/metrics/${metricKey}`
                   }
                 }
               })),
@@ -3249,8 +3368,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["filter", "operationsFinance", "commissionMetrics", "growthMetrics"],
         properties: {
           filter: { $ref: "#/components/schemas/DashboardAnalyticsFilter" },
-          operationsFinance: exactDashboardMetricArraySchema(dashboardAnalyticsMetricKeys.slice(0, 4)),
-          commissionMetrics: exactDashboardMetricArraySchema(dashboardAnalyticsMetricKeys.slice(4, 11)),
+          operationsFinance: exactDashboardMetricArraySchema(
+            dashboardAnalyticsMetricKeys.slice(0, 4)
+          ),
+          commissionMetrics: exactDashboardMetricArraySchema(
+            dashboardAnalyticsMetricKeys.slice(4, 11)
+          ),
           growthMetrics: exactDashboardMetricArraySchema(dashboardAnalyticsMetricKeys.slice(11))
         }
       },
@@ -3902,14 +4025,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ExchangeClaimOption: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "scheduleSlotId",
-          "shop",
-          "technician",
-          "service",
-          "startsAt",
-          "endsAt"
-        ],
+        required: ["scheduleSlotId", "shop", "technician", "service", "startsAt", "endsAt"],
         properties: {
           scheduleSlotId: { type: "integer", minimum: 1 },
           shop: { $ref: "#/components/schemas/ExchangeClaimShop" },
@@ -4295,16 +4411,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           effectiveTargetProviderCount: { type: "integer", minimum: 1, maximum: 20 },
           effectiveBudgetMaxJpy: { type: "integer", minimum: 1, maximum: 1000000000 },
           requiredTargetProviderCount: {
-            anyOf: [
-              { type: "integer", minimum: 1, maximum: 20 },
-              { type: "null" }
-            ]
+            anyOf: [{ type: "integer", minimum: 1, maximum: 20 }, { type: "null" }]
           },
           requiredBudgetMaxJpy: {
-            anyOf: [
-              { type: "integer", minimum: 1, maximum: 1000000000 },
-              { type: "null" }
-            ]
+            anyOf: [{ type: "integer", minimum: 1, maximum: 1000000000 }, { type: "null" }]
           },
           requiredBudgetIncreaseJpy: {
             type: "integer",
@@ -6226,17 +6336,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       BackofficeManagedUser: {
         type: "object",
         required: [
-          "id", "needoId", "username", "email", "phone", "emailBound", "phoneBound",
-          "avatarUrl", "isActive", "isTestAccount", "source", "identities", "roles",
-          "groups", "ekycVerified", "membership", "experience", "ndpBalance",
-          "bookingCount", "lastLoginAt", "createdAt", "updatedAt"
+          "id",
+          "needoId",
+          "username",
+          "email",
+          "phone",
+          "emailBound",
+          "phoneBound",
+          "avatarUrl",
+          "isActive",
+          "isTestAccount",
+          "source",
+          "identities",
+          "roles",
+          "groups",
+          "ekycVerified",
+          "membership",
+          "experience",
+          "ndpBalance",
+          "bookingCount",
+          "lastLoginAt",
+          "createdAt",
+          "updatedAt"
         ],
         properties: {
           id: { type: "integer" },
           needoId: { type: "string" },
           username: { type: "string" },
-          email: { type: "string", format: "email", description: "Bound account email only; no credentials are returned." },
-          phone: { type: ["string", "null"], description: "Bound account phone; UI should mask it for list display." },
+          email: {
+            type: "string",
+            format: "email",
+            description: "Bound account email only; no credentials are returned."
+          },
+          phone: {
+            type: ["string", "null"],
+            description: "Bound account phone; UI should mask it for list display."
+          },
           emailBound: { type: "boolean" },
           phoneBound: { type: "boolean" },
           avatarUrl: { type: ["string", "null"] },
@@ -6261,7 +6396,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ekycVerified: { type: "boolean" },
           membership: {
             type: "object",
-            required: ["tierCode", "tierVersionPublicId", "entitlementPublicId", "expiresAt", "experienceMultiplier", "lockVersion"],
+            required: [
+              "tierCode",
+              "tierVersionPublicId",
+              "entitlementPublicId",
+              "expiresAt",
+              "experienceMultiplier",
+              "lockVersion"
+            ],
             properties: {
               tierCode: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] },
               tierVersionPublicId: { type: ["string", "null"] },
@@ -6277,7 +6419,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               { $ref: "#/components/schemas/BackofficeManagedUserExperience" },
               { type: "null" }
             ],
-            description: "Null for technician-only and shop-only users. Multi-identity users may expose their customer-scope level."
+            description:
+              "Null for technician-only and shop-only users. Multi-identity users may expose their customer-scope level."
           },
           ndpBalance: {
             type: "object",
@@ -6381,8 +6524,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "publicId", "agentPublicId", "status", "source", "confirmedAt",
-          "successQualifiedAt", "reason", "createdAt", "shop"
+          "publicId",
+          "agentPublicId",
+          "status",
+          "source",
+          "confirmedAt",
+          "successQualifiedAt",
+          "reason",
+          "createdAt",
+          "shop"
         ],
         properties: {
           publicId: { type: "string", format: "uuid" },
@@ -6409,9 +6559,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "publicId", "version", "fixedSuccessRewardJpy", "profitShareRateBps",
-          "paymentMethod", "paymentDetails", "effectiveFrom", "effectiveTo",
-          "publishedAt", "publishedById", "reason", "createdAt"
+          "publicId",
+          "version",
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "paymentMethod",
+          "paymentDetails",
+          "effectiveFrom",
+          "effectiveTo",
+          "publishedAt",
+          "publishedById",
+          "reason",
+          "createdAt"
         ],
         properties: {
           publicId: { type: "string", format: "uuid" },
@@ -6451,8 +6610,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "fixedSuccessRewardJpy", "profitShareRateBps", "paymentMethod",
-          "effectiveFrom", "reason"
+          "fixedSuccessRewardJpy",
+          "profitShareRateBps",
+          "paymentMethod",
+          "effectiveFrom",
+          "reason"
         ],
         properties: {
           fixedSuccessRewardJpy: {
@@ -6520,8 +6682,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ],
         required: [
-          "categoryCode", "name", "amountJpy", "periodStart", "periodEnd",
-          "allocationMode", "effectiveAt", "reason"
+          "categoryCode",
+          "name",
+          "amountJpy",
+          "periodStart",
+          "periodEnd",
+          "allocationMode",
+          "effectiveAt",
+          "reason"
         ],
         properties: {
           categoryCode: {
@@ -6555,10 +6723,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "publicId", "costCode", "version", "categoryCode", "name", "amountJpy",
-          "currency", "periodStart", "periodEnd", "allocationMode", "status",
-          "effectiveAt", "publishedAt", "configuredById", "reason", "directAssignments",
-          "allocations", "createdAt", "updatedAt"
+          "publicId",
+          "costCode",
+          "version",
+          "categoryCode",
+          "name",
+          "amountJpy",
+          "currency",
+          "periodStart",
+          "periodEnd",
+          "allocationMode",
+          "status",
+          "effectiveAt",
+          "publishedAt",
+          "configuredById",
+          "reason",
+          "directAssignments",
+          "allocations",
+          "createdAt",
+          "updatedAt"
         ],
         properties: {
           publicId: { type: "string", format: "uuid" },
@@ -7052,7 +7235,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       PlatformMembershipSelfProjection: {
         type: "object",
         additionalProperties: false,
-        required: ["tierCode", "tierVersionPublicId", "multiplier", "expiresAt", "ekycVerified", "benefits", "theme"],
+        required: [
+          "tierCode",
+          "tierVersionPublicId",
+          "multiplier",
+          "expiresAt",
+          "ekycVerified",
+          "benefits",
+          "theme"
+        ],
         properties: {
           tierCode: { $ref: "#/components/schemas/PlatformMembershipTierCode" },
           tierVersionPublicId: { type: "string", format: "uuid" },
@@ -7201,7 +7392,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           sortOrder: { type: "integer", minimum: 0 },
           isGloballyEnabled: { type: "boolean" },
           nameTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedName" },
-          descriptionTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedDescription" },
+          descriptionTranslations: {
+            $ref: "#/components/schemas/PlatformMembershipLocalizedDescription"
+          },
           lockVersion: { type: "integer", minimum: 1 }
         }
       },
@@ -7283,7 +7476,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isGloballyEnabled: { type: "boolean" },
           sortOrder: { type: "integer", minimum: 0, maximum: 10000 },
           nameTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedName" },
-          descriptionTranslations: { $ref: "#/components/schemas/PlatformMembershipLocalizedDescription" },
+          descriptionTranslations: {
+            $ref: "#/components/schemas/PlatformMembershipLocalizedDescription"
+          },
           expectedLockVersion: { type: "integer", minimum: 1 }
         }
       },
@@ -7678,7 +7873,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           smsVerified: {
             type: "boolean",
             enum: [false],
-            description: "A stored normalized number does not claim provider-backed SMS verification."
+            description:
+              "A stored normalized number does not claim provider-backed SMS verification."
           }
         }
       },
@@ -8061,16 +8257,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           completedOrderCount: { type: "integer", minimum: 0 },
           acceptanceRatePercent: { type: "number", minimum: 0, maximum: 100 },
           primaryService: {
-            anyOf: [
-              { $ref: "#/components/schemas/PrimaryTechnicianService" },
-              { type: "null" }
-            ]
+            anyOf: [{ $ref: "#/components/schemas/PrimaryTechnicianService" }, { type: "null" }]
           },
           distanceKm: {
             type: "number",
             format: "double",
             minimum: 0,
-            description: "Distance to the nearest eligible service location; present only for origin-aware technician search."
+            description:
+              "Distance to the nearest eligible service location; present only for origin-aware technician search."
           },
           nearbyRank: {
             type: ["integer", "null"],
@@ -8120,13 +8314,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       EntityFavoriteListItem: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "targetType",
-          "publicId",
-          "isFavorited",
-          "favoriteCount",
-          "favoritedAt"
-        ],
+        required: ["targetType", "publicId", "isFavorited", "favoriteCount", "favoritedAt"],
         properties: {
           targetType: { type: "string", enum: ["shop", "technician"] },
           publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
@@ -8152,14 +8340,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       EntityShareReceipt: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "targetType",
-          "publicId",
-          "eventId",
-          "messageId",
-          "shareCount",
-          "replayed"
-        ],
+        required: ["targetType", "publicId", "eventId", "messageId", "shareCount", "replayed"],
         properties: {
           targetType: { type: "string", enum: ["shop", "technician"] },
           publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
@@ -8511,13 +8692,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           specialTags: {
             type: "array",
             readOnly: true,
-            description: "Deprecated compatibility field. Fixed review labels are returned by reviewTagSummary.",
+            description:
+              "Deprecated compatibility field. Fixed review labels are returned by reviewTagSummary.",
             items: { type: "string" }
           },
           profileTags: {
             type: "array",
             readOnly: true,
-            description: "Deprecated compatibility field. Review-derived labels are returned by reviewTagSummary.",
+            description:
+              "Deprecated compatibility field. Review-derived labels are returned by reviewTagSummary.",
             items: { type: "string" }
           },
           reviewTagSummary: { $ref: "#/components/schemas/TechnicianReviewTagSummary" },
@@ -8684,7 +8867,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           summary: {
             type: "object",
-            required: ["recognizedIncomeJpy", "completedOrderCount", "workedMinutes", "upcomingOrderCount"],
+            required: [
+              "recognizedIncomeJpy",
+              "completedOrderCount",
+              "workedMinutes",
+              "upcomingOrderCount"
+            ],
             properties: {
               recognizedIncomeJpy: { type: "integer" },
               completedOrderCount: { type: "integer" },
@@ -8696,7 +8884,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: {
               type: "object",
-              required: ["key", "label", "startsAt", "endsAt", "incomeJpy", "workedMinutes", "completedOrderCount"],
+              required: [
+                "key",
+                "label",
+                "startsAt",
+                "endsAt",
+                "incomeJpy",
+                "workedMinutes",
+                "completedOrderCount"
+              ],
               properties: {
                 key: { type: "string" },
                 label: { type: "string" },
@@ -8713,7 +8909,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxItems: 3,
             items: {
               type: "object",
-              required: ["id", "orderNo", "serviceName", "shopName", "status", "startsAt", "endsAt", "recognizedIncomeJpy"],
+              required: [
+                "id",
+                "orderNo",
+                "serviceName",
+                "shopName",
+                "status",
+                "startsAt",
+                "endsAt",
+                "recognizedIncomeJpy"
+              ],
               properties: {
                 id: { type: "integer" },
                 orderNo: { type: "string" },
@@ -9208,9 +9413,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           orderType: { type: "string", enum: ["booking", "request"] },
           status: {
             type: "string",
-            enum: ["pending", "confirmed", "inService", "awaitingCheckout", "awaitingPaymentConfirmation", "completed", "cancelled"]
+            enum: [
+              "pending",
+              "confirmed",
+              "inService",
+              "awaitingCheckout",
+              "awaitingPaymentConfirmation",
+              "completed",
+              "cancelled"
+            ]
           },
-          paymentMethod: { type: "string", enum: ["onsite", "bank_transfer", "cash", "ndp", "other"] },
+          paymentMethod: {
+            type: "string",
+            enum: ["onsite", "bank_transfer", "cash", "ndp", "other"]
+          },
           paymentStatus: {
             type: "string",
             enum: ["pending", "confirmed", "refundPending", "refunded"]
@@ -9263,10 +9479,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { $ref: "#/components/schemas/OrderStatusHistory" }
           },
           performanceAssessment: {
-            anyOf: [
-              { $ref: "#/components/schemas/OrderPerformanceAssessment" },
-              { type: "null" }
-            ]
+            anyOf: [{ $ref: "#/components/schemas/OrderPerformanceAssessment" }, { type: "null" }]
           },
           timelineEvents: {
             type: "array",
@@ -9374,12 +9587,35 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       OrderCheckout: {
         type: "object",
         additionalProperties: false,
-        description: "Public immutable checkout projection. Idempotency keys, wallet balances, raw ledger data and audit metadata are never returned.",
-        required: ["id", "orderId", "status", "baseAmountJpy", "addOnAmountJpy", "discountAmountJpy", "checkoutAmountJpy", "payableNdp", "rate", "calculation", "paymentMethod", "paymentSelectedAt", "otherMethod", "paymentEvidence", "receiptConfirmedAt", "receiptConfirmationReason", "createdAt", "updatedAt"],
+        description:
+          "Public immutable checkout projection. Idempotency keys, wallet balances, raw ledger data and audit metadata are never returned.",
+        required: [
+          "id",
+          "orderId",
+          "status",
+          "baseAmountJpy",
+          "addOnAmountJpy",
+          "discountAmountJpy",
+          "checkoutAmountJpy",
+          "payableNdp",
+          "rate",
+          "calculation",
+          "paymentMethod",
+          "paymentSelectedAt",
+          "otherMethod",
+          "paymentEvidence",
+          "receiptConfirmedAt",
+          "receiptConfirmationReason",
+          "createdAt",
+          "updatedAt"
+        ],
         properties: {
           id: { type: "integer", minimum: 1 },
           orderId: { type: "integer", minimum: 1 },
-          status: { type: "string", enum: ["awaitingCheckout", "awaitingPaymentConfirmation", "completed"] },
+          status: {
+            type: "string",
+            enum: ["awaitingCheckout", "awaitingPaymentConfirmation", "completed"]
+          },
           baseAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           addOnAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
@@ -9390,16 +9626,37 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             additionalProperties: false,
             required: ["ruleId", "publicId", "version", "ndpUnits", "jpyUnits", "effectiveFrom"],
             properties: {
-              ruleId: { type: "integer" }, publicId: { type: "string", format: "uuid" },
-              version: { type: "integer" }, ndpUnits: { type: "integer", minimum: 1 },
-              jpyUnits: { type: "integer", minimum: 1 }, effectiveFrom: { type: "string", format: "date-time" }
+              ruleId: { type: "integer" },
+              publicId: { type: "string", format: "uuid" },
+              version: { type: "integer" },
+              ndpUnits: { type: "integer", minimum: 1 },
+              jpyUnits: { type: "integer", minimum: 1 },
+              effectiveFrom: { type: "string", format: "date-time" }
             }
           },
           calculation: { $ref: "#/components/schemas/OrderCheckoutCalculation" },
           paymentMethod: { type: ["string", "null"], enum: ["cash", "ndp", "other", null] },
           paymentSelectedAt: { type: ["string", "null"], format: "date-time" },
-          otherMethod: { oneOf: [{ type: "object", additionalProperties: false, required: ["code", "label"], properties: { code: { type: "string" }, label: { type: "string" } } }, { type: "null" }] },
-          paymentEvidence: { type: ["string", "null"], enum: ["ndp_ledger", "technician_receipt_confirmation", "operations_receipt_override", null] },
+          otherMethod: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["code", "label"],
+                properties: { code: { type: "string" }, label: { type: "string" } }
+              },
+              { type: "null" }
+            ]
+          },
+          paymentEvidence: {
+            type: ["string", "null"],
+            enum: [
+              "ndp_ledger",
+              "technician_receipt_confirmation",
+              "operations_receipt_override",
+              null
+            ]
+          },
           receiptConfirmedAt: { type: ["string", "null"], format: "date-time" },
           receiptConfirmationReason: { type: ["string", "null"], maxLength: 500 },
           createdAt: { type: "string", format: "date-time" },
@@ -12627,6 +12884,303 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      OfficialNoticeBlock: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "type", "content"],
+        properties: {
+          id: { type: "string", minLength: 1, maxLength: 80 },
+          type: {
+            type: "string",
+            enum: [
+              "paragraph",
+              "heading",
+              "subheading",
+              "bullet",
+              "numbered",
+              "quote",
+              "callout",
+              "divider",
+              "image",
+              "video",
+              "file"
+            ]
+          },
+          content: { type: "string", maxLength: 20000 },
+          caption: { type: "string", maxLength: 255 },
+          fileName: { type: "string", maxLength: 255 },
+          fileSize: { type: "integer", minimum: 1, maximum: 52428800 },
+          mimeType: { type: "string", maxLength: 100 },
+          source: { type: "string", enum: ["url", "media"] },
+          mediaAssetId: { type: "integer", minimum: 1 }
+        }
+      },
+      OfficialNoticeAudience: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: { type: { type: "string", enum: ["all"] } }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "identityTypes"],
+            properties: {
+              type: { type: "string", enum: ["identity_types"] },
+              identityTypes: {
+                type: "array",
+                minItems: 1,
+                maxItems: 7,
+                items: {
+                  type: "string",
+                  enum: [
+                    "customer",
+                    "technician",
+                    "merchant_owner",
+                    "merchant_staff",
+                    "platform",
+                    "platform_admin",
+                    "scout"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "userIds"],
+            properties: {
+              type: { type: "string", enum: ["exact_users"] },
+              userIds: {
+                type: "array",
+                minItems: 1,
+                maxItems: 500,
+                items: { type: "integer", minimum: 1 }
+              }
+            }
+          }
+        ]
+      },
+      OfficialNoticeCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "audience",
+          "sendMode",
+          "scheduledAt",
+          "idempotencyKey"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          },
+          audience: { $ref: "#/components/schemas/OfficialNoticeAudience" },
+          sendMode: { type: "string", enum: ["now", "scheduled"] },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      MerchantOfficialNoticeAudience: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type"],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["shop_card_holders", "shop_employees", "shop_technicians"]
+          }
+        }
+      },
+      MerchantOfficialNoticeCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "audience",
+          "sendMode",
+          "scheduledAt",
+          "idempotencyKey"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          },
+          audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
+          sendMode: { type: "string", enum: ["now", "scheduled"] },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      OfficialNoticeLifecycle: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "reason", "idempotencyKey"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 2, maxLength: 500 },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      OfficialNoticeTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "blocks", "sourceLocale", "isInitialCopy"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: { type: "array", items: { $ref: "#/components/schemas/OfficialNoticeBlock" } },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      OfficialNoticeProtectedPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "level",
+          "status",
+          "sourceLocale",
+          "targetSummary",
+          "scheduledAt",
+          "sentAt",
+          "cancelledAt",
+          "archivedAt",
+          "lockVersion",
+          "translations",
+          "audienceCount",
+          "delivery",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          status: {
+            type: "string",
+            enum: [
+              "draft",
+              "pending_review",
+              "approved",
+              "scheduled",
+              "sending",
+              "sent",
+              "cancelled",
+              "archived"
+            ]
+          },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          targetSummary: { type: "string" },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          sentAt: { type: ["string", "null"], format: "date-time" },
+          cancelledAt: { type: ["string", "null"], format: "date-time" },
+          archivedAt: { type: ["string", "null"], format: "date-time" },
+          lockVersion: { type: "integer", minimum: 1 },
+          translations: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+            properties: Object.fromEntries(
+              ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+                locale,
+                { $ref: "#/components/schemas/OfficialNoticeTranslation" }
+              ])
+            )
+          },
+          audienceCount: { type: "integer", minimum: 0 },
+          delivery: {
+            type: "object",
+            additionalProperties: false,
+            required: ["pending", "delivered", "failed", "read"],
+            properties: Object.fromEntries(
+              ["pending", "delivered", "failed", "read"].map((key) => [
+                key,
+                { type: "integer", minimum: 0 }
+              ])
+            )
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OfficialNoticeProtectedPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      RecipientOfficialNoticePayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "level",
+          "title",
+          "summary",
+          "blocks",
+          "targetSummary",
+          "sentAt",
+          "readAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          title: { type: "string" },
+          summary: { type: "string" },
+          blocks: { type: "array", items: { $ref: "#/components/schemas/OfficialNoticeBlock" } },
+          targetSummary: { type: "string" },
+          sentAt: { type: "string", format: "date-time" },
+          readAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      RecipientOfficialNoticePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/RecipientOfficialNoticePayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       OfficialAnnouncementTranslationInput: {
         type: "object",
         additionalProperties: false,
@@ -13027,7 +13581,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["amountJpy", "paymentMethod", "paymentReference", "note", "idempotencyKey"],
         properties: {
           amountJpy: { type: "integer", minimum: 1, maximum: 10_000_000 },
-          paymentMethod: { type: "string", enum: ["cash", "card", "paypay", "bank_transfer", "other"] },
+          paymentMethod: {
+            type: "string",
+            enum: ["cash", "card", "paypay", "bank_transfer", "other"]
+          },
           paymentReference: { type: ["string", "null"], minLength: 1, maxLength: 160 },
           note: { type: ["string", "null"], minLength: 1, maxLength: 500 },
           idempotencyKey: { type: "string", minLength: 8, maxLength: 160 }
@@ -13037,14 +13594,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "publicId", "amountJpy", "paymentMethod", "paymentReference", "note",
-          "principalBalanceBeforeJpy", "principalBalanceAfterJpy", "createdAt", "updatedAt",
-          "card", "shop", "customer", "createdBy", "replayed"
+          "publicId",
+          "amountJpy",
+          "paymentMethod",
+          "paymentReference",
+          "note",
+          "principalBalanceBeforeJpy",
+          "principalBalanceAfterJpy",
+          "createdAt",
+          "updatedAt",
+          "card",
+          "shop",
+          "customer",
+          "createdBy",
+          "replayed"
         ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           amountJpy: { type: "integer", minimum: 1, maximum: 10_000_000 },
-          paymentMethod: { type: "string", enum: ["cash", "card", "paypay", "bank_transfer", "other"] },
+          paymentMethod: {
+            type: "string",
+            enum: ["cash", "card", "paypay", "bank_transfer", "other"]
+          },
           paymentReference: { type: ["string", "null"], maxLength: 160 },
           note: { type: ["string", "null"], maxLength: 500 },
           principalBalanceBeforeJpy: { type: "integer", minimum: 0 },
@@ -13055,7 +13626,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           card: {
             type: "object",
             additionalProperties: false,
-            required: ["publicId", "cardNoMasked", "name", "type", "status", "principalBalanceJpy", "bonusBalanceJpy"],
+            required: [
+              "publicId",
+              "cardNoMasked",
+              "name",
+              "type",
+              "status",
+              "principalBalanceJpy",
+              "bonusBalanceJpy"
+            ],
             properties: {
               publicId: { type: "string", format: "uuid" },
               cardNoMasked: { type: "string" },
@@ -13067,16 +13646,28 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           shop: {
-            type: "object", additionalProperties: false, required: ["shopNo", "name"],
+            type: "object",
+            additionalProperties: false,
+            required: ["shopNo", "name"],
             properties: { shopNo: { type: ["string", "null"] }, name: { type: "string" } }
           },
           customer: {
-            type: "object", additionalProperties: false, required: ["needoId", "displayName"],
-            properties: { needoId: { type: "string", pattern: "^u[0-9]{10}$" }, displayName: { type: "string" } }
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId", "displayName"],
+            properties: {
+              needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+              displayName: { type: "string" }
+            }
           },
           createdBy: {
-            type: "object", additionalProperties: false, required: ["needoId", "displayName"],
-            properties: { needoId: { type: "string", pattern: "^u[0-9]{10}$" }, displayName: { type: "string" } }
+            type: "object",
+            additionalProperties: false,
+            required: ["needoId", "displayName"],
+            properties: {
+              needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+              displayName: { type: "string" }
+            }
           }
         }
       },
@@ -13113,13 +13704,33 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "publicId", "status", "reason", "reversalMode", "restoredPrincipalJpy",
-          "restoredUses", "principalBalanceBeforeJpy", "principalBalanceAfterJpy",
-          "remainingUsesBefore", "remainingUsesAfter", "customerRewardReversedNdp",
-          "platformFeeReversedNdp", "totalShopCreditNdp", "customerBalanceBeforeNdp",
-          "customerBalanceAfterNdp", "orderPaymentRefundedAt", "refundedAt", "createdAt",
-          "updatedAt", "redemption", "card", "order", "shop", "customer", "refundedBy",
-          "reversalLedgerTransactionNo", "replayed"
+          "publicId",
+          "status",
+          "reason",
+          "reversalMode",
+          "restoredPrincipalJpy",
+          "restoredUses",
+          "principalBalanceBeforeJpy",
+          "principalBalanceAfterJpy",
+          "remainingUsesBefore",
+          "remainingUsesAfter",
+          "customerRewardReversedNdp",
+          "platformFeeReversedNdp",
+          "totalShopCreditNdp",
+          "customerBalanceBeforeNdp",
+          "customerBalanceAfterNdp",
+          "orderPaymentRefundedAt",
+          "refundedAt",
+          "createdAt",
+          "updatedAt",
+          "redemption",
+          "card",
+          "order",
+          "shop",
+          "customer",
+          "refundedBy",
+          "reversalLedgerTransactionNo",
+          "replayed"
         ],
         properties: {
           publicId: { type: "string", format: "uuid" },
@@ -13155,8 +13766,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "orderNo", "serviceName", "servicePublicId", "serviceCategoryCode",
-          "serviceStartedAt", "serviceCompletedAt", "eligibleAmountJpy", "consumption", "reward"
+          "orderNo",
+          "serviceName",
+          "servicePublicId",
+          "serviceCategoryCode",
+          "serviceStartedAt",
+          "serviceCompletedAt",
+          "eligibleAmountJpy",
+          "consumption",
+          "reward"
         ],
         properties: {
           orderNo: { type: "string" },
@@ -13170,8 +13788,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "object",
             additionalProperties: false,
             required: [
-              "principalJpy", "uses", "principalBalanceBeforeJpy", "principalBalanceAfterJpy",
-              "remainingUsesBefore", "remainingUsesAfter"
+              "principalJpy",
+              "uses",
+              "principalBalanceBeforeJpy",
+              "principalBalanceAfterJpy",
+              "remainingUsesBefore",
+              "remainingUsesAfter"
             ],
             properties: {
               principalJpy: { type: "integer", minimum: 0 },
@@ -13186,8 +13808,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "object",
             additionalProperties: false,
             required: [
-              "hits", "rawCustomerRewardNdp", "customerRewardNdp", "platformFeeRateBps",
-              "platformFeeNdp", "totalShopDebitNdp", "capped"
+              "hits",
+              "rawCustomerRewardNdp",
+              "customerRewardNdp",
+              "platformFeeRateBps",
+              "platformFeeNdp",
+              "totalShopDebitNdp",
+              "capped"
             ],
             properties: {
               hits: { type: "array", items: { type: "object" } },
@@ -13206,7 +13833,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["list", "total", "page", "page_size"],
         properties: {
-          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidate" } },
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidate" }
+          },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
@@ -13216,12 +13846,36 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         required: [
-          "publicId", "status", "rewardStatus", "rewardFacts", "rewardHits", "rawRewardNdp",
-          "customerRewardNdp", "platformFeeRateBps", "platformFeeNdp", "totalShopDebitNdp",
-          "rewardCapped", "outstandingRewardNdp", "consumedPrincipalJpy", "consumedUses",
-          "principalBalanceBeforeJpy", "principalBalanceAfterJpy", "remainingUsesBefore",
-          "remainingUsesAfter", "redeemedAt", "rewardSettledAt", "refundedAt", "createdAt",
-          "updatedAt", "card", "order", "shop", "customer", "redeemedBy", "ledgerTransactionNo", "replayed",
+          "publicId",
+          "status",
+          "rewardStatus",
+          "rewardFacts",
+          "rewardHits",
+          "rawRewardNdp",
+          "customerRewardNdp",
+          "platformFeeRateBps",
+          "platformFeeNdp",
+          "totalShopDebitNdp",
+          "rewardCapped",
+          "outstandingRewardNdp",
+          "consumedPrincipalJpy",
+          "consumedUses",
+          "principalBalanceBeforeJpy",
+          "principalBalanceAfterJpy",
+          "remainingUsesBefore",
+          "remainingUsesAfter",
+          "redeemedAt",
+          "rewardSettledAt",
+          "refundedAt",
+          "createdAt",
+          "updatedAt",
+          "card",
+          "order",
+          "shop",
+          "customer",
+          "redeemedBy",
+          "ledgerTransactionNo",
+          "replayed",
           "refund"
         ],
         properties: {
@@ -13255,10 +13909,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           redeemedBy: { type: "object" },
           ledgerTransactionNo: { type: ["string", "null"] },
           refund: {
-            oneOf: [
-              { type: "null" },
-              { type: "object", additionalProperties: true }
-            ]
+            oneOf: [{ type: "null" }, { type: "object", additionalProperties: true }]
           },
           replayed: { type: "boolean" }
         }
@@ -13268,7 +13919,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["list", "total", "page", "page_size"],
         properties: {
-          list: { type: "array", items: { $ref: "#/components/schemas/ShopMembershipCardRedemption" } },
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopMembershipCardRedemption" }
+          },
           total: { type: "integer", minimum: 0 },
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
@@ -13617,7 +14271,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "at",
             in: "query",
-            description: "Optional offset ISO-8601 evaluation instant; when omitted the server time is used",
+            description:
+              "Optional offset ISO-8601 evaluation instant; when omitted the server time is used",
             schema: { type: "string", format: "date-time" }
           }
         ],
@@ -14027,8 +14682,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
-    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-adjustment-requests/{publicId}/cancel`]: {
-      post: {
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-card-adjustment-requests/{publicId}/cancel`]:
+      {
+        post: {
           tags: ["Shop Membership Card Adjustment"],
           summary: "Cancel a pending adjustment before the customer decides",
           security: [{ bearerAuth: [] }],
@@ -14039,22 +14695,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }),
             ...shopMembershipCardAdjustmentErrorResponses
           }
-      }
-    },
+        }
+      },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/top-ups`]: {
       post: {
         tags: ["Shop Membership Card Top-up"],
         summary: "Record an immediate offline top-up for an active stored-value card",
-        description: "Credits only paid principal. It creates the balance mutation, immutable top-up evidence, audit log, and customer notification atomically; it never creates NDP rewards or wallet entries.",
+        description:
+          "Credits only paid principal. It creates the balance mutation, immutable top-up evidence, audit log, and customer notification atomically; it never creates NDP rewards or wallet entries.",
         security: [{ bearerAuth: [] }],
         parameters: [shopMembershipPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardTopUpCreateRequest" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopMembershipCardTopUpCreateRequest" }
+            }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Idempotent replay of an existing top-up", { $ref: "#/components/schemas/ShopMembershipCardTopUp" }),
-          "201": jsonDataResponse("Created card top-up", { $ref: "#/components/schemas/ShopMembershipCardTopUp" }),
+          "200": jsonDataResponse("Idempotent replay of an existing top-up", {
+            $ref: "#/components/schemas/ShopMembershipCardTopUp"
+          }),
+          "201": jsonDataResponse("Created card top-up", {
+            $ref: "#/components/schemas/ShopMembershipCardTopUp"
+          }),
           ...shopMembershipCardTopUpErrorResponses
         }
       }
@@ -14069,37 +14734,52 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated shop top-up history", { $ref: "#/components/schemas/ShopMembershipCardTopUpPage" }),
+          "200": jsonDataResponse("Paginated shop top-up history", {
+            $ref: "#/components/schemas/ShopMembershipCardTopUpPage"
+          }),
           ...shopMembershipCardTopUpErrorResponses
         }
       }
     },
-    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemption-candidates`]: {
-      get: {
-        tags: ["Shop Membership Card Redemption"],
-        summary: "List completed same-shop same-customer orders eligible for this card",
-        security: [{ bearerAuth: [] }],
-        parameters: [shopMembershipPublicIdParameter, ...shopMembershipPageParameters],
-        responses: {
-          "200": jsonDataResponse("Paginated redemption candidates with exact card and NDP previews", { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidatePage" }),
-          ...shopMembershipCardRedemptionErrorResponses
+    [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemption-candidates`]:
+      {
+        get: {
+          tags: ["Shop Membership Card Redemption"],
+          summary: "List completed same-shop same-customer orders eligible for this card",
+          security: [{ bearerAuth: [] }],
+          parameters: [shopMembershipPublicIdParameter, ...shopMembershipPageParameters],
+          responses: {
+            "200": jsonDataResponse(
+              "Paginated redemption candidates with exact card and NDP previews",
+              { $ref: "#/components/schemas/ShopMembershipCardRedemptionCandidatePage" }
+            ),
+            ...shopMembershipCardRedemptionErrorResponses
+          }
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/merchant-admin/shop-membership-cards/{publicId}/redemptions`]: {
       post: {
         tags: ["Shop Membership Card Redemption"],
         summary: "Redeem one completed order with the selected membership card",
-        description: "Consumes only paid principal for stored-value cards or exactly one use for count cards. NDP reward and platform fee settle atomically from the shop wallet; insufficient shop funds create a full pending reward without partial wallet movement.",
+        description:
+          "Consumes only paid principal for stored-value cards or exactly one use for count cards. NDP reward and platform fee settle atomically from the shop wallet; insufficient shop funds create a full pending reward without partial wallet movement.",
         security: [{ bearerAuth: [] }],
         parameters: [shopMembershipPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardRedemptionCreateRequest" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopMembershipCardRedemptionCreateRequest" }
+            }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Idempotent replay of an existing redemption", { $ref: "#/components/schemas/ShopMembershipCardRedemption" }),
-          "201": jsonDataResponse("Created card redemption", { $ref: "#/components/schemas/ShopMembershipCardRedemption" }),
+          "200": jsonDataResponse("Idempotent replay of an existing redemption", {
+            $ref: "#/components/schemas/ShopMembershipCardRedemption"
+          }),
+          "201": jsonDataResponse("Created card redemption", {
+            $ref: "#/components/schemas/ShopMembershipCardRedemption"
+          }),
           ...shopMembershipCardRedemptionErrorResponses
         }
       }
@@ -14114,7 +14794,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated shop redemption history", { $ref: "#/components/schemas/ShopMembershipCardRedemptionPage" }),
+          "200": jsonDataResponse("Paginated shop redemption history", {
+            $ref: "#/components/schemas/ShopMembershipCardRedemptionPage"
+          }),
           ...shopMembershipCardRedemptionErrorResponses
         }
       }
@@ -14123,16 +14805,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Shop Membership Card Refund"],
         summary: "Restore one refunded order's card consumption and reverse its NDP reward",
-        description: "Requires the linked booking payment to be formally refunded. Restores immutable principal or uses, cancels pending rewards, or exactly reverses paid customer NDP and platform fee; negative customer/platform available balances remain visible and are offset by future credits.",
+        description:
+          "Requires the linked booking payment to be formally refunded. Restores immutable principal or uses, cancels pending rewards, or exactly reverses paid customer NDP and platform fee; negative customer/platform available balances remain visible and are offset by future credits.",
         security: [{ bearerAuth: [] }],
         parameters: [shopMembershipPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardRefundCreateRequest" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ShopMembershipCardRefundCreateRequest" }
+            }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Idempotent replay of an existing refund", { $ref: "#/components/schemas/ShopMembershipCardRefund" }),
-          "201": jsonDataResponse("Applied card refund and exact reward reversal", { $ref: "#/components/schemas/ShopMembershipCardRefund" }),
+          "200": jsonDataResponse("Idempotent replay of an existing refund", {
+            $ref: "#/components/schemas/ShopMembershipCardRefund"
+          }),
+          "201": jsonDataResponse("Applied card refund and exact reward reversal", {
+            $ref: "#/components/schemas/ShopMembershipCardRefund"
+          }),
           ...shopMembershipCardRefundErrorResponses
         }
       }
@@ -14243,7 +14934,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated customer top-up history", { $ref: "#/components/schemas/ShopMembershipCardTopUpPage" }),
+          "200": jsonDataResponse("Paginated customer top-up history", {
+            $ref: "#/components/schemas/ShopMembershipCardTopUpPage"
+          }),
           ...shopMembershipCardTopUpErrorResponses
         }
       }
@@ -14258,27 +14951,36 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "cardPublicId", in: "query", schema: { type: "string", format: "uuid" } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated customer redemption history", { $ref: "#/components/schemas/ShopMembershipCardRedemptionPage" }),
+          "200": jsonDataResponse("Paginated customer redemption history", {
+            $ref: "#/components/schemas/ShopMembershipCardRedemptionPage"
+          }),
           ...shopMembershipCardRedemptionErrorResponses
         }
       }
     },
-    [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-adjustment-requests/{publicId}/decision`]: {
-      post: {
-        tags: ["Shop Membership Card Adjustment"],
-        summary: "Approve or reject an unexpired adjustment request",
-        security: [{ bearerAuth: [] }],
-        parameters: [shopMembershipPublicIdParameter],
-        requestBody: {
-          required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ShopMembershipCardAdjustmentDecisionRequest" } } }
-        },
-        responses: {
-          "200": jsonDataResponse("Customer decision result", { $ref: "#/components/schemas/ShopMembershipCardAdjustment" }),
-          ...shopMembershipCardAdjustmentErrorResponses
+    [`${config.API_PREFIX}/customer-profile/me/shop-membership-card-adjustment-requests/{publicId}/decision`]:
+      {
+        post: {
+          tags: ["Shop Membership Card Adjustment"],
+          summary: "Approve or reject an unexpired adjustment request",
+          security: [{ bearerAuth: [] }],
+          parameters: [shopMembershipPublicIdParameter],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ShopMembershipCardAdjustmentDecisionRequest" }
+              }
+            }
+          },
+          responses: {
+            "200": jsonDataResponse("Customer decision result", {
+              $ref: "#/components/schemas/ShopMembershipCardAdjustment"
+            }),
+            ...shopMembershipCardAdjustmentErrorResponses
+          }
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/backoffice/order-acceptance-pauses`]: {
       get: {
         tags: ["Order Acceptance Pause"],
@@ -16182,10 +16884,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         description:
           "Stores an E.164 number and audits the write. This endpoint does not claim provider-backed SMS verification.",
         security: [{ bearerAuth: [] }],
-        requestBody: authJsonBody(
-          { phone: { type: "string", pattern: "^\\+[1-9]\\d{7,14}$" } },
-          ["phone"]
-        ),
+        requestBody: authJsonBody({ phone: { type: "string", pattern: "^\\+[1-9]\\d{7,14}$" } }, [
+          "phone"
+        ]),
         responses: {
           "200": jsonDataResponse("Phone stored and compliance re-evaluated", {
             $ref: "#/components/schemas/CompliancePhoneBinding"
@@ -16935,7 +17636,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "X-Search-Session",
             in: "header",
-            description: "Optional anonymous client identifier; the server stores only a domain-separated HMAC.",
+            description:
+              "Optional anonymous client identifier; the server stores only a domain-separated HMAC.",
             schema: { type: "string", minLength: 8, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" }
           },
           {
@@ -16997,13 +17699,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "latitude",
             in: "query",
-            description: "Search-origin latitude. Latitude and longitude must be supplied together.",
+            description:
+              "Search-origin latitude. Latitude and longitude must be supplied together.",
             schema: { type: "number", format: "double", minimum: -90, maximum: 90 }
           },
           {
             name: "longitude",
             in: "query",
-            description: "Search-origin longitude. Latitude and longitude must be supplied together.",
+            description:
+              "Search-origin longitude. Latitude and longitude must be supplied together.",
             schema: { type: "number", format: "double", minimum: -180, maximum: 180 }
           },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
@@ -17045,7 +17749,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       put: {
         tags: ["Entity Engagement"],
         summary: "Add a shop or technician to the authenticated user's favorites",
-        description: "Favorite ownership is the authenticated NeeDo user account and is independent of the active identity.",
+        description:
+          "Favorite ownership is the authenticated NeeDo user account and is independent of the active identity.",
         security: [{ bearerAuth: [] }],
         "x-permission": "entity-favorite:write",
         parameters: [
@@ -17137,7 +17842,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Entity Engagement"],
         summary: "Batch read favorite states and aggregate counts",
-        description: "Use one batch per result page; clients must not issue one status request per card.",
+        description:
+          "Use one batch per result page; clients must not issue one status request per card.",
         security: [{ bearerAuth: [] }],
         "x-permission": "entity-favorite:read",
         requestBody: {
@@ -17183,7 +17889,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Entity Engagement"],
         summary: "Share an entity through a committed NeeDo message",
-        description: "The share event and message commit atomically. Failed, blocked, or ineligible messages do not increment shareCount.",
+        description:
+          "The share event and message commit atomically. Failed, blocked, or ineligible messages do not increment shareCount.",
         security: [{ bearerAuth: [] }],
         "x-permission": "entity-share:write",
         parameters: [
@@ -17237,7 +17944,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Entity Engagement"],
         summary: "Record a successfully invoked system share",
-        description: "Call only after the client platform share capability reports success. Retries must reuse the same idempotencyKey.",
+        description:
+          "Call only after the client platform share capability reports success. Retries must reuse the same idempotencyKey.",
         security: [{ bearerAuth: [] }],
         "x-permission": "entity-share:write",
         parameters: [
@@ -17576,17 +18284,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Core Read"],
         summary: "Public technician detail",
-        parameters: [{
-          name: "id",
-          in: "path",
-          required: true,
-          schema: {
-            oneOf: [
-              { type: "integer", minimum: 1 },
-              { type: "string", pattern: "^s[0-9]{10}$" }
-            ]
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", pattern: "^s[0-9]{10}$" }
+              ]
+            }
           }
-        }],
+        ],
         responses: {
           "200": jsonDataResponse("Technician detail", {
             $ref: "#/components/schemas/TechnicianDetail"
@@ -17673,25 +18383,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/technician/data-center`]: {
       get: {
         tags: ["Technician Data Center"],
-        summary: "Read formal income, completed work time, current income model, and three recent orders",
+        summary:
+          "Read formal income, completed work time, current income model, and three recent orders",
         security: [{ bearerAuth: [] }],
-        parameters: [{
-          name: "period",
-          in: "query",
-          required: false,
-          schema: {
-            type: "string",
-            enum: ["last7days", "last30days", "week", "month", "year"],
-            default: "last7days"
+        parameters: [
+          {
+            name: "period",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["last7days", "last30days", "week", "month", "year"],
+              default: "last7days"
+            }
           }
-        }],
+        ],
         responses: {
           "200": jsonDataResponse("Current technician data center", {
             $ref: "#/components/schemas/TechnicianDataCenter"
           }),
           "400": { description: "error.validation — unsupported period" },
           "401": { description: "error.auth.token_invalid — missing or invalid access token" },
-          "403": { description: "Missing technician-data-center permission or technician identity scope" },
+          "403": {
+            description: "Missing technician-data-center permission or technician identity scope"
+          },
           "404": { description: "error.technician_data_center.not_found" }
         }
       }
@@ -17777,7 +18492,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "includeUnavailable",
             in: "query",
-            description: "When true, include booked, blocked, and full formal slots for disabled time-option display.",
+            description:
+              "When true, include booked, blocked, and full formal slots for disabled time-option display.",
             schema: { type: "boolean", default: false }
           },
           {
@@ -17914,7 +18630,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["pending", "confirmed", "inService", "awaitingCheckout", "awaitingPaymentConfirmation", "completed", "cancelled"]
+              enum: [
+                "pending",
+                "confirmed",
+                "inService",
+                "awaitingCheckout",
+                "awaitingPaymentConfirmation",
+                "completed",
+                "cancelled"
+              ]
             }
           }
         ],
@@ -18245,7 +18969,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         operationId: "endOrderService",
         tags: ["Booking Fulfillment"],
         summary: "End service and enter awaiting checkout",
-        description: "Pending add-ons block service end. The authenticated participant is derived server-side.",
+        description:
+          "Pending add-ons block service end. The authenticated participant is derived server-side.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:service:end",
         parameters: [idPathParameter()],
@@ -18307,7 +19032,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                         maxLength: 1000,
                         "x-normalization": "NFKC+trim",
                         "x-requires-visible-code-point": true,
-                        description: "NFKC-normalized visible text; maximum 1000 Unicode code points"
+                        description:
+                          "NFKC-normalized visible text; maximum 1000 Unicode code points"
                       },
                       { type: "null" }
                     ]
@@ -18384,13 +19110,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         operationId: "getOrderCheckout",
         tags: ["Booking Checkout"],
-        summary: "Read or create immutable checkout evidence as the owning customer or assigned technician",
-        description: "Requires order:checkout:read. The service session must be ended. Existing evidence remains readable after completion and never exposes idempotency, wallet, ledger or audit internals.",
+        summary:
+          "Read or create immutable checkout evidence as the owning customer or assigned technician",
+        description:
+          "Requires order:checkout:read. The service session must be ended. Existing evidence remains readable after completion and never exposes idempotency, wallet, ledger or audit internals.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:checkout:read",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
-          "200": jsonDataResponse("Checkout projection", { $ref: "#/components/schemas/OrderCheckout" }),
+          "200": jsonDataResponse("Checkout projection", {
+            $ref: "#/components/schemas/OrderCheckout"
+          }),
           ...formalOrderCommonErrorResponses,
           "404": jsonErrorResponse(
             "40401 error.order.not_found — the order or participant is deliberately hidden from this actor; 40418 error.ndp_exchange_rate.not_found — no exchange rate is effective at checkout creation time"
@@ -18405,11 +19137,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/orders/{id}/checkout/payment-method`]: {
       post: {
         operationId: "selectOrderCheckoutPaymentMethod",
-        tags: ["Booking Checkout"], summary: "Select cash, NDP, or other payment as the owning customer",
-        description: "Requires order:checkout:payment-method:write. Selection never completes an order.",
+        tags: ["Booking Checkout"],
+        summary: "Select cash, NDP, or other payment as the owning customer",
+        description:
+          "Requires order:checkout:payment-method:write. Selection never completes an order.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:checkout:payment-method:write",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         requestBody: {
           required: true,
           content: {
@@ -18441,12 +19177,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   {
                     type: "object",
                     additionalProperties: false,
-                    required: [
-                      "method",
-                      "otherMethodCode",
-                      "otherMethodLabel",
-                      "idempotencyKey"
-                    ],
+                    required: ["method", "otherMethodCode", "otherMethodLabel", "idempotencyKey"],
                     properties: {
                       method: { type: "string", enum: ["other"] },
                       otherMethodCode: {
@@ -18478,11 +19209,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/orders/{id}/checkout/pay/ndp`]: {
       post: {
         operationId: "payOrderCheckoutWithNdp",
-        tags: ["Booking Checkout"], summary: "Atomically pay the snapshotted checkout amount with NDP",
-        description: "Requires order:checkout:ndp:pay. Debits only the owning customer's classified NDP wallet and completes only after all booking, settlement and affiliate writes commit.",
+        tags: ["Booking Checkout"],
+        summary: "Atomically pay the snapshotted checkout amount with NDP",
+        description:
+          "Requires order:checkout:ndp:pay. Debits only the owning customer's classified NDP wallet and completes only after all booking, settlement and affiliate writes commit.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:checkout:ndp:pay",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         requestBody: authJsonBody(
           {
             idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
@@ -18504,11 +19239,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/orders/{id}/checkout/confirm-receipt`]: {
       post: {
         operationId: "confirmOrderCheckoutReceipt",
-        tags: ["Booking Checkout"], summary: "Assigned technician confirms cash or other receipt",
-        description: "Requires order:checkout:receipt:confirm and exact assigned-technician identity.",
+        tags: ["Booking Checkout"],
+        summary: "Assigned technician confirms cash or other receipt",
+        description:
+          "Requires order:checkout:receipt:confirm and exact assigned-technician identity.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:checkout:receipt:confirm",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         requestBody: authJsonBody(
           {
             reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
@@ -18531,11 +19270,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/backoffice/orders/{id}/checkout/confirm-receipt`]: {
       post: {
         operationId: "overrideOrderCheckoutReceipt",
-        tags: ["Booking Checkout"], summary: "Audited operations receipt override",
-        description: "Requires backoffice:order:checkout:receipt-override and a global/platform identity. Audit and completion commit in one transaction.",
+        tags: ["Booking Checkout"],
+        summary: "Audited operations receipt override",
+        description:
+          "Requires backoffice:order:checkout:receipt-override and a global/platform identity. Audit and completion commit in one transaction.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:order:checkout:receipt-override",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         requestBody: authJsonBody(
           {
             reason: { $ref: "#/components/schemas/TrimmedVisibleReason500" },
@@ -19051,15 +19794,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:analytics-ranking:read",
         parameters: [
-          { name: "kind", in: "path", required: true, schema: { type: "string", enum: ["service", "technician", "customer"] } },
-          { name: "metric", in: "query", required: false, schema: { type: "string", enum: ["gmv", "completedCount"], default: "gmv" } },
+          {
+            name: "kind",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["service", "technician", "customer"] }
+          },
+          {
+            name: "metric",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["gmv", "completedCount"], default: "gmv" }
+          },
           ...dashboardQueryParameters,
-          { name: "city", in: "query", required: false, schema: { type: "string",
-            "x-min-utf16-code-units": 1, "x-max-utf16-code-units": 100,
-            "x-normalization": "trim" } },
-          { name: "categoryId", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 2147483647 } },
-          { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: MAX_ANALYTICS_RANKING_PAGE, default: 1 } },
-          { name: "pageSize", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 10, default: 10 } }
+          {
+            name: "city",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              "x-min-utf16-code-units": 1,
+              "x-max-utf16-code-units": 100,
+              "x-normalization": "trim"
+            }
+          },
+          {
+            name: "categoryId",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 2147483647 }
+          },
+          {
+            name: "page",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: MAX_ANALYTICS_RANKING_PAGE, default: 1 }
+          },
+          {
+            name: "pageSize",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 10, default: 10 }
+          }
         ],
         responses: {
           "200": {
@@ -19084,30 +19860,105 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     ["technicianCount", "technician", "completedCount", "technician"],
                     ["customerGmv", "customer", "gmv", "customer"],
                     ["customerCount", "customer", "completedCount", "customer"]
-                  ].map(([key, kind, metric, entityType], index) => [key, {
-                    summary: `${kind} by ${metric}`,
-                    value: { code: 0, message: "success", data: {
-                      dataStatus: "ready", filter: { kind, metric, period: "last7days",
-                        from: "2026-08-26", to: "2026-09-01", timeZone: "Asia/Tokyo",
-                        city: null, categoryId: null, evaluatedAt: "2026-09-01T05:30:00.000Z" },
-                      list: [{ rank: 1, entityType,
-                        entityPublicId: entityType === "customer" || entityType === "technician"
-                          ? "u0000000041" : "00000000-0000-4000-8000-000000000001",
-                        entityNumericId: index + 1, displayName: "Example", avatarUrl: null,
-                        categoryId: entityType === "service" || entityType === "technician_service" ? 8 : null,
-                        gmvJpy: 12300, completedCount: 2, registeredAt: "2026-01-01T00:00:00.000Z" }],
-                      total: 1, page: 1, page_size: 10
-                    } }
-                  }])
+                  ].map(([key, kind, metric, entityType], index) => [
+                    key,
+                    {
+                      summary: `${kind} by ${metric}`,
+                      value: {
+                        code: 0,
+                        message: "success",
+                        data: {
+                          dataStatus: "ready",
+                          filter: {
+                            kind,
+                            metric,
+                            period: "last7days",
+                            from: "2026-08-26",
+                            to: "2026-09-01",
+                            timeZone: "Asia/Tokyo",
+                            city: null,
+                            categoryId: null,
+                            evaluatedAt: "2026-09-01T05:30:00.000Z"
+                          },
+                          list: [
+                            {
+                              rank: 1,
+                              entityType,
+                              entityPublicId:
+                                entityType === "customer" || entityType === "technician"
+                                  ? "u0000000041"
+                                  : "00000000-0000-4000-8000-000000000001",
+                              entityNumericId: index + 1,
+                              displayName: "Example",
+                              avatarUrl: null,
+                              categoryId:
+                                entityType === "service" || entityType === "technician_service"
+                                  ? 8
+                                  : null,
+                              gmvJpy: 12300,
+                              completedCount: 2,
+                              registeredAt: "2026-01-01T00:00:00.000Z"
+                            }
+                          ],
+                          total: 1,
+                          page: 1,
+                          page_size: 10
+                        }
+                      }
+                    }
+                  ])
                 )
               }
             }
           },
-          "400": { description: "Strict path/query validation failed", content: { "application/json": { example: { code: 40001, message: "error.validation", data: null } } } },
-          "401": { description: "Missing or invalid access token", content: { "application/json": { example: { code: 40105, message: "error.auth.token_invalid", data: null } } } },
-          "403": { description: "Missing backoffice:analytics-ranking:read permission", content: { "application/json": { example: { code: 40301, message: "error.forbidden", data: null } } } },
-          "404": { description: "Requested active category not found", content: { "application/json": { example: { code: ERROR_CODES.ANALYTICS_RANKING_CATEGORY_NOT_FOUND, message: "error.analytics_ranking.category_not_found", data: null } } } },
-          "409": { description: "Formal checkout or taxonomy evidence is incomplete or contradictory", content: { "application/json": { example: { code: ERROR_CODES.ANALYTICS_RANKING_INCOMPLETE_EVIDENCE, message: "error.analytics_ranking.incomplete_evidence", data: null } } } }
+          "400": {
+            description: "Strict path/query validation failed",
+            content: {
+              "application/json": {
+                example: { code: 40001, message: "error.validation", data: null }
+              }
+            }
+          },
+          "401": {
+            description: "Missing or invalid access token",
+            content: {
+              "application/json": {
+                example: { code: 40105, message: "error.auth.token_invalid", data: null }
+              }
+            }
+          },
+          "403": {
+            description: "Missing backoffice:analytics-ranking:read permission",
+            content: {
+              "application/json": {
+                example: { code: 40301, message: "error.forbidden", data: null }
+              }
+            }
+          },
+          "404": {
+            description: "Requested active category not found",
+            content: {
+              "application/json": {
+                example: {
+                  code: ERROR_CODES.ANALYTICS_RANKING_CATEGORY_NOT_FOUND,
+                  message: "error.analytics_ranking.category_not_found",
+                  data: null
+                }
+              }
+            }
+          },
+          "409": {
+            description: "Formal checkout or taxonomy evidence is incomplete or contradictory",
+            content: {
+              "application/json": {
+                example: {
+                  code: ERROR_CODES.ANALYTICS_RANKING_INCOMPLETE_EVIDENCE,
+                  message: "error.analytics_ranking.incomplete_evidence",
+                  data: null
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -19593,19 +20444,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["User Management"],
         summary: "Paginated all-user management projection",
-        description: "Returns all active and deactivated formal User rows with batched identity, membership, customer experience, group, eKYC and NDP summaries. Sensitive authentication and raw eKYC fields are never exposed.",
+        description:
+          "Returns all active and deactivated formal User rows with batched identity, membership, customer experience, group, eKYC and NDP summaries. Sensitive authentication and raw eKYC fields are never exposed.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:users:read",
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
           { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
-          { name: "tier", in: "query", schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] } },
+          {
+            name: "tier",
+            in: "query",
+            schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
+          },
           { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
           { name: "identityType", in: "query", schema: { type: "string", maxLength: 50 } },
           { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
           { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
-          { name: "ekyc", in: "query", schema: { type: "string", enum: ["verified", "unverified"] } },
+          {
+            name: "ekyc",
+            in: "query",
+            schema: { type: "string", enum: ["verified", "unverified"] }
+          },
           { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
@@ -19620,7 +20484,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "object",
             required: ["list", "total", "page", "page_size"],
             properties: {
-              list: { type: "array", items: { $ref: "#/components/schemas/BackofficeManagedUser" } },
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/BackofficeManagedUser" }
+              },
               total: { type: "integer" },
               page: { type: "integer" },
               page_size: { type: "integer" }
@@ -19639,7 +20506,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "backoffice:users:read",
         parameters: [idPathParameter("userId")],
         responses: {
-          "200": jsonDataResponse("All-user detail", { $ref: "#/components/schemas/BackofficeManagedUserDetail" }),
+          "200": jsonDataResponse("All-user detail", {
+            $ref: "#/components/schemas/BackofficeManagedUserDetail"
+          }),
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User not found" }
@@ -19852,10 +20721,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             required: ["current", "latestVersion", "evaluatedAt", "history"],
             properties: {
               current: {
-                oneOf: [
-                  { $ref: "#/components/schemas/AgentCommissionRule" },
-                  { type: "null" }
-                ]
+                oneOf: [{ $ref: "#/components/schemas/AgentCommissionRule" }, { type: "null" }]
               },
               latestVersion: { type: "integer", minimum: 0 },
               evaluatedAt: { type: "string", format: "date-time" },
@@ -20021,12 +20887,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               schema: {
                 type: "object",
                 additionalProperties: false,
-                required: [
-                  "periodStart",
-                  "periodEnd",
-                  "externalDeductions",
-                  "idempotencyKey"
-                ],
+                required: ["periodStart", "periodEnd", "externalDeductions", "idempotencyKey"],
                 properties: {
                   periodStart: { type: "string", format: "date" },
                   periodEnd: { type: "string", format: "date" },
@@ -20064,62 +20925,63 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
-    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment`]: {
-      post: {
-        tags: ["Platform Partners"],
-        summary: "Confirm payment of an agent settlement",
-        description:
-          "Records an external payment reference using the method fixed by the confirmed rule snapshot. Settlement lines are never recalculated or rewritten.",
-        security: [{ bearerAuth: [] }],
-        "x-permission": "backoffice:agent-settlement:pay",
-        parameters: [
-          {
-            name: "agentPublicId",
-            in: "path",
+    [`${config.API_PREFIX}/backoffice/agents/{agentPublicId}/settlements/{settlementPublicId}/payment`]:
+      {
+        post: {
+          tags: ["Platform Partners"],
+          summary: "Confirm payment of an agent settlement",
+          description:
+            "Records an external payment reference using the method fixed by the confirmed rule snapshot. Settlement lines are never recalculated or rewritten.",
+          security: [{ bearerAuth: [] }],
+          "x-permission": "backoffice:agent-settlement:pay",
+          parameters: [
+            {
+              name: "agentPublicId",
+              in: "path",
+              required: true,
+              schema: { type: "string", format: "uuid" }
+            },
+            {
+              name: "settlementPublicId",
+              in: "path",
+              required: true,
+              schema: { type: "string", format: "uuid" }
+            }
+          ],
+          requestBody: {
             required: true,
-            schema: { type: "string", format: "uuid" }
-          },
-          {
-            name: "settlementPublicId",
-            in: "path",
-            required: true,
-            schema: { type: "string", format: "uuid" }
-          }
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["paymentMethod", "paymentReference", "reason"],
-                properties: {
-                  paymentMethod: {
-                    type: "string",
-                    enum: ["bank_transfer", "ndp", "other"]
-                  },
-                  paymentReference: { type: "string", minLength: 1, maxLength: 255 },
-                  reason: { type: "string", minLength: 1, maxLength: 500 }
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["paymentMethod", "paymentReference", "reason"],
+                  properties: {
+                    paymentMethod: {
+                      type: "string",
+                      enum: ["bank_transfer", "ndp", "other"]
+                    },
+                    paymentReference: { type: "string", minLength: 1, maxLength: 255 },
+                    reason: { type: "string", minLength: 1, maxLength: 500 }
+                  }
                 }
               }
             }
+          },
+          responses: {
+            "200": jsonDataResponse("Agent settlement payment confirmed", {
+              $ref: "#/components/schemas/AgentSettlement"
+            }),
+            "400": jsonErrorResponse("error.validation"),
+            "401": jsonErrorResponse("error.auth.token_invalid"),
+            "403": jsonErrorResponse("error.forbidden"),
+            "404": jsonErrorResponse("error.agent_settlement.not_found"),
+            "409": jsonErrorResponse(
+              "error.agent_settlement.conflict or error.agent_settlement.payment_method_mismatch"
+            )
           }
-        },
-        responses: {
-          "200": jsonDataResponse("Agent settlement payment confirmed", {
-            $ref: "#/components/schemas/AgentSettlement"
-          }),
-          "400": jsonErrorResponse("error.validation"),
-          "401": jsonErrorResponse("error.auth.token_invalid"),
-          "403": jsonErrorResponse("error.forbidden"),
-          "404": jsonErrorResponse("error.agent_settlement.not_found"),
-          "409": jsonErrorResponse(
-            "error.agent_settlement.conflict or error.agent_settlement.payment_method_mismatch"
-          )
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/backoffice/operating-costs`]: {
       get: {
         tags: ["Operating Costs"],
@@ -20130,10 +20992,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "backoffice:operating-cost:read",
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
           { name: "keyword", in: "query", schema: { type: "string", maxLength: 160 } },
-          { name: "categoryCode", in: "query", schema: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] } },
-          { name: "status", in: "query", schema: { type: "string", enum: ["draft", "published", "archived"] } },
+          {
+            name: "categoryCode",
+            in: "query",
+            schema: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] }
+          },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["draft", "published", "archived"] }
+          },
           { name: "periodStart", in: "query", schema: { type: "string", format: "date" } },
           { name: "periodEnd", in: "query", schema: { type: "string", format: "date" } }
         ],
@@ -20156,7 +21030,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Operating Costs"],
         summary: "Create the next draft version of an operating cost",
-        description: "Creates a JPY operating-cost draft. Only one live draft may exist for a cost code.",
+        description:
+          "Creates a JPY operating-cost draft. Only one live draft may exist for a cost code.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:operating-cost:write",
         requestBody: {
@@ -20167,19 +21042,44 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 additionalProperties: false,
                 required: [
-                  "costCode", "categoryCode", "name", "amountJpy", "periodStart",
-                  "periodEnd", "allocationMode", "effectiveAt", "reason"
+                  "costCode",
+                  "categoryCode",
+                  "name",
+                  "amountJpy",
+                  "periodStart",
+                  "periodEnd",
+                  "allocationMode",
+                  "effectiveAt",
+                  "reason"
                 ],
                 properties: {
-                  costCode: { type: "string", minLength: 1, maxLength: 100, pattern: "^[a-z0-9][a-z0-9._-]*$" },
-                  categoryCode: { type: "string", enum: ["personnel", "server", "third_party_api", "other"] },
+                  costCode: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 100,
+                    pattern: "^[a-z0-9][a-z0-9._-]*$"
+                  },
+                  categoryCode: {
+                    type: "string",
+                    enum: ["personnel", "server", "third_party_api", "other"]
+                  },
                   name: { type: "string", minLength: 1, maxLength: 160 },
-                  amountJpy: { type: "integer", format: "int64", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+                  amountJpy: {
+                    type: "integer",
+                    format: "int64",
+                    minimum: 0,
+                    maximum: Number.MAX_SAFE_INTEGER
+                  },
                   periodStart: { type: "string", format: "date" },
                   periodEnd: { type: "string", format: "date" },
-                  allocationMode: { type: "string", enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"] },
+                  allocationMode: {
+                    type: "string",
+                    enum: ["equal_active_shops", "platform_income_proportional", "direct_shops"]
+                  },
                   directAssignments: {
-                    type: "array", minItems: 1, maxItems: 500,
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 500,
                     items: { $ref: "#/components/schemas/OperatingCostDirectAssignment" }
                   },
                   effectiveAt: { type: "string", format: "date-time" },
@@ -20190,7 +21090,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "201": jsonDataResponse("Operating cost draft created", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "201": jsonDataResponse("Operating cost draft created", {
+            $ref: "#/components/schemas/OperatingCostItem"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.token_invalid"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -20202,16 +21104,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       patch: {
         tags: ["Operating Costs"],
         summary: "Replace a draft operating-cost configuration",
-        description: "Updates all configurable fields of a draft. Published versions are immutable.",
+        description:
+          "Updates all configurable fields of a draft. Published versions are immutable.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:operating-cost:write",
-        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        parameters: [
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OperatingCostConfiguration" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OperatingCostConfiguration" }
+            }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Operating cost draft updated", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "200": jsonDataResponse("Operating cost draft updated", {
+            $ref: "#/components/schemas/OperatingCostItem"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.token_invalid"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -20225,8 +21141,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         description: "Deletes only an unpublished draft and retains the atomic audit record.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:operating-cost:write",
-        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, ["reason"]),
+        parameters: [
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, [
+          "reason"
+        ]),
         responses: {
           "204": { description: "Operating cost draft deleted" },
           "400": jsonErrorResponse("error.validation"),
@@ -20245,14 +21170,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "Atomically locks the draft, resolves formal shop evidence, creates exact integer JPY allocations, publishes the version and records calculation/audit snapshots. Proportional basis is settled order platform fees converted by the order rate plus confirmed SaaS receipts.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:operating-cost:write",
-        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, ["reason"]),
+        parameters: [
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: authJsonBody({ reason: { type: "string", minLength: 1, maxLength: 500 } }, [
+          "reason"
+        ]),
         responses: {
-          "200": jsonDataResponse("Operating cost published with shop allocations", { $ref: "#/components/schemas/OperatingCostItem" }),
+          "200": jsonDataResponse("Operating cost published with shop allocations", {
+            $ref: "#/components/schemas/OperatingCostItem"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.token_invalid"),
           "403": jsonErrorResponse("error.forbidden"),
-          "404": jsonErrorResponse("error.operating_cost.not_found or error.operating_cost.shop_not_found"),
+          "404": jsonErrorResponse(
+            "error.operating_cost.not_found or error.operating_cost.shop_not_found"
+          ),
           "409": jsonErrorResponse("error.operating_cost.conflict"),
           "422": jsonErrorResponse("error.operating_cost.allocation_invalid")
         }
@@ -20329,7 +21267,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:service-taxonomy:read",
         parameters: [
-          { name: "categoryId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "categoryId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "keyword", in: "query", schema: { type: "string", maxLength: 120 } }
@@ -20343,7 +21286,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Create an audited search tag",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:service-taxonomy:write",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object" } } }
+        },
         responses: { "201": jsonDataResponse("Search tag created", { type: "object" }) }
       }
     },
@@ -20354,7 +21300,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:service-taxonomy:write",
         parameters: [idPathParameter()],
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object" } } }
+        },
         responses: { "200": jsonDataResponse("Search tag updated", { type: "object" }) }
       }
     },
@@ -20365,7 +21314,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:service-taxonomy:read",
         parameters: [
-          { name: "keywordId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "keywordId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -20378,7 +21332,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Create an audited normalized keyword synonym",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:service-taxonomy:write",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object" } } }
+        },
         responses: { "201": jsonDataResponse("Keyword synonym created", { type: "object" }) }
       }
     },
@@ -20389,7 +21346,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:service-taxonomy:write",
         parameters: [idPathParameter()],
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object" } } }
+        },
         responses: { "200": jsonDataResponse("Keyword synonym updated", { type: "object" }) }
       }
     },
@@ -20400,8 +21360,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:search-analytics:read",
         parameters: [
-          { name: "startAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
-          { name: "endAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          {
+            name: "startAt",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "endAt",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
           { name: "city", in: "query", schema: { type: "string", maxLength: 120 } },
           { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } }
         ],
@@ -20415,13 +21385,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:search-analytics:read",
         parameters: [
-          { name: "startAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
-          { name: "endAt", in: "query", required: true, schema: { type: "string", format: "date-time" } },
-          { name: "keywords", in: "query", required: true, description: "Comma-separated or repeated keywords; maximum five.", schema: { type: "array", maxItems: 5, items: { type: "string" } } },
+          {
+            name: "startAt",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "endAt",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "keywords",
+            in: "query",
+            required: true,
+            description: "Comma-separated or repeated keywords; maximum five.",
+            schema: { type: "array", maxItems: 5, items: { type: "string" } }
+          },
           { name: "city", in: "query", schema: { type: "string", maxLength: 120 } },
           { name: "categoryId", in: "query", schema: { type: "integer", minimum: 1 } }
         ],
-        responses: { "200": jsonDataResponse("Raw and normalized Tokyo-day trend series", { type: "object" }) }
+        responses: {
+          "200": jsonDataResponse("Raw and normalized Tokyo-day trend series", { type: "object" })
+        }
       }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}`]: {
@@ -20530,7 +21518,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/me/platform-membership`]: {
       get: {
         tags: ["Platform Membership"],
-        summary: "Read the authenticated customer's resolved platform membership and published theme",
+        summary:
+          "Read the authenticated customer's resolved platform membership and published theme",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": jsonDataResponse("Customer platform membership projection", {
@@ -22740,7 +23729,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Shop Service Taxonomy"],
         summary: "List localized active shop service categories",
         parameters: [
-          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } },
+          {
+            name: "locale",
+            in: "query",
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -22750,7 +23743,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             additionalProperties: false,
             required: ["list", "total", "page", "page_size"],
             properties: {
-              list: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopServiceCategory" } },
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/LocalizedShopServiceCategory" }
+              },
               total: { type: "integer", minimum: 0 },
               page: { type: "integer", minimum: 1 },
               page_size: { type: "integer", minimum: 1, maximum: 100 }
@@ -22766,7 +23762,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "List localized active business keywords under one category",
         parameters: [
           idPathParameter(),
-          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } },
+          {
+            name: "locale",
+            in: "query",
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -22776,7 +23776,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             additionalProperties: false,
             required: ["list", "total", "page", "page_size"],
             properties: {
-              list: { type: "array", items: { $ref: "#/components/schemas/LocalizedShopBusinessKeyword" } },
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/LocalizedShopBusinessKeyword" }
+              },
               total: { type: "integer", minimum: 0 },
               page: { type: "integer", minimum: 1 },
               page_size: { type: "integer", minimum: 1, maximum: 100 }
@@ -22793,10 +23796,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:shop:service-taxonomy:read",
         parameters: [
-          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } }
+          {
+            name: "locale",
+            in: "query",
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" }
+          }
         ],
         responses: {
-          "200": jsonDataResponse("Current selection and server-owned quotas", { $ref: "#/components/schemas/ShopServiceTaxonomySelection" }),
+          "200": jsonDataResponse("Current selection and server-owned quotas", {
+            $ref: "#/components/schemas/ShopServiceTaxonomySelection"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.auth.merchant_shop_scope_required")
@@ -22808,23 +23817,44 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:shop:service-taxonomy:write",
         parameters: [
-          { name: "locale", in: "query", schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" } }
+          {
+            name: "locale",
+            in: "query",
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"], default: "ja" }
+          }
         ],
         requestBody: identityJsonBody(
           {
-            categoryIds: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "integer", minimum: 1 } },
-            keywordIds: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "integer", minimum: 1 } },
+            categoryIds: {
+              type: "array",
+              maxItems: 100,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            },
+            keywordIds: {
+              type: "array",
+              maxItems: 100,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            },
             expectedRevision: { type: "integer", minimum: 0 },
             idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
           },
           ["categoryIds", "keywordIds", "expectedRevision", "idempotencyKey"]
         ),
         responses: {
-          "200": jsonDataResponse("Authoritative replacement result, including dependent removals", { $ref: "#/components/schemas/ShopServiceTaxonomySelection" }),
-          "400": jsonErrorResponse("error.validation, quota exceeded, inactive selection, foreign-category keyword, or missing qualification"),
+          "200": jsonDataResponse(
+            "Authoritative replacement result, including dependent removals",
+            { $ref: "#/components/schemas/ShopServiceTaxonomySelection" }
+          ),
+          "400": jsonErrorResponse(
+            "error.validation, quota exceeded, inactive selection, foreign-category keyword, or missing qualification"
+          ),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.auth.merchant_shop_scope_required"),
-          "409": jsonErrorResponse("error.shop_taxonomy.version_conflict or error.shop_taxonomy.idempotency_conflict")
+          "409": jsonErrorResponse(
+            "error.shop_taxonomy.version_conflict or error.shop_taxonomy.idempotency_conflict"
+          )
         }
       }
     },
@@ -22925,8 +23955,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             contactPhone: { type: "string", minLength: 1, maxLength: 32 },
             responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
             showcaseDraft: { type: "object", additionalProperties: true },
-            serviceCategoryIds: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } },
-            businessKeywordIds: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } }
+            serviceCategoryIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 5,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            },
+            businessKeywordIds: {
+              type: "array",
+              maxItems: 5,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            }
           },
           [
             "applicantKind",
@@ -22961,8 +24002,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             contactPhone: { type: "string", minLength: 1, maxLength: 32 },
             responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
             showcaseDraft: { type: "object", additionalProperties: true },
-            serviceCategoryIds: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } },
-            businessKeywordIds: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "integer", minimum: 1 } }
+            serviceCategoryIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 5,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            },
+            businessKeywordIds: {
+              type: "array",
+              maxItems: 5,
+              uniqueItems: true,
+              items: { type: "integer", minimum: 1 }
+            }
           },
           [
             "expectedVersion",
@@ -23024,6 +24076,321 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
         )
       })
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices`]: {
+      get: {
+        tags: ["Merchant Official Notices"],
+        summary: "List formal notices published by the current shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:read",
+        parameters: [
+          merchantPreviewShopHeaderParameter,
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "draft",
+                "pending_review",
+                "approved",
+                "scheduled",
+                "sending",
+                "sent",
+                "cancelled",
+                "archived"
+              ]
+            }
+          },
+          {
+            name: "level",
+            in: "query",
+            schema: { type: "string", enum: ["general", "important", "urgent"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-shop official notices", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Create a server-derived current-shop audience snapshot and plan delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": ["merchant-admin:notice:create", "merchant-admin:notice:send"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantOfficialNoticeCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Current-shop official notice created and planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Audience, schedule, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/cancel`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Cancel a current-shop notice before delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice cancelled", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/archive`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Archive a terminal current-shop notice",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice archived", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/retry-failures`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Retry failed current-shop identity deliveries",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:send",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Failed current-shop deliveries requeued", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices`]: {
+      get: {
+        tags: ["Official Notices"],
+        summary: "List official notice delivery records",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "page:backoffice-official-notice",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "draft",
+                "pending_review",
+                "approved",
+                "scheduled",
+                "sending",
+                "sent",
+                "cancelled",
+                "archived"
+              ]
+            }
+          },
+          {
+            name: "level",
+            in: "query",
+            schema: { type: "string", enum: ["general", "important", "urgent"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated official notices", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden")
+        }
+      },
+      post: {
+        tags: ["Official Notices"],
+        summary: "Create an audience snapshot and plan formal delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": [
+          "button:backoffice-official-notice-create",
+          "button:backoffice-official-notice-send"
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeCreate" } }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Official notice created and planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Audience, schedule, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/cancel`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Cancel a notice before delivery",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Official notice cancelled", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/archive`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Archive a terminal official notice",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-review",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Official notice archived", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "409": jsonErrorResponse("State or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/retry-failures`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Retry failed identity deliveries",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-send",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeLifecycle" } }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Failed official-notice deliveries requeued", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
+          "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/official-notices`]: {
+      get: {
+        tags: ["Official Notices"],
+        summary: "List official notices delivered to the current identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "locale",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+          },
+          { name: "unreadOnly", in: "query", schema: { type: "boolean", default: false } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-identity official notices", {
+            $ref: "#/components/schemas/RecipientOfficialNoticePage"
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.auth.identity_required")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/official-notices/{publicId}/read`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Mark one current-identity official notice as read",
+        security: [{ bearerAuth: [] }],
+        parameters: [announcementPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Official notice marked read", {
+            type: "object",
+            additionalProperties: false,
+            required: ["publicId", "readAt"],
+            properties: {
+              publicId: { type: "string", format: "uuid" },
+              readAt: { type: "string", format: "date-time" }
+            }
+          }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.auth.identity_required"),
+          "404": jsonErrorResponse("error.official_notice.not_found")
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/affiliate/announcements`]: {
       get: announcementOperation(
@@ -24067,7 +25434,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       delete: {
         tags: ["Step 13 Realtime"],
         summary:
-          "Hide a conversation from the current participant without deleting shared messages",
+          "Delete the current participant conversation and clear their history; reopening does not restore earlier messages. Other participants retain their messages",
         security: [{ bearerAuth: [] }],
         parameters: [
           {

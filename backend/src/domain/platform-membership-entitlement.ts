@@ -228,10 +228,7 @@ export const planPlatformMembershipEntitlementChange = (input: {
     if (tierRank[target.tierCode] <= tierRank[current.tierCode]) {
       throw new RangeError("upgrade target must be higher than the current tier");
     }
-    const experienceValueNdp = Math.max(
-      target.monthlyValueNdp - current.monthlyValueNdp,
-      0
-    );
+    const experienceValueNdp = Math.max(target.monthlyValueNdp - current.monthlyValueNdp, 0);
     return {
       billingMonths,
       experienceValueNdp,

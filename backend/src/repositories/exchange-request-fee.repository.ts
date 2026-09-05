@@ -45,9 +45,7 @@ export class ExchangeRequestFeeRepository implements ExchangeRequestFeeRepositor
   public constructor(private readonly client: ExchangeRequestFeePrismaClient = prisma) {}
 
   public withTransactionClient(transactionClient: unknown): ExchangeRequestFeeRepositoryPort {
-    return new ExchangeRequestFeeRepository(
-      transactionClient as ExchangeRequestFeePrismaClient
-    );
+    return new ExchangeRequestFeeRepository(transactionClient as ExchangeRequestFeePrismaClient);
   }
 
   public async findCurrent(at: Date): Promise<ExchangeRequestFeeSnapshot | null> {
@@ -317,9 +315,7 @@ export class ExchangeRequestFeeRepository implements ExchangeRequestFeeRepositor
     };
   }
 
-  private mapSnapshotOrNull(
-    record: RequestFeeRuleSetRecord
-  ): ExchangeRequestFeeSnapshot | null {
+  private mapSnapshotOrNull(record: RequestFeeRuleSetRecord): ExchangeRequestFeeSnapshot | null {
     if (record.rules.length !== 1) return null;
     const rule = record.rules[0];
     if (!rule || !this.validAmount(rule.baseAmountNdp)) return null;

@@ -59,7 +59,8 @@ describe("ShopMembershipCardRefundRepository", () => {
       refund: null
     };
     const tx = {
-      $queryRaw: jest.fn()
+      $queryRaw: jest
+        .fn()
         .mockResolvedValueOnce([{ id: 191 }])
         .mockResolvedValueOnce([{ id: 81 }])
         .mockResolvedValueOnce([{ id: 181 }])
@@ -71,12 +72,17 @@ describe("ShopMembershipCardRefundRepository", () => {
       shopMembershipCard: { updateMany: jest.fn() },
       shopMembershipCardAdjustmentRequest: { findFirst: jest.fn() }
     };
-    const client = { $transaction: jest.fn(async (callback) => callback(tx)) } as unknown as PrismaClient;
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as unknown as PrismaClient;
     const reverse = jest.fn();
 
-    await expect(new ShopMembershipCardRefundRepository(client)
-      .refundWithReversalAuditAndNotification(input, reverse))
-      .resolves.toEqual({ kind: "order_not_refunded" });
+    await expect(
+      new ShopMembershipCardRefundRepository(client).refundWithReversalAuditAndNotification(
+        input,
+        reverse
+      )
+    ).resolves.toEqual({ kind: "order_not_refunded" });
     expect(tx.shopMembershipCard.updateMany).not.toHaveBeenCalled();
     expect(tx.shopMembershipCardAdjustmentRequest.findFirst).not.toHaveBeenCalled();
     expect(reverse).not.toHaveBeenCalled();

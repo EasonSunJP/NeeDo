@@ -45,9 +45,7 @@ describe("Exchange selective exact matching OpenAPI", () => {
       ])
     );
     expect(document.paths).not.toHaveProperty("/api/v1/exchange/posts/{id}/matching/close");
-    expect(document.paths).toHaveProperty(
-      "/api/v1/exchange/posts/{id}/matching/bookings.post"
-    );
+    expect(document.paths).toHaveProperty("/api/v1/exchange/posts/{id}/matching/bookings.post");
     expect(JSON.stringify(document.paths)).not.toMatch(/matching\/pay/u);
   });
 

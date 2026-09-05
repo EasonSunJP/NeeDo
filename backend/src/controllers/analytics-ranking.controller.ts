@@ -12,12 +12,18 @@ export class AnalyticsRankingController {
 
   public list = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.service.list(
-        getAuthenticatedAccess(response),
-        getRequestContext(request),
-        analyticsRankingParamsSchema.parse(request.params),
-        analyticsRankingQuerySchema.parse(request.query)
-      )));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.list(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              analyticsRankingParamsSchema.parse(request.params),
+              analyticsRankingQuerySchema.parse(request.query)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }
