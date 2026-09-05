@@ -16,6 +16,14 @@ const repeated = <TSchema extends z.ZodTypeAny>(schema: TSchema) =>
     (value) => (value === undefined ? undefined : Array.isArray(value) ? value : [value]),
     z.array(schema).min(1).max(20).optional()
   );
+const managedIdentityTypeSchema = z.enum([
+  "platform",
+  "customer",
+  "technician",
+  "merchant",
+  "broker",
+  "scout"
+]);
 
 export const manageableMerchantShopsQuerySchema = z
   .object({
@@ -44,8 +52,8 @@ export const backofficeManagedUserListQuerySchema = z
     tier: z.enum(["free", "silver", "gold", "black_diamond"]).optional(),
     tiers: repeated(z.enum(["free", "silver", "gold", "black_diamond"])),
     groupCode: z.string().trim().min(1).max(80).optional(),
-    identityType: z.string().trim().min(1).max(50).optional(),
-    identityTypes: repeated(z.string().trim().min(1).max(50)),
+    identityType: managedIdentityTypeSchema.optional(),
+    identityTypes: repeated(managedIdentityTypeSchema),
     source: z.string().trim().min(1).max(32).optional(),
     state: z.enum(["active", "inactive"]).optional(),
     states: repeated(z.enum(["active", "inactive"])),

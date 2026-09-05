@@ -114,6 +114,7 @@ describe("BackofficeRepository managed users", () => {
         privacy: "enabled",
         minBookings: 2,
         maxBookings: 20,
+        identityTypes: ["platform", "merchant"],
         sortBy: "city",
         sortDirection: "desc"
       } as never,
@@ -132,6 +133,19 @@ describe("BackofficeRepository managed users", () => {
               ]
             },
             { email: { not: "" } },
+            {
+              identities: {
+                some: {
+                  type: { in: ["platform", "merchant"] },
+                  isActive: true,
+                  deletedAt: null,
+                  OR: [
+                    { scopeType: "shop", scopeId: 11 },
+                    { scopeType: "customer_profile", type: "customer" }
+                  ]
+                }
+              }
+            },
             {
               OR: [
                 {

@@ -100,6 +100,16 @@ const PAID_PLATFORM_TIER_CODES = [
   PlatformMembershipTierCode.BLACK_DIAMOND
 ];
 
+const visibleManagedIdentityScopeWhere = (scope: BackofficeScope) =>
+  scope.scope === "merchant"
+    ? {
+        OR: [
+          { scopeType: "shop", scopeId: scope.shopId },
+          { scopeType: "customer_profile", type: "customer" }
+        ]
+      }
+    : {};
+
 const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
   Prisma.validator<Prisma.UserSelect>()({
     id: true,
@@ -121,10 +131,7 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
         scope.scope === "merchant"
           ? {
               deletedAt: null,
-              OR: [
-                { scopeType: "shop", scopeId: scope.shopId },
-                { scopeType: "customer_profile", type: "customer" }
-              ]
+              ...visibleManagedIdentityScopeWhere(scope)
             }
           : { deletedAt: null },
       orderBy: [{ isDefault: "desc" }, { id: "asc" }],
@@ -1959,12 +1966,26 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     if (input.states?.length === 1) conditions.push({ isActive: input.states[0] === "active" });
     if (input.identityType) {
       conditions.push({
-        identities: { some: { type: input.identityType, isActive: true, deletedAt: null } }
+        identities: {
+          some: {
+            type: input.identityType,
+            isActive: true,
+            deletedAt: null,
+            ...visibleManagedIdentityScopeWhere(input)
+          }
+        }
       });
     }
     if (input.identityTypes?.length) {
       conditions.push({
-        identities: { some: { type: { in: input.identityTypes }, isActive: true, deletedAt: null } }
+        identities: {
+          some: {
+            type: { in: input.identityTypes },
+            isActive: true,
+            deletedAt: null,
+            ...visibleManagedIdentityScopeWhere(input)
+          }
+        }
       });
     }
     if (input.source) {

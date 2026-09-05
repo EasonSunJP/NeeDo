@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canonicalTopFilterQuery, userDirectoryQuery } from "./UnifiedUserDirectory";
+import type { UserListQuery } from "./types";
 
 describe("unified user directory query", () => {
   it("keeps registered date filters and normalizes legacy single filters", () => {
@@ -29,7 +30,8 @@ describe("unified user directory query", () => {
   it("maps top filters onto the same multi-value fields as table headers", () => {
     expect(canonicalTopFilterQuery(
       { page: 4, tiers: ["silver"], states: ["inactive"] },
-      { keyword: " Mia ", tier: "gold", identityType: "customer", state: "active", ekyc: "verified" }
+      { keyword: " Mia ", tier: "gold", identityType: "customer", state: "active", ekyc: "verified" },
+      ["keyword", "tier", "identityType", "state", "ekyc"]
     )).toMatchObject({
       page: 1,
       keyword: "Mia",
@@ -38,5 +40,23 @@ describe("unified user directory query", () => {
       states: ["active"],
       ekycStates: ["verified"]
     });
+  });
+
+  it("preserves complete header multi-selects when only the top keyword changes", () => {
+    const query: UserListQuery = {
+      page: 3,
+      tiers: ["silver", "gold"],
+      identityTypes: ["customer", "technician"],
+      states: ["active", "inactive"],
+      ekycStates: ["verified", "unverified"]
+    };
+
+    expect(canonicalTopFilterQuery(query, {
+      keyword: "Mia",
+      tier: "silver",
+      identityType: "customer",
+      state: "active",
+      ekyc: "verified"
+    }, ["keyword"])).toEqual({ ...query, page: 1, keyword: "Mia" });
   });
 });

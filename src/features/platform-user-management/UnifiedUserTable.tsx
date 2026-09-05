@@ -3,7 +3,7 @@ import { translateText, type Language } from "../../i18n/translations";
 import { Badge } from "../../components/ui/Badge";
 import { TableColumnHeader, type TableSortDirection } from "../../components/ui/TableColumnHeader";
 import { membershipTierText, platformUserManagementCopy, privacyModeText, privacyScopeText } from "./i18n";
-import type { PlatformManagedUser, UserListQuery } from "./types";
+import type { PlatformIdentityType, PlatformManagedUser, UserListQuery } from "./types";
 
 type FilterOption = { label: string; value: string };
 
@@ -194,7 +194,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
           <ServerColumnHeader {...headerProps} columnKey="user" searchPatch={(keyword) => ({ keyword: keyword.trim() || undefined })} searchValue={query.keyword ?? ""} sortKey="displayName" title={copy.user} />
           <ServerColumnHeader {...headerProps} columnKey="email" multiFilterPatch={(emailStates) => ({ emailStates: emailStates as UserListQuery["emailStates"] })} options={[{ value: "set", label: copy.bound }, { value: "unset", label: copy.unbound }]} sortKey="email" title={translateText("邮箱", language)} values={query.emailStates} />
           <ServerColumnHeader {...headerProps} columnKey="city" searchPatch={(city) => ({ city: city.trim() || undefined, cities: undefined })} searchValue={query.city ?? ""} sortKey="city" title={translateText("城市", language)} />
-          <ServerColumnHeader {...headerProps} columnKey="identities" multiFilterPatch={(identityTypes) => ({ identityTypes })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "shop_owner", label: translateText("商户", language) }, { value: "admin", label: translateText("运营", language) }]} title={copy.identities} values={query.identityTypes} />
+          <ServerColumnHeader {...headerProps} columnKey="identities" multiFilterPatch={(identityTypes) => ({ identityTypes: identityTypes as PlatformIdentityType[] | undefined })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "merchant", label: translateText("商户", language) }, { value: "platform", label: translateText("运营", language) }, { value: "broker", label: translateText("经纪人", language) }, { value: "scout", label: translateText("星探", language) }]} title={copy.identities} values={query.identityTypes} />
           <ServerColumnHeader {...headerProps} columnKey="membership" multiFilterPatch={(tiers) => ({ tiers: tiers as UserListQuery["tiers"] })} options={tierOptions} title={copy.membership} values={query.tiers} />
           <ServerColumnHeader {...headerProps} columnKey="bookings" filterPatch={(range) => ({ minBookings: range ? bookingRanges[range]?.minBookings : undefined, maxBookings: range ? bookingRanges[range]?.maxBookings : undefined })} options={Object.keys(bookingRanges).map((value) => ({ value, label: value }))} title={copy.bookings} value={activeBookingRange(query)} />
           <ServerColumnHeader {...headerProps} columnKey="privacy" multiFilterPatch={(privacyScopes) => ({ privacyScopes: privacyScopes as UserListQuery["privacyScopes"] })} options={privacyOptions} title={translateText("隐私模式", language)} values={query.privacyScopes} />

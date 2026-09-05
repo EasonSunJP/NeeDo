@@ -82,6 +82,10 @@ describe("backoffice all-user API", () => {
       .get("/api/v1/backoffice/users?minBookings=10&maxBookings=2")
       .set("Authorization", `Bearer ${token}`)
       .expect(400);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/users?identityTypes=admin")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
     await request(fixture.app).get("/api/v1/backoffice/users").expect(401);
   });
 

@@ -198,8 +198,8 @@ export type UserListQuery = {
   tier?: PlatformTierCode;
   tiers?: PlatformTierCode[];
   groupCode?: string;
-  identityType?: string;
-  identityTypes?: string[];
+  identityType?: PlatformIdentityType;
+  identityTypes?: PlatformIdentityType[];
   source?: string;
   state?: "active" | "inactive";
   states?: Array<"active" | "inactive">;
@@ -224,6 +224,8 @@ export type UserListQuery = {
   registeredFrom?: string;
   registeredTo?: string;
 };
+
+export type PlatformIdentityType = "platform" | "customer" | "technician" | "merchant" | "broker" | "scout";
 
 export type UserGroup = {
   code: string;

@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/Button";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { platformUserManagementApi } from "./api";
 import { platformUserManagementCopy } from "./i18n";
-import type { Paginated, PlatformManagedUser, PlatformTierCode, UserDirectoryScope, UserListQuery } from "./types";
+import type { Paginated, PlatformIdentityType, PlatformManagedUser, PlatformTierCode, UserDirectoryScope, UserListQuery } from "./types";
 import { UnifiedUserTable } from "./UnifiedUserTable";
 import { UserFilters } from "./UserFilters";
 
@@ -18,18 +18,28 @@ const valuesOrLegacy = (params: URLSearchParams, valuesKey: string, legacyKey: s
 };
 
 type TopFilterDraft = Pick<UserListQuery, "keyword" | "tier" | "identityType" | "state" | "ekyc">;
+export type TopFilterField = keyof TopFilterDraft;
 
-export function canonicalTopFilterQuery(query: UserListQuery, filters: TopFilterDraft): UserListQuery {
-  const { tier: _tier, identityType: _identityType, state: _state, ekyc: _ekyc, ...canonical } = query;
-  return {
-    ...canonical,
-    page: 1,
-    keyword: filters.keyword?.trim() || undefined,
-    tiers: filters.tier ? [filters.tier] : undefined,
-    identityTypes: filters.identityType ? [filters.identityType] : undefined,
-    states: filters.state ? [filters.state] : undefined,
-    ekycStates: filters.ekyc ? [filters.ekyc] : undefined
-  };
+export function canonicalTopFilterQuery(query: UserListQuery, filters: TopFilterDraft, changedFields: TopFilterField[]): UserListQuery {
+  const next = { ...query, page: 1 };
+  if (changedFields.includes("keyword")) next.keyword = filters.keyword?.trim() || undefined;
+  if (changedFields.includes("tier")) {
+    delete next.tier;
+    next.tiers = filters.tier ? [filters.tier] : undefined;
+  }
+  if (changedFields.includes("identityType")) {
+    delete next.identityType;
+    next.identityTypes = filters.identityType ? [filters.identityType] : undefined;
+  }
+  if (changedFields.includes("state")) {
+    delete next.state;
+    next.states = filters.state ? [filters.state] : undefined;
+  }
+  if (changedFields.includes("ekyc")) {
+    delete next.ekyc;
+    next.ekycStates = filters.ekyc ? [filters.ekyc] : undefined;
+  }
+  return next;
 }
 
 export function userDirectoryQuery(params: URLSearchParams): UserListQuery {
@@ -38,7 +48,7 @@ export function userDirectoryQuery(params: URLSearchParams): UserListQuery {
     page_size: pageSize,
     keyword: params.get("keyword") || undefined,
     tiers: valuesOrLegacy(params, "tiers", "tier") as PlatformTierCode[],
-    identityTypes: valuesOrLegacy(params, "identityTypes", "identityType"),
+    identityTypes: valuesOrLegacy(params, "identityTypes", "identityType") as PlatformIdentityType[],
     states: valuesOrLegacy(params, "states", "state") as NonNullable<UserListQuery["states"]>,
     ekycStates: valuesOrLegacy(params, "ekycStates", "ekyc") as NonNullable<UserListQuery["ekycStates"]>,
     city: params.get("city") || params.getAll("cities")[0] || undefined,
@@ -98,7 +108,7 @@ export function UnifiedUserDirectory({ scope, onSelect }: { scope: UserDirectory
     <UserFilters
       language={language}
       onReset={reset}
-      onSubmit={(filters) => updateQuery(canonicalTopFilterQuery(query, filters))}
+      onSubmit={(filters, changedFields) => updateQuery(canonicalTopFilterQuery(query, filters, changedFields))}
       value={{
         keyword: query.keyword,
         tier: query.tiers?.[0],
