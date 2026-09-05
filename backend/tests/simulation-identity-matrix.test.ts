@@ -1,4 +1,5 @@
 import {
+  SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX,
   buildSimulationIdentityGrants,
   simulationIdentityActiveKey
 } from "../src/simulation/simulation-identity-matrix";
@@ -57,6 +58,7 @@ describe("simulation identity matrix", () => {
     const second = build("merchant").map((grant) => simulationIdentityActiveKey(7, grant));
     expect(second).toEqual(first);
     expect(new Set(first).size).toBe(first.length);
+    expect(first.every((key) => key.startsWith(SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX))).toBe(true);
   });
 
   it("rejects missing real scopes", () => {
@@ -81,6 +83,7 @@ describe("simulation identity matrix", () => {
     );
     expect(seed).toContain("buildSimulationIdentityGrants");
     expect(seed).toContain("simulationIdentityActiveKey");
+    expect(seed).toContain("activeKey: { startsWith: SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX }");
     expect(seed).toContain('accountKind: "merchant"');
     expect(seed).toContain('accountKind: "technician"');
     expect(check).toContain("expectedTypes: string[]");

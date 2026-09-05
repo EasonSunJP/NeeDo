@@ -45,6 +45,7 @@ import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
 import { migrateLifeDanceAdminOwnership } from "../src/simulation/lifedance-admin-ownership";
 import {
+  SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX,
   buildSimulationIdentityGrants,
   simulationIdentityActiveKey
 } from "../src/simulation/simulation-identity-matrix";
@@ -510,6 +511,20 @@ const main = async (): Promise<void> => {
             });
           }
         };
+
+        if (seedConfig.preserveExistingPasswords) {
+          const stagingCohortUsers = await tx.user.findMany({
+            where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
+            select: { id: true }
+          });
+          await tx.userIdentity.updateMany({
+            where: {
+              userId: { in: stagingCohortUsers.map((user) => user.id) },
+              activeKey: { startsWith: SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX }
+            },
+            data: { activeKey: null }
+          });
+        }
 
         for (const shop of plan.shops) {
           const userId = getRequiredId(ownerUserIds, shop.key, "shop owner");
