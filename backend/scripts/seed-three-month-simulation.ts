@@ -106,19 +106,11 @@ const chunkRows = <T>(rows: T[], size = 500): T[][] =>
     rows.slice(index * size, (index + 1) * size)
   );
 
-const loadEnvironmentFile = (): void => {
-  const requestedEnvFile = process.env.ENV_FILE?.trim();
-  if (process.env.ALLOW_STAGING_SIMULATION_SYNC === "true" && !requestedEnvFile) {
-    return;
-  }
-  const envFile = requestedEnvFile || ".env.dev";
+const main = async (): Promise<void> => {
+  const envFile = process.env.ENV_FILE || ".env.dev";
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
-};
-
-const main = async (): Promise<void> => {
-  loadEnvironmentFile();
 
   const seedConfig = getSimulationSeedConfig(process.env);
   const [
@@ -136,27 +128,18 @@ const main = async (): Promise<void> => {
     (account) => account.email !== LIFEDANCE_ADMIN_EMAIL
   );
   const accountEmails = credentialAccounts.map((account) => account.email);
-  const seededAccountEmails = [
-    ...plan.shops
-      .filter((shop) => shop.ownerEmail !== LIFEDANCE_ADMIN_EMAIL)
-      .map((shop) => shop.ownerEmail),
-    ...plan.technicians.map((technician) => technician.email),
-    ...plan.customers.map((customer) => customer.email)
-  ];
   const accountPasswords = new Map(
     accountEmails.map((email) => [email, seedConfig.defaultPassword])
   );
-  const passwordHashes = seedConfig.preserveExistingPasswords
-    ? new Map<string, string>()
-    : new Map(
-        await Promise.all(
-          accountEmails.map(async (email) => {
-            const password = accountPasswords.get(email);
-            assert(password, `Derived simulation password is missing for ${email}.`);
-            return [email, await hash(password, BCRYPT_ROUNDS)] as const;
-          })
-        )
-      );
+  const passwordHashes = new Map(
+    await Promise.all(
+      accountEmails.map(async (email) => {
+        const password = accountPasswords.get(email);
+        assert(password, `Derived simulation password is missing for ${email}.`);
+        return [email, await hash(password, BCRYPT_ROUNDS)] as const;
+      })
+    )
+  );
 
   try {
     const existingLifeDanceShop = await prisma.shop.findFirst({
@@ -201,28 +184,6 @@ const main = async (): Promise<void> => {
         const technicianUserIds = new Map<string, number>();
         const customerUserIds = new Map<string, number>();
         const lifeDanceOwnership = await migrateLifeDanceAdminOwnership(tx);
-        const existingPasswordsByEmail = new Map<string, string>();
-        if (seedConfig.preserveExistingPasswords) {
-          const existingUsers = await tx.user.findMany({
-            where: { email: { in: seededAccountEmails }, deletedAt: null },
-            select: { email: true, passwordHash: true }
-          });
-          for (const user of existingUsers) {
-            if (typeof user.passwordHash === "string" && user.passwordHash.length > 0) {
-              existingPasswordsByEmail.set(user.email, user.passwordHash);
-            }
-          }
-          assert(
-            existingPasswordsByEmail.size === seededAccountEmails.length,
-            "One-shot staging sync requires every simulation account with an existing password."
-          );
-        }
-        const getSeedPasswordHash = (email: string): string =>
-          getRequiredId(
-            seedConfig.preserveExistingPasswords ? existingPasswordsByEmail : passwordHashes,
-            email,
-            "password hash"
-          );
 
         for (const shop of plan.shops) {
           if (shop.key === LIFEDANCE_SHOP_KEY) {
@@ -236,7 +197,7 @@ const main = async (): Promise<void> => {
             email: shop.ownerEmail,
             emailVerifiedAt: createdAt,
             username: shop.ownerUsername
-          }, getSeedPasswordHash(shop.ownerEmail));
+          }, getRequiredId(passwordHashes, shop.ownerEmail, "password hash"));
           ownerUserIds.set(shop.key, user.id);
         }
 
@@ -248,7 +209,7 @@ const main = async (): Promise<void> => {
             email: technician.email,
             emailVerifiedAt: createdAt,
             username: technician.username
-          }, getSeedPasswordHash(technician.email));
+          }, getRequiredId(passwordHashes, technician.email, "password hash"));
           technicianUserIds.set(technician.key, user.id);
         }
 
@@ -260,7 +221,7 @@ const main = async (): Promise<void> => {
             email: customer.email,
             emailVerifiedAt: createdAt,
             username: customer.username
-          }, getSeedPasswordHash(customer.email));
+          }, getRequiredId(passwordHashes, customer.email, "password hash"));
           customerUserIds.set(customer.key, user.id);
         }
 
@@ -1936,41 +1897,36 @@ const main = async (): Promise<void> => {
       throw error;
     }
 
-    let exportedCredentials = 0;
-    let accountExportPath: string | null = null;
-    if (!seedConfig.preserveExistingPasswords) {
-      const exportedUsers = await prisma.user.findMany({
-        where: { email: { in: credentialAccounts.map((account) => account.email) } },
-        select: {
-          id: true,
-          needoId: true,
-          email: true
-        }
-      });
-      const exportedUserByEmail = new Map(exportedUsers.map((user) => [user.email, user]));
-      const accountRows = orderFormalTestAccountExports(
-        credentialAccounts.map((account) => {
-          const user = getRequiredId(exportedUserByEmail, account.email, "exported NeeDo user");
-          return buildFormalTestAccountExportRow(
-            {
-              ...account,
-              needoId: user.needoId
-            },
-            getRequiredId(accountPasswords, account.email, "account password")
-          );
-        })
-      ).map((row) => [row.accountType, row.needoId, row.nickname, row.email, row.password]);
-      const csv = [["account_type", "needo_id", "nickname", "email", "password"], ...accountRows]
-        .map((row) => row.map(escapeCsv).join(","))
-        .join("\n");
-      accountExportPath = resolve(
-        process.cwd(),
-        process.env.SIMULATION_ACCOUNT_EXPORT || DEFAULT_ACCOUNT_EXPORT_PATH
-      );
-      await mkdir(dirname(accountExportPath), { recursive: true });
-      await writeFile(accountExportPath, `\uFEFF${csv}\n`, "utf8");
-      exportedCredentials = accountRows.length;
-    }
+    const exportedUsers = await prisma.user.findMany({
+      where: { email: { in: credentialAccounts.map((account) => account.email) } },
+      select: {
+        id: true,
+        needoId: true,
+        email: true
+      }
+    });
+    const exportedUserByEmail = new Map(exportedUsers.map((user) => [user.email, user]));
+    const accountRows = orderFormalTestAccountExports(
+      credentialAccounts.map((account) => {
+        const user = getRequiredId(exportedUserByEmail, account.email, "exported NeeDo user");
+        return buildFormalTestAccountExportRow(
+          {
+            ...account,
+            needoId: user.needoId
+          },
+          getRequiredId(accountPasswords, account.email, "account password")
+        );
+      })
+    ).map((row) => [row.accountType, row.needoId, row.nickname, row.email, row.password]);
+    const csv = [["account_type", "needo_id", "nickname", "email", "password"], ...accountRows]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\n");
+    const accountExportPath = resolve(
+      process.cwd(),
+      process.env.SIMULATION_ACCOUNT_EXPORT || DEFAULT_ACCOUNT_EXPORT_PATH
+    );
+    await mkdir(dirname(accountExportPath), { recursive: true });
+    await writeFile(accountExportPath, `\uFEFF${csv}\n`, "utf8");
 
     console.log(
       JSON.stringify(
@@ -1982,7 +1938,7 @@ const main = async (): Promise<void> => {
             merchantOwners: plan.shops.length,
             technicians: plan.technicians.length,
             customers: plan.customers.length,
-            exportedCredentials,
+            exportedCredentials: accountRows.length,
             exportPath: accountExportPath
           },
           ...summary,

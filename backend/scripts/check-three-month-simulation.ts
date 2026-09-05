@@ -31,19 +31,11 @@ const readJsonRecord = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
-const loadEnvironmentFile = (): void => {
-  const requestedEnvFile = process.env.ENV_FILE?.trim();
-  if (process.env.ALLOW_STAGING_SIMULATION_SYNC === "true" && !requestedEnvFile) {
-    return;
-  }
-  const envFile = requestedEnvFile || ".env.dev";
+const main = async (): Promise<void> => {
+  const envFile = process.env.ENV_FILE || ".env.dev";
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
-};
-
-const main = async (): Promise<void> => {
-  loadEnvironmentFile();
   const seedConfig = getSimulationSeedConfig(process.env);
   const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
   assert(
@@ -136,14 +128,12 @@ const main = async (): Promise<void> => {
       ),
       "every simulation account must use its deterministic generated avatar"
     );
-    if (!seedConfig.preserveExistingPasswords) {
-      assert(
-        [...plannedAvatarByEmail.values()].every((avatarUrl) =>
-          existsSync(resolve(__dirname, "../..", `public${avatarUrl}`))
-        ),
-        "every simulation avatar URL must resolve to a project asset"
-      );
-    }
+    assert(
+      [...plannedAvatarByEmail.values()].every((avatarUrl) =>
+        existsSync(resolve(__dirname, "../..", `public${avatarUrl}`))
+      ),
+      "every simulation avatar URL must resolve to a project asset"
+    );
 
     const shops = await prisma.shop.findMany({
       where: { ownerUserId: { in: owners.map((owner) => owner.id) }, deletedAt: null },

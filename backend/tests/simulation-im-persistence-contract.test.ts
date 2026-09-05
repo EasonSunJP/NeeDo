@@ -36,8 +36,6 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain("followingIdentityId:");
     expect(seedSource).toContain("recipientIdentityId:");
     expect(seedSource).toContain("actorIdentityId:");
-    expect(seedSource).toContain("preserveExistingPasswords");
-    expect(seedSource).toContain("existingPasswordsByEmail");
   });
 
   it("removes dependent reactions, user deletions and sync directives before replacing simulated IM", () => {
