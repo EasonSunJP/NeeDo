@@ -1452,7 +1452,23 @@ export async function runOrderFulfillmentCheckoutCheck(): Promise<void> {
   }
 }
 
-if (process.env.JEST_WORKER_ID === undefined && require.main === module) {
+export function shouldRunOrderFulfillmentCheckoutEntrypoint(
+  isMainModule: boolean,
+  entryPath: string | undefined
+): boolean {
+  return Boolean(
+    isMainModule &&
+      entryPath &&
+      (entryPath.endsWith("check-order-fulfillment-checkout-flow.ts") ||
+        entryPath.endsWith("check-order-fulfillment-checkout-flow.js") ||
+        entryPath.endsWith("order-fulfillment-check.cjs"))
+  );
+}
+
+if (
+  process.env.JEST_WORKER_ID === undefined &&
+  shouldRunOrderFulfillmentCheckoutEntrypoint(require.main === module, process.argv[1])
+) {
   runOrderFulfillmentCheckoutCheck().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "Order fulfillment check failed";
     process.stderr.write(`${message}\n`);
