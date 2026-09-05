@@ -6,8 +6,14 @@ import {
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 
 const body = {
-  sourceLocale: "ja", level: "important", title: "営業時間変更", summary: "お知らせ",
-  blocks: [{ id: "p-1", type: "paragraph", content: "本文" }],
+  sourceLocale: "ja", level: "important",
+  translations: {
+    "zh-CN": { title: "营业时间变更", summary: "通知", blocks: [{ id: "p-zh-cn", type: "paragraph", content: "正文" }] },
+    "zh-TW": { title: "營業時間變更", summary: "通知", blocks: [{ id: "p-zh-tw", type: "paragraph", content: "正文" }] },
+    en: { title: "Hours changed", summary: "Notice", blocks: [{ id: "p-en", type: "paragraph", content: "Body" }] },
+    ja: { title: "営業時間変更", summary: "お知らせ", blocks: [{ id: "p-ja", type: "paragraph", content: "本文" }] },
+    ko: { title: "영업시간 변경", summary: "알림", blocks: [{ id: "p-ko", type: "paragraph", content: "본문" }] }
+  },
   audience: { type: "shop_employees" }, sendMode: "now", scheduledAt: null,
   idempotencyKey: "merchant-notice-contract"
 };

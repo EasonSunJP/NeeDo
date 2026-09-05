@@ -64,9 +64,31 @@ const blockOptions: Array<{ type: OfficialNoticeBlock["type"]; label: string; ic
   { type: "video", label: "视频", icon: "影" },
   { type: "file", label: "文件", icon: "档" }
 ];
+const noticeLocales: OfficialNoticeLocale[] = ["ja", "zh-CN", "zh-TW", "en", "ko"];
+const noticeLocaleLabels: Record<OfficialNoticeLocale, string> = {
+  ja: "日本語",
+  "zh-CN": "简体中文",
+  "zh-TW": "繁體中文",
+  en: "English",
+  ko: "한국어"
+};
 
 function createNoticeBlock(type: OfficialNoticeBlock["type"] = "paragraph"): OfficialNoticeBlock {
   return { id: makeKey("block"), type, content: "" };
+}
+
+function createTranslationDraft() {
+  return { title: "", summary: "", blocks: [createNoticeBlock()] };
+}
+
+function normalizeNoticeBlocks(blocks: OfficialNoticeBlock[]) {
+  return blocks
+    .filter((block) => block.type === "divider" || block.content.trim())
+    .map((block) => ({
+      ...block,
+      content: block.content.trim(),
+      ...(block.caption?.trim() ? { caption: block.caption.trim() } : {})
+    }));
 }
 
 function blockPlaceholder(type: OfficialNoticeBlock["type"]) {
@@ -272,10 +294,17 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const navigate = useNavigate();
   const { language } = useOptionalI18n();
   const [sourceLocale, setSourceLocale] = useState<OfficialNoticeLocale>("ja");
+  const [activeLocale, setActiveLocale] = useState<OfficialNoticeLocale>("ja");
   const [level, setLevel] = useState<OfficialNoticeLevel>("general");
-  const [title, setTitle] = useState("");
-  const [summary, setSummary] = useState("");
-  const [blocks, setBlocks] = useState<OfficialNoticeBlock[]>(() => [createNoticeBlock()]);
+  const [translationDrafts, setTranslationDrafts] = useState<
+    Record<OfficialNoticeLocale, { title: string; summary: string; blocks: OfficialNoticeBlock[] }>
+  >(() => ({
+    ja: createTranslationDraft(),
+    "zh-CN": createTranslationDraft(),
+    "zh-TW": createTranslationDraft(),
+    en: createTranslationDraft(),
+    ko: createTranslationDraft()
+  }));
   const [audienceType, setAudienceType] = useState(scope === "merchant" ? "shop_card_holders" : "all");
   const [identityTypes, setIdentityTypes] = useState<string[]>(["customer"]);
   const [accountQuery, setAccountQuery] = useState("");
@@ -289,16 +318,54 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [idempotencyKey] = useState(() => makeKey("create"));
+  const activeTranslation = translationDrafts[activeLocale];
+  const title = activeTranslation.title;
+  const summary = activeTranslation.summary;
+  const blocks = activeTranslation.blocks;
+  const setTitle = (value: string) => setTranslationDrafts((current) => ({
+    ...current,
+    [activeLocale]: { ...current[activeLocale], title: value }
+  }));
+  const setSummary = (value: string) => setTranslationDrafts((current) => ({
+    ...current,
+    [activeLocale]: { ...current[activeLocale], summary: value }
+  }));
+  const setBlocks = (update: (current: OfficialNoticeBlock[]) => OfficialNoticeBlock[]) => {
+    setTranslationDrafts((current) => ({
+      ...current,
+      [activeLocale]: {
+        ...current[activeLocale],
+        blocks: update(current[activeLocale].blocks)
+      }
+    }));
+  };
+  const normalizedTranslations = useMemo(
+    () => Object.fromEntries(noticeLocales.map((locale) => [
+      locale,
+      {
+        title: translationDrafts[locale].title.trim(),
+        summary: translationDrafts[locale].summary.trim(),
+        blocks: normalizeNoticeBlocks(translationDrafts[locale].blocks)
+      }
+    ])) as Record<OfficialNoticeLocale, { title: string; summary: string; blocks: OfficialNoticeBlock[] }>,
+    [translationDrafts]
+  );
   const normalizedBlocks = useMemo(
-    () => blocks
-      .filter((block) => block.type === "divider" || block.content.trim())
-      .map((block) => ({
-        ...block,
-        content: block.content.trim(),
-        ...(block.caption?.trim() ? { caption: block.caption.trim() } : {})
-      })),
+    () => normalizeNoticeBlocks(blocks),
     [blocks]
   );
+
+  const copyCurrentTranslationToAll = () => {
+    const source = translationDrafts[activeLocale];
+    setTranslationDrafts(Object.fromEntries(noticeLocales.map((locale) => [
+      locale,
+      {
+        title: source.title,
+        summary: source.summary,
+        blocks: source.blocks.map((block) => ({ ...block }))
+      }
+    ])) as Record<OfficialNoticeLocale, { title: string; summary: string; blocks: OfficialNoticeBlock[] }>);
+  };
 
   const updateBlock = (id: string, patch: Partial<OfficialNoticeBlock>) => {
     setBlocks((current) => current.map((block) => block.id === id ? { ...block, ...patch } : block));
@@ -384,7 +451,14 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim() || !summary.trim() || normalizedBlocks.length === 0 || (sendMode === "scheduled" && !scheduledAt)) return;
+    const allLocalesComplete = noticeLocales.every((locale) => {
+      const translation = normalizedTranslations[locale];
+      return translation.title && translation.summary && translation.blocks.some((block) => block.type !== "divider");
+    });
+    if (!allLocalesComplete || (sendMode === "scheduled" && !scheduledAt)) {
+      setError(translateText("请补齐五种语言的标题、摘要和正文", language));
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -396,8 +470,9 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
             ? { type: "exact_users" as const, needoIds: selectedAccounts.map((account) => account.needoId) }
             : { type: "identity_types" as const, identityTypes: identityTypes as Array<"customer" | "technician" | "merchant_owner" | "merchant_staff" | "platform" | "platform_admin" | "scout"> };
       await officialNoticesApi.createManaged(scope, {
-        sourceLocale, level, title: title.trim(), summary: summary.trim(),
-        blocks: normalizedBlocks,
+        sourceLocale,
+        level,
+        translations: normalizedTranslations,
         audience,
         sendMode,
         scheduledAt: sendMode === "scheduled" ? new Date(scheduledAt).toISOString() : null,
@@ -418,7 +493,8 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   return <ModuleShell title={scope === "merchant" ? "创建店铺通知" : "发送官方通知"} description={scope === "merchant" ? "受众由服务端按当前权限与店铺范围生成快照，不接受前端指定账号或店铺。" : "全体与身份受众由服务端生成；指定账号通过正式全局账号目录搜索并在发送时再次校验。"} actions={<Button to={returnPath} variant="secondary">返回列表</Button>}>
     <form className="space-y-5 rounded-lg border border-line bg-white p-5 shadow-panel" onSubmit={submit}>
       {error ? <p className="rounded-lg bg-coral/10 p-3 text-sm font-bold text-coral">{error}</p> : null}
-      <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">源语言<select className={`${inputClass} mt-2`} onChange={(event) => setSourceLocale(event.target.value as OfficialNoticeLocale)} value={sourceLocale}>{["ja", "zh-CN", "zh-TW", "en", "ko"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-sm font-black">级别<select className={`${inputClass} mt-2`} onChange={(event) => setLevel(event.target.value as OfficialNoticeLevel)} value={level}>{Object.entries(levelLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
+      <div className="grid gap-4 md:grid-cols-2"><label className="text-sm font-black">源语言<select className={`${inputClass} mt-2`} onChange={(event) => { const locale = event.target.value as OfficialNoticeLocale; setSourceLocale(locale); setActiveLocale(locale); }} value={sourceLocale}>{noticeLocales.map((value) => <option key={value} value={value}>{noticeLocaleLabels[value]}</option>)}</select></label><label className="text-sm font-black">级别<select className={`${inputClass} mt-2`} onChange={(event) => setLevel(event.target.value as OfficialNoticeLevel)} value={level}>{Object.entries(levelLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
+      <section className="rounded-lg border border-line bg-paper p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{noticeLocales.map((locale) => { const complete = Boolean(normalizedTranslations[locale].title && normalizedTranslations[locale].summary && normalizedTranslations[locale].blocks.some((block) => block.type !== "divider")); return <button aria-pressed={activeLocale === locale} className={`rounded-lg border px-3 py-2 text-xs font-black ${activeLocale === locale ? "border-moss bg-moss text-white" : "border-line bg-white text-ink"}`} key={locale} onClick={() => setActiveLocale(locale)} type="button">{noticeLocaleLabels[locale]}{locale === sourceLocale ? ` · ${translateText("源语言", language)}` : ""}{complete ? " ✓" : ""}</button>; })}</div><Button onClick={copyCurrentTranslationToAll} size="sm" type="button" variant="secondary">{translateText("复制当前内容到全部语言", language)}</Button></div><p className="mt-2 text-xs font-bold text-ink/50">{translateText("每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。", language)}</p></section>
       <label className="block text-sm font-black">标题<input className={`${inputClass} mt-2`} maxLength={160} onChange={(event) => setTitle(event.target.value)} required value={title} /></label>
       <label className="block text-sm font-black">摘要<input className={`${inputClass} mt-2`} maxLength={500} onChange={(event) => setSummary(event.target.value)} required value={summary} /></label>
       <section className="overflow-hidden rounded-lg border border-line"><div className="border-b border-line bg-paper px-4 py-3"><h2 className="text-base font-black">通知正文</h2><p className="mt-1 text-xs font-bold text-ink/50">按顺序编辑结构化内容块；图片上传使用正式媒体接口，视频和文件只接受正式 URL。</p></div><div className="divide-y divide-line">{blocks.map((block, index) => <article className="space-y-3 p-4" key={block.id}><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><select aria-label={`内容块 ${index + 1} 类型`} className="h-9 rounded-lg border border-line bg-paper px-3 text-xs font-black" onChange={(event) => updateBlock(block.id, { type: event.target.value as OfficialNoticeBlock["type"], content: "", caption: undefined, fileName: undefined, fileSize: undefined, mimeType: undefined, source: undefined, mediaAssetId: undefined })} value={block.type}>{blockOptions.map((option) => <option key={option.type} value={option.type}>{option.label}</option>)}</select><Badge tone="neutral">Block {index + 1}</Badge></div><div className="flex gap-2"><Button disabled={index === 0} onClick={() => moveBlock(block.id, -1)} size="sm" type="button" variant="secondary">↑</Button><Button disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)} size="sm" type="button" variant="secondary">↓</Button><Button onClick={() => duplicateBlock(block)} size="sm" type="button" variant="secondary">复制</Button><Button onClick={() => removeBlock(block.id)} size="sm" type="button" variant="danger">删除</Button></div></div>{block.type === "divider" ? <hr className="border-line" /> : block.type === "image" || block.type === "video" || block.type === "file" ? <div className="space-y-3"><label className="block text-sm font-black">{blockOptions.find((option) => option.type === block.type)?.label} URL<input className={`${inputClass} mt-2`} onChange={(event) => updateBlock(block.id, { content: event.target.value, source: "url", mediaAssetId: undefined, fileName: block.type === "file" ? block.fileName : undefined, fileSize: undefined, mimeType: undefined })} placeholder={blockPlaceholder(block.type)} type="url" value={block.source === "media" ? "" : block.content} /></label><label className="block text-sm font-black">说明文字<input className={`${inputClass} mt-2`} onChange={(event) => updateBlock(block.id, { caption: event.target.value, ...(block.type === "file" ? { fileName: event.target.value } : {}) })} value={block.caption ?? ""} /></label>{block.type === "image" && scope === "platform" ? <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black">{uploadingBlockId === block.id ? "上传中…" : "上传图片"}<input accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploadingBlockId === block.id} onChange={(event) => void uploadImage(block, event)} type="file" /></label> : <p className="text-xs font-bold text-ink/50">当前只保存正式 HTTPS 媒体地址，不会把文件写入浏览器缓存。</p>}{block.content ? <div className="rounded-lg border border-line bg-paper p-3"><NoticeBlocks blocks={[block]} /></div> : null}</div> : <label className="block text-sm font-black">{blockOptions.find((option) => option.type === block.type)?.label}<textarea className={`${textareaClass} mt-2`} maxLength={20000} onChange={(event) => updateBlock(block.id, { content: event.target.value })} placeholder={blockPlaceholder(block.type)} required value={block.content} /></label>}</article>)}</div><div className="flex gap-2 overflow-x-auto border-t border-line bg-paper p-3">{blockOptions.map((option) => <button className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-line bg-white px-3 text-xs font-black hover:border-moss" key={option.type} onClick={() => addBlock(option.type)} type="button"><span className="grid h-6 min-w-6 place-items-center rounded bg-paper px-1">{option.icon}</span>{option.label}</button>)}</div></section>

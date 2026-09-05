@@ -22,6 +22,9 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.OfficialNoticeCreate).toBeDefined();
     expect(response.body.components.schemas.OfficialNoticeProtectedPayload).toBeDefined();
     expect(response.body.components.schemas.RecipientOfficialNoticePayload).toBeDefined();
+    expect(response.body.components.schemas.OfficialNoticeCreate.required).toContain("translations");
+    expect(response.body.components.schemas.OfficialNoticeCreate.required).not.toContain("title");
+    expect(response.body.components.schemas.OfficialNoticeCreate.properties.title).toBeUndefined();
   });
 
   it("documents strict merchant notice routes with dedicated permissions and audience schema", async () => {

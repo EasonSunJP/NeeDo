@@ -60,9 +60,10 @@ export type PlatformNoticeAudience =
 export type ManagedNoticeCreateInput = {
   sourceLocale: OfficialNoticeLocale;
   level: OfficialNoticeLevel;
-  title: string;
-  summary: string;
-  blocks: OfficialNoticeBlock[];
+  translations: Record<
+    OfficialNoticeLocale,
+    { title: string; summary: string; blocks: OfficialNoticeBlock[] }
+  >;
   audience: MerchantNoticeAudience | PlatformNoticeAudience;
   sendMode: "now" | "scheduled";
   scheduledAt: string | null;

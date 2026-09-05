@@ -4,6 +4,14 @@ import { config as loadDotenv } from "dotenv";
 import type { PrismaClient } from "@prisma/client";
 import type { RealtimeEvent } from "../src/services/realtime-event.gateway";
 
+const noticeTranslations = (title: string, summary: string, content: string) => ({
+  "zh-CN": { title, summary, blocks: [{ id: "body-zh-cn", type: "paragraph", content }] },
+  "zh-TW": { title, summary, blocks: [{ id: "body-zh-tw", type: "paragraph", content }] },
+  en: { title, summary, blocks: [{ id: "body-en", type: "paragraph", content }] },
+  ja: { title, summary, blocks: [{ id: "body-ja", type: "paragraph", content }] },
+  ko: { title, summary, blocks: [{ id: "body-ko", type: "paragraph", content }] }
+});
+
 async function main(): Promise<void> {
   const envFile = process.env.ENV_FILE;
   if (!envFile) throw new Error("ENV_FILE is required for local notice acceptance");
@@ -96,9 +104,7 @@ async function main(): Promise<void> {
         const body = officialNoticeCreateBodySchema.parse({
           sourceLocale: "ja",
           level: "important",
-          title: marker,
-          summary: "Local rollback acceptance",
-          blocks: [{ id: "text-1", type: "paragraph", content: "Persisted notice acceptance" }],
+          translations: noticeTranslations(marker, "Local rollback acceptance", "Persisted notice acceptance"),
           audience: { type: "exact_users", needoIds: [sender.needoId] },
           sendMode: "now",
           scheduledAt: null,
@@ -337,7 +343,7 @@ async function checkConcurrentDelivery() {
         deletedAt: null,
         identities: { some: { isActive: true, deletedAt: null } }
       },
-      select: { id: true },
+      select: { id: true, needoId: true },
       orderBy: { id: "asc" }
     });
     const now = new Date();
@@ -351,9 +357,7 @@ async function checkConcurrentDelivery() {
       officialNoticeCreateBodySchema.parse({
         sourceLocale: "ja",
         level: "general",
-        title: marker,
-        summary: marker,
-        blocks: [{ id: "p-1", type: "paragraph", content: marker }],
+        translations: noticeTranslations(marker, marker, marker),
         audience: { type: "exact_users", needoIds: [user.needoId] },
         sendMode: "scheduled",
         scheduledAt: dueAt.toISOString(),
