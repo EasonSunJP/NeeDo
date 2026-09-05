@@ -10,7 +10,7 @@ describe("ShopTaxonomyRegistrationField", () => {
     const root = createRoot(container);
     const api = {
       listCategories: vi.fn(async () => ({
-        list: [{ id: 1, code: "massage", label: "按摩", qualificationPolicy: "OPEN" }],
+        list: [{ id: 1, code: "massage", label: "按摩", qualificationPolicy: "REVIEW_REQUIRED" }],
         total: 1,
         page: 1,
         page_size: 100
@@ -31,9 +31,18 @@ describe("ShopTaxonomyRegistrationField", () => {
     ));
     await act(async () => { await Promise.resolve(); });
     expect(api.listKeywords).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("需审核");
+    expect(container.textContent).not.toContain("上门按摩");
+    expect(container.querySelector('[aria-label="服务种类与关键词 说明"]')).not.toBeNull();
 
     const categoryButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("按摩"));
     await act(async () => categoryButton?.click());
     expect(onChange).toHaveBeenCalledWith({ serviceCategoryIds: [1], businessKeywordIds: [] });
+
+    await act(async () => root.render(
+      <ShopTaxonomyRegistrationField api={api} language="zh" onChange={onChange} value={{ serviceCategoryIds: [1], businessKeywordIds: [] }} />
+    ));
+    await act(async () => { await Promise.resolve(); });
+    expect(container.textContent).toContain("上门按摩");
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { shopTaxonomyApi, type ShopTaxonomyApi, type ShopTaxonomyCategory, type ShopTaxonomyKeyword } from "./api";
@@ -107,8 +108,14 @@ export function ShopTaxonomyRegistrationField({
   return (
     <section className="space-y-4 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-primary)_34%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] p-4">
       <div>
-        <h3 className="text-sm font-black text-[color:var(--client-text)]">{copy.title}</h3>
-        <p className="mt-1 text-[11px] font-semibold leading-5 text-[color:var(--client-muted)]">{copy.description}</p>
+        <TitleWithInfo
+          as="h2"
+          info={copy.description}
+          label={`${copy.title} 说明`}
+          title={copy.title}
+          titleClassName="text-[17px] font-black text-[color:var(--client-text)]"
+          variant="client"
+        />
       </div>
       <div>
         <p className="mb-2 text-[11px] font-black text-[color:var(--client-muted)]">{copy.categoryCount(value.serviceCategoryIds.length, 5)}</p>
@@ -126,7 +133,7 @@ export function ShopTaxonomyRegistrationField({
                 onClick={() => selectCategory(category.id)}
                 type="button"
               >
-                {category.label}{category.qualificationPolicy !== "OPEN" ? ` · ${copy.review}` : ""}
+                {category.label}
               </button>
             );
           })}
