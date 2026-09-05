@@ -8061,6 +8061,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "hasPassword",
           "username",
           "avatarUrl",
+          "profileDisplayName",
           "isActive",
           "isTestAccount",
           "currentIdentity",
@@ -8087,6 +8088,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           hasPassword: { type: "boolean" },
           username: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
+          profileDisplayName: { type: ["string", "null"] },
           isActive: { type: "boolean" },
           isTestAccount: { type: "boolean" },
           currentIdentity: { $ref: "#/components/schemas/AuthIdentity" },
@@ -8115,7 +8117,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       AuthIdentity: {
         type: "object",
-        required: ["id", "publicId", "type", "scopeType", "scopeId"],
+        required: ["id", "publicId", "type", "scopeType", "scopeId", "displayName"],
         properties: {
           id: { type: "integer" },
           publicId: {
@@ -8124,7 +8126,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           type: { type: "string" },
           scopeType: { type: ["string", "null"] },
-          scopeId: { type: ["integer", "null"] }
+          scopeId: { type: ["integer", "null"] },
+          displayName: { type: ["string", "null"] }
         }
       },
       Permission: {

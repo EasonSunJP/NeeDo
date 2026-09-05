@@ -114,6 +114,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/merchant-shop/switch");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    expect(response.body.components.schemas.AuthMe.required).toEqual(
+      expect.arrayContaining(["profileDisplayName"])
+    );
+    expect(response.body.components.schemas.AuthMe.properties.profileDisplayName).toEqual({
+      type: ["string", "null"]
+    });
+    expect(response.body.components.schemas.AuthIdentity.required).toEqual(
+      expect.arrayContaining(["displayName"])
+    );
+    expect(response.body.components.schemas.AuthIdentity.properties.displayName).toEqual({
+      type: ["string", "null"]
+    });
     [
       "/api/v1/social/posts/{id}/like",
       "/api/v1/social/posts/{id}/bookmark",

@@ -79,6 +79,10 @@ export interface AuthUserRecord {
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   identities: AuthIdentityRecord[];
+  customerProfile?: {
+    displayName: string;
+    deletedAt: Date | null;
+  } | null;
   userRoles: AuthUserRoleRecord[];
   identityApplications?: AuthIdentityApplicationRecord[];
   loginIdentityId?: number;
@@ -263,6 +267,12 @@ export interface GoogleAuthRepositoryPort {
 }
 
 const authUserInclude = {
+  customerProfile: {
+    select: {
+      displayName: true,
+      deletedAt: true
+    }
+  },
   identities: {
     where: {
       deletedAt: null

@@ -105,6 +105,7 @@ export interface AuthIdentityPayload {
   scopeType: string | null;
   scopeId: number | null;
   publicId: string | null;
+  displayName: string | null;
 }
 
 export type AuthIdentityAvailabilityKind = "customer" | "technician" | "merchant" | "affiliate";
@@ -134,6 +135,7 @@ export interface AuthMePayload {
   hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   isActive: boolean;
   isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
@@ -2008,6 +2010,7 @@ export class AuthService {
         type: identity.type,
         scopeType: identity.scopeType,
         scopeId: identity.scopeId,
+        displayName: identity.displayName,
         publicId:
           identity.publicIdentifier?.status === "ACTIVE" &&
           identity.publicIdentifier.deletedAt === null
@@ -2094,6 +2097,10 @@ export class AuthService {
       hasPassword: Boolean(user.passwordHash),
       username: user.username,
       avatarUrl: user.avatarUrl,
+      profileDisplayName:
+        user.customerProfile?.deletedAt === null
+          ? user.customerProfile.displayName
+          : null,
       isActive: user.isActive,
       isTestAccount: user.isTestAccount,
       currentIdentity,
