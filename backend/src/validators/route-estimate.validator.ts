@@ -15,6 +15,7 @@ export const japaneseRouteAddressSchema = z
 export const routeEstimateCreateBodySchema = z
   .object({
     servicePublicId: z.string().trim().min(1).max(160),
+    scheduleSlotId: z.number().int().positive(),
     destination: japaneseRouteAddressSchema
   })
   .strict();

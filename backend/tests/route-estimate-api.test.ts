@@ -6,8 +6,8 @@ import { createStep06Fixture } from "./helpers/step06-fixture";
 
 const destination = { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-2-3" };
 const repository: jest.Mocked<RouteEstimateRepositoryPort> = {
-  findEligibleContext: jest.fn(async (servicePublicId: string, at: Date) => { void servicePublicId; void at; return ({
-    serviceId: 21, servicePublicId: "service-21", shopId: 11,
+  findEligibleContext: jest.fn(async (servicePublicId: string, scheduleSlotId: number, at: Date) => { void servicePublicId; void scheduleSlotId; void at; return ({
+    serviceId: 21, scheduleSlotId: 71, servicePublicId: "service-21", shopId: 11,
     origin: { countryCode: "JP" as const, postalCode: "", prefecture: "東京都", city: "新宿区", addressLine1: "西新宿1-1-1" },
     policyVersionId: 31, policyVersionPublicId: "policy-v1", policyVersion: 1,
     bands: [{ id: 41, ordinal: 0, maximumDistanceMeters: 10_000, fareAmountJpy: 500 }]
@@ -29,17 +29,19 @@ const createFixture = async () => {
 describe("POST /api/v1/bookings/travel-estimates", () => {
   it("requires authentication and explicit permission", async () => {
     const fixture = await createFixture();
-    await request(fixture.app).post("/api/v1/bookings/travel-estimates").send({ servicePublicId: "service-21", destination }).expect(401);
+    await request(fixture.app).post("/api/v1/bookings/travel-estimates").send({ servicePublicId: "service-21", scheduleSlotId: 71, destination }).expect(401);
     fixture.replaceAdminPermissions(["auth:me"]);
     const denied = await fixture.loginAsAdmin();
-    await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${denied}`).send({ servicePublicId: "service-21", destination }).expect(403);
+    await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${denied}`).send({ servicePublicId: "service-21", scheduleSlotId: 71, destination }).expect(403);
   });
 
   it("accepts only structured Japanese destination and returns a redacted stable envelope", async () => {
     const fixture = await createFixture();
-    await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${fixture.token}`).send({ servicePublicId: "service-21", destination: { ...destination, longitude: 139.7 } }).expect(400);
-    const response = await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${fixture.token}`).send({ servicePublicId: "service-21", destination }).expect(201);
+    await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${fixture.token}`).send({ servicePublicId: "service-21", scheduleSlotId: 71, destination: { ...destination, longitude: 139.7 } }).expect(400);
+    await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${fixture.token}`).send({ servicePublicId: "service-21", destination }).expect(400);
+    const response = await request(fixture.app).post("/api/v1/bookings/travel-estimates").set("Authorization", `Bearer ${fixture.token}`).send({ servicePublicId: "service-21", scheduleSlotId: 71, destination }).expect(201);
     expect(response.body).toMatchObject({ code: 0, message: "success", data: { distanceMeters: 7_000, durationSeconds: 900, fareAmountJpy: 500, policyVersionPublicId: "policy-v1", bandMaximumDistanceMeters: 10_000 } });
     expect(JSON.stringify(response.body)).not.toContain("AddressHash");
+    expect(repository.findEligibleContext).toHaveBeenCalledWith("service-21", 71, expect.any(Date));
   });
 });

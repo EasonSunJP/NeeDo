@@ -3784,6 +3784,7 @@ model ScheduleSlot {
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   bookingOrders     BookingOrder[]
+  routeEstimates    RouteEstimate[]
   exchangeClaims    ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
 
@@ -4083,6 +4084,7 @@ model RouteEstimate {
   customerUserId           Int       @map("customer_user_id")
   shopId                   Int       @map("shop_id")
   serviceId                Int       @map("service_id")
+  scheduleSlotId           Int?      @map("schedule_slot_id")
   policyVersionId          Int       @map("policy_version_id")
   matchedBandId            Int       @map("matched_band_id")
   providerCode             String    @map("provider_code") @db.VarChar(32)
@@ -4102,17 +4104,19 @@ model RouteEstimate {
   customer          User                        @relation("RouteEstimateCustomer", fields: [customerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_customer_fkey")
   shop              Shop                        @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_shop_fkey")
   service           Service                     @relation(fields: [serviceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_service_fkey")
+  scheduleSlot      ScheduleSlot?               @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_schedule_slot_fkey")
   policyVersion     ShopTravelFarePolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_policy_fkey")
   matchedBand       ShopTravelFareBand          @relation(fields: [matchedBandId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_band_fkey")
   consumedByBooking BookingOrder?               @relation("RouteEstimateConsumedBooking", fields: [consumedByBookingOrderId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "route_estimates_consumed_booking_fkey")
   bookingSnapshot   BookingTravelFareSnapshot?
 
-  @@index([customerUserId, shopId, serviceId, expiresAt, deletedAt], map: "route_estimates_binding_expiry_idx")
+  @@index([customerUserId, shopId, serviceId, scheduleSlotId, expiresAt, deletedAt], map: "route_estimates_binding_expiry_idx")
   @@index([providerCode, originAddressHash, destinationAddressHash, expiresAt, deletedAt], map: "route_estimates_provider_cache_idx")
   @@index([policyVersionId], map: "route_estimates_policy_idx")
   @@index([matchedBandId], map: "route_estimates_band_idx")
   @@index([shopId], map: "route_estimates_shop_idx")
   @@index([serviceId], map: "route_estimates_service_idx")
+  @@index([scheduleSlotId], map: "route_estimates_schedule_slot_idx")
   @@index([deletedAt], map: "route_estimates_deleted_idx")
   @@map("route_estimates")
 }
