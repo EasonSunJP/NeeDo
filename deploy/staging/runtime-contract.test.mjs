@@ -32,6 +32,7 @@ test("HTTP and HTTPS Nginx configs preserve portal entries and deny public metri
     assert.match(config, /proxy_pass http:\/\/needo_backend/);
     assert.match(config, /proxy_pass http:\/\/needo_ops_api\/api\/v1\//);
     assert.match(config, /proxy_pass http:\/\/needo_merchant_api\/api\/v1\//);
+    assert.match(config, /location ~\* \\.html\$[\s\S]*Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;/);
     assert.match(config, /\/merchant-admin[\s\S]*\/store-admin\.html/);
     assert.match(config, /\/admin[\s\S]*\/pf-admin\.html/);
     assert.match(config, /\/shop[\s\S]*\/merchant\.html/);
