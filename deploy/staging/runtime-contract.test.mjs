@@ -100,6 +100,8 @@ test("staging web preserves an existing TLS edge for deploy and rollback", () =>
   assert.match(releaseScript, /fullchain\.pem[\s\S]*privkey\.pem[\s\S]*nginx-https\.conf/);
   assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,220}up -d --no-deps --force-recreate --wait web/);
   assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,2400}up -d --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /edge_base_url="https:\/\/\$hostname"/);
+  assert.match(releaseScript, /--resolve "\$\{hostname\}:443:127\.0\.0\.1"/);
 });
 
 test("web healthcheck tolerates the local HTTPS redirect after TLS activation", () => {

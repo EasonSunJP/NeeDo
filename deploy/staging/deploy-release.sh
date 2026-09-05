@@ -160,12 +160,19 @@ compose_for "$release_dir" run --rm bootstrap-admin
 compose_for "$release_dir" up -d --build --wait backend ops-api merchant-api web
 compose_for "$release_dir" up -d --no-deps --force-recreate --wait web
 
-curl --fail --silent --show-error --header "Host: $hostname" \
-  http://127.0.0.1/api/v1/ready | grep -q '"code":0'
-curl --fail --silent --show-error --header "Host: $hostname" \
-  http://127.0.0.1/ops-api/v1/ready | grep -q '"code":0'
-curl --fail --silent --show-error --header "Host: $hostname" \
-  http://127.0.0.1/merchant-api/v1/ready | grep -q '"code":0'
+edge_base_url="http://127.0.0.1"
+edge_request_args=(--header "Host: $hostname")
+if [[ "$(nginx_config_for "$release_dir")" == "$release_dir/deploy/staging/nginx-https.conf" ]]; then
+  edge_base_url="https://$hostname"
+  edge_request_args=(--resolve "${hostname}:443:127.0.0.1")
+fi
+
+curl --fail --silent --show-error "${edge_request_args[@]}" \
+  "$edge_base_url/api/v1/ready" | grep -q '"code":0'
+curl --fail --silent --show-error "${edge_request_args[@]}" \
+  "$edge_base_url/ops-api/v1/ready" | grep -q '"code":0'
+curl --fail --silent --show-error "${edge_request_args[@]}" \
+  "$edge_base_url/merchant-api/v1/ready" | grep -q '"code":0'
 
 ln -sfn "$release_dir" /srv/needo/current.next
 mv -Tf /srv/needo/current.next /srv/needo/current
