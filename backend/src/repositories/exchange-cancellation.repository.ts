@@ -138,6 +138,7 @@ const MERCHANT_IDENTITY_TYPES = new Set([
   "owner",
   "o"
 ]);
+const CUSTOMER_FALLBACK_IDENTITY_TYPES = new Set(["customer", "user", "u"]);
 
 export class ExchangeCancellationRepository {
   public constructor(
@@ -764,17 +765,35 @@ export class ExchangeCancellationRepository {
     `,
       "not_allowed"
     );
-    await this.lockRequired(
-      Prisma.sql`
+    const publicIdentifierRows = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id FROM public_identifiers
       WHERE user_identity_id = ${input.actorIdentityId}
         AND public_id = ${input.actorPublicId}
         AND status = 'active'
         AND deleted_at IS NULL
       FOR UPDATE
-    `,
-      "not_allowed"
-    );
+    `);
+    if (publicIdentifierRows.length > 1) this.abort("not_allowed");
+    if (publicIdentifierRows.length === 0) {
+      if (!CUSTOMER_FALLBACK_IDENTITY_TYPES.has(input.actorIdentityType)) {
+        this.abort("not_allowed");
+      }
+      await this.lockRequired(
+        Prisma.sql`
+        SELECT id FROM users
+        WHERE id = ${input.actorUserId}
+          AND needo_id = ${input.actorPublicId}
+          AND NOT EXISTS (
+            SELECT 1 FROM public_identifiers
+            WHERE user_identity_id = ${input.actorIdentityId}
+              AND status = 'active'
+              AND deleted_at IS NULL
+          )
+        FOR UPDATE
+      `,
+        "not_allowed"
+      );
+    }
     await this.lockRequired(
       Prisma.sql`
       SELECT id FROM booking_orders

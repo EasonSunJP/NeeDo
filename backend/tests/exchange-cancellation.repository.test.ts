@@ -63,6 +63,7 @@ const command = (
 });
 
 interface HarnessOptions {
+  missingPublicIdentifier?: boolean;
   orderStatus?: "PENDING" | "CONFIRMED" | "CANCELLED";
   latest?: null | {
     id: number;
@@ -180,7 +181,9 @@ const createHarness = (options: HarnessOptions = {}) => {
 
   const client: any = {
     $queryRaw: jest.fn(async (query: { strings?: readonly string[]; sql?: string }) => {
-      lockSql.push(query.sql ?? query.strings?.join("?") ?? "");
+      const sql = query.sql ?? query.strings?.join("?") ?? "";
+      lockSql.push(sql);
+      if (options.missingPublicIdentifier && sql.includes("SELECT id FROM public_identifiers")) return [];
       return [{ id: 1 }];
     }),
     exchangeMatchParticipant: {
@@ -499,6 +502,14 @@ describe("ExchangeCancellationRepository", () => {
     expect(state.client.exchangeBookingCancellation.create).not.toHaveBeenCalled();
     expect(state.client.exchangeBookingCancellationEvent.create).not.toHaveBeenCalled();
     expect(state.client.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("locks the customer NeeDo ID fallback when the owner identity has no public identifier", async () => {
+    const state = createHarness({ missingPublicIdentifier: true });
+    await expect(
+      state.repository.command(command(customer, "request", 0), state.settlement)
+    ).resolves.toMatchObject({ outcome: "created", payload: { viewerParty: "customer" } });
+    expect(state.lockSql.some((sql) => sql.includes("needo_id"))).toBe(true);
   });
 
   it("locks the exact actor, order graph, provider authority, cancellation, and slot in deterministic order", async () => {
