@@ -2,35 +2,68 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse } from "dotenv";
 import mariadb, { type Connection, type ConnectionConfig } from "mariadb";
+import {
+  resolveExchangeCancellationAdminCredentials,
+  validateExchangeCancellationBaseEnvironment,
+  verifyExchangeCancellationSocketAdmin
+} from "./check-exchange-cancellation-flow";
+
+type RuntimeEnvironment = Record<string, string | undefined>;
+
+type SchemaEnvironmentDependencies = {
+  fileExists?: (path: string) => boolean;
+  isSocket?: (path: string) => boolean;
+  parsedEnvironment?: RuntimeEnvironment;
+};
+
+export const resolveExchangeCancellationSchemaEnvironment = (
+  runtime: RuntimeEnvironment,
+  dependencies: SchemaEnvironmentDependencies = {}
+): {
+  connectionOptions: ConnectionConfig;
+  socketPath?: string;
+} => {
+  assert.equal(
+    runtime.ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK,
+    "true",
+    "explicit schema-check opt-in required"
+  );
+  const base = validateExchangeCancellationBaseEnvironment({
+    envFile: runtime.ENV_FILE,
+    fileExists: dependencies.fileExists,
+    parsedEnvironment: dependencies.parsedEnvironment
+  });
+  const credentials = resolveExchangeCancellationAdminCredentials(
+    base.parsedEnvironment,
+    runtime,
+    dependencies.isSocket
+  );
+  return {
+    connectionOptions: {
+      ...(!credentials.socketPath
+        ? {
+            host: base.databaseUrl.hostname === "[::1]" ? "::1" : base.databaseUrl.hostname,
+            ...(base.databaseUrl.port ? { port: Number(base.databaseUrl.port) } : {})
+          }
+        : {}),
+      ...credentials,
+      ...(base.parsedEnvironment.DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL === "true"
+        ? { allowPublicKeyRetrieval: true }
+        : {}),
+      connectTimeout: 5000,
+      timezone: "Z"
+    },
+    ...(credentials.socketPath ? { socketPath: credentials.socketPath } : {})
+  };
+};
 
 // Constraint acceptance only: parent-key fixtures are not a formal business-flow seed.
 // No existing table/data is copied, updated or migrated.
 async function main(): Promise<void> {
-  assert.equal(
-    process.env.ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK,
-    "true",
-    "explicit schema-check opt-in required"
+  const { connectionOptions, socketPath } = resolveExchangeCancellationSchemaEnvironment(
+    process.env
   );
-  assert(process.env.ENV_FILE, "ENV_FILE is required");
-  const fileEnv = parse(readFileSync(process.env.ENV_FILE));
-  assert(fileEnv.DATABASE_URL, "local DATABASE_URL is required in ENV_FILE");
-  const url = new URL(fileEnv.DATABASE_URL);
-  assert.equal(url.protocol, "mysql:", "MySQL URL required");
-  assert(
-    ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname),
-    "only loopback MySQL is allowed"
-  );
-  const connectionOptions: ConnectionConfig = {
-    host: url.hostname === "[::1]" ? "::1" : url.hostname,
-    ...(url.port ? { port: Number(url.port) } : {}),
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    ...(fileEnv.MYSQL_SOCKET_PATH ? { socketPath: fileEnv.MYSQL_SOCKET_PATH } : {}),
-    connectTimeout: 5000,
-    timezone: "Z"
-  };
   const database = `needo_cancel_check_${randomBytes(12).toString("hex")}`;
   assert(/^needo_cancel_check_[a-f0-9]{24}$/.test(database));
   const sql = readFileSync(
@@ -41,6 +74,9 @@ async function main(): Promise<void> {
     "utf8"
   );
   const connection = await mariadb.createConnection(connectionOptions);
+  if (socketPath) {
+    await verifyExchangeCancellationSocketAdmin(connection);
+  }
   const extraConnections: Connection[] = [];
   let created = false;
   let passed = 0;
@@ -376,11 +412,13 @@ async function main(): Promise<void> {
   }
 }
 
-void main().catch((error: unknown) => {
-  // Driver errors can contain SQL/connection details; report only code, not the object.
-  const code =
-    error && typeof error === "object" && "code" in error ? String(error.code) : "CHECK_FAILED";
-  const message = error instanceof assert.AssertionError ? error.message : undefined;
-  console.error(JSON.stringify({ code, ...(message ? { message } : {}) }));
-  process.exitCode = 1;
-});
+if (process.env.JEST_WORKER_ID === undefined && require.main === module) {
+  void main().catch((error: unknown) => {
+    // Driver errors can contain SQL/connection details; report only code, not the object.
+    const code =
+      error && typeof error === "object" && "code" in error ? String(error.code) : "CHECK_FAILED";
+    const message = error instanceof assert.AssertionError ? error.message : undefined;
+    console.error(JSON.stringify({ code, ...(message ? { message } : {}) }));
+    process.exitCode = 1;
+  });
+}

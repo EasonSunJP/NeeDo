@@ -89,6 +89,7 @@ const createHarness = (options: HarnessOptions = {}) => {
   const notifications: any[] = [];
   const audits: any[] = [];
   const lockSql: string[] = [];
+  const lockQueries: Array<{ sql: string; values: readonly unknown[] }> = [];
   const order = {
     id: 501,
     orderType: "REQUEST",
@@ -181,9 +182,14 @@ const createHarness = (options: HarnessOptions = {}) => {
   }
 
   const client: any = {
-    $queryRaw: jest.fn(async (query: { strings?: readonly string[]; sql?: string }) => {
+    $queryRaw: jest.fn(async (query: {
+      strings?: readonly string[];
+      sql?: string;
+      values?: readonly unknown[];
+    }) => {
       const sql = query.sql ?? query.strings?.join("?") ?? "";
       lockSql.push(sql);
+      lockQueries.push({ sql, values: query.values ?? [] });
       if (options.missingPublicIdentifier && sql.includes("SELECT id FROM public_identifiers")) return [];
       if (options.denyNeedoIdFallback && sql.includes("AND needo_id =")) return [];
       return [{ id: 1 }];
@@ -289,7 +295,8 @@ const createHarness = (options: HarnessOptions = {}) => {
     events,
     notifications,
     audits,
-    lockSql
+    lockSql,
+    lockQueries
   };
 };
 
@@ -511,13 +518,18 @@ describe("ExchangeCancellationRepository", () => {
     await expect(
       state.repository.command(command(customer, "request", 0), state.settlement)
     ).resolves.toMatchObject({ outcome: "created", payload: { viewerParty: "customer" } });
-    expect(state.lockSql.some((sql) => sql.includes("needo_id"))).toBe(true);
+    const fallback = state.lockQueries.find(({ sql }) => sql.includes("AND needo_id ="));
+    expect(fallback?.values).toEqual([
+      customer.actorUserId,
+      customer.actorPublicId,
+      customer.actorIdentityId
+    ]);
   });
 
   it.each([
     ["a wrong NeeDo ID", { actorPublicId: "needo-wrong" }],
     ["another active public ID", {}]
-  ])("denies the customer fallback for %s", async (_label, actorOverrides) => {
+  ])("denies the customer fallback for %s", async (label, actorOverrides) => {
     const state = createHarness({ denyNeedoIdFallback: true, missingPublicIdentifier: true });
     await expect(
       state.repository.command(
@@ -525,8 +537,16 @@ describe("ExchangeCancellationRepository", () => {
         state.settlement
       )
     ).resolves.toEqual({ outcome: "not_allowed" });
-    expect(state.lockSql.some((sql) => sql.includes("AND needo_id ="))).toBe(true);
-    expect(state.lockSql.some((sql) => sql.includes("NOT EXISTS") && sql.includes("status = 'active'"))).toBe(true);
+    const fallback = state.lockQueries.find(({ sql }) => sql.includes("AND needo_id ="));
+    expect(fallback?.sql).toContain("NOT EXISTS");
+    expect(fallback?.sql).toContain("user_identity_id = ?");
+    expect(fallback?.sql).toContain("status = 'active'");
+    expect(fallback?.sql).toContain("deleted_at IS NULL");
+    expect(fallback?.values).toEqual([
+      customer.actorUserId,
+      label === "a wrong NeeDo ID" ? "needo-wrong" : customer.actorPublicId,
+      customer.actorIdentityId
+    ]);
     expect(state.cancellations).toHaveLength(0);
   });
 

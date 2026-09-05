@@ -146,7 +146,7 @@ export function ExchangeOrderCancellationPanel({
         </label>
       ) : null}
 
-      {cancellation.allowedActions.includes("accept") ? (
+      {cancellation.allowedActions.some((action) => action === "request" || action === "accept") ? (
         <p className="mt-4 rounded-[18px] border border-amber-400/45 bg-amber-400/10 px-3 py-3 text-xs font-bold leading-5 text-[color:var(--client-text)]">{t("cancellationImpact")}</p>
       ) : null}
       {mutationError ? <p className="mt-3 text-xs font-black text-red-500" role="alert">{t("cancellationMutationFailed")}</p> : null}

@@ -14,8 +14,94 @@ import {
   verifyExchangeCancellationSocketAdmin,
   runExchangeCancellationCommand
 } from "../scripts/check-exchange-cancellation-flow";
+import { resolveExchangeCancellationSchemaEnvironment } from "../scripts/check-exchange-cancellation-schema";
 
 describe("Exchange cancellation isolated flow checker", () => {
+  it("routes the schema checker through the same non-production and administrator guards", () => {
+    const source = readFileSync(
+      join(__dirname, "../scripts/check-exchange-cancellation-schema.ts"),
+      "utf8"
+    );
+    expect(source).toContain("validateExchangeCancellationBaseEnvironment");
+    expect(source).toContain("resolveExchangeCancellationAdminCredentials");
+    expect(source).toContain("verifyExchangeCancellationSocketAdmin");
+    expect(source).not.toContain("fileEnv.MYSQL_SOCKET_PATH");
+    expect(source).toContain("require.main === module");
+  });
+
+  it("rejects unsafe schema-check labels, credentials, and socket paths before connecting", () => {
+    const runtime = {
+      ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK: "true",
+      ENV_FILE: "/tmp/needo.env"
+    };
+    const parsedEnvironment = {
+      NODE_ENV: "test",
+      DEPLOY_ENV: "local",
+      DATABASE_URL: "mysql://app:app-secret@127.0.0.1/needo_dev"
+    };
+    const dependencies = {
+      fileExists: () => true,
+      parsedEnvironment,
+      isSocket: () => false
+    };
+
+    expect(() =>
+      resolveExchangeCancellationSchemaEnvironment(runtime, {
+        ...dependencies,
+        parsedEnvironment: { ...parsedEnvironment, NODE_ENV: "production" }
+      })
+    ).toThrow("rejects production and staging");
+    expect(() =>
+      resolveExchangeCancellationSchemaEnvironment(
+        {
+          ...runtime,
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH: "relative/mysql.sock"
+        },
+        dependencies
+      )
+    ).toThrow("absolute Unix socket");
+    expect(() =>
+      resolveExchangeCancellationSchemaEnvironment(runtime, {
+        ...dependencies,
+        parsedEnvironment: {
+          ...parsedEnvironment,
+          MYSQL_ROOT_PASSWORD: "",
+          MYSQL_SOCKET_PATH: "/tmp/unverified.sock"
+        }
+      })
+    ).toThrow("Explicit MySQL administrator credentials");
+  });
+
+  it("uses only explicit schema-check administrator credentials on a local development database", () => {
+    expect(
+      resolveExchangeCancellationSchemaEnvironment(
+        {
+          ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK: "true",
+          ENV_FILE: "/tmp/needo.env",
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER: "schema-admin",
+          EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD: "schema-secret"
+        },
+        {
+          fileExists: () => true,
+          parsedEnvironment: {
+            NODE_ENV: "development",
+            DEPLOY_ENV: "local",
+            DATABASE_URL: "mysql://app:app-secret@localhost:3307/needo_dev"
+          }
+        }
+      )
+    ).toEqual({
+      connectionOptions: {
+        host: "localhost",
+        port: 3307,
+        user: "schema-admin",
+        password: "schema-secret",
+        connectTimeout: 5000,
+        timezone: "Z"
+      }
+    });
+  });
+
   it("never lets source MYSQL_SOCKET_PATH bypass explicit socket validation", () => {
     const source = readFileSync(
       join(__dirname, "../scripts/check-exchange-cancellation-flow.ts"),

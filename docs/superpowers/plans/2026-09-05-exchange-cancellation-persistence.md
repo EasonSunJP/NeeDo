@@ -47,7 +47,7 @@ CHECK (
 - Create: `backend/scripts/check-exchange-cancellation-schema.ts`
 - Modify: `backend/package.json` (guarded checker command only)
 
-- [x] Require explicit `ENV_FILE`, `ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK=true` and loopback DATABASE_URL before connecting. Optional `MYSQL_SOCKET_PATH` selects a local Unix socket for a private standalone test instance. Generate a random database name `needo_cancel_check_<hex>`; never accept a user-provided DROP target.
+- [x] Require explicit `ENV_FILE`, `ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK=true`, explicit local non-production `NODE_ENV`/`DEPLOY_ENV`, and a loopback DATABASE_URL before connecting. Administrator access must use an explicit user/password (or the env file's non-empty `MYSQL_ROOT_PASSWORD`). Passwordless root is allowed only through an existing absolute `EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH`, followed by a `root@localhost` identity check; generic `MYSQL_SOCKET_PATH` is ignored. Generate a random database name `needo_cancel_check_<hex>`; never accept a user-provided DROP target.
 - [x] In the disposable database create minimal parent-key fixture tables and execute the exact checked-in migration, not a second copy of its constraints. This is constraint acceptance, not a formal full-database migration/flow proof.
 - [x] Insert valid pending requests on two orders; verify duplicate active order, missing/wrong active key, invalid versions, missing linked Participant and absent actor FK fail. Resolve one request, preserve history, and create the next request on the same order.
 - [x] Verify missing/wrong terminal actor, self/same-party approval and foreign withdrawal fail; valid opposite-party approval and original-identity withdrawal succeed.
@@ -56,6 +56,8 @@ CHECK (
 
 ```bash
 ENV_FILE=/absolute/path/to/local.env ALLOW_EXCHANGE_CANCELLATION_SCHEMA_CHECK=true \
+  EXCHANGE_CANCELLATION_MYSQL_ADMIN_USER=<local-admin-user> \
+  EXCHANGE_CANCELLATION_MYSQL_ADMIN_PASSWORD=<local-admin-password> \
   npm --prefix backend run check:exchange-cancellation-schema
 ```
 

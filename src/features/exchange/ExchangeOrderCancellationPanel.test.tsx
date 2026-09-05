@@ -183,6 +183,7 @@ describe("ExchangeOrderCancellationPanel", () => {
     });
 
     await renderPanel();
+    expect(document.body.textContent).toContain("发布费将全额转入平台收入且不退还");
     await enterReason("  无法按约定时间提供服务  ");
     await clickAction("request");
 
