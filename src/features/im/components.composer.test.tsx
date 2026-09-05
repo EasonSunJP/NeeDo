@@ -118,6 +118,23 @@ describe("ImChatComposer", () => {
     expect.soft(actualAriaPlaceholder).toBe("メッセージを送信");
   });
 
+  it("keeps the editable composer at the iOS no-zoom font size", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    const placeholder = editor?.parentElement?.querySelector("span");
+    expect(editor?.classList.contains("text-[16px]")).toBe(true);
+    expect(placeholder?.classList.contains("text-[16px]")).toBe(true);
+
+    await act(async () => root.unmount());
+  });
+
   it("opens voice recording directly with caller copy and a ref without entering a gesture mode", async () => {
     const onOpenVoiceRecording = vi.fn();
     const callbackOrder: string[] = [];

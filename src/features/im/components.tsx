@@ -606,7 +606,7 @@ function ImComposerRichInput({
       <div className="relative min-h-[24px]">
         <textarea
           aria-placeholder={placeholder}
-          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
           data-im-composer-native-input="true"
           disabled
           placeholder={placeholder}
@@ -621,7 +621,7 @@ function ImComposerRichInput({
     <div className="relative min-h-[24px]">
       {!draft ? (
         <span
-          className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]"
+          className="pointer-events-none absolute inset-0 text-[16px] leading-6 text-[color:var(--client-muted)]"
           data-no-i18n="true"
         >
           {localizedPlaceholder}
@@ -631,7 +631,7 @@ function ImComposerRichInput({
         aria-disabled={disabled}
         aria-multiline="true"
         aria-placeholder={localizedPlaceholder}
-        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
         data-no-i18n="true"
