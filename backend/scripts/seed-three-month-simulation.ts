@@ -513,13 +513,8 @@ const main = async (): Promise<void> => {
         };
 
         if (seedConfig.preserveExistingPasswords) {
-          const stagingCohortUsers = await tx.user.findMany({
-            where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
-            select: { id: true }
-          });
           await tx.userIdentity.updateMany({
             where: {
-              userId: { in: stagingCohortUsers.map((user) => user.id) },
               activeKey: { startsWith: SIMULATION_IDENTITY_ACTIVE_KEY_PREFIX }
             },
             data: { activeKey: null }
