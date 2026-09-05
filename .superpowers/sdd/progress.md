@@ -16,3 +16,15 @@ Plan: `docs/superpowers/plans/2026-09-03-exchange-matched-booking-conversion.md`
 - Task 7: pending
 - Task 8: pending
 - Task 9: pending
+
+---
+
+Plan: `docs/superpowers/plans/2026-09-05-shop-travel-fare-routing.md`
+
+- Branch/integration target: local `main`
+- Existing Task 1–6 commits preserved: `e5be6f35`, `094710ef`, `89c88a8b`, `17b1268f`, `5c8c61d9`, `807168ce`
+- Review hardening: schedule-slot binding `14dd9ab1`; booking/checkout invariants `d740e30e`; merchant authority and revenue evidence `b783b352`
+- Task 7: complete at `df042420` — operations provider/policy visibility with shared Redis health status
+- Task 8: complete at `826f2dd2` — merchant policy editor and customer checkout estimate UI
+- Task 9: complete — 132 migrations current; rollback-safe formal MySQL checker restored baseline; backend 4-shard regression, frontend regression/builds, and authenticated desktop/narrow browser acceptance passed
+- Affiliate refund/reward work remains explicitly paused and untouched
