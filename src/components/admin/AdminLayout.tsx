@@ -122,7 +122,7 @@ const navSections: AdminNavSection[] = [
       { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
       { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
       { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
-      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["七项权益", "启停", "交付能力"] }
+      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["八项权益", "启停", "交付能力"] }
     ]
   },
   {

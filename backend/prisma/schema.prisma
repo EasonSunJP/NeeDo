@@ -664,6 +664,7 @@ enum PlatformMembershipBenefitCode {
   EXCLUSIVE_DISCOUNT @map("exclusive_discount")
   MEMBER_DAY         @map("member_day")
   BIRTHDAY_GIFT      @map("birthday_gift")
+  TRACELESS_RECALL   @map("traceless_recall")
 
   @@map("platform_membership_benefit_code")
 }

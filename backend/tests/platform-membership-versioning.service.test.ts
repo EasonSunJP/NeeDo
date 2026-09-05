@@ -27,7 +27,8 @@ const benefits: PlatformMembershipTierDraftInput["benefits"] = [
   { code: "support_service", isEnabled: false, configuration: {} },
   { code: "exclusive_discount", isEnabled: false, configuration: {} },
   { code: "member_day", isEnabled: false, configuration: {} },
-  { code: "birthday_gift", isEnabled: false, configuration: {} }
+  { code: "birthday_gift", isEnabled: false, configuration: {} },
+  { code: "traceless_recall", isEnabled: true, configuration: {} }
 ];
 const draft: PlatformMembershipTierDraftInput = {
   expectedVersion: 1,

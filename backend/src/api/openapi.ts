@@ -7426,7 +7426,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "support_service",
           "exclusive_discount",
           "member_day",
-          "birthday_gift"
+          "birthday_gift",
+          "traceless_recall"
         ]
       },
       PlatformMembershipTheme: {
@@ -7574,8 +7575,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           theme: { $ref: "#/components/schemas/PlatformMembershipTheme" },
           benefits: {
             type: "array",
-            minItems: 7,
-            maxItems: 7,
+            minItems: 8,
+            maxItems: 8,
             items: { $ref: "#/components/schemas/PlatformMembershipTierBenefit" }
           }
         }
@@ -7670,8 +7671,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           theme: { $ref: "#/components/schemas/PlatformMembershipTheme" },
           benefits: {
             type: "array",
-            minItems: 7,
-            maxItems: 7,
+            minItems: 8,
+            maxItems: 8,
             items: { $ref: "#/components/schemas/PlatformMembershipTierBenefit" }
           }
         }
@@ -22046,13 +22047,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/backoffice/membership-benefits`]: {
       get: {
         tags: ["Platform Membership"],
-        summary: "List the seven fixed global membership benefits",
+        summary: "List the eight fixed global membership benefits",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": jsonDataResponse("Fixed benefit catalog", {
             type: "array",
-            minItems: 7,
-            maxItems: 7,
+            minItems: 8,
+            maxItems: 8,
             items: { $ref: "#/components/schemas/PlatformMembershipBenefitAdministration" }
           }),
           "401": { description: "Authentication required" },

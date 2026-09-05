@@ -38,6 +38,15 @@ const payload: CurrentMembershipBenefitsPayload = {
       deliveryCapability: "unavailable",
       name: "生日礼",
       description: "生日礼品"
+    },
+    {
+      code: "traceless_recall",
+      configuredEnabled: true,
+      globallyEnabled: true,
+      effective: false,
+      deliveryCapability: "unavailable",
+      name: "聊天无痕撤回",
+      description: "双方聊天窗口均不保留消息已撤回提示"
     }
   ]
 };
@@ -65,6 +74,8 @@ describe("CurrentMembershipBenefits", () => {
     expect(container.textContent).toContain("可使用");
     expect(container.textContent).toContain("能力未接通");
     expect(container.textContent).toContain("未启用");
+    expect(container.textContent).toContain("聊天无痕撤回");
+    expect(container.textContent).toContain("双方聊天窗口均不保留消息已撤回提示");
     expect(container.textContent).not.toContain("已发放");
   });
 
@@ -74,10 +85,10 @@ describe("CurrentMembershipBenefits", () => {
     );
     await act(async () => Promise.resolve());
 
-    const support = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("专属客服")
+    const tracelessRecall = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("聊天无痕撤回")
     );
-    await act(async () => support?.click());
+    await act(async () => tracelessRecall?.click());
 
     expect(document.body.textContent).toContain("该权益已包含在会员配置中，但对应服务能力尚未接通");
     expect(document.body.textContent).not.toMatch(/领取|发放|开始聊天/);

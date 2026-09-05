@@ -26,7 +26,8 @@ const benefitCodes = [
   PlatformMembershipBenefitCode.SUPPORT_SERVICE,
   PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT,
   PlatformMembershipBenefitCode.MEMBER_DAY,
-  PlatformMembershipBenefitCode.BIRTHDAY_GIFT
+  PlatformMembershipBenefitCode.BIRTHDAY_GIFT,
+  PlatformMembershipBenefitCode.TRACELESS_RECALL
 ];
 const publicBenefitCodes = [
   "ndp_experience",
@@ -35,7 +36,8 @@ const publicBenefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 const draft: PlatformMembershipTierDraftPersistenceInput = {
   expectedVersion: 1,
@@ -82,7 +84,7 @@ const administrationRecord = (status: PlatformMembershipVersionStatus) => ({
 });
 
 describe("PlatformMembershipRepository tier versioning", () => {
-  it("creates a new draft version with all seven benefits and audit in one transaction", async () => {
+  it("creates a new draft version with all eight benefits and audit in one transaction", async () => {
     const tierVersionCreate = jest.fn(async () => ({ id: 22, version: 2 }));
     const tierBenefitCreate = jest.fn(async () => ({}));
     const auditCreate = jest.fn(async () => ({}));
@@ -138,7 +140,7 @@ describe("PlatformMembershipRepository tier versioning", () => {
         })
       })
     );
-    expect(tierBenefitCreate).toHaveBeenCalledTimes(7);
+    expect(tierBenefitCreate).toHaveBeenCalledTimes(8);
     expect(auditCreate).toHaveBeenCalledTimes(1);
   });
 

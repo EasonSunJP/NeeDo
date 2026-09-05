@@ -23,7 +23,7 @@ describe("platform membership persistence schema", () => {
     }
   });
 
-  it("locks the approved four tiers and seven benefit codes", () => {
+  it("locks the approved four tiers and eight benefit codes", () => {
     for (const token of [
       "FREE",
       "SILVER",
@@ -35,7 +35,8 @@ describe("platform membership persistence schema", () => {
       "SUPPORT_SERVICE",
       "EXCLUSIVE_DISCOUNT",
       "MEMBER_DAY",
-      "BIRTHDAY_GIFT"
+      "BIRTHDAY_GIFT",
+      "TRACELESS_RECALL"
     ]) {
       expect(schema).toContain(token);
     }
@@ -59,7 +60,7 @@ describe("platform membership persistence schema", () => {
     }
   });
 
-  it("seeds four fixed V1 tiers and seven fixed benefits without granting paid access", () => {
+  it("seeds four fixed V1 tiers and supports the additive eighth benefit without granting paid access", () => {
     for (const table of [
       "platform_membership_tiers",
       "platform_membership_tier_versions",
