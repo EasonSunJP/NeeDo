@@ -2323,21 +2323,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     userId: number;
     identityId?: number;
   }): Promise<ConversationPayload | null> {
-    const participant = await this.findConversationParticipant(
-      input.conversationId,
-      input.identityId ?? input.userId
-    );
-    if (!participant) return null;
-
-    await this.client.conversationParticipant.update({
-      where: { id: participant.id },
-      data: { hiddenAt: new Date(), isPinned: false, unreadCount: 0 }
-    });
-    return this.getConversationForUser(
-      input.conversationId,
-      input.identityId ?? input.userId,
-      input.userId
-    );
+    return this.clearConversationHistory(input, true);
   }
 
   public async clearConversationMessages(input: {
@@ -2345,6 +2331,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     userId: number;
     identityId?: number;
   }): Promise<ConversationPayload | null> {
+    return this.clearConversationHistory(input, false);
+  }
+
+  private async clearConversationHistory(input: {
+    conversationId: number;
+    userId: number;
+    identityId?: number;
+  }, hide: boolean): Promise<ConversationPayload | null> {
     const cleared = await this.client.$transaction(async (tx) => {
       const participant = await tx.conversationParticipant.findFirst({
         where: {
@@ -2370,6 +2364,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       await tx.conversationParticipant.update({
         where: { id: participant.id },
         data: {
+          ...(hide ? { hiddenAt: new Date(), isPinned: false } : {}),
           clearedThroughMessageId: latestMessage?.id ?? null,
           lastReadMessageId: latestMessage?.id ?? null,
           lastReadAt: latestMessage?.createdAt ?? new Date(),
@@ -2379,7 +2374,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       await tx.auditLog.create({
         data: {
           actorId: input.userId,
-          action: "im.conversation.messages_cleared",
+          action: hide ? "im.conversation.deleted_for_user" : "im.conversation.messages_cleared",
           targetType: "Conversation",
           targetId: input.conversationId,
           ip: null,

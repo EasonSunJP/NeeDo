@@ -1124,3 +1124,38 @@ describe("formal IM quick reactions", () => {
     expect(source).toContain("setMessageReaction,");
   });
 });
+
+describe("conversation deletion", () => {
+  it.each(["single", "group"] as const)("purges %s history and drafts even when an old page arrives later", async (type) => {
+    mocked.session = { ...mocked.session, id: type === "single" ? 91001 : 91002 };
+    let resolvePage!: (value: unknown) => void;
+    const listMessages = vi.fn()
+      .mockResolvedValueOnce({ messages: [message()], nextCursor: "700", hasMore: true })
+      .mockImplementationOnce(() => new Promise(resolve => { resolvePage = resolve; }))
+      .mockResolvedValue({ messages: [], nextCursor: null, hasMore: false });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: {}, users: [], contacts: [], friendRequests: [], conversations: [conversation({ type })], members: [] }),
+      listMessages,
+      deleteConversation: vi.fn().mockResolvedValue({ conversation: conversation({ type, isDeleted: true }) }),
+      getConversation: vi.fn().mockResolvedValue({ conversation: conversation({ type }), users: [], members: [] }),
+    };
+    window.localStorage.setItem("needo.im.ui.v2.user", JSON.stringify({
+      drafts: { "91": { text: "private draft", updatedAt: sentAt } },
+      searchHistory: [],
+    }));
+    await renderStore();
+    await act(async () => { await store?.loadMessages("91"); });
+    let pending!: Promise<void>;
+    await act(async () => { pending = store!.loadMessages("91"); await Promise.resolve(); });
+    await act(async () => { await store?.deleteConversation("91"); });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    expect(store?.ui.drafts["91"]).toBeUndefined();
+    await act(async () => { resolvePage({ messages: [message()], nextCursor: null, hasMore: false }); await pending; });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    await act(async () => { await store?.loadConversation("91"); await store?.loadMessages("91", { reset: true }); });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    await act(async () => { mocked.subscriptionListener?.({ type: "message.updated", message: message() }); });
+    expect(store?.messagesByConversation["91"] ?? []).toEqual([]);
+    expect(window.localStorage.getItem("needo.im.ui.v2.user")).not.toContain("private draft");
+  });
+});

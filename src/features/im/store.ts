@@ -319,6 +319,7 @@ type ScopedStoreBackend = {
 
 function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   const { api } = backend;
+  const historyGenerations = new Map<string, number>();
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
   let hydrated = false;
@@ -600,6 +601,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               update.type === "message.updated" ||
               update.type === "message.recalled"
             ) {
+              // After clearing, only server-filtered history may repopulate this conversation.
+              if (historyGenerations.has(update.message.conversationId)) {
+                void refreshBootstrap();
+                void loadMessages(update.message.conversationId, { reset: true, limit: 40 });
+                return;
+              }
               upsertMessage(update.message);
               if (update.type === "message.recalled") {
                 recomputeCurrentLastMessageSummary(update.message);
@@ -701,6 +708,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function loadMessages(conversationId: string, options?: { reset?: boolean; limit?: number }) {
     await hydrateStore();
+    const generation = historyGenerations.get(conversationId) ?? 0;
     const pagination = snapshot.paginationByConversation[conversationId];
 
     if (pagination?.loading) {
@@ -722,6 +730,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
 
     const response = await api.listMessages(conversationId, options?.reset ? null : pagination?.nextCursor ?? null, options?.limit ?? 30);
+    if ((historyGenerations.get(conversationId) ?? 0) !== generation) return;
     const nextMessages = mergeConversationMessageHistory(
       snapshot.messagesByConversation[conversationId] ?? [],
       response.messages,
@@ -1144,9 +1153,28 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.conversation;
   }
 
+  function purgeConversationHistory(conversationId: string) {
+    historyGenerations.set(conversationId, (historyGenerations.get(conversationId) ?? 0) + 1);
+    removeDraft(conversationId);
+    const messages = { ...snapshot.messagesByConversation };
+    const pagination = { ...snapshot.paginationByConversation };
+    delete messages[conversationId];
+    delete pagination[conversationId];
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: messages,
+      paginationByConversation: pagination,
+      pendingChatRecordForward: snapshot.pendingChatRecordForward?.sourceConversationId === conversationId
+        ? null : snapshot.pendingChatRecordForward,
+    };
+    persistUiState();
+  }
+
   async function deleteConversation(conversationId: string) {
     await hydrateStore();
     const response = await api.deleteConversation(conversationId);
+    purgeConversationHistory(conversationId);
+    removeConversationLocally(conversationId);
     upsertConversation(response.conversation);
     emit();
   }
@@ -1154,13 +1182,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   async function clearConversation(conversationId: string) {
     await hydrateStore();
     const response = await api.clearConversation(conversationId);
-    snapshot = {
-      ...snapshot,
-      messagesByConversation: {
-        ...snapshot.messagesByConversation,
-        [conversationId]: []
-      }
-    };
+    purgeConversationHistory(conversationId);
     upsertConversation(response.conversation);
     emit();
   }

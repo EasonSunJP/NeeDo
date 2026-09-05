@@ -66,6 +66,7 @@
     "repair:lifedance-admin2-booking": "ENV_FILE=.env.dev tsx scripts/repair-lifedance-admin2-booking.ts",
     "check:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/check-lifedance-admin2.ts",
     "check:formal-social-test": "tsx scripts/check-formal-social-test.ts",
+    "check:im-conversation-deletion-flow": "tsx scripts/check-im-conversation-deletion-flow.ts",
     "audit:database-indexes": "tsx scripts/audit-database-indexes.ts",
     "audit:unified-identity": "ENV_FILE=.env.dev tsx scripts/audit-unified-identity-cutover.ts",
     "backfill:unified-identifiers": "tsx scripts/backfill-unified-identifiers.ts",

@@ -20,6 +20,16 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("binds the chat-list delete swipe action to full conversation deletion", () => {
+    const pageStart = pagesSource.indexOf("export function ImConversationListPage");
+    const pageEnd = pagesSource.indexOf("export function ImContactsListPage", pageStart);
+    const pageSource = pagesSource.slice(pageStart, pageEnd);
+
+    expect(pageSource).toContain('key: "delete"');
+    expect(pageSource).toContain('label: "删除"');
+    expect(pageSource).toContain("store.deleteConversation(conversation.id)");
+  });
+
   it("renders the shared Test badge after the service-account title", () => {
     const markup = renderToStaticMarkup(
       createElement(

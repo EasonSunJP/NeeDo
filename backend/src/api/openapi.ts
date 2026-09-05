@@ -25197,7 +25197,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       delete: {
         tags: ["Step 13 Realtime"],
         summary:
-          "Hide a conversation from the current participant without deleting shared messages",
+          "Delete the current participant conversation and clear their history; reopening does not restore earlier messages. Other participants retain their messages",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
