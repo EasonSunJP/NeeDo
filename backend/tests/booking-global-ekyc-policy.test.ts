@@ -45,7 +45,22 @@ describe("booking global eKYC policy", () => {
     "passes the authenticated user, %s mode and server time to the shared gate",
     async (fulfillmentMode) => {
       const state = fixture();
-      await state.service.createBooking(actor, { scheduleSlotId: 11, fulfillmentMode });
+      await state.service.createBooking(actor, {
+        scheduleSlotId: 11,
+        fulfillmentMode,
+        ...(fulfillmentMode === "home"
+          ? {
+              fulfillmentAddress: {
+                countryCode: "JP",
+                postalCode: "160-0022",
+                prefecture: "東京都",
+                city: "新宿区",
+                addressLine1: "新宿1-2-3"
+              },
+              travelEstimatePublicId: "estimate-ekyc-policy"
+            }
+          : {})
+      });
       expect(state.enforcement.assertServiceEkyc).toHaveBeenCalledWith(
         41,
         fulfillmentMode,
