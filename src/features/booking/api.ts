@@ -12,6 +12,7 @@ export type BookingOrderStatus =
 export type ManualPaymentMethod = "onsite" | "bank_transfer";
 export type ManualPaymentStatus = "pending" | "confirmed" | "refundPending" | "refunded";
 export type CheckoutPaymentMethod = "cash" | "ndp" | "other";
+export type AvailableCheckoutPaymentMethod = "cash" | "ndp";
 export type CheckoutPaymentEvidence =
   | "ndp_ledger"
   | "technician_receipt_confirmation"
@@ -51,6 +52,7 @@ export type OrderCheckout = {
   discountAmountJpy: number;
   checkoutAmountJpy: number;
   payableNdp: number;
+  availablePaymentMethods: AvailableCheckoutPaymentMethod[];
   rate: {
     ruleId: number;
     publicId: string;
@@ -96,7 +98,6 @@ export type EndServiceInput = BookingIdempotencyInput & { reason: string };
 export type SelectCheckoutPaymentMethodInput = BookingIdempotencyInput & (
   | { method: "cash"; otherMethodCode?: never; otherMethodLabel?: never }
   | { method: "ndp"; otherMethodCode?: never; otherMethodLabel?: never }
-  | { method: "other"; otherMethodCode: string; otherMethodLabel: string }
 );
 export type ConfirmCheckoutReceiptInput = BookingIdempotencyInput & { reason: string };
 export type OrderReviewTargetType = "customer" | "technician";

@@ -97,6 +97,17 @@ describe("PlatformAccessPolicyService", () => {
     await expect(service.assertPublicBusinessAccess()).resolves.toBeUndefined();
   });
 
+  it("projects enabled checkout methods in a stable offline then NDP order", async () => {
+    let current = settings({ offlinePaymentEnabled: false, ndpPaymentEnabled: true });
+    const service = new PlatformAccessPolicyService({ getActive: async () => current });
+
+    await expect(service.getAvailablePaymentMethods()).resolves.toEqual(["ndp"]);
+    current = settings({ offlinePaymentEnabled: true, ndpPaymentEnabled: false });
+    await expect(service.getAvailablePaymentMethods()).resolves.toEqual(["cash"]);
+    current = settings({ offlinePaymentEnabled: true, ndpPaymentEnabled: true });
+    await expect(service.getAvailablePaymentMethods()).resolves.toEqual(["cash", "ndp"]);
+  });
+
   it("applies maintenance to public business routes but bypasses backoffice routing", async () => {
     const policy = { assertPublicBusinessAccess: jest.fn(async () => undefined) };
     const middleware = createPlatformMaintenanceMiddleware(policy);

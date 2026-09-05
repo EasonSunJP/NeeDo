@@ -1,5 +1,8 @@
 import { ERROR_CODES } from "../constants/error-codes";
-import type { PlatformLoginVerificationRule } from "../domain/platform-settings";
+import type {
+  PlatformLoginVerificationRule,
+  PlatformPaymentMethod
+} from "../domain/platform-settings";
 import type { PlatformSettingsRecord } from "../repositories/platform-settings.repository";
 import { AppError } from "../utils/app-error";
 import type { AuthenticatedAccessContext } from "./auth.service";
@@ -21,6 +24,7 @@ export interface PlatformAccessPolicyPort {
   assertSelfRegistrationEnabled(): Promise<void>;
   assertGoogleLoginEnabled(): Promise<void>;
   getPasswordLoginVerificationPolicy(): Promise<PasswordLoginVerificationPolicy>;
+  getAvailablePaymentMethods(): Promise<PlatformPaymentMethod[]>;
 }
 
 export class PlatformAccessPolicyService implements PlatformAccessPolicyPort {
@@ -61,6 +65,14 @@ export class PlatformAccessPolicyService implements PlatformAccessPolicyPort {
       rule: current.passwordLoginOtpRule,
       onNewIp: current.passwordLoginOtpOnNewIp
     };
+  }
+
+  public async getAvailablePaymentMethods(): Promise<PlatformPaymentMethod[]> {
+    const current = await this.settings.getActive();
+    const methods: PlatformPaymentMethod[] = [];
+    if (current.offlinePaymentEnabled) methods.push("cash");
+    if (current.ndpPaymentEnabled) methods.push("ndp");
+    return methods;
   }
 
   private isOperationsIdentity(actor: AuthenticatedAccessContext): boolean {

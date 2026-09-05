@@ -59,7 +59,7 @@ const permissions = [
   "backoffice:order:checkout:receipt-override"
 ];
 
-const createFixture = () => {
+const createFixture = (availablePaymentMethods: Array<"cash" | "ndp"> = ["cash", "ndp"]) => {
   jest.spyOn(authServiceFactory, "createAuthServiceForRoutes").mockReturnValue({
     authenticateAccessToken: jest.fn(async (token: string) => {
       const base = {
@@ -144,7 +144,10 @@ const createFixture = () => {
       bookingRepository: repository,
       ledgerRepository: {} as never,
       affiliateCheckoutService: {} as never,
-      ndpExchangeRateService: { resolveEffectiveRate: jest.fn() } as never
+      ndpExchangeRateService: { resolveEffectiveRate: jest.fn() } as never,
+      platformAccessPolicyService: {
+        getAvailablePaymentMethods: jest.fn(async () => availablePaymentMethods)
+      } as never
     })
   );
   app.use(notFoundMiddleware);
@@ -203,6 +206,42 @@ describe("formal order checkout API", () => {
       .get("/api/v1/orders/41/checkout")
       .set("Authorization", "Bearer outsider")
       .expect(404);
+  });
+
+  it("projects and enforces the payment methods enabled in platform settings", async () => {
+    const f = createFixture(["ndp"]);
+    const response = await request(f.app)
+      .get("/api/v1/orders/41/checkout")
+      .set("Authorization", "Bearer customer")
+      .expect(200);
+    expect(response.body.data.availablePaymentMethods).toEqual(["ndp"]);
+
+    await request(f.app)
+      .post("/api/v1/orders/41/checkout/payment-method")
+      .set("Authorization", "Bearer customer")
+      .send({ method: "cash", idempotencyKey: "checkout-disabled-cash-01" })
+      .expect(409)
+      .expect({
+        code: ERROR_CODES.PLATFORM_PAYMENT_METHOD_DISABLED,
+        message: "error.payment.method_disabled",
+        data: null
+      });
+    await request(f.app)
+      .post("/api/v1/orders/41/checkout/payment-method")
+      .set("Authorization", "Bearer customer")
+      .send({
+        method: "other",
+        otherMethodCode: "paypay",
+        otherMethodLabel: "PayPay",
+        idempotencyKey: "checkout-paypay-entry-001"
+      })
+      .expect(503)
+      .expect({
+        code: ERROR_CODES.PAYMENT_PROVIDER_UNCONFIGURED,
+        message: "error.payment.provider_unconfigured",
+        data: null
+      });
+    expect(f.repository.selectCheckoutPaymentMethod).not.toHaveBeenCalled();
   });
 
   it("returns stable 409 for semantic key reuse and keeps legacy generic completion absent", async () => {

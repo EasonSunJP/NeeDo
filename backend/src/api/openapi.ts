@@ -1126,10 +1126,10 @@ const fulfillmentConflictResponse = jsonErrorResponse(
   "40906 error.order.invalid_transition — state transition is invalid, including unresolved add-ons; 40961 error.idempotency.key_reused — the key's stored command is not equivalent"
 );
 const checkoutConflictResponse = jsonErrorResponse(
-  "40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects the command; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
+  "41024 error.payment.method_disabled — platform settings disable this payment method; 40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects the command; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
 );
 const checkoutNdpConflictResponse = jsonErrorResponse(
-  "40907 error.wallet.insufficient_available — the customer NDP wallet cannot cover payableNdp; 40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects payment; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
+  "41024 error.payment.method_disabled — platform settings disable NDP payment; 40907 error.wallet.insufficient_available — the customer NDP wallet cannot cover payableNdp; 40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects payment; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
 );
 const reviewConflictResponse = jsonErrorResponse(
   "40906 error.order.review_requires_completion — the order is not completed; 40961 error.order.review_already_submitted — this reviewer already submitted the directional review; 40961 error.idempotency.key_reused — the key's stored review is not equivalent; 40965 error.order.review_invalid_settlement — formal checkout settlement evidence is missing or inconsistent"
@@ -10334,6 +10334,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "discountAmountJpy",
           "checkoutAmountJpy",
           "payableNdp",
+          "availablePaymentMethods",
           "rate",
           "calculation",
           "paymentMethod",
@@ -10358,6 +10359,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           discountAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           checkoutAmountJpy: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
           payableNdp: { type: "integer", minimum: 0, maximum: safeIntegerMaximum },
+          availablePaymentMethods: {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "string", enum: ["cash", "ndp"] }
+          },
           rate: {
             type: "object",
             additionalProperties: false,
@@ -20155,7 +20161,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         operationId: "selectOrderCheckoutPaymentMethod",
         tags: ["Booking Checkout"],
-        summary: "Select cash, NDP, or other payment as the owning customer",
+        summary: "Select offline or NDP payment as the owning customer",
         description:
           "Requires order:checkout:payment-method:write. Selection never completes an order.",
         security: [{ bearerAuth: [] }],
@@ -20194,6 +20200,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   {
                     type: "object",
                     additionalProperties: false,
+                    description:
+                      "Legacy provider-shaped command retained only to return error.payment.provider_unconfigured; it never creates a payment.",
                     required: ["method", "otherMethodCode", "otherMethodLabel", "idempotencyKey"],
                     properties: {
                       method: { type: "string", enum: ["other"] },
@@ -20219,7 +20227,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/OrderCheckout"
           }),
           ...formalOrderCommonErrorResponses,
-          "409": checkoutConflictResponse
+          "409": checkoutConflictResponse,
+          "503": jsonErrorResponse(
+            "50325 error.payment.provider_unconfigured — PayPay, PayPal, Stripe, and other future providers have settings entries only and no payment API"
+          )
         }
       }
     },
@@ -20257,7 +20268,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         operationId: "confirmOrderCheckoutReceipt",
         tags: ["Booking Checkout"],
-        summary: "Assigned technician confirms cash or other receipt",
+        summary: "Assigned technician confirms offline receipt",
         description:
           "Requires order:checkout:receipt:confirm and exact assigned-technician identity.",
         security: [{ bearerAuth: [] }],
