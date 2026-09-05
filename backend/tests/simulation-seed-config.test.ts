@@ -61,32 +61,4 @@ describe("simulation seed safety", () => {
       })
     ).toThrow("production database");
   });
-
-  it("allows only the explicit one-shot staging sync boundary and preserves passwords", () => {
-    const staging = getSimulationSeedConfig({
-      NODE_ENV: "development",
-      DEPLOY_ENV: "staging",
-      ALLOW_SIMULATION_SEED: "false",
-      ALLOW_STAGING_SIMULATION_SYNC: "true",
-      DATABASE_URL: "mysql://needo:password@mysql:3306/needo_staging"
-    });
-    expect(staging).toMatchObject({
-      databaseName: "needo_staging",
-      preserveExistingPasswords: true
-    });
-    expect(() => getSimulationSeedConfig({
-      NODE_ENV: "production",
-      DEPLOY_ENV: "staging",
-      ALLOW_SIMULATION_SEED: "false",
-      ALLOW_STAGING_SIMULATION_SYNC: "true",
-      DATABASE_URL: "mysql://needo:password@mysql:3306/needo_staging"
-    })).toThrow("one-shot staging sync boundary");
-    expect(() => getSimulationSeedConfig({
-      NODE_ENV: "development",
-      DEPLOY_ENV: "staging",
-      ALLOW_SIMULATION_SEED: "false",
-      ALLOW_STAGING_SIMULATION_SYNC: "true",
-      DATABASE_URL: "mysql://needo:password@db.example.com:3306/needo_staging"
-    })).toThrow("one-shot staging sync boundary");
-  });
 });

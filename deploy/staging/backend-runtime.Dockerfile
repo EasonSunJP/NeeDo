@@ -18,13 +18,6 @@ FROM all-deps AS migration
 COPY backend/dist ./dist
 CMD ["npm", "run", "prisma:migrate:deploy"]
 
-FROM all-deps AS simulation-sync
-
-COPY backend/src ./src
-COPY backend/scripts ./scripts
-COPY backend/tsconfig.json ./tsconfig.json
-CMD ["npx", "tsx", "scripts/seed-three-month-simulation.ts"]
-
 FROM all-deps AS production-deps
 
 RUN npm prune --omit=dev

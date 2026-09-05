@@ -112,13 +112,10 @@ async function copyReleaseInputs(stageRoot) {
   const inputs = [
     "dist",
     "backend/dist",
-    "backend/src",
-    "backend/scripts",
     "backend/package.json",
     "backend/package-lock.json",
     "backend/prisma",
     "backend/prisma.config.ts",
-    "backend/tsconfig.json",
     "deploy/staging"
   ];
   for (const relative of inputs) {
