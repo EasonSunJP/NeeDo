@@ -136,6 +136,7 @@ export interface MembershipAnalyticsListQuery extends Record<
 
 export type AnalyticsRankingKind = "service" | "technician" | "customer";
 export type AnalyticsRankingMetric = "gmv" | "completedCount";
+export type AnalyticsRankingDataComposition = "formal" | "test" | "mixed";
 export type AnalyticsRankingEntityType =
   | "service"
   | "technician_service"
@@ -163,6 +164,9 @@ export interface AnalyticsRankingItem {
   categoryId: number | null;
   gmvJpy: number;
   completedCount: number;
+  testGmvJpy: number;
+  testCompletedCount: number;
+  dataComposition: AnalyticsRankingDataComposition;
   registeredAt: string;
 }
 
@@ -939,6 +943,9 @@ const analyticsRankingMetrics = new Set<AnalyticsRankingMetric>(["gmv", "complet
 const analyticsRankingEntityTypes = new Set<AnalyticsRankingEntityType>([
   "service", "technician_service", "technician", "customer"
 ]);
+const analyticsRankingDataCompositions = new Set<AnalyticsRankingDataComposition>([
+  "formal", "test", "mixed"
+]);
 const analyticsRankingEntityTypesByKind: Record<AnalyticsRankingKind, ReadonlySet<AnalyticsRankingEntityType>> = {
   service: new Set(["service", "technician_service"]),
   technician: new Set(["technician"]),
@@ -1052,7 +1059,8 @@ function requireAnalyticsRankingPayload(
     if (
       !isExactObject(item, [
         "rank", "entityType", "entityPublicId", "entityNumericId", "displayName", "avatarUrl",
-        "categoryId", "gmvJpy", "completedCount", "registeredAt"
+        "categoryId", "gmvJpy", "completedCount", "testGmvJpy", "testCompletedCount",
+        "dataComposition", "registeredAt"
       ]) ||
       item.rank !== firstRank + index ||
       !analyticsRankingEntityTypes.has(item.entityType as AnalyticsRankingEntityType) ||
@@ -1064,7 +1072,25 @@ function requireAnalyticsRankingPayload(
       !(item.categoryId === null || isPositiveSafeInteger(item.categoryId)) ||
       !isNonNegativeSafeInteger(item.gmvJpy) ||
       !isNonNegativeSafeInteger(item.completedCount) ||
+      !isNonNegativeSafeInteger(item.testGmvJpy) ||
+      !isNonNegativeSafeInteger(item.testCompletedCount) ||
+      !analyticsRankingDataCompositions.has(
+        item.dataComposition as AnalyticsRankingDataComposition
+      ) ||
       !isIsoDateTime(item.registeredAt)
+    ) {
+      throw new Error("error.api");
+    }
+    const expectedComposition: AnalyticsRankingDataComposition =
+      item.testCompletedCount === 0
+        ? "formal"
+        : item.testCompletedCount === item.completedCount
+          ? "test"
+          : "mixed";
+    if (
+      item.testGmvJpy > item.gmvJpy ||
+      item.testCompletedCount > item.completedCount ||
+      item.dataComposition !== expectedComposition
     ) {
       throw new Error("error.api");
     }

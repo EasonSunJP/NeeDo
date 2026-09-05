@@ -3077,6 +3077,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "categoryId",
           "gmvJpy",
           "completedCount",
+          "testGmvJpy",
+          "testCompletedCount",
+          "dataComposition",
           "registeredAt"
         ],
         properties: {
@@ -3096,6 +3099,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           categoryId: { oneOf: [{ type: "integer", minimum: 1 }, { type: "null" }] },
           gmvJpy: { type: "integer", minimum: 0 },
           completedCount: { type: "integer", minimum: 0 },
+          testGmvJpy: { type: "integer", minimum: 0 },
+          testCompletedCount: { type: "integer", minimum: 0 },
+          dataComposition: { type: "string", enum: ["formal", "test", "mixed"] },
           registeredAt: { type: "string", format: "date-time" }
         }
       },
@@ -20077,9 +20083,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         operationId: "listFormalAnalyticsRankings",
         tags: ["Analytics Rankings"],
-        summary: "Read formal service, technician or customer rankings",
+        summary: "Read verified service, technician or customer rankings",
         description:
-          "Returns a deterministic global one-based rank from completed formal checkout evidence. GMV ordering uses GMV then completed count; completedCount ordering reverses those primary keys, followed by registration time, numeric ID and binary entity type. Service ranking counts the base and every accepted add-on occurrence, including repeated occurrences in one order. Category-filtered technician/customer results sum matching-line GMV and count distinct completed orders; unfiltered results use full-order GMV and one count per order. City is the booking shop's current city and category is the service entity's current direct category only; descendants are not expanded. For period filters, custom requires both from and to, non-custom periods reject from and to, to must be on or after from, and a custom range has a maximum of 366 inclusive Tokyo calendar days.",
+          "Returns a deterministic global one-based rank from completed checkout evidence, combining formal and test-account orders while exposing the test subset and formal/test/mixed composition on every row. GMV ordering uses GMV then completed count; completedCount ordering reverses those primary keys, followed by registration time, numeric ID and binary entity type. Service ranking counts the base and every accepted add-on occurrence, including repeated occurrences in one order. Category-filtered technician/customer results sum matching-line GMV and count distinct completed orders; unfiltered results use full-order GMV and one count per order. City is the booking shop's current city and category is the service entity's current direct category only; descendants are not expanded. For period filters, custom requires both from and to, non-custom periods reject from and to, to must be on or after from, and a custom range has a maximum of 366 inclusive Tokyo calendar days.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:analytics-ranking:read",
         parameters: [
@@ -20186,6 +20192,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                                   : null,
                               gmvJpy: 12300,
                               completedCount: 2,
+                              testGmvJpy: 0,
+                              testCompletedCount: 0,
+                              dataComposition: "formal",
                               registeredAt: "2026-01-01T00:00:00.000Z"
                             }
                           ],
