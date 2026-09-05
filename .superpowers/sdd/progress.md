@@ -13,9 +13,9 @@ Plan: `docs/superpowers/plans/2026-09-03-exchange-matched-booking-conversion.md`
 - Task 4: complete — atomic conversion repository hardened through three review rounds; 31/31 focused tests; spec and quality APPROVED at `e0902b84`
 - Task 5: complete — formal service/route/OpenAPI/realtime surface hardened through three review rounds; spec and quality APPROVED at `8354836e`
 - Task 6: complete — generic Booking replacement/cancellation/address protections with stateful rollback tests; spec and quality APPROVED at `58d036bc`
-- Task 7: pending
-- Task 8: pending
-- Task 9: pending
+- Task 7: complete at `70fb8d73` — owner conversion, matched-provider result, persisted order links, and five-language UI
+- Task 8: complete at `ef9fc941` / `b5607802` — rollback-contained MySQL flow, concurrency proof, physical-schema reconciliation, and exact cleanup
+- Task 9: complete at `288cf0ec` — full gates, authenticated 320/440 browser acceptance, local `main` integration, and acceptance record
 
 ---
 
