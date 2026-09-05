@@ -1746,9 +1746,9 @@ model PlatformPartnerProfile {
   userId           Int                 @map("user_id")
   partnerType      PlatformPartnerType @map("partner_type")
   activatedAt      DateTime            @map("activated_at")
+  endsAt           DateTime?           @map("ends_at")
   markedById       Int                 @map("marked_by_id")
   reason           String              @db.VarChar(500)
-  activePartnerKey String?             @unique(map: "platform_partner_profiles_active_partner_key") @default(dbgenerated()) @map("active_partner_key") @db.VarChar(191)
   createdAt        DateTime            @default(now()) @map("created_at")
   updatedAt        DateTime            @updatedAt @map("updated_at")
   deletedAt        DateTime?           @map("deleted_at")
@@ -1760,6 +1760,7 @@ model PlatformPartnerProfile {
   settlements     AgentSettlement[]
 
   @@index([userId, deletedAt], map: "platform_partner_profiles_user_deleted_idx")
+  @@index([userId, partnerType, activatedAt, endsAt, deletedAt], map: "platform_partner_profiles_validity_idx")
   @@index([partnerType, activatedAt, deletedAt], map: "platform_partner_profiles_type_activated_deleted_idx")
   @@index([markedById], map: "platform_partner_profiles_marked_by_id_idx")
   @@index([deletedAt], map: "platform_partner_profiles_deleted_at_idx")

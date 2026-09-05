@@ -214,7 +214,7 @@ function AgentSummaryCard({ agent }: { agent: AgentProfileListItem }) {
         ) : null}
       </div>
       <div className="mt-4 flex items-center justify-between text-xs text-ink/45">
-        <span>生效 {new Date(agent.activatedAt).toLocaleString()}</span>
+        <span>生效 {new Date(agent.startsAt).toLocaleString()}</span>
         <Button size="sm" to={`/admin/agents/${agent.publicId}`}>
           查看与结算
         </Button>

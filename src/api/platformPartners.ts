@@ -14,7 +14,9 @@ export type PaymentMethod = "bank_transfer" | "ndp" | "other";
 export interface PlatformPartnerProfile {
   publicId: string;
   partnerType: PartnerType;
-  activatedAt: string;
+  startsAt: string;
+  endsAt: string | null;
+  permanent: boolean;
   markedAt: string;
   reason: string;
   user: {
@@ -283,7 +285,9 @@ const decodePartner = (value: unknown): PlatformPartnerProfile => {
       "franchisee",
       "supplier",
     ] as const),
-    activatedAt: timestamp(raw.activatedAt),
+    startsAt: timestamp(raw.startsAt),
+    endsAt: nullableTimestamp(raw.endsAt),
+    permanent: boolean(raw.permanent),
     markedAt: timestamp(raw.markedAt),
     reason: string(raw.reason),
     user: {
@@ -567,7 +571,13 @@ const agentPath = (agentPublicId: string) =>
 export const platformPartnersApi = {
   async markPartnerProfile(
     userId: number,
-    body: { partnerType: PartnerType; activatedAt: string; reason: string },
+    body: {
+      partnerType: PartnerType;
+      startsAt: string;
+      endsAt: string | null;
+      permanent: boolean;
+      reason: string;
+    },
   ) {
     return decodePartner(
       await httpClient.request<unknown>(

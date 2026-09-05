@@ -925,7 +925,7 @@ git commit -m "feat: add user usage fulfillment history"
 - Produces: partner profile payload with `startsAt`, `endsAt`, `permanent`, and immutable history.
 - Produces: `PermissionTagDisclosure` collapsed by default.
 
-- [ ] **Step 1: Write failing partner range tests**
+- [x] **Step 1: Write failing partner range tests**
 
 Validate permanent and dated ranges:
 
@@ -949,7 +949,7 @@ expect(() => platformPartnerProfileBodySchema.parse({
 
 Add repository tests proving overlapping ranges for the same user/type return `overlap`, while different partner types may overlap.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -960,7 +960,7 @@ npm test -- platform-partner-validity-migration.test.ts platform-partner.service
 
 Expected: FAIL because `endsAt`, permanent semantics, and overlap handling do not exist.
 
-- [ ] **Step 3: Implement migration and transactional range checks**
+- [x] **Step 3: Implement migration and transactional range checks**
 
 Add nullable `endsAt` to `PlatformPartnerProfile`; rename API semantics from `activatedAt` to `startsAt` while mapping the existing database value for backward migration. Backfill existing records with `endsAt = NULL`. Add `(userId, partnerType, activatedAt, endsAt, deletedAt)` index.
 
@@ -973,7 +973,7 @@ newStartsAt < existing.endsAtOrInfinity
 
 Create new rows rather than modifying prior validity records. `endsAt: null` is the only permanent representation.
 
-- [ ] **Step 4: Run backend tests and verify GREEN**
+- [x] **Step 4: Run backend tests and verify GREEN**
 
 Run:
 
@@ -985,7 +985,7 @@ npm test -- platform-partner-validity-migration.test.ts platform-partner.service
 
 Expected: PASS.
 
-- [ ] **Step 5: Write failing disclosure/editor tests and implement**
+- [x] **Step 5: Write failing disclosure/editor tests and implement**
 
 Assert independent fields per partner type and collapsed permissions:
 
@@ -1008,7 +1008,7 @@ npm test -- src/features/platform-user-management/PlatformPartnerRangeEditor.tes
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 7**
+- [x] **Step 6: Commit Task 7**
 
 ```bash
 git add backend/prisma backend/src backend/tests src/api/platformPartners.ts src/features/platform-user-management

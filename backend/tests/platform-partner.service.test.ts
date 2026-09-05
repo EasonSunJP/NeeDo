@@ -35,6 +35,7 @@ const profile = (
   publicId: "11111111-1111-4111-8111-111111111111",
   partnerType: "AGENT",
   activatedAt,
+  endsAt: null,
   markedById: 1,
   reason: "线下代理协议已审核",
   createdAt,
@@ -121,7 +122,7 @@ describe("PlatformPartnerService", () => {
     await expect(
       service.markPartnerProfile(
         88,
-        { partnerType: "agent", activatedAt, reason: "线下代理协议已审核" },
+        { partnerType: "agent", startsAt: activatedAt, endsAt: null, permanent: true, reason: "线下代理协议已审核" },
         actor,
         context
       )
@@ -129,7 +130,9 @@ describe("PlatformPartnerService", () => {
       expect.objectContaining({
         publicId: "11111111-1111-4111-8111-111111111111",
         partnerType: "agent",
-        activatedAt: "2026-09-01T00:00:00.000Z",
+        startsAt: "2026-09-01T00:00:00.000Z",
+        endsAt: null,
+        permanent: true,
         user: expect.objectContaining({ needoId: "u0000000088", nickname: "山田代理" })
       })
     );
@@ -137,7 +140,8 @@ describe("PlatformPartnerService", () => {
     expect(repository.markPartnerProfile).toHaveBeenCalledWith({
       userId: 88,
       partnerType: "AGENT",
-      activatedAt,
+      startsAt: activatedAt,
+      endsAt: null,
       markedById: 1,
       reason: "线下代理协议已审核"
     });
@@ -152,7 +156,9 @@ describe("PlatformPartnerService", () => {
             publicId: "11111111-1111-4111-8111-111111111111",
             userId: 88,
             partnerType: "agent",
-            activatedAt: "2026-09-01T00:00:00.000Z"
+            startsAt: "2026-09-01T00:00:00.000Z",
+            endsAt: null,
+            permanent: true
           },
           reason: "线下代理协议已审核"
         }
@@ -164,12 +170,12 @@ describe("PlatformPartnerService", () => {
     const missing = setup();
     missing.repository.markPartnerProfile.mockResolvedValue({ kind: "user_not_found" });
     const duplicate = setup();
-    duplicate.repository.markPartnerProfile.mockResolvedValue({ kind: "duplicate" });
+    duplicate.repository.markPartnerProfile.mockResolvedValue({ kind: "overlap" });
 
     await expect(
       missing.service.markPartnerProfile(
         999,
-        { partnerType: "agent", activatedAt, reason: "资料确认" },
+        { partnerType: "agent", startsAt: activatedAt, endsAt: null, permanent: true, reason: "资料确认" },
         actor,
         context
       )
@@ -177,7 +183,7 @@ describe("PlatformPartnerService", () => {
     await expect(
       duplicate.service.markPartnerProfile(
         88,
-        { partnerType: "agent", activatedAt, reason: "重复标记" },
+        { partnerType: "agent", startsAt: activatedAt, endsAt: null, permanent: true, reason: "重复标记" },
         actor,
         context
       )

@@ -101,4 +101,35 @@ describe("UnifiedUserDetailDrawer", () => {
     await waitForText(container, "修改会员类型");
     expect(container.textContent).toContain("修改会员倍率");
   });
+
+  it("renders three independent partner ranges only for permitted operations users", async () => {
+    state.getUser.mockResolvedValue({
+      ...detail,
+      capabilities: { ...detail.capabilities, partnerWrite: true }
+    });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "平台合作方标记");
+    expect(container.querySelectorAll('input[aria-label="开始日期"]')).toHaveLength(3);
+    expect(container.querySelectorAll('input[aria-label="结束日期"]')).toHaveLength(3);
+  });
+
+  it("keeps scoped permissions collapsed in the shared account tab", async () => {
+    state.getUser.mockResolvedValue({
+      ...detail,
+      account: { roles: [{
+        code: "operator",
+        name: "运营管理员",
+        scopeType: "global",
+        scopeId: null,
+        permissions: ["backoffice:users:read"]
+      }] }
+    });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "Mia");
+    const accountTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')]
+      .find((node) => node.textContent === "权限与账号");
+    act(() => accountTab?.click());
+    await waitForText(container, "展开权限");
+    expect(container.textContent).not.toContain("backoffice:users:read");
+  });
 });

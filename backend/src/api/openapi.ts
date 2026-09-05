@@ -6887,11 +6887,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       PlatformPartnerProfile: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "partnerType", "activatedAt", "markedAt", "reason", "user"],
+        required: ["publicId", "partnerType", "startsAt", "endsAt", "permanent", "markedAt", "reason", "user"],
         properties: {
           publicId: { type: "string", format: "uuid" },
           partnerType: { type: "string", enum: ["agent", "franchisee", "supplier"] },
-          activatedAt: { type: "string", format: "date-time" },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: ["string", "null"], format: "date-time" },
+          permanent: { type: "boolean" },
           markedAt: { type: "string", format: "date-time" },
           reason: { type: "string", minLength: 1, maxLength: 500 },
           user: {
@@ -21303,13 +21305,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               schema: {
                 type: "object",
                 additionalProperties: false,
-                required: ["partnerType", "activatedAt", "reason"],
+                required: ["partnerType", "startsAt", "endsAt", "permanent", "reason"],
                 properties: {
                   partnerType: {
                     type: "string",
                     enum: ["agent", "franchisee", "supplier"]
                   },
-                  activatedAt: { type: "string", format: "date-time" },
+                  startsAt: { type: "string", format: "date-time" },
+                  endsAt: { type: ["string", "null"], format: "date-time" },
+                  permanent: { type: "boolean" },
                   reason: { type: "string", minLength: 1, maxLength: 500 }
                 }
               }
@@ -21324,7 +21328,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": jsonErrorResponse("error.auth.token_invalid"),
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.user.not_found"),
-          "409": jsonErrorResponse("error.platform_partner.duplicate")
+          "409": jsonErrorResponse("error.platform_partner.validity_overlap")
         }
       }
     },

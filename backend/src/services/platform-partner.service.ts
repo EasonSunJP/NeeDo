@@ -22,6 +22,7 @@ export interface PlatformPartnerProfileRecord {
   publicId: string;
   partnerType: PlatformPartnerTypeRecord;
   activatedAt: Date;
+  endsAt: Date | null;
   markedById: number;
   reason: string;
   createdAt: Date;
@@ -77,7 +78,9 @@ export interface AgentShopReferralRecord {
 export interface PlatformPartnerProfilePayload {
   publicId: string;
   partnerType: PlatformPartnerType;
-  activatedAt: string;
+  startsAt: string;
+  endsAt: string | null;
+  permanent: boolean;
   markedAt: string;
   reason: string;
   user: {
@@ -131,7 +134,9 @@ export interface AgentShopReferralPayload {
 
 export interface MarkPartnerProfileInput {
   partnerType: PlatformPartnerType;
-  activatedAt: Date;
+  startsAt: Date;
+  endsAt: Date | null;
+  permanent: boolean;
   reason: string;
 }
 
@@ -155,7 +160,7 @@ export interface AgentShopReferralListInput extends PaginationInput {
 export type MarkPartnerProfileRepositoryResult =
   | { kind: "created"; profile: PlatformPartnerProfileRecord }
   | { kind: "user_not_found" }
-  | { kind: "duplicate" };
+  | { kind: "overlap" };
 
 export type LinkAgentShopRepositoryResult =
   | { kind: "created"; referral: AgentShopReferralRecord }
@@ -171,7 +176,8 @@ export interface PlatformPartnerRepositoryPort {
   markPartnerProfile: (input: {
     userId: number;
     partnerType: PlatformPartnerTypeRecord;
-    activatedAt: Date;
+    startsAt: Date;
+    endsAt: Date | null;
     markedById: number;
     reason: string;
   }) => Promise<MarkPartnerProfileRepositoryResult>;
@@ -222,7 +228,8 @@ export class PlatformPartnerService {
     const result = await this.repository.markPartnerProfile({
       userId,
       partnerType: partnerTypeToRecord[input.partnerType],
-      activatedAt: input.activatedAt,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
       markedById: actor.userId,
       reason: input.reason
     });
@@ -234,10 +241,10 @@ export class PlatformPartnerService {
         statusCode: 404
       });
     }
-    if (result.kind === "duplicate") {
+    if (result.kind === "overlap") {
       throw new AppError({
         code: ERROR_CODES.PLATFORM_PARTNER_CONFLICT,
-        message: "error.platform_partner.duplicate",
+        message: "error.platform_partner.validity_overlap",
         statusCode: 409
       });
     }
@@ -255,7 +262,9 @@ export class PlatformPartnerService {
           publicId: payload.publicId,
           userId: payload.user.id,
           partnerType: payload.partnerType,
-          activatedAt: payload.activatedAt
+          startsAt: payload.startsAt,
+          endsAt: payload.endsAt,
+          permanent: payload.permanent
         },
         reason: input.reason
       }
@@ -411,7 +420,9 @@ export class PlatformPartnerService {
     return {
       publicId: record.publicId,
       partnerType: partnerTypeFromRecord[record.partnerType],
-      activatedAt: record.activatedAt.toISOString(),
+      startsAt: record.activatedAt.toISOString(),
+      endsAt: record.endsAt?.toISOString() ?? null,
+      permanent: record.endsAt === null,
       markedAt: record.createdAt.toISOString(),
       reason: record.reason,
       user: {

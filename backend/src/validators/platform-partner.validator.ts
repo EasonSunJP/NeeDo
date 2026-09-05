@@ -18,10 +18,35 @@ export const platformPartnerUserParamSchema = z
 export const platformPartnerProfileBodySchema = z
   .object({
     partnerType: z.enum(["agent", "franchisee", "supplier"]),
-    activatedAt: requiredDateSchema,
+    startsAt: requiredDateSchema,
+    endsAt: requiredDateSchema.nullable(),
+    permanent: z.boolean(),
     reason: reasonSchema
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.permanent && value.endsAt !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "Permanent ranges cannot have an end date"
+      });
+    }
+    if (!value.permanent && value.endsAt === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "An end date is required for non-permanent ranges"
+      });
+    }
+    if (value.endsAt !== null && value.endsAt <= value.startsAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "End date must be after start date"
+      });
+    }
+  });
 
 export const agentListQuerySchema = z
   .object({

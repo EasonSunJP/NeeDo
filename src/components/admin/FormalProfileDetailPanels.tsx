@@ -269,7 +269,8 @@ export function FormalManagedUserDetailPanel({
   initialTab = "基础资料",
   membershipActions,
   reviewContent,
-  usageContent
+  usageContent,
+  accountContent
 }: {
   actionContent?: ReactNode;
   detail: PlatformManagedUserDetail;
@@ -277,6 +278,7 @@ export function FormalManagedUserDetailPanel({
   membershipActions?: { tier?: ReactNode; multiplier?: ReactNode };
   reviewContent?: ReactNode;
   usageContent?: ReactNode;
+  accountContent?: ReactNode;
 }) {
   const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
@@ -326,7 +328,7 @@ export function FormalManagedUserDetailPanel({
 
       <FormalTabs active={activeTab} idPrefix={panelId} items={customerTabs} localization={localization} onChange={setActiveTab} />
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
-        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent)}
+        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent)}
       </FormalTabPanels>
     </article>
   );
@@ -342,7 +344,8 @@ function renderManagedUserTab(
   review: BackofficeReviewSummaryPayload | null,
   localization: FormalLocalization,
   reviewContent?: ReactNode,
-  usageContent?: ReactNode
+  usageContent?: ReactNode,
+  accountContent?: ReactNode
 ) {
   if (tab === "基础资料") return <FormalSectionCard localization={localization} title="基础资料"><DetailGrid items={localizeDetailItems([
     { label: "用户名", value: detail.username },
@@ -369,7 +372,7 @@ function renderManagedUserTab(
 
   if (tab === "评价") return reviewContent ?? <ReviewSummaryCard localization={localization} review={review} />;
 
-  if (tab === "权限与账号") return <>
+  if (tab === "权限与账号") return accountContent ?? <>
     <FormalSectionCard localization={localization} title="角色"><div className="flex flex-wrap gap-2">{detail.account.roles.flatMap((role) => [<Badge key={`${role.code}-role`} tone="dark">{role.name}</Badge>, ...role.permissions.map((permission) => <Badge key={`${role.code}-${permission}`}>{permission}</Badge>)])}</div></FormalSectionCard>
     <FormalSectionCard localization={localization} title="身份"><div className="flex flex-wrap gap-2">{detail.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`} tone="blue">{identity.displayName ?? identity.type}</Badge>)}</div></FormalSectionCard>
   </>;
