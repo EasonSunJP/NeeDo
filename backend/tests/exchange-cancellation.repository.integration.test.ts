@@ -170,8 +170,18 @@ describeIntegration("Exchange cancellation guarded MySQL integration", () => {
       ]);
       expect([resultA.outcome, resultB.outcome].sort()).toEqual([
         "created",
-        "pending_conflict"
+        "version_conflict"
       ]);
+      expect([resultA, resultB].find((result) => result.outcome === "version_conflict")).toEqual({
+        outcome: "version_conflict",
+        currentVersion: 1
+      });
+      await expect(
+        new ExchangeCancellationRepository(rootClient).command(
+          cancellationInput(fixture, actor, orderId!, "request", 1, "current-version-pending"),
+          noSettlement
+        )
+      ).resolves.toEqual({ outcome: "pending_conflict" });
       await expect(rootClient.exchangeBookingCancellation.count({
         where: { bookingOrderId: orderId, status: "PENDING", activeOrderId: orderId }
       })).resolves.toBe(1);

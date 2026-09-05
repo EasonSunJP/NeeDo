@@ -1832,7 +1832,7 @@ const exchangeCancellationErrorResponses = {
       "error.exchange.cancellation_invalid_state, error.exchange.cancellation_version_conflict, error.exchange.cancellation_pending_conflict, error.exchange.cancellation_idempotency_conflict, or error.exchange.cancellation_slot_conflict",
     content: {
       "application/json": {
-        schema: { $ref: "#/components/schemas/ApiError" },
+        schema: { $ref: "#/components/schemas/ExchangeCancellationConflict" },
         examples: {
           invalid_state: exchangeCancellationErrorExamples.invalid_state,
           version_conflict: exchangeCancellationErrorExamples.version_conflict,
@@ -4157,6 +4157,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           orders: {
             type: "array",
             items: { $ref: "#/components/schemas/ExchangeBookingConversionOrder" }
+          }
+        }
+      },
+      ExchangeCancellationConflict: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "message", "data"],
+        properties: {
+          code: { type: "integer" },
+          message: { type: "string" },
+          data: {
+            oneOf: [
+              { type: "null" },
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["currentVersion"],
+                properties: { currentVersion: { type: "integer", minimum: 0 } }
+              }
+            ]
           }
         }
       },

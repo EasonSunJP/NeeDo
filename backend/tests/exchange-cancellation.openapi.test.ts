@@ -8,7 +8,17 @@ interface Operation {
   "x-required-permission": string;
   parameters: Array<{ name: string; in: string; required?: boolean }>;
   requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
-  responses: Record<string, { content?: { "application/json": { examples?: Record<string, { value: unknown }> } } }>;
+  responses: Record<
+    string,
+    {
+      content?: {
+        "application/json": {
+          schema?: { $ref: string };
+          examples?: Record<string, { value: unknown }>;
+        };
+      };
+    }
+  >;
 }
 
 interface Document {
@@ -20,6 +30,35 @@ const document = createOpenApiDocument(env) as unknown as Document;
 const base = "/api/v1/exchange/orders/{id}/cancellation";
 
 describe("Exchange bilateral cancellation OpenAPI", () => {
+  it("uses a cancellation-specific 409 schema permitting null or integer currentVersion data", () => {
+    for (const suffix of ["", "/requests", "/accept", "/reject", "/withdraw"]) {
+      const operation = document.paths[`${base}${suffix}`][suffix ? "post" : "get"]!;
+      expect(operation.responses["409"].content?.["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/ExchangeCancellationConflict"
+      });
+    }
+    expect(document.components.schemas.ExchangeCancellationConflict).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: ["code", "message", "data"],
+      properties: {
+        code: { type: "integer" },
+        message: { type: "string" },
+        data: {
+          oneOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["currentVersion"],
+              properties: { currentVersion: { type: "integer", minimum: 0 } }
+            }
+          ]
+        }
+      }
+    });
+  });
+
   it("documents one authenticated read and four idempotent write endpoints", () => {
     const read = document.paths[base]?.get;
     expect(read).toEqual(

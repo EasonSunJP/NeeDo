@@ -94,6 +94,56 @@ function fixture(commandResult: unknown = { outcome: "created", payload, notific
 }
 
 describe("ExchangeCancellationService", () => {
+  it("keeps unknown conflict versions as null envelope data", async () => {
+    const state = fixture({ outcome: "version_conflict" });
+    await expect(
+      state.service.decideCancellation(
+        access,
+        501,
+        "accept",
+        { expectedVersion: 1 },
+        "idem-unknown-version",
+        context
+      )
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      data: null
+    });
+  });
+
+  it("lets a verified merchant without a selected shop reach persisted Demand owner authorization", async () => {
+    const state = fixture();
+    state.actorResolver.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "merchant_owner",
+      scopeType: "merchant_account",
+      scopeId: 77
+    });
+    const merchantAccess = {
+      ...access,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "merchant_account",
+      currentIdentityScopeId: 77
+    };
+    await expect(state.service.getCancellation(merchantAccess, 501)).resolves.toEqual(payload);
+    await expect(
+      state.service.requestCancellation(
+        merchantAccess,
+        501,
+        { expectedVersion: 0, reason: "time conflict" },
+        "idem-owner-request",
+        context
+      )
+    ).resolves.toEqual(payload);
+    expect(state.repository.get).toHaveBeenCalledWith(
+      expect.objectContaining({ actorScope: { kind: "customer" } })
+    );
+    expect(state.repository.command).toHaveBeenCalledWith(
+      expect.objectContaining({ actorScope: { kind: "customer" } }),
+      expect.anything()
+    );
+  });
+
   it("verifies the exact authenticated actor and reads only its server scope", async () => {
     const state = fixture();
     await expect(state.service.getCancellation(access, 501)).resolves.toEqual(payload);

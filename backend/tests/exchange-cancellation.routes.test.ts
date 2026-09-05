@@ -1,4 +1,6 @@
 import request from "supertest";
+import { ERROR_CODES } from "../src/constants/error-codes";
+import { AppError } from "../src/utils/app-error";
 import type { ExchangeCancellationService } from "../src/services/exchange-cancellation.service";
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
@@ -13,6 +15,31 @@ const payload = {
 const permissions = ["auth:me", "auth:refresh", "auth:logout"];
 
 describe("formal Exchange bilateral cancellation routes", () => {
+  it.each([
+    [ERROR_CODES.EXCHANGE_CANCELLATION_VERSION_CONFLICT, "version_conflict", { currentVersion: 1 }],
+    [ERROR_CODES.EXCHANGE_CANCELLATION_PENDING_CONFLICT, "pending_conflict", null]
+  ] as const)("preserves the cancellation 409 data envelope for %s", async (code, suffix, data) => {
+    const service = {
+      decideCancellation: jest.fn(async () => {
+        throw new AppError({
+          code,
+          message: `error.exchange.cancellation_${suffix}`,
+          statusCode: 409,
+          data
+        });
+      })
+    } as unknown as jest.Mocked<ExchangeCancellationService>;
+    const fixture = await createStep06Fixture({ exchangeCancellationService: service } as never);
+    fixture.replaceAdminPermissions([...permissions, "exchange:cancellation:write-own"]);
+    const token = await fixture.loginAsAdmin();
+    await request(fixture.app)
+      .post("/api/v1/exchange/orders/501/cancellation/accept")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", "idem-cancel-conflict")
+      .send({ expectedVersion: 1 })
+      .expect(409, { code, message: `error.exchange.cancellation_${suffix}`, data });
+  });
+
   it("requires JWT and the exact read permission", async () => {
     const service = {
       getCancellation: jest.fn(async () => payload),
@@ -124,7 +151,10 @@ describe("formal Exchange bilateral cancellation routes", () => {
   it.each([
     ["/api/v1/exchange/orders/0/cancellation/requests", { expectedVersion: 0, reason: "x" }],
     ["/api/v1/exchange/orders/501/cancellation/requests", { expectedVersion: 0, reason: "" }],
-    ["/api/v1/exchange/orders/501/cancellation/requests", { expectedVersion: 0, reason: "x", party: "customer" }],
+    [
+      "/api/v1/exchange/orders/501/cancellation/requests",
+      { expectedVersion: 0, reason: "x", party: "customer" }
+    ],
     ["/api/v1/exchange/orders/501/cancellation/accept", { expectedVersion: 0 }],
     ["/api/v1/exchange/orders/501/cancellation/reject", { expectedVersion: 1, actorUserId: 1 }]
   ])("rejects invalid params or body before the service: %s", async (url, body) => {

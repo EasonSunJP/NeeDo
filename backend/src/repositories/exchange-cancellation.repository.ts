@@ -102,10 +102,7 @@ interface ParticipantContext {
   cancellations: CancellationRow[];
 }
 
-type Failure = Exclude<
-  ExchangeCancellationRepositoryResult,
-  { outcome: "created" | "replayed" }
->;
+type Failure = Exclude<ExchangeCancellationRepositoryResult, { outcome: "created" | "replayed" }>;
 
 class CancellationAbort extends Error {
   public constructor(public readonly result: Failure) {
@@ -162,11 +159,12 @@ export class ExchangeCancellationRepository {
     input: ExchangeCancellationCommandInput,
     options: ExchangeCancellationSettlementOptions
   ): Promise<ExchangeCancellationRepositoryResult> {
+    // The caller owns an injected transaction and must receive every abort to roll it back.
+    if (!("$transaction" in this.client)) {
+      return this.commandInTransaction(input, options);
+    }
     for (let uniqueAttempt = 0; uniqueAttempt < 2; uniqueAttempt += 1) {
       try {
-        if (!("$transaction" in this.client)) {
-          return await this.commandInTransaction(input, options);
-        }
         return await runWithTransactionConflictRetry(() =>
           this.client.$transaction(
             (transaction) =>
@@ -367,12 +365,7 @@ export class ExchangeCancellationRepository {
     ) {
       return null;
     }
-    if (
-      input.actorScope.kind === "customer" &&
-      input.actorIdentityType === "customer" &&
-      participant.exchangePost.authorUserId === input.actorUserId &&
-      participant.exchangePost.ownerIdentityId === input.actorIdentityId
-    ) {
+    if (this.isDemandOwner(participant, input)) {
       return { userId: input.actorUserId, identityId: input.actorIdentityId, party: "customer" };
     }
     const providerAuthorized =
@@ -380,15 +373,23 @@ export class ExchangeCancellationRepository {
         input.actorIdentityType === "technician" &&
         input.actorIdentityScopeType === "technician_profile" &&
         input.actorIdentityScopeId === participant.technicianProfileId &&
-        input.actorScope.technicianProfileId === participant.technicianProfileId &&
-        input.actorUserId === participant.participantUserId &&
-        input.actorIdentityId === participant.participantIdentityId) ||
+        input.actorScope.technicianProfileId === participant.technicianProfileId) ||
       (input.actorScope.kind === "merchant" &&
         MERCHANT_IDENTITY_TYPES.has(input.actorIdentityType) &&
         input.actorScope.shopId === participant.shopId);
     if (!providerAuthorized) return null;
     if (!(await this.hasLiveProviderAuthority(participant, input, occurredAt))) return null;
     return { userId: input.actorUserId, identityId: input.actorIdentityId, party: "provider" };
+  }
+
+  private isDemandOwner(
+    participant: ParticipantContext,
+    input: ExchangeCancellationActorInput
+  ): boolean {
+    return (
+      participant.exchangePost.authorUserId === input.actorUserId &&
+      participant.exchangePost.ownerIdentityId === input.actorIdentityId
+    );
   }
 
   private async hasLiveProviderAuthority(
@@ -404,27 +405,28 @@ export class ExchangeCancellationRepository {
     ) {
       return false;
     }
+    const profile = order.technicianProfile;
+    const hasLiveTechnician = Boolean(
+      profile &&
+      profile.id === participant.technicianProfileId &&
+      profile.user.id === profile.userId &&
+      profile.status === "published" &&
+      profile.deletedAt === null &&
+      profile.user.isActive &&
+      profile.user.deletedAt === null &&
+      profile.technicianShopAffiliations.some(
+        (affiliation) =>
+          affiliation.shopId === participant.shopId &&
+          affiliation.workStatus === TechnicianShopWorkStatus.ACTIVE &&
+          affiliation.activeKey !== null &&
+          affiliation.startsAt <= occurredAt &&
+          (affiliation.endsAt === null || affiliation.endsAt > occurredAt) &&
+          affiliation.deletedAt === null
+      )
+    );
+    if (!hasLiveTechnician) return false;
     if (input.actorScope.kind === "technician") {
-      const profile = order.technicianProfile;
-      return Boolean(
-        profile &&
-          profile.id === participant.technicianProfileId &&
-          profile.userId === input.actorUserId &&
-          profile.user.id === input.actorUserId &&
-          profile.status === "published" &&
-          profile.deletedAt === null &&
-          profile.user.isActive &&
-          profile.user.deletedAt === null &&
-          profile.technicianShopAffiliations.some(
-            (affiliation) =>
-              affiliation.shopId === participant.shopId &&
-              affiliation.workStatus === TechnicianShopWorkStatus.ACTIVE &&
-              affiliation.activeKey !== null &&
-              affiliation.startsAt <= occurredAt &&
-              (affiliation.endsAt === null || affiliation.endsAt > occurredAt) &&
-              affiliation.deletedAt === null
-          )
-      );
+      return profile!.userId === input.actorUserId;
     }
     if (input.actorScope.kind !== "merchant") return false;
     if (
@@ -433,10 +435,7 @@ export class ExchangeCancellationRepository {
     ) {
       return true;
     }
-    if (
-      input.actorIdentityScopeType !== "merchant_account" ||
-      !input.actorIdentityScopeId
-    ) {
+    if (input.actorIdentityScopeType !== "merchant_account" || !input.actorIdentityScopeId) {
       return false;
     }
     const membership = await this.client.merchantShopMembership.findFirst({
@@ -743,12 +742,16 @@ export class ExchangeCancellationRepository {
   }
 
   private async lockCommandRows(input: ExchangeCancellationCommandInput): Promise<void> {
-    await this.lockRequired(Prisma.sql`
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM users
       WHERE id = ${input.actorUserId} AND is_active = TRUE AND deleted_at IS NULL
       FOR UPDATE
-    `, "not_allowed");
-    await this.lockRequired(Prisma.sql`
+    `,
+      "not_allowed"
+    );
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM user_identities
       WHERE id = ${input.actorIdentityId}
         AND user_id = ${input.actorUserId}
@@ -758,53 +761,79 @@ export class ExchangeCancellationRepository {
         AND is_active = TRUE
         AND deleted_at IS NULL
       FOR UPDATE
-    `, "not_allowed");
-    await this.lockRequired(Prisma.sql`
+    `,
+      "not_allowed"
+    );
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM public_identifiers
       WHERE user_identity_id = ${input.actorIdentityId}
         AND public_id = ${input.actorPublicId}
         AND status = 'active'
         AND deleted_at IS NULL
       FOR UPDATE
-    `, "not_allowed");
-    await this.lockRequired(Prisma.sql`
+    `,
+      "not_allowed"
+    );
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM booking_orders
       WHERE id = ${input.orderId} AND deleted_at IS NULL
       FOR UPDATE
-    `, "not_found");
-    await this.lockRequired(Prisma.sql`
+    `,
+      "not_found"
+    );
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM exchange_match_participants
       WHERE booking_order_id = ${input.orderId} AND deleted_at IS NULL
       FOR UPDATE
-    `, "not_found");
+    `,
+      "not_found"
+    );
 
-    const participant = await this.loadParticipant(input.orderId);
+    let participant = await this.loadParticipant(input.orderId);
     if (!participant?.bookingOrder) this.abort("not_found");
-    await this.lockRequired(Prisma.sql`
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM exchange_posts
       WHERE id = ${participant.exchangePostId} AND deleted_at IS NULL
       FOR UPDATE
-    `, "not_found");
+    `,
+      "not_found"
+    );
 
-    if (input.actorScope.kind !== "customer") {
-      await this.lockRequired(Prisma.sql`
+    participant = await this.loadParticipant(input.orderId);
+    if (!participant?.bookingOrder) this.abort("not_found");
+    const isProvider = !this.isDemandOwner(participant, input);
+    if (isProvider && input.actorScope.kind !== "customer") {
+      await this.lockRequired(
+        Prisma.sql`
         SELECT id FROM shops
         WHERE id = ${participant.shopId}
           AND status IN ('active', 'published')
           AND deleted_at IS NULL
         FOR UPDATE
-      `, "not_allowed");
+      `,
+        "not_allowed"
+      );
     }
-    if (input.actorScope.kind === "technician") {
-      await this.lockRequired(Prisma.sql`
-        SELECT id FROM technician_profiles
-        WHERE id = ${participant.technicianProfileId}
-          AND user_id = ${input.actorUserId}
-          AND status = 'published'
-          AND deleted_at IS NULL
+    if (isProvider && input.actorScope.kind !== "customer") {
+      await this.lockRequired(
+        Prisma.sql`
+        SELECT technician_profiles.id FROM technician_profiles
+        INNER JOIN users AS technician_user ON technician_user.id = technician_profiles.user_id
+        WHERE technician_profiles.id = ${participant.technicianProfileId}
+          AND technician_profiles.status = 'published'
+          AND technician_profiles.deleted_at IS NULL
+          AND technician_user.is_active = TRUE
+          AND technician_user.deleted_at IS NULL
         FOR UPDATE
-      `, "not_allowed");
-      await this.lockRequired(Prisma.sql`
+      `,
+        "not_allowed"
+      );
+      await this.lockRequired(
+        Prisma.sql`
         SELECT id FROM technician_shop_affiliations
         WHERE technician_profile_id = ${participant.technicianProfileId}
           AND shop_id = ${participant.shopId}
@@ -816,21 +845,28 @@ export class ExchangeCancellationRepository {
         ORDER BY id ASC
         LIMIT 1
         FOR UPDATE
-      `, "not_allowed");
+      `,
+        "not_allowed"
+      );
     }
     if (
+      isProvider &&
       input.actorScope.kind === "merchant" &&
       input.actorIdentityScopeType === "merchant_account" &&
       input.actorIdentityScopeId
     ) {
-      await this.lockRequired(Prisma.sql`
+      await this.lockRequired(
+        Prisma.sql`
         SELECT id FROM merchant_accounts
         WHERE id = ${input.actorIdentityScopeId}
           AND status = 'active'
           AND deleted_at IS NULL
         FOR UPDATE
-      `, "not_allowed");
-      await this.lockRequired(Prisma.sql`
+      `,
+        "not_allowed"
+      );
+      await this.lockRequired(
+        Prisma.sql`
         SELECT id FROM merchant_shop_memberships
         WHERE merchant_account_id = ${input.actorIdentityScopeId}
           AND shop_id = ${participant.shopId}
@@ -841,7 +877,9 @@ export class ExchangeCancellationRepository {
         ORDER BY id ASC
         LIMIT 1
         FOR UPDATE
-      `, "not_allowed");
+      `,
+        "not_allowed"
+      );
     }
     await this.client.$queryRaw(Prisma.sql`
       SELECT id
@@ -851,11 +889,14 @@ export class ExchangeCancellationRepository {
       LIMIT 1
       FOR UPDATE
     `);
-    await this.lockRequired(Prisma.sql`
+    await this.lockRequired(
+      Prisma.sql`
       SELECT id FROM schedule_slots
       WHERE id = ${participant.bookingOrder.scheduleSlotId} AND deleted_at IS NULL
       FOR UPDATE
-    `, "invalid_state");
+    `,
+      "invalid_state"
+    );
   }
 
   private async lockRequired(

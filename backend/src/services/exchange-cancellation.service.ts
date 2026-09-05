@@ -1,8 +1,6 @@
 import { logger } from "../config/logger";
 import { ERROR_CODES } from "../constants/error-codes";
-import type {
-  ExchangeCancellationAction
-} from "../domain/exchange-cancellation";
+import type { ExchangeCancellationAction } from "../domain/exchange-cancellation";
 import type {
   ExchangeCancellationActorInput,
   ExchangeCancellationActorScope,
@@ -26,7 +24,9 @@ import type { LedgerService } from "./ledger.service";
 import { requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface ExchangeCancellationRepositoryPort {
-  get(input: ExchangeCancellationActorInput & { orderId: number }): Promise<ExchangeCancellationReadResult>;
+  get(
+    input: ExchangeCancellationActorInput & { orderId: number }
+  ): Promise<ExchangeCancellationReadResult>;
   command(
     input: ExchangeCancellationCommandInput,
     options: ExchangeCancellationSettlementOptions
@@ -252,13 +252,17 @@ export class ExchangeCancellationService {
       try {
         return { kind: "merchant", shopId: requireMerchantShopId(access) };
       } catch {
-        throw this.notAllowed();
+        // Exact Demand ownership is independent of a currently selected provider shop.
+        // The repository permits this scope only for the persisted owner user + identity.
+        return { kind: "customer" };
       }
     }
     return { kind: "customer" };
   }
 
-  private mapReadOutcome(outcome: Exclude<ExchangeCancellationReadResult["outcome"], "found">): AppError {
+  private mapReadOutcome(
+    outcome: Exclude<ExchangeCancellationReadResult["outcome"], "found">
+  ): AppError {
     if (outcome === "not_allowed") return this.notAllowed();
     if (outcome === "invalid_state") return this.invalidState();
     return this.notFound();
@@ -268,21 +272,49 @@ export class ExchangeCancellationService {
     result: Exclude<ExchangeCancellationRepositoryResult, { outcome: "created" | "replayed" }>
   ): AppError {
     const errors = {
-      not_found: [ERROR_CODES.EXCHANGE_CANCELLATION_NOT_FOUND, "error.exchange.cancellation_not_found", 404],
-      not_allowed: [ERROR_CODES.EXCHANGE_CANCELLATION_NOT_ALLOWED, "error.exchange.cancellation_not_allowed", 403],
-      invalid_state: [ERROR_CODES.EXCHANGE_CANCELLATION_INVALID_STATE, "error.exchange.cancellation_invalid_state", 409],
-      version_conflict: [ERROR_CODES.EXCHANGE_CANCELLATION_VERSION_CONFLICT, "error.exchange.cancellation_version_conflict", 409],
-      pending_conflict: [ERROR_CODES.EXCHANGE_CANCELLATION_PENDING_CONFLICT, "error.exchange.cancellation_pending_conflict", 409],
-      idempotency_conflict: [ERROR_CODES.EXCHANGE_CANCELLATION_IDEMPOTENCY_CONFLICT, "error.exchange.cancellation_idempotency_conflict", 409],
-      slot_conflict: [ERROR_CODES.EXCHANGE_CANCELLATION_SLOT_CONFLICT, "error.exchange.cancellation_slot_conflict", 409]
+      not_found: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_NOT_FOUND,
+        "error.exchange.cancellation_not_found",
+        404
+      ],
+      not_allowed: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_NOT_ALLOWED,
+        "error.exchange.cancellation_not_allowed",
+        403
+      ],
+      invalid_state: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_INVALID_STATE,
+        "error.exchange.cancellation_invalid_state",
+        409
+      ],
+      version_conflict: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_VERSION_CONFLICT,
+        "error.exchange.cancellation_version_conflict",
+        409
+      ],
+      pending_conflict: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_PENDING_CONFLICT,
+        "error.exchange.cancellation_pending_conflict",
+        409
+      ],
+      idempotency_conflict: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_IDEMPOTENCY_CONFLICT,
+        "error.exchange.cancellation_idempotency_conflict",
+        409
+      ],
+      slot_conflict: [
+        ERROR_CODES.EXCHANGE_CANCELLATION_SLOT_CONFLICT,
+        "error.exchange.cancellation_slot_conflict",
+        409
+      ]
     } as const;
     const [code, message, statusCode] = errors[result.outcome];
     return new AppError({
       code,
       message,
       statusCode,
-      ...(result.outcome === "version_conflict"
-        ? { data: { currentVersion: result.currentVersion ?? null } }
+      ...(result.outcome === "version_conflict" && result.currentVersion !== undefined
+        ? { data: { currentVersion: result.currentVersion } }
         : {})
     });
   }

@@ -204,7 +204,8 @@ const createHarness = (options: HarnessOptions = {}) => {
       }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const row = cancellations.find(
-          (item) => item.id === where.id && item.status === where.status && item.version === where.version
+          (item) =>
+            item.id === where.id && item.status === where.status && item.version === where.version
         );
         if (!row) return { count: 0 };
         Object.assign(row, data);
@@ -253,9 +254,28 @@ const createHarness = (options: HarnessOptions = {}) => {
     capturePublicationFee: jest.fn(async () => undefined),
     releaseBookingHold: jest.fn(async () => undefined)
   };
-  const repository = new ExchangeCancellationRepository(client as PrismaClient);
+  const transaction = async (callback: (client: any) => Promise<unknown>) => {
+    const orderBefore = structuredClone(order);
+    const cancellationBefore = structuredClone(cancellations);
+    try {
+      return await callback(client);
+    } catch (error) {
+      Object.assign(order, orderBefore);
+      cancellations.splice(0, cancellations.length, ...cancellationBefore);
+      participant.cancellations = cancellations;
+      throw error;
+    }
+  };
+  const repository = new ExchangeCancellationRepository(
+    {
+      ...client,
+      $transaction: transaction
+    } as PrismaClient,
+    () => occurredAt
+  );
   return {
     repository,
+    transaction,
     client,
     settlement,
     order,
@@ -269,6 +289,135 @@ const createHarness = (options: HarnessOptions = {}) => {
 };
 
 describe("ExchangeCancellationRepository", () => {
+  it.each(["merchant_owner", "technician"])(
+    "recognizes the exact Demand owner with %s identity as customer",
+    async (identityType) => {
+      const state = createHarness();
+      const owner = {
+        ...customer,
+        actorIdentityType: identityType,
+        actorScope: merchantProvider.actorScope
+      };
+      state.client.merchantShopMembership.findFirst.mockResolvedValue(null);
+      state.order.technicianProfile.technicianShopAffiliations = [];
+      await expect(state.repository.get({ ...owner, orderId: 501 })).resolves.toMatchObject({
+        outcome: "found",
+        payload: { viewerParty: "customer" }
+      });
+      await expect(
+        state.repository.command(command(owner, "request", 0), state.settlement)
+      ).resolves.toMatchObject({
+        outcome: "created",
+        payload: { viewerParty: "customer" }
+      });
+      expect(state.lockSql.some((sql) => sql.includes("FROM merchant_accounts"))).toBe(false);
+      await expect(
+        state.repository.get({ ...owner, actorIdentityId: 411, orderId: 501 })
+      ).resolves.toEqual({ outcome: "not_found" });
+    }
+  );
+
+  it("allows the linked technician to act after a merchant proxy selected the participant, without becoming the opposite provider party", async () => {
+    const state = createHarness();
+    state.participant.participantUserId = merchantProvider.actorUserId;
+    state.participant.participantIdentityId = merchantProvider.actorIdentityId;
+    await expect(state.repository.get({ ...provider, orderId: 501 })).resolves.toMatchObject({
+      outcome: "found",
+      payload: { viewerParty: "provider" }
+    });
+    await state.repository.command(command(merchantProvider, "request", 0), state.settlement);
+    await expect(
+      state.repository.command(command(provider, "accept", 1), state.settlement)
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    await expect(
+      state.repository.command(command(provider, "withdraw", 1), state.settlement)
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    const other = createHarness();
+    other.participant.participantUserId = merchantProvider.actorUserId;
+    other.participant.participantIdentityId = merchantProvider.actorIdentityId;
+    await other.repository.command(command(customer, "request", 0), other.settlement);
+    await expect(
+      other.repository.command(command(provider, "accept", 1), other.settlement)
+    ).resolves.toMatchObject({ outcome: "created" });
+  });
+
+  it.each([
+    "missing",
+    "inactive",
+    "expired",
+    "deleted",
+    "future",
+    "inactiveProfile",
+    "deletedProfile",
+    "inactiveUser"
+  ])("denies merchant proxy when linked technician authority is %s", async (condition) => {
+    const state = createHarness();
+    const profile = state.order.technicianProfile;
+    const affiliation = profile.technicianShopAffiliations[0]!;
+    if (condition === "missing") profile.technicianShopAffiliations = [];
+    if (condition === "inactive") affiliation.workStatus = "INACTIVE";
+    if (condition === "expired") Object.assign(affiliation, { endsAt: occurredAt });
+    if (condition === "deleted") Object.assign(affiliation, { deletedAt: occurredAt });
+    if (condition === "future") affiliation.startsAt = startsAt;
+    if (condition === "inactiveProfile") profile.status = "draft";
+    if (condition === "deletedProfile") Object.assign(profile, { deletedAt: occurredAt });
+    if (condition === "inactiveUser") profile.user.isActive = false;
+    await expect(state.repository.get({ ...merchantProvider, orderId: 501 })).resolves.toEqual({
+      outcome: "not_found"
+    });
+    await expect(
+      state.repository.command(command(merchantProvider, "request", 0), state.settlement)
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    expect(state.cancellations).toHaveLength(0);
+  });
+
+  it("locks merchant proxy technician authority and rechecks revocation after the lock", async () => {
+    const state = createHarness();
+    await state.repository.command(command(merchantProvider, "request", 0), state.settlement);
+    expect(state.lockSql.some((sql) => sql.includes("FROM technician_profiles"))).toBe(true);
+    expect(state.lockSql.some((sql) => sql.includes("FROM technician_shop_affiliations"))).toBe(
+      true
+    );
+    const revoked = createHarness();
+    revoked.client.$queryRaw.mockImplementation(async (query: { sql: string }) => {
+      if (query.sql.includes("FROM technician_shop_affiliations")) {
+        revoked.order.technicianProfile.technicianShopAffiliations = [];
+      }
+      return [{ id: 1 }];
+    });
+    await expect(
+      revoked.repository.command(command(merchantProvider, "request", 0), revoked.settlement)
+    ).resolves.toEqual({ outcome: "not_allowed" });
+    expect(revoked.cancellations).toHaveLength(0);
+  });
+
+  it("propagates an injected transaction abort so its owner rolls back accepted writes", async () => {
+    const state = createHarness();
+    await state.repository.command(command(customer, "request", 0), state.settlement);
+    state.client.scheduleSlot.updateMany.mockResolvedValueOnce({ count: 0 });
+    let committed = false;
+    const outer = state.transaction(async (transactionClient) => {
+      await new ExchangeCancellationRepository(transactionClient).command(
+        command(provider, "accept", 1),
+        state.settlement
+      );
+      committed = true;
+    });
+    await expect(outer).rejects.toMatchObject({
+      name: "ExchangeCancellationAbort",
+      result: { outcome: "slot_conflict" }
+    });
+    expect(committed).toBe(false);
+    expect(state.order.status).toBe("PENDING");
+    expect(state.cancellations[0]).toMatchObject({
+      status: "PENDING",
+      version: 1,
+      activeOrderId: 501
+    });
+    expect(state.events).toHaveLength(1);
+    expect(state.settlement.capturePublicationFee).not.toHaveBeenCalled();
+  });
+
   it("projects read state only to the exact customer or authorized provider scope", async () => {
     const state = createHarness();
     await expect(state.repository.get({ ...customer, orderId: 501 })).resolves.toMatchObject({
@@ -279,7 +428,9 @@ describe("ExchangeCancellationRepository", () => {
       outcome: "found",
       payload: { viewerParty: "provider", allowedActions: ["request"] }
     });
-    await expect(state.repository.get({ ...merchantProvider, orderId: 501 })).resolves.toMatchObject({
+    await expect(
+      state.repository.get({ ...merchantProvider, orderId: 501 })
+    ).resolves.toMatchObject({
       outcome: "found",
       payload: { viewerParty: "provider", allowedActions: ["request"] }
     });
@@ -388,7 +539,10 @@ describe("ExchangeCancellationRepository", () => {
 
   it("creates one pending request and append-only event without financial or order effects", async () => {
     const state = createHarness();
-    const result = await state.repository.command(command(customer, "request", 0), state.settlement);
+    const result = await state.repository.command(
+      command(customer, "request", 0),
+      state.settlement
+    );
     expect(result).toMatchObject({
       outcome: "created",
       payload: {
@@ -429,7 +583,9 @@ describe("ExchangeCancellationRepository", () => {
       resolvedAt: null
     };
     const replay = createHarness({ latest, replay: true });
-    await expect(replay.repository.command(command(customer, "request", 0), replay.settlement)).resolves.toMatchObject({
+    await expect(
+      replay.repository.command(command(customer, "request", 0), replay.settlement)
+    ).resolves.toMatchObject({
       outcome: "replayed",
       payload: { cancellation: { id: 799, status: "pending" } },
       notifications: []
@@ -466,7 +622,9 @@ describe("ExchangeCancellationRepository", () => {
     } as unknown as PrismaClient;
     const repository = new ExchangeCancellationRepository(root);
 
-    await expect(repository.command(command(customer, "request", 0), winner.settlement)).resolves.toMatchObject({
+    await expect(
+      repository.command(command(customer, "request", 0), winner.settlement)
+    ).resolves.toMatchObject({
       outcome: "replayed",
       payload: { cancellation: { id: 799 } }
     });
@@ -494,14 +652,20 @@ describe("ExchangeCancellationRepository", () => {
     const withdraw = createHarness({ latest });
     await expect(
       withdraw.repository.command(command(customer, "withdraw", 1), withdraw.settlement)
-    ).resolves.toMatchObject({ outcome: "created", payload: { cancellation: { status: "withdrawn", version: 2 } } });
+    ).resolves.toMatchObject({
+      outcome: "created",
+      payload: { cancellation: { status: "withdrawn", version: 2 } }
+    });
     expect(withdraw.client.bookingOrder.updateMany).not.toHaveBeenCalled();
     expect(withdraw.settlement.capturePublicationFee).not.toHaveBeenCalled();
 
     const reject = createHarness({ latest });
     await expect(
       reject.repository.command(command(provider, "reject", 1), reject.settlement)
-    ).resolves.toMatchObject({ outcome: "created", payload: { cancellation: { status: "rejected", version: 2 } } });
+    ).resolves.toMatchObject({
+      outcome: "created",
+      payload: { cancellation: { status: "rejected", version: 2 } }
+    });
     expect(reject.client.bookingOrder.updateMany).not.toHaveBeenCalled();
     expect(reject.settlement.capturePublicationFee).not.toHaveBeenCalled();
   });
@@ -558,55 +722,52 @@ describe("ExchangeCancellationRepository", () => {
   it.each([
     ["PENDING", "capturePublicationFee"],
     ["CONFIRMED", "releaseBookingHold"]
-  ] as const)(
-    "rolls back a %s acceptance when %s fails",
-    async (orderStatus, failingCallback) => {
-      const latest = {
-        id: 800,
-        status: "PENDING" as const,
-        version: 1,
-        requestedVersion: 1,
-        initiatedByUserId: 41,
-        initiatedByIdentityId: 410,
-        initiatorParty: "CUSTOMER" as const,
-        reason: "time conflict",
-        createdAt: occurredAt,
-        resolvedAt: null
-      };
-      const state = createHarness({ latest, orderStatus });
-      const failure = new Error("ledger mutation failed");
-      state.settlement[failingCallback].mockRejectedValueOnce(failure);
-      const root = {
-        $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => {
-          const orderBefore = structuredClone(state.order);
-          const cancellationBefore = structuredClone(state.cancellations);
-          const eventCount = state.events.length;
-          const notificationCount = state.notifications.length;
-          const auditCount = state.audits.length;
-          try {
-            return await callback(state.client);
-          } catch (error) {
-            Object.assign(state.order, orderBefore);
-            state.cancellations.splice(0, state.cancellations.length, ...cancellationBefore);
-            state.events.splice(eventCount);
-            state.notifications.splice(notificationCount);
-            state.audits.splice(auditCount);
-            throw error;
-          }
-        })
-      } as unknown as PrismaClient;
-      const repository = new ExchangeCancellationRepository(root);
+  ] as const)("rolls back a %s acceptance when %s fails", async (orderStatus, failingCallback) => {
+    const latest = {
+      id: 800,
+      status: "PENDING" as const,
+      version: 1,
+      requestedVersion: 1,
+      initiatedByUserId: 41,
+      initiatedByIdentityId: 410,
+      initiatorParty: "CUSTOMER" as const,
+      reason: "time conflict",
+      createdAt: occurredAt,
+      resolvedAt: null
+    };
+    const state = createHarness({ latest, orderStatus });
+    const failure = new Error("ledger mutation failed");
+    state.settlement[failingCallback].mockRejectedValueOnce(failure);
+    const root = {
+      $transaction: jest.fn(async (callback: (client: unknown) => Promise<unknown>) => {
+        const orderBefore = structuredClone(state.order);
+        const cancellationBefore = structuredClone(state.cancellations);
+        const eventCount = state.events.length;
+        const notificationCount = state.notifications.length;
+        const auditCount = state.audits.length;
+        try {
+          return await callback(state.client);
+        } catch (error) {
+          Object.assign(state.order, orderBefore);
+          state.cancellations.splice(0, state.cancellations.length, ...cancellationBefore);
+          state.events.splice(eventCount);
+          state.notifications.splice(notificationCount);
+          state.audits.splice(auditCount);
+          throw error;
+        }
+      })
+    } as unknown as PrismaClient;
+    const repository = new ExchangeCancellationRepository(root);
 
-      await expect(
-        repository.command(command(provider, "accept", 1), state.settlement)
-      ).rejects.toBe(failure);
-      expect(state.order.status).toBe(orderStatus);
-      expect(state.cancellations[0]).toMatchObject({ status: "PENDING", version: 1 });
-      expect(state.events).toHaveLength(0);
-      expect(state.notifications).toHaveLength(0);
-      expect(state.audits).toHaveLength(0);
-    }
-  );
+    await expect(repository.command(command(provider, "accept", 1), state.settlement)).rejects.toBe(
+      failure
+    );
+    expect(state.order.status).toBe(orderStatus);
+    expect(state.cancellations[0]).toMatchObject({ status: "PENDING", version: 1 });
+    expect(state.events).toHaveLength(0);
+    expect(state.notifications).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
 
   it("returns stable conflicts for stale versions and slot release failures", async () => {
     const latest = {
@@ -622,15 +783,21 @@ describe("ExchangeCancellationRepository", () => {
       resolvedAt: null
     };
     const stale = createHarness({ latest });
-    await expect(stale.repository.command(command(provider, "accept", 2), stale.settlement)).resolves.toEqual({
+    await expect(
+      stale.repository.command(command(provider, "accept", 2), stale.settlement)
+    ).resolves.toEqual({
       outcome: "version_conflict",
       currentVersion: 1
     });
 
     const slot = createHarness({ latest });
     slot.client.scheduleSlot.updateMany.mockResolvedValueOnce({ count: 0 });
-    await expect(slot.repository.command(command(provider, "accept", 1), slot.settlement)).resolves.toEqual({
+    await expect(
+      slot.repository.command(command(provider, "accept", 1), slot.settlement)
+    ).resolves.toEqual({
       outcome: "slot_conflict"
     });
+    expect(slot.order.status).toBe("PENDING");
+    expect(slot.cancellations[0]).toMatchObject({ status: "PENDING", version: 1 });
   });
 });
