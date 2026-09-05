@@ -1,4 +1,7 @@
-import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
+import {
+  getSimulationSeedConfig,
+  shouldRunFormalSeedEntrypoint
+} from "../src/simulation/simulation-seed-config";
 
 const localEnv = {
   NODE_ENV: "development",
@@ -88,5 +91,13 @@ describe("simulation seed safety", () => {
       ALLOW_STAGING_SIMULATION_SYNC: "true",
       DATABASE_URL: "mysql://needo:password@db.example.com:3306/needo_staging"
     })).toThrow("one-shot staging sync boundary");
+  });
+
+  it("does not start the formal seed when a bundled staging sync imports its helpers", () => {
+    expect(shouldRunFormalSeedEntrypoint(true, {})).toBe(true);
+    expect(
+      shouldRunFormalSeedEntrypoint(true, { ALLOW_STAGING_SIMULATION_SYNC: "true" })
+    ).toBe(false);
+    expect(shouldRunFormalSeedEntrypoint(false, {})).toBe(false);
   });
 });
