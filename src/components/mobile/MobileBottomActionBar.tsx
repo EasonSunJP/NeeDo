@@ -2,6 +2,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { ClientEdgeMask } from "./ClientEdgeMask";
 
+export const mobileBottomDockInsetClassName =
+  "px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]";
+
 export function MobileBottomActionBar({
   children,
   className,
@@ -32,7 +35,8 @@ export function MobileBottomActionBar({
       />
       <footer
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 z-30 px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-10",
+          "pointer-events-none absolute inset-x-0 bottom-0 z-30 pt-10",
+          mobileBottomDockInsetClassName,
           className
         )}
       >
