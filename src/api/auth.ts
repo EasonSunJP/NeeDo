@@ -35,6 +35,10 @@ export type VerificationChallengeInput = {
   otp: string;
 };
 
+export type PasswordLoginResult =
+  | ({ status: "authenticated" } & TokenPairPayload)
+  | ({ status: "verification_required" } & VerificationChallengePayload);
+
 export type RegistrationStartInput = {
   email: string;
   password: string;
@@ -164,6 +168,7 @@ export type RegisteredAccountPayload = {
 export const authEndpointPaths = {
   captcha: "/captcha",
   login: "/auth/login",
+  loginVerify: "/auth/login/verify",
   register: "/auth/register",
   registerVerify: "/auth/register/verify",
   googleInit: "/auth/google/init",
@@ -240,16 +245,45 @@ function assertGoogleInitialization(payload: GoogleAuthInitialization) {
 export const authApi = {
   async login(loginIdentifier: string, password: string, _legacyCaptchaCode?: string) {
     void _legacyCaptchaCode;
-    const tokens = await httpClient.request<AuthLoginPayload>(authEndpointPaths.login, {
+    const result = await httpClient.request<PasswordLoginResult>(authEndpointPaths.login, {
       auth: false,
       body: { loginIdentifier, password },
       method: "POST",
       retryOnUnauthorized: false
     });
-    const validated = validateRotatedResponse(tokens, (payload) =>
-      requireFormalTokenPair<AuthLoginPayload>(payload)
-    );
-    return validated;
+    return validateRotatedResponse(result, (payload) => {
+      if (!payload || typeof payload !== "object" || !("status" in payload)) throw new Error("error.api");
+      if (payload.status === "authenticated") {
+        return requireFormalTokenPair<Extract<PasswordLoginResult, { status: "authenticated" }>>(
+          payload,
+          ["status", "accessToken", "refreshToken", "expiresIn"]
+        );
+      }
+      if (payload.status !== "verification_required") throw new Error("error.api");
+      const challenge = payload as Record<string, unknown>;
+      if (
+        Object.keys(challenge).length !== 5 ||
+        typeof challenge.challengeId !== "string" ||
+        !challenge.challengeId ||
+        typeof challenge.maskedEmail !== "string" ||
+        !challenge.maskedEmail ||
+        !Number.isInteger(challenge.expiresIn) ||
+        Number(challenge.expiresIn) < 1 ||
+        !Number.isInteger(challenge.cooldownSeconds) ||
+        Number(challenge.cooldownSeconds) < 0
+      ) throw new Error("error.api");
+      return payload as Extract<PasswordLoginResult, { status: "verification_required" }>;
+    });
+  },
+
+  async verifyPasswordLogin(input: VerificationChallengeInput) {
+    const tokens = await httpClient.request<TokenPairPayload>(authEndpointPaths.loginVerify, {
+      auth: false,
+      body: input,
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+    return validateRotatedResponse(tokens, (payload) => requireFormalTokenPair(payload));
   },
 
   // Kept until Task 10 removes the duplicate consumer name. It is the same formal flow.

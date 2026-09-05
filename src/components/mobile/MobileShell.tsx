@@ -10,6 +10,7 @@ import {
 import { NavLink, useLocation } from "react-router-dom";
 import type { ImRoleType } from "../../features/im/model";
 import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
+import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import type { SocialPortalScope } from "../../features/social/types";
 import { cn } from "../../lib/utils";
 import { getClientThemeClassName, useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
@@ -111,13 +112,14 @@ function isContactsDestination(item: MobileNavItem, role: ClientPortalRole) {
 }
 
 function NeedoFeaturedNavButton({ className }: { className?: string }) {
+  const { settings } = usePlatformSettings();
   return (
     <img
       alt=""
       aria-hidden="true"
       className={cn("client-featured-nav-image", className)}
       draggable={false}
-      src="/icons/needo-green-button-light.png"
+      src={settings.requestButton?.url ?? "/icons/needo-green-button-light.png"}
     />
   );
 }

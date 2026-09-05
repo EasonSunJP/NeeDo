@@ -4,7 +4,9 @@ import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
 import { isSessionAlignedWithPortal } from "./auth/rbac";
-import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
+import { I18nProvider, I18nRuntime, useI18n } from "./i18n/I18nProvider";
+import { translateText } from "./i18n/translations";
+import { PlatformSettingsProvider, usePlatformSettings } from "./features/platform-settings/PlatformSettingsProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, sharedAdminThemeOptions, type AdminTheme, type AdminThemeOption } from "./theme/AdminTheme";
 import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
@@ -1036,6 +1038,32 @@ function RequirePermission({
   return children;
 }
 
+function PlatformAvailabilityGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const { language } = useI18n();
+  const { settings, status } = usePlatformSettings();
+  const isOperationsRoute =
+    location.pathname === "/login/admin" ||
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/");
+
+  if (status === "ready" && !settings.siteEnabled && !isOperationsRoute) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-slate-950 px-6 text-white">
+        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl">
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400">NeeDo</p>
+          <h1 className="mt-4 text-2xl font-black">{translateText("系统维护中", language)}</h1>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+            {translateText("服务暂时停止开放，请稍后再试。", language)}
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  return children;
+}
+
 export default function App() {
   const location = useLocation();
   const currentPortal = getSplashPortal(location.pathname);
@@ -1084,11 +1112,13 @@ export default function App() {
 
   return (
     <RootErrorBoundary>
+      <PlatformSettingsProvider>
       <AuthProvider>
         <RealtimeUnreadCountsProvider>
           <I18nProvider>
           <ClientThemeProvider>
             <I18nRuntime>
+              <PlatformAvailabilityGate>
               <EntityStoreBootstrap />
               <NeedoPetAssetBootstrap />
               <SocialProvider>
@@ -1463,11 +1493,13 @@ export default function App() {
                 </Routes>
                 </AccountComplianceGate>
               </SocialProvider>
+              </PlatformAvailabilityGate>
             </I18nRuntime>
           </ClientThemeProvider>
           </I18nProvider>
         </RealtimeUnreadCountsProvider>
       </AuthProvider>
+      </PlatformSettingsProvider>
     </RootErrorBoundary>
   );
 }

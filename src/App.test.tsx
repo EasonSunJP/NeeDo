@@ -75,6 +75,14 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).not.toContain("frontend-bypass");
   });
 
+  it("loads public platform settings and keeps operations available during maintenance", () => {
+    expect(appSource).toContain("<PlatformSettingsProvider>");
+    expect(appSource).toContain("function PlatformAvailabilityGate");
+    expect(appSource).toContain('location.pathname === "/login/admin"');
+    expect(appSource).toContain('location.pathname.startsWith("/admin/")');
+    expect(appSource).toContain('status === "ready" && !settings.siteEnabled && !isOperationsRoute');
+  });
+
   it("admits an authenticated operations admin only when a read-only merchant preview is active", () => {
     expect(requirePortalAuthSource).toContain("getMerchantAdminPreview");
     expect(requirePortalAuthSource).toContain("isOperationsMerchantPreview");

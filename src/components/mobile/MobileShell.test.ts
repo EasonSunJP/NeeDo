@@ -24,6 +24,7 @@ describe("MobileShell shared navigation", () => {
     expect(mobileShellSource).toContain("function NeedoFeaturedNavButton");
     expect(mobileShellSource).toContain("<NeedoFeaturedNavButton");
     expect(mobileShellSource).toContain("/icons/needo-green-button-light.png");
+    expect(mobileShellSource).toContain('settings.requestButton?.url ??');
     expect(mobileShellSource).not.toContain("/icons/needo-nav-button-light.png");
     expect(mobileShellSource).not.toContain("/icons/needo-nav-button-dark.png");
     expect(mobileShellSource).not.toContain("needoNavButtonImages[theme]");

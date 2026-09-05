@@ -30,6 +30,7 @@ const mocked = vi.hoisted(() => ({
     startRegistration: vi.fn(),
     switchPortal: vi.fn(),
     verifyGoogleRegistrationOrLink: vi.fn(),
+    verifyPasswordLogin: vi.fn(),
     verifyRegistration: vi.fn()
   },
   authApi: {
@@ -38,7 +39,16 @@ const mocked = vi.hoisted(() => ({
   },
   navigateToPortal: vi.fn(),
   requestBrowserPasswordSave: vi.fn(async () => undefined),
-  requestGoogleCredential: vi.fn()
+  requestGoogleCredential: vi.fn(),
+  platformSettings: {
+    loginLogo: null,
+    loginMethods: { google: true, password: true },
+    paymentMethods: ["cash", "ndp"],
+    requestButton: null,
+    selfRegistrationEnabled: true,
+    siteEnabled: true,
+    version: 1
+  }
 }));
 
 vi.mock("../../auth/AuthProvider", async (importOriginal) => {
@@ -79,6 +89,10 @@ vi.mock("../../theme/ClientThemeProvider", async (importOriginal) => {
     useClientTheme: () => ({ isNight: false, theme: "light-green" as const })
   };
 });
+
+vi.mock("../../features/platform-settings/PlatformSettingsProvider", () => ({
+  usePlatformSettings: () => ({ settings: mocked.platformSettings, status: "ready" })
+}));
 
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterDomModule>();
@@ -172,6 +186,7 @@ describe("LoginPage verified identity behavior", () => {
       session,
       status: "authenticated"
     });
+    mocked.auth.verifyPasswordLogin.mockResolvedValue({ ok: true, session });
     mocked.authApi.initializeGoogleLogin.mockResolvedValue({
       clientId: "google-client-id.apps.googleusercontent.com",
       expiresIn: 300,
@@ -324,6 +339,48 @@ describe("LoginPage verified identity behavior", () => {
         ?.requestSubmit()
     );
 
+    expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
+      id: "user@example.com",
+      name: "NeeDo",
+      password: "Strong.Password.2026"
+    });
+    expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/");
+  });
+
+  it("defers password storage and navigation until email OTP verification succeeds", async () => {
+    mocked.auth.login.mockResolvedValueOnce({
+      challenge,
+      ok: true,
+      status: "verification_required"
+    });
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
+    );
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "user@example.com");
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password.2026");
+    });
+    await act(async () =>
+      container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit()
+    );
+    await flushUi();
+
+    expect(container.textContent).toContain("n***@example.com");
+    expect(mocked.requestBrowserPasswordSave).not.toHaveBeenCalled();
+    expect(mocked.navigateToPortal).not.toHaveBeenCalled();
+
+    await act(async () =>
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="auth-verification-code"]')!, "123456")
+    );
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="auth-verification-submit"]')?.click()
+    );
+    await flushUi();
+
+    expect(mocked.auth.verifyPasswordLogin).toHaveBeenCalledWith(
+      { challengeId: challenge.challengeId, otp: "123456" },
+      "user"
+    );
     expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
       id: "user@example.com",
       name: "NeeDo",
@@ -599,6 +656,12 @@ describe("LoginPage verified identity behavior", () => {
 });
 
 describe("LoginPage formal flow guardrails", () => {
+  it("uses the published settings for login branding and public entry availability", () => {
+    expect(loginPageSource).toContain("platformSettings.loginLogo?.url ?? loginIconMarkUrl");
+    expect(loginPageSource).toContain('activePortal === "user" && platformSettings.selfRegistrationEnabled');
+    expect(loginPageSource).toContain("platformSettings.loginMethods.google");
+  });
+
   it("contains no fake Google, callback-query, generic OTP, captcha, or public technician flow", () => {
     [
       "googleAccountIconSrc",

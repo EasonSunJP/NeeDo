@@ -89,6 +89,7 @@ const mocked = vi.hoisted(() => {
       switchIdentity: vi.fn(),
       switchMerchantShop: vi.fn(),
       verifyGoogleRegistrationOrLink: vi.fn(),
+      verifyPasswordLogin: vi.fn(),
       verifyOtp: vi.fn(),
       verifyRegistration: vi.fn()
     },
@@ -835,6 +836,38 @@ describe("AuthProvider formal registration and Google sessions", () => {
       refreshToken: "login-refresh"
     });
     expect(auth.session?.permissions).not.toContain("platform:superuser");
+  });
+
+  it("returns a password-login challenge without creating a session, then verifies it", async () => {
+    mocked.authApi.loginFormal.mockResolvedValueOnce({
+      status: "verification_required",
+      ...challenge
+    });
+    mocked.authApi.verifyPasswordLogin.mockResolvedValueOnce({
+      accessToken: "verified-access",
+      refreshToken: "verified-refresh",
+      expiresIn: 900
+    });
+    mocked.authApi.me.mockResolvedValueOnce(customerMe);
+    await renderProvider();
+
+    const challenged = await invoke(() =>
+      auth.loginWithFormalPassword("user", "user@example.com", "secret")
+    );
+    expect(challenged).toEqual({ ok: true, status: "verification_required", challenge });
+    expect(auth.session).toBeNull();
+
+    const verified = await invoke(() =>
+      auth.verifyPasswordLogin(
+        { challengeId: challenge.challengeId, otp: "123456" },
+        "user"
+      )
+    );
+    expect(verified).toMatchObject({ ok: true, session: { portal: "user" } });
+    expect(mocked.authApi.verifyPasswordLogin).toHaveBeenCalledWith({
+      challengeId: challenge.challengeId,
+      otp: "123456"
+    });
   });
 
   it("persists the active portal only inside the V8 envelope", async () => {

@@ -782,6 +782,8 @@ export const translations: TranslationMap = {
   "图片加载失败，点击重试": { "zh-Hant": "圖片載入失敗，點擊重試", ja: "画像を読み込めませんでした。タップして再試行", en: "Image failed to load. Tap to retry", ko: "이미지를 불러오지 못했습니다. 탭하여 다시 시도하세요" },
   "视频加载失败，点击重试": { "zh-Hant": "影片載入失敗，點擊重試", ja: "動画を読み込めませんでした。タップして再試行", en: "Video failed to load. Tap to retry", ko: "동영상을 불러오지 못했습니다. 탭하여 다시 시도하세요" },
   "语音加载失败，点击重试": { "zh-Hant": "語音載入失敗，點擊重試", ja: "音声を読み込めませんでした。タップして再試行", en: "Audio failed to load. Tap to retry", ko: "음성을 불러오지 못했습니다. 탭하여 다시 시도하세요" },
+  "系统维护中": fourLanguageTranslation("系統維護中", "システムメンテナンス中", "System maintenance", "시스템 점검 중"),
+  "服务暂时停止开放，请稍后再试。": fourLanguageTranslation("服務暫時停止開放，請稍後再試。", "サービスを一時停止しています。しばらくしてからもう一度お試しください。", "The service is temporarily unavailable. Please try again later.", "서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
   "NDP 汇率": fourLanguageTranslation("NDP 匯率", "NDP 為替レート", "NDP exchange rate", "NDP 환율"),
   "按整数比例发布不可变汇率版本；订单结算会保存当时使用的正式快照。": fourLanguageTranslation("以整數比例發布不可變匯率版本；訂單結算會儲存當時使用的正式快照。", "整数比率で変更不可の為替レート版を公開します。注文決済には使用時点の正式なスナップショットが保存されます。", "Publish immutable exchange-rate versions as integer ratios. Order settlement stores the formal snapshot used at that time.", "정수 비율의 변경 불가 환율 버전을 게시합니다. 주문 정산에는 당시 사용한 공식 스냅샷이 저장됩니다."),
   "发布新汇率": fourLanguageTranslation("發布新匯率", "新しいレートを公開", "Publish new rate", "새 환율 게시"),
