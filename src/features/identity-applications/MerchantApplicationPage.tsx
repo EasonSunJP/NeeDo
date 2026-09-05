@@ -15,6 +15,7 @@ import {
   ApplicationFileUpload,
   ApplicationInput,
   ApplicationNotice,
+  ApplicationReadOnlyField,
   ApplicationSelect,
   ApplicationSection,
   ApplicationShell,
@@ -417,11 +418,27 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
       ) : null}
 
       {step === 3 ? (
-        <ApplicationCard className="space-y-4 text-center">
+        <ApplicationCard className="space-y-4">
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--client-primary)] text-3xl font-black text-[color:var(--client-primary-contrast)]">✓</div>
-          <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("店铺申请已提交")}</h2>
-          <p className="text-sm leading-7 text-[color:var(--client-muted)]">{t("运营后台批准后会开启店铺身份，并发送系统消息。")}</p>
+          <div className="text-center">
+            <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("店铺申请已提交")}</h2>
+            <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{t("运营后台批准后会开启店铺身份，并发送系统消息。")}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ApplicationReadOnlyField label="申请名义" value={t(form.applicantKind === "corporate" ? "法人名义" : "个人名义")} />
+            <ApplicationReadOnlyField label="申请人" value={form.responsiblePersonName} />
+            <ApplicationReadOnlyField label="法人或代表者姓名" value={form.representativeName} />
+            <ApplicationReadOnlyField label="法人或代表者姓名片假名" value={form.representativeNameKana} />
+            <ApplicationReadOnlyField label="店铺名称" value={form.shopName} />
+            <ApplicationReadOnlyField label="店铺地址" value={form.businessAddress} />
+            <ApplicationReadOnlyField label="联系电话" value={form.contactPhone} />
+            <ApplicationReadOnlyField label="费用区间" value={priceLabel} />
+            <ApplicationReadOnlyField label="店铺简介" value={form.description} />
+            <ApplicationReadOnlyField label="eKYC" value={t(application?.merchantDetail?.eKycVerified ? "已验证" : "未验证")} />
+            <ApplicationReadOnlyField label="银行账户" value={t(application?.merchantDetail?.bankVerificationStatus === "verified" ? "已验证" : "未验证")} />
+          </div>
           <ApplicationNotice>{t("申请结束 30 天后，服务器会删除申请资料和图片；合同回执及批准后用于结算的银行账户按法务和业务要求继续保存。")}</ApplicationNotice>
+          <ApplicationButton className="w-full" disabled tone="secondary">{t("审核中")}</ApplicationButton>
           <ApplicationButton className="w-full" onClick={() => window.location.assign("/me/settings/portal")}>{t("返回身份设置")}</ApplicationButton>
         </ApplicationCard>
       ) : null}

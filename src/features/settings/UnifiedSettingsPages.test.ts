@@ -455,6 +455,8 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).toContain('row.action === "retry"');
     expect(portalPageSource).toContain("getIdentityApplicationPath(row.kind)");
     expect(portalPageSource).toContain('t("申请")');
+    expect(portalPageSource).toContain('const disabled = row.action === "current" || switchingPortal !== null;');
+    expect(portalPageSource).not.toContain('row.action === "current" || row.action === "pending"');
   });
 
   it("keeps merchant identity switching on the merchant app instead of technician", () => {
