@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +32,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
 vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
+vi.mock("../exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({ onLinkedChange }: { onLinkedChange?: (linked: boolean) => void }) => {
+    useEffect(() => onLinkedChange?.(false), [onLinkedChange]);
+    return null;
+  }
+}));
 vi.mock("../../theme/ClientThemeProvider", async () => {
   const actual = await vi.importActual<typeof import("../../theme/ClientThemeProvider")>("../../theme/ClientThemeProvider");
   return { ...actual, useClientTheme: () => ({ isNight: false, theme: "whiteGreen" }) };

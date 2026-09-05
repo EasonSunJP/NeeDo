@@ -409,8 +409,11 @@ idempotent ledger authority, and releases the existing Request booking hold only
 was confirmed. Any failure rolls back the transaction.
 
 The API does not implement payment refunds, service-in-progress termination, responsibility
-penalties, Affiliate reward/refund changes, or batch cancellation. The user-facing controls and
-authenticated browser acceptance are separate later microsteps.
+penalties, Affiliate reward/refund changes, or batch cancellation. The shared five-language client
+panel is wired into the owner/provider Exchange cards and the customer, technician, and merchant
+formal order details. It hides on an exact 404 for ordinary orders and suppresses their generic
+cancel action only after the server identifies an Exchange-linked order. Authenticated browser
+acceptance remains gated on an approved database with both additive migrations applied.
 
 The guarded real-MySQL suite is `backend/tests/exchange-cancellation.repository.integration.test.ts`.
 It runs only when `RUN_EXCHANGE_CANCELLATION_INTEGRATION=true` and

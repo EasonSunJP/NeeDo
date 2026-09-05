@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactNode } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +59,12 @@ vi.mock("../../features/core-read/api", async () => {
 });
 vi.mock("../../state/userOrderStore", () => ({ useUserOrders: () => [{ id: "legacy-1", itemName: "历史服务", storeName: "历史店铺", bookedAt: "2026-08-01 10:00", status: "completed", amount: 5000, serviceId: "12" }] }));
 vi.mock("../../features/booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
+vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({ onLinkedChange }: { onLinkedChange?: (linked: boolean) => void }) => {
+    useEffect(() => onLinkedChange?.(false), [onLinkedChange]);
+    return null;
+  }
+}));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
   AppTopBar: ({ title }: { title: string }) => <header>{title}</header>,
   PageScaffold: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,

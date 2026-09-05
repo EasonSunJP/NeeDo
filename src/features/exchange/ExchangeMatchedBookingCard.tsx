@@ -5,6 +5,7 @@ import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import { getExchangeMatching } from "./api";
 import { exchangeText, type ExchangeTextKey } from "./i18n";
 import type { ExchangeMatching } from "./types";
+import { ExchangeOrderCancellationPanel } from "./ExchangeOrderCancellationPanel";
 
 function localeForLanguage(language: Language) {
   if (language === "zh") return "zh-CN";
@@ -79,10 +80,15 @@ export function ExchangeMatchedBookingCard({
           </div>
           <p className="mt-3 text-xs font-bold text-[color:var(--client-muted)]">{formatWindow(participant.estimatedStartsAt, participant.estimatedEndsAt, language)}</p>
           {participant.booking ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--client-line)] pt-3">
-              <p className="min-w-0 text-xs font-black text-[color:var(--client-text)]">{t("bookingOrderNumber")} · {participant.booking.orderNo}</p>
-              <a aria-label={t("bookingViewOrder")} className="focus-ring inline-flex min-h-10 items-center rounded-full bg-[color:var(--client-primary)] px-4 text-xs font-black text-[color:var(--client-primary-contrast)]" href={`#${getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}`}>{t("bookingViewOrder")}</a>
-            </div>
+            <>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--client-line)] pt-3">
+                <p className="min-w-0 text-xs font-black text-[color:var(--client-text)]">{t("bookingOrderNumber")} · {participant.booking.orderNo}</p>
+                <a aria-label={t("bookingViewOrder")} className="focus-ring inline-flex min-h-10 items-center rounded-full bg-[color:var(--client-primary)] px-4 text-xs font-black text-[color:var(--client-primary-contrast)]" href={`#${getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}`}>{t("bookingViewOrder")}</a>
+              </div>
+              <div className="mt-4">
+                <ExchangeOrderCancellationPanel language={language} orderId={participant.booking.orderId} />
+              </div>
+            </>
           ) : <p className="mt-4 rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-3 text-xs font-black text-[color:var(--client-muted)]">{t("bookingAwaitingOwner")}</p>}
         </div>
       ) : null}

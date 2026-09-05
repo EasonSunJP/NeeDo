@@ -258,7 +258,24 @@ const translations = {
   bookingViewOrder: { zh: "查看订单", "zh-Hant": "查看訂單", ja: "注文を見る", en: "View order", ko: "주문 보기" },
   bookingProviderSelected: { zh: "您已入选此需求", "zh-Hant": "您已入選此需求", ja: "この依頼の提供者に選ばれました", en: "You were selected for this request", ko: "이 요청의 서비스 제공자로 선정되었습니다" },
   bookingAwaitingOwner: { zh: "等待发布者确认预约", "zh-Hant": "等待發布者確認預約", ja: "投稿者の予約確定を待っています", en: "Waiting for the publisher to confirm bookings", ko: "게시자의 예약 확정을 기다리는 중입니다" },
-  bookingLoadFailed: { zh: "无法读取已匹配的预约，请重试。", "zh-Hant": "無法讀取已配對的預約，請重試。", ja: "マッチした予約を読み込めませんでした。再試行してください。", en: "Couldn't load the matched booking. Try again.", ko: "매칭된 예약을 불러오지 못했습니다. 다시 시도해 주세요." }
+  bookingLoadFailed: { zh: "无法读取已匹配的预约，请重试。", "zh-Hant": "無法讀取已配對的預約，請重試。", ja: "マッチした予約を読み込めませんでした。再試行してください。", en: "Couldn't load the matched booking. Try again.", ko: "매칭된 예약을 불러오지 못했습니다. 다시 시도해 주세요." },
+  cancellationTitle: { zh: "双方取消", "zh-Hant": "雙方取消", ja: "双方合意のキャンセル", en: "Mutual cancellation", ko: "상호 취소" },
+  cancellationIntro: { zh: "此 Exchange 订单不能单方直接取消，需由另一方答复。", "zh-Hant": "此 Exchange 訂單不能單方直接取消，需由另一方答覆。", ja: "このExchange注文は一方的にキャンセルできず、相手方の回答が必要です。", en: "This Exchange order cannot be cancelled unilaterally; the other party must respond.", ko: "이 Exchange 주문은 일방적으로 취소할 수 없으며 상대방의 응답이 필요합니다." },
+  cancellationReason: { zh: "取消原因", "zh-Hant": "取消原因", ja: "キャンセル理由", en: "Cancellation reason", ko: "취소 사유" },
+  cancellationReasonPlaceholder: { zh: "请填写需要取消这张订单的原因", "zh-Hant": "請填寫需要取消這張訂單的原因", ja: "この注文をキャンセルする理由を入力してください", en: "Explain why this order needs to be cancelled", ko: "이 주문을 취소해야 하는 사유를 입력하세요" },
+  cancellationRequest: { zh: "申请取消", "zh-Hant": "申請取消", ja: "キャンセルを申請", en: "Request cancellation", ko: "취소 요청" },
+  cancellationRequesting: { zh: "正在提交…", "zh-Hant": "正在提交…", ja: "送信中…", en: "Submitting…", ko: "제출 중…" },
+  cancellationWaiting: { zh: "等待对方答复", "zh-Hant": "等待對方答覆", ja: "相手方の回答待ち", en: "Waiting for the other party", ko: "상대방 응답 대기" },
+  cancellationAccept: { zh: "同意取消", "zh-Hant": "同意取消", ja: "キャンセルに同意", en: "Accept cancellation", ko: "취소 동의" },
+  cancellationReject: { zh: "拒绝取消", "zh-Hant": "拒絕取消", ja: "キャンセルを拒否", en: "Reject cancellation", ko: "취소 거절" },
+  cancellationWithdraw: { zh: "撤回申请", "zh-Hant": "撤回申請", ja: "申請を取り下げ", en: "Withdraw request", ko: "요청 철회" },
+  cancellationAccepted: { zh: "双方已同意取消", "zh-Hant": "雙方已同意取消", ja: "双方の合意によりキャンセル済み", en: "Cancellation accepted by both parties", ko: "양측 동의로 취소됨" },
+  cancellationRejected: { zh: "对方已拒绝取消", "zh-Hant": "對方已拒絕取消", ja: "相手方がキャンセルを拒否しました", en: "The other party rejected cancellation", ko: "상대방이 취소를 거절했습니다" },
+  cancellationWithdrawn: { zh: "取消申请已撤回", "zh-Hant": "取消申請已撤回", ja: "キャンセル申請は取り下げられました", en: "Cancellation request withdrawn", ko: "취소 요청이 철회됨" },
+  cancellationImpact: { zh: "同意后只取消这张订单并释放对应时段；Demand 发布费按既定规则首次结算。本操作不处理支付退款或责任处罚。", "zh-Hant": "同意後只取消這張訂單並釋放對應時段；Demand 發布費按既定規則首次結算。本操作不處理付款退款或責任處罰。", ja: "同意すると、この注文のみをキャンセルして該当時間枠を解放し、Demand掲載料は既定ルールに従い初回のみ精算されます。支払いの返金や責任上のペナルティは処理しません。", en: "Accepting cancels only this order and releases its slot; the Demand publication fee is settled once under the existing rule. Payment refunds and responsibility penalties are not handled here.", ko: "동의하면 이 주문만 취소하고 해당 시간대를 해제하며 Demand 게시 수수료는 기존 규칙에 따라 최초 한 번 정산됩니다. 결제 환불이나 책임 제재는 처리하지 않습니다." },
+  cancellationLoadFailed: { zh: "无法读取双方取消状态，请重试。", "zh-Hant": "無法讀取雙方取消狀態，請重試。", ja: "双方キャンセルの状態を読み込めません。再試行してください。", en: "Couldn't load mutual cancellation status. Try again.", ko: "상호 취소 상태를 불러오지 못했습니다. 다시 시도하세요." },
+  cancellationMutationFailed: { zh: "取消状态已变化或提交失败，请刷新后重试。", "zh-Hant": "取消狀態已變更或提交失敗，請重新整理後重試。", ja: "キャンセル状態が変更されたか送信に失敗しました。更新して再試行してください。", en: "Cancellation changed or could not be submitted. Refresh and try again.", ko: "취소 상태가 변경되었거나 제출하지 못했습니다. 새로고침 후 다시 시도하세요." },
+  cancellationRetry: { zh: "重新读取", "zh-Hant": "重新讀取", ja: "再読み込み", en: "Reload", ko: "다시 불러오기" }
 } as const satisfies Record<string, Record<Language, string>>;
 
 export type ExchangeTextKey = keyof typeof translations;

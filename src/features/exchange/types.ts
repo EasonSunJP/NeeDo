@@ -119,6 +119,33 @@ export type ExchangeBookingConversion = {
   }>;
 };
 
+export type ExchangeCancellationAction = "request" | "accept" | "reject" | "withdraw";
+export type ExchangeCancellationParty = "customer" | "provider";
+export type ExchangeCancellationStatus = "pending" | "accepted" | "rejected" | "withdrawn";
+
+export type ExchangeCancellation = {
+  orderId: number;
+  orderStatus:
+    | "pending"
+    | "confirmed"
+    | "in_service"
+    | "awaiting_checkout"
+    | "awaiting_payment_confirmation"
+    | "completed"
+    | "cancelled";
+  viewerParty: ExchangeCancellationParty;
+  allowedActions: ExchangeCancellationAction[];
+  cancellation: null | {
+    id: number;
+    status: ExchangeCancellationStatus;
+    reason: string;
+    initiatorParty: ExchangeCancellationParty;
+    version: number;
+    requestedAt: string;
+    resolvedAt: string | null;
+  };
+};
+
 export type ExchangeMatching = {
   exchangePostId: number;
   status: ExchangeMatchingStatus;

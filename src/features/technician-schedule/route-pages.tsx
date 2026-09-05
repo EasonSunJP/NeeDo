@@ -23,6 +23,7 @@ import {
 import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
+import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 import {
@@ -664,6 +665,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [reviewSkipped, setReviewSkipped] = useState(false);
   const [reviewRevision, setReviewRevision] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
   const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
 
   useEffect(() => {
@@ -945,6 +947,13 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           }}
         />
 
+        {canCancel ? (
+          <ExchangeOrderCancellationPanel
+            onLinkedChange={setExchangeOrderLinked}
+            orderId={order.id}
+          />
+        ) : null}
+
         {order.status === "confirmed" ? (
           <section className={panelClass}>
             <h2 className="text-base font-black">服务验证码</h2>
@@ -1012,7 +1021,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
         {reviewEligible && reviewStatus === "error" ? <section className="space-y-3 rounded-2xl border border-red-400/35 bg-red-500/10 p-4" role="alert"><p className="text-sm font-black text-red-500">{reviewError}</p><Button className="w-full" onClick={() => setReviewRevision((value) => value + 1)} variant="secondary">重新读取评价状态</Button></section> : null}
         {order.status === "pending" || canCancel ? (
           <section className="grid gap-2 sm:grid-cols-2">
-            {canCancel ? (
+            {exchangeOrderLinked === false && canCancel ? (
               <Button disabled={pending} onClick={() => void cancel()} variant="danger">
                 {cancelArmed ? "再次点击确认取消" : "取消预约"}
               </Button>

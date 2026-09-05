@@ -11,6 +11,7 @@ import {
   selectExchangeMatching
 } from "./api";
 import { exchangeText, type ExchangeTextKey } from "./i18n";
+import { ExchangeOrderCancellationPanel } from "./ExchangeOrderCancellationPanel";
 import type {
   ExchangeClaim,
   ExchangeMatchAdjustmentPreview,
@@ -575,29 +576,32 @@ export function ExchangeReceivedClaims({
           {bookingsCreated ? <p className="mt-2 text-xs font-black text-[color:var(--client-primary)]" role="status">{t("bookingCreated")}</p> : null}
           <div className="mt-2 grid gap-2">
             {matching.participants.map((participant) => (
-              <div className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[color:var(--client-bg-soft)] px-3 py-3" key={participant.exchangeClaimId}>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-[color:var(--client-text)]">{participant.provider.displayName}</p>
-                  <p className="mt-0.5 truncate font-mono text-[10px] font-black text-[color:var(--client-primary)]">{participant.provider.publicId}</p>
-                  {participant.booking ? (
-                    <p className="mt-1 truncate text-[11px] font-black text-[color:var(--client-muted)]">
-                      {t("bookingOrderNumber")} · {participant.booking.orderNo}
-                      {participant.booking.status === "pending" ? ` · ${t("bookingPending")}` : ""}
-                    </p>
-                  ) : null}
+              <div className="min-w-0" key={participant.exchangeClaimId}>
+                <div className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[color:var(--client-bg-soft)] px-3 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-[color:var(--client-text)]">{participant.provider.displayName}</p>
+                    <p className="mt-0.5 truncate font-mono text-[10px] font-black text-[color:var(--client-primary)]">{participant.provider.publicId}</p>
+                    {participant.booking ? (
+                      <p className="mt-1 truncate text-[11px] font-black text-[color:var(--client-muted)]">
+                        {t("bookingOrderNumber")} · {participant.booking.orderNo}
+                        {participant.booking.status === "pending" ? ` · ${t("bookingPending")}` : ""}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <strong className="block text-sm font-black text-[color:var(--client-primary)]">¥{participant.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
+                    {participant.booking ? (
+                      <a
+                        aria-label={t("bookingViewOrder")}
+                        className="focus-ring mt-1 inline-flex min-h-8 items-center rounded-full border border-[color:var(--client-line)] px-2.5 text-[10px] font-black text-[color:var(--client-text)]"
+                        href={`#${getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}`}
+                      >
+                        {t("bookingViewOrder")}
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <strong className="block text-sm font-black text-[color:var(--client-primary)]">¥{participant.quoteAmountJpy.toLocaleString("ja-JP")}</strong>
-                  {participant.booking ? (
-                    <a
-                      aria-label={t("bookingViewOrder")}
-                      className="focus-ring mt-1 inline-flex min-h-8 items-center rounded-full border border-[color:var(--client-line)] px-2.5 text-[10px] font-black text-[color:var(--client-text)]"
-                      href={`#${getScheduleOrderDetailRoute(String(participant.booking.orderId), context)}`}
-                    >
-                      {t("bookingViewOrder")}
-                    </a>
-                  ) : null}
-                </div>
+                {participant.booking ? <div className="mt-2"><ExchangeOrderCancellationPanel language={language} orderId={participant.booking.orderId} /></div> : null}
               </div>
             ))}
           </div>

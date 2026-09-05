@@ -54,6 +54,7 @@ vi.mock("../../components/mobile/MobileFullscreenPage", () => ({ MobileFullscree
 vi.mock("../../components/mobile/MobileFullscreenHeader", () => ({ MobileFullscreenHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock("../../components/mobile/MobileBottomActionBar", () => ({ MobileBottomActionBar: ({ children }: { children: React.ReactNode }) => <footer>{children}</footer> }));
 vi.mock("../../components/mobile/ContactEventTimeline", () => ({ ContactEventTimelinePanel: ({ title }: { title: string }) => <section>{title}</section> }));
+vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({ ExchangeOrderCancellationPanel: () => <section>双方取消</section> }));
 vi.mock("../../components/ui/Button", () => ({
   Button: ({ children, to }: { children: React.ReactNode; to?: string }) => to ? <a href={to}>{children}</a> : <button type="button">{children}</button>
 }));

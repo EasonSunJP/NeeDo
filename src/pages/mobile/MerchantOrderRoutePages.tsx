@@ -31,6 +31,7 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId } from "../../lib/messageCenter";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";
@@ -1216,6 +1217,9 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
             ) : null}
 
             <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="联系信息" />
+            {order.status === "pending" || order.status === "confirmed" ? (
+              <ExchangeOrderCancellationPanel orderId={order.id} />
+            ) : null}
           </>
         ) : null}
       </main>

@@ -6,6 +6,8 @@ import type {
   ExchangeClaimOption,
   ExchangeClaimOptionListInput,
   ExchangeBookingConversion,
+  ExchangeCancellation,
+  ExchangeCancellationAction,
   ExchangeComment,
   ExchangeInteractionCounts,
   ExchangeListInput,
@@ -105,6 +107,46 @@ export function createExchangeMatchingBookings(
     headers: idempotencyHeaders(key),
     method: "POST"
   });
+}
+
+export function getExchangeCancellation(
+  orderId: number,
+  signal?: AbortSignal
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(`/exchange/orders/${orderId}/cancellation`, {
+    signal
+  });
+}
+
+export function createExchangeCancellationRequest(
+  orderId: number,
+  input: { expectedVersion: number; reason: string },
+  key: string
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(
+    `/exchange/orders/${orderId}/cancellation/requests`,
+    {
+      body: input,
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
+export function decideExchangeCancellation(
+  orderId: number,
+  action: Exclude<ExchangeCancellationAction, "request">,
+  expectedVersion: number,
+  key: string
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(
+    `/exchange/orders/${orderId}/cancellation/${action}`,
+    {
+      body: { expectedVersion },
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
 }
 
 export async function getMyExchangeClaim(
