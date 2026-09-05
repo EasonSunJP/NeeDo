@@ -10,12 +10,14 @@ import {
   type OfficialNoticeStatus,
   type RecipientOfficialNotice
 } from "../../api/officialNotices";
+import { ApiClientError } from "../../api/httpClient";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { useAuth } from "../../auth/AuthProvider";
+import { translateText, type Language } from "../../i18n/translations";
 
 const inputClass = "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none focus:border-moss";
 const textareaClass = "min-h-32 w-full rounded-lg border border-line bg-white px-3 py-3 text-sm font-bold outline-none focus:border-moss";
@@ -47,8 +49,28 @@ const statusTone: Record<OfficialNoticeStatus, BadgeTone> = {
   archived: "dark"
 };
 
-function describeError(error: unknown) {
-  return error instanceof Error ? error.message : "error.official_notice.request_failed";
+export function describeOfficialNoticeError(error: unknown, language: Language) {
+  let message = "通知服务暂时不可用，请稍后重试";
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) message = "登录状态已失效，请重新登录";
+    else if (error.status === 403) message = "当前身份没有执行此通知操作的权限";
+    else if (error.status === 409) message = "通知状态已经变化，请刷新后重试";
+  } else if (error instanceof Error && error.message === "error.network.timeout") {
+    message = "网络响应超时，请稍后重试。";
+  }
+  return translateText(message, language);
+}
+
+export function canCancelOfficialNotice(status: OfficialNoticeStatus) {
+  return ["draft", "pending_review", "approved", "scheduled"].includes(status);
+}
+
+export function canRetryOfficialNotice(status: OfficialNoticeStatus, failed: number) {
+  return failed > 0 && ["sent", "sending"].includes(status);
+}
+
+export function isOfficialNoticeReasonValid(reason: string) {
+  return reason.trim().length >= 2;
 }
 
 function formatDate(value: string | null) {
@@ -71,6 +93,7 @@ function NoticeBlocks({ blocks }: { blocks: OfficialNoticeBlock[] | undefined })
 
 export function OfficialNoticeManagement({ scope, composePath }: { scope: OfficialNoticeScope; composePath: string }) {
   const { hasPermission } = useAuth();
+  const { language } = useOptionalI18n();
   const [items, setItems] = useState<OfficialNotice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -99,11 +122,11 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
       setItems(result.list);
       setTotal(result.total);
     } catch (nextError) {
-      setError(describeError(nextError));
+      setError(describeOfficialNoticeError(nextError, language));
     } finally {
       setLoading(false);
     }
-  }, [level, page, scope, status]);
+  }, [language, level, page, scope, status]);
 
   useEffect(() => void load(), [load]);
 
@@ -122,7 +145,7 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
       setReason("");
       await load();
     } catch (nextError) {
-      setError(describeError(nextError));
+      setError(describeOfficialNoticeError(nextError, language));
     } finally {
       setMutating(false);
     }
@@ -176,9 +199,9 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
           <dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="font-bold text-ink/45">受众</dt><dd className="font-black">{selected.targetSummary}</dd></div><div><dt className="font-bold text-ink/45">受众快照</dt><dd className="font-black">{selected.audienceCount}</dd></div><div><dt className="font-bold text-ink/45">投递/失败</dt><dd className="font-black">{selected.delivery.delivered}/{selected.delivery.failed}</dd></div><div><dt className="font-bold text-ink/45">阅读</dt><dd className="font-black">{selected.delivery.read}</dd></div></dl>
           <label className="block text-sm font-black">操作理由<input className={`${inputClass} mt-2`} onChange={(event) => setReason(event.target.value)} value={reason} /></label>
           <div className="flex flex-wrap gap-2">
-            {canReview && !["sent", "cancelled", "archived"].includes(selected.status) ? <Button disabled={mutating || !reason.trim()} onClick={() => void mutate("cancel")} variant="danger">取消发送</Button> : null}
-            {canReview && ["sent", "cancelled"].includes(selected.status) ? <Button disabled={mutating || !reason.trim()} onClick={() => void mutate("archive")} variant="secondary">归档</Button> : null}
-            {canRetry && selected.delivery.failed > 0 ? <Button disabled={mutating || !reason.trim()} onClick={() => void mutate("retry")} variant="secondary">重试失败投递</Button> : null}
+            {canReview && canCancelOfficialNotice(selected.status) ? <Button disabled={mutating || !isOfficialNoticeReasonValid(reason)} onClick={() => void mutate("cancel")} variant="danger">取消发送</Button> : null}
+            {canReview && ["sent", "cancelled"].includes(selected.status) ? <Button disabled={mutating || !isOfficialNoticeReasonValid(reason)} onClick={() => void mutate("archive")} variant="secondary">归档</Button> : null}
+            {canRetry && canRetryOfficialNotice(selected.status, selected.delivery.failed) ? <Button disabled={mutating || !isOfficialNoticeReasonValid(reason)} onClick={() => void mutate("retry")} variant="secondary">重试失败投递</Button> : null}
           </div>
         </div> : null}
       </Drawer>
@@ -188,6 +211,7 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
 
 export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialNoticeScope; returnPath: string }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const [sourceLocale, setSourceLocale] = useState<OfficialNoticeLocale>("ja");
   const [level, setLevel] = useState<OfficialNoticeLevel>("general");
   const [title, setTitle] = useState("");
@@ -222,7 +246,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
       });
       navigate(returnPath);
     } catch (nextError) {
-      setError(describeError(nextError));
+      setError(describeOfficialNoticeError(nextError, language));
     } finally {
       setSubmitting(false);
     }
@@ -253,9 +277,9 @@ export function OfficialNoticeInbox() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const load = useCallback(async () => { setLoading(true); setError(""); try { const result = await officialNoticesApi.listInbox({ locale, unreadOnly, page, pageSize }); setItems(result.list); setTotal(result.total); } catch (nextError) { setError(describeError(nextError)); } finally { setLoading(false); } }, [locale, page, unreadOnly]);
+  const load = useCallback(async () => { setLoading(true); setError(""); try { const result = await officialNoticesApi.listInbox({ locale, unreadOnly, page, pageSize }); setItems(result.list); setTotal(result.total); } catch (nextError) { setError(describeOfficialNoticeError(nextError, language)); } finally { setLoading(false); } }, [language, locale, page, unreadOnly]);
   useEffect(() => void load(), [load]);
-  const markRead = async (item: RecipientOfficialNotice) => { if (item.readAt) return; try { const result = await officialNoticesApi.markRead(item.publicId); setItems((current) => current.map((candidate) => candidate.publicId === item.publicId ? { ...candidate, readAt: result.readAt } : candidate)); } catch (nextError) { setError(describeError(nextError)); } };
+  const markRead = async (item: RecipientOfficialNotice) => { if (item.readAt) return; try { const result = await officialNoticesApi.markRead(item.publicId); setItems((current) => current.map((candidate) => candidate.publicId === item.publicId ? { ...candidate, readAt: result.readAt } : candidate)); } catch (nextError) { setError(describeOfficialNoticeError(nextError, language)); } };
   return <ModuleShell title="通知收件箱" description="这里只展示当前登录身份实际收到的通知及其阅读状态。" actions={<label className="flex items-center gap-2 text-sm font-black"><input checked={unreadOnly} onChange={(event) => { setPage(1); setUnreadOnly(event.target.checked); }} type="checkbox" />只看未读</label>}>
     {error ? <p className="rounded-lg bg-coral/10 p-3 text-sm font-bold text-coral">{error}</p> : null}
     <section className="overflow-hidden rounded-lg border border-line bg-white shadow-panel">{loading ? <p className="p-8 text-center text-sm font-bold text-ink/55">正在读取收件箱…</p> : items.length === 0 ? <p className="p-8 text-center text-sm font-bold text-ink/55">暂无通知</p> : <div className="divide-y divide-line">{items.map((item) => <article className="p-5" key={item.publicId}><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex gap-2"><Badge tone={item.readAt ? "neutral" : "blue"}>{item.readAt ? "已读" : "未读"}</Badge><Badge tone={item.level === "urgent" ? "red" : item.level === "important" ? "yellow" : "neutral"}>{levelLabels[item.level]}</Badge></div><h3 className="mt-3 text-lg font-black">{item.title}</h3><p className="mt-1 text-sm font-bold text-ink/55">{item.summary}</p></div><Button disabled={Boolean(item.readAt)} onClick={() => void markRead(item)} size="sm" variant="secondary">标记已读</Button></div><div className="mt-4 rounded-lg bg-paper p-4 text-sm leading-7"><NoticeBlocks blocks={item.blocks} /></div><p className="mt-3 text-xs font-bold text-ink/45">{item.targetSummary} · {formatDate(item.sentAt)}</p></article>)}</div>}<div className="flex items-center justify-between border-t border-line p-4 text-xs font-bold text-ink/55"><span>共 {total} 条</span><div className="flex gap-2"><Button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} size="sm" variant="secondary">上一页</Button><Button disabled={page * pageSize >= total} onClick={() => setPage((value) => value + 1)} size="sm" variant="secondary">下一页</Button></div></div></section>

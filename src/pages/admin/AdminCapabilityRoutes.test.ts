@@ -132,6 +132,7 @@ describe("formal official notification workspaces", () => {
     }
     expect(notificationWorkspaceSource).toContain("受众由服务端按当前权限与店铺范围生成快照");
     expect(notificationWorkspaceSource).not.toMatch(/localStorage|sessionStorage|data\/mock|userIds|shopId/);
+    expect(appSource).not.toContain("OfficialNoticeAutoPopup");
   });
 
   it("registers separately permissioned platform and merchant management routes", () => {

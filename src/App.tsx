@@ -147,7 +147,6 @@ import { AffiliateAnnouncementDetailPage } from "./features/content-publication/
 import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
-import { OfficialNoticeAutoPopup } from "./components/ui/OfficialNoticeAutoPopup";
 import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
@@ -1095,7 +1094,6 @@ export default function App() {
                 {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} /> : null}
                 <ScrollToTop />
                 <ShareFeedbackViewport />
-                <OfficialNoticeAutoPopup disabled={Boolean(splashPortal)} />
                 <NeedoPet disabled={Boolean(splashPortal)} />
                 <AccountComplianceGate>
                 <Routes>

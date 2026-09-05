@@ -445,7 +445,7 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
           items: section.items.filter(
             (item) =>
               (!item.permission || readOnlyPreview || canAccessFeature("merchant", item.permission)) &&
-              (!item.rbacPermission || readOnlyPreview || hasPermission(item.rbacPermission))
+              (!item.rbacPermission || hasPermission(item.rbacPermission))
           )
         }))
         .filter((section) => section.items.length > 0),
