@@ -4,7 +4,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
 import { RegionNavigator } from "./RegionNavigator";
 import { layoutMapLabels } from "./mapLabelLayout";
-import { IDENTITY_VIEWPORT, mapViewportTransform, panMapViewport, zoomMapViewport } from "./mapViewport";
+import { IDENTITY_VIEWPORT, mapViewportTransform, panMapViewport, zoomMapViewport, type MapViewport } from "./mapViewport";
 
 type MapRegion = {
   code: string;
@@ -115,7 +115,8 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const [error, setError] = useState("");
   const [activeCode, setActiveCode] = useState<string | null>(scope.admin2 ?? null);
   const [viewport, setViewport] = useState(IDENTITY_VIEWPORT);
-  const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement; viewport: MapViewport } | null>(null);
+  const dragFrame = useRef<number | null>(null);
   const suppressClick = useRef(false);
   const locale = language === "ja" ? "ja-JP" : language === "ko" ? "ko-KR" : language === "en" ? "en-US" : "zh-CN";
 
@@ -140,9 +141,13 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   useEffect(() => setActiveCode(scope.admin2 ?? null), [scope.admin2]);
   useEffect(() => {
     setViewport(IDENTITY_VIEWPORT);
-    const current = drag.current;
-    if (current?.target.hasPointerCapture?.(current.id)) current.target.releasePointerCapture(current.id);
-    drag.current = null;
+    return () => {
+      if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+      dragFrame.current = null;
+      const current = drag.current;
+      drag.current = null;
+      if (current?.target.hasPointerCapture?.(current.id)) current.target.releasePointerCapture(current.id);
+    };
   }, [asset?.parentCode, asset?.level, scope.admin1, scope.admin2]);
 
   const childByCode = useMemo(() => new Map(children.map((item) => [item.code, item])), [children]);
@@ -162,10 +167,19 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     setViewport((current) => zoomMapViewport(current, direction, center, asset.viewBox));
   };
   const endDrag = (event: PointerEvent<SVGSVGElement>) => {
-    if (drag.current?.id !== event.pointerId) return;
-    suppressClick.current = drag.current.moved;
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const current = drag.current;
+    if (current?.id !== event.pointerId) return;
+    if (current.moved && event.type === "pointerup" && asset) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = Math.min(rect.width / asset.viewBox[2], rect.height / asset.viewBox[3]);
+      if (ratio > 0) current.viewport = panMapViewport(current.viewport, [(event.clientX - current.x) / ratio, (event.clientY - current.y) / ratio], asset.viewBox);
+    }
+    suppressClick.current = current.moved;
+    if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+    dragFrame.current = null;
     drag.current = null;
+    if (current.moved) setViewport(current.viewport);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const selectRegion = (code: string) => {
@@ -211,8 +225,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
             onPointerDown={(event) => {
               suppressClick.current = false;
               if (viewport.scale <= 1 || event.button !== 0 || drag.current) return;
-              event.currentTarget.setPointerCapture(event.pointerId);
-              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, target: event.currentTarget };
+              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, target: event.currentTarget, viewport };
             }}
             onPointerMove={(event) => {
               const current = drag.current;
@@ -222,10 +235,18 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
               if (!(ratio > 0)) return;
               const dx = event.clientX - current.x; const dy = event.clientY - current.y;
               if (!current.moved && Math.hypot(dx, dy) < 4) return;
+              if (!current.moved) event.currentTarget.setPointerCapture(event.pointerId);
               current.moved = true;
               current.x = event.clientX; current.y = event.clientY;
-              setViewport((previous) => panMapViewport(previous, [dx / ratio, dy / ratio], asset.viewBox));
+              current.viewport = panMapViewport(current.viewport, [dx / ratio, dy / ratio], asset.viewBox);
+              if (dragFrame.current === null) {
+                dragFrame.current = requestAnimationFrame(() => {
+                  dragFrame.current = null;
+                  if (drag.current) setViewport(drag.current.viewport);
+                });
+              }
             }}
+            onPointerLeave={() => { if (drag.current && !drag.current.moved) drag.current = null; }}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
             onLostPointerCapture={endDrag}

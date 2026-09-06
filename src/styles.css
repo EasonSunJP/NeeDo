@@ -8918,7 +8918,7 @@ html.im-conversation-scroll-lock #root {
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: calc(100dvh - 112px);
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--admin-line, rgba(15, 23, 42, .12));
   border-radius: 20px;
   background: var(--live-surface);
@@ -9004,6 +9004,7 @@ html.im-conversation-scroll-lock #root {
 .live-dashboard-map-stage {
   position: relative;
   min-height: 0;
+  overflow: hidden;
   padding: 4px 10px 10px;
 }
 

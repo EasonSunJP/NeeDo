@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveDashboardSnapshot } from "../../api/liveDashboard";
 import { JapanRegionMap, mapAssetUrl } from "./JapanRegionMap";
+import * as labelLayout from "./mapLabelLayout";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -119,6 +120,10 @@ describe("JapanRegionMap", () => {
     expect(container.querySelectorAll("[data-map-label]")).toHaveLength(47);
     expect(container.querySelectorAll("[data-map-leader]").length).toBeGreaterThan(0);
     const geometry = container.querySelector("[data-map-geometry]")!;
+    const stage = container.querySelector(".live-dashboard-map-stage")!;
+    expect(stage.contains(geometry)).toBe(true);
+    expect(stage.querySelector(".live-dashboard-map-leaders")).toBeTruthy();
+    expect(stage.querySelector(".live-dashboard-region-navigator, .live-dashboard-map-toolbar")).toBeNull();
     expect(geometry.querySelector("[data-map-label]")).toBeNull();
     const button = (name: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!;
     expect(button("缩小地图").disabled).toBe(true);
@@ -171,5 +176,61 @@ describe("JapanRegionMap", () => {
     await render("13", "13104");
     expect(container.querySelector("[data-map-geometry]")!.getAttribute("transform")).toBe("translate(0 0) scale(1)");
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary zoomed path clicks selectable and batches drag layout until animation frames", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : country })));
+    let frame: FrameRequestCallback | undefined;
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => { frame = callback; return 71; });
+    const cancelFrame = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", requestFrame);
+    vi.stubGlobal("cancelAnimationFrame", cancelFrame);
+    const layout = vi.spyOn(labelLayout, "layoutMapLabels");
+    const onSelect = vi.fn();
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(country)} onSelectRegion={onSelect} scope={{ country: "JP", period: "today" }} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+    const svg = container.querySelector("svg")!;
+    const region = container.querySelector<SVGPathElement>('[data-region-code="13"]')!;
+    let captured = false;
+    const capture = vi.fn(() => { captured = true; });
+    const release = vi.fn(() => { captured = false; });
+    Object.assign(svg, { setPointerCapture: capture, releasePointerCapture: release, hasPointerCapture: () => captured });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ width: country.viewBox[2], height: country.viewBox[3] } as DOMRect);
+    const pointer = async (type: string, x: number) => act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: 100 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      (captured ? svg : region).dispatchEvent(event);
+    });
+    await pointer("pointerdown", 100);
+    expect(capture).not.toHaveBeenCalled();
+    await pointer("pointerup", 100);
+    await act(async () => region.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    onSelect.mockClear();
+    const count = layout.mock.calls.length;
+    await pointer("pointerdown", 100);
+    for (let x = 110; x <= 150; x += 10) await pointer("pointermove", x);
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    expect(layout).toHaveBeenCalledTimes(count);
+    await act(async () => frame!(0));
+    expect(layout).toHaveBeenCalledTimes(count + 1);
+    await pointer("pointermove", 160);
+    await pointer("pointerup", 165);
+    expect(cancelFrame).toHaveBeenCalledWith(71);
+    expect(layout).toHaveBeenCalledTimes(count + 2);
+    expect(container.querySelector("[data-map-geometry]")!.getAttribute("transform")).toContain(`translate(${-country.viewBox[2] / 4 + 65} `);
+    await act(async () => svg.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSelect).not.toHaveBeenCalled();
+    await pointer("pointerdown", 160); await pointer("pointermove", 170);
+    await act(async () => root.render(null));
+    expect(cancelFrame).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(2);
+  });
+
+  it("clips map content at the stage without clipping the search results", async () => {
+    const css = fs.readFileSync(path.join(process.cwd(), "src/styles.css"), "utf8");
+    expect(css.match(/\.live-dashboard-map-stage\s*\{([^}]+)\}/)?.[1]).toMatch(/overflow:\s*hidden/);
+    expect(css.match(/\.live-dashboard-map-card\s*\{([^}]+)\}/)?.[1]).not.toMatch(/overflow:\s*hidden/);
   });
 });
