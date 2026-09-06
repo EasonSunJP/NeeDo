@@ -57,11 +57,26 @@ function claimStatusKey(status: ExchangeClaim["status"]): ExchangeTextKey {
   if (status === "withdrawn") return "claimStatusWithdrawn";
   if (status === "request_withdrawn") return "claimStatusRequestWithdrawn";
   if (status === "request_expired") return "claimStatusRequestExpired";
+  if (status === "matched") return "claimStatusMatched";
+  if (status === "not_selected") return "claimStatusNotSelected";
+  if (status === "matching_closed") return "claimStatusMatchingClosed";
   return "claimStatusActive";
 }
 
-function OwnClaimCard({ claim, language }: { claim: ExchangeClaim; language: Language }) {
+function OwnClaimCard({
+  claim,
+  language,
+  matchMode
+}: {
+  claim: ExchangeClaim;
+  language: Language;
+  matchMode: "quick" | "selective";
+}) {
   const t = (key: ExchangeTextKey) => exchangeText(key, language);
+  const statusKey =
+    claim.status === "active" && matchMode === "quick"
+      ? "quickMatchingWaiting"
+      : claimStatusKey(claim.status);
   return (
     <div className="mt-4 overflow-hidden rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)]">
       <div className="flex items-start justify-between gap-3 border-b border-[color:var(--client-line)] px-4 py-3">
@@ -70,7 +85,7 @@ function OwnClaimCard({ claim, language }: { claim: ExchangeClaim; language: Lan
           <p className="mt-1 text-lg font-black text-[color:var(--client-text)]">{formatJpy(claim.quoteAmountJpy)}</p>
         </div>
         <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
-          {t(claimStatusKey(claim.status))}
+          {t(statusKey)}
         </span>
       </div>
       <dl className="grid gap-3 px-4 py-4 text-xs">
@@ -275,7 +290,9 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
           <p className="font-mono text-[10px] font-black tracking-[0.24em] text-[color:var(--client-primary)]">NEEDO CLAIM</p>
           <h2 className="mt-1 text-xl font-black text-[color:var(--client-text)]">{t("claimTitle")}</h2>
         </div>
-        <span className="rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] px-3 py-1.5 text-[10px] font-black text-[color:var(--client-muted)]">SELECTIVE</span>
+        <span className="rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] px-3 py-1.5 text-[10px] font-black text-[color:var(--client-muted)]">
+          {t(post.demand?.matchMode === "quick" ? "quickMatch" : "selectiveMatch")}
+        </span>
       </div>
       <p className="mt-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{t("claimIntro")}</p>
 
@@ -284,7 +301,11 @@ export function ExchangeClaimPanel({ language, post }: { language: Language; pos
 
       {!loading && claim ? (
         <>
-          <OwnClaimCard claim={claim} language={language} />
+          <OwnClaimCard
+            claim={claim}
+            language={language}
+            matchMode={post.demand?.matchMode ?? "selective"}
+          />
           {claim.status === "active" ? (
             <button
               className="focus-ring mt-4 min-h-11 w-full rounded-2xl border border-[color:var(--client-accent)] text-sm font-black text-[color:var(--client-accent)] disabled:opacity-50"

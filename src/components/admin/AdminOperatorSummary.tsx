@@ -6,14 +6,10 @@ import {
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
-import {
-  identityApplicationsApi,
-  type MerchantReview
-} from "../../features/identity-applications/api";
+import { ekycApplicationsApi, type EkycApplicationSummary } from "../../features/settings/ekycApplicationsApi";
 import type { Language } from "../../i18n/translations";
 import { translateText } from "../../i18n/translations";
 import {
-  mergePendingMerchantReviews,
   resolveAdminDisplayName,
   resolveAdminRoleLabel
 } from "./adminOperatorSummaryModel";
@@ -102,13 +98,18 @@ function QueueMessage({
 
 export function AdminOperatorSummary({ hasPermission, language, session }: Props) {
   const [avatarFailed, setAvatarFailed] = useState(false);
-  const [expanded, setExpanded] = useState<"orders" | "reviews" | null>(null);
+  const [expanded, setExpanded] = useState<"orders" | null>(null);
   const [orderRevision, setOrderRevision] = useState(0);
   const [reviewRevision, setReviewRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setReviewRevision(value => value + 1);
+    window.addEventListener("ekyc-review-updated", refresh);
+    return () => window.removeEventListener("ekyc-review-updated", refresh);
+  }, []);
   const [orders, setOrders] = useState<QueueState<BackofficeOrderPayload>>(initialQueueState);
-  const [reviews, setReviews] = useState<QueueState<MerchantReview>>(initialQueueState);
+  const [reviews, setReviews] = useState<QueueState<EkycApplicationSummary>>(initialQueueState);
   const canReadOrders = hasPermission("backoffice:orders:list");
-  const canReadReviews = hasPermission("ops:merchant-application:read");
+  const canReadReviews = hasPermission("ops:ekyc-application:read");
   const sessionKey = `${session?.id ?? "anonymous"}:${session?.activeIdentityId ?? "none"}`;
 
   useEffect(() => setAvatarFailed(false), [session?.avatarUrl]);
@@ -142,14 +143,10 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
     }
     let current = true;
     setReviews({ ...initialQueueState(), status: "loading" });
-    Promise.all([
-      identityApplicationsApi.listMerchantReviews({ page: 1, pageSize: 5, status: "submitted" }),
-      identityApplicationsApi.listMerchantReviews({ page: 1, pageSize: 5, status: "under_review" })
-    ])
-      .then(([submitted, underReview]) => {
+    ekycApplicationsApi.listReviews(1, "submitted")
+      .then((result) => {
         if (!current) return;
-        const merged = mergePendingMerchantReviews(submitted, underReview);
-        setReviews({ error: null, items: merged.list, status: "success", total: merged.total });
+        setReviews({ error: null, items: result.list, status: "success", total: result.total });
       })
       .catch((error: unknown) => {
         if (!current) return;
@@ -167,7 +164,7 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
   const roleLabel = resolveAdminRoleLabel(session, t("运营后台成员"));
   const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "?";
 
-  const toggle = (queue: "orders" | "reviews") => {
+  const toggle = (queue: "orders") => {
     setExpanded((current) => (current === queue ? null : queue));
   };
 
@@ -211,16 +208,10 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
             </button>
           ) : null}
           {canReadReviews ? (
-            <button
-              aria-controls="admin-pending-reviews"
-              aria-expanded={expanded === "reviews"}
-              className="focus-ring rounded-md bg-white px-2 py-2 text-left transition hover:bg-mint/10"
-              onClick={() => toggle("reviews")}
-              type="button"
-            >
+            <Link to="/admin/application-reviews/ekyc" className="focus-ring rounded-md bg-white px-2 py-2 text-left transition hover:bg-mint/10">
               <span className="block text-[11px] text-ink/45">{t("审核")}</span>
               <strong className="text-sm">{reviews.total ?? "—"}</strong>
-            </button>
+            </Link>
           ) : null}
         </div>
       ) : null}
@@ -238,18 +229,7 @@ export function AdminOperatorSummary({ hasPermission, language, session }: Props
         </div>
       ) : null}
 
-      {expanded === "reviews" && canReadReviews ? (
-        <div className="mt-2 max-h-52 overflow-y-auto rounded-md border border-line bg-white p-1" id="admin-pending-reviews">
-          <QueueMessage empty="暂无待审核申请" language={language} onRetry={() => setReviewRevision((value) => value + 1)} state={reviews} />
-          {reviews.status === "success" ? reviews.items.map((review) => (
-            <Link className="focus-ring block rounded-md px-2 py-2 text-xs hover:bg-paper" key={review.applicationId} to={`/admin/merchant-applications?status=pending&applicationId=${review.applicationId}`}>
-              <span className="flex items-center justify-between gap-2 font-black"><span className="truncate">{review.shopName}</span><span className="shrink-0 text-[10px] text-ink/40">{t(review.status)}</span></span>
-              <span className="mt-1 block truncate text-[10px] text-ink/45">{t("申请编号")} #{review.applicationId} · {formatTimestamp(review.submittedAt ?? review.createdAt, language)}</span>
-            </Link>
-          )) : null}
-          {reviews.status === "success" ? <Link className="focus-ring mt-1 block rounded-md px-2 py-2 text-center text-[11px] font-black text-moss hover:bg-paper" to="/admin/merchant-applications?status=pending">{t("查看全部")}</Link> : null}
-        </div>
-      ) : null}
+
     </section>
   );
 }

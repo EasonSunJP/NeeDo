@@ -13,6 +13,10 @@ const noticeTranslations = {
   ja: { title: "営業時間変更", summary: "お知らせ", blocks: [{ id: "p-ja", type: "paragraph", content: "本文" }] },
   ko: { title: "영업시간 변경", summary: "알림", blocks: [{ id: "p-ko", type: "paragraph", content: "본문" }] }
 };
+const draftTranslations = Object.fromEntries(Object.entries(noticeTranslations).map(([locale, value]) => [
+  locale,
+  { ...value, isInitialCopy: locale !== "ja" }
+]));
 const notice = {
   publicId,
   level: "important",
@@ -95,11 +99,27 @@ const operationsUser = {
 
 const createFixture = (user: typeof merchantUser | typeof operationsUser = merchantUser) => {
   const service = {
+    createDraftMerchant: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null })),
+    getMerchantDraft: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null })),
+    updateDraftMerchant: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null, lockVersion: 2 })),
+    planDraftMerchant: jest.fn(async () => ({ ...notice, status: "scheduled", lockVersion: 3 })),
     createAndPlanMerchant: jest.fn(async () => notice),
     listMerchant: jest.fn(async () => ({ list: [notice], total: 1, page: 1, page_size: 20 })),
     cancelMerchant: jest.fn(async () => ({ ...notice, status: "cancelled" })),
     archiveMerchant: jest.fn(async () => ({ ...notice, status: "archived" })),
     retryMerchantFailures: jest.fn(async () => notice)
+  };
+  const mediaService = {
+    uploadPlatform: jest.fn(),
+    uploadMerchant: jest.fn(async () => ({
+      publicId: "d".repeat(64),
+      mediaAssetId: 72,
+      url: `/media/content/${"d".repeat(64)}.mp4`,
+      mimeType: "video/mp4",
+      width: null,
+      height: null,
+      checksumSha256: "d".repeat(64)
+    }))
   };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
@@ -108,17 +128,84 @@ const createFixture = (user: typeof merchantUser | typeof operationsUser = merch
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository(),
-    officialNoticeService: service
+    officialNoticeService: service,
+    officialNoticeMediaService: mediaService
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
     email: user.email,
     currentIdentityId: user.identities[0].id
   }).token;
-  return { app, service, token };
+  return { app, service, mediaService, token };
 };
 
 describe("merchant notice HTTP API", () => {
+  it("uploads merchant notice media only through the merchant-scoped endpoint", async () => {
+    const fixture = createFixture();
+    const bytes = Buffer.concat([Buffer.alloc(4), Buffer.from("ftypisom"), Buffer.alloc(12)]);
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/official-notices/media?file_name=hours.mp4")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "video/mp4")
+      .send(bytes)
+      .expect(201)
+      .expect((response) => expect(response.body.data.mediaAssetId).toBe(72));
+
+    expect(fixture.mediaService.uploadMerchant).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityId: 17 }),
+      expect.any(Object),
+      expect.objectContaining({ bytes, mimeType: "video/mp4", fileName: "hours.mp4" })
+    );
+    expect(fixture.mediaService.uploadPlatform).not.toHaveBeenCalled();
+  });
+
+  it("creates, reloads, updates, and plans a draft only through merchant-scoped methods", async () => {
+    const fixture = createFixture();
+    const draftBody = {
+      sourceLocale: "ja",
+      level: "important",
+      translations: draftTranslations,
+      audience: { type: "shop_technicians" },
+      idempotencyKey: "merchant-draft-create"
+    };
+
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/official-notices/drafts")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send(draftBody)
+      .expect(201);
+    await request(fixture.app)
+      .get(`/api/v1/merchant-admin/official-notices/${publicId}`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200);
+    await request(fixture.app)
+      .put(`/api/v1/merchant-admin/official-notices/${publicId}/draft`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ ...draftBody, expectedLockVersion: 1, idempotencyKey: "merchant-draft-update" })
+      .expect(200);
+    await request(fixture.app)
+      .post(`/api/v1/merchant-admin/official-notices/${publicId}/plan`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({
+        expectedLockVersion: 2,
+        sendMode: "scheduled",
+        scheduledAt: "2026-09-08T10:00:00.000Z",
+        idempotencyKey: "merchant-draft-plan"
+      })
+      .expect(200);
+
+    expect(fixture.service.createDraftMerchant).toHaveBeenCalled();
+    expect(fixture.service.getMerchantDraft).toHaveBeenCalled();
+    expect(fixture.service.updateDraftMerchant).toHaveBeenCalled();
+    expect(fixture.service.planDraftMerchant).toHaveBeenCalled();
+
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/official-notices/drafts")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ ...draftBody, audience: { type: "all" } })
+      .expect(400);
+  });
+
   it("publishes only a strict server-derived shop audience", async () => {
     const fixture = createFixture();
     const body = {

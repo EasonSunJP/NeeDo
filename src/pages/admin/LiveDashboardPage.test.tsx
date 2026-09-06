@@ -52,6 +52,17 @@ describe("LiveDashboardPage", () => {
     act(() => root.unmount());
     container.remove();
     window.localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps region navigation mounted at phone width without installing page scaling", async () => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(390);
+    const listener = vi.spyOn(window, "addEventListener");
+    hookMock.state = { snapshot, status: "ready", realtimeStatus: "connected", error: null };
+    await act(async () => root.render(<MemoryRouter><LiveDashboardPage /></MemoryRouter>));
+    expect(container.querySelector(".live-dashboard-region-navigator")).toBeTruthy();
+    expect(container.querySelector(".live-dashboard-workspace")?.getAttribute("style")).toBeNull();
+    expect(listener.mock.calls.filter(([event]) => event === "resize")).toHaveLength(0);
   });
 
   it("renders a standalone operations screen shell", async () => {

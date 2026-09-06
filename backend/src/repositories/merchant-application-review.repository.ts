@@ -175,7 +175,7 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
       type: "merchant",
       deletedAt: null,
       merchantDetail: { deletedAt: null },
-      ...(query.status ? { status: query.status } : {})
+      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected", "withdrawn"] }
     };
     const [rows, total] = await this.client.$transaction([
       this.client.identityApplication.findMany({
@@ -204,7 +204,7 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
     includeSensitiveDocuments: boolean
   ): Promise<MerchantApplicationReviewRecord | null> {
     const row = await this.client.identityApplication.findFirst({
-      where: { id: applicationId, type: "merchant", deletedAt: null },
+      where: { id: applicationId, type: "merchant", deletedAt: null, status: { not: "draft" } },
       select: buildMerchantReviewSelect(includeSensitiveDocuments, this.now())
     });
     return row ? this.map(row) : null;
@@ -351,6 +351,8 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
             shopId: shop.id,
             identityId: identity.identityId,
             billingProfileId: billingProfile.id,
+            ekycPolicy: input.ekycPolicy,
+            bankVerification: input.bankVerification,
             bankAccountId: input.bankAccountId,
             contractAcceptanceId: input.contractAcceptanceId,
             serviceCategoryIds: input.serviceCategoryIds,
@@ -449,7 +451,8 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
           id: input.bankAccountId,
           ownerUserId: input.applicantUserId,
           purpose: "merchant_application",
-          verificationStatus: "verified",
+          verificationStatus: input.bankVerification?.status ?? "verified",
+          ...(input.bankVerification ? { verificationSource: input.bankVerification.source } : {}),
           deletedAt: null
         },
         select: { id: true }
@@ -531,7 +534,9 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
         ? this.cipher.matchHash(
             this.holder.normalizeForMatch("corporate", detail.corporateLegalNameKana)
           )
-        : (row.applicant.ekycVerifications[0]?.nameMatchHash ?? null);
+        : bank?.verificationSource === "applicant_declaration"
+          ? this.cipher.matchHash(this.holder.normalizeForMatch("individual", detail.representativeNameKana))
+          : (row.applicant.ekycVerifications[0]?.nameMatchHash ?? null);
 
     return {
       applicationId: row.id,

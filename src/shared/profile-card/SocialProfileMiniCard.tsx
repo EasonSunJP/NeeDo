@@ -85,6 +85,8 @@ type CommonSocialProfileMiniCardProps = {
   onAction?: () => void;
   onShare?: () => void;
   actionSlot?: ReactNode;
+  footerSlot?: ReactNode;
+  showRating?: boolean;
   showAction?: boolean;
   showLevel?: boolean;
   showSocialStats?: boolean;
@@ -784,7 +786,7 @@ function ScoreMetricBadge({
 }
 
 export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
-  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showLevel, showSocialStats, showShareAction = false, shareCount, topTags } = props;
+  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showRating = true, footerSlot, showLevel, showSocialStats, showShareAction = false, shareCount, topTags } = props;
   const { isNight, theme } = useClientTheme();
   const location = useLocation();
   const data = buildSocialProfileMiniCardData(
@@ -813,8 +815,8 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
   const avatarDetailTo = resolvedDetailTo;
   const scoreParts = splitScoreValue(data.scoreValue);
   const isService = data.entityType === "service";
-  const usesSimpleScorePill = data.scoreLabel === "服务评价";
-  const shouldOverlayScoreOnAvatar = (data.entityType === "user" || data.entityType === "shop" || data.entityType === "technician") && !usesSimpleScorePill;
+  const usesSimpleScorePill = showRating && data.scoreLabel === "服务评价";
+  const shouldOverlayScoreOnAvatar = showRating && (data.entityType === "user" || data.entityType === "shop" || data.entityType === "technician") && !usesSimpleScorePill;
   const hasPrimaryAction = Boolean(actionSlot || data.actionLabel);
   const hasShareAction = showAction && showShareAction;
   const hasAction = showAction && Boolean(hasPrimaryAction || showShareAction);
@@ -938,12 +940,13 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
                   <KindLevelValue data={data} />
                 </div>
               </div>
-              {isService || shouldOverlayScoreOnAvatar || usesSimpleScorePill ? null : (
+              {!showRating || isService || shouldOverlayScoreOnAvatar || usesSimpleScorePill ? null : (
                 <ScoreMetricBadge metricClassName={metricClassName} mutedClassName={mutedClassName} scoreLabel={data.scoreLabel} scoreParts={scoreParts} />
               )}
             </div>
           </InteractiveArea>
         </div>
+        {footerSlot}
       </div>
     </article>
   );

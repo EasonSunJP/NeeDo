@@ -1,3 +1,4 @@
+import type { ApplicationEkycPolicyPort } from "../domain/user-policy-enforcement";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { BankAccountHolderService } from "./bank-account-holder.service";
@@ -10,6 +11,7 @@ export interface MerchantBankBindingContext {
   version: number;
   applicantKind: "corporate" | "individual";
   corporateLegalNameKana: string | null;
+  representativeNameKana: string;
   currentBankAccountId: number | null;
   verifiedEkycNameKanaEncrypted: string | null;
 }
@@ -22,7 +24,7 @@ export interface BindMerchantBankAccountInput {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumber: string;
   accountHolderName: string;
   now: Date;
@@ -37,14 +39,15 @@ export interface BindVerifiedMerchantBankAccountRepositoryInput {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumberEncrypted: string;
   accountHolderEncrypted: string;
   accountHolderNormalizedEncrypted: string;
   holderMatchHash: string;
-  verificationSource: "corporate_registration" | "ekyc";
-  verificationStatus: "verified";
-  verifiedAt: Date;
+  verificationSource: "corporate_registration" | "ekyc" | "applicant_declaration";
+  verificationStatus: "verified" | "declared";
+  verifiedAt: Date | null;
+  boundAt: Date;
   auditMetadata: Record<string, unknown>;
 }
 
@@ -57,7 +60,7 @@ export interface ProtectedBankAccountProjection {
   accountType: string;
   accountNumberMasked: string;
   holderMatched: true;
-  verifiedAt: Date;
+  verifiedAt: Date | null;
   applicationVersion: number;
 }
 
@@ -80,6 +83,7 @@ export class ProtectedBankAccountService {
   public constructor(
     private readonly repository: ProtectedBankAccountRepositoryPort,
     private readonly cipher: SensitiveFieldCipherService,
+    private readonly ekycPolicy: ApplicationEkycPolicyPort,
     private readonly holder = new BankAccountHolderService()
   ) {}
 
@@ -108,11 +112,16 @@ export class ProtectedBankAccountService {
       context.verifiedEkycNameKanaEncrypted === null
         ? undefined
         : this.cipher.open(context.verifiedEkycNameKanaEncrypted);
-    if (context.applicantKind === "individual" && !eKycNameKana) {
+    const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(input.userId, "merchant", input.now);
+    if (ekyc.required && (!ekyc.verified || (context.applicantKind === "individual" && !eKycNameKana))) {
       throw this.conflict("error.identity_application.ekyc_required");
     }
+    const declared = context.applicantKind === "individual" && !eKycNameKana;
     try {
-      this.holder.assertMatches({
+      if (declared) {
+        const expected = this.holder.normalizeKatakana(context.representativeNameKana);
+        if (!expected || expected !== this.holder.normalizeKatakana(input.accountHolderName)) throw new Error("holder mismatch");
+      } else this.holder.assertMatches({
         applicantKind: context.applicantKind,
         bankHolderName: input.accountHolderName,
         corporateLegalNameKana: context.corporateLegalNameKana ?? undefined,
@@ -128,7 +137,7 @@ export class ProtectedBankAccountService {
       input.accountHolderName
     );
     const verificationSource =
-      context.applicantKind === "corporate" ? "corporate_registration" : "ekyc";
+      context.applicantKind === "corporate" ? "corporate_registration" : declared ? "applicant_declaration" : "ekyc";
     const result = await this.repository.bindVerifiedMerchantAccount({
       userId: input.userId,
       applicationId: input.applicationId,
@@ -144,12 +153,15 @@ export class ProtectedBankAccountService {
       accountHolderNormalizedEncrypted: this.cipher.seal(normalizedHolder),
       holderMatchHash: this.cipher.matchHash(normalizedMatchValue),
       verificationSource,
-      verificationStatus: "verified",
-      verifiedAt: input.now,
+      verificationStatus: declared ? "declared" : "verified",
+      verifiedAt: declared ? null : input.now,
+      boundAt: input.now,
       auditMetadata: {
         applicationId: input.applicationId,
         applicantKind: context.applicantKind,
-        verificationStatus: "verified"
+        verificationStatus: declared ? "declared" : "verified",
+        verificationSource,
+        ekycPolicy: ekyc
       }
     });
 

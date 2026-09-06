@@ -5,7 +5,20 @@ export type ContractLanguage = "zh-CN" | "ja" | "en";
 export type IdentityApplicationStatus = "draft" | "submitted" | "under_review" | "approved" | "rejected" | "withdrawn";
 
 export type Paginated<T> = { list: T[]; total: number; page: number; page_size: number };
+export interface ApplicationReviewEvidence {
+  serviceCategories?: string[];
+  businessKeywords?: string[];
+  targetShopName: string | null;
+  targetShopPublicId: string | null;
+  media: Array<{ id: number; purpose: string }>;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string | null; accountHolderMasked: string | null; verificationStatus: string } | null;
+  contractAcceptance: { contractVersion: string; acceptedTextSnapshot: string; acceptedAt: string; receiptId: string } | null;
+}
+
 export type IdentityApplication = {
+  reviewEvidence?: ApplicationReviewEvidence;
+  createdAt?: string;
+  purgedAt?: string | null;
   id: number;
   userId: number;
   type: "technician" | "merchant";
@@ -50,7 +63,7 @@ export type MerchantApplicationProfile = {
   eKycVerified: boolean;
 };
 
-export type EligibleShop = { id: number; merchantId: string; name: string; city: string; address: string };
+export type EligibleShop = { coverUrl?: string | null; rating?: number | null; reviewCount?: number; keywords?: string[]; id: number; merchantId: string; name: string; city: string; address: string };
 export type ContractDefinition = {
   type: "merchant" | "affiliate";
   version: string;
@@ -226,7 +239,7 @@ export type BankAccountInput = {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumber: string;
   accountHolderName: string;
 };

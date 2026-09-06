@@ -2,12 +2,17 @@ import { createHash, randomUUID } from "node:crypto";
 import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
+  MerchantNoticeDraftCreateBody,
+  MerchantNoticeDraftUpdateBody,
   MerchantNoticeCreateBody,
   NoticeAudienceInput,
   OfficialNoticeBlockInput,
   OfficialNoticeCreateBody,
+  OfficialNoticeDraftCreateBody,
+  OfficialNoticeDraftUpdateBody,
   OfficialNoticeLifecycleBody,
   OfficialNoticeListQuery,
+  OfficialNoticePlanBody,
   OfficialNoticeReadQuery
 } from "../validators/official-notice.validator";
 import { AppError } from "../utils/app-error";
@@ -45,6 +50,7 @@ export interface OfficialNoticePayload {
   status: OfficialNoticeStatusCode;
   sourceLocale: ContentLocaleCode;
   targetSummary: string;
+  audience?: NoticeAudienceInput;
   scheduledAt: Date | null;
   sentAt: Date | null;
   cancelledAt: Date | null;
@@ -85,7 +91,46 @@ export interface CreateAndPlanOfficialNoticeInput {
   translations: Record<ContentLocaleCode, OfficialNoticeTranslationPayload>;
 }
 
+export interface CreateDraftOfficialNoticeInput {
+  publicId: string;
+  actorUserId: number;
+  context: AuthRequestContext;
+  now: Date;
+  level: OfficialNoticeLevelCode;
+  sourceLocale: ContentLocaleCode;
+  issuerScope: NoticeIssuerScope;
+  audience: NoticeAudienceInput;
+  targetSummary: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  translations: Record<ContentLocaleCode, OfficialNoticeTranslationPayload>;
+}
+
+export interface UpdateDraftOfficialNoticeInput extends CreateDraftOfficialNoticeInput {
+  expectedLockVersion: number;
+}
+
+export interface PlanDraftOfficialNoticeInput {
+  publicId: string;
+  actorUserId: number;
+  context: AuthRequestContext;
+  now: Date;
+  issuerScope: NoticeIssuerScope;
+  expectedLockVersion: number;
+  scheduledAt: Date;
+  sendMode: "now" | "scheduled";
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
 export interface OfficialNoticeRepositoryPort {
+  createDraft(input: CreateDraftOfficialNoticeInput): Promise<OfficialNoticePayload>;
+  getManaged(
+    publicId: string,
+    issuerScope: NoticeIssuerReadScope
+  ): Promise<OfficialNoticePayload>;
+  updateDraft(input: UpdateDraftOfficialNoticeInput): Promise<OfficialNoticePayload>;
+  planDraft(input: PlanDraftOfficialNoticeInput): Promise<OfficialNoticePayload>;
   createAndPlan(input: CreateAndPlanOfficialNoticeInput): Promise<OfficialNoticePayload>;
   dispatchNotice(publicId: string, now: Date): Promise<OfficialNoticePayload>;
   listBackoffice(input: {
@@ -175,6 +220,201 @@ export class OfficialNoticeService {
     input: MerchantNoticeCreateBody
   ): Promise<OfficialNoticePayload> {
     return this.createAndPlanScoped(actor, context, input, resolveNoticeIssuerScope(actor, "shop"));
+  }
+
+  public createDraft(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: OfficialNoticeDraftCreateBody
+  ): Promise<OfficialNoticePayload> {
+    return this.createDraftScoped(actor, context, input, { type: "platform" });
+  }
+
+  public createDraftMerchant(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: MerchantNoticeDraftCreateBody
+  ): Promise<OfficialNoticePayload> {
+    return this.createDraftScoped(actor, context, input, resolveNoticeIssuerScope(actor, "shop"));
+  }
+
+  public getDraft(
+    _actor: AuthenticatedAccessContext,
+    publicId: string
+  ): Promise<OfficialNoticePayload> {
+    return this.repository.getManaged(publicId, { type: "platform" });
+  }
+
+  public getMerchantDraft(
+    actor: AuthenticatedAccessContext,
+    publicId: string
+  ): Promise<OfficialNoticePayload> {
+    return this.repository.getManaged(publicId, resolveNoticeReadScope(actor));
+  }
+
+  public updateDraft(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticeDraftUpdateBody
+  ): Promise<OfficialNoticePayload> {
+    return this.updateDraftScoped(actor, context, publicId, input, { type: "platform" });
+  }
+
+  public updateDraftMerchant(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: MerchantNoticeDraftUpdateBody
+  ): Promise<OfficialNoticePayload> {
+    return this.updateDraftScoped(
+      actor,
+      context,
+      publicId,
+      input,
+      resolveNoticeIssuerScope(actor, "shop")
+    );
+  }
+
+  public planDraft(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticePlanBody
+  ): Promise<OfficialNoticePayload> {
+    return this.planDraftScoped(actor, context, publicId, input, { type: "platform" });
+  }
+
+  public planDraftMerchant(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticePlanBody
+  ): Promise<OfficialNoticePayload> {
+    return this.planDraftScoped(
+      actor,
+      context,
+      publicId,
+      input,
+      resolveNoticeIssuerScope(actor, "shop")
+    );
+  }
+
+  private createDraftScoped(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: OfficialNoticeDraftCreateBody | MerchantNoticeDraftCreateBody,
+    issuerScope: NoticeIssuerScope
+  ): Promise<OfficialNoticePayload> {
+    const now = this.now();
+    const publicId = this.createPublicId();
+    return this.repository.createDraft({
+      publicId,
+      actorUserId: actor.userId,
+      context,
+      now,
+      level: input.level,
+      sourceLocale: input.sourceLocale,
+      issuerScope,
+      audience: input.audience,
+      targetSummary: this.targetSummary(input.audience),
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint: this.fingerprint(
+        "create_draft",
+        this.scopedFingerprintInput(actor, issuerScope, { input })
+      ),
+      translations: this.draftTranslations(input)
+    });
+  }
+
+  private updateDraftScoped(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticeDraftUpdateBody | MerchantNoticeDraftUpdateBody,
+    issuerScope: NoticeIssuerScope
+  ): Promise<OfficialNoticePayload> {
+    return this.repository.updateDraft({
+      publicId,
+      actorUserId: actor.userId,
+      context,
+      now: this.now(),
+      level: input.level,
+      sourceLocale: input.sourceLocale,
+      issuerScope,
+      audience: input.audience,
+      targetSummary: this.targetSummary(input.audience),
+      expectedLockVersion: input.expectedLockVersion,
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint: this.fingerprint(
+        "update_draft",
+        this.scopedFingerprintInput(actor, issuerScope, { publicId, input })
+      ),
+      translations: this.draftTranslations(input)
+    });
+  }
+
+  private async planDraftScoped(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: OfficialNoticePlanBody,
+    issuerScope: NoticeIssuerScope
+  ): Promise<OfficialNoticePayload> {
+    const now = this.now();
+    const scheduledAt = input.sendMode === "now" ? now : new Date(input.scheduledAt as string);
+    const planned = await this.repository.planDraft({
+      publicId,
+      actorUserId: actor.userId,
+      context,
+      now,
+      issuerScope,
+      expectedLockVersion: input.expectedLockVersion,
+      scheduledAt,
+      sendMode: input.sendMode,
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint: this.fingerprint(
+        "plan_draft",
+        this.scopedFingerprintInput(actor, issuerScope, { publicId, input })
+      )
+    });
+    return input.sendMode === "now" && ["scheduled", "sending"].includes(planned.status)
+      ? this.repository.dispatchNotice(planned.publicId, now)
+      : planned;
+  }
+
+  private draftTranslations(
+    input:
+      | OfficialNoticeDraftCreateBody
+      | MerchantNoticeDraftCreateBody
+      | OfficialNoticeDraftUpdateBody
+      | MerchantNoticeDraftUpdateBody
+  ): Record<ContentLocaleCode, OfficialNoticeTranslationPayload> {
+    return Object.fromEntries(CONTENT_LOCALES.map((locale) => {
+      const translation = input.translations[locale];
+      return [locale, {
+        title: translation.title.trim(),
+        summary: translation.summary.trim(),
+        blocks: structuredClone(translation.blocks),
+        sourceLocale: input.sourceLocale,
+        isInitialCopy: locale === input.sourceLocale ? false : translation.isInitialCopy
+      }];
+    })) as Record<ContentLocaleCode, OfficialNoticeTranslationPayload>;
+  }
+
+  private scopedFingerprintInput(
+    actor: AuthenticatedAccessContext,
+    issuerScope: NoticeIssuerScope,
+    value: Record<string, unknown>
+  ) {
+    return issuerScope.type === "platform"
+      ? { actorUserId: actor.userId, ...value }
+      : {
+          actorUserId: actor.userId,
+          actorIdentityId: issuerScope.actorIdentityId,
+          issuerShopId: issuerScope.shopId,
+          ...value
+        };
   }
 
   private async createAndPlanScoped(

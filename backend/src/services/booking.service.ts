@@ -1020,6 +1020,14 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<BookingOrderPayload> {
     const scope = this.getManualPaymentScope(actor);
+    const current = await this.getOrder(actor, orderId);
+    if (current.status === "completed" && current.paymentStatus === "confirmed") {
+      throw new AppError({
+        code: ERROR_CODES.PAYMENT_INVALID_STATE,
+        message: "error.payment.invalid_state",
+        statusCode: 409
+      });
+    }
     const result = await this.repository.refundManualPayment({
       ...scope,
       orderId,

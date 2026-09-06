@@ -1,3 +1,4 @@
+import { createApplicationEkycPolicy } from "./application-ekyc-policy.factory";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { RealtimeRepository } from "../repositories/realtime.repository";
@@ -13,7 +14,8 @@ export const createTechnicianApplicationReviewServiceForRoutes = (
   new TechnicianApplicationReviewService(
     dependencies.technicianApplicationReviewRepository ??
       new TechnicianApplicationReviewRepository(),
-    dependencies.realtimeRepository ?? new RealtimeRepository()
+    dependencies.realtimeRepository ?? new RealtimeRepository(),
+    createApplicationEkycPolicy(dependencies)
   );
 
 export const createTechnicianResumeExportServiceForRoutes = (

@@ -27,6 +27,13 @@ import {
 } from "../utils/pagination";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
+import {
+  ExchangeMatchingRepository,
+  type CompleteExchangeMatchInput,
+  type ExchangeMatchingSelectionClaim,
+  type NotifyQuickBudgetDecisionRequiredInput
+} from "./exchange-matching.repository";
+import type { ExchangeMatchingPayload } from "../types/exchange-matching.types";
 
 export type ExchangeClaimProviderScope =
   | { kind: "merchant"; shopId: number }
@@ -178,8 +185,22 @@ export class ExchangeClaimRepository {
       Prisma.sql`post.\`status\` = 'published'`,
       Prisma.sql`post.\`expires_at\` > ${input.now}`,
       Prisma.sql`post.\`deleted_at\` IS NULL`,
-      Prisma.sql`demand.\`match_mode\` = 'selective'`,
       Prisma.sql`demand.\`deleted_at\` IS NULL`,
+      Prisma.sql`matching.\`status\` = 'open'`,
+      Prisma.sql`matching.\`deleted_at\` IS NULL`,
+      Prisma.sql`(
+        demand.\`match_mode\` = 'selective'
+        OR (
+          demand.\`match_mode\` = 'quick'
+          AND (
+            SELECT COUNT(*)
+            FROM \`exchange_claims\` AS capacity_claim
+            WHERE capacity_claim.\`exchange_post_id\` = post.\`id\`
+              AND capacity_claim.\`status\` = 'active'
+              AND capacity_claim.\`deleted_at\` IS NULL
+          ) < matching.\`effective_target_provider_count\`
+        )
+      )`,
       Prisma.sql`slot.\`status\` = 'available'`,
       Prisma.sql`slot.\`booked_count\` < slot.\`capacity\``,
       Prisma.sql`slot.\`technician_profile_id\` IS NOT NULL`,
@@ -286,6 +307,8 @@ export class ExchangeClaimRepository {
     const from = Prisma.sql`
       FROM \`exchange_posts\` AS post
       JOIN \`exchange_demands\` AS demand ON demand.\`post_id\` = post.\`id\`
+      JOIN \`exchange_request_matchings\` AS matching
+        ON matching.\`exchange_post_id\` = post.\`id\`
       JOIN \`schedule_slots\` AS slot
         ON slot.\`starts_at\` >= post.\`service_start_at\`
        AND slot.\`ends_at\` <= post.\`service_end_at\`
@@ -402,6 +425,8 @@ export class ExchangeClaimRepository {
     id: number;
     status: "open" | "matched" | "closed";
     version: number;
+    effectiveTargetProviderCount: number;
+    effectiveBudgetMaxJpy: number;
   } | null> {
     const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id
@@ -413,13 +438,21 @@ export class ExchangeClaimRepository {
     if (!locked[0]) return null;
     const row = await this.client.exchangeRequestMatching.findUnique({
       where: { exchangePostId: postId },
-      select: { id: true, status: true, version: true }
+      select: {
+        id: true,
+        status: true,
+        version: true,
+        effectiveTargetProviderCount: true,
+        effectiveBudgetMaxJpy: true
+      }
     });
     return row
       ? {
           id: row.id,
           status: row.status.toLowerCase() as "open" | "matched" | "closed",
-          version: row.version
+          version: row.version,
+          effectiveTargetProviderCount: row.effectiveTargetProviderCount,
+          effectiveBudgetMaxJpy: row.effectiveBudgetMaxJpy
         }
       : null;
   }
@@ -495,6 +528,44 @@ export class ExchangeClaimRepository {
       FOR UPDATE
     `);
     return Boolean(locked[0]);
+  }
+
+  public lockActiveClaims(exchangePostId: number): Promise<ExchangeMatchingSelectionClaim[]> {
+    return this.matchingRepository().lockActiveClaims(exchangePostId);
+  }
+
+  public lockTechnicians(technicianProfileIds: number[]): Promise<boolean> {
+    return this.matchingRepository().lockTechnicians(technicianProfileIds);
+  }
+
+  public hasParticipantConflict(
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    return this.matchingRepository().hasParticipantConflict(
+      technicianProfileId,
+      startsAt,
+      endsAt
+    );
+  }
+
+  public hasBookingConflict(
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    return this.matchingRepository().hasBookingConflict(technicianProfileId, startsAt, endsAt);
+  }
+
+  public notifyQuickBudgetDecisionRequired(
+    input: NotifyQuickBudgetDecisionRequiredInput
+  ): Promise<void> {
+    return this.matchingRepository().notifyQuickBudgetDecisionRequired(input);
+  }
+
+  public completeMatch(input: CompleteExchangeMatchInput): Promise<ExchangeMatchingPayload | null> {
+    return this.matchingRepository().completeMatch(input);
   }
 
   public async lockOption(
@@ -852,6 +923,10 @@ export class ExchangeClaimRepository {
 
   public async createAudit(input: AuditLogCreateInput): Promise<void> {
     await this.client.auditLog.create({ data: toAuditLogCreateData(input) });
+  }
+
+  private matchingRepository(): ExchangeMatchingRepository {
+    return new ExchangeMatchingRepository(this.client);
   }
 
   private mapOption(row: ExchangeClaimOptionRow): ExchangeClaimOptionPayload {

@@ -3329,8 +3329,7 @@ export class BookingRepository implements BookingRepositoryPort {
       }
 
       const mayRefund =
-        (current.paymentStatus === "REFUND_PENDING" && current.status === "CANCELLED") ||
-        (current.paymentStatus === "CONFIRMED" && current.status === "COMPLETED");
+        current.paymentStatus === "REFUND_PENDING" && current.status === "CANCELLED";
 
       if (!mayRefund) {
         return { outcome: "invalid_state" };

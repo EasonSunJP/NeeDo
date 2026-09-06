@@ -115,13 +115,13 @@ export function LiveDashboardPanels({ map, snapshot }: LiveDashboardPanelsProps)
             <AutoScrollList className="live-dashboard-scroll-list" getKey={(item) => `${item.orderNo}:${item.occurredAt}`} intervalMs={3500} items={snapshot.activity} renderItem={renderOrder} visibleCount={2} />
           ) : empty}
         </section>
-        <section className="live-dashboard-panel is-ranking">
+        <section className="live-dashboard-panel is-ranking is-service-ranking">
           <PanelHeading scopeLabel={scopeLabel} title={t("服务 TOP10")} />
           {snapshot.serviceRanking.length ? (
             <AutoScrollList className="live-dashboard-scroll-list" getKey={(item) => item.entityPublicId} intervalMs={4000} items={snapshot.serviceRanking} renderItem={renderRanking} visibleCount={3} />
           ) : empty}
         </section>
-        <section className="live-dashboard-panel is-ranking">
+        <section className="live-dashboard-panel is-ranking is-technician-ranking">
           <PanelHeading scopeLabel={scopeLabel} title={t("技师 TOP10")} />
           {snapshot.technicianRanking.length ? (
             <AutoScrollList className="live-dashboard-scroll-list" getKey={(item) => item.entityPublicId} intervalMs={4000} items={snapshot.technicianRanking} renderItem={renderRanking} visibleCount={3} />

@@ -1,3 +1,5 @@
+import type { AccountUserLogDetail, AccountActivitySubject } from "./types";
+import type { RealtimeSocialPost } from "../realtime/api";
 import { httpClient, type ApiQueryValue } from "../../api/httpClient";
 import {
   platformBenefitCodes,
@@ -229,6 +231,7 @@ const decodeGroup = (value: unknown): UserGroup => {
 const decodeGroupMember = (value: unknown): UserGroupMember => {
   const raw = record(value);
   return {
+    id: integer(raw.id),
     needoId: string(raw.needoId),
     username: string(raw.username),
     avatarUrl: nullableString(raw.avatarUrl),
@@ -248,6 +251,8 @@ const decodePolicy = (value: unknown): UserGlobalPolicy => {
     requireEmail: boolean(raw.requireEmail),
     requireHomeServiceEkyc: boolean(raw.requireHomeServiceEkyc),
     requireStoreServiceEkyc: boolean(raw.requireStoreServiceEkyc),
+    requireMerchantApplicationEkyc: boolean(raw.requireMerchantApplicationEkyc),
+    requireTechnicianApplicationEkyc: boolean(raw.requireTechnicianApplicationEkyc),
     ndpPerBaseExp: integer(raw.ndpPerBaseExp),
     baseExpUnitsPerThreshold: integer(raw.baseExpUnitsPerThreshold),
     effectiveFrom: timestamp(raw.effectiveFrom),
@@ -466,6 +471,14 @@ const userQuery = (query: UserListQuery): Record<string, ApiQueryValue> => {
 };
 
 export const platformUserManagementApi = {
+  getTechnicianUserLog(scope: UserDirectoryScope, technicianId: number, query?: { audit_page: number; audit_page_size: 10 | 50; audit_from?: string; audit_to?: string }) {
+    const prefix = scope === "operations" ? "/backoffice" : "/merchant-admin";
+    return httpClient.request<AccountUserLogDetail>(`${prefix}/technicians/${technicianId}/user-log`, { query });
+  },
+  listAccountPosts(account: AccountActivitySubject, page: number, signal?: AbortSignal) {
+    const prefix = account.scope === "operations" ? "/backoffice" : "/merchant-admin";
+    return httpClient.request<{ list: RealtimeSocialPost[]; total: number; page: number; page_size: number }>(`${prefix}/${account.subject}/${account.id}/posts`, { query: { page, pageSize: 10 }, signal });
+  },
   async listUsers(scope: UserDirectoryScope, query: UserListQuery = {}) {
     const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
     return decodePage(
@@ -473,7 +486,7 @@ export const platformUserManagementApi = {
       decodeUser
     );
   },
-  async getUser(scope: UserDirectoryScope, userId: number, query?: { audit_page: number; audit_page_size: 10 | 50 }) {
+  async getUser(scope: UserDirectoryScope, userId: number, query?: { audit_page: number; audit_page_size: 10 | 50; audit_from?: string; audit_to?: string }) {
     const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
     return decodeUserDetail(await (query ? httpClient.request<unknown>(`${path}/${userId}`, { query }) : httpClient.request<unknown>(`${path}/${userId}`)));
   },
@@ -559,13 +572,15 @@ export const platformUserManagementApi = {
     requireEmail: boolean;
     requireHomeServiceEkyc: boolean;
     requireStoreServiceEkyc: boolean;
+    requireMerchantApplicationEkyc: boolean;
+    requireTechnicianApplicationEkyc: boolean;
     ndpPerBaseExp: number;
     baseExpUnitsPerThreshold: number;
     effectiveFrom: string;
   }) {
     return decodePolicy(await httpClient.request<unknown>("/backoffice/user-global-settings/draft", { method: "PUT", body }));
   },
-  async publishGlobalSettings(body: { expectedVersion: number; expectedLockVersion: number }) {
+  async publishGlobalSettings(body: { expectedVersion: number; expectedLockVersion: number; effectiveImmediately?: boolean }) {
     return decodePolicy(await httpClient.request<unknown>("/backoffice/user-global-settings/publish", { method: "POST", body }));
   },
   async listCampaigns(query: PageQuery = {}) {

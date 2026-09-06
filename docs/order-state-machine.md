@@ -175,7 +175,7 @@ Oversell or conflict returns:
 - A payment can be confirmed only after the order is confirmed and before/after service completion. The confirmed amount must equal the order price snapshot.
 - Merchant mutations are restricted to the authenticated shop. Operations/finance mutations require a platform identity and the backoffice payment-write permission.
 - Repeating the exact same confirmation or refund returns the existing order without another mutation or audit event. A different retry returns a stable conflict.
-- Cancelling a confirmed paid order changes payment status to `refundPending`. A cancelled `refundPending` payment or a completed confirmed payment can be marked `refunded`.
+- Cancelling a confirmed paid order changes payment status to `refundPending`; the direct merchant/backoffice payment-refund endpoints may finalize only that cancelled `refundPending` pre-completion path. A `COMPLETED` + `CONFIRMED` order must use the formal `OrderRefundCase` workflow and becomes `REFUNDED` only when its customer confirms receipt.
 - Confirmation and refund update the order plus `order_financials` money timeline in one database transaction. Each applied action also writes an audit log.
 
 ## Frontend Integration

@@ -24,6 +24,15 @@ export interface ExchangeMatchAdjustmentPreview {
   requiresBudgetConfirmation: boolean;
 }
 
+export interface ExchangeQuickBudgetDecision {
+  action: "increase_to_selected_total";
+  activeClaimCount: number;
+  selectedQuoteTotalJpy: number;
+  effectiveBudgetMaxJpy: number;
+  requiredBudgetMaxJpy: number;
+  requiredBudgetIncreaseJpy: number;
+}
+
 export interface ExchangeMatchParticipantPayload {
   exchangeClaimId: number;
   provider: {
@@ -67,8 +76,10 @@ export interface ExchangeMatchingPayload {
   selectedQuoteTotalJpy: number;
   matchedAt: string | null;
   participants: ExchangeMatchParticipantPayload[];
+  quickBudgetDecision: ExchangeQuickBudgetDecision | null;
   viewer: {
     canSelect: boolean;
+    canConfirmQuickBudget: boolean;
     canCreateBookings: boolean;
   };
 }

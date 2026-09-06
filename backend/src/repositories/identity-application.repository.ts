@@ -1,3 +1,4 @@
+import type { SensitiveFieldCipherService } from "../services/sensitive-field-cipher.service";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import {
@@ -24,17 +25,18 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 
 const identityApplicationInclude = {
-  technicianDetail: true,
+  technicianDetail: { include: { targetShop: { select: { name: true, publicIdentifier: { select: { publicId: true } } } } } },
   merchantDetail: {
     include: {
+      contractAcceptance: { select: { contractVersion: true, acceptedTextSnapshot: true, acceptedAt: true, receiptId: true, deletedAt: true } },
       bankAccount: {
-        select: { verificationStatus: true }
+        select: { bankCode: true, bankName: true, branchCode: true, branchName: true, accountType: true, accountNumberEncrypted: true, accountHolderEncrypted: true, verificationStatus: true, deletedAt: true }
       }
     }
   },
   media: {
     where: { deletedAt: null },
-    select: { purpose: true }
+    select: { purpose: true, mediaAssetId: true }
   },
   applicant: {
     select: {
@@ -46,12 +48,12 @@ const identityApplicationInclude = {
   },
   serviceCategories: {
     where: { deletedAt: null },
-    select: { categoryId: true },
+    select: { categoryId: true, category: { select: { translations: { where: { locale: "JA", deletedAt: null }, take: 1, select: { name: true } } } } },
     orderBy: [{ categoryId: "asc" as const }, { id: "asc" as const }]
   },
   businessKeywords: {
     where: { deletedAt: null },
-    select: { businessKeywordId: true },
+    select: { businessKeywordId: true, businessKeyword: { select: { translations: { where: { locale: "JA", deletedAt: null }, take: 1, select: { label: true } } } } },
     orderBy: [{ businessKeywordId: "asc" as const }, { id: "asc" as const }]
   }
 } satisfies Prisma.IdentityApplicationInclude;
@@ -70,7 +72,7 @@ const asObject = (value: Prisma.JsonValue | null): Record<string, unknown> | nul
     : null;
 
 export class IdentityApplicationRepository implements IdentityApplicationRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(private readonly client: PrismaClient = prisma, private readonly cipher?: SensitiveFieldCipherService) {}
 
   public async listMine(
     userId: number,
@@ -86,7 +88,7 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       this.client.identityApplication.findMany({
         where,
         include: identityApplicationInclude,
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize
       }),
@@ -104,13 +106,11 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
   public async searchEligibleShops(
     query: EligibleShopSearchQuery
   ): Promise<PaginatedResult<EligibleShopSearchResult>> {
-    const merchantIdMatch = /^(?:s)?(\d+)$/iu.exec(query.query);
-    const numericId = merchantIdMatch ? Number.parseInt(merchantIdMatch[1], 10) : null;
     const where: Prisma.ShopWhereInput = {
       status: "published",
       deletedAt: null,
       OR: [
-        ...(numericId && numericId > 0 ? [{ id: numericId }] : []),
+        { publicIdentifier: { is: { publicId: query.query.toLowerCase(), deletedAt: null } } },
         { name: { contains: query.query } },
         { city: { contains: query.query } },
         { address: { contains: query.query } }
@@ -119,7 +119,12 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
     const [rows, total] = await this.client.$transaction([
       this.client.shop.findMany({
         where,
-        select: { id: true, name: true, city: true, address: true },
+        select: {
+          id: true, name: true, city: true, address: true, publicIdentifier: { select: { publicId: true } },
+          mediaAssets: { where: { deletedAt: null, isActive: true, usageType: "cover" }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], take: 1, select: { url: true } },
+          reviewSummary: { select: { ratingAverage: true, reviewCount: true, deletedAt: true } },
+          businessKeywordSelections: { where: { deletedAt: null, businessKeyword: { isActive: true, deletedAt: null, category: { isActive: true, deletedAt: null } } }, take: 10, orderBy: { id: "asc" }, select: { businessKeyword: { select: { translations: { where: { locale: "JA", deletedAt: null }, take: 1, select: { label: true } } } } } }
+        },
         orderBy: [{ name: "asc" }, { id: "asc" }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize
@@ -130,10 +135,14 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
     return {
       list: rows.map((row) => ({
         id: row.id,
-        merchantId: `s${String(row.id).padStart(10, "0")}`,
+        merchantId: row.publicIdentifier?.publicId ?? "",
         name: row.name,
         city: row.city,
-        address: row.address
+        address: row.address,
+        coverUrl: row.mediaAssets?.[0]?.url ?? null,
+        rating: row.reviewSummary?.deletedAt === null ? Number(row.reviewSummary.ratingAverage) : null,
+        reviewCount: row.reviewSummary?.deletedAt === null ? row.reviewSummary.reviewCount : 0,
+        keywords: (row.businessKeywordSelections ?? []).flatMap(item => item.businessKeyword.translations.map(value => value.label))
       })),
       total,
       page: query.page,
@@ -450,11 +459,35 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       submittedAt: row.submittedAt,
       closedAt: row.closedAt,
       purgeAt: row.purgeAt,
+      purgedAt: row.purgedAt,
       rejectionReason: row.rejectionReason,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       technicianDetail,
-      merchantDetail
+      merchantDetail,
+      reviewEvidence: {
+        serviceCategories: (row.serviceCategories ?? []).flatMap(item => item.category?.translations.map(value => value.name) ?? []),
+        businessKeywords: (row.businessKeywords ?? []).flatMap(item => item.businessKeyword?.translations.map(value => value.label) ?? []),
+        targetShopName: row.technicianDetail?.targetShop?.name ?? null,
+        targetShopPublicId: row.technicianDetail?.targetShop?.publicIdentifier?.publicId ?? null,
+        media: row.media.map(item => ({ id: item.mediaAssetId, purpose: item.purpose })),
+        bankAccount: this.mapBankEvidence(row.merchantDetail?.bankAccount),
+        contractAcceptance: row.merchantDetail?.contractAcceptance?.deletedAt === null ? {
+          contractVersion: row.merchantDetail.contractAcceptance.contractVersion,
+          acceptedTextSnapshot: row.merchantDetail.contractAcceptance.acceptedTextSnapshot,
+          acceptedAt: row.merchantDetail.contractAcceptance.acceptedAt,
+          receiptId: row.merchantDetail.contractAcceptance.receiptId
+        } : null
+      }
+    };
+  }
+
+  private mapBankEvidence(bank: NonNullable<IdentityApplicationRow["merchantDetail"]>["bankAccount"] | undefined) {
+    if (!bank || bank.deletedAt !== null) return null;
+    return {
+      bankCode: bank.bankCode, bankName: bank.bankName, branchCode: bank.branchCode, branchName: bank.branchName, accountType: bank.accountType, verificationStatus: bank.verificationStatus,
+      accountNumberMasked: this.cipher ? this.cipher.maskAccountNumber(this.cipher.open(bank.accountNumberEncrypted)) : null,
+      accountHolderMasked: this.cipher ? `${Array.from(this.cipher.open(bank.accountHolderEncrypted)).slice(0, 2).join("")}***` : null
     };
   }
 

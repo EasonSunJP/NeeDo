@@ -12,6 +12,7 @@ import { BasicSettingsTab } from "./BasicSettingsTab";
 import { adminSystemSettingsCopy } from "./i18n";
 import { LegalDocumentsTab } from "./LegalDocumentsTab";
 import { PaymentSettingsTab } from "./PaymentSettingsTab";
+import { EkycSettingsTab } from "./EkycSettingsTab";
 import { RetentionSettingsTab } from "./RetentionSettingsTab";
 import type { ImRetentionSettings, OperationsPlatformSettings } from "./types";
 
@@ -19,7 +20,8 @@ const tabs = [
   { id: "basic", labelIndex: 0 },
   { id: "legal", labelIndex: 1 },
   { id: "storage", labelIndex: 2 },
-  { id: "payment", labelIndex: 3 }
+  { id: "payment", labelIndex: 3 },
+  { id: "ekyc", labelIndex: 4 }
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
 
@@ -94,7 +96,9 @@ export function SystemSettingsPage() {
   const dirtyChanged = (tab: TabId) => (dirty: boolean) => setDirtyTabs((current) => current[tab] === dirty ? current : { ...current, [tab]: dirty });
 
   let content;
-  if (activeTab === "legal") {
+  if (activeTab === "ekyc") {
+    content = <EkycSettingsTab onDirtyChange={dirtyChanged("ekyc")} />;
+  } else if (activeTab === "legal") {
     content = <LegalDocumentsTab onDirtyChange={dirtyChanged("legal")} />;
   } else if (activeTab === "storage") {
     content = retentionState === "ready" && retention ? (
@@ -118,7 +122,7 @@ export function SystemSettingsPage() {
     <AdminLayout>
     <ModuleShell description={labels.description} title={labels.title} actions={settings ? <Badge tone="blue">{labels.version} {settings.version}</Badge> : undefined}>
       <div className="rounded-2xl border border-line bg-white p-2 shadow-sm">
-        <div aria-label={labels.title} className="grid gap-2 md:grid-cols-4" role="tablist">
+        <div aria-label={labels.title} className="grid gap-2 md:grid-cols-5" role="tablist">
           {tabLabels.map((tab, index) => (
             <button aria-controls={`system-settings-panel-${tab.id}`} aria-selected={activeTab === tab.id} className={cn("admin-section-tab focus-ring relative rounded-xl px-4 py-3 text-sm font-black transition", activeTab === tab.id ? "is-active shadow-sm" : "bg-paper")} id={`system-settings-tab-${tab.id}`} key={tab.id} onClick={() => selectTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)} ref={(node) => { tabRefs.current[index] = node; }} role="tab" tabIndex={activeTab === tab.id ? 0 : -1} type="button">
               {tab.label}

@@ -10,6 +10,7 @@ import {
 import { merchantSaasBillingApi } from "../../api/merchantSaasBilling";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
+import { MerchantAccountDetailDrawer } from "../../components/admin/MerchantAccountDetailDrawer";
 import { MerchantBillingCard } from "../../components/admin/MerchantBillingCard";
 import { MerchantBillingEditorDialog } from "../../components/admin/MerchantBillingEditorDialog";
 import { MerchantSuspensionDialog } from "../../components/admin/MerchantSuspensionDialog";
@@ -22,8 +23,6 @@ import { Tabs } from "../../components/ui/Tabs";
 import { coreReadApi, type CoreCategory } from "../../features/core-read/api";
 import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
 import {
-  formatFreeDuration,
-  formatJpy,
   isMerchantGroup,
   type MerchantAccountCard
 } from "../../features/merchant-saas-billing/model";
@@ -32,7 +31,7 @@ import { startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { yen } from "../../lib/utils";
 import { readPositiveIntegerSearchParam } from "./adminSearchParams";
 
-const tabs = ["店铺列表", "入驻审核", "服务项目", "店铺分类"];
+const tabs = ["店铺列表", "服务项目", "店铺分类"];
 const emptyShopForm: BackofficeShopCreateInput = {
   ownerEmail: "",
   ownerUsername: "",
@@ -316,14 +315,6 @@ export function MerchantsPage({ embeddedDetail }: {
           </section>
         ) : null}
 
-        {active === "入驻审核" ? (
-          <div className="mt-4 rounded-2xl border border-line bg-paper p-5">
-            <p className="text-sm font-black text-ink">店铺身份正式申请</p>
-            <p className="mt-2 text-sm leading-6 text-ink/60">查看法人或个人名义、eKYC、银行名义校验、服务展示、证件资料与合同回执。</p>
-            <Button className="mt-4" onClick={() => navigate("/admin/merchant-applications")}>打开申请审核</Button>
-          </div>
-        ) : null}
-
         {active === "服务项目" ? <div className="mt-4 space-y-4"><div className="flex justify-end"><Button onClick={() => setCreateServiceOpen(true)} variant="secondary">新增服务项目</Button></div><DataTable columns={[
           { key: "name", title: "服务项目", render: (row: BackofficeServicePayload) => row.name },
           { key: "shop", title: "店铺", render: (row: BackofficeServicePayload) => shops.find((shop) => shop.id === row.shopId)?.name ?? `#${row.shopId}` },
@@ -356,29 +347,7 @@ export function MerchantsPage({ embeddedDetail }: {
         onClose={() => setBusinessSettingsCard(null)}
       />
 
-      <Drawer open={Boolean(billingDetailCard)} title={t("商家 / 门店 SaaS 详情")} onClose={() => setBillingDetailCard(null)}>
-        {billingDetailCard ? (
-          <DetailGrid
-            items={[
-              { label: "名称", value: billingDetailCard.name },
-              { label: "账号类型", value: isMerchantGroup(billingDetailCard) ? "商家" : billingDetailCard.type === "single_shop" ? "单人店铺" : "店铺" },
-              { label: "付费模式", value: billingDetailCard.billing.cadence },
-              { label: "月费", value: billingDetailCard.billing.cadence === "free" ? "免费" : formatJpy(billingDetailCard.billing.monthlyFeeJpy, language) },
-              { label: "年费", value: formatJpy(billingDetailCard.billing.annualFeeJpy, language) },
-              { label: "计费状态", value: billingDetailCard.billing.state },
-              { label: "累计免费时间", value: formatFreeDuration(billingDetailCard.billing.freeDuration, language) },
-              { label: "支付接口", value: billingDetailCard.billing.paymentProvider },
-              { label: "人工锁定", value: `模式 ${billingDetailCard.billing.cadenceLocked ? "是" : "否"} / 金额 ${billingDetailCard.billing.amountLocked ? "是" : "否"}` },
-              { label: "封号状态", value: billingDetailCard.suspension ? "已人工封号" : "未封号" },
-              ...(isMerchantGroup(billingDetailCard) ? [
-                { label: "付费责任", value: billingDetailCard.paymentResponsibility },
-                { label: "旗下店铺", value: billingDetailCard.shops.length },
-                { label: "合计月费", value: formatJpy(billingDetailCard.consolidatedMonthlyTotalJpy, language) }
-              ] : [{ label: "有效技师", value: billingDetailCard.technicianCount }])
-            ]}
-          />
-        ) : null}
-      </Drawer>
+      <MerchantAccountDetailDrawer card={billingDetailCard} onClose={() => setBillingDetailCard(null)} />
 
       <Drawer open={createShopOpen} title="创建店铺与负责人账号" onClose={() => setCreateShopOpen(false)}>
         <form className="space-y-4" onSubmit={createShop}>

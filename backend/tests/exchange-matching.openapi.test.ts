@@ -30,10 +30,19 @@ describe("Exchange selective exact matching OpenAPI", () => {
         "x-required-permission": "exchange:matching:select-own"
       })
     );
+    expect(
+      document.paths["/api/v1/exchange/posts/{id}/matching/quick/confirm-budget"]?.post
+    ).toEqual(
+      expect.objectContaining({
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "exchange:matching:select-own"
+      })
+    );
   });
 
   it("requires idempotency for selection and exposes no close or payment mutation", () => {
     const select = document.paths["/api/v1/exchange/posts/{id}/matching/select"].post;
+    const quick = document.paths["/api/v1/exchange/posts/{id}/matching/quick/confirm-budget"].post;
     expect(select.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -45,6 +54,11 @@ describe("Exchange selective exact matching OpenAPI", () => {
       ])
     );
     expect(document.paths).not.toHaveProperty("/api/v1/exchange/posts/{id}/matching/close");
+    expect(quick.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Idempotency-Key", in: "header", required: true })
+      ])
+    );
     expect(document.paths).toHaveProperty("/api/v1/exchange/posts/{id}/matching/bookings.post");
     expect(JSON.stringify(document.paths)).not.toMatch(/matching\/pay/u);
   });
@@ -54,7 +68,8 @@ describe("Exchange selective exact matching OpenAPI", () => {
       expect.objectContaining({
         ExchangeMatching: expect.any(Object),
         ExchangeMatchParticipant: expect.any(Object),
-        ExchangeMatchSelectRequest: expect.any(Object)
+        ExchangeMatchSelectRequest: expect.any(Object),
+        ExchangeQuickBudgetConfirmationRequest: expect.any(Object)
       })
     );
     expect(JSON.stringify(document.components.schemas.ExchangeMatching)).not.toMatch(

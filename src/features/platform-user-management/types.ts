@@ -255,6 +255,7 @@ export type UserGroup = {
 };
 
 export type UserGroupMember = {
+  id: number;
   needoId: string;
   username: string;
   avatarUrl: string | null;
@@ -270,6 +271,8 @@ export type UserGlobalPolicy = {
   requireEmail: boolean;
   requireHomeServiceEkyc: boolean;
   requireStoreServiceEkyc: boolean;
+  requireMerchantApplicationEkyc: boolean;
+  requireTechnicianApplicationEkyc: boolean;
   ndpPerBaseExp: number;
   baseExpUnitsPerThreshold: number;
   effectiveFrom: string;
@@ -368,3 +371,6 @@ export type UserExperienceEntry = {
   campaignVersionId: string | null;
   occurredAt: string;
 };
+
+export type AccountUserLogDetail = Pick<PlatformManagedUserDetail, "id" | "displayName" | "avatarUrl" | "createdAt" | "audit">;
+export type AccountActivitySubject = { scope: UserDirectoryScope; subject: "users" | "technicians"; id: number };

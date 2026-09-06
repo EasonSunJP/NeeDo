@@ -228,7 +228,8 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
         to: "/merchant-admin/people?module=staff",
         icon: "员",
         children: ["正式员工", "状态", "店铺范围"]
-      }
+      },
+      { label: "员工申请管理", to: "/merchant-admin/employee-applications", icon: "审", rbacPermission: "merchant:technician-application:read" }
     ]
   },
   {

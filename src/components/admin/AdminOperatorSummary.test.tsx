@@ -11,7 +11,7 @@ import { AdminOperatorSummary } from "./AdminOperatorSummary";
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const apiMocks = vi.hoisted(() => ({
-  listMerchantReviews: vi.fn(),
+  listReviews: vi.fn(),
   orders: vi.fn()
 }));
 
@@ -19,8 +19,8 @@ vi.mock("../../api/backofficeRealData", () => ({
   backofficeRealDataApi: { orders: apiMocks.orders }
 }));
 
-vi.mock("../../features/identity-applications/api", () => ({
-  identityApplicationsApi: { listMerchantReviews: apiMocks.listMerchantReviews }
+vi.mock("../../features/settings/ekycApplicationsApi", () => ({
+  ekycApplicationsApi: { listReviews: apiMocks.listReviews }
 }));
 
 const identity = {
@@ -53,7 +53,7 @@ const session: AuthSession = {
   linkedTechnicianId: "",
   linkedStoreId: "",
   roles: ["operator"],
-  permissions: ["backoffice:orders:list", "ops:merchant-application:read"],
+  permissions: ["backoffice:orders:list", "ops:ekyc-application:read"],
   menus: [],
   currentIdentity: identity,
   identities: [identity],
@@ -86,30 +86,6 @@ const order = {
   updatedAt: "2026-09-05T03:00:00.000Z"
 };
 
-const review = {
-  applicationId: 31,
-  applicantUserId: 5,
-  status: "submitted",
-  version: 1,
-  submittedAt: "2026-09-06T01:00:00.000Z",
-  createdAt: "2026-09-05T01:00:00.000Z",
-  applicantKind: "individual",
-  corporateLegalName: null,
-  corporateLegalNameKana: null,
-  representativeName: "申请人",
-  representativeNameKana: "シンセイニン",
-  shopName: "新宿店",
-  businessAddress: "Tokyo",
-  contactPhone: "+819000000000",
-  responsiblePersonName: "申请人",
-  showcaseDraft: null,
-  serviceCategories: [],
-  businessKeywords: [],
-  bankAccount: null,
-  eKycVerified: true,
-  contractAcceptance: null,
-  media: []
-};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -134,14 +110,7 @@ describe("AdminOperatorSummary", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     apiMocks.orders.mockResolvedValue({ list: [order], total: 8, page: 1, page_size: 5 });
-    apiMocks.listMerchantReviews.mockImplementation(({ status }: { status: string }) =>
-      Promise.resolve({
-        list: status === "submitted" ? [review] : [],
-        total: status === "submitted" ? 3 : 2,
-        page: 1,
-        page_size: 5
-      })
-    );
+    apiMocks.listReviews.mockResolvedValue({ list: [], total: 5, page: 1, page_size: 20 });
   });
 
   afterEach(async () => {
@@ -161,7 +130,7 @@ describe("AdminOperatorSummary", () => {
       pageSize: 5,
       status: "pending"
     });
-    expect(apiMocks.listMerchantReviews).toHaveBeenCalledTimes(2);
+    expect(apiMocks.listReviews).toHaveBeenCalledWith(1, "submitted");
 
     const pendingButton = Array.from(container.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("待处理")
@@ -173,15 +142,9 @@ describe("AdminOperatorSummary", () => {
     );
     expect(container.querySelector('a[href="/admin/orders?status=pending"]')?.textContent).toContain("查看全部");
 
-    const reviewButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("审核")
-    )!;
-    await act(async () => reviewButton.click());
-    expect(container.textContent).not.toContain("ND-12");
-    expect(container.textContent).toContain("新宿店");
-    expect(Array.from(container.querySelectorAll("a")).map((link) => link.getAttribute("href"))).toContain(
-      "/admin/merchant-applications?status=pending&applicationId=31"
-    );
+    const reviewLink = container.querySelector('a[href="/admin/application-reviews/ekyc"]');
+    expect(reviewLink?.textContent).toBe("审核5");
+    expect(container.textContent).not.toContain("新宿店");
   });
 
   it("does not fetch or render queues that the session cannot read", async () => {
@@ -191,7 +154,7 @@ describe("AdminOperatorSummary", () => {
     expect(container.textContent).not.toContain("待处理");
     expect(container.textContent).not.toContain("审核");
     expect(apiMocks.orders).not.toHaveBeenCalled();
-    expect(apiMocks.listMerchantReviews).not.toHaveBeenCalled();
+    expect(apiMocks.listReviews).not.toHaveBeenCalled();
   });
 
   it("falls back to an initial when the profile avatar cannot be displayed", async () => {

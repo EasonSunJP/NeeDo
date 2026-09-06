@@ -69,6 +69,8 @@ import {
   type TechnicianProfilePaymentMethod
 } from "../core-read/technicianProfileApi";
 import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
+import { EkycProfileForm } from "./EkycProfileForm";
+import { ApplicationShell } from "../identity-applications/ApplicationUi";
 import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
@@ -506,6 +508,10 @@ function getVerificationTitle(portal: UnifiedSettingsPortal) {
 }
 
 function getVerificationStatusLabel(portal: UnifiedSettingsPortal) {
+  if (portal === "user") {
+    return "查看状态";
+  }
+
   if (portal === "business") {
     return "已认证";
   }
@@ -3194,6 +3200,17 @@ export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettings
 }
 
 export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { session } = useAuth();
+  const [verificationError, setVerificationError] = useState("");
+  if (portal === "user") {
+    return (
+      <PortalScopedSettingsPage portal={portal}>
+        <ApplicationShell backTo={getSettingsBasePath(portal)} closeTo={getSettingsBasePath(portal)} error={verificationError} hideNavigation info="请填写与本人证件一致的资料。" onDismissError={() => setVerificationError("")} title={getVerificationTitle(portal)}>
+          <EkycProfileForm key={session?.needoId} onError={setVerificationError} />
+        </ApplicationShell>
+      </PortalScopedSettingsPage>
+    );
+  }
   const verificationCards =
     portal === "merchant"
       ? [
@@ -3201,16 +3218,10 @@ export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSet
           { title: "店铺主体", description: "结算账户、门店信息与店铺主体已完成关联。", status: "已核验" },
           { title: "经营规则", description: "改期、退款与预约规则已确认，状态正常。", status: "正常" }
         ]
-      : portal === "technician"
-        ? [
+      : [
             { title: "实名认证", description: "姓名、头像与接单主体一致，基础实名已通过。", status: "已完成" },
             { title: "从业资料", description: "技师资料、服务信息与展示页已完成同步。", status: "已同步" },
             { title: "服务信用", description: "接单、履约和取消记录稳定，可继续接单。", status: "良好" }
-          ]
-        : [
-            { title: "实名认证", description: "已通过基础实名校验。", status: "已完成" },
-            { title: "本人一致性", description: "头像、昵称与预约资料一致性正常。", status: "已核验" },
-            { title: "信用记录", description: "取消、支付与履约记录稳定。", status: "良好" }
           ];
 
   return (

@@ -203,6 +203,7 @@ export function MerchantOrderParticipantDetailDrawer({
           </div>
         ) : customerDetail ? (
           <FormalCustomerDetailPanel
+            directoryScope="merchant"
             detail={customerDetail}
             onRetryTimeline={reload}
             onTimelinePageChange={setCustomerTimelinePage}

@@ -5,11 +5,47 @@ import {
   buildRolePermissionAssignments
 } from "../src/constants/permissions.constants";
 import {
+  confirmQuickExchangeBudgetSchema,
   exchangeMatchingPostIdParamSchema,
   selectExchangeMatchSchema
 } from "../src/validators/exchange-matching.validators";
 
 describe("Exchange selective exact matching validators", () => {
+  it("accepts only an exact strict Quick budget confirmation", () => {
+    expect(
+      confirmQuickExchangeBudgetSchema.parse({
+        expectedVersion: 4,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      })
+    ).toEqual({
+      expectedVersion: 4,
+      budgetConfirmation: {
+        action: "increase_to_selected_total",
+        confirmedBudgetMaxJpy: 31_000
+      }
+    });
+    for (const invalid of [
+      { expectedVersion: 0, budgetConfirmation: null },
+      {
+        expectedVersion: 4,
+        budgetConfirmation: { action: "raise", confirmedBudgetMaxJpy: 31_000 }
+      },
+      {
+        expectedVersion: 4,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000,
+          selectedClaimIds: [301]
+        }
+      }
+    ]) {
+      expect(confirmQuickExchangeBudgetSchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
   it("accepts a bounded unique selection and optimistic version", () => {
     expect(
       selectExchangeMatchSchema.parse({ selectedClaimIds: [9, 4], expectedVersion: 3 })

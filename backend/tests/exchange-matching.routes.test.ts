@@ -12,14 +12,16 @@ const matching: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 0,
   matchedAt: null,
   participants: [],
-  viewer: { canSelect: true, canCreateBookings: false }
+  quickBudgetDecision: null,
+  viewer: { canSelect: true, canConfirmQuickBudget: false, canCreateBookings: false }
 };
 
 describe("formal Exchange matching routes", () => {
   it("requires JWT and the exact read permission", async () => {
     const service = {
       getMatching: jest.fn(async () => matching),
-      selectMatching: jest.fn(async () => matching)
+      selectMatching: jest.fn(async () => matching),
+      confirmQuickBudget: jest.fn(async () => matching)
     } as unknown as jest.Mocked<ExchangeMatchingService>;
     const fixture = await createStep06Fixture({ exchangeMatchingService: service } as never);
 
@@ -29,6 +31,18 @@ describe("formal Exchange matching routes", () => {
     await request(fixture.app)
       .get("/api/v1/exchange/posts/41/matching")
       .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+    await request(fixture.app)
+      .post("/api/v1/exchange/posts/41/matching/quick/confirm-budget")
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", "matching-quick-route-0001")
+      .send({
+        expectedVersion: 3,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      })
       .expect(403);
   });
 
@@ -42,7 +56,8 @@ describe("formal Exchange matching routes", () => {
     };
     const service = {
       getMatching: jest.fn(async () => matching),
-      selectMatching: jest.fn(async () => matched)
+      selectMatching: jest.fn(async () => matched),
+      confirmQuickBudget: jest.fn(async () => matched)
     } as unknown as jest.Mocked<ExchangeMatchingService>;
     const fixture = await createStep06Fixture({ exchangeMatchingService: service } as never);
     fixture.replaceAdminPermissions([
@@ -78,12 +93,39 @@ describe("formal Exchange matching routes", () => {
       "matching-select-route-0001",
       expect.objectContaining({ ip: expect.any(String) })
     );
+
+    await request(fixture.app)
+      .post("/api/v1/exchange/posts/41/matching/quick/confirm-budget")
+      .set(auth)
+      .set("Idempotency-Key", "matching-quick-route-0001")
+      .send({
+        expectedVersion: 3,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      })
+      .expect(200, { code: 0, message: "success", data: matched });
+    expect(service.confirmQuickBudget).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 1, currentIdentityId: expect.any(Number) }),
+      41,
+      {
+        expectedVersion: 3,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      },
+      "matching-quick-route-0001",
+      expect.objectContaining({ ip: expect.any(String) })
+    );
   });
 
   it("rejects duplicate claim ids and missing idempotency before the service", async () => {
     const service = {
       getMatching: jest.fn(async () => matching),
-      selectMatching: jest.fn(async () => matching)
+      selectMatching: jest.fn(async () => matching),
+      confirmQuickBudget: jest.fn(async () => matching)
     } as unknown as jest.Mocked<ExchangeMatchingService>;
     const fixture = await createStep06Fixture({ exchangeMatchingService: service } as never);
     fixture.replaceAdminPermissions([
@@ -106,6 +148,18 @@ describe("formal Exchange matching routes", () => {
       .set("Idempotency-Key", "matching-select-route-0001")
       .send({ selectedClaimIds: [301, 301], expectedVersion: 3 })
       .expect(400);
+    await request(fixture.app)
+      .post("/api/v1/exchange/posts/41/matching/quick/confirm-budget")
+      .set(auth)
+      .send({
+        expectedVersion: 3,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      })
+      .expect(400);
     expect(service.selectMatching).not.toHaveBeenCalled();
+    expect(service.confirmQuickBudget).not.toHaveBeenCalled();
   });
 });

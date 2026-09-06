@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { JapanRegionMap } from "../../features/live-dashboard/JapanRegionMap";
 import { LiveDashboardPanels } from "../../features/live-dashboard/LiveDashboardPanels";
@@ -16,16 +16,12 @@ export function LiveDashboardPage() {
   const scope = useMemo(() => parseLiveDashboardSearch(location.search), [location.search]);
   const { state, retry } = useLiveDashboard(scope);
   const [now, setNow] = useState(() => new Date());
-  const [viewportScale, setViewportScale] = useState(() => typeof window === "undefined" ? 1 : Math.min(1, Math.max(0.62, (window.innerWidth - 28) / 1124)));
   const locale = language === "ja" ? "ja-JP" : language === "ko" ? "ko-KR" : language === "en" ? "en-US" : "zh-CN";
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
-    const onResize = () => setViewportScale(Math.min(1, Math.max(0.62, (window.innerWidth - 28) / 1124)));
-    window.addEventListener("resize", onResize);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("resize", onResize);
     };
   }, []);
 
@@ -89,11 +85,7 @@ export function LiveDashboardPage() {
 
   return (
     <LiveDashboardShell header={header}>
-      <div
-        className="live-dashboard-workspace"
-        style={{ "--live-dashboard-scale": viewportScale, "--live-dashboard-width": `${100 / viewportScale}%` } as CSSProperties}
-      >
-        {viewportScale < 1 ? <p className="live-dashboard-width-warning">{t("建议横屏或宽屏查看")}</p> : null}
+      <div className="live-dashboard-workspace">
         {state.status === "loading" && state.snapshot ? (
           <p className="live-dashboard-state-banner" role="status">{t("正在切换区域，当前仍显示上次成功数据")} {state.pendingTargetLabel ?? ""}</p>
         ) : null}

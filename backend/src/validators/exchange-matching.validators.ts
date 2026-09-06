@@ -33,4 +33,12 @@ export const selectExchangeMatchSchema = z
   })
   .strict();
 
+export const confirmQuickExchangeBudgetSchema = z
+  .object({
+    expectedVersion: z.number().int().positive(),
+    budgetConfirmation: exchangeMatchBudgetConfirmationSchema
+  })
+  .strict();
+
 export type SelectExchangeMatchBody = z.infer<typeof selectExchangeMatchSchema>;
+export type ConfirmQuickExchangeBudgetBody = z.infer<typeof confirmQuickExchangeBudgetSchema>;

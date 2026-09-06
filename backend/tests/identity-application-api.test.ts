@@ -279,7 +279,7 @@ describe("identity application applicant HTTP API", () => {
       businessAddress: "东京都中央区银座1-1-1",
       contactPhone: "09000000000",
       responsiblePersonName: "山本太郎",
-      showcaseDraft: { headline: "安心服务" },
+      showcaseDraft: { headline: "安心服务", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" },
       serviceCategoryIds: [1],
       businessKeywordIds: [10]
     };
@@ -313,7 +313,7 @@ describe("identity application applicant HTTP API", () => {
       .expect(200);
   });
 
-  it("binds a verified merchant bank account and exposes only its masked projection", async () => {
+  it.each(["ordinary", "current", "savings", "other"])("binds a %s merchant bank account and exposes only its masked projection", async (accountType) => {
     const fixture = createFixture();
     const authorization = `Bearer ${fixture.token}`;
     const body = {
@@ -322,7 +322,7 @@ describe("identity application applicant HTTP API", () => {
       bankName: "三菱UFJ银行",
       branchCode: "001",
       branchName: "本店",
-      accountType: "ordinary",
+      accountType,
       accountNumber: "1234567",
       accountHolderName: "カ）ニード"
     };
@@ -354,7 +354,7 @@ describe("identity application applicant HTTP API", () => {
       bankName: "三菱UFJ银行",
       branchCode: "001",
       branchName: "本店",
-      accountType: "ordinary",
+      accountType,
       accountNumber: "1234567",
       accountHolderName: "カ）ニード",
       now: expect.any(Date)

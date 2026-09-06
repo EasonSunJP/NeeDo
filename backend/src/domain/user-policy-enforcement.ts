@@ -29,3 +29,17 @@ export interface UserPolicyEnforcementRepositoryPort {
 export interface UserGlobalPolicyResolverPort {
   resolvePolicyAt: (occurredAt: Date) => Promise<ResolvedUserGlobalPolicy>;
 }
+
+export interface ApplicationEkycDecision {
+  required: boolean;
+  verified: boolean;
+  policyVersionPublicId: string;
+}
+
+export interface ApplicationEkycPolicyPort {
+  evaluateApplicationEkyc: (
+    userId: number,
+    type: "merchant" | "technician",
+    occurredAt: Date
+  ) => Promise<ApplicationEkycDecision>;
+}

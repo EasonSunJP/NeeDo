@@ -1,4 +1,7 @@
 import { RouteScrollReset } from "./components/ui/RouteScrollReset";
+
+import { EkycReviewPage } from "./features/settings/EkycReviewPage";
+import { MerchantBackofficeApplicationReviewPage, OperationsShopApplicationReviewPage } from "./features/identity-applications/BackofficeReviewPages";
 import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
@@ -140,7 +143,7 @@ import { AffiliateActivationPage } from "./features/identity-applications/Affili
 import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
 import { AffiliateAlliancePage } from "./features/affiliate-alliance/AffiliateAlliancePage";
 import { AffiliateAnnouncementDetailPage } from "./features/content-publication/AffiliateAnnouncementDetailPage";
-import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
+import { TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
 import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
@@ -1370,9 +1373,11 @@ export default function App() {
               <Route path="/merchant-admin/stage-layout" element={protectFeature("merchant", "store.stage-layout.view", <MerchantAdminStageLayoutPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/inventory" element={protectFeature("merchant", "store.inventory.view", <MerchantAdminInventoryPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
+              <Route path="/merchant-admin/employee-applications" element={protectPermission("merchant", "merchant:technician-application:read", <MerchantBackofficeApplicationReviewPage />)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
               <Route path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read", <MerchantAdminNotificationsPage view="list" />)} />
-              <Route path="/merchant-admin/notifications/compose" element={protectPermissions("merchant", ["merchant-admin:notice:create", "merchant-admin:notice:send"], <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/compose" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/compose/:publicId" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
               <Route path="/merchant-admin/notifications/inbox" element={protect("merchant", <MerchantAdminNotificationsPage view="inbox" />)} />
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
@@ -1443,7 +1448,8 @@ export default function App() {
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
-              <Route path="/admin/notifications/compose" element={protectPermissions("admin", ["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"], <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/compose/:publicId" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications/inbox" element={protect("admin", <AdminNotificationsPage view="inbox" />)} />
               <Route path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
@@ -1476,7 +1482,8 @@ export default function App() {
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
               <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
               <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
-              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />
+              <Route path="/admin/application-reviews/ekyc" element={protectPermission("admin", "ops:ekyc-application:read", <EkycReviewPage />)} />
+              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <OperationsShopApplicationReviewPage />)} />
               <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />

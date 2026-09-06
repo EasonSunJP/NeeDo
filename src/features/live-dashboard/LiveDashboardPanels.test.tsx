@@ -63,6 +63,15 @@ describe("LiveDashboardPanels", () => {
     expect(text).not.toMatch(/customer|address|note/i);
   });
 
+  it("exposes each panel once with stable classes for mobile ordering", () => {
+    act(() => root.render(<LiveDashboardPanels map={<section className="live-dashboard-map-card"><div className="live-dashboard-region-navigator" /></section>} snapshot={snapshot} />));
+    for (const name of ["is-headline", "is-order-overview", "is-coverage", "is-trend", "is-realtime", "is-activity", "is-service-ranking", "is-technician-ranking"]) {
+      expect(container.querySelectorAll(`.${name}`)).toHaveLength(1);
+    }
+    expect(container.querySelectorAll(".live-dashboard-confirmed-payments")).toHaveLength(1);
+    expect(container.querySelectorAll(".live-dashboard-region-navigator")).toHaveLength(1);
+  });
+
   it("shows truthful empty states without fabricated rows", () => {
     const empty = { ...snapshot, realtimeOrders: { ...snapshot.realtimeOrders, list: [], total: 0 }, activity: [], serviceRanking: [], technicianRanking: [] };
     act(() => root.render(<LiveDashboardPanels map={<div>map</div>} snapshot={empty} />));

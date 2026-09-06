@@ -1,3 +1,4 @@
+import type { ApplicationEkycPolicyPort } from "../domain/user-policy-enforcement";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { IdentityApplicationPolicyService } from "./identity-application-policy.service";
@@ -102,6 +103,8 @@ export interface ApproveMerchantApplicationRepositoryInput {
   serviceCategoryIds: number[];
   businessKeywordIds: number[];
   bankAccountId: number;
+  bankVerification?: { status: string; source: string };
+  ekycPolicy?: { required: boolean; verified: boolean; policyVersionPublicId: string };
   contractAcceptanceId: number;
   reviewedAt: Date;
   purgeAt: Date;
@@ -172,6 +175,7 @@ export interface RejectMerchantApplicationInput extends MerchantReviewActionInpu
 export class MerchantApplicationReviewService {
   public constructor(
     private readonly repository: MerchantApplicationReviewRepositoryPort,
+    private readonly ekycPolicy: ApplicationEkycPolicyPort,
     private readonly billingPolicy = new SaasBillingPolicyService(),
     private readonly applicationPolicy = new IdentityApplicationPolicyService()
   ) {}
@@ -203,7 +207,9 @@ export class MerchantApplicationReviewService {
     }
     this.assertReviewable(application.status);
     this.assertVersion(application.version, input.expectedVersion);
-    this.assertApprovalEvidence(application);
+    const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(application.applicantUserId, "merchant", input.now);
+    if (ekyc.required && !ekyc.verified) throw this.conflict("error.identity_application.ekyc_required");
+    this.assertApprovalEvidence(application, ekyc.required);
 
     const trial = this.billingPolicy.calculateInitialTrial(input.now);
     return this.repository.approveInTransaction({
@@ -220,6 +226,8 @@ export class MerchantApplicationReviewService {
       serviceCategoryIds: application.serviceCategories.map((category) => category.id),
       businessKeywordIds: application.businessKeywords.map((keyword) => keyword.id),
       bankAccountId: application.bankAccount!.id,
+      bankVerification: { status: application.bankAccount!.verificationStatus, source: application.bankAccount!.verificationSource },
+      ekycPolicy: ekyc,
       contractAcceptanceId: application.contractAcceptance!.id,
       reviewedAt: input.now,
       purgeAt: this.applicationPolicy.calculatePurgeAt(input.now),
@@ -274,15 +282,12 @@ export class MerchantApplicationReviewService {
     return application;
   }
 
-  private assertApprovalEvidence(application: MerchantApplicationReviewRecord): void {
+  private assertApprovalEvidence(application: MerchantApplicationReviewRecord, requireEkyc: boolean): void {
     if (!application.submittedSnapshotHash || !application.showcaseDraft) {
       throw this.conflict("error.identity_application.submitted_snapshot_invalid");
     }
     if (application.serviceCategories.length === 0) {
       throw this.validation("error.identity_application.service_category_required");
-    }
-    if (!application.media.some((item) => item.purpose === "representative_identity")) {
-      throw this.validation("error.identity_application.representative_identity_required");
     }
     if (application.applicantKind === "corporate") {
       if (!application.corporateLegalName?.trim() || !application.corporateLegalNameKana?.trim()) {
@@ -291,19 +296,17 @@ export class MerchantApplicationReviewService {
       if (!application.media.some((item) => item.purpose === "corporate_registration")) {
         throw this.validation("error.identity_application.corporate_registration_required");
       }
-    } else if (!application.eKycVerified) {
-      throw this.conflict("error.identity_application.ekyc_required");
     }
 
     const bank = application.bankAccount;
-    const expectedSource =
-      application.applicantKind === "corporate" ? "corporate_registration" : "ekyc";
+    const declared = !requireEkyc && application.applicantKind === "individual" && bank?.verificationSource === "applicant_declaration";
+    const expectedSource = application.applicantKind === "corporate" ? "corporate_registration" : declared ? "applicant_declaration" : "ekyc";
     if (
       !bank ||
-      bank.verificationStatus !== "verified" ||
+      bank.verificationStatus !== (declared ? "declared" : "verified") ||
       bank.holderMatched !== true ||
       bank.verificationSource !== expectedSource ||
-      bank.verifiedAt === null
+      (!declared && bank.verifiedAt === null)
     ) {
       throw this.conflict("error.identity_application.bank_verification_required");
     }

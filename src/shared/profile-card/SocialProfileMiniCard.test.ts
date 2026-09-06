@@ -65,7 +65,7 @@ describe("SocialProfileMiniCard cover readability", () => {
 
   it("shows service-rating scores as a simple top-left number pill without a star icon", () => {
     expect(cardSource).toContain('import { SimpleRatingBadge } from "./SimpleRatingBadge"');
-    expect(cardSource).toContain('const usesSimpleScorePill = data.scoreLabel === "服务评价"');
+    expect(cardSource).toContain('const usesSimpleScorePill = showRating && data.scoreLabel === "服务评价"');
     expect(cardSource).toContain("!usesSimpleScorePill");
     expect(cardSource).toContain('<SimpleRatingBadge className="absolute left-3.5 top-2 z-20" value={scoreParts.score} />');
     expect(cardSource).toContain("isService || shouldOverlayScoreOnAvatar || usesSimpleScorePill ? null");

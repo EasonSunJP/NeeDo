@@ -1,7 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type {
-  CompleteExchangeSelectionInput,
+  CompleteExchangeMatchInput,
   ExchangeMatchingRecord,
   ExchangeMatchingSelectionClaim
 } from "../repositories/exchange-matching.repository";
@@ -11,7 +11,10 @@ import type {
 } from "../types/exchange-matching.types";
 import { AppError } from "../utils/app-error";
 import { sha256StableJson } from "../utils/stable-json";
-import type { SelectExchangeMatchBody } from "../validators/exchange-matching.validators";
+import type {
+  ConfirmQuickExchangeBudgetBody,
+  SelectExchangeMatchBody
+} from "../validators/exchange-matching.validators";
 import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
@@ -27,6 +30,10 @@ export interface ExchangeMatchingRepositoryPort {
     payload: ExchangeMatchingPayload;
     payloadFingerprint: string;
   } | null>;
+  findIdempotentQuickConfirmation(idempotencyKey: string): Promise<{
+    payload: ExchangeMatchingPayload;
+    payloadFingerprint: string;
+  } | null>;
   lockMatching(exchangePostId: number): Promise<ExchangeMatchingRecord | null>;
   lockActiveClaims(exchangePostId: number): Promise<ExchangeMatchingSelectionClaim[]>;
   lockTechnicians(technicianProfileIds: number[]): Promise<boolean>;
@@ -36,7 +43,7 @@ export interface ExchangeMatchingRepositoryPort {
     endsAt: Date
   ): Promise<boolean>;
   hasBookingConflict(technicianProfileId: number, startsAt: Date, endsAt: Date): Promise<boolean>;
-  completeSelection(input: CompleteExchangeSelectionInput): Promise<ExchangeMatchingPayload | null>;
+  completeMatch(input: CompleteExchangeMatchInput): Promise<ExchangeMatchingPayload | null>;
 }
 
 export class ExchangeMatchingService {
@@ -107,7 +114,7 @@ export class ExchangeMatchingService {
           selectedQuoteTotalJpy
         );
         this.assertExactConfirmations(input, preview);
-        const adjustments: CompleteExchangeSelectionInput["adjustments"] = [];
+        const adjustments: CompleteExchangeMatchInput["adjustments"] = [];
         if (preview.requiresBudgetConfirmation) {
           adjustments.push({
             type: "budget_increased",
@@ -151,7 +158,7 @@ export class ExchangeMatchingService {
         );
         const unselectedClaimIds = unselectedClaims.map((claim) => claim.id);
         const versionAfter = matching!.version + adjustments.length + 1;
-        const completed = await repository.completeSelection({
+        const completed = await repository.completeMatch({
           matchingId: matching!.id,
           exchangePostId,
           selectedClaims: exactClaims,
@@ -168,6 +175,8 @@ export class ExchangeMatchingService {
           versionAfter,
           actorUserId: access.userId,
           actorIdentityId: identityId,
+          viewerIdentityId: identityId,
+          matchEventType: "selective_matched",
           idempotencyKey,
           payloadFingerprint,
           at: this.now(),
@@ -192,6 +201,129 @@ export class ExchangeMatchingService {
     }
   }
 
+  public async confirmQuickBudget(
+    access: AuthenticatedAccessContext,
+    exchangePostId: number,
+    input: ConfirmQuickExchangeBudgetBody,
+    rawIdempotencyKey: string,
+    context: AuthRequestContext
+  ): Promise<ExchangeMatchingPayload> {
+    const identityId = this.requireIdentityId(access);
+    const idempotencyKey = exchangeIdempotencyKeySchema.parse(rawIdempotencyKey);
+    const payloadFingerprint = sha256StableJson({
+      actorUserId: access.userId,
+      actorIdentityId: identityId,
+      exchangePostId,
+      expectedVersion: input.expectedVersion,
+      budgetConfirmation: input.budgetConfirmation
+    });
+
+    try {
+      return await this.repository.runInTransaction(async (repository) => {
+        const replay = await repository.findIdempotentQuickConfirmation(idempotencyKey);
+        if (replay) return this.unwrapReplay(replay, payloadFingerprint);
+
+        const matching = await repository.lockMatching(exchangePostId);
+        this.assertQuickConfirmable(matching, access, input.expectedVersion, this.now());
+        const activeClaims = await repository.lockActiveClaims(exchangePostId);
+        if (activeClaims.length !== matching!.effectiveTargetProviderCount) {
+          throw this.countMismatch();
+        }
+        if (
+          new Set(activeClaims.map((claim) => claim.technicianProfileId)).size !==
+          activeClaims.length
+        ) {
+          throw this.claimSetInvalid();
+        }
+        const selectedQuoteTotalJpy = activeClaims.reduce(
+          (total, claim) => total + claim.quoteAmountJpy,
+          0
+        );
+        if (selectedQuoteTotalJpy <= matching!.effectiveBudgetMaxJpy) {
+          throw this.invalidState();
+        }
+        const preview = this.adjustmentPreview(
+          matching!,
+          activeClaims.length,
+          selectedQuoteTotalJpy
+        );
+        if (
+          input.budgetConfirmation.action !== "increase_to_selected_total" ||
+          input.budgetConfirmation.confirmedBudgetMaxJpy !== selectedQuoteTotalJpy
+        ) {
+          throw this.budgetConfirmationRequired(preview);
+        }
+
+        const technicianProfileIds = activeClaims
+          .map((claim) => claim.technicianProfileId)
+          .sort((left, right) => left - right);
+        if (!(await repository.lockTechnicians(technicianProfileIds))) {
+          throw this.timeConflict();
+        }
+        for (const claim of activeClaims) {
+          if (
+            (await repository.hasParticipantConflict(
+              claim.technicianProfileId,
+              claim.estimatedStartsAt,
+              claim.estimatedEndsAt
+            )) ||
+            (await repository.hasBookingConflict(
+              claim.technicianProfileId,
+              claim.estimatedStartsAt,
+              claim.estimatedEndsAt
+            ))
+          ) {
+            throw this.timeConflict();
+          }
+        }
+
+        const selectedClaimIds = activeClaims.map((claim) => claim.id).sort((a, b) => a - b);
+        const completed = await repository.completeMatch({
+          matchingId: matching!.id,
+          exchangePostId,
+          selectedClaims: activeClaims,
+          selectedClaimIds,
+          unselectedClaims: [],
+          unselectedClaimIds: [],
+          selectedQuoteTotalJpy,
+          effectiveTargetProviderCountAfter: matching!.effectiveTargetProviderCount,
+          effectiveBudgetMaxJpyAfter: selectedQuoteTotalJpy,
+          adjustments: [
+            {
+              type: "budget_increased",
+              before: matching!.effectiveBudgetMaxJpy,
+              after: selectedQuoteTotalJpy
+            }
+          ],
+          versionBefore: matching!.version,
+          versionAfter: matching!.version + 2,
+          actorUserId: access.userId,
+          actorIdentityId: identityId,
+          viewerIdentityId: identityId,
+          matchEventType: "quick_matched",
+          idempotencyKey,
+          payloadFingerprint,
+          at: this.now(),
+          audit: this.quickBudgetAudit(
+            access,
+            identityId,
+            context,
+            matching!,
+            selectedClaimIds,
+            selectedQuoteTotalJpy
+          )
+        });
+        if (!completed) throw this.versionConflict();
+        return completed;
+      });
+    } catch (error) {
+      if (!this.isUniqueConflict(error)) throw error;
+      const replay = await this.repository.findIdempotentQuickConfirmation(idempotencyKey);
+      if (replay) return this.unwrapReplay(replay, payloadFingerprint);
+      throw this.timeConflict();
+    }
+  }
+
   private assertSelectable(
     matching: ExchangeMatchingRecord | null,
     access: AuthenticatedAccessContext,
@@ -204,6 +336,37 @@ export class ExchangeMatchingService {
       matching.postType !== "demand" ||
       matching.postStatus !== "published" ||
       matching.matchMode !== "selective" ||
+      matching.status !== "open" ||
+      matching.expiresAt <= at
+    ) {
+      throw this.invalidState();
+    }
+    if (matching.version !== expectedVersion) {
+      throw new AppError({
+        code: ERROR_CODES.EXCHANGE_MATCH_VERSION_CONFLICT,
+        message: "error.exchange.match_version_conflict",
+        statusCode: 409,
+        data: {
+          currentVersion: matching.version,
+          effectiveTargetProviderCount: matching.effectiveTargetProviderCount,
+          effectiveBudgetMaxJpy: matching.effectiveBudgetMaxJpy
+        }
+      });
+    }
+  }
+
+  private assertQuickConfirmable(
+    matching: ExchangeMatchingRecord | null,
+    access: AuthenticatedAccessContext,
+    expectedVersion: number,
+    at: Date
+  ): asserts matching is ExchangeMatchingRecord {
+    if (!matching) throw this.notFound();
+    if (matching.ownerIdentityId !== access.currentIdentityId) throw this.notAllowed();
+    if (
+      matching.postType !== "demand" ||
+      matching.postStatus !== "published" ||
+      matching.matchMode !== "quick" ||
       matching.status !== "open" ||
       matching.expiresAt <= at
     ) {
@@ -306,6 +469,35 @@ export class ExchangeMatchingService {
           Number(preview.requiresTargetConfirmation) +
           Number(preview.requiresBudgetConfirmation) +
           1
+      }
+    };
+  }
+
+  private quickBudgetAudit(
+    access: AuthenticatedAccessContext,
+    identityId: number,
+    context: AuthRequestContext,
+    matching: ExchangeMatchingRecord,
+    selectedClaimIds: number[],
+    selectedQuoteTotalJpy: number
+  ): AuditLogCreateInput {
+    return {
+      actorId: access.userId,
+      action: "exchange.matching.quick.confirm_budget",
+      targetType: "exchange_request_matching",
+      targetId: matching.id,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: {
+        exchangePostId: matching.exchangePostId,
+        actorIdentityId: identityId,
+        selectedClaimIds,
+        selectedQuoteTotalJpy,
+        effectiveTargetProviderCount: matching.effectiveTargetProviderCount,
+        effectiveBudgetMaxJpyBefore: matching.effectiveBudgetMaxJpy,
+        effectiveBudgetMaxJpyAfter: selectedQuoteTotalJpy,
+        versionBefore: matching.version,
+        versionAfter: matching.version + 2
       }
     };
   }

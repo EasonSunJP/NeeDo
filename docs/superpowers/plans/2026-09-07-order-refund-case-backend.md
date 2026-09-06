@@ -17,7 +17,7 @@
 - Operations may resolve only a persisted open dispute.
 - Merchant evidence never completes the refund; only the booking customer confirms receipt.
 - A settled Affiliate reward stays SETTLED. Create no reversal/recovery transaction, alter no reversal counters, and mutate no claimant wallet balance.
-- Every mutation requires a trimmed 8-160 character idempotency key and an exact expected version.
+- Every mutation requires a trimmed 8-160 character idempotency key. Initial request creation requires `expectedVersion: 0`; every later mutation requires a positive expected version equal to the current aggregate version.
 - Every route has Zod, RBAC, OpenAPI, structured errors, repository scope, immutable history, and audit.
 - Add no mock, static fallback, negative-wallet handling, or frontend reward-choice field.
 - Work test-first: prove RED, implement the minimum, run focused GREEN, and commit.
@@ -253,16 +253,21 @@ Generate every other status/action pair and expect {ok:false, reason:"invalid_tr
 
 - [ ] **Step 2: Write RED validator tests**
 
-Base every mutation on:
+Use a creation envelope for the initial request and an update envelope for every later mutation:
 
 ~~~ts
-const envelope = z.object({
+const idempotencyKey = z.string().trim().min(8).max(160);
+const createEnvelope = z.object({
+  idempotencyKey,
+  expectedVersion: z.literal(0)
+}).strict();
+const updateEnvelope = z.object({
   idempotencyKey: z.string().trim().min(8).max(160),
   expectedVersion: z.number().int().positive()
 }).strict();
 ~~~
 
-Request/complaint use a trimmed 2-500 reason; approve/reject use a trimmed 2-500 note; evidence uses a trimmed 2-120 reference; receipt confirmation uses only the envelope; dispute resolution adds resolution refund|reject, 2-500 publicReason, and optional nullable 2-1000 internalNote. Add strict positive order params, UUID case/dispute params, and pagination default 1/20, maximum 100, optional open/resolved status, and optional trimmed 100-character search.
+The request schema extends `createEnvelope` with a trimmed 2-500 reason. Complaint extends `updateEnvelope` with a trimmed 2-500 reason; approve/reject extend it with a trimmed 2-500 note; evidence extends it with a trimmed 2-120 reference; receipt confirmation uses only `updateEnvelope`; dispute resolution extends it with resolution refund|reject, 2-500 publicReason, and optional nullable 2-1000 internalNote. Add strict positive order params, UUID case/dispute params, and pagination default 1/20, maximum 100, optional open/resolved status, and optional trimmed 100-character search.
 
 - [ ] **Step 3: Run RED**
 

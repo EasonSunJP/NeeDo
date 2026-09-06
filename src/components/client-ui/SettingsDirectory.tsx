@@ -122,7 +122,8 @@ export function SettingsDetailPage({
   navItems,
   children,
   contentClassName,
-  headerFrameClassName
+  headerFrameClassName,
+  headerOverlay
 }: {
   title: ReactNode;
   info?: ReactNode;
@@ -140,6 +141,7 @@ export function SettingsDetailPage({
   children: ReactNode;
   contentClassName?: string;
   headerFrameClassName?: string;
+  headerOverlay?: ReactNode;
 }) {
   const navigate = useNavigate();
   const titleInfo = combineTitleInfo(info, subtitle);
@@ -169,6 +171,7 @@ export function SettingsDetailPage({
         hideCloseButton={hideCloseButton}
         info={titleInfo}
         frameClassName={headerFrameClassName}
+        overlay={headerOverlay}
         onBack={handleBack}
         onClose={onClose}
         title={title}

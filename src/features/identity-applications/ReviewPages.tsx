@@ -16,8 +16,9 @@ import { mergePendingMerchantReviews } from "../../components/admin/adminOperato
 
 const reviewableStatus = (status: string) => status === "submitted" || status === "under_review";
 
-function ReviewShell({ title, info, backTo, children }: { title: string; info: string; backTo: string; children: React.ReactNode }) {
+function ReviewShell({ title, info, backTo, children, embedded }: { title: string; info: string; backTo: string; children: React.ReactNode; embedded?: boolean }) {
   const { language } = useI18n();
+  if (embedded) return <div className="space-y-5"><h1 className="text-3xl font-black">{translateText(title, language)}</h1><p className="text-sm text-[color:var(--client-muted)]">{translateText(info, language)}</p>{children}</div>;
   return <SettingsDetailPage backTo={backTo} closeTo={backTo} info={translateText(info, language)} navItems={undefined} title={translateText(title, language)}>{children}</SettingsDetailPage>;
 }
 
@@ -26,7 +27,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return <div className="grid gap-1 border-b border-[color:var(--client-line)] py-3 last:border-b-0 sm:grid-cols-[9rem_1fr]"><dt className="text-xs font-black text-[color:var(--client-muted)]">{translateText(label, language)}</dt><dd className="break-words text-sm font-bold text-[color:var(--client-text)]">{value || "—"}</dd></div>;
 }
 
-export function TechnicianApplicationsReviewPage() {
+export function TechnicianApplicationsReviewPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   const [items, setItems] = useState<TechnicianReview[]>([]);
@@ -125,7 +126,7 @@ export function TechnicianApplicationsReviewPage() {
   };
 
   return (
-    <ReviewShell backTo="/merchant" info="查看申请资料和照片，批准入驻、联系申请人或下载包含全部资料和图片的 Excel 简历。" title="技师入驻申请">
+    <ReviewShell embedded={embedded} backTo="/merchant" info="查看申请资料和照片，批准入驻、联系申请人或下载包含全部资料和图片的 Excel 简历。" title={embedded ? "员工申请管理" : "技师入驻申请"}>
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
@@ -167,7 +168,7 @@ export function TechnicianApplicationsReviewPage() {
   );
 }
 
-export function MerchantApplicationsReviewPage() {
+export function MerchantApplicationsReviewPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -271,7 +272,7 @@ export function MerchantApplicationsReviewPage() {
   };
 
   return (
-    <ReviewShell backTo="/admin/merchants" info="核对代表者、eKYC、法人资料、银行名义、服务展示及合同证据后批准或驳回店铺身份。" title="店铺身份申请审核">
+    <ReviewShell embedded={embedded} backTo="/admin/merchants" info="核对代表者、eKYC、法人资料、银行名义、服务展示及合同证据后批准或驳回店铺身份。" title={embedded ? "店铺申请管理" : "店铺身份申请审核"}>
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
