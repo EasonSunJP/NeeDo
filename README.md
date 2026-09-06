@@ -174,7 +174,7 @@ RUN_EXCHANGE_CLAIM_INTEGRATION=true ALLOW_EXCHANGE_CLAIM_DEV_INTEGRATION=true EN
 
 The lifecycle checker creates its Request, schedule, service and identities as exact, namespaced Prisma fixtures, then exercises the real claim repository/service transaction boundary. It proves the claim state machine and cleanup, but does not by itself prove formal Request publication or its TEST_NDP hold; those remain browser/API acceptance responsibilities.
 
-Migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. At the 2026-09-07 Quick acceptance gate, Prisma found all 146 repository migrations applied on local `needo_dev`; no migration command or schema write was needed.
+Migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. After synchronizing the latest local `main` at the 2026-09-07 Quick acceptance gate, Prisma found all 150 repository migrations applied on local `needo_dev`; no migration command or schema write was needed.
 
 Claim creation and withdrawal remain separate from the final owner-selection command documented below. Neither flow creates a `BookingOrder`, moves wallet value, or reserves schedule capacity through `bookedCount`.
 

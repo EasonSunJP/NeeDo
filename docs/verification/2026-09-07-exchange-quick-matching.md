@@ -15,7 +15,7 @@ Environment: local only. No push, deployment, staging migration, production writ
 
 ## Automated and database evidence
 
-- Prisma status: local MySQL `127.0.0.1:3307/needo_dev`; all 146 repository migrations applied and schema up to date.
+- Prisma status after synchronizing the latest local `main`: local MySQL `127.0.0.1:3307/needo_dev`; all 150 repository migrations applied and schema up to date.
 - Backend Exchange regression: 55 suites discovered; 50 passed and 5 explicitly environment-gated integration suites skipped. 521 tests passed and 13 skipped; zero failures.
 - Frontend Exchange regression: 13 files and 107 tests passed.
 - Focused Quick concurrency proof on two independent connections: 2/2 passed. It proved one automatic winner for the final concurrent claims and one terminal winner plus identical replay for racing owner confirmations.
@@ -32,6 +32,8 @@ The final checker fixture used the formal service/repository transaction boundar
 - Backend environment file: `/Users/eason/Documents/New project/backend/.env.dev`.
 - Database target: MySQL `127.0.0.1:3307/needo_dev`; Redis target: `localhost:6379`; token audience: `needo-backend`; Vite proxy target: `http://127.0.0.1:3012`.
 - `/api/v1/health` returned `status: ok`; `/api/v1/ready` returned `status: ready` with both database and Redis healthy. The existing 3000/5180 listeners belonged to another runtime and were not touched.
+
+Before final integration, local `main` had advanced from the feature base to `a6ae0e91`. It merged cleanly into the Quick branch as `687c7e9c`. The newer schema required regeneration of this worktree's generated Prisma Client; after `npm run prisma:generate`, the unchanged Exchange gate, Quick checker, concurrency proof, lint, and builds all passed against the synchronized tree.
 
 ## Authenticated browser acceptance
 
