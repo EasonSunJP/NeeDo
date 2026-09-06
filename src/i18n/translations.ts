@@ -758,6 +758,9 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "其他方式": {"zh-Hant": "其他方式", "ja": "その他の支払方法", "en": "Other payment method", "ko": "기타 결제 수단"},
+  "到店支付": {"zh-Hant": "到店支付", "ja": "来店時払い", "en": "Pay at the shop", "ko": "매장 결제"},
+  "可预约时段": {"zh-Hant": "可預約時段", "ja": "予約可能枠", "en": "Available time slots", "ko": "예약 가능한 시간대"},
   "有预约时段": { "zh-Hant": "有預約時段", ja: "予約のある枠", en: "Slots with bookings", ko: "예약이 있는 시간대" },
   "运营后台成员": fourLanguageTranslation("營運後台成員", "運営管理メンバー", "Operations member", "운영 관리자"),
   "暂无待处理订单": fourLanguageTranslation("暫無待處理訂單", "対応待ちの注文はありません", "No pending orders", "처리 대기 주문이 없습니다"),

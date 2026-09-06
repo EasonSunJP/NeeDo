@@ -1,3 +1,4 @@
+import { getPortalEntryUrl } from "../../auth/portalEntry";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { authApi, type GoogleLinkStatus, type VerificationChallengePayload } from "../../api/auth";
@@ -1851,7 +1852,11 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             title={t(isBusinessPortal ? "退出账号" : "退出登录")}
             onClick={() => {
               void logout().then((result) => {
-                if (result.ok) navigate(`/login/${portal}`, { replace: true });
+                if (result.ok) {
+                  window.location.replace(getPortalEntryUrl(portal, `/login/${portal}`));
+                  // A hash-only navigation keeps the previous portal mounted.
+                  window.location.reload();
+                }
               });
             }}
             value={t("退出")}

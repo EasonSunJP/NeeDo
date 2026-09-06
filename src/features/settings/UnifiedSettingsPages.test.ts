@@ -352,8 +352,9 @@ describe("FormalAccountSecurityPanel", () => {
   });
 
   it("returns an ordinary logout directly to login instead of the cached merchant homepage", () => {
-    const logoutAction = source.slice(source.indexOf("void logout().then"), source.indexOf("void logout().then") + 180);
-    expect(logoutAction).toContain("navigate(`/login/${portal}`");
+    const logoutAction = source.slice(source.indexOf("void logout().then"), source.indexOf("void logout().then") + 380);
+    expect(logoutAction).toContain("window.location.replace(getPortalEntryUrl(portal, `/login/${portal}`))");
+    expect(logoutAction).toContain("window.location.reload()");
   });
 
   it("wires successful unlink through AuthProvider logout and returns to the current portal login", () => {
