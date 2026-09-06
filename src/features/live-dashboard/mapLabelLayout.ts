@@ -34,6 +34,7 @@ export interface MapLabelLayoutInput {
   /** Matches SVG translate(x y) scale(scale); labels themselves are not scaled. */
   viewport: MapLabelViewport;
   selectedCode?: string | null;
+  focusedCode?: string | null;
   orderCountByCode?: Readonly<Record<string, number>>;
   /** Screen-space label dimensions when rendering into a measured SVG viewport. */
   fontSize?: number;
@@ -135,7 +136,7 @@ function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, vi
 }
 
 /** Pure layout over the supplied visible-level regions; no nationwide index lookup. */
-export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orderCountByCode = {}, fontSize, capacity = "complete" }: MapLabelLayoutInput): MapLabelPlacement[] {
+export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, focusedCode, orderCountByCode = {}, fontSize, capacity = "complete" }: MapLabelLayoutInput): MapLabelPlacement[] {
   const [x, y, width, height] = viewBox;
   const candidates = regions.flatMap((region) => region.labelPoint === null ? [] : [{
     code: region.code,
@@ -144,6 +145,7 @@ export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orde
     height: fontSize ? fontSize + 6 : 28
   }]);
   candidates.sort((a, b) => Number(b.code === selectedCode) - Number(a.code === selectedCode)
+    || Number(b.code === focusedCode) - Number(a.code === focusedCode)
     || Number((orderCountByCode[b.code] ?? 0) > 0) - Number((orderCountByCode[a.code] ?? 0) > 0)
     || a.width - b.width
     || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));

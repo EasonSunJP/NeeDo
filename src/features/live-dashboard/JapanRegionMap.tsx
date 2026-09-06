@@ -115,6 +115,8 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const [error, setError] = useState("");
   const [activeCode, setActiveCode] = useState<string | null>(scope.admin2 ?? null);
   const [viewport, setViewport] = useState(IDENTITY_VIEWPORT);
+  // Geography previews each drag frame; labels settle only when the gesture ends.
+  const [labelViewport, setLabelViewport] = useState(IDENTITY_VIEWPORT);
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
   const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement; viewport: MapViewport } | null>(null);
@@ -152,6 +154,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   }, []);
   useEffect(() => {
     setViewport(IDENTITY_VIEWPORT);
+    setLabelViewport(IDENTITY_VIEWPORT);
     return () => {
       if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
       dragFrame.current = null;
@@ -171,25 +174,27 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     return { scale, x: (stageSize.width - asset.viewBox[2] * scale) / 2 - asset.viewBox[0] * scale, y: (stageSize.height - asset.viewBox[3] * scale) / 2 - asset.viewBox[1] * scale };
   }, [asset, stageSize]);
   const placements = useMemo(() => asset ? layoutMapLabels({
-    regions: stageSize && viewport.scale > 1 ? asset.regions.filter((region) => {
-      if (region.code === activeCode) return true;
+    regions: stageSize && labelViewport.scale > 1 ? asset.regions.filter((region) => {
+      if (region.code === activeCode || region.code === scope.admin2) return true;
       if (!region.labelPoint) return false;
-      const x = (region.labelPoint[0] * viewport.scale + viewport.x) * projection.scale + projection.x;
-      const y = (region.labelPoint[1] * viewport.scale + viewport.y) * projection.scale + projection.y;
+      const x = (region.labelPoint[0] * labelViewport.scale + labelViewport.x) * projection.scale + projection.x;
+      const y = (region.labelPoint[1] * labelViewport.scale + labelViewport.y) * projection.scale + projection.y;
       return x >= 0 && x <= stageSize.width && y >= 0 && y <= stageSize.height;
     }) : asset.regions,
     viewBox: stageSize ? [0, 0, stageSize.width, stageSize.height] : asset.viewBox,
-    viewport: { scale: viewport.scale * projection.scale, x: viewport.x * projection.scale + projection.x, y: viewport.y * projection.scale + projection.y },
-    selectedCode: activeCode, fontSize: stageSize ? 11 : undefined, capacity: stageSize ? "partial" : "complete",
+    viewport: { scale: labelViewport.scale * projection.scale, x: labelViewport.x * projection.scale + projection.x, y: labelViewport.y * projection.scale + projection.y },
+    selectedCode: scope.admin2, focusedCode: activeCode, fontSize: stageSize ? 11 : undefined, capacity: stageSize ? "partial" : "complete",
     orderCountByCode: Object.fromEntries(children.map((item) => [item.code, item.orderCount]))
-  }) : [], [asset, viewport, activeCode, children, stageSize, projection]);
+  }) : [], [asset, labelViewport, activeCode, children, stageSize, projection, scope.admin2]);
   const nameByCode = useMemo(() => new Map(asset?.regions.map((item) => [item.code, item.nameJa])), [asset]);
   const zoom = (direction: "in" | "out") => {
     if (!asset) return;
     const point = asset.regions.find((item) => item.code === scope.admin2)?.labelPoint;
     const center: [number, number] = point ? [point[0] * viewport.scale + viewport.x, point[1] * viewport.scale + viewport.y]
       : [asset.viewBox[0] + asset.viewBox[2] / 2, asset.viewBox[1] + asset.viewBox[3] / 2];
-    setViewport((current) => zoomMapViewport(current, direction, center, asset.viewBox));
+    const next = zoomMapViewport(viewport, direction, center, asset.viewBox);
+    setViewport(next);
+    setLabelViewport(next);
   };
   const endDrag = (event: PointerEvent<SVGSVGElement>) => {
     const current = drag.current;
@@ -203,7 +208,10 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
     dragFrame.current = null;
     drag.current = null;
-    if (current.moved) setViewport(current.viewport);
+    if (current.moved) {
+      setViewport(current.viewport);
+      setLabelViewport(current.viewport);
+    }
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
@@ -232,7 +240,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
         <div className="live-dashboard-map-viewport-controls">
           <button aria-label={t("放大地图")} disabled={!asset || viewport.scale >= 4} onClick={() => zoom("in")} type="button">＋</button>
           <button aria-label={t("缩小地图")} disabled={!asset || viewport.scale <= 1} onClick={() => zoom("out")} type="button">−</button>
-          <button aria-label={t("还原地图")} disabled={!asset || viewport.scale === 1} onClick={() => setViewport(IDENTITY_VIEWPORT)} type="button">{t("还原")}</button>
+          <button aria-label={t("还原地图")} disabled={!asset || viewport.scale === 1} onClick={() => { setViewport(IDENTITY_VIEWPORT); setLabelViewport(IDENTITY_VIEWPORT); }} type="button">{t("还原")}</button>
         </div>
       </div>
       <div className="live-dashboard-map-tooltip" role="tooltip">
@@ -324,8 +332,8 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
                         selectRegion(region.code);
                       }
                     }}
-                    onMouseEnter={() => setActiveCode(region.code)}
-                    onMouseLeave={() => setActiveCode(scope.admin2 ?? null)}
+                    onMouseEnter={() => { if (!drag.current?.moved) setActiveCode(region.code); }}
+                    onMouseLeave={() => { if (!drag.current?.moved) setActiveCode(scope.admin2 ?? null); }}
                     role="button"
                     style={{ fill: macroRegionColors[macroRegion] ?? macroRegionColors.kanto }}
                     tabIndex={0}

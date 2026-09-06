@@ -88,6 +88,46 @@ describe("JapanRegionMap", () => {
     expect(container.querySelectorAll("[data-map-region]")).toHaveLength(195);
   });
 
+  it("retains persistent Hokkaido selection alongside a different transient focus", async () => {
+    const hokkaido = readAsset("public/maps/jp/2026/prefectures/01.json");
+    let resize: ResizeObserverCallback = () => {};
+    vi.stubGlobal("ResizeObserver", class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : hokkaido })));
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(hokkaido)} onSelectRegion={vi.fn()} scope={{ country: "JP", admin1: "01", admin2: "01101", period: "today" }} />));
+    await act(async () => resize([{ contentRect: { width: 880, height: 220 } } as ResizeObserverEntry], {} as ResizeObserver));
+    const other = container.querySelector<SVGPathElement>('[data-region-code="01345"]')!;
+    await act(async () => other.dispatchEvent(new FocusEvent("focusin", { bubbles: true })));
+    expect(container.querySelector('[data-map-label="01101"]')).toBeTruthy();
+    expect(container.querySelector('[data-map-label="01345"]')).toBeTruthy();
+    let frame: FrameRequestCallback = () => {};
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => { frame = callback; return 1; }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const layout = vi.spyOn(labelLayout, "layoutMapLabels");
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+    const svg = container.querySelector("svg")!;
+    Object.assign(svg, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn(), hasPointerCapture: () => true });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ width: 880, height: 220 } as DOMRect);
+    const pointer = async (type: string, x: number) => act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: 100 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      svg.dispatchEvent(event);
+    });
+    const settled = layout.mock.calls.length;
+    await pointer("pointerdown", 100);
+    for (const x of [110, 120, 130]) {
+      await pointer("pointermove", x);
+      await act(async () => frame(0));
+      expect(layout).toHaveBeenCalledTimes(settled);
+    }
+    await pointer("pointerup", 135);
+    expect(layout).toHaveBeenCalledTimes(settled + 1);
+    expect(container.querySelector('[data-map-label="01101"]')).toBeTruthy();
+    expect(container.querySelector('[data-map-label="01345"]')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    await act(async () => other.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+    expect(container.querySelector('[data-map-label="01101"]')).toBeTruthy();
+  });
+
   it("loads the local country asset and exposes all 47 prefectures", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => country }));
     const onSelect = vi.fn();
@@ -223,7 +263,7 @@ describe("JapanRegionMap", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("keeps ordinary zoomed path clicks selectable and batches drag layout until animation frames", async () => {
+  it("keeps clicks selectable and previews multiple drag frames with only one final label layout", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : country })));
     let frame: FrameRequestCallback | undefined;
     const requestFrame = vi.fn((callback: FrameRequestCallback) => { frame = callback; return 71; });
@@ -259,18 +299,31 @@ describe("JapanRegionMap", () => {
     expect(requestFrame).toHaveBeenCalledTimes(1);
     expect(layout).toHaveBeenCalledTimes(count);
     await act(async () => frame!(0));
-    expect(layout).toHaveBeenCalledTimes(count + 1);
+    expect(layout).toHaveBeenCalledTimes(count);
+    for (const x of [152, 154, 156]) {
+      await pointer("pointermove", x);
+      await act(async () => frame!(0));
+      expect(layout).toHaveBeenCalledTimes(count);
+    }
     await pointer("pointermove", 160);
     await pointer("pointerup", 165);
     expect(cancelFrame).toHaveBeenCalledWith(71);
-    expect(layout).toHaveBeenCalledTimes(count + 2);
+    expect(layout).toHaveBeenCalledTimes(count + 1);
+    expect(layout.mock.calls.at(-1)![0].viewport.x).toBe(-country.viewBox[2] / 4 + 65);
     expect(container.querySelector("[data-map-geometry]")!.getAttribute("transform")).toContain(`translate(${-country.viewBox[2] / 4 + 65} `);
     await act(async () => svg.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onSelect).not.toHaveBeenCalled();
     await pointer("pointerdown", 160); await pointer("pointermove", 170);
+    await act(async () => frame!(0));
+    expect(layout).toHaveBeenCalledTimes(count + 1);
+    await pointer("pointercancel", 170);
+    expect(layout).toHaveBeenCalledTimes(count + 2);
+    expect(layout.mock.calls.at(-1)![0].viewport.x).toBe(-country.viewBox[2] / 4 + 75);
+    await pointer("pointerdown", 170); await pointer("pointermove", 180);
     await act(async () => root.render(null));
+    expect(layout).toHaveBeenCalledTimes(count + 2);
     expect(cancelFrame).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(3);
   });
 
   it("clips map content at the stage without clipping the search results", async () => {

@@ -19,6 +19,11 @@ function expectContained(placements: MapLabelPlacement[], bounds: typeof viewBox
 }
 
 describe("layoutMapLabels", () => {
+  it("places persistent selection and transient focus ahead of data in partial mode", () => {
+    const regions = Array.from({ length: 80 }, (_, index) => region(String(index), [150, 100]));
+    const placements = layoutMapLabels({ regions, viewBox: [0, 0, 300, 200], viewport: identityViewport, selectedCode: "79", focusedCode: "78", orderCountByCode: { "77": 1 }, fontSize: 11, capacity: "partial" });
+    expect(placements.slice(0, 3).map((item) => item.code)).toEqual(["79", "78", "77"]);
+  });
   it.each([[880, 220], [640, 390], [600, 250]])("keeps all Japan, Tokyo and Okinawa labels readable at %ix%i", (width, height) => {
     for (const name of ["country", "prefectures/13", "prefectures/47"]) {
       const asset = JSON.parse(fs.readFileSync(path.join(process.cwd(), `public/maps/jp/2026/${name}.json`), "utf8"));
