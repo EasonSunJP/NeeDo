@@ -1412,7 +1412,7 @@ const independentDirectSnapshot = async (
     };
     return transaction.$queryRaw<
       Array<{
-        rank: bigint;
+        rankingPosition: bigint;
         entityPublicId: string;
         displayName: string;
         avatarUrl: string | null;
@@ -1427,7 +1427,7 @@ const independentDirectSnapshot = async (
         entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE
           AND candidate.technician_user_is_test = FALSE`
       })}, ${runtime.AnalyticsRankingRepository.rankingCtes(input)}
-      SELECT ranking_position AS rank, entity_public_id AS entityPublicId,
+      SELECT ranking_position AS rankingPosition, entity_public_id AS entityPublicId,
         display_name AS displayName, avatar_url AS avatarUrl,
         gmv_jpy AS gmvJpy, completed_count AS completedCount
       FROM ranked_entities ORDER BY ranking_position ASC LIMIT 10
@@ -1460,7 +1460,7 @@ const independentDirectSnapshot = async (
     occurredAt: new Date(row.occurredAt)
   });
   const mapRanking = (row: (typeof serviceRankingRows)[number]) => ({
-    rank: numeric(row.rank),
+    rank: numeric(row.rankingPosition),
     entityPublicId: row.entityPublicId,
     displayName: row.displayName,
     avatarUrl: row.avatarUrl,

@@ -94,7 +94,7 @@ interface TrendRow {
 }
 
 interface RankingRow {
-  rank?: NumericValue;
+  rankingPosition?: NumericValue;
   entityPublicId?: unknown;
   entity_public_id?: unknown;
   displayName?: unknown;
@@ -635,7 +635,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         rankingInput,
         this.rankingEvidenceScope(input.scope)
       )}, ${AnalyticsRankingRepository.rankingCtes(rankingInput)}
-      SELECT ranking_position AS rank, entity_public_id AS entityPublicId,
+      SELECT ranking_position AS rankingPosition, entity_public_id AS entityPublicId,
              display_name AS displayName, avatar_url AS avatarUrl,
              gmv_jpy AS gmvJpy, completed_count AS completedCount
       FROM ranked_entities
@@ -656,7 +656,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         rankingInput,
         this.rankingEvidenceScope(input.scope)
       )}, ${AnalyticsRankingRepository.rankingCtes(rankingInput)}
-      SELECT ranking_position AS rank, entity_public_id AS entityPublicId,
+      SELECT ranking_position AS rankingPosition, entity_public_id AS entityPublicId,
              display_name AS displayName, avatar_url AS avatarUrl,
              gmv_jpy AS gmvJpy, completed_count AS completedCount
       FROM ranked_entities
@@ -772,7 +772,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       throw new RangeError(aggregateError);
     }
     return {
-      rank: this.safeInteger(row.rank),
+      rank: this.safeInteger(row.rankingPosition),
       entityPublicId: this.nonEmptyString(row.entityPublicId ?? row.entity_public_id),
       displayName: this.nonEmptyString(row.displayName ?? row.display_name),
       avatarUrl: (avatar ?? null) as string | null,

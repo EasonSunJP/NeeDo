@@ -22,7 +22,7 @@ const scopeCode = (query: SqlQuery): "JP" | "13" | "13104" => {
 
 const rankRows = (kind: "service" | "technician", count: number) =>
   Array.from({ length: count }, (_, index) => ({
-    rank: index + 1,
+    rankingPosition: BigInt(index + 1),
     entityPublicId: `${kind}-${index + 1}`,
     displayName: `${kind} ${index + 1}`,
     avatarUrl: null,
@@ -183,6 +183,36 @@ const createHarness = () => {
 };
 
 describe("LiveDashboardRepository", () => {
+  it("uses non-reserved rankingPosition aliases for both MySQL ranking queries", async () => {
+    const harness = createHarness();
+    await harness.repository.getSnapshotFacts({
+      scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+      period: "today",
+      evaluatedAt
+    });
+    const rankingQueries = harness.queries.filter((query) =>
+      /live_dashboard_(?:service|technician)_ranking/u.test(queryText(query))
+    );
+    expect(rankingQueries).toHaveLength(2);
+    for (const query of rankingQueries) {
+      expect(queryText(query)).not.toMatch(/\bAS\s+rank\b/iu);
+      expect(queryText(query)).toContain("ranking_position AS rankingPosition");
+    }
+  });
+
+  it("maps driver rankingPosition values to unchanged public rank for both rankings", async () => {
+    const { repository } = createHarness();
+    const snapshot = await repository.getSnapshotFacts({
+      scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+      period: "today",
+      evaluatedAt
+    });
+    for (const ranking of [snapshot.serviceRanking, snapshot.technicianRanking]) {
+      expect(ranking.map((item) => item.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(ranking[0]).not.toHaveProperty("rankingPosition");
+    }
+  });
+
   it("includes missing historical snapshots in national order facts and unresolved coverage, never narrow scopes", async () => {
     const national = createHarness();
     await national.repository.getSnapshotFacts({ scope: { countryCode: "JP", admin1Code: null, admin2Code: null }, period: "today", evaluatedAt });

@@ -20,6 +20,15 @@ import {
 const scriptPath = path.join(process.cwd(), "scripts/check-live-dashboard-flow.ts");
 
 describe("live dashboard formal-flow checker contract", () => {
+  it("uses a non-reserved MySQL ranking alias and maps it to the public rank contract", () => {
+    const source = fs.readFileSync(scriptPath, "utf8");
+    expect(source).not.toMatch(/\bAS\s+rank\b/iu);
+    expect(source).toContain("ranking_position AS rankingPosition");
+    expect(source).toContain("rankingPosition: bigint;");
+    expect(source).toContain("rank: numeric(row.rankingPosition)");
+    expect(source).not.toContain("numeric(row.rank)");
+  });
+
   it("consumes deterministic camelCase schema metadata aliases independently of driver casing", async () => {
     const root = path.resolve(process.cwd(), "..");
     const catalog = JSON.parse(fs.readFileSync(path.join(root, "backend/prisma/reference/jp-administrative-regions-2026.json"), "utf8"));
