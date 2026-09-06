@@ -24,6 +24,7 @@ export interface BackofficeUserGroupPayload {
 }
 
 export interface BackofficeUserGroupMemberPayload {
+  id: number;
   needoId: string;
   username: string;
   avatarUrl: string | null;

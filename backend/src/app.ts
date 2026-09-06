@@ -1,3 +1,4 @@
+import type { OperationsMemberRepositoryPort } from "./repositories/operations-member.repository";
 import { createWorkStatusRoutes } from './routes/work-status.routes';
 import type { WorkStatusService } from './services/work-status.service';
 import { createSosRoutes } from "./routes/sos.routes";
@@ -338,6 +339,7 @@ export interface AppDependencies {
   shopEmployeeDirectoryRepository?: ShopEmployeeDirectoryRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
+  operationsMemberRepository?: OperationsMemberRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
   searchQueryRecorderRepository?: SearchQueryRecorderRepositoryPort;

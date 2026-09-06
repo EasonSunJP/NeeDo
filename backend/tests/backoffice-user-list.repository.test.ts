@@ -332,11 +332,11 @@ describe("BackofficeRepository managed users", () => {
     );
 
     expect(auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      skip: 50, take: 50,
+      skip: 49, take: 50,
       where: { deletedAt: null, targetType: "User", targetId: 41, metadata: { path: "$.shopId", equals: 11 } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     }));
-    expect(detail?.audit).toMatchObject({ total: 126, page: 2, page_size: 50 });
+    expect(detail?.audit).toMatchObject({ total: 127, page: 2, page_size: 50 });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: 41,
@@ -401,6 +401,22 @@ describe("BackofficeRepository managed users", () => {
         })
       })
     }));
+  });
+
+  it("applies the date interval before audit count and pagination", async () => {
+    const count = jest.fn(async () => 1);
+    const findMany = jest.fn(async () => []);
+    const repository = new BackofficeRepository({
+      user: { findFirst: jest.fn(async () => managedUserRow()) },
+      wallet: { findMany: jest.fn(async () => []) },
+      bookingOrder: { count: jest.fn(async () => 0), aggregate: jest.fn(async () => ({ _sum: { paymentAmountJpy: 0 } })) },
+      orderReview: { findMany: jest.fn(async () => []) },
+      auditLog: { count, findMany }
+    } as never);
+    await repository.getManagedUser({ scope: "platform", userId: 41, audit_page: 2, audit_page_size: 10, audit_from: "2026-09-01T00:00:00.000Z", audit_to: "2026-09-08T00:00:00.000Z" }, now);
+    const createdAt = { gte: new Date("2026-09-01T00:00:00.000Z"), lt: new Date("2026-09-08T00:00:00.000Z") };
+    expect(count).toHaveBeenCalledWith({ where: expect.objectContaining({ createdAt }) });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ createdAt }), skip: 9, take: 10 }));
   });
 
   it("includes related immutable adjustment events in the operations audit panel", async () => {

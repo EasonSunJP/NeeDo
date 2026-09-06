@@ -1,3 +1,4 @@
+import { accountLogPagination } from "../domain/account-user-log";
 import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
 import {
@@ -36,6 +37,7 @@ import {
 import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
+  type BackofficeActivityAccount,
   type BackofficeAuditEventPayload,
   type BackofficeCompensationProfilePayload,
   type BackofficeCustomerPayload,
@@ -82,6 +84,34 @@ import type {
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
 import { identifierNumberPartSchema } from "../validators/public-identifier.validator";
+
+const managedUserAuditWhere = (input: BackofficeScope & Partial<BackofficeManagedUserDetailQuery>, userId: number): Prisma.AuditLogWhereInput => ({
+      deletedAt: null,
+      ...(input.audit_from && input.audit_to ? { createdAt: { gte: new Date(input.audit_from), lt: new Date(input.audit_to) } } : {}),
+      ...(input.scope === "merchant"
+        ? {
+            targetType: "User",
+            targetId: userId,
+            metadata: { path: "$.shopId", equals: input.shopId }
+          }
+        : {
+            OR: [
+              { targetType: "User", targetId: userId },
+              {
+                targetType: {
+                  in: [
+                    "UserMembershipAdjustment",
+                    "OrderReviewAmendment",
+                    "OrderRefundAmendment",
+                    "OrderTimelineComment",
+                    "platform_partner_profile"
+                  ]
+                },
+                metadata: { path: "$.userId", equals: userId }
+              }
+            ]
+          })
+    } satisfies Prisma.AuditLogWhereInput);
 
 type DecimalLike = {
   toString: () => string;
@@ -554,6 +584,31 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     );
   }
 
+  public async findActivityAccount(input: BackofficeScope & { subject: "users" | "technicians"; id: number }) {
+    const user = input.subject === "technicians"
+      ? (await this.client.technicianProfile.findFirst({
+          where: { ...this.technicianMutationWhere(input, input.id), user: { deletedAt: null } },
+          select: { user: { select: { id: true, username: true, avatarUrl: true, createdAt: true } } }
+        }))?.user
+      : await this.client.user.findFirst({
+          where: { id: input.id, deletedAt: null, ...(input.scope === "merchant" ? { bookingOrders: { some: { shopId: input.shopId, deletedAt: null } } } : {}) },
+          select: { id: true, username: true, avatarUrl: true, createdAt: true }
+        });
+    return user ? { id: user.id, displayName: user.username, avatarUrl: user.avatarUrl, createdAt: user.createdAt.toISOString() } : null;
+  }
+
+  public async getAccountAudit(input: BackofficeScope & { account: BackofficeActivityAccount } & BackofficeManagedUserDetailQuery) {
+    const where = managedUserAuditWhere(input, input.account.id);
+    const pagination = accountLogPagination(input.account, input);
+    const [total, rows] = await Promise.all([
+      this.client.auditLog.count({ where }),
+      this.client.auditLog.findMany({ where, include: { actor: { select: { username: true, avatarUrl: true } } },
+        skip: pagination.skip, take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }] })
+    ]);
+    return { total: total + pagination.extraTotal, page: input.audit_page, page_size: input.audit_page_size, list: [...pagination.origin, ...rows.map((row) => this.mapAuditEvent(row))] };
+  }
+
   public async getManagedUser(
     input: BackofficeScope & { userId: number } & Partial<BackofficeManagedUserDetailQuery>,
     occurredAt: Date
@@ -575,32 +630,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ...(input.scope === "merchant" ? { shopId: input.shopId } : {}),
       deletedAt: null
     };
-    const auditWhere = {
-      deletedAt: null,
-      ...(input.scope === "merchant"
-        ? {
-            targetType: "User",
-            targetId: userId,
-            metadata: { path: "$.shopId", equals: input.shopId }
-          }
-        : {
-            OR: [
-              { targetType: "User", targetId: userId },
-              {
-                targetType: {
-                  in: [
-                    "UserMembershipAdjustment",
-                    "OrderReviewAmendment",
-                    "OrderRefundAmendment",
-                    "OrderTimelineComment",
-                    "platform_partner_profile"
-                  ]
-                },
-                metadata: { path: "$.userId", equals: userId }
-              }
-            ]
-          })
-    } satisfies Prisma.AuditLogWhereInput;
+    const auditWhere = managedUserAuditWhere(input, userId);
+    const auditPagination = accountLogPagination({ id: user.id, displayName: user.username, avatarUrl: user.avatarUrl, createdAt: user.createdAt.toISOString() }, input);
     const reviewWhere: Prisma.OrderReviewWhereInput | null = user.customerProfile
       ? {
           customerProfileId: user.customerProfile.id,
@@ -649,8 +680,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         this.client.auditLog.findMany({
           where: auditWhere,
           include: { actor: { select: { username: true, avatarUrl: true } } },
-          skip: ((input.audit_page ?? 1) - 1) * (input.audit_page_size ?? 10),
-          take: input.audit_page_size ?? 10,
+          skip: auditPagination.skip,
+          take: auditPagination.take,
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       ]);
@@ -704,8 +735,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       audit: {
         page: input.audit_page ?? 1,
         page_size: input.audit_page_size ?? 10,
-        total: auditTotal,
-        list: auditRows.map((row) => this.mapAuditEvent(row))
+        total: auditTotal + auditPagination.extraTotal,
+        list: [...auditPagination.origin, ...auditRows.map((row) => this.mapAuditEvent(row))]
       }
     };
   }

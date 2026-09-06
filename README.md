@@ -2,6 +2,8 @@
 
 面向日本市场的本地生活服务平台与商家管理系统，覆盖上门服务、门店预约、餐饮预约和 SaaS 后台运营。
 
+分组成员、后台账号 LOG 与动态插页的接口及本地验证记录见 [Step 12 抽屉改进](docs/superpowers/plans/2026-09-07-operations-member-create.md)。
+
 ## Run
 
 ```bash

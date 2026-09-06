@@ -1,3 +1,4 @@
+import type { RealtimeRepositoryPort } from "../repositories/realtime.repository";
 import type { WorkStatus } from '../domain/work-status';
 import { hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
@@ -859,7 +860,10 @@ export interface BackofficeNdpSummaryPayload {
   settleableNdp: number;
 }
 
+export type BackofficeActivityAccount = Pick<BackofficeManagedUserDetailRecord, "id" | "displayName" | "avatarUrl" | "createdAt">;
 export interface BackofficeRepositoryPort {
+  findActivityAccount: (input: BackofficeScope & { subject: "users" | "technicians"; id: number }) => Promise<BackofficeActivityAccount | null>;
+  getAccountAudit: (input: BackofficeScope & { account: BackofficeActivityAccount } & BackofficeManagedUserDetailQuery) => Promise<BackofficeManagedUserDetailRecord["audit"]>;
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
   getHeadlineSeries3d: (
     input: DashboardAggregateInput
@@ -963,7 +967,8 @@ export class BackofficeService {
     analyticsOrMembership?:
       | BackofficeAnalyticsReader
       | Pick<PlatformMembershipService, "changeEntitlement">,
-    platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">
+    platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">,
+    private readonly accountPostsRepository?: Pick<RealtimeRepositoryPort, "listSocialPosts">
   ) {
     if (analyticsOrMembership && "getOperationsFinance" in analyticsOrMembership) {
       this.analyticsReader = analyticsOrMembership;
@@ -1137,6 +1142,22 @@ export class BackofficeService {
       filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
     });
     return this.repository.listManagedUsers({ ...input, ...scope }, this.now());
+  }
+
+  public async getTechnicianUserLog(id: number, merchant: boolean, actor: AuthenticatedAccessContext, context: AuthRequestContext, query: BackofficeManagedUserDetailQuery) {
+    const scope: BackofficeScope = merchant ? this.getMerchantScope(actor) : { scope: "platform" };
+    const account = this.requireResult(await this.repository.findActivityAccount({ ...scope, subject: "technicians", id }), "error.technician.not_found");
+    await this.record(actor, context, "backoffice.technician.user_log.read", "TechnicianProfile", { technicianProfileId: id, ...scope });
+    return { ...account, audit: await this.repository.getAccountAudit({ ...scope, account, ...query }) };
+  }
+
+  public async listAccountPosts(id: number, subject: "users" | "technicians", merchant: boolean, actor: AuthenticatedAccessContext, context: AuthRequestContext, query: { page?: number; pageSize?: number }) {
+    const scope: BackofficeScope = merchant ? this.getMerchantScope(actor) : { scope: "platform" };
+    const account = this.requireResult(await this.repository.findActivityAccount({ ...scope, subject, id }), "error.user.not_found");
+    await this.record(actor, context, "backoffice.account.posts.read", "User", { userId: account.id, ...scope });
+    if (!this.accountPostsRepository) throw new AppError({ code: ERROR_CODES.INTERNAL, message: "error.service.unavailable", statusCode: 503 });
+    if (!actor.currentIdentityId) throw new AppError({ code: ERROR_CODES.FORBIDDEN, message: "error.auth.forbidden", statusCode: 403 });
+    return this.accountPostsRepository.listSocialPosts(actor.currentIdentityId, { ...query, authorUserId: account.id }, actor.userId);
   }
 
   public async getManagedUser(

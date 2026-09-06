@@ -1,3 +1,7 @@
+import { OperationsMemberController } from "../controllers/operations-member.controller";
+import { OperationsMemberRepository } from "../repositories/operations-member.repository";
+import { OperationsMemberService } from "../services/operations-member.service";
+import { operationsMemberCreateSchema } from "../validators/operations-member.validator";
 import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
@@ -52,6 +56,17 @@ export const createUserRoutes = (config: AppConfig, dependencies: AppDependencie
       dependencies.testAccountRepository ?? new TestAccountRepository(),
       userService
     )
+  );
+
+  router.post(
+    "/users/operations-members",
+    authenticate(),
+    authorize(USER_ROUTE_PERMISSIONS.create),
+    authorize(USER_ROUTE_PERMISSIONS.assignRoles),
+    validateRequest({ body: operationsMemberCreateSchema }),
+    new OperationsMemberController(new OperationsMemberService(
+      dependencies.operationsMemberRepository ?? new OperationsMemberRepository()
+    )).create
   );
 
   router.get(

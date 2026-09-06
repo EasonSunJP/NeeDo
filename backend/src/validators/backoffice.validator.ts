@@ -107,8 +107,10 @@ export type BackofficeManagedUserListQuery = z.infer<typeof backofficeManagedUse
 
 export const backofficeManagedUserDetailQuerySchema = z.object({
   audit_page: z.coerce.number().int().positive().default(1),
-  audit_page_size: z.coerce.number().refine((value) => value === 10 || value === 50).default(10)
-}).strict();
+  audit_page_size: z.coerce.number().refine((value) => value === 10 || value === 50).default(10),
+  audit_from: z.string().datetime().optional(),
+  audit_to: z.string().datetime().optional()
+}).strict().refine((value) => (!value.audit_from && !value.audit_to) || Boolean(value.audit_from && value.audit_to && Date.parse(value.audit_from) < Date.parse(value.audit_to)), { message: "Both ordered audit range boundaries are required" });
 export type BackofficeManagedUserDetailQuery = z.infer<typeof backofficeManagedUserDetailQuerySchema>;
 
 export const backofficeManagedUserParamSchema = z
@@ -463,3 +465,5 @@ export type BackofficeCustomerMembershipGrantBody = z.infer<
 >;
 export type BackofficeServiceCreateBody = z.infer<typeof backofficeServiceCreateBodySchema>;
 export type BackofficeServiceUpdateBody = z.infer<typeof backofficeServiceUpdateBodySchema>;
+
+export const backofficeAccountPostsQuerySchema = z.object({ page: z.coerce.number().int().positive().default(1), pageSize: z.coerce.number().int().positive().max(100).default(10) }).strict();
