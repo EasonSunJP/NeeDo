@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -114,6 +115,7 @@ export function SystemSettingsPage() {
   }
 
   return (
+    <AdminLayout>
     <ModuleShell description={labels.description} title={labels.title} actions={settings ? <Badge tone="blue">{labels.version} {settings.version}</Badge> : undefined}>
       <div className="rounded-2xl border border-line bg-white p-2 shadow-sm">
         <div aria-label={labels.title} className="grid gap-2 md:grid-cols-4" role="tablist">
@@ -129,6 +131,7 @@ export function SystemSettingsPage() {
         {content}
       </section>
     </ModuleShell>
+    </AdminLayout>
   );
 }
 
