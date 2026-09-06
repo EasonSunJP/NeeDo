@@ -400,6 +400,7 @@ export function DashboardPage() {
             ) : null}
 
             <AnalyticsRankingsSection
+              cities={dashboard?.filter.availableCities ?? []}
               onOpenDetail={setRankingDetail}
               query={committedQuery}
             />

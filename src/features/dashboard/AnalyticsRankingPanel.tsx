@@ -10,16 +10,22 @@ import {
 import { ApiClientError } from "../../api/httpClient";
 import { useI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateTextForContext } from "../../i18n/translations";
+import { DashboardFilterBar } from "./DashboardFilterBar";
+import { Drawer } from "../../components/ui/Drawer";
 import { DashboardTestBadge } from "./DashboardTestBadge";
 
 type RankingCategory = { id: number; name: string };
 
 export type AnalyticsRankingPanelProps = {
   categories?: RankingCategory[];
+  cities?: string[];
   kind: AnalyticsRankingKind;
   onOpenDetail: (item: AnalyticsRankingItem) => void;
   query: DashboardQuery;
   title: string;
+  variant?: "summary" | "detail";
+  initialMetric?: AnalyticsRankingMetric;
+  initialCategoryId?: number | null;
 };
 
 function rankingErrorSource(error: unknown) {
@@ -34,21 +40,35 @@ function rankingErrorSource(error: unknown) {
 
 export function AnalyticsRankingPanel({
   categories = [],
+  cities = [],
   kind,
   onOpenDetail,
-  query,
-  title
+  query: initialQuery,
+  title,
+  variant = "summary",
+  initialMetric = "gmv",
+  initialCategoryId = null
 }: AnalyticsRankingPanelProps) {
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
-  const [metric, setMetric] = useState<AnalyticsRankingMetric>("gmv");
-  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [detailQuery, setDetailQuery] = useState(initialQuery);
+  const query = variant === "detail" ? detailQuery : initialQuery;
+  const [pageSize, setPageSize] = useState(10);
+  const [metric, setMetric] = useState<AnalyticsRankingMetric>(initialMetric);
+  const [categoryId, setCategoryId] = useState<number | null>(initialCategoryId);
   const [payload, setPayload] = useState<AnalyticsRankingPayload | null>(null);
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [errorSource, setErrorSource] = useState("");
   const [revision, setRevision] = useState(0);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [pagination, setPagination] = useState({ key: "", page: 1 });
   const requestIdRef = useRef(0);
   const queryKey = `${query.period}|${query.from ?? ""}|${query.to ?? ""}|${query.city ?? ""}`;
+
+  const filterKey = `${kind}|${queryKey}|${categoryId ?? ""}|${metric}|${pageSize}`;
+  const page = pagination.key === filterKey ? pagination.page : 1;
+  if (pagination.key !== filterKey) setPagination({ key: filterKey, page: 1 });
+  const detailTitle = { service: "服务项目排行详情", technician: "技师排行详情", customer: "用户消费排行详情" }[kind];
 
   useEffect(() => {
     if (categoryId !== null && !categories.some((category) => category.id === categoryId)) {
@@ -67,8 +87,8 @@ export function AnalyticsRankingPanel({
       ...query,
       metric,
       ...(categoryId ? { categoryId } : {}),
-      page: 1,
-      pageSize: 10
+      page,
+      pageSize
     }, { signal: controller.signal }).then((next) => {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return;
       setPayload(next);
@@ -79,24 +99,26 @@ export function AnalyticsRankingPanel({
       setStatus("error");
     });
     return () => controller.abort();
-  }, [categoryId, kind, metric, queryKey, revision]);
+  }, [categoryId, kind, metric, page, pageSize, queryKey, revision]);
 
   const currency = new Intl.NumberFormat(languageLocales[language], {
     style: "currency",
     currency: "JPY",
     maximumFractionDigits: 0
   });
-  const showCategory = kind === "technician" || kind === "customer";
+  const totalPages = Math.max(1, Math.ceil((payload?.total ?? 0) / pageSize));
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white shadow-panel">
+      {variant === "detail" ? <DashboardFilterBar value={query} cities={cities} loading={status === "loading"}
+        onApply={setDetailQuery} onReset={() => setDetailQuery({ period: "last7days" })} /> : null}
       <header className="space-y-3 border-b border-line px-4 py-4">
         <div
           className="flex min-h-9 flex-wrap items-center justify-between gap-3"
           data-ranking-header-row="primary"
         >
-          <h2 className="text-base font-black text-ink">{t(title)}</h2>
-          {showCategory ? (
+          {variant === "summary" ? <h2 className="text-base font-black text-ink">{t(title)}</h2> : <span className="text-sm font-black text-ink">{t("服务类型")}</span>}
+          {(
             <select
               aria-label={`${t(title)}${t("服务类型")}`}
               className="h-9 max-w-44 rounded-xl border border-line bg-white px-3 text-xs font-black text-ink outline-none focus-visible:border-moss focus-visible:ring-2 focus-visible:ring-moss/30"
@@ -108,7 +130,7 @@ export function AnalyticsRankingPanel({
                 <option key={category.id} value={category.id}>{category.name}</option>
               ))}
             </select>
-          ) : null}
+          )}
         </div>
         <div className="inline-flex rounded-full bg-paper p-1" role="group" aria-label={`${t(title)}${t("排行口径")}`}>
           {(["gmv", "completedCount"] as const).map((candidate) => {
@@ -127,7 +149,18 @@ export function AnalyticsRankingPanel({
             );
           })}
         </div>
+        {variant === "summary" ? (
+          <button className="analytics-ranking-detail-control rounded-lg px-3 py-2 text-sm font-black text-moss"
+            data-ranking-list-control="true" aria-label={`${t(title)}${t("查看详细")}`}
+            onClick={() => setDetailOpen(true)} type="button">{t("查看详细")} →</button>
+        ) : null}
       </header>
+      {variant === "detail" && payload ? (
+        <p className="break-words border-b border-line px-4 py-3 text-xs font-bold text-ink/55" data-no-i18n>
+          {payload.filter.from} — {payload.filter.to} · {payload.filter.timeZone}
+          {query.city ? ` · ${query.city}` : ""} · {t("排行记录数")}：{payload.total}
+        </p>
+      ) : null}
 
       {status === "loading" ? (
         <p className="px-5 py-12 text-center text-sm font-black text-ink/45" role="status">{t("正在加载排行榜")}</p>
@@ -162,7 +195,7 @@ export function AnalyticsRankingPanel({
                 )}
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-sm font-black text-ink" data-no-i18n>{item.displayName}</p>
+                    <p className={`${variant === "detail" ? "break-words" : "truncate"} text-sm font-black text-ink`} data-no-i18n>{item.displayName}</p>
                     {item.dataComposition === "formal" ? null : (
                       <DashboardTestBadge
                         ariaLabel={t(
@@ -173,7 +206,12 @@ export function AnalyticsRankingPanel({
                       />
                     )}
                   </div>
-                  <p className="mt-1 text-xs font-bold text-ink/40" data-no-i18n>{item.entityPublicId}</p>
+                  <p className="mt-1 break-all text-xs font-bold text-ink/40" data-no-i18n>{item.entityPublicId}</p>
+                  {variant === "detail" && item.categoryId !== null ? (
+                    <p className="mt-1 text-xs font-bold text-ink/55" data-no-i18n>
+                      {t("服务类型")}：{categories.find((category) => category.id === item.categoryId)?.name ?? item.categoryId}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="text-right">
                   <strong className={`block text-sm font-black ${metric === "gmv" ? "text-moss" : "text-ink/55"}`} data-no-i18n>{currency.format(item.gmvJpy)}</strong>
@@ -183,6 +221,32 @@ export function AnalyticsRankingPanel({
             </li>
           ))}
         </ol>
+      ) : null}
+      {variant === "detail" ? (
+        <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-4" aria-label={t("排行榜分页")}>
+          <label className="flex items-center gap-2 text-xs font-bold text-ink/55">{t("每页")}
+            <select aria-label={t("每页条数")} value={pageSize}
+              className="h-9 rounded-xl border border-line bg-white px-3 text-sm text-ink"
+              onChange={(event) => setPageSize(Number(event.target.value))}>
+              {[10, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>{t("条")}
+          </label>
+          <button type="button" aria-label={t("上一页")} disabled={status !== "success" || page <= 1}
+            className="rounded-lg border border-line px-3 py-2 text-sm font-bold text-ink disabled:opacity-40"
+            onClick={() => setPagination({ key: filterKey, page: page - 1 })}>{t("上一页")}</button>
+          <span className="text-sm font-bold text-ink/55" data-no-i18n>{page} / {totalPages}</span>
+          <button type="button" aria-label={t("下一页")} disabled={status !== "success" || page >= totalPages}
+            className="rounded-lg border border-line px-3 py-2 text-sm font-bold text-ink disabled:opacity-40"
+            onClick={() => setPagination({ key: filterKey, page: page + 1 })}>{t("下一页")}</button>
+        </nav>
+      ) : null}
+      {detailOpen ? (
+        <div data-ranking-full-list="true">
+          <Drawer open defaultWidth={900} widthStorageKey="needo.ui.analytics-ranking.width" title={t(detailTitle)} closeLabel={t("关闭排行详情")} onClose={() => setDetailOpen(false)}>
+            <AnalyticsRankingPanel key={queryKey} categories={categories} cities={cities} kind={kind} onOpenDetail={onOpenDetail}
+              query={query} title={detailTitle} variant="detail" initialMetric={metric} initialCategoryId={categoryId} />
+          </Drawer>
+        </div>
       ) : null}
     </section>
   );
