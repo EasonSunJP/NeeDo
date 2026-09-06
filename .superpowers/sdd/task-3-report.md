@@ -50,7 +50,7 @@
 ## Review and release boundary
 
 - `git diff --check` passes.
-- Only `docs/realtime.md`, `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`, and this report are intended for this task's commit. Existing `.superpowers/sdd/progress.md` modification and untracked `node_modules` / `backend/node_modules` are not staged.
+- Only `docs/realtime.md`, `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`, `docs/superpowers/plans/2026-09-06-membership-traceless-recall-enforcement.md`, and this report are intended for this task's commit. Existing `.superpowers/sdd/progress.md` modification and untracked `node_modules` / `backend/node_modules` are not staged.
 - No migration was added or applied. No database acceptance, push, staging/production deployment, authenticated browser acceptance, Task 3 rebase/merge, or worktree cleanup was performed.
 - Rollback may revert the code to standard recall, but already traceless-recalled content must never be restored; the persisted terminal fact remains authoritative.
 
