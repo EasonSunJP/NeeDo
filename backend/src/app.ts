@@ -89,6 +89,7 @@ import type { AgentCommissionRuleRepositoryPort } from "./repositories/agent-com
 import type { OperatingCostRepositoryPort } from "./repositories/operating-cost.repository";
 import type { AgentSettlementRepositoryPort } from "./repositories/agent-settlement.repository";
 import type { AdministrativeRegionRepositoryPort } from "./repositories/administrative-region.repository";
+import type { LiveDashboardRepositoryPort } from "./repositories/live-dashboard.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
@@ -262,6 +263,7 @@ import { createUserExperienceServiceForRoutes } from "./routes/user-experience-s
 import { createUserExperienceRoutes } from "./routes/user-experience.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
+import type { LiveDashboardCachePort } from "./services/live-dashboard-cache.service";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
@@ -348,6 +350,9 @@ export interface AppDependencies {
   operatingCostRepository?: OperatingCostRepositoryPort;
   agentSettlementRepository?: AgentSettlementRepositoryPort;
   administrativeRegionRepository?: AdministrativeRegionRepositoryPort;
+  liveDashboardRepository?: LiveDashboardRepositoryPort;
+  liveDashboardCache?: LiveDashboardCachePort;
+  liveDashboardClock?: () => Date;
   analyticsRankingClock?: () => Date;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;

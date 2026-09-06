@@ -3338,6 +3338,65 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           setEnabled: { type: "boolean" }
         }
       },
+      LiveDashboardMoney: {
+        type: "object", additionalProperties: false, required: ["jpy", "ndp", "testNdp"],
+        properties: { jpy: { type: "integer" }, ndp: { type: "integer" }, testNdp: { type: "integer" } }
+      },
+      LiveDashboardOrderSummary: {
+        type: "object", additionalProperties: false,
+        required: ["orderNo", "status", "serviceName", "amountJpy", "occurredAt"],
+        properties: { orderNo: { type: "string" }, status: { type: "string" },
+          serviceName: { type: "string" }, amountJpy: { type: "integer", minimum: 0 },
+          occurredAt: { type: "string", format: "date-time" } }
+      },
+      LiveDashboardChildRegion: {
+        type: "object", additionalProperties: false,
+        required: ["code", "name", "orderCount", "confirmedPayments"],
+        properties: { code: { type: "string", pattern: "^\\d{2,5}$" }, name: { type: "string" },
+          orderCount: { type: "integer", minimum: 0 },
+          confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" } }
+      },
+      LiveDashboardHeadline: {
+        type: "object", additionalProperties: false,
+        required: ["newOrders", "completedOrders", "newCustomers", "onboardedTechnicians"],
+        properties: { newOrders: { type: "integer", minimum: 0 }, completedOrders: { type: "integer", minimum: 0 },
+          newCustomers: { type: "integer", minimum: 0 }, onboardedTechnicians: { type: "integer", minimum: 0 } }
+      },
+      LiveDashboardOrders: {
+        type: "object", additionalProperties: false,
+        required: ["total", "serviceGmv", "platformNetRevenue", "agentCommission"],
+        properties: { total: { type: "integer", minimum: 0 },
+          serviceGmv: { $ref: "#/components/schemas/LiveDashboardMoney" },
+          platformNetRevenue: { $ref: "#/components/schemas/LiveDashboardMoney" },
+          agentCommission: { oneOf: [{ $ref: "#/components/schemas/LiveDashboardMoney" }, { type: "null" }] } }
+      },
+      LiveDashboardRealtimeOrders: {
+        type: "object", additionalProperties: false, required: ["list", "total", "page", "page_size"],
+        properties: { list: { type: "array", maxItems: 20,
+          items: { $ref: "#/components/schemas/LiveDashboardOrderSummary" } },
+          total: { type: "integer", minimum: 0 }, page: { type: "integer", const: 1 },
+          page_size: { type: "integer", const: 20 } }
+      },
+      LiveDashboardTrendBucket: {
+        type: "object", additionalProperties: false,
+        required: ["key", "label", "orderCount", "confirmedPayments"],
+        properties: { key: { type: "string" }, label: { type: "string" },
+          orderCount: { type: "integer", minimum: 0 },
+          confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" } }
+      },
+      LiveDashboardRankingItem: {
+        type: "object", additionalProperties: false,
+        required: ["rank", "entityPublicId", "displayName", "avatarUrl", "gmvJpy", "completedCount"],
+        properties: { rank: { type: "integer", minimum: 1 }, entityPublicId: { type: "string" },
+          displayName: { type: "string" }, avatarUrl: { type: ["string", "null"] },
+          gmvJpy: { type: "integer", minimum: 0 }, completedCount: { type: "integer", minimum: 0 } }
+      },
+      LiveDashboardCoverage: {
+        type: "object", additionalProperties: false,
+        required: ["total", "attributed", "unresolved", "completenessPercent"],
+        properties: { total: { type: "integer", minimum: 0 }, attributed: { type: "integer", minimum: 0 },
+          unresolved: { type: "integer", minimum: 0 }, completenessPercent: { type: "number", minimum: 0, maximum: 100 } }
+      },
       TrimmedVisibleIdempotencyKey: {
         type: "string",
         "x-min-utf16-code-units": 16,
@@ -21477,6 +21536,62 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": membershipListSuccessResponse(),
           ...membershipAnalyticsErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/dashboard/live-snapshot`]: {
+      get: {
+        operationId: "getBackofficeLiveDashboardSnapshot",
+        tags: ["Step 12 Backoffice"],
+        summary: "Read a cached formal regional operations snapshot",
+        description: "Validates the persisted Japan administrative hierarchy before reading formal dashboard facts. Redis entries expire after 300 seconds; Redis failure returns freshly computed facts with cacheStatus=degraded. The response contains no customer contact, address, note, or internal actor fields.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:dashboard:read",
+        parameters: [
+          { name: "country", in: "query", required: true, schema: { type: "string", const: "JP" } },
+          { name: "admin1", in: "query", required: false, schema: { type: "string", pattern: "^\\d{2}$" } },
+          { name: "admin2", in: "query", required: false,
+            description: "Requires admin1 and must be its persisted N03 municipality child.",
+            schema: { type: "string", pattern: "^\\d{5}$" } },
+          { name: "period", in: "query", required: false,
+            schema: { type: "string", enum: ["today", "last7days", "last30days"], default: "today" } }
+        ],
+        responses: {
+          "200": { description: "Validated formal live snapshot", content: { "application/json": { schema: {
+            type: "object", additionalProperties: false, required: ["code", "message", "data"],
+            properties: { code: { type: "integer", const: 0 }, message: { type: "string", const: "success" },
+              data: { type: "object", additionalProperties: false,
+                required: ["scope", "evaluatedAt", "cachedAt", "freshnessSeconds", "cacheStatus", "children", "headline", "confirmedPayments", "orders", "realtimeOrders", "activity", "trend", "serviceRanking", "technicianRanking", "coverage"],
+                properties: {
+                  scope: { type: "object", additionalProperties: false,
+                    required: ["country", "admin1", "admin2", "breadcrumbs"], properties: {
+                      country: { type: "string", const: "JP" }, admin1: { type: ["string", "null"], pattern: "^\\d{2}$" },
+                      admin2: { type: ["string", "null"], pattern: "^\\d{5}$" },
+                      breadcrumbs: { type: "array", minItems: 1, maxItems: 3, items: {
+                        type: "object", additionalProperties: false, required: ["level", "code", "name"],
+                        properties: { level: { type: "string", enum: ["country", "admin1", "admin2"] },
+                          code: { type: "string" }, name: { type: "string" } } } }
+                    } },
+                  evaluatedAt: { type: "string", format: "date-time" }, cachedAt: { type: "string", format: "date-time" },
+                  freshnessSeconds: { type: "integer", minimum: 0 },
+                  cacheStatus: { type: "string", enum: ["hit", "miss", "degraded"] },
+                  children: { type: "array", items: { $ref: "#/components/schemas/LiveDashboardChildRegion" } },
+                  headline: { $ref: "#/components/schemas/LiveDashboardHeadline" },
+                  confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" },
+                  orders: { $ref: "#/components/schemas/LiveDashboardOrders" },
+                  realtimeOrders: { $ref: "#/components/schemas/LiveDashboardRealtimeOrders" },
+                  activity: { type: "array", items: { $ref: "#/components/schemas/LiveDashboardOrderSummary" } },
+                  trend: { type: "array", items: { $ref: "#/components/schemas/LiveDashboardTrendBucket" } },
+                  serviceRanking: { type: "array", maxItems: 10, items: { $ref: "#/components/schemas/LiveDashboardRankingItem" } },
+                  technicianRanking: { type: "array", maxItems: 10, items: { $ref: "#/components/schemas/LiveDashboardRankingItem" } },
+                  coverage: { $ref: "#/components/schemas/LiveDashboardCoverage" }
+                } }
+            }
+          } } } },
+          "400": { description: "Strict query or persisted hierarchy validation failed" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing backoffice:dashboard:read permission" },
+          "409": { description: "Cached or repository scope evidence did not match the request" }
         }
       }
     },
