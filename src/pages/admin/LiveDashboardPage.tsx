@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { JapanRegionMap } from "../../features/live-dashboard/JapanRegionMap";
+import { LiveDashboardPanels } from "../../features/live-dashboard/LiveDashboardPanels";
 import { LiveDashboardShell } from "../../features/live-dashboard/LiveDashboardShell";
 import { parseLiveDashboardSearch } from "../../features/live-dashboard/liveDashboardState";
 import { useLiveDashboard } from "../../features/live-dashboard/useLiveDashboard";
@@ -40,11 +41,16 @@ export function LiveDashboardPage() {
   return (
     <LiveDashboardShell header={header}>
       {state.snapshot ? (
-        <JapanRegionMap
-          breadcrumbs={state.snapshot.scope.breadcrumbs}
-          children={state.snapshot.children}
-          onSelectRegion={selectScope}
-          scope={scope}
+        <LiveDashboardPanels
+          map={(
+            <JapanRegionMap
+              breadcrumbs={state.snapshot.scope.breadcrumbs}
+              children={state.snapshot.children}
+              onSelectRegion={selectScope}
+              scope={scope}
+            />
+          )}
+          snapshot={state.snapshot}
         />
       ) : (
         <section className="live-dashboard-placeholder" aria-busy={state.status === "loading"}>

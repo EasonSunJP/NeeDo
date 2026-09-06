@@ -8958,3 +8958,186 @@ html.im-conversation-scroll-lock #root {
   color: inherit;
   font-weight: 800;
 }
+
+.live-dashboard-canvas {
+  display: grid;
+  grid-template-columns: minmax(260px, .9fr) minmax(560px, 1.8fr) minmax(280px, 1fr);
+  gap: 12px;
+  min-width: 1124px;
+  min-height: calc(100dvh - 110px);
+}
+
+.live-dashboard-column,
+.live-dashboard-center {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: 12px;
+}
+
+.live-dashboard-column.is-left { grid-template-rows: auto minmax(0, 1fr) auto; }
+.live-dashboard-column.is-right { grid-template-rows: repeat(4, minmax(0, 1fr)); }
+.live-dashboard-center { grid-template-rows: auto minmax(530px, 1fr) minmax(170px, .3fr); }
+.live-dashboard-center .live-dashboard-map-card { min-height: 0; }
+.live-dashboard-center .live-dashboard-map-svg,
+.live-dashboard-center .live-dashboard-map-loading { min-height: 500px; }
+
+.live-dashboard-panel,
+.live-dashboard-confirmed-payments {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--admin-line, rgba(15, 23, 42, .12));
+  border-radius: 18px;
+  background: var(--live-surface);
+  box-shadow: var(--admin-shadow-panel, 0 14px 36px rgba(15, 23, 42, .07));
+}
+
+.live-dashboard-panel { padding: 14px; }
+
+.live-dashboard-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.live-dashboard-panel-heading h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -.01em;
+}
+
+.live-dashboard-panel-heading span {
+  overflow: hidden;
+  color: var(--admin-muted, #64748b);
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-dashboard-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.live-dashboard-metric-grid article {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--admin-accent, #315f4a) 6%, transparent);
+}
+
+.live-dashboard-metric-grid span,
+.live-dashboard-total-order span,
+.live-dashboard-finance-stack > article > span,
+.live-dashboard-confirmed-payments span {
+  display: block;
+  color: var(--admin-muted, #64748b);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.live-dashboard-metric-grid strong { display: block; margin-top: 5px; font-size: 24px; font-weight: 900; }
+
+.live-dashboard-total-order {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--admin-accent, #315f4a) 9%, transparent);
+}
+.live-dashboard-total-order strong { font-size: 28px; line-height: 1; }
+
+.live-dashboard-finance-stack { display: grid; gap: 8px; margin-top: 8px; }
+.live-dashboard-finance-stack > article {
+  display: grid;
+  grid-template-columns: minmax(72px, .65fr) minmax(0, 1.35fr);
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--admin-line, #cbd5e1) 75%, transparent);
+  border-radius: 12px;
+}
+
+.live-dashboard-money-rows {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 7px;
+  text-align: right;
+}
+.live-dashboard-money-rows strong { grid-column: 1 / -1; font-size: 14px; font-weight: 900; }
+.live-dashboard-money-rows span { color: var(--admin-muted, #64748b); font-size: 8px; font-weight: 800; }
+.live-dashboard-unavailable { color: var(--admin-muted, #64748b); font-size: 10px; text-align: right; }
+
+.live-dashboard-coverage-value { display: flex; align-items: baseline; justify-content: space-between; }
+.live-dashboard-coverage-value strong { font-size: 28px; }
+.live-dashboard-coverage-value span,
+.live-dashboard-panel.is-coverage p { color: var(--admin-muted, #64748b); font-size: 9px; font-weight: 800; }
+.live-dashboard-coverage-track { height: 5px; margin-top: 8px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--admin-line, #cbd5e1) 55%, transparent); }
+.live-dashboard-coverage-track i { display: block; height: 100%; border-radius: inherit; background: #3d996c; }
+.live-dashboard-panel.is-coverage p { margin: 7px 0 0; }
+
+.live-dashboard-confirmed-payments {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--admin-accent, #315f4a) 8%, var(--live-surface));
+}
+.live-dashboard-confirmed-payments > div:first-child span { color: inherit; font-size: 13px; font-weight: 900; }
+.live-dashboard-confirmed-payments small { color: var(--admin-muted, #64748b); font-size: 9px; font-weight: 800; }
+.live-dashboard-confirmed-payments .live-dashboard-money-rows { display: flex; align-items: baseline; gap: 10px; }
+.live-dashboard-confirmed-payments .live-dashboard-money-rows strong { font-size: 24px; color: var(--admin-accent, #315f4a); }
+.live-dashboard-confirmed-payments .live-dashboard-money-rows span { font-size: 9px; }
+
+.live-dashboard-scroll-list { display: grid; gap: 7px; }
+.live-dashboard-scroll-row { animation: live-dashboard-row-in 220ms ease both; }
+@keyframes live-dashboard-row-in { from { opacity: .35; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.live-dashboard-order-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  padding: 8px 9px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--admin-accent, #315f4a) 5%, transparent);
+}
+.live-dashboard-order-row > div { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.live-dashboard-order-row > div strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+.live-dashboard-order-row > div span { padding: 2px 5px; border-radius: 999px; background: rgba(61, 153, 108, .12); color: #317b58; font-size: 7px; font-weight: 900; }
+.live-dashboard-order-row p { overflow: hidden; margin: 0; color: var(--admin-muted, #64748b); font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.live-dashboard-order-row time { grid-column: 2; grid-row: 1; color: var(--admin-muted, #64748b); font-size: 8px; }
+.live-dashboard-order-row b { grid-column: 2; grid-row: 2; font-size: 10px; }
+
+.live-dashboard-ranking-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border-bottom: 1px solid color-mix(in srgb, var(--admin-line, #cbd5e1) 55%, transparent); }
+.live-dashboard-ranking-row:last-child { border-bottom: 0; }
+.live-dashboard-rank { color: var(--admin-accent, #315f4a); font-size: 11px; font-weight: 900; }
+.live-dashboard-ranking-row > div { min-width: 0; }
+.live-dashboard-ranking-row strong { display: block; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.live-dashboard-ranking-row small { display: block; margin-top: 2px; color: var(--admin-muted, #64748b); font-size: 8px; font-weight: 800; }
+.live-dashboard-ranking-row b { font-size: 9px; }
+
+.live-dashboard-empty { display: grid; min-height: 64px; margin: 0; place-items: center; color: var(--admin-muted, #64748b); font-size: 10px; font-weight: 800; }
+
+.live-dashboard-trend-chart { min-height: 0; }
+.live-dashboard-chart-legend { display: flex; gap: 14px; color: var(--admin-muted, #64748b); font-size: 8px; font-weight: 800; }
+.live-dashboard-chart-legend span { display: flex; align-items: center; gap: 5px; }
+.live-dashboard-chart-legend i { width: 12px; height: 2px; border-radius: 99px; background: #4f93df; }
+.live-dashboard-chart-legend i.is-payments { background: #3d996c; }
+.live-dashboard-trend-chart svg { display: block; width: 100%; height: 110px; overflow: visible; }
+.live-dashboard-chart-grid { fill: none; stroke: color-mix(in srgb, var(--admin-line, #cbd5e1) 60%, transparent); stroke-width: 1; }
+.live-dashboard-chart-line { fill: none; stroke: #4f93df; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.live-dashboard-chart-line.is-payments { stroke: #3d996c; }
+.live-dashboard-chart-label { fill: var(--admin-muted, #64748b); font-size: 8px; font-weight: 800; }
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dashboard-scroll-row { animation: none; }
+  .live-dashboard-map-region { transition: none; }
+}
