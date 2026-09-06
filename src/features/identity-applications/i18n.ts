@@ -1,6 +1,10 @@
 type Entry = { "zh-Hant": string; ja: string; en: string; ko: string };
 
 export const identityApplicationTranslations: Record<string, Entry> = {
+  "普通預金": { "zh-Hant": "普通預金", ja: "普通預金", en: "Ordinary deposit", ko: "보통예금" },
+  "当座預金": { "zh-Hant": "当座預金", ja: "当座預金", en: "Current deposit", ko: "당좌예금" },
+  "貯蓄預金": { "zh-Hant": "貯蓄預金", ja: "貯蓄預金", en: "Savings deposit", ko: "저축예금" },
+  "その他": { "zh-Hant": "その他", ja: "その他", en: "Other", ko: "기타" },
   "店铺申请草稿已发生变更。本页未保存资料已保留，请复制后重新打开申请。": {
     "zh-Hant": "店鋪申請草稿已變更。本頁未儲存的資料已保留，請複製後重新開啟申請。",
     ja: "店舗申請の下書きが変更されています。このページの未保存の内容は保持されています。内容をコピーしてから申請を開き直してください。",

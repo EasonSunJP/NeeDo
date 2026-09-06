@@ -28,6 +28,8 @@ export type OfficialNoticeBlockType =
   | "video"
   | "file";
 
+export type OfficialNoticeFontSize = "small" | "medium" | "large" | "xlarge";
+
 export type OfficialNoticeBlock = {
   id: string;
   type: OfficialNoticeBlockType;
@@ -36,6 +38,7 @@ export type OfficialNoticeBlock = {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  fontSize?: OfficialNoticeFontSize;
   source?: "url" | "media";
   mediaAssetId?: number;
 };
@@ -64,9 +67,31 @@ export type ManagedNoticeCreateInput = {
   level: OfficialNoticeLevel;
   translations: Record<
     OfficialNoticeLocale,
-    { title: string; summary: string; blocks: OfficialNoticeBlock[] }
+    { title: string; summary: string; blocks: OfficialNoticeBlock[]; isInitialCopy?: boolean }
   >;
   audience: MerchantNoticeAudience | PlatformNoticeAudience;
+  sendMode: "now" | "scheduled";
+  scheduledAt: string | null;
+  idempotencyKey: string;
+};
+
+export type ManagedNoticeDraftInput = {
+  sourceLocale: OfficialNoticeLocale;
+  level: OfficialNoticeLevel;
+  translations: Record<
+    OfficialNoticeLocale,
+    { title: string; summary: string; blocks: OfficialNoticeBlock[]; isInitialCopy: boolean }
+  >;
+  audience: MerchantNoticeAudience | PlatformNoticeAudience;
+  idempotencyKey: string;
+};
+
+export type ManagedNoticeDraftUpdateInput = ManagedNoticeDraftInput & {
+  expectedLockVersion: number;
+};
+
+export type ManagedNoticePlanInput = {
+  expectedLockVersion: number;
   sendMode: "now" | "scheduled";
   scheduledAt: string | null;
   idempotencyKey: string;
@@ -86,6 +111,7 @@ export type OfficialNotice = {
   status: OfficialNoticeStatus;
   sourceLocale: OfficialNoticeLocale;
   targetSummary: string;
+  audience?: MerchantNoticeAudience | PlatformNoticeAudience;
   scheduledAt: string | null;
   sentAt: string | null;
   cancelledAt: string | null;
@@ -130,6 +156,16 @@ export type NoticeLifecycleInput = {
   idempotencyKey: string;
 };
 
+export type OfficialNoticeMediaUpload = {
+  publicId: string;
+  mediaAssetId: number;
+  url: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  checksumSha256: string;
+};
+
 const managementBase = (scope: OfficialNoticeScope) =>
   scope === "platform" ? "/backoffice/official-notices" : "/merchant-admin/official-notices";
 
@@ -156,6 +192,39 @@ export const officialNoticesApi = {
     return httpClient.request<OfficialNotice>(managementBase(scope), {
       method: "POST",
       body: input
+    });
+  },
+  createDraft(scope: OfficialNoticeScope, input: ManagedNoticeDraftInput) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/drafts`, {
+      method: "POST",
+      body: input
+    });
+  },
+  getManaged(scope: OfficialNoticeScope, publicId: string) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}`);
+  },
+  updateDraft(
+    scope: OfficialNoticeScope,
+    publicId: string,
+    input: ManagedNoticeDraftUpdateInput
+  ) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}/draft`, {
+      method: "PUT",
+      body: input
+    });
+  },
+  planDraft(scope: OfficialNoticeScope, publicId: string, input: ManagedNoticePlanInput) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}/plan`, {
+      method: "POST",
+      body: input
+    });
+  },
+  uploadMedia(scope: OfficialNoticeScope, file: File, caption?: string) {
+    return httpClient.request<OfficialNoticeMediaUpload>(`${managementBase(scope)}/media`, {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": file.type },
+      query: { file_name: file.name, caption }
     });
   },
   cancelManaged(scope: OfficialNoticeScope, publicId: string, input: NoticeLifecycleInput) {

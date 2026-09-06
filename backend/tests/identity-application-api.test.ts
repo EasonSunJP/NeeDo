@@ -313,7 +313,7 @@ describe("identity application applicant HTTP API", () => {
       .expect(200);
   });
 
-  it("binds a verified merchant bank account and exposes only its masked projection", async () => {
+  it.each(["ordinary", "current", "savings", "other"])("binds a %s merchant bank account and exposes only its masked projection", async (accountType) => {
     const fixture = createFixture();
     const authorization = `Bearer ${fixture.token}`;
     const body = {
@@ -322,7 +322,7 @@ describe("identity application applicant HTTP API", () => {
       bankName: "三菱UFJ银行",
       branchCode: "001",
       branchName: "本店",
-      accountType: "ordinary",
+      accountType,
       accountNumber: "1234567",
       accountHolderName: "カ）ニード"
     };
@@ -354,7 +354,7 @@ describe("identity application applicant HTTP API", () => {
       bankName: "三菱UFJ银行",
       branchCode: "001",
       branchName: "本店",
-      accountType: "ordinary",
+      accountType,
       accountNumber: "1234567",
       accountHolderName: "カ）ニード",
       now: expect.any(Date)

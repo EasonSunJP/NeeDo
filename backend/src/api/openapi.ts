@@ -14238,8 +14238,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           fileName: { type: "string", maxLength: 255 },
           fileSize: { type: "integer", minimum: 1, maximum: 52428800 },
           mimeType: { type: "string", maxLength: 100 },
+          fontSize: { type: "string", enum: ["small", "medium", "large", "xlarge"] },
           source: { type: "string", enum: ["url", "media"] },
           mediaAssetId: { type: "integer", minimum: 1 }
+        }
+      },
+      OfficialNoticeMediaUpload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "mediaAssetId",
+          "url",
+          "mimeType",
+          "width",
+          "height",
+          "checksumSha256"
+        ],
+        properties: {
+          publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          mediaAssetId: { type: "integer", minimum: 1 },
+          url: { type: "string", format: "uri-reference" },
+          mimeType: {
+            type: "string",
+            enum: [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "video/mp4",
+              "video/webm",
+              "application/pdf",
+              "text/plain"
+            ]
+          },
+          width: { type: ["integer", "null"], minimum: 1 },
+          height: { type: ["integer", "null"], minimum: 1 },
+          checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
         }
       },
       OfficialNoticeAudience: {
@@ -14303,7 +14337,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             minItems: 1,
             maxItems: 80,
             items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
-          }
+          },
+          isInitialCopy: { type: "boolean" }
         }
       },
       OfficialNoticeTranslationsInput: {
@@ -14373,6 +14408,107 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
         }
       },
+      OfficialNoticeDraftTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "blocks", "isInitialCopy"],
+        properties: {
+          title: { type: "string", maxLength: 160 },
+          summary: { type: "string", maxLength: 500 },
+          blocks: {
+            type: "array",
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          },
+          isInitialCopy: { type: "boolean" }
+        }
+      },
+      OfficialNoticeDraftTranslationsInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+        properties: Object.fromEntries(
+          ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+            locale,
+            { $ref: "#/components/schemas/OfficialNoticeDraftTranslationInput" }
+          ])
+        )
+      },
+      OfficialNoticeDraftCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sourceLocale", "level", "translations", "audience", "idempotencyKey"],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          translations: { $ref: "#/components/schemas/OfficialNoticeDraftTranslationsInput" },
+          audience: { $ref: "#/components/schemas/OfficialNoticeAudience" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      MerchantOfficialNoticeDraftCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sourceLocale", "level", "translations", "audience", "idempotencyKey"],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          translations: { $ref: "#/components/schemas/OfficialNoticeDraftTranslationsInput" },
+          audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
+      OfficialNoticeDraftUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "translations",
+          "audience",
+          "idempotencyKey",
+          "expectedLockVersion"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          translations: { $ref: "#/components/schemas/OfficialNoticeDraftTranslationsInput" },
+          audience: { $ref: "#/components/schemas/OfficialNoticeAudience" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 },
+          expectedLockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      MerchantOfficialNoticeDraftUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceLocale",
+          "level",
+          "translations",
+          "audience",
+          "idempotencyKey",
+          "expectedLockVersion"
+        ],
+        properties: {
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          level: { type: "string", enum: ["general", "important", "urgent"] },
+          translations: { $ref: "#/components/schemas/OfficialNoticeDraftTranslationsInput" },
+          audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 },
+          expectedLockVersion: { type: "integer", minimum: 1 }
+        }
+      },
+      OfficialNoticePlanDraft: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "sendMode", "scheduledAt", "idempotencyKey"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sendMode: { type: "string", enum: ["now", "scheduled"] },
+          scheduledAt: { type: ["string", "null"], format: "date-time" },
+          idempotencyKey: { type: "string", minLength: 8, maxLength: 191 }
+        }
+      },
       OfficialNoticeLifecycle: {
         type: "object",
         additionalProperties: false,
@@ -14388,8 +14524,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["title", "summary", "blocks", "sourceLocale", "isInitialCopy"],
         properties: {
-          title: { type: "string", minLength: 1, maxLength: 160 },
-          summary: { type: "string", minLength: 1, maxLength: 500 },
+          title: { type: "string", maxLength: 160 },
+          summary: { type: "string", maxLength: 500 },
           blocks: { type: "array", items: { $ref: "#/components/schemas/OfficialNoticeBlock" } },
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
           isInitialCopy: { type: "boolean" }
@@ -14404,6 +14540,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "status",
           "sourceLocale",
           "targetSummary",
+          "audience",
           "scheduledAt",
           "sentAt",
           "cancelledAt",
@@ -14433,6 +14570,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
           targetSummary: { type: "string" },
+          audience: {
+            oneOf: [
+              { $ref: "#/components/schemas/OfficialNoticeAudience" },
+              { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" }
+            ]
+          },
           scheduledAt: { type: ["string", "null"], format: "date-time" },
           sentAt: { type: ["string", "null"], format: "date-time" },
           cancelledAt: { type: ["string", "null"], format: "date-time" },
@@ -26549,7 +26692,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             bankName: { type: "string", minLength: 1, maxLength: 120 },
             branchCode: { type: "string", pattern: "^\\d{3}$" },
             branchName: { type: "string", minLength: 1, maxLength: 120 },
-            accountType: { type: "string", enum: ["ordinary", "current"] },
+            accountType: { type: "string", enum: ["ordinary", "current", "savings", "other"] },
             accountNumber: { type: "string", pattern: "^\\d{4,12}$" },
             accountHolderName: { type: "string", minLength: 1, maxLength: 191 }
           },
@@ -26581,6 +26724,108 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
         )
       })
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/media`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Upload a current-shop official notice image, video, or file",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:create",
+        parameters: [
+          { name: "file_name", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 255 } },
+          { name: "caption", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }
+        ],
+        requestBody: {
+          required: true,
+          content: Object.fromEntries([
+            "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "application/pdf", "text/plain"
+          ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }]))
+        },
+        responses: {
+          "201": jsonDataResponse("Current-shop notice media uploaded", { $ref: "#/components/schemas/OfficialNoticeMediaUpload" }),
+          "400": jsonErrorResponse("error.official_notice.media_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "413": jsonErrorResponse("error.official_notice.media_too_large"),
+          "415": jsonErrorResponse("error.official_notice.media_invalid")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/drafts`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Save a current-shop official notice draft without freezing recipients",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:create",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/MerchantOfficialNoticeDraftCreate" } } }
+        },
+        responses: {
+          "201": jsonDataResponse("Current-shop official notice draft saved", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}`]: {
+      get: {
+        tags: ["Merchant Official Notices"],
+        summary: "Read one current-shop official notice for continued editing",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:read",
+        parameters: [merchantPreviewShopHeaderParameter, announcementPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/draft`]: {
+      put: {
+        tags: ["Merchant Official Notices"],
+        summary: "Update a current-shop official notice draft",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:create",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/MerchantOfficialNoticeDraftUpdate" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice draft updated", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, version, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/{publicId}/plan`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Freeze recipients and plan delivery for a complete current-shop draft",
+        security: [{ bearerAuth: [] }],
+        "x-permission": ["merchant-admin:notice:create", "merchant-admin:notice:send"],
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticePlanDraft" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Current-shop official notice draft planned", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, version, audience, or idempotency conflict")
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/official-notices`]: {
       get: {
@@ -26724,6 +26969,111 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.official_notice.not_found"),
           "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/media`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Upload an official notice image, video, or file",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-create",
+        parameters: [
+          { name: "file_name", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 255 } },
+          { name: "caption", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }
+        ],
+        requestBody: {
+          required: true,
+          content: Object.fromEntries([
+            "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "application/pdf", "text/plain"
+          ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }]))
+        },
+        responses: {
+          "201": jsonDataResponse("Official notice media uploaded", { $ref: "#/components/schemas/OfficialNoticeMediaUpload" }),
+          "400": jsonErrorResponse("error.official_notice.media_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "413": jsonErrorResponse("error.official_notice.media_too_large"),
+          "415": jsonErrorResponse("error.official_notice.media_invalid")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/drafts`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Save an official notice draft without freezing recipients",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-create",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeDraftCreate" } } }
+        },
+        responses: {
+          "201": jsonDataResponse("Official notice draft saved", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "409": jsonErrorResponse("Idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}`]: {
+      get: {
+        tags: ["Official Notices"],
+        summary: "Read one official notice for continued editing",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "page:backoffice-official-notice",
+        parameters: [announcementPublicIdParameter],
+        responses: {
+          "200": jsonDataResponse("Official notice", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/draft`]: {
+      put: {
+        tags: ["Official Notices"],
+        summary: "Update an official notice draft",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-create",
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeDraftUpdate" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Official notice draft updated", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, version, or idempotency conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/{publicId}/plan`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Freeze recipients and plan delivery for a complete draft",
+        security: [{ bearerAuth: [] }],
+        "x-permission": [
+          "button:backoffice-official-notice-create",
+          "button:backoffice-official-notice-send"
+        ],
+        parameters: [announcementPublicIdParameter],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticePlanDraft" } } }
+        },
+        responses: {
+          "200": jsonDataResponse("Official notice draft planned", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.official_notice.not_found"),
+          "409": jsonErrorResponse("State, version, audience, or idempotency conflict")
         }
       }
     },

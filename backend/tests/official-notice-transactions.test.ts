@@ -15,6 +15,7 @@ const notice = {
   archivedAt: null,
   lockVersion: 1,
   targetSummary: "audience",
+  audienceCriteria: { type: "all" },
   createdAt: now,
   updatedAt: now,
   translations: []
@@ -22,6 +23,7 @@ const notice = {
 function fixture() {
   const client = {
     officialNotice: {
+      create: jest.fn(async () => ({ ...notice, status: "DRAFT", scheduledAt: null })),
       findFirst: jest.fn(async () => notice),
       findUnique: jest.fn(async () => null),
       updateMany: jest.fn(async () => ({ count: 1 })),
@@ -30,8 +32,10 @@ function fixture() {
       count: jest.fn(async () => 0),
       findUniqueOrThrow: jest.fn(async () => notice)
     },
+    officialNoticeTranslation: { upsert: jest.fn(async () => ({})) },
     shopEmployee: { findFirst: jest.fn(async () => null) },
     noticeDelivery: {
+      createMany: jest.fn(async () => ({ count: 0 })),
       findFirst: jest.fn<Promise<unknown>, unknown[]>(async () => null),
       findMany: jest.fn(async (): Promise<Array<{ id: number; attemptCount: number }>> => []),
       findUnique: jest.fn(async () => ({ noticeId: 1, status: "DELIVERED" })),
@@ -41,7 +45,12 @@ function fixture() {
       groupBy: jest.fn(async () => [])
     },
     notification: { updateMany: jest.fn(async () => ({ count: 1 })) },
-    noticeAudience: { groupBy: jest.fn(async () => []) },
+    noticeAudience: {
+      createMany: jest.fn(async () => ({ count: 0 })),
+      findMany: jest.fn(async () => []),
+      groupBy: jest.fn(async () => [])
+    },
+    userIdentity: { findMany: jest.fn(async () => []) },
     auditLog: { findFirst: jest.fn(async (): Promise<unknown> => null), create: jest.fn() },
     $queryRaw: jest.fn(async () => [{ id: 1 }]),
     $transaction: jest.fn()
@@ -51,6 +60,98 @@ function fixture() {
 }
 
 describe("official notice transaction regression", () => {
+  it("persists a draft without freezing an audience or creating deliveries", async () => {
+    const { client, repository } = fixture();
+    await repository.createDraft({
+      publicId,
+      actorUserId: 7,
+      context: { ip: "127.0.0.1" },
+      now,
+      level: "important",
+      sourceLocale: "ja",
+      issuerScope: { type: "platform" },
+      audience: { type: "all" },
+      targetSummary: "全体用户",
+      idempotencyKey: "draft-create-command",
+      requestFingerprint: "draft-create-fingerprint",
+      translations: {
+        "zh-CN": { title: "", summary: "", blocks: [], sourceLocale: "ja", isInitialCopy: true },
+        "zh-TW": { title: "", summary: "", blocks: [], sourceLocale: "ja", isInitialCopy: true },
+        en: { title: "", summary: "", blocks: [], sourceLocale: "ja", isInitialCopy: true },
+        ja: { title: "編集中", summary: "", blocks: [], sourceLocale: "ja", isInitialCopy: false },
+        ko: { title: "", summary: "", blocks: [], sourceLocale: "ja", isInitialCopy: true }
+      }
+    });
+
+    expect(client.officialNotice.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "DRAFT", scheduledAt: null })
+    }));
+    expect(client.noticeAudience.createMany).not.toHaveBeenCalled();
+    expect(client.noticeDelivery.createMany).not.toHaveBeenCalled();
+    expect(client.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "official_notice.draft_create" })
+    }));
+  });
+
+  it("freezes the current audience only when a complete draft is planned", async () => {
+    const { client, repository } = fixture();
+    const translations = [
+      { locale: "ZH_CN", title: "通知", summary: "摘要", blocks: [{ id: "a", type: "paragraph", content: "正文" }], sourceLocale: "JA", isInitialCopy: true },
+      { locale: "ZH_TW", title: "通知", summary: "摘要", blocks: [{ id: "b", type: "paragraph", content: "正文" }], sourceLocale: "JA", isInitialCopy: true },
+      { locale: "EN", title: "Notice", summary: "Summary", blocks: [{ id: "c", type: "paragraph", content: "Body" }], sourceLocale: "JA", isInitialCopy: true },
+      { locale: "JA", title: "通知", summary: "概要", blocks: [{ id: "d", type: "paragraph", content: "本文" }], sourceLocale: "JA", isInitialCopy: false },
+      { locale: "KO", title: "공지", summary: "요약", blocks: [{ id: "e", type: "paragraph", content: "본문" }], sourceLocale: "JA", isInitialCopy: true }
+    ];
+    client.officialNotice.findUniqueOrThrow.mockResolvedValue({
+      ...notice,
+      status: "DRAFT",
+      audienceType: "ALL",
+      audienceCriteria: { type: "all" },
+      translations
+    } as never);
+    client.officialNotice.findFirst.mockResolvedValue({
+      ...notice,
+      status: "DRAFT",
+      translations
+    } as never);
+    client.userIdentity.findMany
+      .mockResolvedValueOnce([{
+        id: 109,
+        userId: 9,
+        type: "customer",
+        scopeType: "global",
+        scopeId: null,
+        displayName: "Customer",
+        user: { needoId: "u0000000009" }
+      }] as never)
+      .mockResolvedValueOnce([]);
+    client.noticeAudience.findMany.mockResolvedValue([{
+      id: 201,
+      recipientUserId: 9,
+      recipientIdentityId: 109
+    }] as never);
+
+    await repository.planDraft({
+      publicId,
+      actorUserId: 7,
+      context: { ip: "127.0.0.1" },
+      now,
+      issuerScope: { type: "platform" },
+      expectedLockVersion: 1,
+      scheduledAt: now,
+      sendMode: "now",
+      idempotencyKey: "draft-plan-command",
+      requestFingerprint: "draft-plan-fingerprint"
+    });
+
+    expect(client.officialNotice.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "SCHEDULED", submittedAt: now, approvedAt: now })
+    }));
+    expect(client.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "official_notice.plan_draft" })
+    }));
+  });
+
   it("does not dispatch after another command wins the scheduled-to-sending transition", async () => {
     const { client, repository } = fixture();
     client.officialNotice.updateMany.mockResolvedValue({ count: 0 });

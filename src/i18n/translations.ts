@@ -9261,7 +9261,7 @@ export const translations: TranslationMap = {
   "上传素材": { "zh-Hant": "上傳素材", ja: "素材アップロード", en: "Upload creatives", ko: "소재 업로드" },
   "上传头图": { "zh-Hant": "上傳頭圖", ja: "ヘッダー画像を…", en: "Upload header", ko: "헤더 이미지 업…" },
   "上传头像": { "zh-Hant": "上傳頭像", ja: "プロフィール写…", en: "Upload profile image", ko: "프로필 사진을 …" },
-  "上传图片": { "zh-Hant": "上傳圖片", ja: "画像をアップロ…", en: "Upload image", ko: "이미지 업로드" },
+  "上传图片": { "zh-Hant": "上傳圖片", ja: "画像をアップロード", en: "Upload image", ko: "이미지 업로드" },
   "上传图片后预览": { "zh-Hant": "上傳圖片後預覽", ja: "画像アップ後にプレビュー", en: "Preview after upload", ko: "업로드 후 미리보기" },
   "上传新的头图，保存后会立即更新当前资料页头图。": { "zh-Hant": "上傳新的頭圖，儲存後會立即更新目前資料頁頭圖。", ja: "新しいヘッダー画像をアップロードすると、保存後すぐに現在のプロフィールページに反映されます。", en: "Upload a new header image; after saving, it updates the current profile page immediately.", ko: "새 헤더 이미지를 업로드하면 저장 후 현재 프로필 페이지에 바로 반영됩니다." },
   "上传新图片": { "zh-Hant": "上傳新圖片", ja: "新しい画像をアップロード", en: "Upload new image", ko: "새 이미지 업로드" },

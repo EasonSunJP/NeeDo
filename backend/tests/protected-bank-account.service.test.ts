@@ -44,17 +44,19 @@ const input = {
 };
 
 describe("ProtectedBankAccountService", () => {
-  it("binds a corporate account only when the holder matches the legal entity name", async () => {
+  it.each(["ordinary", "current", "savings", "other"] as const)("binds a %s corporate account only when the holder matches the legal entity name", async (accountType) => {
     const repository = createRepository();
     const service = new ProtectedBankAccountService(repository, cipher);
 
-    await expect(service.bindMerchantAccount(input)).resolves.toMatchObject({
+    await expect(service.bindMerchantAccount({ ...input, accountType })).resolves.toMatchObject({
+      accountType,
       accountNumberMasked: "•••4567",
       holderMatched: true,
       applicationVersion: 2
     });
     const stored = repository.bindVerifiedMerchantAccount.mock.calls[0]?.[0];
     expect(stored).toMatchObject({
+      accountType,
       verificationSource: "corporate_registration",
       verificationStatus: "verified",
       auditMetadata: {

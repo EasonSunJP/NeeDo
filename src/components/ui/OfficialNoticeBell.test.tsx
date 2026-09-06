@@ -105,4 +105,28 @@ describe("OfficialNoticeBell", () => {
     await flush();
     expect(container.textContent).toContain("1");
   });
+
+  it("announces a recipient inbox refresh when the realtime notification count changes", async () => {
+    let changed = 0;
+    const handleChange = () => { changed += 1; };
+    window.addEventListener("official-notice:changed", handleChange);
+    act(() => root.render(
+      <MemoryRouter>
+        <OfficialNoticeBell to="/merchant-admin/notifications/inbox" />
+      </MemoryRouter>
+    ));
+    await flush();
+    changed = 0;
+
+    state.notifications = 1;
+    act(() => root.render(
+      <MemoryRouter>
+        <OfficialNoticeBell to="/merchant-admin/notifications/inbox" />
+      </MemoryRouter>
+    ));
+    await flush();
+
+    window.removeEventListener("official-notice:changed", handleChange);
+    expect(changed).toBe(1);
+  });
 });

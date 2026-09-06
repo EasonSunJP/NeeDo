@@ -146,6 +146,9 @@ describe("MerchantApplicationPage behavior", () => {
       representativeName: "山田太郎", representativeNameKana: "ヤマダタロウ", expectedVersion: 3
     }));
     expect(button("下一步：收费规则与合同")).toBeTruthy();
+    expect(Array.from(container.querySelectorAll("select option"), (option) => [option.getAttribute("value"), option.textContent])).toEqual([
+      ["ordinary", "普通預金"], ["current", "当座預金"], ["savings", "貯蓄預金"], ["other", "その他"]
+    ]);
   });
 
   it("validates and saves a new corporate identity using the approved visible legal fields", async () => {

@@ -1,6 +1,9 @@
 import {
   officialNoticeCreateBodySchema,
+  officialNoticeDraftCreateBodySchema,
+  officialNoticeDraftUpdateBodySchema,
   officialNoticeListQuerySchema,
+  officialNoticePlanBodySchema,
   officialNoticeReadQuerySchema
 } from "../src/validators/official-notice.validator";
 
@@ -75,6 +78,31 @@ describe("official notice validation", () => {
       }).translations["zh-CN"].blocks[0]
     ).toMatchObject({ mediaAssetId: 41, source: "media" });
 
+    for (const [type, extension, mimeType] of [
+      ["video", "mp4", "video/mp4"],
+      ["video", "webm", "video/webm"],
+      ["file", "pdf", "application/pdf"],
+      ["file", "txt", "text/plain"]
+    ] as const) {
+      expect(() => officialNoticeCreateBodySchema.parse({
+        ...base,
+        translations: {
+          ...base.translations,
+          "zh-CN": {
+            ...base.translations["zh-CN"],
+            blocks: [{
+              id: `${type}-${extension}`,
+              type,
+              content: `/media/content/${"b".repeat(64)}.${extension}`,
+              source: "media",
+              mediaAssetId: 42,
+              mimeType
+            }]
+          }
+        }
+      })).not.toThrow();
+    }
+
     for (const content of ["data:image/png;base64,AAAA", "blob:http://localhost/file"]) {
       expect(() =>
         officialNoticeCreateBodySchema.parse({
@@ -88,6 +116,49 @@ describe("official notice validation", () => {
           }
         })
       ).toThrow();
+    }
+  });
+
+  it("persists supported font sizes only on textual blocks", () => {
+    const parsed = officialNoticeCreateBodySchema.parse({
+      ...base,
+      translations: {
+        ...base.translations,
+        "zh-CN": {
+          ...base.translations["zh-CN"],
+          blocks: [
+            {
+              id: "paragraph-large",
+              type: "paragraph",
+              content: "需要醒目显示的正文",
+              fontSize: "large"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(parsed.translations["zh-CN"].blocks[0]).toMatchObject({ fontSize: "large" });
+
+    for (const block of [
+      { id: "paragraph-invalid", type: "paragraph", content: "正文", fontSize: "huge" },
+      { id: "divider-sized", type: "divider", content: "", fontSize: "large" },
+      {
+        id: "image-sized",
+        type: "image",
+        content: `/media/content/${"b".repeat(64)}.webp`,
+        source: "media",
+        mediaAssetId: 42,
+        fontSize: "small"
+      }
+    ]) {
+      expect(() => officialNoticeCreateBodySchema.parse({
+        ...base,
+        translations: {
+          ...base.translations,
+          "zh-CN": { ...base.translations["zh-CN"], blocks: [block] }
+        }
+      })).toThrow();
     }
   });
 
@@ -106,6 +177,49 @@ describe("official notice validation", () => {
         scheduledAt: "2026-09-03T10:00:00.000Z"
       })
     ).toThrow();
+  });
+
+  it("accepts incomplete multilingual content for a persisted draft", () => {
+    const draft = {
+      sourceLocale: "ja",
+      level: "general",
+      translations: {
+        "zh-CN": { title: "", summary: "", blocks: [], isInitialCopy: true },
+        "zh-TW": { title: "", summary: "", blocks: [], isInitialCopy: true },
+        en: { title: "", summary: "", blocks: [], isInitialCopy: true },
+        ja: {
+          title: "編集中",
+          summary: "",
+          blocks: [{ id: "draft-body", type: "paragraph", content: "" }],
+          isInitialCopy: false
+        },
+        ko: { title: "", summary: "", blocks: [], isInitialCopy: true }
+      },
+      audience: { type: "all" },
+      idempotencyKey: "draft-create-0001"
+    } as const;
+
+    expect(officialNoticeDraftCreateBodySchema.parse(draft)).toEqual(draft);
+    expect(officialNoticeDraftUpdateBodySchema.parse({
+      ...draft,
+      expectedLockVersion: 2,
+      idempotencyKey: "draft-update-0001"
+    })).toMatchObject({ expectedLockVersion: 2 });
+  });
+
+  it("requires optimistic locking and a valid delivery mode when planning a draft", () => {
+    expect(officialNoticePlanBodySchema.parse({
+      expectedLockVersion: 3,
+      sendMode: "scheduled",
+      scheduledAt: "2026-09-08T10:00:00.000Z",
+      idempotencyKey: "draft-plan-0001"
+    })).toMatchObject({ expectedLockVersion: 3, sendMode: "scheduled" });
+    expect(() => officialNoticePlanBodySchema.parse({
+      expectedLockVersion: 0,
+      sendMode: "scheduled",
+      scheduledAt: null,
+      idempotencyKey: "draft-plan-0002"
+    })).toThrow();
   });
 
   it("bounds exact targets and list pagination", () => {

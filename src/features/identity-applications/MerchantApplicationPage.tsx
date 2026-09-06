@@ -386,35 +386,49 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
       ) : null}
 
       {step === 1 ? (
-        <ApplicationCard className="space-y-4">
-          <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "个人名义申请时，银行账户名义必须与 eKYC 姓名一致。")}</ApplicationNotice>
-          {form.applicantKind === "individual" ? <ApplicationNotice>{t("如尚未完成 eKYC，请先在用户设置的验证与资质页面完成认证。")}</ApplicationNotice> : null}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <ApplicationField label="银行代码" required><ApplicationInput inputMode="numeric" maxLength={4} onChange={(event) => updateBank("bankCode", event.target.value)} value={bank.bankCode} /></ApplicationField>
-            <ApplicationField label="银行名称" required><ApplicationInput onChange={(event) => updateBank("bankName", event.target.value)} value={bank.bankName} /></ApplicationField>
-            <ApplicationField label="支店代码" required><ApplicationInput inputMode="numeric" maxLength={3} onChange={(event) => updateBank("branchCode", event.target.value)} value={bank.branchCode} /></ApplicationField>
-            <ApplicationField label="支店名称" required><ApplicationInput onChange={(event) => updateBank("branchName", event.target.value)} value={bank.branchName} /></ApplicationField>
-            <ApplicationField label="账户类型" required><ApplicationSelect onChange={(event) => updateBank("accountType", event.target.value as BankAccountInput["accountType"])} value={bank.accountType}><option value="ordinary">{t("普通账户")}</option><option value="current">{t("当座账户")}</option></ApplicationSelect></ApplicationField>
-            <ApplicationField label="账号" required><ApplicationInput inputMode="numeric" onChange={(event) => updateBank("accountNumber", event.target.value)} value={bank.accountNumber} /></ApplicationField>
-            <ApplicationField hint={form.applicantKind === "corporate" ? "必须与法人名称片假名一致" : "必须与 eKYC 姓名一致"} label="账户名义人" required><ApplicationInput onChange={(event) => updateBank("accountHolderName", event.target.value)} value={bank.accountHolderName} /></ApplicationField>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <ApplicationField hint="JPEG 或 PNG" label="法人或代表者证件照片" required><ApplicationInput accept="image/jpeg,image/png" onChange={(event) => setRepresentativeIdentity(event.target.files?.[0] ?? null)} type="file" /></ApplicationField>
-            {form.applicantKind === "corporate" ? <ApplicationField hint="JPEG 或 PNG" label="法人登记资料" required><ApplicationInput accept="image/jpeg,image/png" onChange={(event) => setCorporateRegistration(event.target.files?.[0] ?? null)} type="file" /></ApplicationField> : null}
-          </div>
-          <div className="flex gap-3"><ApplicationButton className="flex-1" disabled={busy} onClick={() => void saveBankAndIdentity()}>{busy ? t("校验中") : t("下一步：收费规则与合同")}</ApplicationButton><ApplicationButton onClick={() => setStep(0)} tone="secondary">{t("上一步")}</ApplicationButton></div>
-        </ApplicationCard>
+        <>
+          <ApplicationCard className="space-y-4">
+            <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "个人名义申请时，银行账户名义必须与 eKYC 姓名一致。")}</ApplicationNotice>
+            {form.applicantKind === "individual" ? <ApplicationNotice>{t("如尚未完成 eKYC，请先在用户设置的验证与资质页面完成认证。")}</ApplicationNotice> : null}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ApplicationField label="银行代码" required><ApplicationInput inputMode="numeric" maxLength={4} onChange={(event) => updateBank("bankCode", event.target.value)} value={bank.bankCode} /></ApplicationField>
+              <ApplicationField label="银行名称" required><ApplicationInput onChange={(event) => updateBank("bankName", event.target.value)} value={bank.bankName} /></ApplicationField>
+              <ApplicationField label="支店代码" required><ApplicationInput inputMode="numeric" maxLength={3} onChange={(event) => updateBank("branchCode", event.target.value)} value={bank.branchCode} /></ApplicationField>
+              <ApplicationField label="支店名称" required><ApplicationInput onChange={(event) => updateBank("branchName", event.target.value)} value={bank.branchName} /></ApplicationField>
+              <ApplicationField label="账户类型" required><ApplicationSelect onChange={(event) => updateBank("accountType", event.target.value as BankAccountInput["accountType"])} value={bank.accountType}><option value="ordinary">{t("普通預金")}</option><option value="current">{t("当座預金")}</option><option value="savings">{t("貯蓄預金")}</option><option value="other">{t("その他")}</option></ApplicationSelect></ApplicationField>
+              <ApplicationField label="账号" required><ApplicationInput inputMode="numeric" onChange={(event) => updateBank("accountNumber", event.target.value)} value={bank.accountNumber} /></ApplicationField>
+              <ApplicationField hint={form.applicantKind === "corporate" ? "必须与法人名称片假名一致" : "必须与 eKYC 姓名一致"} label="账户名义人" required><ApplicationInput onChange={(event) => updateBank("accountHolderName", event.target.value)} value={bank.accountHolderName} /></ApplicationField>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ApplicationField as="div" hint="JPEG 或 PNG" label="法人或代表者证件照片" required><ApplicationFileUpload accept="image/jpeg,image/png" file={representativeIdentity} label={t("法人或代表者证件照片")} onChange={setRepresentativeIdentity} /></ApplicationField>
+              {form.applicantKind === "corporate" ? <ApplicationField as="div" hint="JPEG 或 PNG" label="法人登记资料" required><ApplicationFileUpload accept="image/jpeg,image/png" file={corporateRegistration} label={t("法人登记资料")} onChange={setCorporateRegistration} /></ApplicationField> : null}
+            </div>
+          </ApplicationCard>
+          <ApplicationBottomAction>
+            <div className="flex gap-3">
+              <ApplicationButton disabled={busy} onClick={() => setStep(0)} tone="secondary">{t("上一步")}</ApplicationButton>
+              <ApplicationButton className="min-w-0 flex-1" disabled={busy} onClick={() => void saveBankAndIdentity()}>{busy ? t("校验中") : t("下一步：收费规则与合同")}</ApplicationButton>
+            </div>
+          </ApplicationBottomAction>
+        </>
       ) : null}
 
       {step === 2 ? (
-        <ApplicationCard className="space-y-4">
-          <div><h2 className="text-xl font-black text-[color:var(--client-text)]">{t("收费规则与 NeeDo 合同")}</h2><p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{t("合同以当前版本、完整正文和内容哈希留存，确认后具有法律效力。")}</p></div>
-          {contract ? <div className="max-h-[48vh] overflow-y-auto whitespace-pre-wrap rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-4 text-[12px] leading-6 text-[color:var(--client-text)]">{contract.text}</div> : <ApplicationNotice>{t("正在读取合同全文")}</ApplicationNotice>}
-          {contract ? <p className="break-all text-[10px] text-[color:var(--client-muted)]">v{contract.version} · {contract.contentHash}</p> : null}
-          <label className="flex items-start gap-3 text-sm font-bold text-[color:var(--client-text)]"><input checked={hasRead} className="mt-1 h-5 w-5 accent-[color:var(--client-primary)]" onChange={(event) => setHasRead(event.target.checked)} type="checkbox" />{t("我已阅读完整收费规则与合同")}</label>
-          <label className="flex items-start gap-3 text-sm font-bold text-[color:var(--client-text)]"><input checked={hasAgreed} className="mt-1 h-5 w-5 accent-[color:var(--client-primary)]" onChange={(event) => setHasAgreed(event.target.checked)} type="checkbox" />{t("我同意与 NeeDo 缔结具有法律效力的合同")}</label>
-          <div className="flex gap-3"><ApplicationButton className="flex-1" disabled={busy || !contract || !hasRead || !hasAgreed} onClick={() => void acceptAndSubmit()}>{busy ? t("提交中") : t("提交申请")}</ApplicationButton><ApplicationButton onClick={() => setStep(1)} tone="secondary">{t("上一步")}</ApplicationButton></div>
-        </ApplicationCard>
+        <>
+          <ApplicationCard className="space-y-4">
+            <div><h2 className="text-xl font-black text-[color:var(--client-text)]">{t("收费规则与 NeeDo 合同")}</h2><p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{t("合同以当前版本、完整正文和内容哈希留存，确认后具有法律效力。")}</p></div>
+            {contract ? <div className="max-h-[48vh] overflow-y-auto whitespace-pre-wrap rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-4 text-[12px] leading-6 text-[color:var(--client-text)]">{contract.text}</div> : <ApplicationNotice>{t("正在读取合同全文")}</ApplicationNotice>}
+            {contract ? <p className="break-all text-[10px] text-[color:var(--client-muted)]">v{contract.version} · {contract.contentHash}</p> : null}
+            <label className="flex items-start gap-3 text-sm font-bold text-[color:var(--client-text)]"><input checked={hasRead} className="mt-1 h-5 w-5 accent-[color:var(--client-primary)]" onChange={(event) => setHasRead(event.target.checked)} type="checkbox" />{t("我已阅读完整收费规则与合同")}</label>
+            <label className="flex items-start gap-3 text-sm font-bold text-[color:var(--client-text)]"><input checked={hasAgreed} className="mt-1 h-5 w-5 accent-[color:var(--client-primary)]" onChange={(event) => setHasAgreed(event.target.checked)} type="checkbox" />{t("我同意与 NeeDo 缔结具有法律效力的合同")}</label>
+          </ApplicationCard>
+          <ApplicationBottomAction>
+            <div className="flex gap-3">
+              <ApplicationButton disabled={busy} onClick={() => setStep(1)} tone="secondary">{t("上一步")}</ApplicationButton>
+              <ApplicationButton className="min-w-0 flex-1" disabled={busy || !contract || !hasRead || !hasAgreed} onClick={() => void acceptAndSubmit()}>{busy ? t("提交中") : t("提交申请")}</ApplicationButton>
+            </div>
+          </ApplicationBottomAction>
+        </>
       ) : null}
 
       {step === 3 ? (

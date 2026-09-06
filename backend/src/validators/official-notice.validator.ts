@@ -36,10 +36,19 @@ const blockTypes = [
   "file"
 ] as const;
 const mediaBlockTypes = new Set<string>(["image", "video", "file"]);
-const safeResourceUrl = /^(?:https:\/\/[^\s]+|\/media\/content\/[a-f0-9]{64}\.(?:jpg|png|webp))$/u;
+const textualBlockTypes = new Set<string>([
+  "paragraph",
+  "heading",
+  "subheading",
+  "bullet",
+  "numbered",
+  "quote",
+  "callout"
+]);
+const safeResourceUrl = /^(?:https:\/\/[^\s]+|\/media\/content\/[a-f0-9]{64}\.(?:jpg|png|webp|mp4|webm|pdf|txt))$/u;
 
-export const officialNoticeBlockSchema = z
-  .object({
+const createOfficialNoticeBlockSchema = (allowIncomplete: boolean) =>
+  z.object({
     id: z
       .string()
       .trim()
@@ -57,11 +66,18 @@ export const officialNoticeBlockSchema = z
       .max(50 * 1024 * 1024)
       .optional(),
     mimeType: z.string().trim().max(100).optional(),
+    fontSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
     source: z.enum(["url", "media"]).optional(),
     mediaAssetId: z.number().int().positive().optional()
   })
   .strict()
   .superRefine((block, context) => {
+    if (block.fontSize && !textualBlockTypes.has(block.type)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "error.official_notice.block_invalid"
+      });
+    }
     if (block.type === "divider") {
       if (block.content !== "") {
         context.addIssue({
@@ -72,6 +88,7 @@ export const officialNoticeBlockSchema = z
       return;
     }
     if (!block.content.trim()) {
+      if (allowIncomplete) return;
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "error.official_notice.block_invalid"
@@ -111,6 +128,9 @@ export const officialNoticeBlockSchema = z
     }
   });
 
+export const officialNoticeBlockSchema = createOfficialNoticeBlockSchema(false);
+export const officialNoticeDraftBlockSchema = createOfficialNoticeBlockSchema(true);
+
 const audienceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("all") }).strict(),
   z
@@ -134,7 +154,17 @@ const noticeTranslationInputSchema = z
   .object({
     title: z.string().trim().min(1).max(160),
     summary: z.string().trim().min(1).max(500),
-    blocks: z.array(officialNoticeBlockSchema).min(1).max(80)
+    blocks: z.array(officialNoticeBlockSchema).min(1).max(80),
+    isInitialCopy: z.boolean().optional()
+  })
+  .strict();
+
+const noticeDraftTranslationInputSchema = z
+  .object({
+    title: z.string().trim().max(160),
+    summary: z.string().trim().max(500),
+    blocks: z.array(officialNoticeDraftBlockSchema).max(80),
+    isInitialCopy: z.boolean()
   })
   .strict();
 
@@ -145,6 +175,16 @@ const noticeTranslationsInputSchema = z
     en: noticeTranslationInputSchema,
     ja: noticeTranslationInputSchema,
     ko: noticeTranslationInputSchema
+  })
+  .strict();
+
+const noticeDraftTranslationsInputSchema = z
+  .object({
+    "zh-CN": noticeDraftTranslationInputSchema,
+    "zh-TW": noticeDraftTranslationInputSchema,
+    en: noticeDraftTranslationInputSchema,
+    ja: noticeDraftTranslationInputSchema,
+    ko: noticeDraftTranslationInputSchema
   })
   .strict();
 
@@ -186,6 +226,47 @@ const validateSendMode = (value: { sendMode: string; scheduledAt: string | null 
 export const officialNoticeCreateBodySchema = noticeCreateBaseSchema.superRefine(validateSendMode);
 export const merchantNoticeCreateBodySchema = noticeCreateBaseSchema
   .extend({ audience: merchantAudienceSchema }).superRefine(validateSendMode);
+
+const draftBaseShape = {
+  sourceLocale: z.enum(officialNoticeLocales),
+  level: z.enum(officialNoticeLevels),
+  translations: noticeDraftTranslationsInputSchema,
+  idempotencyKey: z
+    .string()
+    .trim()
+    .min(8)
+    .max(191)
+    .regex(/^[A-Za-z0-9._:-]+$/u)
+};
+
+export const officialNoticeDraftCreateBodySchema = z
+  .object({ ...draftBaseShape, audience: audienceSchema })
+  .strict();
+export const merchantNoticeDraftCreateBodySchema = z
+  .object({ ...draftBaseShape, audience: merchantAudienceSchema })
+  .strict();
+
+export const officialNoticeDraftUpdateBodySchema = officialNoticeDraftCreateBodySchema.extend({
+  expectedLockVersion: z.number().int().positive()
+});
+export const merchantNoticeDraftUpdateBodySchema = merchantNoticeDraftCreateBodySchema.extend({
+  expectedLockVersion: z.number().int().positive()
+});
+
+export const officialNoticePlanBodySchema = z
+  .object({
+    expectedLockVersion: z.number().int().positive(),
+    sendMode: z.enum(["now", "scheduled"]),
+    scheduledAt: z.string().datetime({ offset: true }).nullable(),
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8)
+      .max(191)
+      .regex(/^[A-Za-z0-9._:-]+$/u)
+  })
+  .strict()
+  .superRefine(validateSendMode);
 
 const paginationShape = {
   page: z.coerce.number().int().min(1).default(1),
@@ -233,6 +314,11 @@ export type MerchantNoticeAudienceInput = z.infer<typeof merchantAudienceSchema>
 export type NoticeAudienceInput = OfficialNoticeAudienceInput | MerchantNoticeAudienceInput;
 export type MerchantNoticeCreateBody = z.infer<typeof merchantNoticeCreateBodySchema>;
 export type OfficialNoticeCreateBody = z.infer<typeof officialNoticeCreateBodySchema>;
+export type OfficialNoticeDraftCreateBody = z.infer<typeof officialNoticeDraftCreateBodySchema>;
+export type MerchantNoticeDraftCreateBody = z.infer<typeof merchantNoticeDraftCreateBodySchema>;
+export type OfficialNoticeDraftUpdateBody = z.infer<typeof officialNoticeDraftUpdateBodySchema>;
+export type MerchantNoticeDraftUpdateBody = z.infer<typeof merchantNoticeDraftUpdateBodySchema>;
+export type OfficialNoticePlanBody = z.infer<typeof officialNoticePlanBodySchema>;
 export type OfficialNoticeListQuery = z.infer<typeof officialNoticeListQuerySchema>;
 export type OfficialNoticeReadQuery = z.infer<typeof officialNoticeReadQuerySchema>;
 export type OfficialNoticeLifecycleBody = z.infer<typeof officialNoticeLifecycleBodySchema>;

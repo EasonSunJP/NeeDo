@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   OFFICIAL_NOTICE_CHANGED_EVENT,
@@ -12,6 +12,7 @@ import { NotificationBadge } from "./NotificationBadge";
 export function OfficialNoticeBell({ to }: { to: string }) {
   const { language } = useOptionalI18n();
   const { notifications: realtimeNotificationVersion } = useRealtimeUnreadCounts();
+  const previousRealtimeNotificationVersion = useRef(realtimeNotificationVersion);
   const [unreadCount, setUnreadCount] = useState(0);
   const locale = useMemo<OfficialNoticeLocale>(
     () => language === "zh" ? "zh-CN" : language === "zh-Hant" ? "zh-TW" : language,
@@ -31,7 +32,12 @@ export function OfficialNoticeBell({ to }: { to: string }) {
     }
   }, [locale]);
 
-  useEffect(() => { void refresh(); }, [realtimeNotificationVersion, refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (previousRealtimeNotificationVersion.current === realtimeNotificationVersion) return;
+    previousRealtimeNotificationVersion.current = realtimeNotificationVersion;
+    window.dispatchEvent(new Event(OFFICIAL_NOTICE_CHANGED_EVENT));
+  }, [realtimeNotificationVersion]);
   useEffect(() => {
     const handleChange = () => { void refresh(); };
     window.addEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);

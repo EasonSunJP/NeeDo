@@ -124,6 +124,11 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
+import type { OfficialNoticeMediaStoragePort } from "./services/official-notice-media.storage";
+import type {
+  OfficialNoticeMediaRepositoryPort,
+  OfficialNoticeMediaService
+} from "./services/official-notice-media.service";
 import type { SocialMediaRepositoryPort } from "./services/social-media.service";
 import type { SocialMediaService } from "./services/social-media.service";
 import type { OfficialAnnouncementRepositoryPort } from "./services/official-announcement.service";
@@ -403,6 +408,9 @@ export interface AppDependencies {
   contentMediaRepository?: ContentMediaRepositoryPort;
   contentMediaService?: ContentMediaService;
   contentMediaStorage?: ContentMediaStoragePort;
+  officialNoticeMediaRepository?: OfficialNoticeMediaRepositoryPort;
+  officialNoticeMediaService?: OfficialNoticeMediaService;
+  officialNoticeMediaStorage?: OfficialNoticeMediaStoragePort;
   socialMediaRepository?: SocialMediaRepositoryPort;
   socialMediaService?: SocialMediaService;
   socialMediaStorage?: ContentMediaStoragePort;
@@ -826,7 +834,7 @@ export const createApp = (
 };
 
 const customerAvatarFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
-const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp|mp4|webm|pdf|txt)$/;
 
 const createContentMediaStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {
