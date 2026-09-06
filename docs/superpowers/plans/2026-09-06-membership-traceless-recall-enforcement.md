@@ -43,35 +43,35 @@
 - Consumes: `PlatformMembershipService.resolveMembershipAt`, `ResolvedPlatformMembership.benefitCatalog`, and the existing membership capability catalog.
 - Produces: `RecallMessageInput.mode: "standard" | "traceless"` and response `action: "standard_recall" | "traceless_recall"`.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Add tests proving effective-benefit resolution requires both tier and global switches, capability is marked available, Realtime selects `traceless` only when the resolver returns true, resolver failures reject before repository mutation, and an already-recalled mode is returned unchanged.
 
-- [ ] **Step 2: Run service tests and verify RED**
+- [x] **Step 2: Run service tests and verify RED**
 
 Run: `npm --prefix backend test -- --runTestsByPath tests/current-membership-benefits.service.test.ts tests/realtime-service.test.ts --runInBand`
 
 Expected: FAIL because `hasEffectiveBenefitAt` and the membership resolver dependency do not exist and recall always passes standard.
 
-- [ ] **Step 3: Write failing repository tests**
+- [x] **Step 3: Write failing repository tests**
 
 Extend the recall fixture with `conversationParticipant.updateMany` and assert `mode: "traceless"` writes `MessageRecallMode.TRACELESS`, `ImDeletionAction.TRACELESS_RECALL`, content-free `im.message.traceless_recall` audit metadata, decrements unread counters for unread recipients, and returns `recallMode: "traceless"`. Add source-level/query tests proving history and last-message selection exclude `TRACELESS` while keeping `STANDARD` rows.
 
-- [ ] **Step 4: Run repository tests and verify RED**
+- [x] **Step 4: Run repository tests and verify RED**
 
 Run: `npm --prefix backend test -- --runTestsByPath tests/im-standard-recall.repository.test.ts --runInBand`
 
 Expected: FAIL because the repository hard-codes standard mode and does not filter traceless rows.
 
-- [ ] **Step 5: Implement the minimal backend behavior**
+- [x] **Step 5: Implement the minimal backend behavior**
 
 Mark `traceless_recall` delivery capability available. Add the narrow resolver to `PlatformMembershipService` using `resolveMembershipAt` and the current catalog entry. Inject it into `RealtimeService`; resolve before calling the repository and pass the selected mode. Generalize the repository terminal write and content-free action/audit values, decrement unread recipients only for a newly applied traceless recall, and exclude `TRACELESS` from the shared visible-message filter. Preserve the stored mode on idempotent replay.
 
-- [ ] **Step 6: Update API contract and dependency wiring**
+- [x] **Step 6: Update API contract and dependency wiring**
 
 Keep request `{ mode: "standard" }` as the compatible generic action. Widen response action to `standard_recall | traceless_recall`, document that the server selects the mode, and construct one formal membership resolver from `PlatformMembershipRepository` for realtime routes/app wiring. Dependency overrides must remain injectable in tests.
 
-- [ ] **Step 7: Run backend focused verification and commit**
+- [x] **Step 7: Run backend focused verification and commit**
 
 Run: `npm --prefix backend test -- --runTestsByPath tests/current-membership-benefits.service.test.ts tests/realtime-service.test.ts tests/im-standard-recall.repository.test.ts tests/realtime-api.test.ts tests/openapi.test.ts --runInBand`
 
@@ -98,21 +98,21 @@ Commit: `feat(im): enforce membership traceless recall`
 - Consumes: backend response `action` and message `recallMode`.
 - Produces: `ImRecallMessageResult.mode: "standard" | "traceless"` and `ImStoreUpdate` deletion reason `traceless_recall`.
 
-- [ ] **Step 1: Write failing adapter and store tests**
+- [x] **Step 1: Write failing adapter and store tests**
 
 Add tests showing a `traceless_recall` HTTP response maps to mode `traceless`; a traceless `message.recalled` SSE event maps to message deletion; local recall and duplicate SSE remove the row, purge terminal media, rebuild the last-message summary from remaining rows, and never render a recall residue. Keep standard tests unchanged.
 
-- [ ] **Step 2: Run frontend tests and verify RED**
+- [x] **Step 2: Run frontend tests and verify RED**
 
 Run: `npm test -- --run src/features/realtime/api.test.ts src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/pages.test.ts`
 
 Expected: FAIL because the API result only accepts `standard_recall` and the store always upserts a tombstone.
 
-- [ ] **Step 3: Implement the minimal frontend behavior**
+- [x] **Step 3: Implement the minimal frontend behavior**
 
 Widen only response/result mode types. Keep the request mode literal `standard`. Validate that response action and message recall mode agree. For traceless HTTP or SSE outcomes, purge terminal media, remove the message by ID, rebuild the current conversation summary from remaining messages, and refresh the authoritative bootstrap; for standard outcomes, preserve the existing tombstone and draft restoration behavior. Give traceless deletion precedence over stale history and duplicate events.
 
-- [ ] **Step 4: Run frontend focused verification and commit**
+- [x] **Step 4: Run frontend focused verification and commit**
 
 Run: `npm test -- --run src/features/realtime/api.test.ts src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/pages.test.ts`
 
@@ -133,17 +133,17 @@ Commit: `feat(im): remove traceless recalls from chat`
 - Consumes: the tested backend and frontend behavior from Tasks 1 and 2.
 - Produces: an explicit local acceptance record and rollback boundary.
 
-- [ ] **Step 1: Document the final behavior**
+- [x] **Step 1: Document the final behavior**
 
 Record server-authoritative membership resolution, terminal mode persistence, history/preview filtering, unread adjustment, content-free realtime/deletion facts, and frontend removal behavior. State that no migration was added or applied and no staging deployment occurred.
 
-- [ ] **Step 2: Run focused and static verification**
+- [x] **Step 2: Run focused and static verification**
 
 Run the backend and frontend commands from Tasks 1 and 2, then `npm run lint`, `npm run build`, and `npm run i18n:audit`.
 
 Expected: all focused tests, lint, build, and i18n audit pass. Any unrelated repository-wide baseline failure must be reported separately with focused rerun evidence.
 
-- [ ] **Step 3: Review and commit**
+- [x] **Step 3: Review and commit**
 
 Inspect `git diff --check`, `git status --short`, and the branch diff. Confirm no dependency symlink or scratch artifact is staged.
 
@@ -151,4 +151,4 @@ Commit: `docs(im): record traceless recall enforcement`
 
 - [ ] **Step 4: Rebase and merge locally**
 
-Rebase onto the latest local `main`, rerun the focused acceptance suite, then fast-forward the feature branch into the local `main` worktree while preserving unrelated dirty files. Do not push or deploy.
+Pending for the controller: rebase onto the latest local `main`, rerun the focused acceptance suite, then fast-forward the feature branch into the local `main` worktree while preserving unrelated dirty files. Do not push or deploy.

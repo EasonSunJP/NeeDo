@@ -53,3 +53,16 @@
 - Only `docs/realtime.md`, `docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md`, and this report are intended for this task's commit. Existing `.superpowers/sdd/progress.md` modification and untracked `node_modules` / `backend/node_modules` are not staged.
 - No migration was added or applied. No database acceptance, push, staging/production deployment, authenticated browser acceptance, Task 3 rebase/merge, or worktree cleanup was performed.
 - Rollback may revert the code to standard recall, but already traceless-recalled content must never be restored; the persisted terminal fact remains authoritative.
+
+## Documentation correction — offline deletion-sync boundary
+
+- The completed local slice delivers the server-authoritative traceless terminal result to online clients through `message.recalled` SSE and persists a content-free `TRACELESS_RECALL` `ImDeletionSync` fact.
+- It does **not** add an `/im/sync` route or a client deletion-sync reader. Durable offline-device consumption, local-cache purge driven by that durable cursor, and cross-device offline acceptance remain pending and are not claimed by this task.
+- `docs/realtime.md` now describes realtime terminal messages and persisted deletion facts as content-free and explicitly excludes prohibited original-content/media identifiers without asserting an exact minimal safe-field schema.
+- Task 1 and Task 2 checkboxes, plus Task 3 documentation/static/review checkboxes, are marked complete in the implementation plan. Task 3 Step 4 remains unchecked and is explicitly reserved for the controller; no rebase, merge, migration, push, deployment, or browser acceptance occurred.
+
+### Correction verification
+
+- `rg` confirms `TRACELESS_RECALL` is represented by the existing Prisma `ImDeletionSync` model/action and selected by the realtime repository; `RealtimeService` publishes `message.recalled`, and the formal client maps that online event to terminal deletion.
+- `rg -n '/im/sync' backend/src/routes src/features/im` returned no route or client-reader match.
+- `git diff --check` passes after the documentation correction.
