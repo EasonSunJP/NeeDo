@@ -148,21 +148,21 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 ```
 
-The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming, owner selection, exact budget increase, target-count reduction, matched-order creation, and per-order bilateral cancellation now have formal client/API slices. Quick matching, manual matching close, appointments, and service payment remain explicitly deferred.
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective and Quick Request claiming/matching, exact budget increase, Selective target-count reduction, matched-order creation, and per-order bilateral cancellation now have formal client/API slices. Manual matching close and half-fee settlement, complete appointment lifecycle expansion, service payment, and external payment remain explicitly deferred.
 
-### Formal Selective Exchange Claim
+### Formal Exchange Claim
 
-Selective Request claims reuse the existing identity, shop affiliation, service, technician schedule, booking-conflict, RBAC, audit, and Request-terminal transaction authorities. No parallel matching, booking, order, wallet, ledger, or payment system is created. An active claim is a soft technician-time hold; claimant withdrawal, Request withdrawal, and Request expiry persist a terminal claim state and release the hold.
+Selective and Quick Request claims reuse the existing identity, shop affiliation, service, technician schedule, booking-conflict, RBAC, audit, and Request-terminal transaction authorities. No parallel matching, booking, order, wallet, ledger, or payment system is created. An active claim is a soft technician-time hold; claimant withdrawal, Request withdrawal, Request expiry, matching, and future matching close persist an appropriate terminal claim state and release or convert that hold through the matching authority.
 
 The five authenticated endpoints are:
 
 - `GET /api/v1/exchange/posts/{id}/claim-options` — paginated, provider-scoped shop/technician/service/schedule options.
-- `POST /api/v1/exchange/posts/{id}/claims` — idempotent selective claim creation with server budget and overlap validation.
+- `POST /api/v1/exchange/posts/{id}/claims` — idempotent claim creation with server budget, capacity, and overlap validation.
 - `GET /api/v1/exchange/posts/{id}/claims/mine` — current identity's persisted claim.
 - `GET /api/v1/exchange/posts/{id}/claims` — paginated claims received by the Request owner only.
 - `POST /api/v1/exchange/claims/{claimId}/withdraw` — claimant-only, idempotent pre-match withdrawal.
 
-RBAC codes are `exchange:claim-options:list`, `exchange:claims:create`, `exchange:claims:read-own`, `exchange:claims:list-owned-request`, and `exchange:claims:withdraw-own`. Public claim states are `active`, `withdrawn`, `request_withdrawn`, and `request_expired`. Quote, service, shop, technician, and estimated time are server-authoritative; the provider message is optional and remains in its original language.
+RBAC codes are `exchange:claim-options:list`, `exchange:claims:create`, `exchange:claims:read-own`, `exchange:claims:list-owned-request`, and `exchange:claims:withdraw-own`. Public claim states are `active`, `withdrawn`, `request_withdrawn`, `request_expired`, `matched`, `not_selected`, and `matching_closed`. Quote, service, shop, technician, and estimated time are server-authoritative; the provider message is optional and remains in its original language.
 
 Run the guarded local claim-lifecycle fixture checker and concurrency proof from `backend/`. `ENV_FILE` is mandatory, remote/production-looking databases are rejected, and every checker fixture is identified and deleted by captured IDs:
 
@@ -174,7 +174,7 @@ RUN_EXCHANGE_CLAIM_INTEGRATION=true ALLOW_EXCHANGE_CLAIM_DEV_INTEGRATION=true EN
 
 The lifecycle checker creates its Request, schedule, service and identities as exact, namespaced Prisma fixtures, then exercises the real claim repository/service transaction boundary. It proves the claim state machine and cleanup, but does not by itself prove formal Request publication or its TEST_NDP hold; those remain browser/API acceptance responsibilities.
 
-On the current local database, migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. The older unrelated migration `20260831160000_im_chat_records_translation` remains pending and was deliberately left untouched; do not use a blanket migrate-deploy command for this acceptance slice.
+Migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. At the 2026-09-07 Quick acceptance gate, Prisma found all 146 repository migrations applied on local `needo_dev`; no migration command or schema write was needed.
 
 Claim creation and withdrawal remain separate from the final owner-selection command documented below. Neither flow creates a `BookingOrder`, moves wallet value, or reserves schedule capacity through `bookedCount`.
 
@@ -201,7 +201,25 @@ The checker creates its own marker-scoped Request, three providers, claims, publ
 
 Migration `20260901232000_exchange_selective_exact_matching` is additive and backfills one OPEN matching aggregate and OPENED event for every non-deleted Demand. On the accepted local database it was applied independently of unrelated pending migrations, then reconciled against the physical tables, backfill counts, checks, indexes, Restrict foreign keys, permissions, grants, and Prisma migration history.
 
-This microstep does not implement quick-mode auto matching, manual close or half-fee settlement, bilateral cancellation after matching, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful adjusted match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep.
+This Selective matching slice does not perform manual close or half-fee settlement, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful adjusted match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep. Matched-order conversion and bilateral cancellation are documented separately below.
+
+### Formal Quick Matching
+
+Quick matching reuses the same claim, matching, participant, event, notification, audit, privacy, schedule-conflict, and financial boundaries as Selective matching. The final provider claim atomically matches all active claims only when their count exactly reaches `effectiveTargetProviderCount` and their quote total is within `effectiveBudgetMaxJpy`. No subset choice is exposed. Once the target count is reached, further claims are rejected even when the owner still needs to approve an over-budget total.
+
+The authenticated matching read remains `GET /api/v1/exchange/posts/{id}/matching`. An over-budget Quick Request exposes the exact current claim count, selected quote total, current effective budget, required maximum, and required increase to its owner. The only write command is `POST /api/v1/exchange/posts/{id}/matching/quick/confirm-budget`, with `Idempotency-Key`, optimistic `expectedVersion`, action `increase_to_selected_total`, and the exact server-calculated `confirmedBudgetMaxJpy`. Changed payloads, stale versions, inexact amounts, non-owner access, and unnecessary confirmations fail closed.
+
+An exact confirmation changes only `ExchangeRequestMatching.effectiveBudgetMaxJpy`, then completes the all-claim match in the same transaction. It appends one ordered `BUDGET_INCREASED` event followed by exactly one `QUICK_MATCHED` event, creates one Participant per claim, marks every active claim and the Request/matching aggregate matched, and emits scoped notification/audit evidence. The original Demand budget remains immutable; all owner-facing budget summaries use the persisted effective matching budget after confirmation.
+
+Quick matching does not create `BookingOrder`, `OrderFinancial`, payment, ledger, reconciliation, or schedule-capacity writes. The Request publication-fee hold stays active and the Request financial projection stays `HELD`. Run the rollback-contained checker and the explicitly enabled two-connection concurrency proof from `backend/`:
+
+```bash
+ENV_FILE=.env.dev npm run check:exchange-quick-matching-flow
+RUN_EXCHANGE_QUICK_MATCHING_INTEGRATION=true ALLOW_EXCHANGE_QUICK_MATCHING_DEV_INTEGRATION=true ENV_FILE=.env.dev \
+  npm test -- --runInBand --runTestsByPath tests/exchange-quick-matching.repository.integration.test.ts
+```
+
+Authenticated browser acceptance covered automatic within-budget matching, exact over-budget confirmation, third-provider capacity closure, persisted information-card contents and fallback avatars, reload, privacy, and 320 px, 440 px, and desktop layouts without horizontal overflow. The captured browser fixtures were reconciled and removed by exact IDs; no Booking/payment rows or financial balance movement occurred. See `docs/verification/2026-09-07-exchange-quick-matching.md`.
 
 ### Exchange matched booking conversion
 

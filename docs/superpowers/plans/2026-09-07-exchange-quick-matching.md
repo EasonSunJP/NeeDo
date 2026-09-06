@@ -495,21 +495,21 @@ git commit -m "test(exchange): verify quick matching flow"
 **Interfaces:**
 - Produces: exact local verification record and remaining-scope declaration.
 
-- [ ] **Step 1: Update documentation with only verified scope**
+- [x] **Step 1: Update documentation with only verified scope**
 
 Replace “Quick matching deferred” with the exact completed behavior only after automated and database evidence exists. Keep manual matching close/half-fee, complete appointments, service payment, external payment, push, deployment, and staging explicitly deferred. State that Quick matching leaves the publication fee held and does not create Booking orders.
 
-- [ ] **Step 2: Run complete related regression**
+- [x] **Step 2: Run complete related regression**
 
 Run all Exchange claim/matching/post/booking-conversion/cancellation unit, repository, route, OpenAPI, permission, schema, checker-safety, frontend component/API suites, followed by `npm run build` and `git diff --check`.
 
 Expected: zero failures; environment-conditional integration tests may skip only when their explicit flags are absent.
 
-- [ ] **Step 3: Start an isolated runtime only after ownership checks**
+- [x] **Step 3: Start an isolated runtime only after ownership checks**
 
 Before starting, record listener PID, cwd, branch, backend environment file, database host/name, Redis URL, and Vite proxy target. Use non-conflicting ports if `3000/5180` belong to another worktree. Recheck listener liveness after startup and after a delay.
 
-- [ ] **Step 4: Perform authenticated real-browser acceptance**
+- [x] **Step 4: Perform authenticated real-browser acceptance**
 
 Using persisted test accounts and the formal API/MySQL runtime, verify:
 
@@ -522,11 +522,11 @@ Using persisted test accounts and the formal API/MySQL runtime, verify:
 7. Provider/owner/shop/technician information cards show the same persisted public IDs, names, avatars, shop, service, schedule, quote, and language across 320 px, 440 px, and desktop widths.
 8. No horizontal overflow, console errors, failed API calls, mock/localStorage mutations, Booking rows, payment rows, or financial balance movement occur.
 
-- [ ] **Step 5: Reconcile database evidence and clean only browser fixtures**
+- [x] **Step 5: Reconcile database evidence and clean only browser fixtures**
 
 Query the exact captured post/claim/matching/participant/event/notification/audit IDs and wallet/hold/ledger/reconciliation/Booking counts. Delete only acceptance fixtures, then prove zero marker residue and unchanged protected baselines.
 
-- [ ] **Step 6: Commit the verified record**
+- [x] **Step 6: Commit the verified record**
 
 ```bash
 git add README.md docs/ledger.md docs/verification/2026-09-07-exchange-quick-matching.md
