@@ -1,4 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
+import { isPwaStandaloneWindow } from "./pwaInstall";
 
 const isKeyboardEditor = (element: Element | null): boolean => {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
@@ -7,6 +8,21 @@ const isKeyboardEditor = (element: Element | null): boolean => {
 
   return element instanceof HTMLElement && element.isContentEditable;
 };
+
+// In an installed iPhone app with viewport-fit=cover, WebKit can size a
+// fixed inset frame against the safe-area viewport instead of the full display.
+// Screen dimensions are CSS pixels and only apply here to a full-width iPhone
+// standalone window. Browser chrome and iPad windowed modes retain inset sizing.
+function iphoneStandaloneDisplayHeight(): number | undefined {
+  if (!/iPhone|iPod/i.test(window.navigator.userAgent) || !isPwaStandaloneWindow(window)) {
+    return undefined;
+  }
+  const { width, height } = window.screen;
+  if (!(width > 0 && height > 0)) return undefined;
+  if (Math.abs(window.innerWidth - width) < 1) return height;
+  if (Math.abs(window.innerWidth - height) < 1) return width;
+  return undefined;
+}
 
 export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T | null>) {
   useLayoutEffect(() => {
@@ -59,9 +75,10 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         return;
       }
 
-      element.style.setProperty("--im-visual-viewport-height", "auto");
+      const displayHeight = iphoneStandaloneDisplayHeight();
+      element.style.setProperty("--im-visual-viewport-height", displayHeight ? `${displayHeight}px` : "auto");
       element.style.setProperty("--im-visual-viewport-top", "0px");
-      element.style.setProperty("--im-visual-viewport-bottom", "0px");
+      element.style.setProperty("--im-visual-viewport-bottom", displayHeight ? "auto" : "0px");
       element.style.setProperty("--im-visual-viewport-width", "auto");
       element.style.setProperty("--im-visual-viewport-left", "0px");
       element.style.setProperty("--im-visual-viewport-right", "0px");
