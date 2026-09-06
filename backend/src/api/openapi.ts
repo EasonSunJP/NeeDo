@@ -1,4 +1,5 @@
 import { workStatusOpenApiPaths } from './work-status.openapi';
+import { releasePublicationOpenApiPaths } from "./release-publication.openapi";
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
@@ -13844,6 +13845,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["scene", "draft", "published", "scheduled"],
         properties: {
+          latestVersion: { type: "integer", minimum: 0, description: "Latest server concurrency version; retired home carousel snapshots are not restorable." },
           scene: { type: "string", enum: ["USER_HOME", "AFFILIATE_HOME_NOTICE"] },
           draft: {
             anyOf: [{ $ref: "#/components/schemas/CarouselProtectedPayload" }, { type: "null" }]
@@ -15352,6 +15354,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   },
   paths: {
     ...sosOpenApiPaths,
+    ...releasePublicationOpenApiPaths,
     ...workStatusOpenApiPaths,
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
@@ -21465,7 +21468,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "pageSize",
             in: "query",
             required: false,
-            schema: { type: "integer", minimum: 1, maximum: 10, default: 10 }
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
           }
         ],
         responses: {

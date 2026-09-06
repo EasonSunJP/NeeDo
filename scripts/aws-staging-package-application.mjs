@@ -1,3 +1,4 @@
+import { collectReleaseManifest } from "./release-notes.mjs";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
@@ -153,6 +154,9 @@ async function main() {
     const stageRoot = path.join(temporaryRoot, "root");
     await fs.mkdir(stageRoot, { recursive: true });
     await copyReleaseInputs(stageRoot);
+    await fs.access(path.join(stageRoot, "backend/dist/cli/record-release.js"));
+    await fs.writeFile(path.join(stageRoot, "release-notes.json"),
+      JSON.stringify(await collectReleaseManifest(repositoryRoot, revision)) + "\n", { mode: 0o644, flag: "wx" });
     const commitEpochText = (await execFileAsync(
       "git",
       ["show", "-s", "--format=%ct", revision],

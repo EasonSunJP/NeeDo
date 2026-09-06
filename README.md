@@ -2721,3 +2721,12 @@ Received service reviews in the operations and merchant user detail cards now in
 The follow-up removes repeated membership facts, places adjustment controls inside the membership tab, consolidates merchant names, removes scout presentation, and adds server-side numeric ordering. See [user-directory follow-up acceptance](docs/qa/2026-09-06-user-directory-followup.md).
 
 Managed-user lists and membership details now consume exact decimal `totalExp`, consistent with user experience summaries. See [EXP display correction and evidence](docs/qa/2026-09-06-experience-display.md).
+
+### Dashboard ranking details
+
+All three operations Top10 panels support formal service-category filtering and a
+“View details” drawer with server pagination, scope, record count and category
+information. Selecting a record opens its existing entity detail in the current
+page. See [local ranking acceptance](docs/qa/2026-09-07-ranking-category-details.md).
+
+2026-09-07 运营后台本地修复包含排行榜独立时间/城市查询及 10/50/100 分页、版本发布时间线、首页轮播缩略图编辑及用户抽屉不重载列表。实现、数据验收、运行目录与未部署边界见 [本地修复验收](docs/qa/2026-09-07-operations-ui-local.md)。

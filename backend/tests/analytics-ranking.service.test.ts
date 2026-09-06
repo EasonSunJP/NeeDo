@@ -46,7 +46,7 @@ describe("analytics ranking validation", () => {
     [{ kind: "service" }, { period: "custom", from: "2026-08-01" }],
     [{ kind: "service" }, { categoryId: 0 }],
     [{ kind: "service" }, { page: "900719925474100" }],
-    [{ kind: "service" }, { pageSize: 11 }],
+    [{ kind: "service" }, { pageSize: 101 }],
     [{ kind: "service" }, { page: "1e2" }]
   ])("rejects malformed request %#", (params, query) => {
     expect(

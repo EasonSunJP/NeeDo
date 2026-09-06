@@ -43,6 +43,10 @@ export function contentPublicationText(
 
 const editorCopy = {
   zh: {
+    edit: "编辑",
+    replaceImage: "替换图片",
+    contentLanguage: "内容语言",
+    editCurrentReason: "编辑当前轮播内容",
     affiliateContent: "联盟内容",
     affiliateNoticeMenu: "联盟营销公告轮播",
     affiliateTask: "联盟任务",
@@ -121,6 +125,10 @@ const editorCopy = {
     visibleUntil: "可见结束时间",
   },
   "zh-Hant": {
+    edit: "編輯",
+    replaceImage: "替換圖片",
+    contentLanguage: "內容語言",
+    editCurrentReason: "編輯目前輪播內容",
     affiliateContent: "聯盟內容",
     affiliateNoticeMenu: "聯盟行銷公告輪播",
     affiliateTask: "聯盟任務",
@@ -199,6 +207,10 @@ const editorCopy = {
     visibleUntil: "可見結束時間",
   },
   ja: {
+    edit: "編集",
+    replaceImage: "画像を差し替え",
+    contentLanguage: "コンテンツ言語",
+    editCurrentReason: "現在のカルーセルを編集",
     affiliateContent: "アフィリエイトコンテンツ",
     affiliateNoticeMenu: "アフィリエイトお知らせカルーセル",
     affiliateTask: "アフィリエイトタスク",
@@ -279,6 +291,10 @@ const editorCopy = {
     visibleUntil: "表示終了日時",
   },
   en: {
+    edit: "Edit",
+    replaceImage: "Replace image",
+    contentLanguage: "Content language",
+    editCurrentReason: "Edit current carousel content",
     affiliateContent: "Affiliate content",
     affiliateNoticeMenu: "Affiliate announcement carousel",
     affiliateTask: "Affiliate task",
@@ -359,6 +375,10 @@ const editorCopy = {
     visibleUntil: "Visible until",
   },
   ko: {
+    edit: "편집",
+    replaceImage: "이미지 교체",
+    contentLanguage: "콘텐츠 언어",
+    editCurrentReason: "현재 캐러셀 콘텐츠 편집",
     affiliateContent: "제휴 콘텐츠",
     affiliateNoticeMenu: "제휴 마케팅 공지 캐러셀",
     affiliateTask: "제휴 작업",

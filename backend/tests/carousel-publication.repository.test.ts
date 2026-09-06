@@ -43,6 +43,18 @@ const createInput: CreateCarouselDraftMutation = {
 const sqlText = (query: { strings?: readonly string[] }): string => query.strings?.join(" ") ?? "";
 
 describe("CarouselPublicationRepository", () => {
+  it("does not expose retired home carousel content as restorable history", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const repository = new CarouselPublicationRepository({ carouselRelease: { findMany, count } } as never);
+    await repository.listHistory({ scene: "USER_HOME", page: 1, pageSize: 10 });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      OR: [{ draftSlotKey: { not: null } }, { publishedSlotKey: { not: null } }, { scheduledSlotKey: { not: null } }]
+    }) }));
+    await repository.listHistory({ scene: "AFFILIATE_HOME_NOTICE", page: 1, pageSize: 10 });
+    expect(findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { scene: "AFFILIATE_HOME_NOTICE", deletedAt: null } }));
+  });
+
   it("exposes the complete atomic lifecycle boundary", () => {
     expect(new CarouselPublicationRepository({} as never)).toEqual(
       expect.objectContaining({
@@ -392,7 +404,7 @@ describe("CarouselPublicationRepository", () => {
       1,
       expect.objectContaining({
         where: { scene: "USER_HOME", publishedSlotKey: { not: null }, deletedAt: null },
-        data: expect.objectContaining({ status: "ARCHIVED", publishedSlotKey: null })
+        data: expect.objectContaining({ status: "ARCHIVED", publishedSlotKey: null, deletedAt: now })
       })
     );
     expect(transaction.carouselRelease.updateMany).toHaveBeenNthCalledWith(

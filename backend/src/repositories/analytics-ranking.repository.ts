@@ -734,7 +734,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       page > MAX_ANALYTICS_RANKING_PAGE ||
       !Number.isSafeInteger(pageSize) ||
       pageSize < 1 ||
-      pageSize > 10
+      pageSize > 100
     )
       this.incomplete();
     const offset = (page - 1) * pageSize;

@@ -1,43 +1,137 @@
+import { useEffect, useState } from "react";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
-import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
-
-const requirements = [
-  "OperationEvent 与 OperationalIncident 表和 migration",
-  "创建、指派、跟进、解决与归档状态机 API",
-  "跨城市 RBAC 与不可变审计链路",
-  "服务端筛选、分页、聚合与导出合同"
-];
+import { AdminEventTimeline } from "../../components/admin/AdminEventTimeline";
+import {
+  FormalTimelinePagination,
+  type FormalTimelinePageSize,
+} from "../../components/admin/FormalTimelinePagination";
+import {
+  releasePublicationsApi,
+  type ReleasePublicationPage,
+} from "../../api/releasePublications";
+import { useI18n } from "../../i18n/I18nProvider";
+import { releaseText } from "../../features/dashboard/releaseTranslations";
 
 export function OperationTimelinePage() {
+  const { language } = useI18n();
+  const t = (source: string) => releaseText(source, language);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<FormalTimelinePageSize>(10);
+  const [revision, setRevision] = useState(0);
+  const [data, setData] = useState<ReleasePublicationPage | null>(null);
+  const [status, setStatus] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+    setData(null);
+    void releasePublicationsApi
+      .list(page, pageSize, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setData(result);
+          setStatus("success");
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
+    return () => controller.abort();
+  }, [page, pageSize, revision]);
+  const dateFormat = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const kinds = {
+    release: "发布",
+    rollback: "回滚",
+    baseline: "首次记录",
+    redeploy: "重新发布",
+  };
   return (
     <AdminLayout>
       <ModuleShell
-        title="运营时间线"
-        description="正式运营时间线必须由可追溯的事件、异常工单和处理状态驱动。"
-        actions={<Badge tone="yellow">未启用</Badge>}
+        actions={<></>}
+        title={t("运营时间线")}
+        description={t("按实际发布时间记录每个版本的更新内容。")}
       >
-        <section className="rounded-lg border border-line bg-white p-6 shadow-panel">
-          <div className="max-w-3xl">
-            <h2 className="text-xl font-black text-ink">正式运营时间线尚未启用</h2>
-            <p className="mt-3 text-sm font-bold leading-7 text-ink/60">
-              当前不会展示模拟运营记录、负责人、城市、优先级或处理状态，也不会开放没有数据库、权限和审计证据的指派、跟进、解决、归档或导出操作。
-            </p>
+        {status === "loading" ? (
+          <p role="status">{t("正在加载版本记录")}</p>
+        ) : null}
+        {status === "error" ? (
+          <div
+            role="alert"
+            className="rounded-2xl border border-line bg-white p-5 text-coral"
+          >
+            <p>{t("版本记录加载失败")}</p>
+            <button
+              className="mt-3 rounded-full border border-line px-4 py-2 text-ink"
+              type="button"
+              onClick={() => setRevision((value) => value + 1)}
+            >
+              {t("重试")}
+            </button>
           </div>
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {requirements.map((requirement, index) => (
-              <article className="rounded-lg border border-line bg-paper p-4" key={requirement}>
-                <span className="text-xs font-black text-moss">上线条件 {index + 1}</span>
-                <p className="mt-2 text-sm font-black text-ink">{requirement}</p>
-              </article>
-            ))}
-          </div>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Button to="/admin" variant="secondary">查看正式数据大盘</Button>
-            <Button to="/admin/field-jobs" variant="secondary">查看外勤能力门禁</Button>
-          </div>
-        </section>
+        ) : null}
+        {status === "success" && data ? (
+          <>
+            <AdminEventTimeline
+              title={t("版本发布记录")}
+              showCommentComposer={false}
+              emptyLabel={t("尚无版本发布记录，部署成功后会自动记录。")}
+              events={data.list.map((release) => ({
+                id: String(release.id),
+                title: t(kinds[release.kind]),
+                tone: "accent" as const,
+                icon: <span aria-hidden="true">↥</span>,
+                atLabel: (
+                  <time
+                    title={t("发布时间（东京）")}
+                    dateTime={release.publishedAt}
+                    data-no-i18n
+                    className="whitespace-pre-line"
+                  >
+                    {dateFormat
+                      .format(new Date(release.publishedAt))
+                      .replace(" ", "\n")}
+                  </time>
+                ),
+                preserveAtLabel: true,
+                actorName: (
+                  <span data-no-i18n>
+                    {t("版本")} {release.version}
+                  </span>
+                ),
+                actorRole: t(kinds[release.kind]),
+                message: (
+                  <span className="whitespace-pre-line" data-no-i18n>
+                    {"\n" +
+                      release.changes.map((change) => `• ${change}`).join("\n")}
+                  </span>
+                ),
+              }))}
+            />
+            <FormalTimelinePagination
+              ariaLabel={t("版本发布记录")}
+              page={page}
+              pageSize={pageSize}
+              total={data.total}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          </>
+        ) : null}
       </ModuleShell>
     </AdminLayout>
   );

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { CarouselRelease, ContentLocaleCode } from "../../api/contentPublication";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { contentPublicationEditorText } from "./i18n";
@@ -5,9 +6,11 @@ import { contentPublicationEditorText } from "./i18n";
 export function CarouselReleasePreview({
   locale,
   release,
+  renderActions,
 }: {
   locale: ContentLocaleCode;
   release: CarouselRelease;
+  renderActions?: (slide: CarouselRelease["slides"][number], index: number) => ReactNode;
 }) {
   const { language } = useOptionalI18n();
 
@@ -19,10 +22,9 @@ export function CarouselReleasePreview({
       <h2 className="text-lg font-black text-ink">
         {contentPublicationEditorText("publishedPreview", language)}
       </h2>
-      <div className="mt-4 grid gap-3">
-        {release.slides
-          .filter((slide) => slide.isEnabled)
-          .map((slide) => {
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {release.slides.map((slide, index) => {
+            if (!slide.isEnabled) return null;
             const copy = slide.translations[locale];
             return (
               <article
@@ -31,7 +33,7 @@ export function CarouselReleasePreview({
               >
                 <img
                   alt={copy.imageAltText}
-                  className="aspect-[15/8] w-full object-cover"
+                  className="h-24 w-full bg-paper object-contain"
                   src={copy.imageUrl || slide.defaultImageUrl}
                 />
                 <div className="p-4">
@@ -43,6 +45,7 @@ export function CarouselReleasePreview({
                       {copy.caption}
                     </p>
                   ) : null}
+                  {renderActions ? <div className="mt-3 flex flex-wrap gap-2">{renderActions(slide, index)}</div> : null}
                 </div>
               </article>
             );

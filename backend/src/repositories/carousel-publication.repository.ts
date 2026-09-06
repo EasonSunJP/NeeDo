@@ -196,6 +196,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           status: ContentReleaseStatus.ARCHIVED,
           publishedSlotKey: null,
           archivedAt: input.now,
+          ...(sceneCode === "USER_HOME" ? { deletedAt: input.now } : {}),
           updatedAt: input.now
         }
       });
@@ -306,7 +307,11 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       },
       include: releaseInclude
     });
+    const latest = await this.client.carouselRelease.findFirst({
+      where: { scene: sceneToDb[scene] }, orderBy: { version: "desc" }, select: { version: true }
+    });
     return {
+      latestVersion: latest?.version ?? 0,
       scene,
       draft: this.slotRelease(releases, "draftSlotKey"),
       published: this.slotRelease(releases, "publishedSlotKey"),
@@ -322,7 +327,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
         const replay = await this.commandReplay(transaction, input);
         if (replay) return replay;
         const latest = await transaction.carouselRelease.findFirst({
-          where: { scene: sceneToDb[input.scene], deletedAt: null },
+          where: { scene: sceneToDb[input.scene] },
           orderBy: { version: "desc" },
           select: { version: true }
         });
@@ -370,6 +375,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
       where: { id: releaseId, scene: sceneToDb[scene], deletedAt: null },
       include: releaseInclude
     });
+    if (scene === "USER_HOME" && release && !release.draftSlotKey && !release.publishedSlotKey && !release.scheduledSlotKey) return null;
     return release ? this.mapRelease(release) : null;
   }
 
@@ -565,6 +571,7 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           status: ContentReleaseStatus.ARCHIVED,
           publishedSlotKey: null,
           archivedAt: input.now,
+          ...(input.scene === "USER_HOME" ? { deletedAt: input.now } : {}),
           updatedAt: input.now
         }
       });
@@ -670,9 +677,12 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
           input.scene,
           input.sourceReleaseId
         );
+        if (input.scene === "USER_HOME" && source.publishedSlotKey === null && source.scheduledSlotKey === null) {
+          throw this.contentError("error.content.invalid_state_transition", 409);
+        }
         await this.validateRelease(transaction, source, input.now, input.validateAffiliateTask);
         const latest = await transaction.carouselRelease.findFirst({
-          where: { scene: sceneToDb[input.scene], deletedAt: null },
+          where: { scene: sceneToDb[input.scene] },
           orderBy: { version: "desc" },
           select: { version: true }
         });
@@ -738,7 +748,9 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
 
   public async listHistory(input: { scene: CarouselSceneCode; page: number; pageSize: number }) {
     const pagination = toPrismaPagination(input);
-    const where = { scene: sceneToDb[input.scene], deletedAt: null };
+    const where = { scene: sceneToDb[input.scene], deletedAt: null,
+      ...(input.scene === "USER_HOME" ? { OR: [{ draftSlotKey: { not: null } }, { publishedSlotKey: { not: null } }, { scheduledSlotKey: { not: null } }] } : {})
+    };
     const [releases, total] = await Promise.all([
       this.client.carouselRelease.findMany({
         where,

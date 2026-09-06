@@ -7957,3 +7957,22 @@ model TechnicianAttendanceAffectedOrder {
   @@index([shopId,deletedAt])
   @@map("technician_attendance_affected_orders")
 }
+
+model ReleasePublication {
+  id               Int       @id @default(autoincrement())
+  deploymentId     String    @unique @map("deployment_id") @db.Char(36)
+  environment      String    @db.VarChar(16)
+  version          String    @db.VarChar(100)
+  sourceRevision   String    @map("source_revision") @db.Char(40)
+  previousRevision String?   @map("previous_revision") @db.Char(40)
+  kind             String    @db.VarChar(16)
+  changes          Json
+  publishedAt      DateTime  @map("published_at") @db.DateTime(3)
+  payloadHash      String    @map("payload_hash") @db.Char(64)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt        DateTime? @map("deleted_at") @db.DateTime(3)
+
+  @@index([environment, deletedAt, publishedAt, id])
+  @@map("release_publications")
+}

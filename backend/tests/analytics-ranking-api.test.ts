@@ -145,7 +145,7 @@ describe("formal analytics rankings API", () => {
     for (const url of [
       "/api/v1/backoffice/analytics/rankings/shop",
       "/api/v1/backoffice/analytics/rankings/service?unknown=1",
-      "/api/v1/backoffice/analytics/rankings/service?pageSize=11",
+      "/api/v1/backoffice/analytics/rankings/service?pageSize=101",
       "/api/v1/backoffice/analytics/rankings/service?page=1e2"
     ])
       await request(allowed.app).get(url).set(bearer(allowed.token)).expect(400);

@@ -307,6 +307,7 @@ export function LocalizedCarouselEditor({
       contentPublicationEditorText(key, language),
     [language],
   );
+  const compactHome = scene === "user-home";
   const [state, dispatch] = useReducer(reducer, initialState);
   const [preview, setPreview] = useState<CarouselRelease | null>(null);
   const [targetType, setTargetType] = useState(
@@ -344,7 +345,7 @@ export function LocalizedCarouselEditor({
     try {
       const [sceneState, history] = await Promise.all([
         contentPublicationApi.getBackofficeCarouselScene(scene),
-        contentPublicationApi.getCarouselHistory(scene, {
+        compactHome ? Promise.resolve({ list: [] as CarouselRelease[] }) : contentPublicationApi.getCarouselHistory(scene, {
           page: 1,
           pageSize: 50,
         }),
@@ -368,7 +369,7 @@ export function LocalizedCarouselEditor({
     } catch {
       dispatch({ type: "load-error", message: t("loadError") });
     }
-  }, [scene, t]);
+  }, [scene, t, compactHome]);
 
   useEffect(() => {
     void load();
@@ -829,12 +830,41 @@ export function LocalizedCarouselEditor({
   }
 
   const latestVersion = Math.max(
-    0,
+    state.sceneState?.latestVersion ?? 0,
     ...state.history.map((release) => release.version),
     state.sceneState?.draft?.version ?? 0,
     state.sceneState?.published?.version ?? 0,
     state.sceneState?.scheduled?.version ?? 0,
   );
+
+  async function editPublishedSlide(index: number, file?: File) {
+    const published = state.sceneState?.published;
+    if (!published || state.saving) return;
+    const locale = state.selectedLocale;
+    dispatch({ type: "saving" });
+    let editable: CarouselRelease | null = null;
+    try {
+      editable = await contentPublicationApi.rollbackCarousel(scene, published.releaseId, {
+        idempotencyKey: idempotencyKey(), expectedCurrentVersion: latestVersion, reason: t("editCurrentReason")
+      });
+      const slide = editable.slides[index];
+      if (file && slide) {
+        const media = await contentPublicationApi.uploadContentImage(file, slide.translations[locale].imageAltText);
+        editable = await contentPublicationApi.updateCarouselSlideLocale(scene, editable.releaseId, slide.id, locale, {
+          expectedLockVersion: editable.lockVersion, mediaAssetPublicId: media.publicId,
+          badge: slide.translations[locale].badge, title: slide.translations[locale].title,
+          caption: slide.translations[locale].caption, ctaLabel: slide.translations[locale].ctaLabel,
+          imageAltText: slide.translations[locale].imageAltText
+        });
+      }
+      dispatch({ type: "replace-draft", draft: editable, notice: file ? t("saved") : undefined });
+      if (slide) dispatch({ type: "select-slide", slideId: slide.id });
+    } catch (error) {
+      if (editable) dispatch({ type: "replace-draft", draft: editable });
+      dispatch({ type: "save-error", conflict: error instanceof ApiClientError && error.status === 409,
+        message: error instanceof ApiClientError && error.status === 409 ? t("conflict") : t("failedSave") });
+    }
+  }
 
   async function cloneDraftFromHistory() {
     const sourceReleaseId =
@@ -991,7 +1021,7 @@ export function LocalizedCarouselEditor({
     <PermissionGate permission={publishPermission}>
       <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-panel">
         <h2 className="text-lg font-black text-ink">
-          {t("versionOperations")}
+          {t(compactHome ? "releaseControls" : "versionOperations")}
         </h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           <select
@@ -1041,6 +1071,7 @@ export function LocalizedCarouselEditor({
           >
             {t("disable")}
           </Button>
+          {!compactHome ? <>
           <select
             aria-label={t("rollback")}
             className={inputClass}
@@ -1090,6 +1121,7 @@ export function LocalizedCarouselEditor({
           >
             {t("rollback")}
           </Button>
+          </> : null}
         </div>
       </section>
     </PermissionGate>
@@ -1116,6 +1148,20 @@ export function LocalizedCarouselEditor({
           </Button>
         </ErrorMessage>
       );
+    if (!draft && compactHome && state.sceneState?.published) return <>
+      <CarouselReleasePreview locale={state.selectedLocale} release={state.sceneState.published}
+        renderActions={(_slide, index) => <PermissionGate permission={editPermission}>
+          <Button disabled={state.saving} onClick={() => void editPublishedSlide(index)} size="sm">{t("edit")}</Button>
+          <PermissionGate permission={mediaPermission}>
+            <label className="focus-ring inline-flex cursor-pointer items-center rounded-full border border-line px-3 py-2 text-xs font-bold text-ink">
+              {t("replaceImage")}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={state.saving}
+                onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void editPublishedSlide(index, file); }} />
+            </label>
+          </PermissionGate>
+        </PermissionGate>} />
+      {versionOperations}
+    </>;
     if (!draft)
       return (
         <>
@@ -1131,23 +1177,6 @@ export function LocalizedCarouselEditor({
                 ? t("cloneFromHistory")
                 : t("createFirstDraft")}
             </h2>
-            <div
-              className="mt-4 flex overflow-x-auto border-b border-line"
-              role="tablist"
-            >
-              {contentEditorLocales.map((locale) => (
-                <button
-                  aria-selected={locale === state.selectedLocale}
-                  className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
-                  key={locale}
-                  onClick={() => dispatch({ type: "select-locale", locale })}
-                  role="tab"
-                  type="button"
-                >
-                  {contentEditorLocaleLabels[locale]}
-                </button>
-              ))}
-            </div>
             {state.sceneState?.published || state.history.length > 0 ? (
               <PermissionGate permission={editPermission}>
                 <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -1253,8 +1282,8 @@ export function LocalizedCarouselEditor({
       );
 
     const form = (readOnly: boolean) => (
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <section className="min-w-0 rounded-lg border border-line bg-white p-5 shadow-panel xl:order-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.14em] text-ink/40">
@@ -1276,23 +1305,6 @@ export function LocalizedCarouselEditor({
             )}
           </div>
 
-          <div
-            className="mt-4 flex overflow-x-auto border-b border-line"
-            role="tablist"
-          >
-            {contentEditorLocales.map((locale) => (
-              <button
-                aria-selected={locale === state.selectedLocale}
-                className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
-                key={locale}
-                onClick={() => dispatch({ type: "select-locale", locale })}
-                role="tab"
-                type="button"
-              >
-                {contentEditorLocaleLabels[locale]}
-              </button>
-            ))}
-          </div>
 
           {translation?.isInitialCopy ? (
             <p className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-bold text-yellow-900">
@@ -1303,6 +1315,14 @@ export function LocalizedCarouselEditor({
             </p>
           ) : null}
 
+          <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-line bg-paper p-3">
+            <img alt={translation?.imageAltText ?? ""} src={translation?.imageUrl || selectedSlide?.defaultImageUrl}
+              className="h-28 w-48 max-w-full rounded-lg object-contain" />
+            {!readOnly ? <PermissionGate permission={mediaPermission}><label className="focus-ring cursor-pointer rounded-full border border-line bg-white px-4 py-2 text-sm font-bold text-ink">
+              {t("replaceImage")}<input accept="image/jpeg,image/png,image/webp" className="sr-only" type="file"
+                onChange={(event) => void uploadLocalizedImage(event)} />
+            </label></PermissionGate> : null}
+          </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="text-sm font-black text-ink">
               {t("title")}
@@ -1432,11 +1452,7 @@ export function LocalizedCarouselEditor({
           ) : null}
 
           <div className="mt-5 overflow-hidden rounded-lg border border-line bg-paper">
-            <img
-              alt={translation?.imageAltText ?? ""}
-              className="aspect-[15/8] w-full object-cover"
-              src={translation?.imageUrl}
-            />
+
             <div className="p-4">
               <p className="text-xs font-black text-ink/45">
                 {selectedSlide
@@ -1459,7 +1475,7 @@ export function LocalizedCarouselEditor({
           </div>
         </section>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4 order-first xl:order-1">
           <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
             <h3 className="text-sm font-black text-ink">{t("slides")}</h3>
             <div className="mt-3 space-y-2">
@@ -1477,6 +1493,9 @@ export function LocalizedCarouselEditor({
                     }
                     type="button"
                   >
+                    <img alt={slide.translations[state.selectedLocale].imageAltText}
+                      src={slide.translations[state.selectedLocale].imageUrl || slide.defaultImageUrl}
+                      className="mb-2 h-24 w-full rounded-lg bg-paper object-contain" />
                     {index + 1}.{" "}
                     {slide.translations[state.selectedLocale].title}
                   </button>
@@ -1691,6 +1710,12 @@ export function LocalizedCarouselEditor({
                 {state.sceneState?.scheduled?.version ?? "—"}
               </Badge>
             </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4" role="tablist" aria-label={t("contentLanguage")}>
+            {contentEditorLocales.map((locale) => <button key={locale} role="tab" type="button"
+              aria-selected={locale === state.selectedLocale}
+              className={`focus-ring rounded-full px-4 py-2 text-sm font-black ${locale === state.selectedLocale ? "bg-moss text-white" : "bg-paper text-ink/60"}`}
+              onClick={() => dispatch({ type: "select-locale", locale })}>{contentEditorLocaleLabels[locale]}</button>)}
           </div>
         </header>
         {state.error ? (

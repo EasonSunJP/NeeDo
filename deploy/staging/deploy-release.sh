@@ -32,6 +32,8 @@ done
 release_dir="$(cd "$(dirname "$0")/../.." && pwd -P)"
 expected_release_dir="/srv/needo/releases/${revision}-${archive_sha256:0:16}"
 [[ "$release_dir" == "$expected_release_dir" ]]
+[[ -f "$release_dir/release-notes.json" ]]
+[[ -f "$release_dir/backend/dist/cli/record-release.js" ]]
 
 install -d -m 0750 /srv/needo/config /srv/needo/mysql /srv/needo/redis
 install -d -m 0750 /srv/needo/certbot/conf
@@ -44,6 +46,7 @@ env_file="/srv/needo/config/staging.env"
 secret_json="$(mktemp /srv/needo/config/staging-secret.XXXXXX)"
 env_candidate="$(mktemp /srv/needo/config/staging-env.XXXXXX)"
 previous_release="$(readlink -f /srv/needo/current 2>/dev/null || true)"
+previous_revision="$(python3 -c 'import json,os; p="/srv/needo/active-release.json"; print(json.load(open(p)).get("sourceRevision", "") if os.path.isfile(p) else "")' )"
 deployment_complete=false
 
 cleanup() {
@@ -180,3 +183,23 @@ printf '{"sourceRevision":"%s","archiveSha256":"%s"}\n' \
   "$revision" "$archive_sha256" >/srv/needo/active-release.json
 chmod 0600 /srv/needo/active-release.json
 deployment_complete=true
+
+# Persist the publication instant after traffic is live; retain this receipt for idempotent retry.
+publication_receipt="$(mktemp "$release_dir/publication.XXXXXX.json")"
+python3 - "$release_dir/release-notes.json" "$previous_release/release-notes.json" "$revision" "$previous_revision" "$publication_receipt" <<'PY_RELEASE'
+import datetime, json, os, sys, uuid
+current_path, previous_path, revision, previous_revision, output = sys.argv[1:]
+with open(current_path, encoding="utf-8") as handle:
+    current = json.load(handle)
+previous = None
+if os.path.isfile(previous_path):
+    with open(previous_path, encoding="utf-8") as handle:
+        previous = json.load(handle)
+record = {"deploymentId": str(uuid.uuid4()), "environment": "staging",
+          "publishedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+          "sourceRevision": revision, "previousRevision": previous_revision or None,
+          "current": current, "previous": previous}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(record, handle, ensure_ascii=False)
+PY_RELEASE
+compose_for "$release_dir" exec -T backend node dist/cli/record-release.js <"$publication_receipt"

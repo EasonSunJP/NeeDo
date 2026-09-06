@@ -252,14 +252,14 @@ async function selectOptionByName(name: string, value: string) {
   await setValue(select, value);
 }
 
-async function renderEditor() {
+async function renderEditor(sceneSlug: "user-home" | "affiliate-home-notice" = "user-home") {
   await act(async () => {
     root.render(
       <LocalizedCarouselEditor
         editPermission="carousel:edit"
         publishPermission="carousel:publish"
         readPermission="carousel:read"
-        scene="user-home"
+        scene={sceneSlug}
       />,
     );
   });
@@ -336,6 +336,40 @@ describe("LocalizedCarouselEditor", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.restoreAllMocks();
+  });
+
+  it("places locale shortcuts above compact thumbnails and edits current content without history", async () => {
+    const publishedOnly = { ...scene, draft: null };
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue(publishedOnly);
+    apiMocks.rollbackCarousel.mockResolvedValue(draft);
+    await renderEditor();
+    expect(apiMocks.getCarouselHistory).not.toHaveBeenCalled();
+    expect(container.querySelector('select[name="rollbackReleaseId"]')).toBeNull();
+    expect(container.querySelector('input[name="cloneReason"]')).toBeNull();
+    const tabs = container.querySelector('[role="tablist"]')!;
+    const preview = container.querySelector('[data-testid="published-carousel-preview"]')!;
+    expect(tabs.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(preview.querySelector('img')?.className).toContain('h-24');
+    await click(preview.querySelector<HTMLButtonElement>('button')!);
+    expect(apiMocks.rollbackCarousel).toHaveBeenCalledWith("user-home", scene.published!.releaseId,
+      expect.objectContaining({ reason: "编辑当前轮播内容", expectedCurrentVersion: 3 }));
+    expect(container.querySelector('input[name="title"]')).not.toBeNull();
+    expect(apiMocks.publishCarousel).not.toHaveBeenCalled();
+  });
+
+  it("replaces the selected language directly from its published thumbnail without publishing", async () => {
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({ ...scene, draft: null });
+    apiMocks.rollbackCarousel.mockResolvedValue(draft);
+    await renderEditor();
+    await click(localeTab("English"));
+    const file = new File(["local-upload-test"], "replacement.webp", { type: "image/webp" });
+    const input = container.querySelector<HTMLInputElement>('[data-testid="published-carousel-preview"] input[type="file"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(apiMocks.uploadContentImage).toHaveBeenCalledWith(file, draft.slides[0].translations.en.imageAltText);
+    expect(apiMocks.updateCarouselSlideLocale).toHaveBeenCalledWith("user-home", draft.releaseId, draft.slides[0].id, "en",
+      expect.objectContaining({ expectedLockVersion: draft.lockVersion, mediaAssetPublicId: MEDIA_UPLOADED }));
+    expect(apiMocks.publishCarousel).not.toHaveBeenCalled();
   });
 
   it("loads the server draft and exposes the exact five locale tabs with initial-copy state", async () => {
@@ -679,7 +713,7 @@ describe("LocalizedCarouselEditor", () => {
       type: "image/webp",
     });
     const fileInput =
-      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      container.querySelector<HTMLInputElement>('input[name="defaultMedia"]')!;
     Object.defineProperty(fileInput, "files", {
       configurable: true,
       value: [image],
@@ -824,7 +858,7 @@ describe("LocalizedCarouselEditor", () => {
     });
     apiMocks.rollbackCarousel.mockResolvedValue(clonedDraft);
 
-    await renderEditor();
+    await renderEditor("affiliate-home-notice");
 
     await waitFor(() =>
       expect(
@@ -844,7 +878,7 @@ describe("LocalizedCarouselEditor", () => {
 
     await waitFor(() =>
       expect(apiMocks.rollbackCarousel).toHaveBeenCalledWith(
-        "user-home",
+        "affiliate-home-notice",
         scene.published!.releaseId,
         expect.objectContaining({ reason: "继续编辑已发布版本" }),
       ),
@@ -866,7 +900,7 @@ describe("LocalizedCarouselEditor", () => {
     });
     apiMocks.rollbackCarousel.mockResolvedValue(clonedDraft);
 
-    await renderEditor();
+    await renderEditor("affiliate-home-notice");
     await waitFor(() =>
       expect(container.textContent).toContain("从历史版本创建草稿"),
     );
@@ -878,7 +912,7 @@ describe("LocalizedCarouselEditor", () => {
 
     await waitFor(() =>
       expect(apiMocks.rollbackCarousel).toHaveBeenCalledWith(
-        "user-home",
+        "affiliate-home-notice",
         80,
         expect.objectContaining({
           expectedCurrentVersion: 3,
@@ -1114,7 +1148,7 @@ describe("LocalizedCarouselEditor", () => {
       }),
     );
     await waitFor(() =>
-      expect(container.textContent).toContain("从历史版本创建草稿"),
+      expect(container.textContent).toContain("当前已发布内容"),
     );
   });
 
@@ -1183,7 +1217,7 @@ describe("LocalizedCarouselEditor", () => {
       page: 1,
       page_size: 20,
     });
-    await renderEditor();
+    await renderEditor("affiliate-home-notice");
     await waitFor(() => expect(container.textContent).toContain("版本操作"));
     await setValue(
       container.querySelector<HTMLSelectElement>(
@@ -1197,7 +1231,7 @@ describe("LocalizedCarouselEditor", () => {
     );
     await click(button("停用当前版本"));
     expect(apiMocks.disableCarousel).toHaveBeenCalledWith(
-      "user-home",
+      "affiliate-home-notice",
       82,
       expect.objectContaining({ expectedLockVersion: 2, reason: "取消定时" }),
     );
@@ -1216,7 +1250,7 @@ describe("LocalizedCarouselEditor", () => {
     );
     await click(button("回滚所选版本"));
     expect(apiMocks.rollbackCarousel).toHaveBeenCalledWith(
-      "user-home",
+      "affiliate-home-notice",
       70,
       expect.objectContaining({
         expectedCurrentVersion: 5,

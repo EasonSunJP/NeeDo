@@ -293,7 +293,7 @@ Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` �
 - `GET /api/v1/merchant-admin/analytics/members/trend`
 - `GET /api/v1/merchant-admin/analytics/members`
 
-运营数据大盘最下方增加服务项目、技师、用户消费三个 `TOP10` 面板，统一调用 `GET /api/v1/backoffice/analytics/rankings/:kind`。每个面板独立切换 `gmv` 或 `completedCount`；技师和用户排行可按正式启用服务分类筛选，并继承数据大盘城市与期间。前端不重新排序后端响应。排行只接受有完整完成与收款凭证、未退款或冲正的订单；NDP、现金和其他方式分别要求正式账本或收款确认。相同主指标时按次指标降序、注册时间升序、数字 ID 升序确定唯一顺序。
+运营数据大盘最下方增加服务项目、技师、用户消费三个 `TOP10` 面板，统一调用 `GET /api/v1/backoffice/analytics/rankings/:kind`。每个面板独立切换 `gmv` 或 `completedCount`；服务项目、技师和用户排行均可按正式启用服务分类筛选，并继承数据大盘城市与期间。前端不重新排序后端响应。排行只接受有完整完成与收款凭证、未退款或冲正的订单；NDP、现金和其他方式分别要求正式账本或收款确认。相同主指标时按次指标降序、注册时间升序、数字 ID 升序确定唯一顺序。
 
 新增权限 `backoffice:analytics-ranking:read` 与 migration `20260902100000_analytics_ranking_identity_permission`。平台排行与平台会员分析同时要求当前身份为 `platform` / `platform_admin` 且范围为全局或平台，避免用户切换到同为 global scope 的业务身份后复用角色权限读取平台数据。排行读取使用一致性事务快照，并写入 `backoffice.analytics_ranking.read` 审计。OpenAPI 锁定查询、分页、返回字段和错误响应；前端 adapter 对会员与排行响应执行严格运行时投影，拒绝额外字段、筛选错配、不安全整数及排行种类与实体种类错配。
 
@@ -315,3 +315,19 @@ Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` �
 正式浏览器验收：在 `http://127.0.0.1:5180/pf-admin.html#/admin` 通过真实测试账号正常登录并使用已有运营身份，点击服务 753、技师 LifeDance 管理员 2、用户 LifeDance 管理员，均加载现有正式详情。每次打开和关闭后 URL 始终为 `#/admin`，榜单仍挂载且可见；最后关闭后没有残留抽屉。未进行服务保存、用户调整或删除操作。
 
 验收中发现本地旧前端模块缓存和旧后端版本混用：按原代理配置重启 5180 前端，重新生成 Prisma 客户端并按原环境文件、端口 3108 和 token audience 重启 main 后端。5180 来源恢复正常登录，用户详情从 500 恢复到 200；没有执行 migration 或 seed。远程推送和部署不在本次操作内。
+
+## 2026-09-07 排行分类与完整列表
+
+服务项目排行补齐与其他两类一致的正式分类选项。三个面板新增“查看详细”，
+在当前大盘打开分页排行抽屉，继承期间、城市、分类和排序口径；每页 10 条，
+按 API 总条数翻页，保留服务端名次，不限于 TOP10。详情展示统计范围、总条数、
+名称、公开 ID、服务类型、GMV、完成次数及 TEST 标记。详情内可独立调整筛选与排序，
+变更后回到第一页；关闭后保留大盘状态。点击记录仍打开原实体详情。
+
+沿用 `/api/v1/backoffice/analytics/rankings/:kind` 及现有权限、审计与完成凭证校验，
+无后端合同、数据库或 migration 变更。验收与已知数据限制见
+[本地记录](qa/2026-09-07-ranking-category-details.md)。
+
+### 2026-09-07 运营交互补充（本地）
+
+已补齐排行榜详情独立时间和城市筛选及 10/50/100 分页；运营时间线改为受保护的版本发布时间线；首页轮播改为顶部语言切换与缩略图编辑，不提供历史回滚；用户详情开关不再使列表重读。数据库、审计、部署钩子与验证边界见 [本地验收](qa/2026-09-07-operations-ui-local.md)。本轮没有执行远端发布。

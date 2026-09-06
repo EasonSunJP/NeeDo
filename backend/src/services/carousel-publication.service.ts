@@ -205,6 +205,7 @@ export interface RollbackCarouselMutation extends IdempotentCarouselMutation {
 
 export interface CarouselPublicationRepositoryPort extends ContentPublicationActivationRepositoryPort {
   getScene(scene: CarouselSceneCode): Promise<{
+    latestVersion?: number;
     scene: CarouselSceneCode;
     draft: CarouselPublicationPayload | null;
     published: CarouselPublicationPayload | null;

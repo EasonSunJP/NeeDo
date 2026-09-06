@@ -91,6 +91,8 @@ import type { ShopMembershipCardAdjustmentRepositoryPort } from "./services/shop
 import type { ShopMembershipCardTopUpRepositoryPort } from "./services/shop-membership-card-topup.service";
 import type { ShopMembershipCardRedemptionRepositoryPort } from "./services/shop-membership-card-redemption.service";
 import type { ShopMembershipCardRefundRepositoryPort } from "./services/shop-membership-card-refund.service";
+import type { ReleasePublicationRepositoryPort } from "./repositories/release-publication.repository";
+import { createReleasePublicationRoutes } from "./routes/release-publication.routes";
 import type { AnalyticsRankingRepositoryPort } from "./repositories/analytics-ranking.repository";
 import type { AgentCommissionRuleRepositoryPort } from "./repositories/agent-commission-rule.repository";
 import type { OperatingCostRepositoryPort } from "./repositories/operating-cost.repository";
@@ -354,6 +356,7 @@ export interface AppDependencies {
   shopMembershipCardTopUpRepository?: ShopMembershipCardTopUpRepositoryPort;
   shopMembershipCardRedemptionRepository?: ShopMembershipCardRedemptionRepositoryPort;
   shopMembershipCardRefundRepository?: ShopMembershipCardRefundRepositoryPort;
+  releasePublicationRepository?: ReleasePublicationRepositoryPort;
   analyticsRankingRepository?: AnalyticsRankingRepositoryPort;
   agentCommissionRuleRepository?: AgentCommissionRuleRepositoryPort;
   operatingCostRepository?: OperatingCostRepositoryPort;
@@ -719,6 +722,7 @@ export const createApp = (
   mount("merchant-admin", createShopMembershipCardAdjustmentRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopMembershipCardTopUpRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopMembershipCardRedemptionRoutes(config, resolvedDependencies));
+  mount("backoffice", createReleasePublicationRoutes(config, resolvedDependencies));
   mount("backoffice", createAnalyticsRankingRoutes(config, resolvedDependencies));
   mount("shared", createTechnicianProfileRoutes(config, resolvedDependencies));
   mount("shared", createTechnicianDataCenterRoutes(config, resolvedDependencies));

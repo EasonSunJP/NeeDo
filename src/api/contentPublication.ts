@@ -201,6 +201,7 @@ export type CarouselRelease = {
 };
 
 export type BackofficeCarouselScene = {
+  latestVersion?: number;
   scene: PublishedCarouselScene;
   draft: CarouselRelease | null;
   published: CarouselRelease | null;
