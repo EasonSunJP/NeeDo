@@ -16,7 +16,7 @@
 - Desktop landscape uses `100dvh`, has no page-level horizontal or vertical scroll, and does not use a fixed 1124px canvas or whole-page `transform: scale(...)`.
 - Portrait phones hide the map graphic and map viewport controls, retain nationwide search and all cascading selectors, use a single column, and may scroll vertically.
 - Search covers 47 prefectures and 1918 ADMIN2 regions, including Tokyo's 23 special wards, from a versioned local N03 index.
-- Dense labels move to deterministic perimeter callouts with leader lines; selected/focused regions have priority and labels must not overlap.
+- Dense labels move to deterministic perimeter callouts with leader lines; when the outer rail is full, bounded inward rails along the same edge are allowed. Selected/focused regions have priority and labels must not overlap or fall back into the original anchor cluster.
 - Map controls are zoom in, zoom out, and reset; zoomed maps support bounded pointer/touch panning and reset on administrative-level change.
 - The trend chart keeps a readable plot and a separate date-axis band at every accepted desktop viewport; zero values must not collapse onto the date labels.
 - Use only `.live-dashboard-*` selectors and existing `--admin-*` theme variables for new styling.
@@ -310,7 +310,7 @@ Use viewBox-space measurements, not browser font measurement:
 const estimateBox = (name: string) => ({ width: Math.max(48, name.length * 15 + 16), height: 28 });
 ```
 
-Transform anchors through the current viewport. Sort selected first, then positive order count, smaller estimated region-label fit, and code. Attempt centered internal placement; if it intersects an accepted box or lacks edge clearance, allocate the nearest available left/right/top/bottom perimeter slot. Clamp the label box to the viewBox and create a two- or three-point leader that terminates before the text box. Export a test-only-independent `boxesOverlap` production utility rather than duplicating collision math in tests.
+Transform anchors through the current viewport. Sort selected first, then positive order count, smaller estimated region-label fit, and code. Attempt centered internal placement; if it intersects an accepted box or lacks edge clearance, allocate the nearest available left/right/top/bottom perimeter slot. When the outer rail is full, add bounded inward rails along the same edge; do not place callouts back inside the original anchor cluster. Clamp the label box to the viewBox and create a two- or three-point leader that terminates before the text box. Export a test-only-independent `boxesOverlap` production utility rather than duplicating collision math in tests.
 
 - [ ] **Step 4: Verify GREEN, density, and performance**
 
@@ -318,7 +318,7 @@ Transform anchors through the current viewport. Sort selected first, then positi
 npm test -- src/features/live-dashboard/mapLabelLayout.test.ts
 ```
 
-Expected: all placements remain inside bounds, no label boxes overlap for country/Tokyo fixtures, every external label has one leader, identical inputs produce deep-equal outputs, and 1918-index lookup is not part of layout execution.
+Expected: all placements remain inside bounds, no label boxes overlap for country/Tokyo fixtures, every external label has one leader, inward fallback slots remain edge-aligned and outside the original anchor cluster, identical inputs produce deep-equal outputs, capacity failures are asserted, ordinary inputs remain unmodified, and 1918-index lookup is not part of layout execution.
 
 - [ ] **Step 5: Commit Task 3**
 
