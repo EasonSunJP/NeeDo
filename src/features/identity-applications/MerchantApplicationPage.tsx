@@ -16,7 +16,6 @@ import {
   ApplicationInput,
   ApplicationNotice,
   ApplicationReadOnlyField,
-  ApplicationSelect,
   ApplicationSection,
   ApplicationShell,
   ApplicationSteps,
@@ -32,6 +31,7 @@ import { getContractLanguage, merchantApplicationErrorMessage, normalizeBankDigi
 import { formatMerchantPriceRange, parseMerchantPriceRange, validateMerchantPriceRange, type MerchantPriceRange } from "./merchantPriceRange";
 import { merchantApplicationDraftMemory } from "./merchantApplicationDraftMemory";
 
+import { ApplicationDropdown } from "./ApplicationDropdown";
 import { MerchantAccountTypeSelect } from "./MerchantAccountTypeSelect";
 import { japanBanks, japanBankGroups } from "./japanBanks";
 
@@ -440,14 +440,11 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
             <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "个人名义申请时，银行账户名义必须与 eKYC 姓名一致。")}</ApplicationNotice>
             {form.applicantKind === "individual" ? <ApplicationNotice>{t("如尚未完成 eKYC，请先在用户设置的验证与资质页面完成认证。")}</ApplicationNotice> : null}
             <div className="grid gap-4 sm:grid-cols-2">
-              <ApplicationField label="银行名称" required>
-                <ApplicationSelect aria-label={t("银行名称")} data-no-i18n onChange={(event) => selectBank(event.target.value)} value={customBank ? "custom" : bank.bankCode}>
-                  <option value="">{t("请选择银行")}</option>
-                  {japanBankGroups.map((group) => <optgroup key={group.id} label={t(group.label)}>
-                    {japanBanks.filter((item) => item.group === group.id).map((item) => <option key={item.code} value={item.code}>{item.name}（{item.code}）</option>)}
-                  </optgroup>)}
-                  <option value="custom">{t("其他金融机构（手动填写）")}</option>
-                </ApplicationSelect>
+              <ApplicationField as="div" label="银行名称" required>
+                <ApplicationDropdown label={t("银行名称")} maxVisibleOptions={10} onChange={selectBank} options={[
+                  ...japanBankGroups.flatMap((group) => japanBanks.filter((item) => item.group === group.id).map((item) => ({ value: item.code, label: `${item.name}（${item.code}）` }))),
+                  { value: "custom", label: t("其他金融机构（手动填写）") }
+                ]} placeholder={t("请选择银行")} value={customBank ? "custom" : bank.bankCode} />
               </ApplicationField>
               {customBank ? <ApplicationField label="金融机构名称" required><ApplicationInput aria-label={t("金融机构名称")} onChange={(event) => updateBank("bankName", event.target.value)} value={bank.bankName} /></ApplicationField> : null}
               <ApplicationField label="银行代码" required><ApplicationInput inputMode="numeric" maxLength={4} onChange={(event) => updateBank("bankCode", event.target.value)} readOnly={!customBank} value={bank.bankCode} /></ApplicationField>

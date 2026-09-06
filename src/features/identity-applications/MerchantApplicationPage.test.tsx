@@ -127,9 +127,12 @@ describe("MerchantApplicationPage behavior", () => {
   }
 
   async function chooseBank(code: string) {
-    const select = container.querySelector<HTMLSelectElement>('select[aria-label="银行名称"]');
-    expect(select).not.toBeNull();
-    await act(async () => { select!.value = code; select!.dispatchEvent(new Event("change", { bubbles: true })); });
+    const trigger = container.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="银行名称"]');
+    expect(trigger).not.toBeNull();
+    if (trigger!.getAttribute("aria-expanded") !== "true") await act(async () => trigger!.click());
+    const option = container.querySelector<HTMLButtonElement>(`[role="option"][data-value="${code}"]`);
+    expect(option).not.toBeNull();
+    await act(async () => option!.click());
   }
 
   async function chooseCover() {
@@ -218,7 +221,8 @@ describe("MerchantApplicationPage behavior", () => {
     vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: { ...corporateDraft.merchantDetail!, applicantKind: "individual" } }], total: 1, page: 1, page_size: 20 });
     await render();
     await act(async () => button("下一步：银行与身份").click());
-    const bankSelect = container.querySelector<HTMLSelectElement>('select[aria-label="银行名称"]');
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="银行名称"]')!.click());
+    const bankSelect = container.querySelector('[role="listbox"]');
     expect(bankSelect?.textContent).toContain("三井住友銀行");
     expect(bankSelect?.textContent).toContain("楽天銀行");
     expect(bankSelect?.textContent).toContain("PayPay銀行");

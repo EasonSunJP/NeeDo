@@ -4104,7 +4104,7 @@ export function StoreDetailExperience({
               </div>
             ) : null}
           </div>
-          <div className="-mx-1">{tabSwitcher}</div>
+          <div className="min-w-0">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
         </section>
         <div className="relative z-0">{content}</div>

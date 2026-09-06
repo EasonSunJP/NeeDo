@@ -3,6 +3,8 @@ import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { customerProfileApi, type CustomerSelfProfile } from "./customerProfileApi";
+import { platformMembershipSelfApi, type MyPlatformMembership } from "../platform-membership/api";
+import { getCustomerMembershipIcon } from "../../shared/profile-card/customerMembership";
 import { useCustomerSelfProfile } from "./useCustomerSelfProfile";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,6 +35,8 @@ function ResourceProbe() {
     <div>
       <span data-testid="loading">{String(resource.loading)}</span>
       <span data-testid="profile">{resource.profile?.publicId ?? "null"}</span>
+      <span data-testid="membership-icon">{getCustomerMembershipIcon(resource.customer?.memberLevel)?.src ?? "none"}</span>
+      <span data-testid="member-level">{resource.customer?.memberLevel ?? "unknown"}</span>
       <span data-testid="customer">{resource.customer?.systemId ?? "null"}</span>
       <span data-testid="error">{resource.error ?? "null"}</span>
       <button onClick={resource.reload} type="button">reload</button>
@@ -66,6 +70,7 @@ let root: Root;
 
 describe("useCustomerSelfProfile", () => {
   beforeEach(() => {
+    vi.spyOn(platformMembershipSelfApi, "getMine").mockResolvedValue({ tierCode: "free" } as MyPlatformMembership);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -86,6 +91,32 @@ describe("useCustomerSelfProfile", () => {
     expect(container.querySelector('[data-testid="profile"]')?.textContent).toBe(profile.publicId);
     expect(container.querySelector('[data-testid="loading"]')?.textContent).toBe("false");
     expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
+  });
+
+  it("uses formal free membership instead of a stale gold profile field", async () => {
+    vi.spyOn(customerProfileApi, "getMine").mockResolvedValue({ ...profile, membershipLevel: "gold" });
+    await act(async () => root.render(<ResourceProbe />));
+    await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
+    expect(container.querySelector('[data-testid="member-level"]')?.textContent).toBe("free");
+    expect(container.querySelector('[data-testid="membership-icon"]')?.textContent).toBe("none");
+  });
+
+  it("keeps the paid badge when the formal membership is gold", async () => {
+    vi.spyOn(customerProfileApi, "getMine").mockResolvedValue(profile);
+    vi.mocked(platformMembershipSelfApi.getMine).mockResolvedValue({ tierCode: "gold" } as MyPlatformMembership);
+    await act(async () => root.render(<ResourceProbe />));
+    await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
+    expect(container.querySelector('[data-testid="membership-icon"]')?.textContent).toContain("gold-membership");
+  });
+
+  it("retains the profile without a paid badge when formal membership is unavailable", async () => {
+    vi.spyOn(customerProfileApi, "getMine").mockResolvedValue({ ...profile, membershipLevel: "gold" });
+    vi.mocked(platformMembershipSelfApi.getMine).mockRejectedValue(new Error("membership unavailable"));
+    await act(async () => root.render(<ResourceProbe />));
+    await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
+    expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
+    expect(container.querySelector('[data-testid="member-level"]')?.textContent).toBe("");
+    expect(container.querySelector('[data-testid="membership-icon"]')?.textContent).toBe("none");
   });
 
   it("shares the initial formal profile request during StrictMode effect replay", async () => {
