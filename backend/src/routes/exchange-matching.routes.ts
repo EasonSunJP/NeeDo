@@ -10,6 +10,7 @@ import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ExchangeMatchingRepository } from "../repositories/exchange-matching.repository";
 import { ExchangeMatchingService } from "../services/exchange-matching.service";
 import {
+  confirmQuickExchangeBudgetSchema,
   exchangeMatchingPostIdParamSchema,
   selectExchangeMatchSchema
 } from "../validators/exchange-matching.validators";
@@ -42,6 +43,17 @@ export const createExchangeMatchingRoutes = (
     validateRequest({ params: exchangeMatchingPostIdParamSchema, body: selectExchangeMatchSchema }),
     validateExchangeIdempotencyKey,
     controller.select
+  );
+  router.post(
+    "/exchange/posts/:id/matching/quick/confirm-budget",
+    authenticate(),
+    createAuthorizeMiddleware(EXCHANGE_PERMISSIONS.matchingSelectOwn),
+    validateRequest({
+      params: exchangeMatchingPostIdParamSchema,
+      body: confirmQuickExchangeBudgetSchema
+    }),
+    validateExchangeIdempotencyKey,
+    controller.confirmQuickBudget
   );
 
   return router;

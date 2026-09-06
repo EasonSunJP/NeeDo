@@ -234,6 +234,29 @@ export class ExchangeMatchingRepository {
     return { payload: record.payload, payloadFingerprint: event.payloadFingerprint };
   }
 
+  public async findIdempotentQuickConfirmation(idempotencyKey: string): Promise<{
+    payload: ExchangeMatchingPayload;
+    payloadFingerprint: string;
+  } | null> {
+    const event = await this.client.exchangeMatchEvent.findFirst({
+      where: {
+        idempotencyKey,
+        type: ExchangeMatchEventType.QUICK_MATCHED,
+        actorIdentityId: { not: null },
+        deletedAt: null
+      },
+      select: {
+        payloadFingerprint: true,
+        actorIdentityId: true,
+        matching: { select: { exchangePostId: true } }
+      }
+    });
+    if (!event?.payloadFingerprint || !event.actorIdentityId) return null;
+    const record = await this.findForViewer(event.matching.exchangePostId, event.actorIdentityId);
+    if (!record) return null;
+    return { payload: record.payload, payloadFingerprint: event.payloadFingerprint };
+  }
+
   public async lockActiveClaims(exchangePostId: number): Promise<ExchangeMatchingSelectionClaim[]> {
     const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
       SELECT id FROM \`exchange_claims\`

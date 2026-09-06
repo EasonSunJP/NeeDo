@@ -11,6 +11,27 @@ import { ExchangeMatchingRepository } from "../src/repositories/exchange-matchin
 const at = new Date("2026-09-01T01:00:00.000Z");
 
 describe("ExchangeMatchingRepository", () => {
+  it("looks up owner-confirmed Quick matches by their dedicated terminal event", async () => {
+    const findFirst = jest.fn(async () => null);
+    const repository = new ExchangeMatchingRepository({
+      exchangeMatchEvent: { findFirst }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.findIdempotentQuickConfirmation("quick-key-00000001")
+    ).resolves.toBeNull();
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          idempotencyKey: "quick-key-00000001",
+          type: ExchangeMatchEventType.QUICK_MATCHED,
+          actorIdentityId: { not: null },
+          deletedAt: null
+        })
+      })
+    );
+  });
+
   it("projects an exact quick budget decision only to the Request owner", async () => {
     const matching = {
       id: 51,
@@ -703,7 +724,7 @@ describe("ExchangeMatchingRepository", () => {
       data: { payload: unknown };
     };
     expect(JSON.stringify(notificationInput.data.payload)).not.toMatch(
-      /address|phone|email|token|wallet|identityId/ui
+      /address|phone|email|token|wallet|identityId/iu
     );
     expect(client.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

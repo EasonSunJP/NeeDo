@@ -256,7 +256,7 @@ Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-q
 
 Expected: all suites pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/src/services/exchange-quick-matching.service.ts backend/src/services/exchange-claim.service.ts backend/src/repositories/exchange-claim.repository.ts backend/src/routes/exchange-claim.routes.ts backend/src/server.ts backend/tests/exchange-quick-matching.service.test.ts backend/tests/exchange-claim.service.test.ts backend/tests/exchange-claim.repository.test.ts backend/tests/exchange-matching.repository.test.ts
@@ -281,17 +281,17 @@ git commit -m "feat(exchange): auto match quick claims"
 - Consumes body: `{ expectedVersion, budgetConfirmation: { action: "increase_to_selected_total", confirmedBudgetMaxJpy } }`.
 - Requires: `Idempotency-Key`, JWT, and `exchange:matching:select-own`.
 
-- [ ] **Step 1: Write failing validator/service/route/OpenAPI tests**
+- [x] **Step 1: Write failing validator/service/route/OpenAPI tests**
 
 Assert the command rejects missing idempotency, non-owner, Selective mode, non-open/expired Request, stale version, below-target or above-target active count, no-overage confirmation, and any confirmation value other than the exact locked claim total. Assert successful/replayed commands return the same persisted matching and changed payload with the same key returns `error.exchange.match_idempotency_conflict`.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-matching.validators.test.ts tests/exchange-matching.service.test.ts tests/exchange-matching.routes.test.ts tests/exchange-matching.openapi.test.ts`
 
 Expected: FAIL because the endpoint and service method do not exist.
 
-- [ ] **Step 3: Add the strict Zod body**
+- [x] **Step 3: Add the strict Zod body**
 
 ```ts
 export const confirmQuickExchangeBudgetSchema = z.object({
@@ -303,15 +303,15 @@ export const confirmQuickExchangeBudgetSchema = z.object({
 }).strict();
 ```
 
-- [ ] **Step 4: Implement the owner command through the existing matching transaction**
+- [x] **Step 4: Implement the owner command through the existing matching transaction**
 
 Lock Request/matching, validate owner/mode/state/version/expiry, lock every active claim, require count exactly equal to the effective target, calculate the exact total, require an actual overage and exact confirmation, revalidate sorted technicians and time conflicts, then call `completeMatch` with one `budget_increased` adjustment followed by `quick_matched`. The event idempotency key is the request header; the payload fingerprint includes owner IDs, post ID, expected version, and exact confirmation.
 
-- [ ] **Step 5: Wire Controller, Route, OpenAPI, RBAC, and errors**
+- [x] **Step 5: Wire Controller, Route, OpenAPI, RBAC, and errors**
 
 Add the route next to `/matching/select`, use the existing idempotency middleware, and document 200/400/401/403/409 envelopes plus the owner-only preview. Do not add a second matching aggregate or a new wallet endpoint.
 
-- [ ] **Step 6: Run focused and Selective regression tests**
+- [x] **Step 6: Run focused and Selective regression tests**
 
 Run the command from Step 2 plus `tests/exchange-matching.repository.test.ts`.
 

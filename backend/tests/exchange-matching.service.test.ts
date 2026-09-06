@@ -137,6 +137,19 @@ const matchedPayload: ExchangeMatchingPayload = {
   viewer: { canSelect: false, canConfirmQuickBudget: false, canCreateBookings: true }
 };
 
+const quickClaims = [claim(301, 81, 15_000), claim(302, 82, 16_000)];
+const quickMatchingRecord: ExchangeMatchingRecord = {
+  ...matchingRecord,
+  matchMode: "quick",
+  payload: quickBudgetPayload
+};
+const quickMatchedPayload: ExchangeMatchingPayload = {
+  ...matchedPayload,
+  version: 5,
+  effectiveBudgetMaxJpy: 31_000,
+  selectedQuoteTotalJpy: 31_000
+};
+
 const createRepository = (
   overrides: Partial<ExchangeMatchingRepositoryPort> = {}
 ): ExchangeMatchingRepositoryPort => {
@@ -144,6 +157,7 @@ const createRepository = (
     runInTransaction: jest.fn(async (handler) => handler(repository)),
     findForViewer: jest.fn(async () => matchingRecord),
     findIdempotentSelection: jest.fn(async () => null),
+    findIdempotentQuickConfirmation: jest.fn(async () => null),
     lockMatching: jest.fn(async () => matchingRecord),
     lockActiveClaims: jest.fn(async () => claims),
     lockTechnicians: jest.fn(async () => true),
@@ -180,6 +194,135 @@ describe("ExchangeMatchingService", () => {
     await expect(
       new ExchangeMatchingService(repository, () => now).getMatching(access, 41)
     ).resolves.toEqual(quickBudgetPayload);
+  });
+
+  it("confirms the exact Quick total and matches every active claim", async () => {
+    const repository = createRepository({
+      lockMatching: jest.fn(async () => quickMatchingRecord),
+      lockActiveClaims: jest.fn(async () => quickClaims),
+      completeMatch: jest.fn(async () => quickMatchedPayload)
+    });
+    const service = new ExchangeMatchingService(repository, () => now);
+
+    await expect(
+      service.confirmQuickBudget(
+        access,
+        41,
+        {
+          expectedVersion: 3,
+          budgetConfirmation: {
+            action: "increase_to_selected_total",
+            confirmedBudgetMaxJpy: 31_000
+          }
+        },
+        "matching-quick-budget-0001",
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).resolves.toEqual(quickMatchedPayload);
+    expect(repository.completeMatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedClaimIds: [301, 302],
+        unselectedClaimIds: [],
+        selectedQuoteTotalJpy: 31_000,
+        effectiveBudgetMaxJpyAfter: 31_000,
+        adjustments: [{ type: "budget_increased", before: 30_000, after: 31_000 }],
+        versionBefore: 3,
+        versionAfter: 5,
+        actorUserId: 7,
+        actorIdentityId: 17,
+        viewerIdentityId: 17,
+        matchEventType: "quick_matched",
+        idempotencyKey: "matching-quick-budget-0001"
+      })
+    );
+  });
+
+  it.each([
+    ["non-owner", { ...quickMatchingRecord, ownerIdentityId: 99 }, 3, 31_000, 40312],
+    ["Selective mode", matchingRecord, 3, 31_000, 40992],
+    ["non-open matching", { ...quickMatchingRecord, status: "matched" as const }, 3, 31_000, 40992],
+    ["stale version", quickMatchingRecord, 2, 31_000, 40993],
+    [
+      "expired Request",
+      { ...quickMatchingRecord, expiresAt: new Date("2026-08-31T23:59:59.000Z") },
+      3,
+      31_000,
+      40992
+    ]
+  ])("rejects Quick confirmation for %s", async (_label, record, version, budget, code) => {
+    const repository = createRepository({ lockMatching: jest.fn(async () => record) });
+    await expect(
+      new ExchangeMatchingService(repository, () => now).confirmQuickBudget(
+        access,
+        41,
+        {
+          expectedVersion: version,
+          budgetConfirmation: {
+            action: "increase_to_selected_total",
+            confirmedBudgetMaxJpy: budget
+          }
+        },
+        `matching-quick-reject-${code}`,
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).rejects.toMatchObject({ code });
+    expect(repository.completeMatch).not.toHaveBeenCalled();
+  });
+
+  it("requires target capacity, a real overage and the exact locked total", async () => {
+    for (const [activeClaims, confirmedBudgetMaxJpy, code] of [
+      [[quickClaims[0]!], 15_000, 40995],
+      [[...quickClaims, claim(303, 83, 1_000)], 32_000, 40995],
+      [claims, 29_000, 40992],
+      [quickClaims, 30_999, 41001]
+    ] as const) {
+      const repository = createRepository({
+        lockMatching: jest.fn(async () => quickMatchingRecord),
+        lockActiveClaims: jest.fn(async () => [...activeClaims])
+      });
+      await expect(
+        new ExchangeMatchingService(repository, () => now).confirmQuickBudget(
+          access,
+          41,
+          {
+            expectedVersion: 3,
+            budgetConfirmation: {
+              action: "increase_to_selected_total",
+              confirmedBudgetMaxJpy
+            }
+          },
+          `matching-quick-exact-${confirmedBudgetMaxJpy}`,
+          { ip: "127.0.0.1", userAgent: "jest" }
+        )
+      ).rejects.toMatchObject({ code });
+      expect(repository.completeMatch).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects Quick confirmation conflicts before the terminal mutation", async () => {
+    for (const method of ["hasParticipantConflict", "hasBookingConflict"] as const) {
+      const repository = createRepository({
+        lockMatching: jest.fn(async () => quickMatchingRecord),
+        lockActiveClaims: jest.fn(async () => quickClaims),
+        [method]: jest.fn(async () => true)
+      });
+      await expect(
+        new ExchangeMatchingService(repository, () => now).confirmQuickBudget(
+          access,
+          41,
+          {
+            expectedVersion: 3,
+            budgetConfirmation: {
+              action: "increase_to_selected_total",
+              confirmedBudgetMaxJpy: 31_000
+            }
+          },
+          `matching-quick-conflict-${method}`,
+          { ip: "127.0.0.1", userAgent: "jest" }
+        )
+      ).rejects.toMatchObject({ code: 40997 });
+      expect(repository.completeMatch).not.toHaveBeenCalled();
+    }
   });
 
   it("matches the exact selected count and budget in one repository transaction", async () => {
@@ -525,6 +668,60 @@ describe("ExchangeMatchingService", () => {
         41,
         selection([301, 302]),
         "matching-select-key-0001",
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).rejects.toMatchObject({ code: 40998 });
+  });
+
+  it("replays only the identical Quick budget command", async () => {
+    const initial = createRepository({
+      lockMatching: jest.fn(async () => quickMatchingRecord),
+      lockActiveClaims: jest.fn(async () => quickClaims),
+      completeMatch: jest.fn(async () => quickMatchedPayload)
+    });
+    const body = {
+      expectedVersion: 3,
+      budgetConfirmation: {
+        action: "increase_to_selected_total" as const,
+        confirmedBudgetMaxJpy: 31_000
+      }
+    };
+    await new ExchangeMatchingService(initial, () => now).confirmQuickBudget(
+      access,
+      41,
+      body,
+      "matching-quick-replay-0001",
+      { ip: "127.0.0.1", userAgent: "jest" }
+    );
+    const completedInput = (initial.completeMatch as jest.Mock).mock.calls[0]?.[0] as {
+      payloadFingerprint: string;
+    };
+    const replay = createRepository({
+      findIdempotentQuickConfirmation: jest.fn(async () => ({
+        payload: quickMatchedPayload,
+        payloadFingerprint: completedInput.payloadFingerprint
+      }))
+    });
+    await expect(
+      new ExchangeMatchingService(replay, () => now).confirmQuickBudget(
+        access,
+        41,
+        body,
+        "matching-quick-replay-0001",
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).resolves.toEqual(quickMatchedPayload);
+    expect(replay.lockMatching).not.toHaveBeenCalled();
+
+    await expect(
+      new ExchangeMatchingService(replay, () => now).confirmQuickBudget(
+        access,
+        41,
+        {
+          ...body,
+          budgetConfirmation: { ...body.budgetConfirmation, confirmedBudgetMaxJpy: 32_000 }
+        },
+        "matching-quick-replay-0001",
         { ip: "127.0.0.1", userAgent: "jest" }
       )
     ).rejects.toMatchObject({ code: 40998 });

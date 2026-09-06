@@ -2247,6 +2247,25 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
         }
       )
     },
+    [`${base}/{id}/matching/quick/confirm-budget`]: {
+      post: exchangeOperation(
+        "Confirm the exact Quick claim total and match every active provider",
+        "exchange:matching:select-own",
+        {
+          description:
+            "Owner-only and idempotent. The confirmed budget must equal the locked total of exactly the target number of active claims. No subset, booking, payment or ledger mutation is created.",
+          parameters: [postId, exchangeIdempotencyKeyParameter],
+          requestBody: body("ExchangeQuickBudgetConfirmationRequest"),
+          responses: {
+            "200": jsonDataResponse("Quick Exchange Request matched", {
+              $ref: "#/components/schemas/ExchangeMatching"
+            }),
+            ...exchangeMatchingErrorResponses,
+            "409": exchangeMatchingAdjustmentConflictResponse
+          }
+        }
+      )
+    },
     [`${base}/{id}/matching/bookings`]: {
       post: exchangeOperation(
         "Create the matched Request's formal pending bookings",
@@ -5210,6 +5229,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               { type: "null" }
             ],
             default: null
+          }
+        }
+      },
+      ExchangeQuickBudgetConfirmationRequest: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedVersion", "budgetConfirmation"],
+        properties: {
+          expectedVersion: { type: "integer", minimum: 1 },
+          budgetConfirmation: {
+            $ref: "#/components/schemas/ExchangeMatchBudgetConfirmation"
           }
         }
       },
