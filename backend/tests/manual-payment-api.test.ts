@@ -1,6 +1,7 @@
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
+import { ERROR_CODES } from "../src/constants/error-codes";
 import type { BookingOrderPayload } from "../src/repositories/booking.repository";
 import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
@@ -101,7 +102,7 @@ const makeOrder = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPa
   ...overrides
 });
 
-const createFixture = async () => {
+const createFixture = async (options: { refundSourceOrder?: BookingOrderPayload } = {}) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const role = (code: string, permissionCodes: string[]) => ({
     code,
@@ -191,7 +192,10 @@ const createFixture = async () => {
     }
   ];
   const auditLogs: Array<Record<string, unknown>> = [];
+  const refundSourceOrder =
+    options.refundSourceOrder ?? makeOrder({ status: "cancelled", paymentStatus: "refundPending" });
   const bookingRepository = {
+    findOrderById: jest.fn(async () => refundSourceOrder),
     confirmManualPayment: jest.fn(async (input: { actorUserId: number }) => ({
       outcome: "ok" as const,
       applied: true,
@@ -290,6 +294,34 @@ describe("manual payment API", () => {
       fixture.auditLogs.some((entry) => entry.action === "backoffice.order_payment.refund")
     ).toBe(true);
   });
+
+  it.each([
+    ["merchant-admin", "merchant@example.com"],
+    ["backoffice", "operator@example.com"]
+  ] as const)(
+    "rejects completed confirmed payments through the %s direct-refund endpoint without mutation",
+    async (portal, email) => {
+      const completed = makeOrder({ status: "completed", paymentStatus: "confirmed" });
+      const fixture = await createFixture({ refundSourceOrder: completed });
+      const token = await fixture.login(email);
+
+      const response = await request(fixture.app)
+        .post(`/api/v1/${portal}/orders/91/payment/refund`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ reason: "must use the completed-order refund case", reference: "REF-BYPASS" })
+        .expect(409);
+
+      expect(response.body).toMatchObject({
+        code: ERROR_CODES.PAYMENT_INVALID_STATE,
+        message: "error.payment.invalid_state",
+        data: null
+      });
+      expect(fixture.bookingRepository.refundManualPayment).not.toHaveBeenCalled();
+      expect(
+        fixture.auditLogs.some((entry) => String(entry.action).endsWith(".order_payment.refund"))
+      ).toBe(false);
+    }
+  );
 
   it("rejects unsupported payment methods and customers without payment permissions", async () => {
     const fixture = await createFixture();

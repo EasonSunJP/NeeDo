@@ -88,6 +88,9 @@ const order = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPayloa
 
 const repository = (result: ManualPaymentMutationResult): jest.Mocked<BookingRepositoryPort> =>
   ({
+    findOrderById: jest.fn(async () =>
+      order({ status: "cancelled", paymentStatus: "refundPending" })
+    ),
     confirmManualPayment: jest.fn(async () => result),
     refundManualPayment: jest.fn(async () => result)
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
@@ -200,6 +203,36 @@ describe("BookingService manual payment", () => {
       expect.objectContaining({ action: "backoffice.order_payment.refund" })
     );
   });
+
+  it.each([
+    ["merchant-admin", merchantActor],
+    ["backoffice", backofficeActor]
+  ] as const)(
+    "rejects a completed confirmed payment before the %s direct-refund repository mutation",
+    async (_portal, actor) => {
+      const completed = order({ status: "completed", paymentStatus: "confirmed" });
+      const bookingRepository = repository({ outcome: "ok", order: completed, applied: true });
+      bookingRepository.findOrderById.mockResolvedValue(completed);
+      const audit = auditLogService();
+      const service = new BookingService(bookingRepository, undefined, undefined, audit);
+
+      await expect(
+        service.refundManualPayment(
+          actor,
+          91,
+          { reason: "must use the completed-order refund case", reference: "REF-BYPASS" },
+          requestContext
+        )
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.PAYMENT_INVALID_STATE,
+        message: "error.payment.invalid_state",
+        statusCode: 409
+      });
+
+      expect(bookingRepository.refundManualPayment).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects payment mutations from customer identities", async () => {
     const customerActor: AuthenticatedAccessContext = {

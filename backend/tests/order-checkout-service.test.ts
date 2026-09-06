@@ -383,7 +383,12 @@ const decimal = (value: number) => ({
 });
 
 const createRepositoryHarness = (
-  options: { affiliateInvalid?: boolean; overflow?: boolean; auditFailure?: boolean } = {}
+  options: {
+    affiliateInvalid?: boolean;
+    overflow?: boolean;
+    auditFailure?: boolean;
+    activeRefundCase?: boolean;
+  } = {}
 ) => {
   const order: any = {
     id: 41,
@@ -568,6 +573,11 @@ const createRepositoryHarness = (
         return checkout;
       })
     },
+    orderRefundCase: {
+      findFirst: jest.fn(async () =>
+        options.activeRefundCase ? { id: 81, activeKey: `booking:${order.id}` } : null
+      )
+    },
     orderServiceEvent: {
       findUnique: jest.fn(
         async ({ where }: any) =>
@@ -644,6 +654,9 @@ const createRepositoryHarness = (
     events,
     histories,
     audits,
+    bookingOrderUpdateMany: tx.bookingOrder.updateMany,
+    orderFinancialUpdate: tx.orderFinancial.update,
+    orderRefundCaseFindFirst: tx.orderRefundCase.findFirst,
     performanceSummaryUpsert: tx.technicianPerformanceSummary.upsert,
     transaction: client.$transaction,
     get checkout() {
@@ -1166,7 +1179,7 @@ describe("formal checkout repository state", () => {
     );
   });
 
-  it("closes legacy payment bypass and NDP refund while preserving cash receipt refund", async () => {
+  it("closes every completed-order direct-refund bypass while preserving cancelled cash refunds", async () => {
     const formal = createRepositoryHarness();
     await expect(
       formal.repository.confirmManualPayment({
@@ -1193,14 +1206,14 @@ describe("formal checkout repository state", () => {
       })
     ).resolves.toEqual({ outcome: "invalid_state" });
 
-    const cash = createRepositoryHarness();
-    await cash.repository.getOrCreateCheckout({ ...customerInput, rate });
-    await cash.repository.selectCheckoutPaymentMethod({
+    const completedCash = createRepositoryHarness({ activeRefundCase: true });
+    await completedCash.repository.getOrCreateCheckout({ ...customerInput, rate });
+    await completedCash.repository.selectCheckoutPaymentMethod({
       ...customerInput,
       method: "cash",
       idempotencyKey: "checkout-select-refund-01"
     });
-    await cash.repository.confirmCheckoutReceipt(
+    await completedCash.repository.confirmCheckoutReceipt(
       {
         orderId: 41,
         actorUserId: 202,
@@ -1211,12 +1224,34 @@ describe("formal checkout repository state", () => {
       },
       completionOptions
     );
+    const completedSnapshot = { ...completedCash.order };
+    const orderMutationCount = completedCash.bookingOrderUpdateMany.mock.calls.length;
+    const financialMutationCount = completedCash.orderFinancialUpdate.mock.calls.length;
     await expect(
-      cash.repository.refundManualPayment({
+      completedCash.repository.refundManualPayment({
         scope: "backoffice",
         orderId: 41,
         actorUserId: 303,
         reason: "cash returned"
+      })
+    ).resolves.toEqual({ outcome: "invalid_state" });
+    expect(completedCash.order).toEqual(completedSnapshot);
+    expect(completedCash.bookingOrderUpdateMany).toHaveBeenCalledTimes(orderMutationCount);
+    expect(completedCash.orderFinancialUpdate).toHaveBeenCalledTimes(financialMutationCount);
+    expect(completedCash.orderRefundCaseFindFirst).not.toHaveBeenCalled();
+
+    const cancelledCash = createRepositoryHarness();
+    cancelledCash.order.status = "CANCELLED";
+    cancelledCash.order.paymentStatus = "REFUND_PENDING";
+    cancelledCash.order.paymentAmountJpy = 8_800;
+    await expect(
+      cancelledCash.repository.refundManualPayment({
+        scope: "merchant",
+        shopId: 12,
+        orderId: 41,
+        actorUserId: 404,
+        reason: "cancelled before completion",
+        reference: "REF-CANCELLED-1"
       })
     ).resolves.toMatchObject({ outcome: "ok", order: { paymentStatus: "refunded" } });
   });
