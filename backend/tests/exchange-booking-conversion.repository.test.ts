@@ -174,6 +174,7 @@ interface HarnessOptions {
   externalBookingConflict?: boolean;
   externalParticipantConflict?: boolean;
   serviceMode?: "HOME" | "STORE";
+  verifiedShopLocation?: boolean;
   shopSuspended?: boolean;
   pricingModeMismatch?: boolean;
   technicianStatus?: string;
@@ -191,6 +192,11 @@ const createHarness = (options: HarnessOptions = {}) => {
   const participants = makeParticipants();
   options.participantMutator?.(participants);
   const slots = makeSlots();
+  if (options.verifiedShopLocation) for (const slot of slots) {
+    (slot.shop as any).serviceLocation = { countryCode: "JP", admin1RegionId: 13, admin2RegionId: 13104,
+      admin1Region: { officialCode: "13" }, admin2Region: { officialCode: "13104" },
+      datasetVersion: "N03-20260101", deletedAt: null };
+  }
   const slot30 = slots.find((slot) => slot.id === 30)!;
   slot30.capacity = options.slot30Capacity ?? slot30.capacity;
   slot30.bookedCount = options.slot30BookedCount ?? slot30.bookedCount;
@@ -331,9 +337,14 @@ const createHarness = (options: HarnessOptions = {}) => {
         : [];
 
     const tx = {
+      administrativeRegionLocale: { findMany: jest.fn(async () => [{ regionId: 13, name: "東京都" }, { regionId: 13104, name: "新宿区" }]) },
       $queryRaw: jest.fn(async (query: any) => {
         const sql = sqlText(query);
         const values = queryValues(query);
+        if (/\badministrative_regions\b/.test(sql)) return [
+          { id: 13, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
+          { id: 13104, official_code: "13104", level: "ADMIN2", parent_id: 13, deleted_at: null }
+        ];
         if (/\busers\b/.test(sql)) {
           lockOrder.push(`customer:${values[0]}`);
           return [{ id: values[0] }];
@@ -634,6 +645,10 @@ describe("ExchangeBookingConversionRepository", () => {
       .filter((write) => write.kind === "order")
       .map((write) => write.data);
     expect(createdOrders).toHaveLength(2);
+    expect(createdOrders.map((order) => order.serviceLocation?.create)).toEqual([
+      expect.objectContaining({ countryCode: "JP", resolutionStatus: "UNRESOLVED", source: "CUSTOMER_SERVICE_LOCATION", admin1RegionCode: null, admin2RegionCode: null }),
+      expect.objectContaining({ countryCode: "JP", resolutionStatus: "UNRESOLVED", source: "CUSTOMER_SERVICE_LOCATION", admin1RegionCode: null, admin2RegionCode: null })
+    ]);
     expect(createdOrders.map((order) => order.orderType)).toEqual(["REQUEST", "REQUEST"]);
     expect(createdOrders.map((order) => String(order.priceAmount))).toEqual(["12000", "15000"]);
     expect(createdOrders.map((order) => order.paymentMethod)).toEqual(["ONSITE", "ONSITE"]);
@@ -658,6 +673,19 @@ describe("ExchangeBookingConversionRepository", () => {
     expect(h.financeWrites).toEqual([]);
     expect(JSON.stringify(h.events[0]?.payload)).not.toMatch(/address|phone|email|token/i);
     expect(JSON.stringify(h.audits[0]?.metadata)).not.toMatch(/address|phone|email|token/i);
+  });
+
+  it("snapshots verified store regions for new Exchange orders, and marks unverified stores unresolved", async () => {
+    for (const verifiedShopLocation of [true, false]) {
+      const h = createHarness({ serviceMode: "STORE", verifiedShopLocation });
+      const result = await new ExchangeBookingConversionRepository(h.client).convert(input());
+      expect(result.outcome).toBe("created");
+      const snapshots = h.committedWrites.filter((write) => write.kind === "order").map((write) => write.data.serviceLocation?.create);
+      expect(snapshots).toHaveLength(2);
+      for (const snapshot of snapshots) expect(snapshot).toMatchObject(verifiedShopLocation
+        ? { countryCode: "JP", admin1RegionCode: "13", admin2RegionCode: "13104", admin1Name: "東京都", admin2Name: "新宿区", resolutionStatus: "VERIFIED", source: "SHOP_LOCATION" }
+        : { countryCode: "JP", admin1RegionCode: null, admin2RegionCode: null, resolutionStatus: "UNRESOLVED", source: "SHOP_LOCATION" });
+    }
   });
 
   it("replays the same key and fingerprint with zero writes, and rejects both idempotency conflicts", async () => {

@@ -79,7 +79,7 @@ function fixture(
           actorUserId: 41
         });
       }
-      return result;
+      return result.outcome === "created" ? { ...result, committedOrderIds: [601, 501] } : result;
     })
   };
   const policy = { assertServiceEkyc: jest.fn(async () => undefined) };
@@ -95,21 +95,28 @@ function fixture(
       metadata: input.metadata
     }))
   };
+  const live = { publishCommittedOrderChanges: jest.fn(async () => undefined) };
   const service = new ExchangeBookingConversionService(
-    repository as never,
-    audit as never,
-    affiliate as never,
-    policy as never,
-    realtime as never,
-    () => now
+    repository as never, audit as never, affiliate as never, policy as never,
+    realtime as never, () => now, live
   );
-  return { affiliate, audit, policy, realtime, repository, service, transactionClient };
+  return { affiliate, audit, policy, realtime, repository, service, transactionClient, live };
 }
 
 const create = (service: ExchangeBookingConversionService) =>
   service.createBookings(access, 42, { expectedVersion: 7 }, "idem-key-0000001", context);
 
 describe("ExchangeBookingConversionService", () => {
+  it("publishes created and superseded orders only after a committed conversion, not replay", async () => {
+    const state = fixture();
+    await create(state.service);
+    expect(state.live.publishCommittedOrderChanges).toHaveBeenCalledWith([601, 501]);
+    expect(state.repository.convert.mock.invocationCallOrder[0]).toBeLessThan(state.live.publishCommittedOrderChanges.mock.invocationCallOrder[0]!);
+    const replay = fixture({ outcome: "replayed", payload, notifications });
+    await create(replay.service);
+    expect(replay.live.publishCommittedOrderChanges).not.toHaveBeenCalled();
+  });
+
   it("enforces owner identity/user and eKYC before one formal conversion", async () => {
     const state = fixture();
 

@@ -23,7 +23,7 @@ describe("backoffice all-user API", () => {
           groups: ["system:free"],
           ekycVerified: false,
           membership: { tierCode: "free", expiresAt: null, lockVersion: null },
-          experience: { currentLevel: 1, totalExpUnits: "0" },
+          experience: { currentLevel: 1, totalExp: "0", totalExpUnits: "0" },
           ndpBalance: { available: 0, frozen: 0 },
           bookingCount: 0,
           city: "Tokyo",
@@ -52,6 +52,7 @@ describe("backoffice all-user API", () => {
       .expect(200);
 
     expect(response.body.data.list[0]).toMatchObject({ needoId: "u0000000041" });
+    expect(response.body.data.list[0].experience.totalExp).toBe("0");
     expect(JSON.stringify(response.body)).not.toMatch(/passwordHash|otp|accessToken|refreshToken/);
     expect(listManagedUsers).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -74,6 +75,11 @@ describe("backoffice all-user API", () => {
       expect.any(Date)
     );
 
+    for (const sortBy of ["ndpBalance", "bookingCount"]) {
+      await request(fixture.app).get(`/api/v1/backoffice/users?sortBy=${sortBy}&sortDirection=desc&page=2`)
+        .set("Authorization", `Bearer ${token}`).expect(200);
+      expect(listManagedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy, sortDirection: "desc", page: 2 }), expect.any(Date));
+    }
     await request(fixture.app)
       .get("/api/v1/backoffice/users?minLevel=101")
       .set("Authorization", `Bearer ${token}`)
@@ -111,7 +117,7 @@ describe("backoffice all-user API", () => {
       groups: [],
       ekycVerified: false,
       membership: { tierCode: "gold", tierVersionPublicId: null, entitlementPublicId: null, expiresAt: null, experienceMultiplier: 2, lockVersion: null },
-      experience: { currentLevel: 2, totalExpUnits: "100" },
+      experience: { currentLevel: 1, totalExp: "4", totalExpUnits: "40000" },
       ndpBalance: { available: 900, frozen: 0 },
       bookingCount: 3,
       lastLoginAt: null,
@@ -147,6 +153,7 @@ describe("backoffice all-user API", () => {
       partnerWrite: true,
       timelineCommentWrite: false
     });
+    expect(response.body.data.experience).toMatchObject({ currentLevel: 1, totalExp: "4" });
     expect(getManagedUser).toHaveBeenCalledWith(
       { scope: "platform", userId: 41, audit_page: 2, audit_page_size: 50 },
       expect.any(Date)

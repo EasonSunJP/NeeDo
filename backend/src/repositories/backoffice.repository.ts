@@ -1,3 +1,4 @@
+import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
 import {
   BookingOrderStatus,
@@ -25,6 +26,13 @@ import type {
   DashboardHeadlineSeriesPoint
 } from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
+import { formatExperienceUnits } from "../domain/user-experience-levels";
+import { buildManagedUserNumericPageQuery } from "./managed-user-numeric-sort";
+import {
+  AdministrativeRegionRepository,
+  type AdministrativeRegionRepositoryPort,
+  type VerifiedAdministrativeRegionScope
+} from "./administrative-region.repository";
 import {
   type BackofficeCsvExportPayload,
   type BackofficeAccountPayload,
@@ -45,6 +53,7 @@ import {
   type BackofficeServicePayload,
   type BackofficeScope,
   type BackofficeShopCreateData,
+  type BackofficeShopMutationContext,
   type BackofficeShopPayload,
   type BackofficeTechnicianPayload,
   type BackofficeTechnicianRankingPayload,
@@ -57,6 +66,11 @@ import {
   type ScopedTechnicianUpdateInput,
   type TechnicianRankingRepositoryInput
 } from "../services/backoffice.service";
+import {
+  AuditLogRepository,
+  type AuditLogCreateInput,
+  type TransactionAwareAuditLogRepositoryPort
+} from "./audit-log.repository";
 import type {
   BackofficeCustomerUpdateBody,
   BackofficeListQuery,
@@ -67,6 +81,7 @@ import type {
 } from "../validators/backoffice.validator";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
+import { identifierNumberPartSchema } from "../validators/public-identifier.validator";
 
 type DecimalLike = {
   toString: () => string;
@@ -94,13 +109,14 @@ interface TechnicianRankingDatabaseRow {
   total_working_days: bigint | number | string | DecimalLike;
 }
 
+interface LockedShopRow {
+  id: number;
+  shop_no: string | null;
+  deleted_at: Date | null;
+}
+
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
 const OPERATIONS_ROLE_CODES = ["admin", "operator", "finance", "support", "viewer"];
-const PAID_PLATFORM_TIER_CODES = [
-  PlatformMembershipTierCode.SILVER,
-  PlatformMembershipTierCode.GOLD,
-  PlatformMembershipTierCode.BLACK_DIAMOND
-];
 
 const visibleManagedIdentityScopeWhere = (scope: BackofficeScope) =>
   scope.scope === "merchant"
@@ -137,8 +153,18 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
             }
           : { deletedAt: null },
       orderBy: [{ isDefault: "desc" }, { id: "asc" }],
-      select: { type: true, displayName: true, scopeType: true, scopeId: true }
+      select: {
+        type: true, displayName: true, scopeType: true, scopeId: true, isActive: true,
+        merchantIdentityProfile: { select: { displayName: true, deletedAt: true } }
+      }
     },
+    identityApplications: scope.scope === "platform" ? {
+      where: { deletedAt: null, type: { in: ["technician", "merchant"] } },
+      distinct: ["type"],
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: { type: true, status: true }
+    } : false,
     userRoles: {
       where: {
         deletedAt: null,
@@ -461,14 +487,21 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 
 export class BackofficeRepository implements BackofficeRepositoryPort {
   private readonly dashboardRepository: DashboardRepository;
+  private readonly administrativeRegionRepository: AdministrativeRegionRepositoryPort;
+  private readonly auditLogRepository: TransactionAwareAuditLogRepositoryPort;
 
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
-      new IdentifierAllocator(new PublicIdentifierRepository(client))
+      new IdentifierAllocator(new PublicIdentifierRepository(client)),
+    administrativeRegionRepository?: AdministrativeRegionRepositoryPort,
+    auditLogRepository: TransactionAwareAuditLogRepositoryPort = new AuditLogRepository(client)
   ) {
     this.dashboardRepository = new DashboardRepository(client);
+    this.administrativeRegionRepository =
+      administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
+    this.auditLogRepository = auditLogRepository;
   }
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -487,19 +520,35 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
     const pagination = toPrismaPagination(input);
     const where = await this.managedUserWhere(input, occurredAt);
-    const [rows, total] = await Promise.all([
-      this.client.user.findMany({
+    const loadRows = async () => {
+      if (input.sortBy === "ndpBalance" || input.sortBy === "bookingCount") {
+        const ordered = await this.client.$queryRaw<Array<{ id: number }>>(
+          buildManagedUserNumericPageQuery(where, input, pagination.skip, pagination.take)
+        );
+        if (!ordered.length) return [];
+        const pageRows = await this.client.user.findMany({
+          where: { AND: [where, { id: { in: ordered.map((row) => row.id) } }] },
+          select: buildManagedUserSelect(occurredAt, input),
+          take: pagination.take
+        });
+        const positions = new Map(ordered.map((row, index) => [row.id, index]));
+        return pageRows.sort((left, right) => positions.get(left.id)! - positions.get(right.id)!);
+      }
+      return this.client.user.findMany({
         where,
         select: buildManagedUserSelect(occurredAt, input),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: this.managedUserOrderBy(input)
-      }),
+      });
+    };
+    const [rows, total] = await Promise.all([
+      loadRows(),
       this.client.user.count({ where })
     ]);
     const balances = await this.managedUserBalances(rows.map((row) => row.id));
     return buildPaginatedResponse(
-      rows.map((row) => this.mapManagedUser(row, balances.get(row.id), input)),
+      rows.map((row) => this.mapManagedUser(row, balances.get(`${row.id}:NDP`), input, balances.get(`${row.id}:TEST_NDP`))),
       total,
       input
     );
@@ -605,7 +654,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       ]);
-    const summary = this.mapManagedUser(user, balances.get(userId), input);
+    const summary = this.mapManagedUser(user, balances.get(`${userId}:NDP`), input, balances.get(`${userId}:TEST_NDP`));
     const effectiveRatings = credit.map((review) => review.amendments[0]?.rating ?? review.rating);
     const latestReviewAt = credit.reduce<Date | null>(
       (latest, review) => (!latest || review.createdAt > latest ? review.createdAt : latest),
@@ -1315,6 +1364,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   public createShop(input: BackofficeShopCreateData): Promise<BackofficeShopPayload> {
     return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
       this.client.$transaction(async (transaction) => {
+        const verifiedScope = await this.resolveServiceLocation(input, transaction);
+        if (verifiedScope && (!input.verifiedById || !input.serviceLocationAudit)) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.administrative_region.verifier_required",
+            statusCode: 400
+          });
+        }
         const roles = await transaction.role.findMany({
           where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
           select: { id: true, code: true }
@@ -1379,6 +1436,16 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             isRecommended: input.isRecommended ?? false
           }
         });
+        if (verifiedScope) {
+          const shopNo = await this.provisionShopPublicNumber(transaction, shop.id, shop.name);
+          await this.upsertShopServiceLocation(
+            transaction,
+            shop.id,
+            verifiedScope,
+            input.verifiedById
+          );
+          await this.persistServiceLocationAudit(transaction, input.serviceLocationAudit, shopNo);
+        }
         const merchantIdentity = await transaction.userIdentity.create({
           data: {
             userId: owner.id,
@@ -1428,13 +1495,51 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   public async updateShop(
     id: number,
-    input: BackofficeShopUpdateBody
+    input: BackofficeShopUpdateBody,
+    mutation?: BackofficeShopMutationContext
   ): Promise<BackofficeShopPayload | null> {
-    const existing = await this.client.shop.findFirst({ where: { id, deletedAt: null } });
-    if (!existing) return null;
-    return this.mapShop(
-      await this.client.shop.update({ where: { id }, data: input, include: this.shopInclude() })
-    );
+    return this.client.$transaction(async (transaction) => {
+      const [existing] = await transaction.$queryRaw<LockedShopRow[]>(Prisma.sql`
+        SELECT id, shop_no, deleted_at
+        FROM shops
+        WHERE id = ${id}
+        FOR UPDATE
+      `);
+      if (!existing || existing.deleted_at !== null) return null;
+      const verifiedScope = await this.resolveServiceLocation(input, transaction);
+      let publicShopNo: string | undefined;
+      if (verifiedScope) {
+        publicShopNo = this.requirePublicShopNumber(existing.shop_no);
+        if (!mutation?.verifiedById) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.administrative_region.verifier_required",
+            statusCode: 400
+          });
+        }
+      }
+      const shopFields = { ...input };
+      delete shopFields.serviceCountryCode;
+      delete shopFields.serviceAdmin1Code;
+      delete shopFields.serviceAdmin2Code;
+      if (Object.keys(shopFields).length > 0) {
+        await transaction.shop.update({ where: { id }, data: shopFields });
+      }
+      if (verifiedScope && mutation?.verifiedById && publicShopNo) {
+        await this.upsertShopServiceLocation(transaction, id, verifiedScope, mutation.verifiedById);
+        await this.persistServiceLocationAudit(
+          transaction,
+          mutation.serviceLocationAudit,
+          publicShopNo
+        );
+      }
+      return this.mapShop(
+        await transaction.shop.findUniqueOrThrow({
+          where: { id },
+          include: this.shopInclude()
+        })
+      );
+    });
   }
 
   public async updateMerchantShopProfile(input: {
@@ -2143,71 +2248,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     tierCode: "free" | "silver" | "gold" | "black_diamond",
     occurredAt: Date
   ): Prisma.UserWhereInput {
-    const activeEntitlement = this.managedActiveEntitlementWhere(occurredAt);
-    const activeTierAdjustment = {
-      deletedAt: null,
-      supersededAt: null,
-      effectiveFrom: { lte: occurredAt },
-      tierVersionId: { not: null }
-    } satisfies Prisma.UserMembershipAdjustmentWhereInput;
-    if (tierCode === "free") {
-      return {
-        customerProfile: { is: { deletedAt: null } },
-        OR: [
-          {
-            membershipAdjustments: {
-              some: {
-                ...activeTierAdjustment,
-                tierVersion: { tier: { code: PlatformMembershipTierCode.FREE } }
-              }
-            }
-          },
-          {
-            membershipAdjustments: { none: activeTierAdjustment },
-            platformMembershipEntitlements: {
-              none: {
-                ...activeEntitlement,
-                tierVersion: {
-                  ...this.managedActiveTierVersionWhere(occurredAt),
-                  tier: { code: { in: PAID_PLATFORM_TIER_CODES }, deletedAt: null }
-                }
-              }
-            }
-          }
-        ]
-      };
-    }
-    const dbTierCode =
-      tierCode === "silver"
-        ? PlatformMembershipTierCode.SILVER
-        : tierCode === "gold"
-          ? PlatformMembershipTierCode.GOLD
-          : PlatformMembershipTierCode.BLACK_DIAMOND;
-    return {
-      customerProfile: { is: { deletedAt: null } },
-      OR: [
-        {
-          membershipAdjustments: {
-            some: {
-              ...activeTierAdjustment,
-              tierVersion: { tier: { code: dbTierCode, deletedAt: null } }
-            }
-          }
-        },
-        {
-          membershipAdjustments: { none: activeTierAdjustment },
-          platformMembershipEntitlements: {
-            some: {
-              ...activeEntitlement,
-              tierVersion: {
-                ...this.managedActiveTierVersionWhere(occurredAt),
-                tier: { code: dbTierCode, deletedAt: null }
-              }
-            }
-          }
-        }
-      ]
-    };
+    return buildManagedUserTierWhere(tierCode, occurredAt);
   }
 
   private managedUserGroupWhere(groupCode: string, occurredAt: Date): Prisma.UserWhereInput {
@@ -2238,44 +2279,22 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
-  private managedActiveEntitlementWhere(
-    occurredAt: Date
-  ): Prisma.PlatformMembershipEntitlementWhereInput {
-    return {
-      deletedAt: null,
-      supersededAt: null,
-      startsAt: { lte: occurredAt },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
-    };
-  }
-
-  private managedActiveTierVersionWhere(
-    occurredAt: Date
-  ): Prisma.PlatformMembershipTierVersionWhereInput {
-    return {
-      status: "PUBLISHED",
-      deletedAt: null,
-      effectiveFrom: { lte: occurredAt },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }]
-    };
-  }
-
   private async managedUserBalances(
     userIds: number[]
-  ): Promise<Map<number, { available: number; frozen: number }>> {
+  ): Promise<Map<string, { available: number; frozen: number }>> {
     if (userIds.length === 0) return new Map();
     const wallets = await this.client.wallet.findMany({
       where: {
         ownerType: "USER",
         ownerId: { in: userIds },
-        currency: "NDP",
+        currency: { in: ["NDP", "TEST_NDP"] },
         deletedAt: null
       },
-      select: { ownerId: true, availableBalance: true, frozenBalance: true }
+      select: { ownerId: true, currency: true, availableBalance: true, frozenBalance: true }
     });
     return new Map(
       wallets.map((wallet) => [
-        wallet.ownerId,
+        `${wallet.ownerId}:${wallet.currency}`,
         { available: wallet.availableBalance, frozen: wallet.frozenBalance }
       ])
     );
@@ -2284,7 +2303,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private mapManagedUser(
     user: ManagedUserRecord,
     ndpBalance: { available: number; frozen: number } | undefined,
-    scope: BackofficeScope
+    scope: BackofficeScope,
+    testNdpBalance?: { available: number; frozen: number }
   ): BackofficeManagedUserPayload {
     const customerProfile = user.customerProfile?.deletedAt ? null : user.customerProfile;
     const technicianProfile = user.technicianProfile?.deletedAt ? null : user.technicianProfile;
@@ -2336,7 +2356,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       isActive: user.isActive,
       isTestAccount: user.isTestAccount,
       source: providers.length > 0 ? providers : ["password"],
-      identities: visibleIdentities,
+      identities: visibleIdentities.map(({ type, displayName, scopeType, scopeId }) => ({ type, displayName, scopeType, scopeId })),
+      ...(scope.scope === "platform" ? { identityProfiles: this.managedIdentityProfiles(user) } : {}),
       roles: visibleRoles.map((assignment) => ({
         code: assignment.role.code,
         name: assignment.role.name
@@ -2363,10 +2384,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         customerProfile && user.experienceAccount && !user.experienceAccount.deletedAt
           ? {
               currentLevel: user.experienceAccount.currentLevel,
+              totalExp: formatExperienceUnits(user.experienceAccount.totalExpUnits),
               totalExpUnits: user.experienceAccount.totalExpUnits.toString()
             }
           : null,
       ndpBalance: ndpBalance ?? { available: 0, frozen: 0 },
+      testNdpBalance: testNdpBalance ?? null,
       bookingCount: user._count.bookingOrders,
       city: customerProfile?.city ?? technicianProfile?.city ?? null,
       privacyMode: privacyScope !== null && privacyScope !== "public",
@@ -2375,6 +2398,31 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString()
     };
+  }
+
+  private managedIdentityProfiles(user: ManagedUserRecord): NonNullable<BackofficeManagedUserPayload["identityProfiles"]> {
+    const profiles: NonNullable<BackofficeManagedUserPayload["identityProfiles"]> = [];
+    for (const type of ["technician", "merchant"] as const) {
+      const identities = user.identities.filter((identity) => identity.isActive && (
+        type === "technician" ? identity.type === type : ["merchant", "merchant_owner", "merchant_staff", "merchant_organization"].includes(identity.type)
+      ));
+      if (identities.length) {
+        const personalProfiles = identities.filter((identity) =>
+          identity.merchantIdentityProfile && !identity.merchantIdentityProfile.deletedAt
+        );
+        const merchantIdentity = personalProfiles.find((identity) => identity.type === "merchant") ?? personalProfiles[0];
+        const displayName = type === "technician"
+          ? (user.technicianProfile?.deletedAt ? null : user.technicianProfile?.displayName) ?? null
+          : merchantIdentity?.merchantIdentityProfile?.displayName ?? null;
+        profiles.push({ type, status: "active", displayName });
+      } else {
+        const application = user.identityApplications?.find((item) => item.type === type);
+        const status = application?.status === "submitted" || application?.status === "under_review"
+          ? "under_review" : application?.status === "rejected" ? "rejected" : "not_enabled";
+        profiles.push({ type, status, displayName: null });
+      }
+    }
+    return profiles;
   }
 
   private visibleRoleAssignments(user: ManagedUserRecord, scope: BackofficeScope) {
@@ -2909,6 +2957,110 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     } satisfies Prisma.ShopInclude;
   }
 
+  private resolveServiceLocation(
+    input: {
+      serviceCountryCode?: "JP";
+      serviceAdmin1Code?: string;
+      serviceAdmin2Code?: string;
+    },
+    transaction: Prisma.TransactionClient
+  ): Promise<VerifiedAdministrativeRegionScope | null> {
+    if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
+      return Promise.resolve(null);
+    }
+    return this.administrativeRegionRepository.resolveVerifiedScope(
+      {
+        countryCode: input.serviceCountryCode,
+        admin1Code: input.serviceAdmin1Code,
+        admin2Code: input.serviceAdmin2Code
+      },
+      transaction
+    );
+  }
+
+  private async upsertShopServiceLocation(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    scope: VerifiedAdministrativeRegionScope,
+    verifiedById: number
+  ): Promise<void> {
+    await transaction.shopServiceLocation.upsert({
+      where: { shopId },
+      create: {
+        shopId,
+        countryCode: scope.countryCode,
+        admin1RegionId: scope.admin1RegionId,
+        admin2RegionId: scope.admin2RegionId,
+        datasetVersion: scope.datasetVersion,
+        verifiedAt: new Date(),
+        verifiedById
+      },
+      update: {
+        countryCode: scope.countryCode,
+        admin1RegionId: scope.admin1RegionId,
+        admin2RegionId: scope.admin2RegionId,
+        datasetVersion: scope.datasetVersion,
+        verifiedAt: new Date(),
+        verifiedById,
+        deletedAt: null
+      }
+    });
+  }
+
+  private async provisionShopPublicNumber(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    shopName: string
+  ): Promise<string> {
+    const supportAccount = await transaction.customerSupportAccount.create({
+      data: {
+        shopId,
+        type: "SHOP",
+        displayName: `${shopName} Customer Support`
+      }
+    });
+    const pair = await this.createIdentifierAllocator(transaction).allocateShopSupportPair({
+      shopId,
+      customerSupportAccountId: supportAccount.id
+    });
+    const shopNo = pair.shopIdentifier.numberPart;
+    await transaction.shop.update({ where: { id: shopId }, data: { shopNo } });
+    return shopNo;
+  }
+
+  private requirePublicShopNumber(shopNo: string | null): string {
+    const parsed = identifierNumberPartSchema.safeParse(shopNo);
+    if (!parsed.success) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.shop.public_number_required",
+        statusCode: 400
+      });
+    }
+    return parsed.data;
+  }
+
+  private async persistServiceLocationAudit(
+    transaction: Prisma.TransactionClient,
+    audit: AuditLogCreateInput | undefined,
+    shopNo: string
+  ): Promise<void> {
+    if (!audit) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.administrative_region.verifier_required",
+        statusCode: 400
+      });
+    }
+    await this.auditLogRepository.createInTransaction(transaction, {
+      ...audit,
+      metadata: {
+        ...(audit.metadata && typeof audit.metadata === "object" ? audit.metadata : {}),
+        shopNo
+      }
+    });
+  }
+
   private mapOrder(order: OrderRecord): BackofficeOrderPayload {
     return {
       id: order.id,
@@ -3121,6 +3273,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private mapShop(shop: ShopRecord): BackofficeShopPayload {
     return {
       id: shop.id,
+      shopNo: shop.shopNo,
       ownerUserId: shop.ownerUserId,
       ownerEmail: shop.owner?.email ?? null,
       avatarUrl: shop.mediaAssets?.[0]?.url ?? shop.owner?.avatarBootstrapUrl ?? null,

@@ -1,3 +1,4 @@
+import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type {
   PlatformMembershipRepositoryPort,
@@ -99,6 +100,23 @@ describe("PlatformMembershipService", () => {
       expiresAt
     });
     expect(repo.findPublishedTierAt).not.toHaveBeenCalled();
+  });
+
+  it("renders the newly published design while keeping the granted membership terms", async () => {
+    const expiresAt = new Date("2026-10-01T00:00:00.000Z");
+    const granted = membership("gold", 5, expiresAt);
+    const published = { ...membership("gold", 9), theme: { ...granted.theme, detailSurfaceColor: "#665533", detailAccentColor: "#CCBB00" } };
+    const repo = repository({
+      findActiveEntitlementAt: jest.fn(async (userId: number, at: Date) => { void userId; void at; return granted; }),
+      findPublishedTierAt: jest.fn(async (code: ResolvedPlatformMembership["tierCode"], at: Date) => { void code; void at; return published; })
+    });
+    const service = new PlatformMembershipService(repo, undefined, () => now);
+    const result = await service.getMyMembership({ userId: 42 } as AuthenticatedAccessContext);
+    expect(result.theme).toEqual(published.theme);
+    expect(result.multiplier).toBe(5);
+    expect(result.expiresAt).toBe(expiresAt.toISOString());
+    expect(result.tierVersionPublicId).toBe(granted.tierVersionPublicId);
+    expect(repo.findPublishedTierAt).toHaveBeenCalledWith("gold", now);
   });
 
   it("rejects technician-only users instead of assigning a customer tier", async () => {

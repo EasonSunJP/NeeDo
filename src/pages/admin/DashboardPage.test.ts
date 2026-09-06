@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
 import type { AnalyticsRankingItem } from "../../api/backofficeRealData";
 import { DashboardPage } from "./DashboardPage";
+import { openLiveDashboardWindow } from "./DashboardPage";
 import { DashboardMetricDetailPage } from "./DashboardMetricDetailPage";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
@@ -497,5 +498,17 @@ describe("operations unified data dashboard", () => {
     expect(source).not.toMatch(/\|\|\s*["']—["']/u);
     expect(source).not.toContain("尚未启用的运营模块");
     expect(source).not.toContain("DataTable");
+  });
+
+  it("opens the live screen in an isolated tab without changing dashboard state", () => {
+    const child = { opener: window } as unknown as Window;
+    const openWindow = vi.fn(() => child);
+    openLiveDashboardWindow(openWindow);
+    expect(openWindow).toHaveBeenCalledWith(
+      "/pf-admin.html#/admin/live-screen?country=JP&period=today",
+      "_blank",
+      "noopener,noreferrer"
+    );
+    expect(child.opener).toBeNull();
   });
 });

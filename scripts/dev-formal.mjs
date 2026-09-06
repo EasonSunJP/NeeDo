@@ -19,7 +19,8 @@ const {
   opsApiProxyTarget,
   opsApiRedisUrl,
   proxyTarget,
-  travelRouteHealthRedisUrl
+  travelRouteHealthRedisUrl,
+  liveDashboardRedisUrl
 } = resolveFormalDevConfig(process.env);
 const backendDirectory = path.resolve("backend");
 const backendEnvFile = process.env.FORMAL_BACKEND_ENV_FILE || path.join(backendDirectory, ".env.dev");
@@ -166,7 +167,8 @@ if (backendState === "free") {
       ENV_FILE: backendEnvFile,
       PORT: String(backendPort),
       SERVICE_NAME: "needo-backend",
-      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl,
+      LIVE_DASHBOARD_REDIS_URL: liveDashboardRedisUrl
     }
   });
 }
@@ -181,7 +183,8 @@ if (opsApiState === "free") {
       PORT: String(opsApiPort),
       REDIS_URL: opsApiRedisUrl,
       SERVICE_NAME: "needo-ops-api",
-      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl,
+      LIVE_DASHBOARD_REDIS_URL: liveDashboardRedisUrl
     }
   });
 }
@@ -196,7 +199,8 @@ if (merchantApiState === "free") {
       PORT: String(merchantApiPort),
       REDIS_URL: merchantApiRedisUrl,
       SERVICE_NAME: "needo-merchant-api",
-      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl,
+      LIVE_DASHBOARD_REDIS_URL: liveDashboardRedisUrl
     }
   });
 }

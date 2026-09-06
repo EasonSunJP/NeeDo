@@ -1,3 +1,5 @@
+import { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
+export { buildFormalOrderPersonCard } from "../../features/booking/formalOrderPersonCard";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
@@ -1104,8 +1106,8 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const service = serviceProfile ? mapCoreServiceToServiceItem(serviceProfile) : null;
   const store = shopProfile ? mapCoreShopToStore(shopProfile) : null;
   const technician = technicianProfile ? mapCoreTechnicianToTechnician(technicianProfile) : null;
-  const customer = customerProfile ? mapCoreCustomerToCustomer(customerProfile) : null;
-  const totalAmount = checkout?.checkoutAmountJpy ?? order?.paymentAmountJpy ?? 0;
+  const totalAmount = checkout?.checkoutAmountJpy ?? (order ? Number(order.priceAmount) : null);
+  const paymentLabel = checkout?.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : order?.paymentMethod === "onsite" ? "到店支付" : order?.paymentMethod === "bank_transfer" ? "银行转账" : order?.paymentMethod === "ndp" ? "NDP" : order?.paymentMethod === "cash" ? "现金" : "未选择";
   const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
     if (payload.orderStatus !== "cancelled") return;
     setOrder((current) => current?.id === payload.orderId
@@ -1129,7 +1131,10 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
         ) : null}
         {loadStatus === "success" && order && merchantOrder ? (
           <>
-            <OrderDynamicStatusCard order={mapBookingOrderToDomainOrder(order)} providerName={order.shopName} />
+            <section className="rounded-[24px] bg-[color:var(--client-surface)] px-4 py-4">
+              <p className="text-xs font-bold text-[color:var(--client-muted)]">动态状态</p>
+              <h2 className="mt-2 text-lg font-black">{formalMerchantOrderStatusLabel(order.status)}</h2>
+            </section>
 
             <section>
               <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">服务</h2>
@@ -1144,8 +1149,8 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
 
             <div className="grid grid-cols-3 gap-2">
               {[
-                ["金额", yen(totalAmount)],
-                ["支付", checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : "其他方式"],
+                ["金额", totalAmount !== null && Number.isFinite(totalAmount) ? yen(totalAmount) : "未读取"],
+                ["支付", paymentLabel],
                 ["状态", formalMerchantOrderStatusLabel(order.status)]
               ].map(([label, value]) => (
                 <div className="rounded-[18px] bg-[color:var(--client-surface)] px-3 py-3" key={label}>
@@ -1157,11 +1162,13 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
 
             <section>
               <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">用户</h2>
-              {customer ? (
+              {customerProfile ? (
                 <SocialProfileMiniCard
-                  customer={customer}
-                  detailTo={getScopedProfileDetailPath("merchant", "user", customer.id)}
+                  data={buildFormalOrderPersonCard(customerProfile, "user")}
+                  detailTo={getScopedProfileDetailPath("merchant", "user", String(customerProfile.id))}
                   showAction={false}
+                  showLevel={false}
+                  showSocialStats={false}
                   topTags={[{ label: "预约者", tone: "purple" }]}
                 />
               ) : (
@@ -1175,7 +1182,9 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
                 <SocialProfileMiniCard
                   detailTo={getScopedTechnicianDynamicPath("merchant", technician)}
                   showAction={false}
-                  technician={technician}
+                  data={buildFormalOrderPersonCard(technicianProfile!, "technician")}
+                  showLevel={false}
+                  showSocialStats={false}
                   topTags={[{ label: "担当技师", tone: "green" }]}
                 />
               ) : (

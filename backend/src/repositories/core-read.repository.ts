@@ -297,6 +297,7 @@ type ServiceCardRecord = ServiceRecordBase & {
 type ShopDetailRecord = ShopCardRecord & {
   services: ServiceRecordBase[];
   technicians: TechnicianCardRecord[];
+  technicianShopAffiliations?: Array<{ technicianProfile: TechnicianCardRecord }>;
 };
 
 type TechnicianDetailRecord = TechnicianCardRecord & {
@@ -568,6 +569,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
+    const now = new Date();
     const shop = await this.client.shop.findFirst({
       where: {
         ...(typeof id === "number"
@@ -591,6 +593,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           where: this.publishedTechnicianProfileWhere(),
           include: this.technicianCardInclude(),
           orderBy: [{ id: "asc" }]
+        },
+        technicianShopAffiliations: {
+          where: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            technicianProfile: { is: this.publishedTechnicianProfileWhere() }
+          },
+          include: { technicianProfile: { include: this.technicianCardInclude() } },
+          orderBy: [{ technicianProfileId: "asc" }]
         }
       }
     });
@@ -1272,7 +1285,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       longitude: this.formatNullableDecimal(shop.longitude, 7),
       mediaAssets: shop.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
       services: shop.services.map((service) => this.mapServiceCard(service, shopCard)),
-      technicians: shop.technicians.map((technician) => this.mapTechnicianCard(technician)),
+      technicians: [...new Map([
+        ...shop.technicians,
+        ...(shop.technicianShopAffiliations ?? []).map(affiliation => affiliation.technicianProfile)
+      ].map(technician => [technician.id, technician])).values()]
+        .sort((left, right) => left.id - right.id)
+        .map((technician) => this.mapTechnicianCard(technician)),
       createdAt: shop.createdAt,
       updatedAt: shop.updatedAt
     };

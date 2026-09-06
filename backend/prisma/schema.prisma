@@ -902,6 +902,28 @@ enum PlatformLoginVerificationRule {
   @@map("platform_login_verification_rule")
 }
 
+enum AdministrativeRegionLevel {
+  COUNTRY
+  ADMIN1
+  ADMIN2
+
+  @@map("administrative_region_level")
+}
+
+enum ServiceLocationSource {
+  SHOP_LOCATION
+  CUSTOMER_SERVICE_LOCATION
+
+  @@map("service_location_source")
+}
+
+enum ServiceLocationResolutionStatus {
+  VERIFIED
+  UNRESOLVED
+
+  @@map("service_location_resolution_status")
+}
+
 enum TaxonomyLocale {
   ZH_CN @map("zh-CN")
   ZH_TW @map("zh-TW")
@@ -1191,6 +1213,7 @@ model User {
   confirmedOrderFinancials              OrderFinancial[]                    @relation("OrderFinancialIncomeConfirmer")
   confirmedBookingPayments              BookingOrder[]                      @relation("BookingOrderPaymentConfirmer")
   refundedBookingPayments               BookingOrder[]                      @relation("BookingOrderPaymentRefunder")
+  verifiedShopServiceLocations          ShopServiceLocation[]
   startedOrderServiceSessions           OrderServiceSession[]               @relation("OrderServiceSessionStartedBy")
   endedOrderServiceSessions             OrderServiceSession[]               @relation("OrderServiceSessionEndedBy")
   orderServiceEvents                    OrderServiceEvent[]                 @relation("OrderServiceEventActor")
@@ -1750,6 +1773,7 @@ model Shop {
   issuedOfficialNotices      OfficialNotice[]                      @relation("OfficialNoticeIssuerShop")
   travelFarePolicyVersions   ShopTravelFarePolicyVersion[]
   routeEstimates             RouteEstimate[]
+  serviceLocation            ShopServiceLocation?
 
   @@index([ownerUserId])
   @@index([city])
@@ -4044,6 +4068,7 @@ model BookingOrder {
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
   performanceRevisions           OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionBookingOrder")
   refundAmendments               OrderRefundAmendment[]
+  serviceLocation                BookingServiceLocation?
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -4066,6 +4091,88 @@ model BookingOrder {
   @@map("booking_orders")
   sosAlerts SosAlert[]
   sosCommands SosCommand[]
+}
+
+model AdministrativeRegion {
+  id            Int                       @id @default(autoincrement())
+  countryCode   String                    @map("country_code") @db.Char(2)
+  officialCode  String                    @map("official_code") @db.VarChar(16)
+  level         AdministrativeRegionLevel
+  parentId      Int?                      @map("parent_id")
+  centroidLat   Decimal?                  @map("centroid_lat") @db.Decimal(10, 7)
+  centroidLng   Decimal?                  @map("centroid_lng") @db.Decimal(10, 7)
+  source        String                    @db.VarChar(120)
+  sourceVersion String                    @map("source_version") @db.VarChar(40)
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+  deletedAt     DateTime?                 @map("deleted_at")
+  parent        AdministrativeRegion?     @relation("AdministrativeRegionTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      AdministrativeRegion[]    @relation("AdministrativeRegionTree")
+  locales       AdministrativeRegionLocale[]
+  admin1Shops   ShopServiceLocation[]     @relation("ShopServiceAdmin1")
+  admin2Shops   ShopServiceLocation[]     @relation("ShopServiceAdmin2")
+
+  @@unique([countryCode, officialCode], map: "administrative_regions_country_code_key")
+  @@index([countryCode, level, parentId, deletedAt], map: "administrative_regions_hierarchy_idx")
+  @@map("administrative_regions")
+}
+
+model AdministrativeRegionLocale {
+  id        Int           @id @default(autoincrement())
+  regionId  Int           @map("region_id")
+  locale    ContentLocale
+  name      String        @db.VarChar(160)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  deletedAt DateTime?     @map("deleted_at")
+  region    AdministrativeRegion @relation(fields: [regionId], references: [id], onDelete: Restrict)
+
+  @@unique([regionId, locale], map: "administrative_region_locales_region_locale_key")
+  @@index([locale, deletedAt], map: "administrative_region_locales_locale_deleted_idx")
+  @@map("administrative_region_locales")
+}
+
+model ShopServiceLocation {
+  id                 Int      @id @default(autoincrement())
+  shopId             Int      @unique @map("shop_id")
+  countryCode        String   @map("country_code") @db.Char(2)
+  admin1RegionId     Int      @map("admin1_region_id")
+  admin2RegionId     Int      @map("admin2_region_id")
+  datasetVersion     String   @map("dataset_version") @db.VarChar(40)
+  verifiedAt         DateTime @map("verified_at")
+  verifiedById       Int?     @map("verified_by_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+  shop               Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  admin1Region       AdministrativeRegion @relation("ShopServiceAdmin1", fields: [admin1RegionId], references: [id], onDelete: Restrict)
+  admin2Region       AdministrativeRegion @relation("ShopServiceAdmin2", fields: [admin2RegionId], references: [id], onDelete: Restrict)
+  verifiedBy         User?    @relation(fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([countryCode, admin1RegionId, admin2RegionId, deletedAt], map: "shop_service_locations_scope_idx")
+  @@index([verifiedById])
+  @@map("shop_service_locations")
+}
+
+model BookingServiceLocation {
+  id                     Int       @id @default(autoincrement())
+  bookingOrderId      Int      @unique @map("booking_order_id")
+  countryCode            String    @map("country_code") @db.Char(2)
+  admin1RegionCode       String?   @map("admin1_region_code") @db.VarChar(16)
+  admin1Name             String?   @map("admin1_name") @db.VarChar(160)
+  admin2RegionCode       String?   @map("admin2_region_code") @db.VarChar(16)
+  admin2Name             String?   @map("admin2_name") @db.VarChar(160)
+  source                 ServiceLocationSource
+  resolutionStatus       ServiceLocationResolutionStatus @map("resolution_status")
+  datasetVersion         String    @map("dataset_version") @db.VarChar(40)
+  resolvedAt             DateTime? @map("resolved_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  deletedAt              DateTime? @map("deleted_at")
+  bookingOrder           BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+
+  @@index([countryCode, admin1RegionCode, admin2RegionCode, resolutionStatus, deletedAt], map: "booking_service_locations_scope_idx")
+  @@map("booking_service_locations")
 }
 
 model OrderServiceSession {

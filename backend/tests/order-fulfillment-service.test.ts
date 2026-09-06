@@ -1096,15 +1096,22 @@ describe('work status post-commit notification',()=>{
  it('notifies assigned technician after an applied start and end, but never on failed mutation',async()=>{
   const notifier={notifyTechnician:jest.fn(async()=>undefined)};
   const repository=createRepository(makeOrder('confirmed'),ok(makeOrder('inService')));
-  const service=new BookingService(repository,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,notifier);
+  repository.findLiveDashboardOrderEvents = jest.fn(async () => [{ orderId: 41, scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" }, orderNo: "order-41", status: "inService" as const, serviceName: "service", amountJpy: 8800 }]);
+  const live = { publish: jest.fn(async () => null) };
+  const service=new BookingService(repository,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,notifier,live);
   await service.startService(customer,41,{actor:'customer',idempotencyKey:'work-start-1'},context);
   expect(notifier.notifyTechnician).toHaveBeenCalledWith(702);
+  expect(live.publish).toHaveBeenCalledTimes(2);
+  expect(repository.startService.mock.invocationCallOrder[0]).toBeLessThan(notifier.notifyTechnician.mock.invocationCallOrder[0]!);
+  expect(repository.startService.mock.invocationCallOrder[0]).toBeLessThan(live.publish.mock.invocationCallOrder[0]!);
   repository.findOrderById.mockResolvedValue(makeOrder('inService'));
   repository.endService.mockResolvedValue(ok(makeOrder('awaitingCheckout')));
   await service.endService(customer,41,{reason:'customer_completed',idempotencyKey:'work-end-1'},context);
   expect(notifier.notifyTechnician).toHaveBeenCalledTimes(2);
+  expect(live.publish).toHaveBeenCalledTimes(4);
   repository.endService.mockResolvedValue({outcome:'invalid_transition'});
   await expect(service.endService(customer,41,{reason:'customer_completed',idempotencyKey:'work-end-2'},context)).rejects.toThrow();
   expect(notifier.notifyTechnician).toHaveBeenCalledTimes(2);
+  expect(live.publish).toHaveBeenCalledTimes(4);
  });
 });

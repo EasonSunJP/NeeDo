@@ -512,6 +512,16 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       });
   });
 
+  it("passes validated overlap bounds through the authenticated order route", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+    await request(fixture.app).get("/api/v1/orders?from=2026-09-06T15:00:00.000Z&to=2026-09-07T15:00:00.000Z&dateMode=overlaps")
+      .set("Authorization", `Bearer ${token}`).expect(200);
+    expect(fixture.bookingRepository.listOrders).toHaveBeenCalledWith(expect.objectContaining({
+      dateMode: "overlaps", from: new Date("2026-09-06T15:00:00.000Z"), to: new Date("2026-09-07T15:00:00.000Z")
+    }));
+  });
+
   it("rejects unknown fields on the order confirmation endpoint", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();
@@ -603,6 +613,82 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.VALIDATION);
       });
+  });
+
+  it("enforces the discriminated service-location contract at the booking route", async () => {
+    const missingLocationFixture = await createFixture();
+    const missingLocationToken = await missingLocationFixture.login();
+
+    await request(missingLocationFixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${missingLocationToken}`)
+      .send({ serviceId: 1, scheduleSlotId: 11, fulfillmentMode: "home" })
+      .expect(400);
+    expect(missingLocationFixture.bookingRepository.createBooking).not.toHaveBeenCalled();
+
+    const storeFixture = await createFixture();
+    const storeToken = await storeFixture.login();
+    await request(storeFixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${storeToken}`)
+      .send({
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store",
+        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
+      })
+      .expect(400);
+    expect(storeFixture.bookingRepository.createBooking).not.toHaveBeenCalled();
+
+    const homeFixture = await createFixture();
+    const homeToken = await homeFixture.login();
+    await request(homeFixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${homeToken}`)
+      .send({
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "home",
+        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
+      })
+      .expect(201);
+    expect(homeFixture.bookingRepository.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fulfillmentMode: "home",
+        serviceLocation: {
+          source: "CUSTOMER_SERVICE_LOCATION",
+          countryCode: "JP",
+          admin1Code: "13",
+          admin2Code: "13104"
+        }
+      }),
+      expect.objectContaining({ invalidateSupersededAffiliate: expect.any(Function) })
+    );
+
+    const openApiResponse = await request(homeFixture.app).get("/api/v1/openapi.json").expect(200);
+    const bookingCreateSchema =
+      openApiResponse.body.paths["/api/v1/bookings"].post.requestBody.content["application/json"]
+        .schema;
+    expect(bookingCreateSchema.discriminator).toEqual({ propertyName: "fulfillmentMode" });
+    const storeSchema = bookingCreateSchema.oneOf.find(
+      (variant: { properties: { fulfillmentMode: { enum: string[] } } }) =>
+        variant.properties.fulfillmentMode.enum.includes("store")
+    );
+    expect(storeSchema.properties).not.toHaveProperty("serviceLocation");
+    const homeSchema = bookingCreateSchema.oneOf.find(
+      (variant: { properties: { fulfillmentMode: { enum: string[] } } }) =>
+        variant.properties.fulfillmentMode.enum.includes("home")
+    );
+    expect(homeSchema.required).toContain("serviceLocation");
+    expect(homeSchema.properties.serviceLocation.properties).toMatchObject({
+      countryCode: { type: "string", enum: ["JP"] },
+      admin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+      admin2Code: { type: "string", pattern: "^[0-9]{5}$" }
+    });
   });
 
   it("lists available slots, creates a free booking, rejects oversell, and records status history", async () => {

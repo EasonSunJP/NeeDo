@@ -54,7 +54,10 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
     private readonly onWorkStatusCommitted?:(orderId:number)=>Promise<void>
   ) {}
 
-  public async moveDueSessionsToCheckout(input: { now: Date; batchSize: number }): Promise<number> {
+  public async moveDueSessionsToCheckout(input: {
+    now: Date;
+    batchSize: number;
+  }): Promise<number[]> {
     const candidates = await this.client.orderServiceSession.findMany({
       where: {
         deletedAt: null,
@@ -70,15 +73,18 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
       take: input.batchSize
     });
 
-    let advanced = 0;
+    const advancedOrderIds: number[] = [];
     for (const candidate of candidates) {
       try {
-        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) {advanced += 1;await this.onWorkStatusCommitted?.(candidate.bookingOrderId);}
+        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) {
+          advancedOrderIds.push(candidate.bookingOrderId);
+          await this.onWorkStatusCommitted?.(candidate.bookingOrderId);
+        }
       } catch {
         await this.reportCandidateFailure(candidate.bookingOrderId);
       }
     }
-    return advanced;
+    return advancedOrderIds;
   }
 
   private advanceCandidate(orderId: number, now: Date): Promise<boolean> {

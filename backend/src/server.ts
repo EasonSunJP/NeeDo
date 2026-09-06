@@ -9,6 +9,7 @@ import { createMerchantShopAuditCompletionRuntime } from "./prisma/merchant-shop
 import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.repository";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
+import { BookingRepository } from "./repositories/booking.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
 import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
 import { ExchangeClaimRepository } from "./repositories/exchange-claim.repository";
@@ -54,6 +55,8 @@ import { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
+import { createLiveDashboardRuntime } from "./services/live-dashboard-runtime";
+import { LiveDashboardOrderChangePublisher } from "./services/live-dashboard-order-change.publisher";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
@@ -83,6 +86,8 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
+const liveDashboard = createLiveDashboardRuntime(env);
+const { cache: liveDashboardCache, gateway: liveDashboardEventGateway } = liveDashboard;
 const workStatusService=new WorkStatusService(undefined,undefined,realtimeEventGateway);
 const authRepository = new AuthRepository();
 const officialNoticeRepository = new OfficialNoticeRepository(
@@ -189,6 +194,8 @@ const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
+  liveDashboardCache,
+  liveDashboardEventGateway,
   exchangeService,
   exchangeClaimService,
   exchangeRequestFeeService,
@@ -247,7 +254,8 @@ const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
   new OrderServiceExpiryService(
     new OrderServiceExpiryRepository(undefined, ({ orderId, code, message }) => {
       logger.error({ orderId, code, message }, "Order service expiry candidate failed");
-    },orderId=>workStatusService.notifyOrder(orderId))
+    },orderId=>workStatusService.notifyOrder(orderId)),
+    new LiveDashboardOrderChangePublisher(new BookingRepository(), liveDashboardEventGateway)
   ),
   logger,
   env.ORDER_SERVICE_EXPIRY_INTERVAL_MS,
@@ -338,7 +346,12 @@ const server = app.listen(env.PORT, () => {
 const shutdown = createShutdownHandler({
   closeServer: (callback) => server.close(callback),
   disconnect: async () => {
-    await Promise.all([disconnectPrisma(), disconnectRedis(), realtimeEventGateway.close()]);
+    await Promise.all([
+      disconnectPrisma(),
+      disconnectRedis(),
+      realtimeEventGateway.close(),
+      liveDashboard.close()
+    ]);
   },
   exit: (code) => process.exit(code),
   logger,
@@ -347,6 +360,9 @@ const shutdown = createShutdownHandler({
   stopWorker: async () => {
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");
+    });
+    void liveDashboard.close().catch((error) => {
+      logger.error({ error }, "Live dashboard gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();
     orderServiceExpiryWorker.stop();

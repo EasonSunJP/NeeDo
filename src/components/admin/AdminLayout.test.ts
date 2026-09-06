@@ -34,10 +34,10 @@ describe("AdminLayout navigation", () => {
   });
 
   it("renames operations and keeps disabled TEST partner sections in the top navigation", () => {
-    expect(source).toContain('title: "运营管理"');
+    expect(source).toContain('title: "运营"');
     expect(source).toContain('title: "加盟商"');
     expect(source).toContain('title: "供货商"');
-    expect(source.match(/badge: "TEST"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(source.match(/badge: "TEST"/g)?.length).toBe(5);
     expect(source.match(/disabled: true/g)).toHaveLength(2);
     expect(source).toContain("section.disabled || section.items.length > 0");
     expect(source).toContain("if (section.disabled) return;");

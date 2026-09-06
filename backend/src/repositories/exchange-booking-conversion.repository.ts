@@ -28,6 +28,8 @@ import type {
 } from "../types/exchange-booking-conversion.types";
 import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 import { toAuditLogCreateData } from "./audit-log.repository";
+import { AdministrativeRegionRepository } from "./administrative-region.repository";
+import { AppError } from "../utils/app-error";
 
 type ExchangeBookingConversionClient = PrismaClient | Prisma.TransactionClient;
 
@@ -64,6 +66,7 @@ const slotInclude = {
       id: true,
       status: true,
       pricingMode: true,
+      serviceLocation: { include: { admin1Region: true, admin2Region: true } },
       deletedAt: true,
       entitySuspensions: {
         where: { status: "active", activeKey: { not: null }, deletedAt: null },
@@ -417,6 +420,7 @@ export class ExchangeBookingConversionRepository {
     for (const participant of participants) {
       const slot = slotsById.get(participant.scheduleSlotId);
       if (!slot) this.abort("slot_unavailable");
+      const serviceLocation = await this.resolveServiceLocation(slot, serviceMode, input.occurredAt);
       const nextBookedCount = slot.bookedCount + 1;
       const slotUpdate = await this.client.scheduleSlot.updateMany({
         where: {
@@ -453,6 +457,7 @@ export class ExchangeBookingConversionRepository {
           scheduleSlotId: participant.scheduleSlotId,
           status: BookingOrderStatus.PENDING,
           fulfillmentMode: serviceMode,
+          serviceLocation: { create: serviceLocation },
           fulfillmentAddressSnapshot:
             serviceMode === "home"
               ? {
@@ -620,6 +625,7 @@ export class ExchangeBookingConversionRepository {
 
     return {
       outcome: "created",
+      committedOrderIds: [...superseded.map((order) => order.id), ...created.map((order) => order.orderId)],
       payload: this.toPayload(input.exchangePostId, versionAfter, input.occurredAt, created),
       notifications
     };
@@ -969,6 +975,34 @@ export class ExchangeBookingConversionRepository {
           actorUserId: input.actorUserId
         });
       }
+    }
+  }
+
+  private async resolveServiceLocation(
+    slot: Prisma.ScheduleSlotGetPayload<{ include: typeof slotInclude }>,
+    mode: "home" | "store",
+    occurredAt: Date
+  ): Promise<Prisma.BookingServiceLocationCreateWithoutBookingOrderInput> {
+    const unresolved = {
+      countryCode: "JP", admin1RegionCode: null, admin1Name: null, admin2RegionCode: null, admin2Name: null,
+      source: mode === "home" ? "CUSTOMER_SERVICE_LOCATION" as const : "SHOP_LOCATION" as const,
+      resolutionStatus: "UNRESOLVED" as const, datasetVersion: "exchange-unresolved-v1", resolvedAt: null
+    };
+    // Exchange home demands currently carry free-text address lines, not accepted
+    // administrative identities. Never infer a verified region from that text.
+    const location = slot.shop.serviceLocation;
+    if (mode === "home" || !location || location.deletedAt || location.countryCode !== "JP") return unresolved;
+    try {
+      const verified = await new AdministrativeRegionRepository(this.client).resolveVerifiedScope({
+        countryCode: "JP", admin1Code: location.admin1Region.officialCode, admin2Code: location.admin2Region.officialCode
+      }, this.client as Prisma.TransactionClient);
+      if (verified.admin1RegionId !== location.admin1RegionId || verified.admin2RegionId !== location.admin2RegionId || verified.datasetVersion !== location.datasetVersion) return unresolved;
+      return { countryCode: "JP", admin1RegionCode: verified.admin1Code, admin1Name: verified.admin1NameJa,
+        admin2RegionCode: verified.admin2Code, admin2Name: verified.admin2NameJa, source: "SHOP_LOCATION",
+        resolutionStatus: "VERIFIED", datasetVersion: verified.datasetVersion, resolvedAt: occurredAt };
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 400 && error.message === "error.administrative_region.invalid_hierarchy") return unresolved;
+      throw error;
     }
   }
 

@@ -47,7 +47,14 @@ export type ReceivedUserReview = {
     revisedAt: string;
     revisedBy: string;
   }>;
-  order: { id: number; orderNo: string; serviceName: string; startsAt: string };
+  order: {
+    id: number; orderNo: string; serviceName: string; startsAt: string;
+    shopName: string; durationMinutes: number | null; note: string | null;
+    paymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+    paymentStatus: "pending" | "confirmed" | "refund_pending" | "refunded";
+    paymentCurrency: string | null; otherPaymentMethod: string | null;
+    addOnCount: number; addOnMinutes: number;
+  };
   reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
 };
 
@@ -121,6 +128,11 @@ export type PlatformManagedUser = {
     scopeType: string | null;
     scopeId: number | null;
   }>;
+  identityProfiles?: Array<{
+    type: "technician" | "merchant";
+    status: "active" | "not_enabled" | "under_review" | "rejected";
+    displayName: string | null;
+  }>;
   roles: Array<{ code: string; name: string }>;
   groups: string[];
   ekycVerified: boolean;
@@ -132,8 +144,9 @@ export type PlatformManagedUser = {
     experienceMultiplier: number;
     lockVersion: number | null;
   };
-  experience: { currentLevel: number; totalExpUnits: string } | null;
+  experience: { currentLevel: number; totalExp: string } | null;
   ndpBalance: { available: number; frozen: number };
+  testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;
   lastLoginAt: string | null;
   createdAt: string;
@@ -223,7 +236,7 @@ export type UserListQuery = {
   privacyScopes?: Array<"enabled" | "disabled" | UserPrivacyScope>;
   minBookings?: number;
   maxBookings?: number;
-  sortBy?: "displayName" | "email" | "city" | "createdAt";
+  sortBy?: "displayName" | "email" | "city" | "createdAt" | "ndpBalance" | "bookingCount";
   sortDirection?: "asc" | "desc";
   registeredFrom?: string;
   registeredTo?: string;
@@ -322,6 +335,7 @@ export type PlatformTierAdministration = {
 };
 
 export type PlatformBenefitAdministration = {
+  deliveryCapability?: "available" | "unavailable";
   code: PlatformBenefitCode;
   sortOrder: number;
   isGloballyEnabled: boolean;

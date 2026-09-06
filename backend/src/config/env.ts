@@ -202,6 +202,7 @@ const envSchema = z
     DATABASE_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
     DATABASE_POOL_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
     REDIS_URL: z.string().url(),
+    LIVE_DASHBOARD_REDIS_URL: optionalRedisUrlSchema,
     REDIS_POOL_SIZE: z.coerce.number().int().positive().max(20).default(1),
     REDIS_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
     REDIS_RECONNECT_MAX_RETRIES: z.coerce.number().int().min(0).default(0),

@@ -2154,6 +2154,16 @@ npm test
 
 运营后台唯一“数据大盘”读取受 `backoffice:dashboard:read` 保护的正式数据库聚合，使用服务端东京日期分桶和具名比较字段，不生成演示折线或虚构增长率。旧分析页、旧数据大屏入口和旧 Dashboard 预览 payload 已退役。
 
+运营实时大盘 microstep A 只包含数据地基：`/api/v1/backoffice/dashboard/live-snapshot` 与 `/api/v1/backoffice/dashboard/live-events` 以 `country=JP`、可选的逐级 `admin1`/`admin2`、`period=today|last7days|last30days` 查询；快照名称按 `Accept-Language`（`zh-CN`、`zh-TW`、`ja`、`en`、`ko`，默认日语）本地化。地区归属只读取 Booking 创建时保存的不可变服务发生地，未解析或缺失快照的旧订单进入全国总量与未解析覆盖率，不进入东京/新宿下钻。缓存 TTL 为 300 秒，区域事件以 generation fence 逐级失效；SSE 发送 5 秒 retry、30 秒 heartbeat，支持 `Last-Event-ID`，过期/缺失游标返回 409，客户端需重新取快照再连接，且事件白名单不暴露客户资料、地址、备注或内部数字 ID。完整合同见 `docs/backoffice-real-data.md`。
+
+The compatibility backend and split operations/merchant servers share one live-dashboard runtime factory. Configure the same `LIVE_DASHBOARD_REDIS_URL` in every process for cache, generation and Stream keys; portal `REDIS_URL` remains isolated for auth/session state. Split startup fails closed without the shared setting. `dev:formal` supplies it to all three processes from `FORMAL_LIVE_DASHBOARD_REDIS_URL` (defaulting to the existing shared route-health target); shutdown closes the dedicated live clients. This wiring is not Redis connectivity acceptance.
+
+Home booking codes must resolve to the official Japanese prefecture/municipality names in the normalized address bound to the accepted estimate. A mismatch is rejected before capacity or estimate consumption. Exchange conversion snapshots a verified store assignment transactionally; free-text home demands and unverified stores get explicit unresolved snapshots. Eligible unresolved or missing historical snapshots contribute to Japan-wide totals and unresolved coverage, never regional child metrics/drill-downs. No region is inferred from free text or current customer/technician residence.
+
+历史 Booking 地点脚本默认 preview；apply 必须追加 `--apply --confirm-count=<preview-planned-count>`，恢复使用 `--restore-run=<run-id>`。最终本地 checker 必须同时显式传入 `FORMAL_BACKEND_ENV_FILE`、`LIVE_DASHBOARD_CHECK_ROLLBACK=true` 与本次运行唯一、可复现的小写 `LIVE_DASHBOARD_CHECK_RUN_ID`：`FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK=true LIVE_DASHBOARD_CHECK_RUN_ID=task8-local-a npm --prefix backend run check:live-dashboard`。microstep A contains no live-screen page；本地 commit、remote push、deployment、migration application、形式化 DB/Redis 验收与页面验收是互相独立的事实，本步骤不执行 push、部署或生产 migration。
+
+运营实时数据大屏 microstep B 已增加受保护的 `/pf-admin.html#/admin/live-screen` 独立页面，通过正式 snapshot/SSE 展示 JP、都道府县与市区町村范围数据，并使用本地版本化 N03 2026 地图资源。入口从现有运营数据大盘以 `noopener,noreferrer` 新标签页打开，不传递 token；页面支持日间/深色运营主题、全屏、低频对账、自动滚动暂停、地图键盘下钻和正式区域选择回退。完整的本地 migration、MySQL/Redis checker、浏览器与自动化证据见 [运营实时数据大屏本地验收记录](docs/live-dashboard-acceptance.md)。该记录不代表远端 push、部署或生产 migration。
+
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 
 独立“评价中心”同样采用能力门禁：Review 表与 migration、分页搜索 RBAC API、回复和风控审计日志完成前，只展示明确的上线条件，不展示模拟评分、评价内容、回复状态、差评预警或敏感评价数字。
@@ -2699,3 +2709,15 @@ ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
 ### Technician work status and attendance
 
 The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.
+
+### Admin test contacts and six-month staffing
+
+The local-first, audited two-account dataset and formal calendar acceptance are documented in [administrator contacts and six-month staffing](docs/qa/2026-09-06-admin-contacts-six-month-schedule.md). Appointment overview reads persisted scoped BookingOrders; staffing slots remain separate and display their actual availability state.
+
+### User detail review facts and capsule tabs
+
+Received service reviews in the operations and merchant user detail cards now include formal payment method/status, checkout ledger currency, accepted extra service time, separated tag groups, and review/booking notes. Detail categories share one capsule tab container. See [local review-card acceptance and XP unit finding](docs/qa/2026-09-06-user-review-detail.md).
+
+The follow-up removes repeated membership facts, places adjustment controls inside the membership tab, consolidates merchant names, removes scout presentation, and adds server-side numeric ordering. See [user-directory follow-up acceptance](docs/qa/2026-09-06-user-directory-followup.md).
+
+Managed-user lists and membership details now consume exact decimal `totalExp`, consistent with user experience summaries. See [EXP display correction and evidence](docs/qa/2026-09-06-experience-display.md).

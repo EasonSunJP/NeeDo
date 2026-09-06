@@ -6,6 +6,7 @@ import {
   type DashboardOperationsFinanceReader,
   type OperationsFinanceFacts
 } from "../src/repositories/dashboard-operations-finance.repository";
+import { formalConfirmedPaymentEvidence } from "../src/repositories/formal-confirmed-payment-evidence";
 
 type SqlQuery = {
   sql?: string;
@@ -39,6 +40,33 @@ const createReader = (rows: unknown[]) => {
 };
 
 describe("DashboardOperationsFinanceRepository", () => {
+  it("exports the shared payment authority without requiring optional OrderFinancial", async () => {
+    const fixture = createReader([
+      { periodKey: "current", grossRevenueJpy: 12_000n, discountAmountJpy: 1_500n, travelFareJpy: 0n }
+    ]);
+
+    await fixture.reader.getOperationsFinance(platformInput);
+
+    const query = fixture.queryRaw.mock.calls[0]?.[0] as SqlQuery;
+    const sql = queryText(query);
+    const authoritySql = queryText(formalConfirmedPaymentEvidence() as SqlQuery);
+    expect(sql).toContain(authoritySql);
+    expect(sql).toContain("formal_confirmed_payment_evidence");
+    expect(authoritySql).not.toContain("order_financials");
+    expect(authoritySql).not.toContain("financial.");
+    expect(query.values).toEqual(
+      expect.arrayContaining([
+        "ndp",
+        "cash",
+        "other",
+        "booking_complete_settlement",
+        "applied",
+        ":technician-receipt",
+        ":operations-receipt"
+      ])
+    );
+  });
+
   it("aggregates current and previous immutable checkout totals in one bounded query", async () => {
     const fixture = createReader([
       { periodKey: "current", grossRevenueJpy: 12_000n, discountAmountJpy: "1500", travelFareJpy: 700 },

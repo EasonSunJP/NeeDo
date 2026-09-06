@@ -63,6 +63,7 @@ type ScheduleCycleCalendarBoardProps = {
 
 export type ScheduleCycleCalendarBoardDataOverride = {
   cellByEventId: ReadonlyMap<string, DispatchScheduleCell>;
+  cycle?: { periodStart: string; periodEnd: string };
   dayGrids: DispatchScheduleGridData[];
   events: UnifiedCalendarEvent[];
   lanes: UnifiedCalendarLane[];
@@ -854,15 +855,43 @@ export function ScheduleCycleCalendarBoard({
   const [statusVisibility, setStatusVisibility] = useState(createDefaultCycleStatusVisibility);
   const normalizedSearchQuery = normalizeSearchValue(searchQuery);
   const cycle = useMemo(
-    () => (cycleId ? getDispatchCycleList(storeId).find((item) => item.id === cycleId) ?? null : null),
-    [cycleId, dispatchSnapshot.revision, storeId]
+    () => dataOverride?.cycle ?? (cycleId ? getDispatchCycleList(storeId).find((item) => item.id === cycleId) ?? null : null),
+    [cycleId, dataOverride?.cycle, dispatchSnapshot.revision, storeId]
   );
   const period = useMemo(() => getCycleCalendarPeriod(view, dateKey, cycle), [cycle, dateKey, view]);
   const periodKey = period.dates.join("|");
-  const dayGrids = useMemo(
-    () => dataOverride?.dayGrids ?? period.dates.map((date) => getDispatchScheduleGrid(storeId, "day", date, cycleId)),
-    [cycleId, dataOverride, dispatchSnapshot.revision, periodKey, storeId]
-  );
+  const dayGrids = useMemo(() => {
+    if (!dataOverride) {
+      return period.dates.map((date) => getDispatchScheduleGrid(storeId, "day", date, cycleId));
+    }
+
+    const formalGridByDate = new Map(dataOverride.dayGrids.map((grid) => [grid.dates[0], grid]));
+    const templateGrid = dataOverride.dayGrids[0];
+
+    return period.dates.map((date) => formalGridByDate.get(date) ?? {
+      cycle: null,
+      dates: [date],
+      headers: [{ key: date, label: formatShortDate(date), sublabel: getWeekdayLabel(date) }],
+      nowHour: templateGrid?.nowHour ?? 0,
+      rows: (templateGrid?.rows ?? []).map((row) => ({
+        ...row,
+        cells: Array.from({ length: 24 }, (_, hour) => ({
+          darkened: false,
+          date,
+          detail: "暂无正式排班",
+          hour,
+          id: `formal-empty-${row.technicianId}-${date}-${hour}`,
+          isClickable: false,
+          isCurrent: false,
+          status: "idle" as const,
+          technicianId: row.technicianId,
+          technicianName: row.technicianName,
+          title: "未排班"
+        })),
+        scheduledHours: 0
+      }))
+    });
+  }, [cycleId, dataOverride, dispatchSnapshot.revision, period.dates, periodKey, storeId]);
   const computedCalendarData = useMemo(
     () => buildCycleCalendarData(
       dayGrids,

@@ -325,24 +325,14 @@ export function FormalManagedUserDetailPanel({
           { id: "credit", label: localization.t("信用值"), value: `${formatDecimal(credit.ratingAverage, localization)} / 5` },
           { id: "privacy", label: localization.t("隐私模式"), value: detail.privacyScope ? privacyScopeText(detail.privacyScope, localization.language) : privacyModeText(false, localization.language) }
         ]} />
-        <div className="mt-3 grid gap-2 rounded-lg border border-line bg-paper p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ManagedHeaderFact action={membershipActions?.tier} label={localization.t("会员类型")} value={membershipTierText(detail.membership.tierCode, localization.language)} />
-          <ManagedHeaderFact action={membershipActions?.multiplier} label={localization.t("会员倍率")} value={`×${formatDecimal(detail.membership.experienceMultiplier, localization)}`} />
-          <ManagedHeaderFact label={localization.t("当前等级")} value={detail.experience ? `Lv.${formatInteger(detail.experience.currentLevel, localization)}` : "—"} />
-          <ManagedHeaderFact label={localization.t("累计经验")} value={detail.experience ? `${formatInteger(Number(detail.experience.totalExpUnits), localization)} EXP` : "—"} />
-        </div>
       </section>
 
       <FormalTabs active={activeTab} idPrefix={panelId} items={customerTabs} localization={localization} onChange={setActiveTab} />
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
-        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent, activityContent)}
+        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent, activityContent, membershipActions)}
       </FormalTabPanels>
     </article>
   );
-}
-
-function ManagedHeaderFact({ action, label, value }: { action?: ReactNode; label: string; value: ReactNode }) {
-  return <div className="flex min-w-0 items-center justify-between gap-2"><div className="min-w-0"><p className="text-[11px] font-black text-ink/45">{label}</p><p className="mt-1 truncate text-sm font-black text-ink">{value}</p></div>{action}</div>;
 }
 
 function renderManagedUserTab(
@@ -353,7 +343,8 @@ function renderManagedUserTab(
   reviewContent?: ReactNode,
   usageContent?: ReactNode,
   accountContent?: ReactNode,
-  activityContent?: ReactNode
+  activityContent?: ReactNode,
+  membershipActions?: { tier?: ReactNode; multiplier?: ReactNode }
 ) {
   if (tab === "基础资料") return <FormalSectionCard localization={localization} title="基础资料"><DetailGrid items={localizeDetailItems([
     { label: "用户名", value: detail.username },
@@ -365,10 +356,10 @@ function renderManagedUserTab(
   ], localization)} /></FormalSectionCard>;
 
   if (tab === "会员等级") return <FormalSectionCard localization={localization} title="会员等级"><DetailGrid items={localizeDetailItems([
-    { label: "当前会员等级", value: membershipTierText(detail.membership.tierCode, localization.language) },
-    { label: "会员倍率", value: `×${formatDecimal(detail.membership.experienceMultiplier, localization)}` },
+    { label: "当前会员等级", value: <div className="flex flex-wrap items-center justify-between gap-2"><span>{membershipTierText(detail.membership.tierCode, localization.language)}</span>{membershipActions?.tier}</div> },
+    { label: "会员倍率", value: <div className="flex flex-wrap items-center justify-between gap-2"><span>×{formatDecimal(detail.membership.experienceMultiplier, localization)}</span>{membershipActions?.multiplier}</div> },
     { label: "当前等级", value: detail.experience ? `Lv.${detail.experience.currentLevel}` : "—" },
-    { label: "累计经验", value: detail.experience ? `${detail.experience.totalExpUnits} EXP` : "—" },
+    { label: "累计经验", value: detail.experience ? `${detail.experience.totalExp} EXP` : "—" },
     { label: "到期时间", value: formatDateTime(detail.membership.expiresAt, localization) }
   ], localization)} /></FormalSectionCard>;
 
@@ -432,7 +423,7 @@ export function FormalTabs<TTab extends string>({
     <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
       <div
         aria-label={localization.t("详情分类")}
-        className="scrollbar-none flex max-w-full gap-2 overflow-x-auto pb-0.5"
+        className="scrollbar-none flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1"
         role="tablist"
       >
         {items.map((item, index) => {
@@ -443,10 +434,10 @@ export function FormalTabs<TTab extends string>({
               aria-controls={`${idPrefix}-panel-${index}`}
               aria-selected={selected}
               className={cn(
-                "focus-ring h-9 shrink-0 rounded-lg border px-3 text-sm font-black transition",
+                "focus-ring h-9 shrink-0 rounded-full border border-transparent px-4 text-sm font-black transition",
                 selected
-                  ? "border-[color:var(--admin-text,#172033)] bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-[inset_0_-3px_0_#6e9b79]"
-                  : "border-line bg-paper text-ink/60 hover:border-moss hover:text-ink"
+                  ? "bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-sm"
+                  : "bg-transparent text-ink/60 hover:bg-white hover:text-ink"
               )}
               id={`${idPrefix}-tab-${index}`}
               key={item}

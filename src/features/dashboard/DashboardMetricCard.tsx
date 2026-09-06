@@ -161,15 +161,26 @@ export function DashboardMetricCard({
         ) : null}
       </div>
 
-      <div className="mt-4 flex min-w-0 items-end justify-between gap-3" data-analytics-metric-value="true">
-        <div className="flex min-w-0 items-baseline gap-1.5">
-          <strong className="truncate text-3xl font-black tracking-tight text-ink" data-no-i18n>
+      <div className="mt-4 flex min-w-0 flex-wrap items-end justify-between gap-3" data-analytics-metric-value="true">
+        <div className="flex min-w-max items-baseline gap-1.5" data-dashboard-metric-value-group="true">
+          <strong
+            className="whitespace-nowrap text-3xl font-black tracking-tight text-ink"
+            data-dashboard-metric-number="true"
+            data-no-i18n
+          >
             {formatted?.number ?? "—"}
           </strong>
-          <span className="text-xs font-black text-ink/45">{formatted?.unit ?? (resolvedUnit === "people" ? "人" : "")}</span>
+          <span
+            className="shrink-0 whitespace-nowrap text-xs font-black text-ink/45"
+            data-dashboard-metric-unit="true"
+          >
+            {formatted?.unit ?? (resolvedUnit === "people" ? "人" : "")}
+          </span>
         </div>
         {sparkline ? (
-          <DashboardMetricSparkline points={sparkline} title={title} unit={resolvedUnit} />
+          <div className="ml-auto" data-dashboard-sparkline-wrap="true">
+            <DashboardMetricSparkline points={sparkline} title={title} unit={resolvedUnit} />
+          </div>
         ) : null}
       </div>
 
