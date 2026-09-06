@@ -7,7 +7,7 @@ import {
   type LiveDashboardEventStreamPort
 } from "./live-dashboard-event.gateway";
 
-const STREAM_ID_PATTERN = /^\d{13}-\d+$/;
+const STREAM_ID_PATTERN = /^\d+-\d+$/;
 
 export interface RedisLiveDashboardStreamClient {
   isOpen: boolean;
@@ -104,9 +104,7 @@ export class RedisLiveDashboardEventStream implements LiveDashboardEventStreamPo
     return this.parseRange(raw);
   }
 
-  public subscribe(
-    listener: (entry: LiveDashboardEventStreamEntry) => void
-  ): Promise<() => Promise<void> | void> {
+  public subscribe(listener: () => void): Promise<() => Promise<void> | void> {
     return this.eventBus.subscribe((message) => {
       if (Buffer.byteLength(message, "utf8") > LIVE_DASHBOARD_EVENT_MAX_BYTES + 128) return;
       try {
@@ -121,7 +119,7 @@ export class RedisLiveDashboardEventStream implements LiveDashboardEventStreamPo
         ) {
           return;
         }
-        listener({ id: entry.id, event: entry.event });
+        listener();
       } catch {
         return;
       }

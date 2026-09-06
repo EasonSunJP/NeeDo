@@ -21625,7 +21625,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "Last-Event-ID",
             in: "header",
             required: false,
-            schema: { type: "string", pattern: "^\\d{13}-\\d+$", maxLength: 80 }
+            schema: { type: "string", pattern: "^\\d+-\\d+$", maxLength: 80 }
           }
         ],
         responses: {

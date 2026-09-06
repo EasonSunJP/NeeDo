@@ -291,12 +291,12 @@ describe("GET /api/v1/backoffice/dashboard/live-events", () => {
     await request(fixture.app)
       .get("/api/v1/backoffice/dashboard/live-events?country=JP&admin1=13&period=today")
       .set("Authorization", `Bearer ${fixture.tokens[1]}`)
-      .set("Last-Event-ID", "1700000000000-4")
+      .set("Last-Event-ID", "1000-4")
       .expect(200);
 
     expect(fixture.liveDashboardEventGateway.subscribe).toHaveBeenCalledWith(
       { countryCode: "JP", admin1Code: "13", admin2Code: null },
-      "1700000000000-4",
+      "1000-4",
       expect.anything()
     );
     expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(

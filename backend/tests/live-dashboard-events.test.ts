@@ -10,7 +10,7 @@ import {
 
 class SharedStreamState {
   public readonly entries: LiveDashboardEventStreamEntry[] = [];
-  public readonly listeners = new Set<(entry: LiveDashboardEventStreamEntry) => void>();
+  public readonly listeners = new Set<() => void>();
   public serverNowMs = 1_700_000_000_000;
   public sequence = -1;
 }
@@ -37,8 +37,9 @@ class MemoryEventStream implements LiveDashboardEventStreamPort {
   }
 
   public async broadcast(entry: LiveDashboardEventStreamEntry): Promise<void> {
+    void entry;
     this.broadcastCalls += 1;
-    for (const listener of this.state.listeners) listener(entry);
+    for (const listener of this.state.listeners) listener();
   }
 
   public async readAfter(lastEventId: string | null): Promise<LiveDashboardEventStreamEntry[]> {
@@ -52,9 +53,7 @@ class MemoryEventStream implements LiveDashboardEventStreamPort {
       .slice(-100);
   }
 
-  public async subscribe(
-    listener: (entry: LiveDashboardEventStreamEntry) => void
-  ): Promise<() => Promise<void>> {
+  public async subscribe(listener: () => void): Promise<() => Promise<void>> {
     this.subscribeCalls += 1;
     this.state.listeners.add(listener);
     return async () => {
@@ -65,22 +64,35 @@ class MemoryEventStream implements LiveDashboardEventStreamPort {
   public async close(): Promise<void> {}
 
   public emitRaw(entry: LiveDashboardEventStreamEntry): void {
-    for (const listener of this.state.listeners) listener(entry);
+    void entry;
+    for (const listener of this.state.listeners) listener();
   }
 }
 
 class RecoveringStream extends MemoryEventStream {
   private failures = 1;
 
-  public override async subscribe(
-    listener: (entry: LiveDashboardEventStreamEntry) => void
-  ): Promise<() => Promise<void>> {
+  public override async subscribe(listener: () => void): Promise<() => Promise<void>> {
     if (this.failures > 0) {
       this.failures -= 1;
       this.subscribeCalls += 1;
       throw new Error("redis temporarily unavailable");
     }
     return super.subscribe(listener);
+  }
+}
+
+class FailingReplayStream extends MemoryEventStream {
+  private failures = 1;
+
+  public override async readAfter(
+    lastEventId: string | null
+  ): Promise<LiveDashboardEventStreamEntry[]> {
+    if (this.failures > 0) {
+      this.failures -= 1;
+      throw new Error("redis range unavailable");
+    }
+    return super.readAfter(lastEventId);
   }
 }
 
@@ -140,6 +152,12 @@ const orderEvent = (overrides: Partial<OrderChangedEvent> = {}): OrderChangedEve
   ...overrides
 });
 
+const storedOrderEvent = (overrides: Partial<OrderChangedEvent> = {}): string => {
+  const stored = { ...orderEvent(overrides) };
+  delete (stored as Partial<OrderChangedEvent>).id;
+  return JSON.stringify(stored);
+};
+
 describe("LiveDashboardEventGateway", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
@@ -175,6 +193,38 @@ describe("LiveDashboardEventGateway", () => {
       .match(/^id: (\d{13}-\d+)$/gm)
       ?.map((line) => line.slice(4));
     expect(replayIds).toEqual([second!.id, third!.id]);
+    await Promise.all([gatewayA.close(), gatewayB.close()]);
+  });
+
+  it("treats reversed Pub/Sub payloads as wakeups and drains stream order exactly once", async () => {
+    const state = new SharedStreamState();
+    state.serverNowMs = 1_000;
+    const streamA = new MemoryEventStream(state);
+    const streamB = new MemoryEventStream(state);
+    const gatewayA = new LiveDashboardEventGateway({ eventStream: streamA });
+    const gatewayB = new LiveDashboardEventGateway({ eventStream: streamB });
+    const response = new FakeResponse();
+    await gatewayB.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      null,
+      response as unknown as Response
+    );
+
+    const first = await streamA.append(storedOrderEvent());
+    const second = await streamB.append(
+      storedOrderEvent({
+        payload: { ...orderEvent().payload, orderNo: "ND202609060002" }
+      })
+    );
+    await streamB.broadcast(second);
+    await streamA.broadcast(first);
+    await Promise.resolve();
+
+    const ids = response.writes
+      .join("")
+      .match(/^id: (\d+-\d+)$/gm)
+      ?.map((line) => line.slice(4));
+    expect(ids).toEqual([first.id, second.id]);
     await Promise.all([gatewayA.close(), gatewayB.close()]);
   });
 
@@ -413,6 +463,71 @@ describe("LiveDashboardEventGateway", () => {
     await gateway.close();
   });
 
+  it("drains an event appended during subscription outage after retry without a new wakeup", async () => {
+    const state = new SharedStreamState();
+    const stream = new RecoveringStream(state);
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      null,
+      response as unknown as Response
+    );
+    const missing = await stream.append(storedOrderEvent());
+
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(response.writes.join("")).toContain(`id: ${missing.id}`);
+    expect(response.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
+    await gateway.close();
+  });
+
+  it("recovers a lost sole wakeup on the periodic heartbeat drain", async () => {
+    const state = new SharedStreamState();
+    const stream = new MemoryEventStream(state);
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      null,
+      response as unknown as Response
+    );
+    const missing = await stream.append(storedOrderEvent());
+
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    expect(response.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
+    expect(response.writes.join("")).toContain(": heartbeat\n\n");
+    await gateway.close();
+  });
+
+  it("ends an unestablished response on replay failure and recovers exactly once on retry", async () => {
+    const state = new SharedStreamState();
+    const stream = new FailingReplayStream(state);
+    const missing = await stream.append(storedOrderEvent());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const failed = new FakeResponse();
+
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      "0000000000000-0",
+      failed as unknown as Response
+    );
+
+    expect(failed.ended).toBe(true);
+    expect(failed.writes.join("")).not.toContain("event: connected");
+
+    const recovered = new FakeResponse();
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      "0000000000000-0",
+      recovered as unknown as Response
+    );
+    expect(recovered.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
+    expect(recovered.writes.join("")).toContain("event: connected");
+    await gateway.close();
+  });
+
   it("invalidates through the shared cache hook and contains invalidation failure", async () => {
     const errors: unknown[] = [];
     const cache = {
@@ -514,8 +629,7 @@ describe("LiveDashboardCache regional invalidation", () => {
       isOpen: true,
       connect: jest.fn(async () => undefined),
       get: jest.fn(),
-      set: jest.fn(),
-      del: jest.fn(async (keys: string[]) => keys.length)
+      sendCommand: jest.fn(async (command: string[]) => Number(command[2]) / 2)
     };
     const cache = new LiveDashboardCache(() => redis);
 
@@ -525,8 +639,11 @@ describe("LiveDashboardCache regional invalidation", () => {
       admin2Code: "13104"
     });
 
-    expect(redis.del).toHaveBeenCalledTimes(1);
-    const keys = redis.del.mock.calls[0]?.[0] ?? [];
+    expect(redis.sendCommand).toHaveBeenCalledTimes(1);
+    const command = redis.sendCommand.mock.calls[0]?.[0] ?? [];
+    expect(command.slice(0, 3)).toEqual(["EVAL", expect.any(String), "18"]);
+    const keys = command.slice(3, 12);
+    const generationKeys = command.slice(12);
     expect(keys).toEqual(
       expect.arrayContaining([
         "dashboard:live:v1:JP:-:-:today",
@@ -535,6 +652,7 @@ describe("LiveDashboardCache regional invalidation", () => {
       ])
     );
     expect(keys).toHaveLength(9);
+    expect(generationKeys).toEqual(keys.map((key) => `${key}:generation`));
     expect(keys.join(" ")).not.toContain(":27:");
     expect(keys.join(" ")).not.toContain(":13101:");
   });

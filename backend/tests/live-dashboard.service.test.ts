@@ -339,7 +339,8 @@ describe("LiveDashboardService", () => {
       get: jest.fn(async () =>
         JSON.stringify({ cachedAt: evaluatedAt.toISOString(), value: wrongScopeFacts })
       ),
-      set: jest.fn(async () => "OK")
+      set: jest.fn(async () => "OK"),
+      sendCommand: jest.fn(async () => 1)
     };
     const cache = new LiveDashboardCache(
       () => redis,
@@ -427,7 +428,8 @@ describe("LiveDashboardService", () => {
         get: jest.fn(async () =>
           JSON.stringify({ cachedAt: evaluatedAt.toISOString(), value: corrupt })
         ),
-        set: jest.fn(async () => "OK")
+        set: jest.fn(async () => "OK"),
+        sendCommand: jest.fn(async () => 1)
       };
       const cache = new LiveDashboardCache(
         () => redis,

@@ -9,8 +9,7 @@ export interface LiveDashboardRedisClient {
   isOpen: boolean;
   connect(): Promise<unknown>;
   get(key: string): Promise<string | null>;
-  set(key: string, value: string, options: { EX: number }): Promise<unknown>;
-  del?(keys: string[]): Promise<unknown>;
+  sendCommand(command: string[]): Promise<unknown>;
 }
 
 export type LiveDashboardCacheStatus = "hit" | "miss" | "degraded";
@@ -45,28 +44,71 @@ const normalizeScopeKey = (scopeKey: string): string =>
     ? scopeKey
     : `${LIVE_DASHBOARD_CACHE_PREFIX}:${scopeKey}`;
 
+const generationKey = (cacheKey: string): string => `${cacheKey}:generation`;
+
+const WRITE_IF_GENERATION_UNCHANGED_SCRIPT = [
+  "local current = redis.call('GET', KEYS[2]) or '0'",
+  "if current ~= ARGV[1] then return 0 end",
+  "redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
+  "return 1"
+].join("\n");
+
+const INVALIDATE_WITH_GENERATION_SCRIPT = [
+  "local count = #KEYS / 2",
+  "for index = 1, count do redis.call('INCR', KEYS[count + index]) end",
+  "for index = 1, count do redis.call('DEL', KEYS[index]) end",
+  "return count"
+].join("\n");
+
+interface InFlightCacheOperation {
+  generation: string | null;
+  promise: Promise<LiveDashboardCacheResult<unknown>>;
+}
+
 export class LiveDashboardCache implements LiveDashboardCachePort {
-  private readonly inFlight = new Map<string, Promise<LiveDashboardCacheResult<unknown>>>();
+  private readonly inFlight = new Map<string, InFlightCacheOperation>();
 
   public constructor(
     private readonly getClient: () => LiveDashboardRedisClient = getRedisClient,
     private readonly now: () => Date = () => new Date()
   ) {}
 
-  public getOrCreate<T>(
+  public async getOrCreate<T>(
     scopeKey: string,
     factory: () => Promise<T>,
     decode: (value: unknown) => T = (value) => value as T
   ): Promise<LiveDashboardCacheResult<T>> {
     const key = normalizeScopeKey(scopeKey);
-    const existing = this.inFlight.get(key);
-    if (existing) return existing as Promise<LiveDashboardCacheResult<T>>;
+    let client: LiveDashboardRedisClient;
+    let generation: string;
+    try {
+      client = this.getClient();
+      if (!client.isOpen) await client.connect();
+      const stored = await client.get(key);
+      if (stored !== null) return this.parseStored(stored, decode);
+      generation = (await client.get(generationKey(key))) ?? "0";
+    } catch {
+      return this.singleFlight(key, null, () => this.compute(factory, "degraded"));
+    }
 
-    const operation = this.readOrCreate(key, factory, decode).finally(() => {
-      this.inFlight.delete(key);
+    return this.singleFlight(key, generation, async () => {
+      const computed = await this.compute(factory, "miss");
+      try {
+        const written = await client.sendCommand([
+          "EVAL",
+          WRITE_IF_GENERATION_UNCHANGED_SCRIPT,
+          "2",
+          key,
+          generationKey(key),
+          generation,
+          JSON.stringify({ cachedAt: computed.cachedAt.toISOString(), value: computed.value }),
+          String(LIVE_DASHBOARD_CACHE_TTL_SECONDS)
+        ]);
+        return written === 1 ? computed : { ...computed, cacheStatus: "degraded" };
+      } catch {
+        return { ...computed, cacheStatus: "degraded" };
+      }
     });
-    this.inFlight.set(key, operation as Promise<LiveDashboardCacheResult<unknown>>);
-    return operation;
   }
 
   public async invalidateScope(scope: LiveDashboardScope): Promise<void> {
@@ -90,36 +132,33 @@ export class LiveDashboardCache implements LiveDashboardCachePort {
         liveDashboardCacheKey({ ...level, period })
       )
     );
-    if (!client.del) throw new Error("Redis cache invalidation is unavailable");
-    await client.del(keys);
+    const result = await client.sendCommand([
+      "EVAL",
+      INVALIDATE_WITH_GENERATION_SCRIPT,
+      String(keys.length * 2),
+      ...keys,
+      ...keys.map(generationKey)
+    ]);
+    if (result !== keys.length) throw new Error("Redis cache invalidation fence failed");
   }
 
-  private async readOrCreate<T>(
+  private singleFlight<T>(
     key: string,
-    factory: () => Promise<T>,
-    decode: (value: unknown) => T
+    generation: string | null,
+    operationFactory: () => Promise<LiveDashboardCacheResult<T>>
   ): Promise<LiveDashboardCacheResult<T>> {
-    let client: LiveDashboardRedisClient;
-    try {
-      client = this.getClient();
-      if (!client.isOpen) await client.connect();
-      const stored = await client.get(key);
-      if (stored !== null) return this.parseStored(stored, decode);
-    } catch {
-      return this.compute(factory, "degraded");
+    const existing = this.inFlight.get(key);
+    if (existing?.generation === generation) {
+      return existing.promise as Promise<LiveDashboardCacheResult<T>>;
     }
-
-    const computed = await this.compute(factory, "miss");
-    try {
-      await client.set(
-        key,
-        JSON.stringify({ cachedAt: computed.cachedAt.toISOString(), value: computed.value }),
-        { EX: LIVE_DASHBOARD_CACHE_TTL_SECONDS }
-      );
-      return computed;
-    } catch {
-      return { ...computed, cacheStatus: "degraded" };
-    }
+    const operation = operationFactory().finally(() => {
+      if (this.inFlight.get(key)?.promise === operation) this.inFlight.delete(key);
+    });
+    this.inFlight.set(key, {
+      generation,
+      promise: operation as Promise<LiveDashboardCacheResult<unknown>>
+    });
+    return operation;
   }
 
   private async compute<T>(

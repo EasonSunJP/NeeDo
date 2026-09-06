@@ -79,7 +79,7 @@ describe("RedisLiveDashboardEventStream", () => {
     ]);
   });
 
-  it("broadcasts strict entries and closes the dedicated client and bus", async () => {
+  it("uses strict Pub/Sub envelopes only as wakeups and closes the dedicated clients", async () => {
     let listener: ((message: string) => void) | undefined;
     const unsubscribe = jest.fn(async () => undefined);
     const bus = {
@@ -106,6 +106,7 @@ describe("RedisLiveDashboardEventStream", () => {
     listener?.(JSON.stringify({ ...entry, private: true }));
     expect(bus.publish).toHaveBeenCalledWith(JSON.stringify(entry));
     expect(received).toHaveBeenCalledTimes(1);
+    expect(received).toHaveBeenCalledWith();
 
     await stop();
     await stream.close();

@@ -13,7 +13,7 @@ export const LIVE_DASHBOARD_REPLAY_LIMIT = 100;
 export const LIVE_DASHBOARD_REPLAY_WINDOW_MS = 5 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STREAM_RETRY_DELAY_MS = 5_000;
-const STREAM_ID_PATTERN = /^\d{13}-\d+$/;
+const STREAM_ID_PATTERN = /^\d+-\d+$/;
 const INVALIDATION_SECTIONS = new Set<LiveDashboardInvalidationSection>([
   "headline",
   "orders",
@@ -30,9 +30,7 @@ export interface LiveDashboardEventStreamPort {
   append(event: string): Promise<LiveDashboardEventStreamEntry>;
   broadcast(entry: LiveDashboardEventStreamEntry): Promise<void>;
   readAfter(lastEventId: string | null): Promise<LiveDashboardEventStreamEntry[]>;
-  subscribe(
-    listener: (entry: LiveDashboardEventStreamEntry) => void
-  ): Promise<() => Promise<void> | void>;
+  subscribe(listener: () => void): Promise<() => Promise<void> | void>;
   close(): Promise<void>;
 }
 
@@ -79,8 +77,6 @@ const hasExactKeys = (value: Record<string, unknown>, keys: readonly string[]): 
 
 export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort {
   private readonly subscribers = new Set<Subscriber>();
-  private readonly seenIds = new Set<string>();
-  private readonly seenIdOrder: string[] = [];
   private readonly eventStream: LiveDashboardEventStreamPort;
   private readonly cache?: LiveDashboardCacheInvalidator;
   private readonly now: () => Date;
@@ -88,6 +84,9 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
   private streamUnsubscribe?: () => Promise<void> | void;
   private streamSubscriptionPromise?: Promise<void>;
   private streamRetryTimer?: ReturnType<typeof setTimeout>;
+  private lastDrainedId: string | null = null;
+  private drainPromise?: Promise<void>;
+  private drainRequested = false;
   private closePromise?: Promise<void>;
 
   public constructor(options: LiveDashboardEventGatewayOptions) {
@@ -127,11 +126,15 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
       const event = this.parseStreamEntry(entry);
       if (!event) throw new Error("Shared live dashboard stream returned an invalid entry");
       this.assertEventSize(event);
-      this.acceptEntry(entry, event);
       try {
         await this.eventStream.broadcast(entry);
       } catch (error) {
         this.onError(error, "publish");
+      }
+      try {
+        await this.requestDrain();
+      } catch (error) {
+        this.onError(error, "replay");
       }
       return event;
     } catch (error) {
@@ -175,8 +178,12 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     let replayEntries: LiveDashboardEventStreamEntry[] = [];
     try {
       replayEntries = await this.eventStream.readAfter(lastEventId);
+      await this.requestDrain();
     } catch (error) {
       this.onError(error, "replay");
+      unsubscribe();
+      response.end();
+      return unsubscribe;
     }
     const combined = new Map<string, LiveDashboardEventStreamEntry>();
     for (const entry of replayEntries) combined.set(entry.id, entry);
@@ -205,7 +212,13 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
       return unsubscribe;
     }
     subscriber.heartbeat = setInterval(() => {
-      this.write(response, ": heartbeat\n\n", unsubscribe);
+      void this.requestDrain()
+        .then(() => {
+          if (active) this.write(response, ": heartbeat\n\n", unsubscribe);
+        })
+        .catch((error) => {
+          this.onError(error, "replay");
+        });
     }, HEARTBEAT_INTERVAL_MS);
     return unsubscribe;
   }
@@ -215,16 +228,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     return this.closePromise;
   }
 
-  private acceptEntry(entry: LiveDashboardEventStreamEntry, parsed?: LiveDashboardEvent): void {
-    if (this.seenIds.has(entry.id)) return;
-    const event = parsed ?? this.parseStreamEntry(entry);
-    if (!event) return;
-    this.seenIds.add(entry.id);
-    this.seenIdOrder.push(entry.id);
-    if (this.seenIdOrder.length > LIVE_DASHBOARD_REPLAY_LIMIT * 2) {
-      const removed = this.seenIdOrder.shift();
-      if (removed) this.seenIds.delete(removed);
-    }
+  private fanOutEntry(entry: LiveDashboardEventStreamEntry, event: LiveDashboardEvent): void {
     for (const subscriber of [...this.subscribers]) {
       if (subscriber.pending) subscriber.pending.set(entry.id, entry);
       else this.sendEvent(subscriber, event);
@@ -257,7 +261,9 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     if (this.streamUnsubscribe || this.closePromise) return;
     if (!this.streamSubscriptionPromise) {
       this.streamSubscriptionPromise = this.eventStream
-        .subscribe((entry) => this.acceptEntry(entry))
+        .subscribe(() => {
+          void this.requestDrain().catch((error) => this.onError(error, "replay"));
+        })
         .then((unsubscribe) => {
           this.streamUnsubscribe = unsubscribe;
         })
@@ -274,8 +280,42 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     if (this.streamRetryTimer || this.closePromise) return;
     this.streamRetryTimer = setTimeout(() => {
       this.streamRetryTimer = undefined;
-      void this.ensureStreamSubscription();
+      void this.ensureStreamSubscription().then(() => {
+        if (this.streamUnsubscribe) {
+          void this.requestDrain().catch((error) => this.onError(error, "replay"));
+        }
+      });
     }, STREAM_RETRY_DELAY_MS);
+  }
+
+  private requestDrain(): Promise<void> {
+    if (this.closePromise) return Promise.resolve();
+    this.drainRequested = true;
+    if (!this.drainPromise) {
+      this.drainPromise = this.runDrainLoop().finally(() => {
+        this.drainPromise = undefined;
+      });
+    }
+    return this.drainPromise;
+  }
+
+  private async runDrainLoop(): Promise<void> {
+    while (this.drainRequested && !this.closePromise) {
+      this.drainRequested = false;
+      for (;;) {
+        const entries = (await this.eventStream.readAfter(this.lastDrainedId)).sort((left, right) =>
+          this.compareEventIds(left.id, right.id)
+        );
+        if (entries.length === 0) break;
+        for (const entry of entries) {
+          if (this.lastDrainedId && this.compareEventIds(entry.id, this.lastDrainedId) <= 0)
+            continue;
+          const event = this.parseStreamEntry(entry);
+          this.lastDrainedId = entry.id;
+          if (event) this.fanOutEntry(entry, event);
+        }
+      }
+    }
   }
 
   private canonicalizeStoredEvent(
@@ -463,6 +503,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
       subscriber.response.end();
     }
     if (this.streamUnsubscribe) await this.streamUnsubscribe();
+    if (this.drainPromise) await this.drainPromise.catch(() => undefined);
     await this.eventStream.close();
   }
 }

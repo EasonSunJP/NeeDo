@@ -9,6 +9,10 @@ import {
 
 const now = new Date("2026-09-06T03:04:05.000Z");
 
+const flushMicrotasks = async (): Promise<void> => {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
+};
+
 const cachedFacts = (): CachedLiveDashboardFacts => ({
   evaluatedAt: now.toISOString(),
   scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
@@ -67,16 +71,62 @@ const cachedFacts = (): CachedLiveDashboardFacts => ({
 
 const createRedis = (
   options: { get?: string | null; failGet?: boolean; failSet?: boolean } = {}
-) => ({
-  isOpen: true,
-  connect: jest.fn(async () => undefined),
-  get: jest.fn(async () => {
-    if (options.failGet) throw new Error("redis unavailable");
-    return options.get ?? null;
-  }),
-  set: jest.fn(async () => {
+) => {
+  const set = jest.fn(async (...args: [string, string, { EX: number }]) => {
+    void args;
     if (options.failSet) throw new Error("redis unavailable");
     return "OK";
+  });
+  return {
+    isOpen: true,
+    connect: jest.fn(async () => undefined),
+    get: jest.fn(async () => {
+      if (options.failGet) throw new Error("redis unavailable");
+      return options.get ?? null;
+    }),
+    set,
+    sendCommand: jest.fn(async (command: string[]) => {
+      if (command[0] !== "EVAL" || command[2] !== "2") {
+        throw new Error("unexpected Redis command");
+      }
+      await set(command[3], command[6], { EX: Number(command[7]) });
+      return 1;
+    })
+  };
+};
+
+const createGenerationRedis = (values = new Map<string, string>()) => ({
+  isOpen: true,
+  connect: jest.fn(async () => undefined),
+  get: jest.fn(async (key: string) => values.get(key) ?? null),
+  set: jest.fn(async (key: string, value: string) => {
+    values.set(key, value);
+    return "OK";
+  }),
+  del: jest.fn(async (keys: string[]) => {
+    for (const key of keys) values.delete(key);
+    return keys.length;
+  }),
+  sendCommand: jest.fn(async (command: string[]) => {
+    if (command[0] !== "EVAL") throw new Error("unexpected Redis command");
+    const keyCount = Number(command[2]);
+    const keys = command.slice(3, 3 + keyCount);
+    const args = command.slice(3 + keyCount);
+    if (keyCount === 2) {
+      const [cacheKey, generationKey] = keys;
+      const [expectedGeneration, value] = args;
+      const generation = values.get(generationKey!) ?? "0";
+      if (generation !== expectedGeneration) return 0;
+      values.set(cacheKey!, value!);
+      return 1;
+    }
+    const scopeCount = keyCount / 2;
+    for (const generationKey of keys.slice(scopeCount)) {
+      const generation = Number(values.get(generationKey) ?? "0") + 1;
+      values.set(generationKey, String(generation));
+    }
+    for (const cacheKey of keys.slice(0, scopeCount)) values.delete(cacheKey);
+    return scopeCount;
   })
 });
 
@@ -111,7 +161,7 @@ describe("LiveDashboardCache", () => {
 
     const leftPromise = cache.getOrCreate("JP:-:-:today", factory);
     const rightPromise = cache.getOrCreate("JP:-:-:today", factory);
-    await Promise.resolve();
+    await flushMicrotasks();
     releaseFactory();
     const [left, right] = await Promise.all([leftPromise, rightPromise]);
 
@@ -123,6 +173,91 @@ describe("LiveDashboardCache", () => {
       JSON.stringify({ cachedAt: now.toISOString(), value: { total: 4 } }),
       { EX: 300 }
     );
+    expect(redis.sendCommand).toHaveBeenCalledWith([
+      "EVAL",
+      expect.any(String),
+      "2",
+      "dashboard:live:v1:JP:-:-:today",
+      "dashboard:live:v1:JP:-:-:today:generation",
+      "0",
+      JSON.stringify({ cachedAt: now.toISOString(), value: { total: 4 } }),
+      "300"
+    ]);
+  });
+
+  it("fences a delayed stale fill and single-flights the new generation across app caches", async () => {
+    const values = new Map<string, string>();
+    const redisA = createGenerationRedis(values);
+    const redisB = createGenerationRedis(values);
+    const cacheA = new LiveDashboardCache(
+      () => redisA,
+      () => now
+    );
+    const cacheB = new LiveDashboardCache(
+      () => redisB,
+      () => now
+    );
+    let releaseOld!: () => void;
+    const oldFactory = jest.fn(
+      () =>
+        new Promise<{ total: number }>((resolve) => {
+          releaseOld = () => resolve({ total: 1 });
+        })
+    );
+    const oldFill = cacheA.getOrCreate("JP:13:13104:today", oldFactory);
+    await flushMicrotasks();
+
+    await cacheB.invalidateScope({
+      countryCode: "JP",
+      admin1Code: "13",
+      admin2Code: "13104"
+    });
+
+    let releaseFresh!: () => void;
+    const freshFactory = jest.fn(
+      () =>
+        new Promise<{ total: number }>((resolve) => {
+          releaseFresh = () => resolve({ total: 2 });
+        })
+    );
+    const freshLeft = cacheA.getOrCreate("JP:13:13104:today", freshFactory);
+    const freshRight = cacheA.getOrCreate("JP:13:13104:today", freshFactory);
+    await flushMicrotasks();
+
+    expect(freshFactory).toHaveBeenCalledTimes(1);
+    releaseFresh();
+    await expect(Promise.all([freshLeft, freshRight])).resolves.toEqual([
+      expect.objectContaining({ value: { total: 2 } }),
+      expect.objectContaining({ value: { total: 2 } })
+    ]);
+    releaseOld();
+    await expect(oldFill).resolves.toEqual(
+      expect.objectContaining({ value: { total: 1 }, cacheStatus: "degraded" })
+    );
+
+    const crossGatewayRefetch = new LiveDashboardCache(
+      () => redisB,
+      () => now
+    );
+    await expect(
+      crossGatewayRefetch.getOrCreate("JP:13:13104:today", async () => ({ total: 3 }))
+    ).resolves.toEqual(expect.objectContaining({ value: { total: 2 }, cacheStatus: "hit" }));
+    expect(oldFactory).toHaveBeenCalledTimes(1);
+    expect(freshFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails invalidation when the atomic generation fence is not acknowledged", async () => {
+    const redis = createGenerationRedis();
+    redis.sendCommand.mockResolvedValueOnce(0);
+    const cache = new LiveDashboardCache(() => redis);
+
+    await expect(
+      cache.invalidateScope({
+        countryCode: "JP",
+        admin1Code: "13",
+        admin2Code: "13104"
+      })
+    ).rejects.toThrow("Redis cache invalidation fence failed");
   });
 
   it("returns a valid cached value without recomputing it", async () => {
@@ -297,7 +432,7 @@ describe("LiveDashboardCache", () => {
 
     const leftPromise = cache.getOrCreate("JP:-:-:today", factory);
     const rightPromise = cache.getOrCreate("JP:-:-:today", factory);
-    await Promise.resolve();
+    await flushMicrotasks();
     releaseFactory();
     const [left, right] = await Promise.all([leftPromise, rightPromise]);
 
