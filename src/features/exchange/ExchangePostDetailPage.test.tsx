@@ -18,6 +18,9 @@ import routeSource from "../../pages/mobile/NeedoRoutePages.tsx?raw";
 import detailSource from "./ExchangePostDetailPage.tsx?raw";
 
 const mockI18n = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko" }));
+const receivedClaimsMock = vi.hoisted(() => ({
+  onEffectiveBudgetChange: undefined as undefined | ((budgetMaxJpy: number) => void)
+}));
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: mockI18n.language }) }));
 vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
@@ -41,7 +44,16 @@ vi.mock("./ExchangeClaimPanel", () => ({
   ExchangeClaimPanel: ({ post }: { post: ExchangePost }) => <div data-post-id={post.id} data-testid="formal-claim-panel" />
 }));
 vi.mock("./ExchangeReceivedClaims", () => ({
-  ExchangeReceivedClaims: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-received-claims" />
+  ExchangeReceivedClaims: ({
+    onEffectiveBudgetChange,
+    postId
+  }: {
+    onEffectiveBudgetChange?: (budgetMaxJpy: number) => void;
+    postId: string;
+  }) => {
+    receivedClaimsMock.onEffectiveBudgetChange = onEffectiveBudgetChange;
+    return <div data-post-id={postId} data-testid="formal-received-claims" />;
+  }
 }));
 vi.mock("./ExchangeMatchedBookingCard", () => ({
   ExchangeMatchedBookingCard: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-matched-booking" />
@@ -164,6 +176,7 @@ describe("ExchangePostDetailPage", () => {
     vi.mocked(recordExchangeShare).mockReset();
     vi.mocked(unlikeExchangePost).mockReset();
     vi.mocked(withdrawExchangePost).mockReset();
+    receivedClaimsMock.onEffectiveBudgetChange = undefined;
   });
 
   afterEach(async () => {
@@ -183,6 +196,20 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it("keeps every owner budget summary aligned with the current matching budget", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true }
+    });
+    await renderDetail();
+    await waitFor(() => expect(receivedClaimsMock.onEffectiveBudgetChange).toBeTypeOf("function"));
+
+    await act(async () => receivedClaimsMock.onEffectiveBudgetChange?.(32_000));
+
+    expect(document.body.textContent).toContain("¥8,000–¥32,000");
+    expect(document.body.textContent).not.toContain("¥8,000–¥12,000");
   });
 
   it.each([

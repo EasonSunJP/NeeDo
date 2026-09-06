@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import {
   cleanupExchangeBookingFixture,
@@ -39,6 +39,8 @@ export type QuickMatchingFixture = ExchangeBookingFixture & {
   serviceName: string;
 };
 
+type QuickMatchingPrismaClient = PrismaClient | Prisma.TransactionClient;
+
 export async function assertRepositoryMigrationsApplied(
   client: PrismaClient,
   migrationsDirectory = join(process.cwd(), "prisma", "migrations")
@@ -62,7 +64,7 @@ export async function assertRepositoryMigrationsApplied(
 }
 
 export async function createQuickMatchingFixture(
-  client: any,
+  client: QuickMatchingPrismaClient,
   marker: string,
   effectiveBudgetMaxJpy: number,
   now = new Date()
@@ -193,9 +195,9 @@ export async function createQuickMatchingFixture(
       select: { name: true }
     })
   ]);
-  const emailByUserId = new Map(users.map((user: any) => [user.id, user.email]));
+  const emailByUserId = new Map(users.map((user) => [user.id, user.email]));
   const publicIdByIdentityId = new Map(
-    identifiers.map((identifier: any) => [identifier.userIdentityId, identifier.publicId])
+    identifiers.map((identifier) => [identifier.userIdentityId, identifier.publicId])
   );
 
   return {
@@ -217,7 +219,10 @@ export async function createQuickMatchingFixture(
   };
 }
 
-export async function createQuickMatchingServices(client: any, fixture: QuickMatchingFixture) {
+export async function createQuickMatchingServices(
+  client: QuickMatchingPrismaClient,
+  fixture: QuickMatchingFixture
+) {
   const [
     claimRepositoryModule,
     matchingRepositoryModule,
@@ -286,7 +291,7 @@ export function providerAccess(
 }
 
 export async function cleanupQuickMatchingFixture(
-  client: any,
+  client: QuickMatchingPrismaClient,
   fixture: QuickMatchingFixture
 ): Promise<void> {
   const [claims, participants, audits] = await Promise.all([
@@ -311,22 +316,28 @@ export async function cleanupQuickMatchingFixture(
       select: { id: true }
     })
   ]);
-  const auditIds = audits.map(({ id }: any) => id);
+  const auditIds = audits.map(({ id }) => id);
   if (auditIds.length > 0) {
     await client.auditLog.deleteMany({ where: { id: { in: auditIds } } });
   }
   await cleanupExchangeBookingFixture(client, {
     ...fixture,
-    claimIds: claims.map(({ id }: any) => id),
-    participantIds: participants.map(({ id }: any) => id)
+    claimIds: claims.map(({ id }) => id),
+    participantIds: participants.map(({ id }) => id)
   });
 }
 
-export async function countQuickMatchingMarkerRows(client: any, marker: string): Promise<number> {
+export async function countQuickMatchingMarkerRows(
+  client: QuickMatchingPrismaClient,
+  marker: string
+): Promise<number> {
   return countExchangeBookingMarkerRows(client, marker);
 }
 
-async function captureProtectedState(client: any, fixture: QuickMatchingFixture) {
+async function captureProtectedState(
+  client: QuickMatchingPrismaClient,
+  fixture: QuickMatchingFixture
+) {
   const bookingCount = await client.bookingOrder.count({
     where: { scheduleSlotId: { in: fixture.participantSlotIds } }
   });

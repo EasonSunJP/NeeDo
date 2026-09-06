@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ApiClientError } from "../../api/httpClient";
 import type { Language } from "../../i18n/translations";
@@ -15,6 +15,7 @@ import { exchangeText, type ExchangeTextKey } from "./i18n";
 import { ExchangeOrderCancellationPanel } from "./ExchangeOrderCancellationPanel";
 import type {
   ExchangeClaim,
+  ExchangeMatchMode,
   ExchangeMatchAdjustmentPreview,
   ExchangeMatching,
   SelectExchangeMatchingInput
@@ -196,11 +197,15 @@ function ClaimCard({
 export function ExchangeReceivedClaims({
   context = "user",
   language,
+  matchMode = "selective",
+  onEffectiveBudgetChange,
   onMatched,
   postId
 }: {
   context?: MessageCenterContext;
   language: Language;
+  matchMode?: ExchangeMatchMode;
+  onEffectiveBudgetChange?: (budgetMaxJpy: number) => void;
   onMatched?: () => void;
   postId: string;
 }) {
@@ -226,6 +231,13 @@ export function ExchangeReceivedClaims({
   const selectionAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const quickBudgetAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const bookingAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+  const commitMatching = useCallback(
+    (currentMatching: ExchangeMatching) => {
+      setMatching(currentMatching);
+      onEffectiveBudgetChange?.(currentMatching.effectiveBudgetMaxJpy);
+    },
+    [onEffectiveBudgetChange]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -255,7 +267,7 @@ export function ExchangeReceivedClaims({
         setClaims(claimPage.list);
         setPage(claimPage.page);
         setTotal(claimPage.total);
-        setMatching(currentMatching);
+        commitMatching(currentMatching);
       })
       .catch(() => {
         if (!controller.signal.aborted) setError(true);
@@ -264,7 +276,7 @@ export function ExchangeReceivedClaims({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [postId]);
+  }, [commitMatching, postId]);
 
   async function refreshPersistedState() {
     const [claimPage, currentMatching] = await Promise.all([
@@ -274,7 +286,7 @@ export function ExchangeReceivedClaims({
     setClaims(claimPage.list);
     setPage(claimPage.page);
     setTotal(claimPage.total);
-    setMatching(currentMatching);
+    commitMatching(currentMatching);
     setAdjustmentPreview(null);
     setAdjustmentChanged(false);
     const activeIds = new Set(
@@ -358,7 +370,7 @@ export function ExchangeReceivedClaims({
     setQuickBudgetChangedRefreshed(false);
     try {
       const completed = await confirmQuickExchangeBudget(postId, input, attempt.key);
-      setMatching(completed);
+      commitMatching(completed);
       quickBudgetAttemptRef.current = null;
       try {
         await refreshPersistedState();
@@ -452,7 +464,7 @@ export function ExchangeReceivedClaims({
     setMatchingError(false);
     try {
       const completed = await selectExchangeMatching(postId, input, attempt.key);
-      setMatching(completed);
+      commitMatching(completed);
       setSelectedClaimIds([]);
       setAdjustmentPreview(null);
       setAdjustmentChanged(false);
@@ -500,7 +512,7 @@ export function ExchangeReceivedClaims({
       </div>
       <p className="mt-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">
         {t(
-          matching?.status === "open" && !matching.viewer.canSelect
+          matchMode === "quick"
             ? "receivedQuickClaimsIntro"
             : "receivedClaimsIntro"
         )}

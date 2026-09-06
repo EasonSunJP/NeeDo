@@ -221,6 +221,34 @@ describe("ExchangeReceivedClaims", () => {
     expect(onMatched).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the Quick explanation after automatic matching is complete", async () => {
+    vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
+      list: [{ ...claim(1, "matched"), status: "matched" }],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    vi.mocked(getExchangeMatching).mockResolvedValue(
+      matching({
+        status: "matched",
+        selectedQuoteTotalJpy: 10_001,
+        matchedAt: "2026-09-01T03:00:00.000Z",
+        viewer: {
+          canSelect: false,
+          canConfirmQuickBudget: false,
+          canCreateBookings: false
+        }
+      })
+    );
+
+    await act(async () =>
+      root.render(<ExchangeReceivedClaims language="zh" matchMode="quick" postId="41" />)
+    );
+    await waitFor(() => expect(document.body.textContent).toContain("速配会在有效抢单达到目标人数"));
+
+    expect(document.body.textContent).not.toContain("选择服务者后提交");
+  });
+
   it("disables the exact Quick confirmation while its formal request is pending", async () => {
     vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
       list: [claim(1, "first", 31_000)],
