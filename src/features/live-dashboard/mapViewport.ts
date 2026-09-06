@@ -19,10 +19,6 @@ function isValidViewBox(viewBox: ViewBox): boolean {
   return viewBox.every(isFiniteNumber) && viewBox[2] > 0 && viewBox[3] > 0;
 }
 
-function extent(scale: number, dimension: number): number {
-  return (scale - 1) * dimension / 2;
-}
-
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -32,13 +28,42 @@ function cleanZero(value: number): number {
 }
 
 function clampViewport(viewport: MapViewport, viewBox: ViewBox): MapViewport {
-  const maxX = extent(viewport.scale, viewBox[2]);
-  const maxY = extent(viewport.scale, viewBox[3]);
+  // SVG translate(...) scale(...) maps each point to scale * point + pan.
+  // Keep both transformed viewBox edges outside the original viewport edges.
+  const offset = 1 - viewport.scale;
+  const [left, top, width, height] = viewBox;
   return {
     scale: viewport.scale,
-    x: cleanZero(clamp(viewport.x, -maxX, maxX)),
-    y: cleanZero(clamp(viewport.y, -maxY, maxY))
+    x: cleanZero(clamp(viewport.x, offset * (left + width), offset * left)),
+    y: cleanZero(clamp(viewport.y, offset * (top + height), offset * top))
   };
+}
+
+function keepContentVisible(viewport: MapViewport, viewBox: ViewBox, contentPoints: readonly Point[]): MapViewport {
+  const bounded = clampViewport(viewport, viewBox);
+  const [left, top, width, height] = viewBox;
+  const right = left + width;
+  const bottom = top + height;
+  const margin = Math.min(1, width / 2, height / 2);
+  let nearest = bounded;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const point of contentPoints) {
+    if (!point.every(isFiniteNumber) || point[0] < left || point[0] > right || point[1] < top || point[1] > bottom) continue;
+    const x = point[0] * bounded.scale + bounded.x;
+    const y = point[1] * bounded.scale + bounded.y;
+    if (x >= left && x <= right && y >= top && y <= bottom) return bounded;
+    const candidate = clampViewport({
+      scale: bounded.scale,
+      x: bounded.x + clamp(x, left + margin, right - margin) - x,
+      y: bounded.y + clamp(y, top + margin, bottom - margin) - y
+    }, viewBox);
+    const distance = (candidate.x - bounded.x) ** 2 + (candidate.y - bounded.y) ** 2;
+    if (distance < nearestDistance) {
+      nearest = candidate;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
 }
 
 function isValidViewport(viewport: MapViewport, viewBox: ViewBox): boolean {
@@ -56,31 +81,32 @@ export function zoomMapViewport(
   current: MapViewport,
   direction: "in" | "out",
   center: Point,
-  viewBox: ViewBox
+  viewBox: ViewBox,
+  contentPoints: readonly Point[] = []
 ): MapViewport {
   if (!isValidViewBox(viewBox) || !center.every(isFiniteNumber)) return currentOrIdentity(current, viewBox);
   const validCurrent = currentOrIdentity(current, viewBox);
   const nextScale = direction === "in"
     ? Math.min(MAX_SCALE, validCurrent.scale + ZOOM_STEP)
     : Math.max(MIN_SCALE, validCurrent.scale - ZOOM_STEP);
-  if (nextScale === validCurrent.scale) return validCurrent;
+  if (nextScale === validCurrent.scale) return keepContentVisible(validCurrent, viewBox, contentPoints);
 
   const ratio = nextScale / validCurrent.scale;
-  return clampViewport({
+  return keepContentVisible({
     scale: nextScale,
     x: center[0] - (center[0] - validCurrent.x) * ratio,
     y: center[1] - (center[1] - validCurrent.y) * ratio
-  }, viewBox);
+  }, viewBox, contentPoints);
 }
 
-export function panMapViewport(current: MapViewport, delta: Point, viewBox: ViewBox): MapViewport {
+export function panMapViewport(current: MapViewport, delta: Point, viewBox: ViewBox, contentPoints: readonly Point[] = []): MapViewport {
   if (!isValidViewBox(viewBox) || !delta.every(isFiniteNumber)) return currentOrIdentity(current, viewBox);
   const validCurrent = currentOrIdentity(current, viewBox);
-  return clampViewport({
+  return keepContentVisible({
     scale: validCurrent.scale,
     x: validCurrent.x + delta[0],
     y: validCurrent.y + delta[1]
-  }, viewBox);
+  }, viewBox, contentPoints);
 }
 
 export function mapViewportTransform(viewport: MapViewport): string {

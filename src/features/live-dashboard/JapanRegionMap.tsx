@@ -165,6 +165,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   }, [asset?.parentCode, asset?.level, scope.admin1, scope.admin2]);
 
   const childByCode = useMemo(() => new Map(children.map((item) => [item.code, item])), [children]);
+  const contentPoints = useMemo(() => asset?.regions.flatMap((region) => region.labelPoint ? [region.labelPoint] : []) ?? [], [asset]);
   const maximumOrders = Math.max(1, ...children.map((item) => item.orderCount));
   const activeRegion = asset?.regions.find((region) => region.code === activeCode) ?? null;
   const activeData = activeCode ? childByCode.get(activeCode) : null;
@@ -192,7 +193,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     const point = asset.regions.find((item) => item.code === scope.admin2)?.labelPoint;
     const center: [number, number] = point ? [point[0] * viewport.scale + viewport.x, point[1] * viewport.scale + viewport.y]
       : [asset.viewBox[0] + asset.viewBox[2] / 2, asset.viewBox[1] + asset.viewBox[3] / 2];
-    const next = zoomMapViewport(viewport, direction, center, asset.viewBox);
+    const next = zoomMapViewport(viewport, direction, center, asset.viewBox, contentPoints);
     setViewport(next);
     setLabelViewport(next);
   };
@@ -202,7 +203,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     if (current.moved && event.type === "pointerup" && asset) {
       const rect = event.currentTarget.getBoundingClientRect();
       const ratio = Math.min(rect.width / asset.viewBox[2], rect.height / asset.viewBox[3]);
-      if (ratio > 0) current.viewport = panMapViewport(current.viewport, [(event.clientX - current.x) / ratio, (event.clientY - current.y) / ratio], asset.viewBox);
+      if (ratio > 0) current.viewport = panMapViewport(current.viewport, [(event.clientX - current.x) / ratio, (event.clientY - current.y) / ratio], asset.viewBox, contentPoints);
     }
     suppressClick.current = current.moved;
     if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
@@ -274,7 +275,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
               if (!current.moved) event.currentTarget.setPointerCapture(event.pointerId);
               current.moved = true;
               current.x = event.clientX; current.y = event.clientY;
-              current.viewport = panMapViewport(current.viewport, [dx / ratio, dy / ratio], asset.viewBox);
+              current.viewport = panMapViewport(current.viewport, [dx / ratio, dy / ratio], asset.viewBox, contentPoints);
               if (dragFrame.current === null) {
                 dragFrame.current = requestAnimationFrame(() => {
                   dragFrame.current = null;

@@ -227,6 +227,43 @@ describe("JapanRegionMap", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("preserves the selected Ogasawara geometry anchor through repeated zoom button clicks", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : tokyo })));
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(tokyo)} onSelectRegion={vi.fn()} scope={{ country: "JP", admin1: "13", admin2: "13421", period: "today" }} />));
+    const anchor = tokyo.regions.find((region: { code: string }) => region.code === "13421").labelPoint;
+    for (let step = 0; step < 6; step++) {
+      await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+      const transform = container.querySelector("[data-map-geometry]")!.getAttribute("transform")!;
+      const [, x, y, scale] = /translate\(([^ ]+) ([^)]+)\) scale\(([^)]+)\)/.exec(transform)!;
+      expect(anchor[0] * Number(scale) + Number(x)).toBeCloseTo(anchor[0]);
+      expect(anchor[1] * Number(scale) + Number(y)).toBeCloseTo(anchor[1]);
+    }
+  });
+
+  it("keeps real country geometry visible after a maximum diagonal drag at 4x", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : country })));
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(country)} onSelectRegion={vi.fn()} scope={{ country: "JP", period: "today" }} />));
+    for (let step = 0; step < 6; step++) await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+    const svg = container.querySelector("svg")!;
+    Object.assign(svg, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn(), hasPointerCapture: () => true });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ width: 1000, height: 1200 } as DOMRect);
+    for (const [type, position] of [["pointerdown", 100], ["pointermove", 100000], ["pointerup", 100000]] as const) {
+      await act(async () => {
+        const event = new MouseEvent(type, { bubbles: true, clientX: position, clientY: position });
+        Object.defineProperty(event, "pointerId", { value: 1 });
+        svg.dispatchEvent(event);
+      });
+    }
+    const transform = container.querySelector("[data-map-geometry]")!.getAttribute("transform")!;
+    const [, x, y, scale] = /translate\(([^ ]+) ([^)]+)\) scale\(([^)]+)\)/.exec(transform)!;
+    expect(Number(scale)).toBe(4);
+    expect(country.regions.some((region: { labelPoint: [number, number] }) => {
+      const px = region.labelPoint[0] * Number(scale) + Number(x);
+      const py = region.labelPoint[1] * Number(scale) + Number(y);
+      return px >= 0 && px <= 1000 && py >= 0 && py <= 1200;
+    })).toBe(true);
+  });
+
   it("pans only when zoomed, releases pointer capture and resets on scope changes", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : url.includes("prefectures") ? tokyo : country })));
     const onSelect = vi.fn();
