@@ -486,6 +486,26 @@ const main = async (): Promise<void> => {
       evidence.status === "customer_confirmation_pending",
       "merchant evidence did not wait for customer receipt confirmation"
     );
+    const afterEvidenceOrder = await prisma.bookingOrder.findUniqueOrThrow({
+      where: { id: approved.order.id }
+    });
+    const afterEvidenceFinancial = await prisma.orderFinancial.findUniqueOrThrow({
+      where: { bookingOrderId: approved.order.id }
+    });
+    assert(
+      afterEvidenceOrder.paymentStatus === "CONFIRMED" &&
+        afterEvidenceOrder.paymentRefundedAt === null &&
+        afterEvidenceOrder.paymentRefundedById === null &&
+        afterEvidenceOrder.paymentRefundReference === null &&
+        afterEvidenceOrder.paymentRefundReason === null &&
+        afterEvidenceOrder.paymentReference === beforeEvidenceOrder.paymentReference &&
+        afterEvidenceOrder.paymentConfirmedById === beforeEvidenceOrder.paymentConfirmedById &&
+        afterEvidenceOrder.paymentConfirmedAt?.getTime() ===
+          beforeEvidenceOrder.paymentConfirmedAt?.getTime() &&
+        afterEvidenceOrder.paymentAmountJpy === beforeEvidenceOrder.paymentAmountJpy &&
+        afterEvidenceFinancial.settlementStatus === "settled",
+      "merchant evidence changed order payment or financial settlement before customer receipt"
+    );
     const rewardBefore = await prisma.affiliateReward.findUniqueOrThrow({
       where: { id: approved.reward.id }
     });
@@ -500,6 +520,21 @@ const main = async (): Promise<void> => {
       { idempotencyKey: `${marker}-approved-receipt`, expectedVersion: 3 }
     );
     assert(settled.status === "refunded", "customer receipt confirmation did not complete refund");
+    const afterReceiptOrder = await prisma.bookingOrder.findUniqueOrThrow({
+      where: { id: approved.order.id }
+    });
+    const afterReceiptFinancial = await prisma.orderFinancial.findUniqueOrThrow({
+      where: { bookingOrderId: approved.order.id }
+    });
+    assert(
+      afterReceiptOrder.paymentStatus === "REFUNDED" &&
+        afterReceiptOrder.paymentRefundedAt !== null &&
+        afterReceiptOrder.paymentRefundedById === customerA.user.id &&
+        afterReceiptOrder.paymentRefundReference === "bank-transfer-approved" &&
+        afterReceiptOrder.paymentRefundReason === "service issue" &&
+        afterReceiptFinancial.settlementStatus === "refunded",
+      "customer receipt confirmation did not persist the expected order refund and financial settlement"
+    );
     const rewardAfter = await prisma.affiliateReward.findUniqueOrThrow({
       where: { id: approved.reward.id }
     });
@@ -628,20 +663,34 @@ const main = async (): Promise<void> => {
     );
     proof["merchant-complaint-platform-reject"] = platformReject.status === "dispute_rejected";
 
-    const reversalCount = await prisma.ledgerTransaction.count({
-      where: {
-        id: { in: ledgerTransactionIds },
-        type: { in: ["AFFILIATE_REWARD_REVERSAL", "AFFILIATE_REWARD_RECOVERY"] },
-        deletedAt: null
-      }
+    const rewardTransactions = await prisma.affiliateRewardTransaction.findMany({
+      where: { rewardId: { in: rewardIds }, deletedAt: null },
+      select: { id: true, kind: true, ledgerTransactionId: true }
     });
-    const recoveryCount = await prisma.affiliateRewardTransaction.count({
-      where: {
-        rewardId: { in: rewardIds },
-        kind: { in: ["REVERSAL", "RECOVERY"] },
-        deletedAt: null
+    for (const transaction of rewardTransactions) {
+      if (!rewardTransactionIds.includes(transaction.id)) rewardTransactionIds.push(transaction.id);
+      if (!ledgerTransactionIds.includes(transaction.ledgerTransactionId)) {
+        ledgerTransactionIds.push(transaction.ledgerTransactionId);
       }
+    }
+    const ledgerTransactions = await prisma.ledgerTransaction.findMany({
+      where: {
+        id: { in: rewardTransactions.map((transaction) => transaction.ledgerTransactionId) },
+        deletedAt: null
+      },
+      select: { id: true, type: true }
     });
+    for (const transaction of ledgerTransactions) {
+      if (!ledgerTransactionIds.includes(transaction.id)) ledgerTransactionIds.push(transaction.id);
+    }
+    const reversalCount = ledgerTransactions.filter(
+      (transaction) =>
+        transaction.type === "AFFILIATE_REWARD_REVERSAL" ||
+        transaction.type === "AFFILIATE_REWARD_RECOVERY"
+    ).length;
+    const recoveryCount = rewardTransactions.filter(
+      (transaction) => transaction.kind === "REVERSAL" || transaction.kind === "RECOVERY"
+    ).length;
     assert(
       reversalCount === 0 && recoveryCount === 0,
       "completed-order refund created Affiliate reversal or recovery transactions"
@@ -681,6 +730,18 @@ const main = async (): Promise<void> => {
       await transaction.auditLog.deleteMany({
         where: { actorId: { in: userIds }, action: { startsWith: "order_refund." } }
       });
+      const capturedRewardTransactions = await transaction.affiliateRewardTransaction.findMany({
+        where: { rewardId: { in: rewardIds } },
+        select: { id: true, ledgerTransactionId: true }
+      });
+      for (const rewardTransaction of capturedRewardTransactions) {
+        if (!rewardTransactionIds.includes(rewardTransaction.id)) {
+          rewardTransactionIds.push(rewardTransaction.id);
+        }
+        if (!ledgerTransactionIds.includes(rewardTransaction.ledgerTransactionId)) {
+          ledgerTransactionIds.push(rewardTransaction.ledgerTransactionId);
+        }
+      }
       await transaction.affiliateRewardTransaction.deleteMany({
         where: { id: { in: rewardTransactionIds } }
       });

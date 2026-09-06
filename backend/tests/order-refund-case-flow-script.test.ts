@@ -36,7 +36,24 @@ describe("completed-order refund case real MySQL checker", () => {
     expect(source).toContain("order-refund-case-${Date.now()}");
     expect(source).toContain("finally");
     expect(source).toContain("deleteFormalTestUserFoundations");
-    expect(source).not.toMatch(/DROP\\s+TABLE/i);
-    expect(source).not.toMatch(/TRUNCATE\\s+TABLE/i);
+    expect(source).toContain("affiliateRewardTransaction.findMany");
+    expect(source).toContain("ledgerTransaction.findMany");
+    expect(source).toContain("afterEvidenceOrder");
+    expect(source).toContain("afterReceiptOrder");
+
+    const dangerousStatements = [/DROP\s+TABLE/i, /TRUNCATE\s+TABLE/i];
+    expect(dangerousStatements.some((pattern) => pattern.test("DROP TABLE refund_cases"))).toBe(
+      true
+    );
+    expect(dangerousStatements.some((pattern) => pattern.test("TRUNCATE TABLE refund_cases"))).toBe(
+      true
+    );
+    expect(dangerousStatements.some((pattern) => pattern.test("DROP index refund_cases"))).toBe(
+      false
+    );
+    expect(dangerousStatements.some((pattern) => pattern.test("TRUNCATE refund_cases"))).toBe(
+      false
+    );
+    for (const pattern of dangerousStatements) expect(source).not.toMatch(pattern);
   });
 });
