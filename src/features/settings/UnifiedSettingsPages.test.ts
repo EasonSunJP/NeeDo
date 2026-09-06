@@ -351,6 +351,11 @@ describe("FormalAccountSecurityPanel", () => {
     expect(accountSource).not.toMatch(/fetchGoogleAccountApi|\/api\/google-account\/|GoogleCalendarAccountBinding|4176/);
   });
 
+  it("returns an ordinary logout directly to login instead of the cached merchant homepage", () => {
+    const logoutAction = source.slice(source.indexOf("void logout().then"), source.indexOf("void logout().then") + 180);
+    expect(logoutAction).toContain("navigate(`/login/${portal}`");
+  });
+
   it("wires successful unlink through AuthProvider logout and returns to the current portal login", () => {
     const accountPageSource = source.slice(source.indexOf("export function UnifiedSettingsAccountPage"), source.indexOf("export function UnifiedSettingsNotificationsPage"));
     expect(accountPageSource).toContain("logout");

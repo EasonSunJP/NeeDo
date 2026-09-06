@@ -124,7 +124,7 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
   it("loads persisted orders and schedule slots without the order mock", () => {
     expect(source).not.toContain('import { orders } from "../../data/mock"');
     expect(source).toContain("bookingApi.listOrders");
-    expect(source).toContain("schedulingApi.listSlots");
+    expect(source).toContain("loadManagedScheduleWindow");
     expect(source).toContain("mapScheduleSlotToCalendarItem");
   });
   it("keeps week and three-day timeline creation aligned with the day timeline", () => {

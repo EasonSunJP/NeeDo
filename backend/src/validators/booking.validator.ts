@@ -294,6 +294,7 @@ export const orderTimelineCommentBodySchema = z.object({ body: visibleTextSchema
 export const orderListQuerySchema = z
   .object({
     ...paginationQuerySchema,
+    dateMode: z.enum(["startsWithin", "overlaps"]).optional(),
     customerUserId: z.coerce.number().int().positive().optional(),
     status: z
       .enum([
@@ -310,6 +311,10 @@ export const orderListQuerySchema = z
     to: isoDateSchema.optional()
   })
   .superRefine((value, context) => {
+    if (value.dateMode === "overlaps" && (!value.from || !value.to)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "overlap queries require from and to", path: ["from"] });
+      return;
+    }
     if (Boolean(value.from) !== Boolean(value.to)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

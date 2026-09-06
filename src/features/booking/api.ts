@@ -265,6 +265,7 @@ export type AvailabilityQuery = {
 };
 
 export type OrderListQuery = {
+  dateMode?: "startsWithin" | "overlaps";
   from?: string;
   page?: number;
   pageSize?: number;
@@ -393,6 +394,7 @@ export const bookingApi = {
   listOrders(query: OrderListQuery = {}) {
     return httpClient.request<PaginatedBookingData<BookingOrder>>("/orders", {
       query: {
+        dateMode: query.dateMode,
         from: query.from,
         page: query.page,
         pageSize: query.pageSize,

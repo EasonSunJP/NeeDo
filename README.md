@@ -2699,3 +2699,7 @@ ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
 ### Technician work status and attendance
 
 The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.
+
+### Admin test contacts and six-month staffing
+
+The local-first, audited two-account dataset and formal calendar acceptance are documented in [administrator contacts and six-month staffing](docs/qa/2026-09-06-admin-contacts-six-month-schedule.md). Appointment overview reads persisted scoped BookingOrders; staffing slots remain separate and display their actual availability state.

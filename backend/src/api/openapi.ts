@@ -20008,6 +20008,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated Booking order list",
         security: [{ bearerAuth: [] }],
         parameters: [
+          {
+            name: "dateMode",
+            in: "query",
+            description: "startsWithin (default) matches order starts; overlaps matches startsAt < to and endsAt > from and requires both bounds. Identity scope is unchanged.",
+            schema: { type: "string", enum: ["startsWithin", "overlaps"], default: "startsWithin" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {

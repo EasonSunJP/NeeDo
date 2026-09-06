@@ -357,6 +357,17 @@ const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean
 };
 
 describe("BookingRepository order list scope", () => {
+  it("uses overlap bounds without dropping merchant and technician identity scope", async () => {
+    const bookingOrder = { findMany: jest.fn(async () => []), count: jest.fn(async () => 0) };
+    const repository = new BookingRepository({ bookingOrder } as never);
+    const from = new Date("2026-09-06T15:00:00.000Z");
+    const to = new Date("2026-09-07T15:00:00.000Z");
+    await repository.listOrders({ shopId: 16, technicianProfileId: 31, from, to, dateMode: "overlaps", page: 1, pageSize: 20 });
+    const where = { shopId: 16, technicianProfileId: 31, deletedAt: null, startsAt: { lt: to }, endsAt: { gt: from } };
+    expect(bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+    expect(bookingOrder.count).toHaveBeenCalledWith({ where });
+  });
+
   it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
     const endsAt = new Date("2026-08-29T14:00:00.000Z");

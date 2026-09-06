@@ -1851,7 +1851,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             title={t(isBusinessPortal ? "退出账号" : "退出登录")}
             onClick={() => {
               void logout().then((result) => {
-                if (result.ok) navigate(getPortalEntry(portal), { replace: true });
+                if (result.ok) navigate(`/login/${portal}`, { replace: true });
               });
             }}
             value={t("退出")}
