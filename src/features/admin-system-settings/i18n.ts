@@ -1,0 +1,141 @@
+import type { Language } from "../../i18n/translations";
+
+const zh = {
+  title: "系统设置",
+  description: "管理全站访问、登录验证、服务端保存期限和正式支付能力。",
+  tabs: ["基础设置", "政策和协议", "储存设置", "支付设置"],
+  save: "保存并发布",
+  saving: "正在保存…",
+  saved: "已发布新版本",
+  dirty: "未保存",
+  version: "当前版本",
+  loading: "正在读取正式设置…",
+  loadError: "设置读取失败",
+  retry: "重新读取",
+  conflict: "版本已变化，当前草稿已保留，请读取最新版本后重新确认。",
+  unavailable: "未接入",
+  projectOnly: "项目入口（暂未接入 API）",
+  legalPending: "政策文档编辑器将在下一微步骤接入；本插页不会展示或保存模拟文档。"
+};
+
+type Copy = typeof zh;
+const copy = (values: Partial<Copy>): Copy => ({ ...zh, ...values });
+
+export const adminSystemSettingsCopy: Record<Language, Copy> = {
+  zh,
+  "zh-Hant": copy({
+    title: "系統設定",
+    description: "管理全站存取、登入驗證、伺服器保存期限和正式支付能力。",
+    tabs: ["基礎設定", "政策和協議", "儲存設定", "支付設定"],
+    save: "儲存並發布",
+    saving: "正在儲存…",
+    saved: "已發布新版本",
+    dirty: "未儲存",
+    loading: "正在讀取正式設定…",
+    loadError: "設定讀取失敗",
+    retry: "重新讀取",
+    conflict: "版本已變更，目前草稿已保留，請讀取最新版本後重新確認。",
+    unavailable: "未接入",
+    projectOnly: "專案入口（暫未接入 API）",
+    legalPending: "政策文件編輯器將在下一微步驟接入；本插頁不會顯示或儲存模擬文件。"
+  }),
+  ja: copy({
+    title: "システム設定",
+    description: "サイト公開、ログイン認証、サーバー保存期間、正式な決済機能を管理します。",
+    tabs: ["基本設定", "ポリシーと規約", "保存設定", "決済設定"],
+    save: "保存して公開",
+    saving: "保存中…",
+    saved: "新しいバージョンを公開しました",
+    dirty: "未保存",
+    version: "現在のバージョン",
+    loading: "正式な設定を読み込んでいます…",
+    loadError: "設定を読み込めませんでした",
+    retry: "再読み込み",
+    conflict: "バージョンが変更されました。下書きは保持されています。最新版を読み込み、再確認してください。",
+    unavailable: "未接続",
+    projectOnly: "プロジェクト入口（API 未接続）",
+    legalPending: "ポリシー文書エディターは次のマイクロステップで接続します。このタブでは模擬文書を表示・保存しません。"
+  }),
+  en: copy({
+    title: "System settings",
+    description: "Manage site access, login verification, server retention, and formal payment capabilities.",
+    tabs: ["Basic", "Policies & agreements", "Storage", "Payments"],
+    save: "Save and publish",
+    saving: "Saving…",
+    saved: "New version published",
+    dirty: "Unsaved",
+    version: "Current version",
+    loading: "Loading formal settings…",
+    loadError: "Could not load settings",
+    retry: "Reload",
+    conflict: "The version changed. Your draft was kept; load the latest version and confirm again.",
+    unavailable: "Not connected",
+    projectOnly: "Project entry (API not connected)",
+    legalPending: "The policy editor will be connected in the next microstep. This tab does not show or save mock documents."
+  }),
+  ko: copy({
+    title: "시스템 설정",
+    description: "사이트 공개, 로그인 인증, 서버 보존 기간 및 정식 결제 기능을 관리합니다.",
+    tabs: ["기본 설정", "정책 및 약관", "저장 설정", "결제 설정"],
+    save: "저장 및 게시",
+    saving: "저장 중…",
+    saved: "새 버전을 게시했습니다",
+    dirty: "저장되지 않음",
+    version: "현재 버전",
+    loading: "정식 설정을 불러오는 중…",
+    loadError: "설정을 불러오지 못했습니다",
+    retry: "다시 불러오기",
+    conflict: "버전이 변경되었습니다. 초안은 유지되었으니 최신 버전을 불러온 뒤 다시 확인해 주세요.",
+    unavailable: "연결되지 않음",
+    projectOnly: "프로젝트 진입점(API 미연결)",
+    legalPending: "정책 문서 편집기는 다음 마이크로 단계에서 연결됩니다. 이 탭은 모의 문서를 표시하거나 저장하지 않습니다."
+  })
+};
+
+const phrases: Record<string, Partial<Record<Language, string>>> = {
+  "仅初次登录": { "zh-Hant": "僅初次登入", ja: "初回ログインのみ", en: "First login only", ko: "최초 로그인만" },
+  "每月初次登录": { "zh-Hant": "每月初次登入", ja: "毎月の初回ログイン", en: "First login each month", ko: "매월 첫 로그인" },
+  "每次登录": { "zh-Hant": "每次登入", ja: "毎回のログイン", en: "Every login", ko: "매 로그인" },
+  "站点开关": { "zh-Hant": "站點開關", ja: "サイト公開", en: "Site availability", ko: "사이트 공개" },
+  "关闭后客户端显示维护页，运营后台登录与设置仍可访问。": { "zh-Hant": "關閉後客戶端顯示維護頁，營運後台登入與設定仍可存取。", ja: "オフにするとクライアントにはメンテナンス画面を表示し、運営管理のログインと設定は引き続き利用できます。", en: "When off, client portals show maintenance while Operations login and settings remain available.", ko: "끄면 클라이언트 포털에 점검 화면이 표시되며 운영 관리자 로그인과 설정은 계속 사용할 수 있습니다." },
+  "新用户注册入口": { "zh-Hant": "新使用者註冊入口", ja: "新規ユーザー登録", en: "New-user registration", ko: "신규 사용자 가입" },
+  "只控制公开自助注册；运营后台仍可创建用户。": { "zh-Hant": "只控制公開自助註冊；營運後台仍可建立使用者。", ja: "公開セルフ登録のみを制御します。運営管理では引き続きユーザーを作成できます。", en: "Controls public self-registration only; Operations can still create users.", ko: "공개 자체 가입만 제어하며 운영 관리자에서는 계속 사용자를 만들 수 있습니다." },
+  "登录方法": { "zh-Hant": "登入方法", ja: "ログイン方法", en: "Login methods", ko: "로그인 방법" },
+  "控制登录页 Google 入口。": { "zh-Hant": "控制登入頁 Google 入口。", ja: "ログイン画面の Google 入口を制御します。", en: "Controls the Google entry on the login page.", ko: "로그인 화면의 Google 진입점을 제어합니다." },
+  "密码登录邮箱验证码": { "zh-Hant": "密碼登入信箱驗證碼", ja: "パスワードログインのメール認証コード", en: "Password-login email verification", ko: "비밀번호 로그인 이메일 인증" },
+  "开启后，验证码发送到登录邮箱，并在登录页输入六位验证码。": { "zh-Hant": "開啟後，驗證碼傳送到登入信箱，並在登入頁輸入六位驗證碼。", ja: "有効にするとログイン用メールアドレスへコードを送り、ログイン画面で6桁のコードを入力します。", en: "When enabled, a six-digit code is sent to the login email and entered on the login page.", ko: "활성화하면 로그인 이메일로 6자리 코드를 보내고 로그인 화면에서 입력합니다." },
+  "时间规则（单选）": { "zh-Hant": "時間規則（單選）", ja: "タイミング規則（単一選択）", en: "Timing rule (single choice)", ko: "시점 규칙(단일 선택)" },
+  "新 IP 地址登录时也发送验证码（可与上方时间规则组合）": { "zh-Hant": "新 IP 位址登入時也傳送驗證碼（可與上方時間規則組合）", ja: "新しい IP アドレスからのログインでもコードを送信（上の規則と組み合わせ可能）", en: "Also send a code for login from a new IP address (combinable with the timing rule)", ko: "새 IP 주소에서 로그인할 때도 코드 전송(위 시점 규칙과 조합 가능)" },
+  "登录页 LOGO": { "zh-Hant": "登入頁 LOGO", ja: "ログイン画面のロゴ", en: "Login-page logo", ko: "로그인 화면 로고" },
+  "Request 中央按钮图片": { "zh-Hant": "Request 中央按鈕圖片", ja: "Request 中央ボタン画像", en: "Request center-button image", ko: "Request 중앙 버튼 이미지" },
+  "当前启用": { "zh-Hant": "目前啟用", ja: "現在使用中", en: "Active", ko: "현재 사용 중" },
+  "系统默认 · 当前启用": { "zh-Hant": "系統預設 · 目前啟用", ja: "システム既定 · 使用中", en: "System default · Active", ko: "시스템 기본값 · 사용 중" },
+  "待发布": { "zh-Hant": "待發布", ja: "公開待ち", en: "Pending publish", ko: "게시 대기" },
+  "当前图片显示在登录页中央标识。": { "zh-Hant": "目前圖片顯示在登入頁中央標識。", ja: "現在の画像はログイン画面中央のマークに表示されます。", en: "The current image appears in the center of the login page.", ko: "현재 이미지는 로그인 화면 중앙 표시에 사용됩니다." },
+  "当前图片显示在主导航中央；颜色会跟随每位用户的 UI 主题自动适配。": { "zh-Hant": "目前圖片顯示在主導覽中央；顏色會依每位使用者的 UI 主題自動調整。", ja: "現在の画像はメインナビ中央に表示され、色は各ユーザーの UI テーマに合わせて自動調整されます。", en: "The current image appears in the main navigation center; its color adapts to each user's UI theme.", ko: "현재 이미지는 기본 탐색 중앙에 표시되며 색상은 각 사용자의 UI 테마에 맞게 자동 조정됩니다." },
+  "选择新图片": { "zh-Hant": "選擇新圖片", ja: "新しい画像を選択", en: "Choose new image", ko: "새 이미지 선택" },
+  "支持 PNG、JPG、WebP；发布后生效。": { "zh-Hant": "支援 PNG、JPG、WebP；發布後生效。", ja: "PNG、JPG、WebP に対応。公開後に反映されます。", en: "PNG, JPG, or WebP. Takes effect after publishing.", ko: "PNG, JPG, WebP 지원. 게시 후 적용됩니다." },
+  "新图片已上传；当前线上图片会保持到发布完成。": { "zh-Hant": "新圖片已上傳；目前線上圖片會保留至發布完成。", ja: "新しい画像をアップロードしました。公開が完了するまで現在の画像を使用します。", en: "New image uploaded; the current live image stays active until publishing finishes.", ko: "새 이미지가 업로드되었습니다. 게시가 완료될 때까지 현재 이미지가 유지됩니다." },
+  "尚未设置": { "zh-Hant": "尚未設定", ja: "未設定", en: "Not set", ko: "설정되지 않음" },
+  "缺少媒体上传权限": { "zh-Hant": "缺少媒體上傳權限", ja: "メディアアップロード権限がありません", en: "Media upload permission is missing", ko: "미디어 업로드 권한이 없습니다" },
+  "缺少品牌媒体启用权限，当前图片不能发布。": { "zh-Hant": "缺少品牌媒體啟用權限，目前圖片不能發布。", ja: "ブランドメディア有効化権限がないため、この画像は公開できません。", en: "Brand-media activation permission is missing, so this image cannot be published.", ko: "브랜드 미디어 활성화 권한이 없어 이 이미지를 게시할 수 없습니다." },
+  "保存或上传失败，请重试。": { "zh-Hant": "儲存或上傳失敗，請重試。", ja: "保存またはアップロードに失敗しました。再試行してください。", en: "Save or upload failed. Please retry.", ko: "저장 또는 업로드에 실패했습니다. 다시 시도해 주세요." },
+  "此规则只清理服务器保存的数据，并仅对保存后的新规则生效；不会删除用户设备本地的聊天记录或媒体缓存。": { "zh-Hant": "此規則只清理伺服器保存的資料，並僅對儲存後的新規則生效；不會刪除使用者裝置本地的聊天記錄或媒體快取。", ja: "この規則はサーバー保存データのみを削除し、保存後の新しい規則にだけ適用されます。端末内のチャット履歴やメディアキャッシュは削除しません。", en: "This rule cleans up server-held data only and applies prospectively after saving. It does not delete device-local chat history or media caches.", ko: "이 규칙은 서버 저장 데이터만 정리하며 저장 후부터 적용됩니다. 기기의 채팅 기록이나 미디어 캐시는 삭제하지 않습니다." },
+  "IM 消息": { "zh-Hant": "IM 訊息", ja: "IM メッセージ", en: "IM messages", ko: "IM 메시지" },
+  "IM 媒体": { "zh-Hant": "IM 媒體", ja: "IM メディア", en: "IM media", ko: "IM 미디어" },
+  "默认 30 天": { "zh-Hant": "預設 30 天", ja: "既定値30日", en: "default 30 days", ko: "기본 30일" },
+  "默认 3 天": { "zh-Hant": "預設 3 天", ja: "既定値3日", en: "default 3 days", ko: "기본 3일" },
+  "服务器保存时间，单位：天": { "zh-Hant": "伺服器保存時間，單位：天", ja: "サーバー保存期間（日）", en: "Server retention in days", ko: "서버 보존 기간(일)" },
+  "请输入 1 至 3650 的整数天数。": { "zh-Hant": "請輸入 1 至 3650 的整數天數。", ja: "1〜3650の整数日数を入力してください。", en: "Enter a whole number of days from 1 to 3650.", ko: "1~3650 사이의 정수 일수를 입력해 주세요." },
+  "线下支付": { "zh-Hant": "線下支付", ja: "オフライン決済", en: "Offline payment", ko: "오프라인 결제" },
+  "由现场人员、技师或店铺人工确认收款。": { "zh-Hant": "由現場人員、技師或店鋪人工確認收款。", ja: "現場スタッフ、技術者、または店舗が手動で入金確認します。", en: "Payment is manually confirmed by on-site staff, technicians, or the store.", ko: "현장 직원, 기술자 또는 매장이 수동으로 결제를 확인합니다." },
+  "NDP 支付": { "zh-Hant": "NDP 支付", ja: "NDP 決済", en: "NDP payment", ko: "NDP 결제" },
+  "控制 NeeDo 内的 NDP 正式支付能力。": { "zh-Hant": "控制 NeeDo 內的 NDP 正式支付能力。", ja: "NeeDo 内の正式な NDP 決済機能を制御します。", en: "Controls the formal NDP payment capability inside NeeDo.", ko: "NeeDo 내 정식 NDP 결제 기능을 제어합니다." },
+  "外部支付项目": { "zh-Hant": "外部支付專案", ja: "外部決済プロジェクト", en: "External payment projects", ko: "외부 결제 프로젝트" },
+  "PayPay 与 PayPal 未来由 NeeDo 直接调起外部支付；不是人工确认。Stripe 仅保留聚合支付项目入口。": { "zh-Hant": "PayPay 與 PayPal 未來由 NeeDo 直接啟動外部支付；不是人工確認。Stripe 僅保留聚合支付專案入口。", ja: "PayPay と PayPal は将来 NeeDo から外部決済を直接起動し、手動確認は行いません。Stripe は統合決済プロジェクトの入口のみです。", en: "PayPay and PayPal will launch external payment directly from NeeDo; they are not manually confirmed. Stripe remains an aggregator project entry only.", ko: "PayPay와 PayPal은 향후 NeeDo에서 외부 결제를 직접 실행하며 수동 확인이 아닙니다. Stripe는 통합 결제 프로젝트 진입점만 유지합니다." },
+  "保存失败，请重试。": { "zh-Hant": "儲存失敗，請重試。", ja: "保存に失敗しました。再試行してください。", en: "Save failed. Please retry.", ko: "저장에 실패했습니다. 다시 시도해 주세요." }
+};
+
+export function adminSystemSettingsText(source: string, language: Language) {
+  return language === "zh" ? source : phrases[source]?.[language] ?? source;
+}

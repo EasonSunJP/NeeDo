@@ -19,7 +19,7 @@ const productionCapabilities: Readonly<
   exclusive_discount: unavailable,
   member_day: unavailable,
   birthday_gift: unavailable,
-  traceless_recall: unavailable
+  traceless_recall: available
 };
 
 export class MembershipBenefitCapabilityService {

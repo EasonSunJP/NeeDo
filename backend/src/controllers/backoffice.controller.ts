@@ -10,6 +10,7 @@ import {
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeManagedUserListQuerySchema,
+  backofficeManagedUserDetailQuerySchema,
   backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
@@ -110,7 +111,8 @@ export class BackofficeController {
     service.getManagedUser(
       backofficeManagedUserParamSchema.parse(request.params).userId,
       getAuthenticatedAccess(response),
-      getRequestContext(request)
+      getRequestContext(request),
+      backofficeManagedUserDetailQuerySchema.parse(request.query)
     )
   );
 
@@ -126,7 +128,8 @@ export class BackofficeController {
     service.getMerchantManagedUser(
       backofficeManagedUserParamSchema.parse(request.params).userId,
       getAuthenticatedAccess(response),
-      getRequestContext(request)
+      getRequestContext(request),
+      backofficeManagedUserDetailQuerySchema.parse(request.query)
     )
   );
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { translateText, type Language } from "../../i18n/translations";
+import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Badge";
 import { TableColumnHeader, type TableSortDirection } from "../../components/ui/TableColumnHeader";
 import { membershipTierText, platformUserManagementCopy, privacyModeText, privacyScopeText } from "./i18n";
@@ -202,7 +203,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
           <ServerColumnHeader {...headerProps} columnKey="ndp" filterPatch={(range) => ({ minNdpBalance: range ? ndpRanges[range]?.minNdpBalance : undefined, maxNdpBalance: range ? ndpRanges[range]?.maxNdpBalance : undefined })} options={Object.keys(ndpRanges).map((value) => ({ value, label: value }))} title={copy.ndpBalance} value={activeRange(ndpRanges, "minNdpBalance", "maxNdpBalance")} />
           <ServerColumnHeader {...headerProps} columnKey="state" multiFilterPatch={(states) => ({ states: states as UserListQuery["states"] })} options={[{ value: "active", label: copy.active }, { value: "inactive", label: copy.inactive }]} title={copy.status} values={query.states} />
           <ServerColumnHeader {...headerProps} columnKey="createdAt" dateFrom={query.registeredFrom?.slice(0, 10) ?? ""} datePatch={(from, to) => ({ registeredFrom: from ? `${from}T00:00:00.000Z` : undefined, registeredTo: to ? `${to}T23:59:59.999Z` : undefined })} dateTo={query.registeredTo?.slice(0, 10) ?? ""} sortKey="createdAt" title={copy.registeredAt} />
-          <th className="px-4 py-3 font-black">{copy.details}</th>
+          <th className="table-frozen-action px-4 py-3 font-black">{copy.details}</th>
         </tr></thead>
         <tbody className="divide-y divide-line">{rows.map((row) => (
           <tr className="hover:bg-paper/70" key={row.id}>
@@ -217,7 +218,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
             <td className="px-4 py-3 font-bold">{row.ndpBalance.available.toLocaleString()}</td>
             <td className="px-4 py-3"><Badge tone={row.isActive ? "green" : "red"}>{row.isActive ? copy.active : copy.inactive}</Badge></td>
             <td className="px-4 py-3 text-xs text-ink/55">{new Date(row.createdAt).toLocaleString(language)}</td>
-            <td className="px-4 py-3"><button className="font-bold text-moss hover:underline" onClick={() => onSelect(row.id)} type="button">{copy.details}</button></td>
+            <td className="table-frozen-action px-4 py-3"><Button className="whitespace-nowrap" onClick={() => onSelect(row.id)} size="sm" variant="secondary">{copy.details}</Button></td>
           </tr>
         ))}</tbody>
       </table>

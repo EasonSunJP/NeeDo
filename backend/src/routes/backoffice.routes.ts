@@ -28,6 +28,7 @@ import {
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeManagedUserListQuerySchema,
+  backofficeManagedUserDetailQuerySchema,
   backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
@@ -168,7 +169,7 @@ export const createBackofficeRoutes = (
     "/backoffice/users/:userId",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
-    validateRequest({ params: backofficeManagedUserParamSchema }),
+    validateRequest({ params: backofficeManagedUserParamSchema, query: backofficeManagedUserDetailQuerySchema }),
     controller.managedUser
   );
   router.get(
@@ -496,7 +497,7 @@ export const createBackofficeRoutes = (
     "/merchant-admin/users/:userId",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
-    validateRequest({ params: backofficeManagedUserParamSchema }),
+    validateRequest({ params: backofficeManagedUserParamSchema, query: backofficeManagedUserDetailQuerySchema }),
     controller.merchantManagedUser
   );
   router.get(

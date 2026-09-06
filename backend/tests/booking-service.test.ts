@@ -235,6 +235,7 @@ describe("BookingService state machine", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       publisher
     );
 
@@ -286,6 +287,7 @@ describe("BookingService state machine", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       publisher
     );
     await expect(
@@ -324,6 +326,7 @@ describe("BookingService state machine", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       failingPublisher
     );
     await expect(
@@ -352,6 +355,7 @@ describe("BookingService state machine", () => {
     const publisher = { publish: jest.fn(async () => null) };
     const service = new BookingService(
       repository,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -415,6 +419,7 @@ describe("BookingService state machine", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       publisher
     );
 
@@ -445,6 +450,7 @@ describe("BookingService state machine", () => {
     const publisher = { publish: jest.fn(async () => null) };
     const service = new BookingService(
       repository,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -529,6 +535,7 @@ describe("BookingService state machine", () => {
         repository,
         service: new BookingService(
           repository,
+          undefined,
           undefined,
           undefined,
           undefined,

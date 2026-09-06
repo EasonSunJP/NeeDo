@@ -301,8 +301,10 @@ function resolveRequestMethod(options: HttpClientRequestOptions): HttpMethod {
   return options.method ?? (options.body === undefined ? "GET" : "POST");
 }
 
-function getPreviewShopId(options: HttpClientRequestOptions) {
-  return options.auth === false ? null : (getMerchantAdminPreview()?.selectedShopId ?? null);
+function getPreviewShopId(path: string, options: HttpClientRequestOptions) {
+  return options.auth === false || !path.startsWith("/merchant-admin/")
+    ? null
+    : (getMerchantAdminPreview()?.selectedShopId ?? null);
 }
 
 function assertMerchantPreviewAllows(method: HttpMethod, previewShopId: number | null) {
@@ -450,7 +452,7 @@ async function sendRequest<TData>(
   await alignAccessTokenWithExpectedUser(options);
   const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
@@ -539,7 +541,7 @@ async function sendCsvExportRequest(
   await alignAccessTokenWithExpectedUser(options);
   const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
@@ -645,7 +647,7 @@ async function sendDataUrlRequest(
   await alignAccessTokenWithExpectedUser(options);
   const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
@@ -726,7 +728,7 @@ async function sendBinaryRequest(
   await alignAccessTokenWithExpectedUser(options);
   const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),

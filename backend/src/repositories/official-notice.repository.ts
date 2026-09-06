@@ -137,7 +137,14 @@ export function buildOfficialNoticeRecipientWhere(
     return { ...base, type: { in: [...new Set(audience.identityTypes)] } };
   }
   if (audience.type === "exact_users") {
-    return { ...base, userId: { in: [...new Set(audience.userIds)] } };
+    return {
+      ...base,
+      user: {
+        isActive: true,
+        deletedAt: null,
+        needoId: { in: [...new Set(audience.needoIds)] }
+      }
+    };
   }
   return base;
 }
@@ -287,6 +294,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
+    search?: string;
     status?: OfficialNoticeStatusCode;
     level?: OfficialNoticeLevelCode;
   }): Promise<{ list: OfficialNoticePayload[]; total: number }> {
@@ -294,6 +302,25 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     const where: Prisma.OfficialNoticeWhereInput = {
       deletedAt: null,
       ...this.issuerWhere(input.issuerScope),
+      ...(input.search
+        ? {
+            OR: [
+              { publicId: { contains: input.search } },
+              { targetSummary: { contains: input.search } },
+              {
+                translations: {
+                  some: {
+                    deletedAt: null,
+                    OR: [
+                      { title: { contains: input.search } },
+                      { summary: { contains: input.search } }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        : {}),
       ...(input.status ? { status: statusToDb[input.status] } : {}),
       ...(input.level ? { level: levelToDb[input.level] } : {})
     };
@@ -594,7 +621,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       select: { id: true }
     });
     if (!candidate) throw this.notFound();
-    return this.client.$transaction(async (transaction) => {
+    const result = await this.client.$transaction(async (transaction) => {
       await transaction.$queryRaw(Prisma.sql`SELECT id FROM notice_deliveries
         WHERE id = ${candidate.id}
         AND recipient_identity_id = ${input.recipientIdentityId} AND recipient_user_id = ${input.actorUserId}
@@ -635,8 +662,23 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
           }
         });
       }
-      return { publicId: input.publicId, readAt };
+      return { publicId: input.publicId, readAt, changed: !delivery.readAt, deliveryId: delivery.id };
     });
+    if (result.changed) {
+      try {
+        this.eventGateway?.publish({
+          id: `official-notice-read:${result.deliveryId}:${result.readAt.getTime()}`,
+          type: "notification.read",
+          recipientUserId: input.actorUserId,
+          recipientIdentityId: input.recipientIdentityId,
+          payload: { kind: "official_notice", publicId: input.publicId },
+          createdAt: result.readAt.toISOString()
+        });
+      } catch {
+        // The read is committed; reconnecting clients recover it through the inbox API.
+      }
+    }
+    return { publicId: result.publicId, readAt: result.readAt };
   }
 
   private async deliverOne(deliveryId: number, noticeId: number, now: Date): Promise<void> {
@@ -887,7 +929,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
   ): Promise<number> {
     let afterId = 0;
     let total = 0;
-    const foundUsers = new Set<number>();
+    const foundNeedoIds = new Set<string>();
     while (true) {
       const recipients = await transaction.userIdentity.findMany({
         where: {
@@ -916,7 +958,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       afterId = recipients[recipients.length - 1].id;
       total += recipients.length;
       if (input.audience.type === "exact_users")
-        for (const recipient of recipients) foundUsers.add(recipient.userId);
+        for (const recipient of recipients) foundNeedoIds.add(recipient.user.needoId);
       await transaction.noticeAudience.createMany({
         data: recipients.map((recipient) => ({
           noticeId,
@@ -958,7 +1000,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     if (total === 0) throw this.conflict("error.official_notice.audience_empty");
     if (
       input.audience.type === "exact_users" &&
-      input.audience.userIds.some((id) => !foundUsers.has(id))
+      input.audience.needoIds.some((needoId) => !foundNeedoIds.has(needoId))
     ) {
       throw this.conflict("error.official_notice.target_unavailable");
     }

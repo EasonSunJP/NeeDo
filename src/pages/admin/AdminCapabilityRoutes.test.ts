@@ -34,6 +34,15 @@ const merchantAdminLayoutSource = readFileSync(
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
 
+describe("operations system settings route", () => {
+  it("separates system settings from role management", () => {
+    expect(adminLayoutSource).toContain('to: "/admin/settings/system"');
+    expect(adminLayoutSource).not.toContain('to: "/admin/roles?module=system"');
+    expect(appSource).toContain('path="/admin/settings/system" element={protectPermission("admin", "backoffice:system-settings:read"');
+    expect(appSource).toContain('path="/admin/roles" element={protectPermission("admin", "page:role-management"');
+  });
+});
+
 describe("formal platform user-management routes", () => {
   it("registers five independently permissioned lazy workspaces", () => {
     for (const [path, permission, component] of [
@@ -137,6 +146,7 @@ describe("formal official notification workspaces", () => {
 
   it("registers separately permissioned platform and merchant management routes", () => {
     expect(appSource).toContain('path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice"');
+    expect(appSource).toContain('path="/admin/notifications/inbox" element={protect("admin"');
     expect(appSource).toContain('["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"]');
     expect(appSource).toContain('path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read"');
     expect(appSource).toContain('["merchant-admin:notice:create", "merchant-admin:notice:send"]');

@@ -134,6 +134,7 @@ const checkout: OrderCheckout = {
   discountAmountJpy: 0,
   checkoutAmountJpy: 14_500,
   payableNdp: 14_500,
+  availablePaymentMethods: ["cash", "ndp"],
   rate: { ruleId: 1, publicId: "rate-1", version: 1, ndpUnits: 1, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: { formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount", baseAmountJpy: 8_000, acceptedAddOnIds: [3], addOnAmountJpy: 6_500, travelFareAmountJpy: 0, discountAmountJpy: 0, checkoutAmountJpy: 14_500, rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" },
   paymentMethod: "ndp",

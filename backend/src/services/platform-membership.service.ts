@@ -42,6 +42,14 @@ export interface PlatformMembershipExperienceRecorderPort {
   ) => Promise<unknown>;
 }
 
+export interface PlatformMembershipBenefitResolverPort {
+  hasEffectiveBenefitAt: (
+    userId: number,
+    benefitCode: "traceless_recall",
+    occurredAt: Date
+  ) => Promise<boolean>;
+}
+
 export type PlatformMembershipTierDraftInput = PlatformMembershipTierDraftPersistenceInput;
 
 export type MembershipBenefitLocale = "zh" | "zh-Hant" | "ja" | "en" | "ko";
@@ -179,6 +187,38 @@ export class PlatformMembershipService {
         };
       })
     };
+  }
+
+  public async hasEffectiveBenefitAt(
+    userId: number,
+    benefitCode: "traceless_recall",
+    occurredAt: Date
+  ): Promise<boolean> {
+    if (!(await this.repository.hasActiveCustomerProfile(userId))) {
+      return false;
+    }
+    const membership = await this.resolveMembershipAt(userId, occurredAt);
+    const publishedTier = await this.repository.findPublishedTierAt(membership.tierCode, occurredAt);
+    if (!publishedTier?.benefitCatalog) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.platform_membership.benefit_catalog_unavailable",
+        statusCode: 500
+      });
+    }
+    const benefit = publishedTier.benefitCatalog.find((item) => item.code === benefitCode);
+    if (!benefit) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.platform_membership.benefit_catalog_unavailable",
+        statusCode: 500
+      });
+    }
+    return (
+      benefit.configuredEnabled &&
+      benefit.globallyEnabled &&
+      this.benefitCapabilities.resolve(benefitCode) === "available"
+    );
   }
 
   public async listTiersForAdministration(

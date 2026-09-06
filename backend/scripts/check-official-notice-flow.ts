@@ -4,6 +4,14 @@ import { config as loadDotenv } from "dotenv";
 import type { PrismaClient } from "@prisma/client";
 import type { RealtimeEvent } from "../src/services/realtime-event.gateway";
 
+const noticeTranslations = (title: string, summary: string, content: string) => ({
+  "zh-CN": { title, summary, blocks: [{ id: "body-zh-cn", type: "paragraph", content }] },
+  "zh-TW": { title, summary, blocks: [{ id: "body-zh-tw", type: "paragraph", content }] },
+  en: { title, summary, blocks: [{ id: "body-en", type: "paragraph", content }] },
+  ja: { title, summary, blocks: [{ id: "body-ja", type: "paragraph", content }] },
+  ko: { title, summary, blocks: [{ id: "body-ko", type: "paragraph", content }] }
+});
+
 async function main(): Promise<void> {
   const envFile = process.env.ENV_FILE;
   if (!envFile) throw new Error("ENV_FILE is required for local notice acceptance");
@@ -37,12 +45,14 @@ async function main(): Promise<void> {
             isTestAccount: true,
             isActive: true,
             deletedAt: null,
+            needoId: { startsWith: "u" },
             identities: { some: { isActive: true, deletedAt: null } }
           },
           orderBy: { id: "asc" },
           take: 2,
           select: {
             id: true,
+            needoId: true,
             identities: {
               where: { isActive: true, deletedAt: null },
               take: 1,
@@ -51,6 +61,10 @@ async function main(): Promise<void> {
           }
         });
         assert.equal(accounts.length, 2, "two existing formal test accounts are required");
+        assert.ok(
+          accounts.every((account) => /^u[0-9]{10}$/u.test(account.needoId)),
+          "formal test accounts must expose current U identifiers"
+        );
         const sender = accounts[0];
         const outsider = accounts[1];
         // Every fixture and every nested repository operation stays inside this rollback boundary.
@@ -96,10 +110,8 @@ async function main(): Promise<void> {
         const body = officialNoticeCreateBodySchema.parse({
           sourceLocale: "ja",
           level: "important",
-          title: marker,
-          summary: "Local rollback acceptance",
-          blocks: [{ id: "text-1", type: "paragraph", content: "Persisted notice acceptance" }],
-          audience: { type: "exact_users", userIds: [sender.id] },
+          translations: noticeTranslations(marker, "Local rollback acceptance", "Persisted notice acceptance"),
+          audience: { type: "exact_users", needoIds: [sender.needoId] },
           sendMode: "now",
           scheduledAt: null,
           idempotencyKey: marker
@@ -335,11 +347,13 @@ async function checkConcurrentDelivery() {
         isTestAccount: true,
         isActive: true,
         deletedAt: null,
+        needoId: { startsWith: "u" },
         identities: { some: { isActive: true, deletedAt: null } }
       },
-      select: { id: true },
+      select: { id: true, needoId: true },
       orderBy: { id: "asc" }
     });
+    assert.match(user.needoId, /^u[0-9]{10}$/u);
     const now = new Date();
     // Future scheduling prevents the ordinary local workers from consuming this fixture.
     const dueAt = new Date(now.getTime() + 3_600_000);
@@ -351,10 +365,8 @@ async function checkConcurrentDelivery() {
       officialNoticeCreateBodySchema.parse({
         sourceLocale: "ja",
         level: "general",
-        title: marker,
-        summary: marker,
-        blocks: [{ id: "p-1", type: "paragraph", content: marker }],
-        audience: { type: "exact_users", userIds: [user.id] },
+        translations: noticeTranslations(marker, marker, marker),
+        audience: { type: "exact_users", needoIds: [user.needoId] },
         sendMode: "scheduled",
         scheduledAt: dueAt.toISOString(),
         idempotencyKey: marker

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { AdminEventTimeline } from "../../components/admin/AdminEventTimeline";
+import { useOptionalAuth } from "../../auth/AuthProvider";
 import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
@@ -9,9 +11,9 @@ import type { UserDirectoryScope, UserUsage, UserUsageTimeline } from "./types";
 
 const copy: Record<Language, Record<string, string>> = {
   zh: {
-    title: "履约流程",
-    loading: "正在读取履约流程...",
-    failed: "履约流程读取失败",
+    title: "用户LOG",
+    loading: "正在读取用户LOG...",
+    failed: "用户LOG读取失败",
     retry: "重试",
     comment: "追加评论",
     placeholder: "填写不可删除的运营评论",
@@ -19,13 +21,13 @@ const copy: Record<Language, Record<string, string>> = {
     submit: "追加评论",
     refund: "退款信息",
     reference: "退款编号",
-    none: "暂无履约记录",
+    none: "暂无用户LOG",
     system: "系统",
   },
   "zh-Hant": {
-    title: "履約流程",
-    loading: "正在讀取履約流程...",
-    failed: "履約流程讀取失敗",
+    title: "使用者LOG",
+    loading: "正在讀取使用者LOG...",
+    failed: "使用者LOG讀取失敗",
     retry: "重試",
     comment: "追加評論",
     placeholder: "填寫不可刪除的營運評論",
@@ -33,13 +35,13 @@ const copy: Record<Language, Record<string, string>> = {
     submit: "追加評論",
     refund: "退款資訊",
     reference: "退款編號",
-    none: "暫無履約紀錄",
+    none: "暫無使用者LOG",
     system: "系統",
   },
   ja: {
-    title: "履行プロセス",
-    loading: "履行プロセスを読み込み中...",
-    failed: "履行プロセスを読み込めませんでした",
+    title: "ユーザーLOG",
+    loading: "ユーザーLOGを読み込み中...",
+    failed: "ユーザーLOGを読み込めませんでした",
     retry: "再試行",
     comment: "コメントを追加",
     placeholder: "削除できない運営コメントを入力",
@@ -47,13 +49,13 @@ const copy: Record<Language, Record<string, string>> = {
     submit: "コメントを追加",
     refund: "返金情報",
     reference: "返金番号",
-    none: "履行記録はありません",
+    none: "ユーザーLOGはありません",
     system: "システム",
   },
   en: {
-    title: "Fulfillment timeline",
-    loading: "Loading fulfillment timeline...",
-    failed: "Could not load the fulfillment timeline",
+    title: "User LOG",
+    loading: "Loading user LOG...",
+    failed: "Could not load the user LOG",
     retry: "Retry",
     comment: "Add comment",
     placeholder: "Enter an immutable operations comment",
@@ -61,13 +63,13 @@ const copy: Record<Language, Record<string, string>> = {
     submit: "Add comment",
     refund: "Refund details",
     reference: "Refund reference",
-    none: "No fulfillment events",
+    none: "No user LOG entries",
     system: "System",
   },
   ko: {
-    title: "이행 과정",
-    loading: "이행 과정 불러오는 중...",
-    failed: "이행 과정을 불러오지 못했습니다",
+    title: "사용자 LOG",
+    loading: "사용자 LOG 불러오는 중...",
+    failed: "사용자 LOG를 불러오지 못했습니다",
     retry: "다시 시도",
     comment: "댓글 추가",
     placeholder: "삭제할 수 없는 운영 댓글을 입력",
@@ -75,7 +77,7 @@ const copy: Record<Language, Record<string, string>> = {
     submit: "댓글 추가",
     refund: "환불 정보",
     reference: "환불 번호",
-    none: "이행 기록이 없습니다",
+    none: "사용자 LOG가 없습니다",
     system: "시스템",
   },
 };
@@ -170,6 +172,8 @@ export function UserFulfillmentTimelineDrawer({
 }) {
   const { language } = useOptionalI18n();
   const text = copy[language];
+  const auth = useOptionalAuth();
+  const [commentOpen, setCommentOpen] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<{
     loading: boolean;
@@ -180,6 +184,9 @@ export function UserFulfillmentTimelineDrawer({
   const [commentError, setCommentError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
+    setCommentOpen(false);
+    setComment("");
+    setCommentError("");
     if (!usage) {
       setState({ loading: false, error: "", data: null });
       return;
@@ -227,7 +234,7 @@ export function UserFulfillmentTimelineDrawer({
       maxWidth={980}
       onClose={onClose}
       open={usage !== null}
-      title={usage ? `${text.title} · ${usage.orderNo}` : text.title}
+      title={usage ? `${text.title}・${usage.orderNo}` : text.title}
       widthStorageKey="needo.ui.drawer.user-fulfillment-timeline.width"
     >
       {state.loading ? (
@@ -271,51 +278,35 @@ export function UserFulfillmentTimelineDrawer({
           </div>
         </section>
       ) : null}
-      <div className="grid gap-3">
-        {state.data?.timeline.map((event) => (
-          <article
-            className="relative ml-3 border-l-2 border-moss/30 pb-4 pl-5 last:pb-0"
-            key={event.id}
-          >
-            <span className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-moss" />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <strong className="text-sm font-black text-ink">
-                {eventLabels[event.code]?.[language] ??
-                  eventLabels[event.type]?.[language] ??
-                  text.system}
-              </strong>
-              <time className="text-xs font-bold text-ink/40">
-                {new Intl.DateTimeFormat(
-                  language === "zh"
-                    ? "zh-CN"
-                    : language === "zh-Hant"
-                      ? "zh-TW"
-                      : language,
-                  { dateStyle: "medium", timeStyle: "short" },
-                ).format(new Date(event.occurredAt))}
-              </time>
-            </div>
-            {event.actorName ? (
-              <p className="mt-1 text-xs font-bold text-ink/45">
-                {event.actorName}
-              </p>
-            ) : null}
-            {event.body ? (
-              <p className="mt-2 whitespace-pre-wrap rounded-lg bg-paper p-3 text-sm font-medium text-ink/70">
-                {event.body}
-              </p>
-            ) : null}
-          </article>
-        ))}
-      </div>
-      {!state.loading && state.data?.timeline.length === 0 ? (
-        <p className="text-sm font-bold text-ink/45">{text.none}</p>
-      ) : null}
-      {canComment ? (
-        <section className="mt-5 border-t border-line pt-4">
+      {state.data ? <AdminEventTimeline
+        title={text.title}
+        emptyLabel={text.none}
+        commentButtonLabel={text.comment}
+        commentAuthorName={auth?.session?.profileDisplayName ?? auth?.session?.username ?? text.system}
+        commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
+        showCommentComposer={canComment}
+        onCommentButtonClick={() => setCommentOpen(true)}
+        events={state.data.timeline.map((event) => {
+          const label = eventLabels[event.code]?.[language] ?? eventLabels[event.type]?.[language] ?? text.system;
+          const locale = language === "zh" ? "zh-CN" : language === "zh-Hant" ? "zh-TW" : language;
+          const date = new Date(event.occurredAt);
+          return {
+            id: event.id, title: label, actorRole: label,
+            actorName: event.actorName ?? text.system,
+            actorAvatarSrc: event.actorAvatarUrl ?? undefined,
+            atLabel: `${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)}\n${new Intl.DateTimeFormat(locale, { timeStyle: "medium" }).format(date)}`,
+            preserveAtLabel: true,
+            message: event.body ?? label,
+            tone: ["cancelled", "failed", "no_show"].includes(event.code) ? "red" as const : "green" as const
+          };
+        })}
+      /> : null}
+      {canComment && commentOpen ? (
+        <section className="mt-4 rounded-xl bg-paper p-4">
           <label className="text-xs font-black text-ink/55">
             {text.comment}
             <textarea
+              autoFocus
               className="mt-1 min-h-24 w-full rounded-lg border border-line bg-paper p-3 text-sm font-bold"
               maxLength={2000}
               onChange={(event) => setComment(event.target.value)}

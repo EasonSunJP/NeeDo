@@ -22,6 +22,9 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.OfficialNoticeCreate).toBeDefined();
     expect(response.body.components.schemas.OfficialNoticeProtectedPayload).toBeDefined();
     expect(response.body.components.schemas.RecipientOfficialNoticePayload).toBeDefined();
+    expect(response.body.components.schemas.OfficialNoticeCreate.required).toContain("translations");
+    expect(response.body.components.schemas.OfficialNoticeCreate.required).not.toContain("title");
+    expect(response.body.components.schemas.OfficialNoticeCreate.properties.title).toBeUndefined();
   });
 
   it("documents strict merchant notice routes with dedicated permissions and audience schema", async () => {
@@ -31,6 +34,11 @@ describe("official notice OpenAPI", () => {
     expect(collection.get["x-permission"]).toBe("merchant-admin:notice:read");
     expect(collection.get.parameters).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          name: "search",
+          in: "query",
+          schema: { type: "string", minLength: 1, maxLength: 100 }
+        }),
         expect.objectContaining({
           name: "X-NeeDo-Merchant-Preview-Shop-Id",
           in: "header"
@@ -81,5 +89,38 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.MerchantOfficialNoticeCreate.properties.audience).toEqual({
       $ref: "#/components/schemas/MerchantOfficialNoticeAudience"
     });
+  });
+
+  it("documents the same bounded server search on operations notice management", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    expect(
+      response.body.paths["/api/v1/backoffice/official-notices"].get.parameters
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "search",
+          in: "query",
+          schema: { type: "string", minLength: 1, maxLength: 100 }
+        })
+      ])
+    );
+  });
+
+  it("documents public NeeDo IDs for exact-account delivery without exposing internal user IDs", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const variants = response.body.components.schemas.OfficialNoticeAudience.oneOf;
+    const exactUsers = variants.find(
+      (variant: { properties?: { type?: { enum?: string[] } } }) =>
+        variant.properties?.type?.enum?.includes("exact_users")
+    );
+
+    expect(exactUsers.required).toEqual(["type", "needoIds"]);
+    expect(exactUsers.properties.needoIds).toMatchObject({
+      type: "array",
+      minItems: 1,
+      maxItems: 500,
+      items: { type: "string", pattern: "^u[0-9]{10}$" }
+    });
+    expect(exactUsers.properties.userIds).toBeUndefined();
   });
 });

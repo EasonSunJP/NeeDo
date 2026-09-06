@@ -10,6 +10,19 @@ const healthDependencies = {
 };
 
 describe("portal API application boundaries", () => {
+  it("keeps technician work-status administration behind each portal namespace", async () => {
+    const ops = createOpsApp(env, healthDependencies);
+    const merchant = createMerchantApp(env, healthDependencies);
+    for (const suffix of ["", "/events", "/comments"]) {
+      const method = suffix === "/comments" ? "post" : "get";
+      const opsPath = `/api/v1/backoffice/technicians/1/work-status${suffix}`;
+      const merchantPath = `/api/v1/merchant-admin/technicians/1/work-status${suffix}`;
+      await request(ops)[method](opsPath).expect(401);
+      await request(merchant)[method](opsPath).expect(404);
+      await request(merchant)[method](merchantPath).expect(401);
+      await request(ops)[method](merchantPath).expect(404);
+    }
+  });
   it("keeps platform notice publication on ops and authenticated inboxes on both services", async () => {
     const ops = createOpsApp(env, healthDependencies);
     const merchant = createMerchantApp(env, healthDependencies);

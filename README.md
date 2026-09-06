@@ -2687,3 +2687,23 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 - 技师端首页显示：UI 切换、语言、身份、资料编辑、本人验证、服务范围、账户与安全、通知设置。
 - 店铺端首页显示：UI 切换、语言、身份、资料编辑、店铺资质、账户与安全、通知设置。
 - 三端共用同一套设置首页组件和列表结构，只通过当前身份控制条目显隐与文案差异。
+
+运营/商户用户详情的用户LOG与履约时间线统一、审计 10/50 条正式分页、超过 10 行气泡展开/收起及本地验收记录见 [用户抽屉时间线验收](docs/qa/2026-09-06-user-drawer-timelines.md)。
+
+### 预约 SOS 与后台求救通知
+
+用户端与技师端的正式预约详情始终显示红色 SOS 胶囊按钮，不依赖服务状态或起止时间。点击将求救持久化；订单所属商户和具有对应权限的运营人员在统一的右上角工具栏查看待处理数量及分页列表。打开列表不会解除提醒，显式标记已处理后两端同步更新。
+
+新增正式权限为 `sos:create`、`sos:list`、`sos:resolve`；部署需先应用 `20260906100000_booking_sos` migration 并生成 Prisma Client。接口定义见 `backend/src/api/sos.openapi.ts`，验收说明见 [预约 SOS 本地验收](docs/qa/2026-09-06-booking-sos.md)。
+
+```bash
+npm --prefix backend test -- --runInBand --runTestsByPath tests/sos.service.test.ts tests/sos-api.test.ts
+npx vitest run src/features/sos
+ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
+```
+
+真实数据库检查仅接受已验证的本机开发环境，使用独立测试记录验证权限、并发幂等、审计事务与跨端通知，完成后自动清理。
+
+### Technician work status and attendance
+
+The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.

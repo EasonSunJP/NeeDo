@@ -1,3 +1,4 @@
+import { subscribeWorkStatusRefresh } from "../../features/technician-work-status/refresh";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -53,7 +54,9 @@ export function TechniciansPage({ embeddedDetail }: {
   const [error, setError] = useState("");
   const [rankingRefreshKey, setRankingRefreshKey] = useState(0);
 
+  const listRequest = useRef(0);
   const load = useCallback(async (rejectOnError = false) => {
+    const requestId = ++listRequest.current;
     setLoading(true);
     setError("");
     try {
@@ -62,6 +65,7 @@ export function TechniciansPage({ embeddedDetail }: {
           page: 1,
           pageSize: 100
         });
+        if (requestId !== listRequest.current) return;
         setTechnicians([]);
         setShops(shopPage.list);
         return;
@@ -74,13 +78,14 @@ export function TechniciansPage({ embeddedDetail }: {
         }),
         backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 })
       ]);
+      if (requestId !== listRequest.current) return;
       setTechnicians(technicianPage.list);
       setShops(shopPage.list);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
+      if (requestId === listRequest.current) setError(loadError instanceof Error ? loadError.message : String(loadError));
       if (rejectOnError) throw loadError;
     } finally {
-      setLoading(false);
+      if (requestId === listRequest.current) setLoading(false);
     }
   }, [isRankingMode, isReviewMode, embeddedDetail?.id]);
 
@@ -133,7 +138,7 @@ export function TechniciansPage({ embeddedDetail }: {
     setSearchParams(params, { replace: true });
   }, [searchParams, setSearchParams, technicianDetailRequest, embeddedDetail]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); const unsubscribe = subscribeWorkStatusRefresh(() => void load()); return () => { ++listRequest.current; unsubscribe(); }; }, [load]);
 
   const mappedTechnicians = useMemo(() => technicians.map(mapBackofficeTechnician), [technicians]);
   const reviewTechnicians = useMemo(() => technicians.filter((item) => item.status === "pending_review"), [technicians]);

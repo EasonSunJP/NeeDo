@@ -1,3 +1,4 @@
+import type { WorkStatus } from '../domain/work-status';
 import { hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -7,6 +8,7 @@ import type {
   BackofficeDashboardQuery,
   BackofficeListQuery,
   BackofficeManagedUserListQuery,
+  BackofficeManagedUserDetailQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
@@ -538,6 +540,8 @@ export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUse
     timelineCommentWrite: boolean;
   };
   audit: {
+    page?: number;
+    page_size?: number;
     total: number;
     list: BackofficeAuditEventPayload[];
   };
@@ -549,6 +553,7 @@ export type BackofficeManagedUserDetailRecord = Omit<
 >;
 
 export interface BackofficeTechnicianPayload {
+  workStatus?: WorkStatus;
   id: number;
   userId: number;
   needoId: string;
@@ -857,7 +862,7 @@ export interface BackofficeRepositoryPort {
     occurredAt: Date
   ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
   getManagedUser: (
-    input: BackofficeScope & { userId: number },
+    input: BackofficeScope & { userId: number } & Partial<BackofficeManagedUserDetailQuery>,
     occurredAt: Date
   ) => Promise<BackofficeManagedUserDetailRecord | null>;
   listOrders: (
@@ -1130,11 +1135,12 @@ export class BackofficeService {
   public async getManagedUser(
     userId: number,
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
   ): Promise<BackofficeManagedUserDetailPayload> {
     await this.record(actor, context, "backoffice.user.read", "User", { userId });
     const detail = this.requireResult(
-      await this.repository.getManagedUser({ scope: "platform", userId }, this.now()),
+      await this.repository.getManagedUser({ scope: "platform", userId, ...query }, this.now()),
       "error.user.not_found"
     );
     return this.withManagedUserCapabilities(detail, actor, "platform");
@@ -1143,7 +1149,8 @@ export class BackofficeService {
   public async getMerchantManagedUser(
     userId: number,
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
   ): Promise<BackofficeManagedUserDetailPayload> {
     const scope = this.getMerchantScope(actor);
     await this.record(actor, context, "merchant_admin.user.read", "User", {
@@ -1151,7 +1158,7 @@ export class BackofficeService {
       shopId: scope.shopId
     });
     const detail = this.requireResult(
-      await this.repository.getManagedUser({ ...scope, userId }, this.now()),
+      await this.repository.getManagedUser({ ...scope, userId, ...query }, this.now()),
       "error.user.not_found"
     );
     return this.withManagedUserCapabilities(detail, actor, "merchant");

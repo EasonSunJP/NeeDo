@@ -1,3 +1,5 @@
+import { WorkStatusMetrics } from "../../features/technician-work-status/WorkStatusMetrics";
+import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type {
   EmployeePayrollSchedulePolicyInput,
@@ -766,6 +768,7 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-5`}
         role="tabpanel"
       >
+        {employee.technicianProfileId ? <div className="mb-4 space-y-4"><WorkStatusMetrics target={{scope:"merchant-admin",technicianProfileId:employee.technicianProfileId}}/><WorkTimeline target={{scope:"merchant-admin",technicianProfileId:employee.technicianProfileId}} comments={!readOnly}/></div> : null}
         {timelineLoading ? (
           <div className="rounded-[24px] border border-line bg-white px-5 py-6 text-sm font-bold text-ink/50 shadow-sm">
             {t("正在读取员工动态...")}

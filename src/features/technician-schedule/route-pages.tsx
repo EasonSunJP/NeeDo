@@ -1,3 +1,4 @@
+import { BookingSosButton } from "../sos/BookingSosButton";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
@@ -66,12 +67,14 @@ function TechnicianSchedulePageShell({
   subtitle,
   backTo = "/technician/schedule",
   showHeader = true,
+  action,
   children
 }: {
   title: string;
   subtitle?: string;
   backTo?: string;
   showHeader?: boolean;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -81,6 +84,7 @@ function TechnicianSchedulePageShell({
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
         {showHeader ? (
           <MobileFullscreenHeader
+            action={action}
             className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
             dark={isNight}
             onBack={() => navigate(backTo)}
@@ -898,6 +902,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   return (
     <TechnicianSchedulePageShell
       backTo="/technician/schedule"
+      action={<BookingSosButton orderId={order.id} revision={`${order.status}:${order.serviceSession?.endedAt ?? ""}`} />}
       subtitle={`${order.orderNo} · ${timeRangeLabel(order.startsAt, order.endsAt)}`}
       title="正式预约订单"
     >

@@ -1,3 +1,5 @@
+import { workStatusOpenApiPaths } from './work-status.openapi';
+import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
@@ -7240,7 +7242,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   timelineCommentWrite: { type: "boolean" }
                 }
               },
-              audit: { type: "object" }
+              audit: { type: "object", required: ["list", "total", "page", "page_size"], properties: {
+                list: { type: "array", items: { $ref: "#/components/schemas/BackofficeAuditEvent" } },
+                total: { type: "integer", minimum: 0 }, page: { type: "integer", minimum: 1 },
+                page_size: { type: "integer", enum: [10, 50] }
+              } }
             }
           }
         ]
@@ -7393,6 +7399,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           code: { type: "string" },
           occurredAt: { type: "string", format: "date-time" },
           actorName: { type: ["string", "null"] },
+          actorAvatarUrl: { type: ["string", "null"] },
           body: { type: ["string", "null"] }
         }
       },
@@ -14003,18 +14010,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             type: "object",
             additionalProperties: false,
-            required: ["type", "userIds"],
+            required: ["type", "needoIds"],
             properties: {
               type: { type: "string", enum: ["exact_users"] },
-              userIds: {
+              needoIds: {
                 type: "array",
                 minItems: 1,
                 maxItems: 500,
-                items: { type: "integer", minimum: 1 }
+                items: { type: "string", pattern: "^u[0-9]{10}$" }
               }
             }
           }
         ]
+      },
+      OfficialNoticeTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "blocks"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          }
+        }
+      },
+      OfficialNoticeTranslationsInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+        properties: {
+          "zh-CN": { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          "zh-TW": { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          en: { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          ja: { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          ko: { $ref: "#/components/schemas/OfficialNoticeTranslationInput" }
+        }
       },
       OfficialNoticeCreate: {
         type: "object",
@@ -14022,9 +14056,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "sourceLocale",
           "level",
-          "title",
-          "summary",
-          "blocks",
+          "translations",
           "audience",
           "sendMode",
           "scheduledAt",
@@ -14033,14 +14065,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
           level: { type: "string", enum: ["general", "important", "urgent"] },
-          title: { type: "string", minLength: 1, maxLength: 160 },
-          summary: { type: "string", minLength: 1, maxLength: 500 },
-          blocks: {
-            type: "array",
-            minItems: 1,
-            maxItems: 80,
-            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
-          },
+          translations: { $ref: "#/components/schemas/OfficialNoticeTranslationsInput" },
           audience: { $ref: "#/components/schemas/OfficialNoticeAudience" },
           sendMode: { type: "string", enum: ["now", "scheduled"] },
           scheduledAt: { type: ["string", "null"], format: "date-time" },
@@ -14064,9 +14089,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "sourceLocale",
           "level",
-          "title",
-          "summary",
-          "blocks",
+          "translations",
           "audience",
           "sendMode",
           "scheduledAt",
@@ -14075,14 +14098,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
           level: { type: "string", enum: ["general", "important", "urgent"] },
-          title: { type: "string", minLength: 1, maxLength: 160 },
-          summary: { type: "string", minLength: 1, maxLength: 500 },
-          blocks: {
-            type: "array",
-            minItems: 1,
-            maxItems: 80,
-            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
-          },
+          translations: { $ref: "#/components/schemas/OfficialNoticeTranslationsInput" },
           audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
           sendMode: { type: "string", enum: ["now", "scheduled"] },
           scheduledAt: { type: ["string", "null"], format: "date-time" },
@@ -15301,6 +15317,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...sosOpenApiPaths,
+    ...workStatusOpenApiPaths,
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
@@ -22365,11 +22383,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read one all-user management detail",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:users:read",
-        parameters: [idPathParameter("userId")],
+        parameters: [idPathParameter("userId"),
+          { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } }
+        ],
         responses: {
           "200": jsonDataResponse("All-user detail", {
             $ref: "#/components/schemas/BackofficeManagedUserDetail"
           }),
+          "400": { description: "Invalid audit pagination" },
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User not found" }
@@ -25761,11 +25783,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read a canonical user detail scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:customers:list",
-        parameters: [idPathParameter("userId")],
+        parameters: [idPathParameter("userId"),
+          { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } }
+        ],
         responses: {
           "200": jsonDataResponse("Scoped user detail", {
             $ref: "#/components/schemas/BackofficeManagedUserDetail"
           }),
+          "400": { description: "Invalid audit pagination" },
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User absent from the authenticated shop" }
@@ -26286,6 +26312,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
+            name: "search",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
+          {
             name: "status",
             in: "query",
             schema: {
@@ -26424,6 +26455,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "search",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
           {
             name: "status",
             in: "query",
@@ -28118,7 +28154,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": {
-            description: "Content-free standard recall tombstone",
+            description: "Content-free recall result; the server selects standard or traceless mode from the effective membership benefit",
             content: {
               "application/json": {
                 schema: {
@@ -28131,7 +28167,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "object",
                       required: ["action", "conversationId", "messageId", "message"],
                       properties: {
-                        action: { type: "string", enum: ["standard_recall"] },
+                        action: {
+                          type: "string",
+                          enum: ["standard_recall", "traceless_recall"]
+                        },
                         conversationId: { type: "integer" },
                         messageId: { type: "integer" },
                         message: { $ref: "#/components/schemas/RealtimeMessage" }

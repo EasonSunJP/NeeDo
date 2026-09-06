@@ -6,6 +6,13 @@ import { AuthTokenService } from "../src/services/auth-token.service";
 const now = new Date("2026-09-02T12:00:00.000Z");
 const publicId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+const noticeTranslations = {
+  "zh-CN": { title: "维护通知", summary: "服务维护", blocks: [{ id: "paragraph-zh-cn", type: "paragraph", content: "正文" }] },
+  "zh-TW": { title: "維護通知", summary: "服務維護", blocks: [{ id: "paragraph-zh-tw", type: "paragraph", content: "正文" }] },
+  en: { title: "Maintenance", summary: "Service maintenance", blocks: [{ id: "paragraph-en", type: "paragraph", content: "Body" }] },
+  ja: { title: "メンテナンス", summary: "サービス保守", blocks: [{ id: "paragraph-ja", type: "paragraph", content: "本文" }] },
+  ko: { title: "유지 보수", summary: "서비스 점검", blocks: [{ id: "paragraph-ko", type: "paragraph", content: "본문" }] }
+};
 
 const notice = {
   publicId,
@@ -134,9 +141,7 @@ describe("official notice HTTP API", () => {
       .send({
         sourceLocale: "zh-CN",
         level: "important",
-        title: "维护通知",
-        summary: "服务维护",
-        blocks: [{ id: "paragraph-1", type: "paragraph", content: "正文" }],
+        translations: noticeTranslations,
         audience: { type: "identity_types", identityTypes: ["customer"] },
         sendMode: "now",
         scheduledAt: null,
@@ -164,9 +169,14 @@ describe("official notice HTTP API", () => {
       .send({
         sourceLocale: "zh-CN",
         level: "general",
-        title: "通知",
-        summary: "摘要",
-        blocks: [{ id: "image-1", type: "image", content: "data:image/png;base64,AA==" }],
+        translations: {
+          ...noticeTranslations,
+          "zh-CN": {
+            title: "通知",
+            summary: "摘要",
+            blocks: [{ id: "image-1", type: "image", content: "data:image/png;base64,AA==" }]
+          }
+        },
         audience: { type: "all" },
         sendMode: "now",
         scheduledAt: null,

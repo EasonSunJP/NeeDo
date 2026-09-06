@@ -93,12 +93,48 @@ describe("UnifiedUserDetailDrawer", () => {
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope={scope} userId={41} />));
     await waitForText(container, "Mia");
     expect(state.getUser).toHaveBeenCalledWith(scope, 41);
-    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户动态"]) {
+    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"]) {
       expect([...container.querySelectorAll('[role="tab"]')].some((node) => node.textContent === tab)).toBe(true);
     }
     expect(container.textContent).toContain("900");
     expect(container.textContent).toContain("4.8");
     expect(container.textContent).toContain("已开启");
+  });
+
+  it("paginates actual user activity and resets to the first page at 50 rows", async () => {
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 10, list: [] } });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "Mia");
+    const nav = () => container.querySelector('nav[aria-label="用户LOG翻页"]')!;
+    expect(nav()).not.toBeNull();
+    const select = nav().querySelector("select")!;
+    expect([...select.options].map((option) => option.value)).toEqual(["10", "50"]);
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 2, page_size: 10, list: [] } });
+    act(() => [...nav().querySelectorAll("button")].find((button) => button.textContent === "下一页")?.click());
+    await waitForText(nav() as HTMLElement, "2/13");
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, { audit_page: 2, audit_page_size: 10 });
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 50, list: [] } });
+    act(() => { select.value = "50"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await waitForText(nav() as HTMLElement, "1/3");
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, { audit_page: 1, audit_page_size: 50 });
+    state.getUser.mockRejectedValueOnce(new Error("offline"));
+    act(() => [...nav().querySelectorAll("button")].find((button) => button.textContent === "下一页")?.click());
+    await waitForText(container, "重试");
+    expect(nav().textContent).toContain("1/3");
+  });
+
+  it("keeps the displayed page size when navigating after a failed size change", async () => {
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 10, list: [] } });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "Mia");
+    const nav = container.querySelector('nav[aria-label="用户LOG翻页"]')!;
+    state.getUser.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => { const select = nav.querySelector("select")!; select.value = "50"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await waitForText(container, "重试");
+    expect(nav.querySelector("select")?.value).toBe("10");
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 2, page_size: 10, list: [] } });
+    await act(async () => [...nav.querySelectorAll("button")].find((button) => button.textContent === "下一页")?.click());
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, { audit_page: 2, audit_page_size: 10 });
   });
 
   it("shows both reasoned membership actions only when the operations capability is granted", async () => {
@@ -140,5 +176,19 @@ describe("UnifiedUserDetailDrawer", () => {
     act(() => accountTab?.click());
     await waitForText(container, "展开权限");
     expect(container.textContent).not.toContain("backoffice:users:read");
+  });
+
+  it("shows partner marks only inside the account tab across all six tabs", async () => {
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "平台合作方标记");
+    const headings = [...container.querySelectorAll("h3")].filter((node) => node.textContent === "平台合作方标记");
+    expect(headings).toHaveLength(1);
+    const panel = headings[0].closest<HTMLElement>('[role="tabpanel"]');
+    expect(panel).not.toBeNull();
+    for (const tab of container.querySelectorAll<HTMLElement>('[role="tab"]')) {
+      act(() => tab.click());
+      expect(panel!.hidden).toBe(tab.textContent !== "权限与账号");
+      if (tab.textContent === "权限与账号") expect(panel!.getAttribute("aria-labelledby")).toBe(tab.id);
+    }
   });
 });

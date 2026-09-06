@@ -27,11 +27,17 @@ describe("OfficialNoticeRepository audience resolution", () => {
   });
 
   it("deduplicates exact user targets and still resolves their active identities", () => {
-    expect(buildOfficialNoticeRecipientWhere({ type: "exact_users", userIds: [9, 2, 9] })).toEqual({
+    expect(buildOfficialNoticeRecipientWhere({
+      type: "exact_users",
+      needoIds: ["u0000000009", "u0000000002", "u0000000009"]
+    })).toEqual({
       isActive: true,
       deletedAt: null,
-      user: { isActive: true, deletedAt: null },
-      userId: { in: [9, 2] }
+      user: {
+        isActive: true,
+        deletedAt: null,
+        needoId: { in: ["u0000000009", "u0000000002"] }
+      }
     });
   });
 

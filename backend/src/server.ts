@@ -1,3 +1,5 @@
+import { WorkStatusWorker } from './workers/work-status.worker';
+import { WorkStatusService } from './services/work-status.service';
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
@@ -86,6 +88,7 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
 });
 const liveDashboard = createLiveDashboardRuntime(env);
 const { cache: liveDashboardCache, gateway: liveDashboardEventGateway } = liveDashboard;
+const workStatusService=new WorkStatusService(undefined,undefined,realtimeEventGateway);
 const authRepository = new AuthRepository();
 const officialNoticeRepository = new OfficialNoticeRepository(
   undefined,
@@ -251,7 +254,7 @@ const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
   new OrderServiceExpiryService(
     new OrderServiceExpiryRepository(undefined, ({ orderId, code, message }) => {
       logger.error({ orderId, code, message }, "Order service expiry candidate failed");
-    }),
+    },orderId=>workStatusService.notifyOrder(orderId)),
     new LiveDashboardOrderChangePublisher(new BookingRepository(), liveDashboardEventGateway)
   ),
   logger,
@@ -311,6 +314,8 @@ const imServerRetentionWorker = new ImServerRetentionWorker(
   env.IM_SERVER_RETENTION_BATCH_SIZE
 );
 
+const workStatusWorker=new WorkStatusWorker(workStatusService,logger,env.WORK_STATUS_INTERVAL_MS,env.WORK_STATUS_BATCH_SIZE);
+
 const server = app.listen(env.PORT, () => {
   logger.info(
     {
@@ -320,6 +325,7 @@ const server = app.listen(env.PORT, () => {
     },
     "NeeDo backend started"
   );
+  workStatusWorker.start();
   friendRequestExpiryWorker.start();
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
@@ -371,6 +377,7 @@ const shutdown = createShutdownHandler({
     imPrivacyExpiryWorker.stop();
     imServerRetentionWorker.stop();
     await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain()]);
+    await workStatusWorker.stop();
   }
 });
 

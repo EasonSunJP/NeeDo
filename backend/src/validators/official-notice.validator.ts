@@ -122,10 +122,31 @@ const audienceSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("exact_users"),
-      userIds: z.array(z.number().int().positive()).min(1).max(500)
+      needoIds: z
+        .array(z.string().trim().regex(/^u[0-9]{10}$/u))
+        .min(1)
+        .max(500)
     })
     .strict()
 ]);
+
+const noticeTranslationInputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(160),
+    summary: z.string().trim().min(1).max(500),
+    blocks: z.array(officialNoticeBlockSchema).min(1).max(80)
+  })
+  .strict();
+
+const noticeTranslationsInputSchema = z
+  .object({
+    "zh-CN": noticeTranslationInputSchema,
+    "zh-TW": noticeTranslationInputSchema,
+    en: noticeTranslationInputSchema,
+    ja: noticeTranslationInputSchema,
+    ko: noticeTranslationInputSchema
+  })
+  .strict();
 
 export const merchantNoticeAudienceTypes = ["shop_card_holders", "shop_employees", "shop_technicians"] as const;
 const merchantAudienceSchema = z.object({ type: z.enum(merchantNoticeAudienceTypes) }).strict();
@@ -134,9 +155,7 @@ const noticeCreateBaseSchema = z
   .object({
     sourceLocale: z.enum(officialNoticeLocales),
     level: z.enum(officialNoticeLevels),
-    title: z.string().trim().min(1).max(160),
-    summary: z.string().trim().min(1).max(500),
-    blocks: z.array(officialNoticeBlockSchema).min(1).max(80),
+    translations: noticeTranslationsInputSchema,
     audience: audienceSchema,
     sendMode: z.enum(["now", "scheduled"]),
     scheduledAt: z.string().datetime({ offset: true }).nullable(),
@@ -176,6 +195,7 @@ const paginationShape = {
 export const officialNoticeListQuerySchema = z
   .object({
     ...paginationShape,
+    search: z.string().trim().min(1).max(100).optional(),
     status: z.enum(officialNoticeStatuses).optional(),
     level: z.enum(officialNoticeLevels).optional()
   })

@@ -1,3 +1,7 @@
+import { createWorkStatusRoutes } from './routes/work-status.routes';
+import type { WorkStatusService } from './services/work-status.service';
+import { createSosRoutes } from "./routes/sos.routes";
+import type { SosService, SosRepositoryPort } from "./services/sos.service";
 import express, { Router, type Express } from "express";
 import { compatibilityApiRouteManifest, type ApiRouteOwnership } from "./apps/api-route-manifest";
 import { createOpenApiRoutes } from "./api/openapi";
@@ -53,7 +57,10 @@ import type { SearchQueryRecorderPort } from "./services/search-query-recorder.s
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
-import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import {
+  PlatformMembershipRepository,
+  type PlatformMembershipRepositoryPort
+} from "./repositories/platform-membership.repository";
 import {
   PlatformSettingsRepository,
   type PlatformSettingsRepositoryPort
@@ -269,7 +276,7 @@ import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
-import type { PlatformMembershipService } from "./services/platform-membership.service";
+import { PlatformMembershipService } from "./services/platform-membership.service";
 import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
@@ -310,6 +317,7 @@ import {
 } from "./services/observability.service";
 
 export interface AppDependencies {
+  workStatusService?: WorkStatusService;
   redisHealthCheck: () => Promise<RedisHealthStatus>;
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
@@ -438,7 +446,10 @@ export interface AppDependencies {
     | "amendRefund"
   >;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
-  platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
+  platformMembershipResolverService?: Pick<
+    PlatformMembershipService,
+    "resolveMembershipAt" | "hasEffectiveBenefitAt"
+  >;
   userExperienceService?: Pick<
     UserExperienceService,
     | "recordEvent"
@@ -516,6 +527,8 @@ export interface AppDependencies {
   affiliateCheckoutService?: AffiliateCheckoutService;
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
+  sosService?: SosService;
+  sosRepository?: SosRepositoryPort;
   realtimeService?: RealtimeService;
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
@@ -627,13 +640,20 @@ export const createApp = (
       legalDocumentRepository,
       new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
     );
+  const platformMembershipRepository =
+    dependencies.platformMembershipRepository ?? new PlatformMembershipRepository();
+  const platformMembershipResolverService =
+    dependencies.platformMembershipResolverService ??
+    new PlatformMembershipService(platformMembershipRepository);
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
       realtimeRepository,
       realtimeEventGateway,
       personalIdentityScopeService,
-      userExperienceService
+      userExperienceService,
+      undefined,
+      platformMembershipResolverService
     );
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
@@ -653,7 +673,9 @@ export const createApp = (
     imMediaLifecycleRepository,
     legalDocumentRepository,
     legalDocumentService,
-    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {})
+    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {}),
+    platformMembershipRepository,
+    platformMembershipResolverService
   };
 
   apiRouter.use((request, response, next) => {
@@ -762,6 +784,8 @@ export const createApp = (
   mount("shared", createImChatRecordRoutes(config, resolvedDependencies));
   mount("shared", createImMessageTranslationRoutes(config, resolvedDependencies));
   mount("shared", createRealtimeRoutes(config, resolvedDependencies));
+  mount("shared", createWorkStatusRoutes(config, resolvedDependencies));
+  mount("shared", createSosRoutes(config, resolvedDependencies));
   mount("shared", createExchangeRoutes(config, resolvedDependencies));
   mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));
   mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));

@@ -10,6 +10,7 @@ import { UserMembershipAdjustmentDialog } from "./UserMembershipAdjustmentDialog
 import { UserReceivedReviews } from "./UserReceivedReviews";
 import { UserUsageList } from "./UserUsageList";
 import { PlatformPartnerRangeEditor } from "./PlatformPartnerRangeEditor";
+import { ManagedUserActivity } from "./ManagedUserActivity";
 import { PermissionTagDisclosure } from "./PermissionTagDisclosure";
 
 type DetailState = {
@@ -59,7 +60,11 @@ export function UnifiedUserDetailDrawer({
       {!state.loading && !state.error && user ? <div className="space-y-4">
         <FormalManagedUserDetailPanel
           detail={user}
-          accountContent={<PermissionTagDisclosure roles={user.account.roles} />}
+          activityContent={<ManagedUserActivity key={`${scope}-${user.id}`} scope={scope} user={user} />}
+          accountContent={<div className="space-y-4">
+            <PermissionTagDisclosure roles={user.account.roles} />
+            {scope === "operations" ? <PlatformPartnerRangeEditor canWrite={user.capabilities.partnerWrite} userId={user.id} /> : null}
+          </div>}
           membershipActions={scope === "operations" && user.capabilities.membershipWrite ? {
             tier: <UserMembershipAdjustmentDialog currentValue={user.membership.tierCode} expectedLockVersion={user.membership.lockVersion} kind="tier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />,
             multiplier: <UserMembershipAdjustmentDialog currentValue={user.membership.experienceMultiplier} expectedLockVersion={user.membership.lockVersion} kind="multiplier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />
@@ -67,7 +72,6 @@ export function UnifiedUserDetailDrawer({
           reviewContent={<UserReceivedReviews canAmend={scope === "operations" && user.capabilities.reviewAmend} scope={scope} userId={user.id} />}
           usageContent={<UserUsageList canComment={scope === "operations" && user.capabilities.timelineCommentWrite} canRefundAmend={scope === "operations" && user.capabilities.refundAmend} scope={scope} userId={user.id} />}
         />
-        {scope === "operations" ? <PlatformPartnerRangeEditor canWrite={user.capabilities.partnerWrite} userId={user.id} /> : null}
       </div> : null}
     </Drawer>
   );

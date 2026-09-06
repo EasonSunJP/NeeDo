@@ -24,7 +24,9 @@ const state = vi.hoisted(() => ({
   archiveManaged: vi.fn(),
   retryManaged: vi.fn(),
   listInbox: vi.fn(),
-  markRead: vi.fn()
+  markRead: vi.fn(),
+  listUsers: vi.fn(),
+  uploadContentImage: vi.fn()
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -44,6 +46,12 @@ vi.mock("../../api/officialNotices", async (importOriginal) => ({
     listInbox: state.listInbox,
     markRead: state.markRead
   }
+}));
+vi.mock("../platform-user-management/api", () => ({
+  platformUserManagementApi: { listUsers: state.listUsers }
+}));
+vi.mock("../../api/contentPublication", () => ({
+  contentPublicationApi: { uploadContentImage: state.uploadContentImage }
 }));
 
 const notice = {
@@ -134,6 +142,29 @@ describe("official notice formal API interactions", () => {
     state.createManaged.mockResolvedValue(notice);
     state.listInbox.mockResolvedValue({ list: [{ publicId: "notice-1", level: "important", title: "営業時間変更", summary: "営業時間のお知らせ", blocks: notice.translations.ja.blocks, targetSummary: notice.targetSummary, sentAt: "2026-09-05T03:00:00.000Z", readAt: null }], total: 1, page: 1, page_size: 20 });
     state.markRead.mockResolvedValue({ publicId: "notice-1", readAt: "2026-09-05T04:00:00.000Z" });
+    state.listUsers.mockResolvedValue({
+      list: [{
+        id: 9,
+        needoId: "u0000000009",
+        username: "hanako",
+        email: "hanako@example.com",
+        phone: "+819012345678",
+        isActive: true,
+        identities: [{ type: "customer", displayName: "花子", scopeType: null, scopeId: null }]
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    state.uploadContentImage.mockResolvedValue({
+      publicId: "a".repeat(64),
+      mediaAssetId: 41,
+      url: `/media/content/${"a".repeat(64)}.webp`,
+      mimeType: "image/webp",
+      width: 800,
+      height: 600,
+      checksumSha256: "a".repeat(64)
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -154,6 +185,30 @@ describe("official notice formal API interactions", () => {
     expect(state.listManaged).toHaveBeenCalledTimes(2);
   });
 
+  it("submits the management search to server pagination instead of filtering browser rows", async () => {
+    act(() => root.render(<MemoryRouter><OfficialNoticeManagement composePath="/merchant-admin/notifications/compose" scope="merchant" /></MemoryRouter>));
+    await waitFor(() => expect(container.textContent).toContain("営業時間変更"));
+    setField("搜索通知", "営業時間");
+    await click("搜索");
+    await waitFor(() => expect(state.listManaged).toHaveBeenCalledTimes(2));
+    expect(state.listManaged).toHaveBeenLastCalledWith("merchant", {
+      page: 1,
+      pageSize: 20,
+      search: "営業時間"
+    });
+  });
+
+  it("invalidates the shared official-notice badge after marking an inbox item read", async () => {
+    const changed = vi.fn();
+    window.addEventListener("official-notice:changed", changed);
+    act(() => root.render(<MemoryRouter><OfficialNoticeInbox /></MemoryRouter>));
+    await waitFor(() => expect(container.textContent).toContain("営業時間変更"));
+    await click("标记已读");
+    await waitFor(() => expect(state.markRead).toHaveBeenCalledWith("notice-1"));
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener("official-notice:changed", changed);
+  });
+
   it("hides write controls for a read-only identity and renders an empty page", async () => {
     state.permissions = new Set(["merchant-admin:notice:read"]);
     state.listManaged.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });
@@ -168,12 +223,124 @@ describe("official notice formal API interactions", () => {
     setField("标题", "営業時間変更");
     setField("摘要", "営業時間のお知らせ");
     setField("正文", "18時まで営業します");
+    await click("現在の内容を全言語へコピー");
     await click("确认创建");
     await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
     expect(state.createManaged.mock.calls[0]?.[0]).toBe("merchant");
     expect(state.createManaged.mock.calls[0]?.[1]).toMatchObject({ audience: { type: "shop_card_holders" }, sendMode: "now", scheduledAt: null });
     expect(JSON.stringify(state.createManaged.mock.calls[0]?.[1])).not.toMatch(/userIds|shopId|issuer/);
+    expect(container.textContent).not.toMatch(/NeeDoID|指定アカウント/);
     await waitFor(() => expect(container.textContent).toContain("done"));
+  });
+
+  it("builds and submits the approved structured notice blocks", async () => {
+    act(() => root.render(<MemoryRouter initialEntries={["/compose"]}><Routes><Route path="/compose" element={<OfficialNoticeComposer returnPath="/done" scope="merchant" />} /><Route path="/done" element={<p>done</p>} /></Routes></MemoryRouter>));
+    setField("标题", "结构化通知");
+    setField("摘要", "检查内容块");
+    setField("正文", "第一段正文");
+    await click("大段落标题");
+    const textareas = document.querySelectorAll<HTMLTextAreaElement>("textarea");
+    expect(textareas).toHaveLength(2);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(textareas[1], "重要事项");
+      textareas[1].dispatchEvent(new Event("input", { bubbles: true }));
+      textareas[1].dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await click("現在の内容を全言語へコピー");
+    await click("English");
+    setField("标题", "Structured notice");
+    await click("确认创建");
+    await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
+    expect(state.createManaged.mock.calls[0]?.[1].translations.ja.blocks).toEqual([
+      expect.objectContaining({ type: "paragraph", content: "第一段正文" }),
+      expect.objectContaining({ type: "heading", content: "重要事项" })
+    ]);
+    expect(Object.keys(state.createManaged.mock.calls[0]?.[1].translations).sort()).toEqual([
+      "en", "ja", "ko", "zh-CN", "zh-TW"
+    ]);
+    expect(state.createManaged.mock.calls[0]?.[1].translations.en.title).toBe("Structured notice");
+    expect(state.createManaged.mock.calls[0]?.[1].translations.ja.title).toBe("结构化通知");
+    expect(state.createManaged.mock.calls[0]?.[1]).not.toHaveProperty("title");
+    expect(state.createManaged.mock.calls[0]?.[1]).not.toHaveProperty("blocks");
+  });
+
+  it("uploads image blocks through the formal content media API", async () => {
+    act(() => root.render(<MemoryRouter><OfficialNoticeComposer returnPath="/done" scope="platform" /></MemoryRouter>));
+    await click("图片");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept*="image/jpeg"]');
+    expect(input).not.toBeNull();
+    const file = new File(["formal-image"], "notice.webp", { type: "image/webp" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => {
+      input?.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(state.uploadContentImage).toHaveBeenCalledWith(file, "notice.webp"));
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(`/media/content/${"a".repeat(64)}.webp`);
+    expect(container.innerHTML).not.toMatch(/data:image|blob:/);
+  });
+
+  it("searches the formal global account directory and submits selected public NeeDo IDs", async () => {
+    state.permissions = new Set([
+      "button:backoffice-official-notice-create",
+      "button:backoffice-official-notice-send",
+      "backoffice:users:read"
+    ]);
+    act(() => root.render(<MemoryRouter initialEntries={["/compose"]}><Routes><Route path="/compose" element={<OfficialNoticeComposer returnPath="/done" scope="platform" />} /><Route path="/done" element={<p>done</p>} /></Routes></MemoryRouter>));
+
+    const exactRadio = [...document.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("指定アカウント"))
+      ?.querySelector("input") as HTMLInputElement | undefined;
+    expect(exactRadio).toBeDefined();
+    act(() => exactRadio?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    setField("メール、携帯番号または NeeDoID", "hanako@example.com");
+    await click("アカウントを検索");
+
+    await waitFor(() => expect(state.listUsers).toHaveBeenCalledWith(
+      "operations",
+      {
+        keyword: "hanako@example.com",
+        state: "active",
+        page: 1,
+        page_size: 20
+      }
+    ));
+    expect(container.textContent).toContain("u0000000009");
+    expect(container.textContent).toContain("+819012345678");
+    await click("u0000000009");
+
+    setField("标题", "账号通知");
+    setField("摘要", "只发给花子");
+    setField("正文", "请确认账号资料");
+    await click("現在の内容を全言語へコピー");
+    await click("确认创建");
+    await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
+    expect(state.createManaged.mock.calls[0]?.[0]).toBe("platform");
+    expect(state.createManaged.mock.calls[0]?.[1]).toMatchObject({
+      audience: { type: "exact_users", needoIds: ["u0000000009"] }
+    });
+    expect(JSON.stringify(state.createManaged.mock.calls[0]?.[1])).not.toMatch(/userIds|friend|好友/);
+  });
+
+  it("preserves the approved operations compose workspace around the formal APIs", () => {
+    state.permissions = new Set([
+      "button:backoffice-official-notice-create",
+      "button:backoffice-official-notice-send",
+      "backoffice:users:read"
+    ]);
+    act(() => root.render(
+      <MemoryRouter>
+        <OfficialNoticeComposer returnPath="/done" scope="platform" />
+      </MemoryRouter>
+    ));
+
+    expect(container.textContent).toContain("发送设置");
+    expect(container.textContent).toContain("发送对象");
+    expect(container.textContent).toContain("发送时间");
+    expect(container.textContent).toContain("发送预览");
+    expect(container.textContent).toContain("发送检查");
+    expect(container.querySelector(".official-notice-editor")).not.toBeNull();
+    expect(container.querySelector("[data-official-notice-block-toolbar]")).not.toBeNull();
   });
 
   it("loads the current-identity inbox and writes its read receipt", async () => {

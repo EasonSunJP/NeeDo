@@ -361,6 +361,18 @@ describe("FormalAccountSecurityPanel", () => {
   });
 });
 
+describe("persisted public legal documents", () => {
+  it("renders the exact current-language release without static legal fallback", () => {
+    expect(source).toContain("usePublicLegalDocument(slug, language)");
+    expect(source).toContain('slug="terms-of-use"');
+    expect(source).toContain('slug="privacy-policy"');
+    expect(source).toContain("state.document.body");
+    expect(source).toContain("当前语言尚无已发布版本");
+    expect(source).not.toContain("getLegalTermsDocument(language)");
+    expect(source).not.toContain("getLegalPrivacyDocument(language)");
+  });
+});
+
 describe("UnifiedSettingsServiceRangePage", () => {
   it("uses an isolated settings detail shell with close control and no main nav", () => {
     expect(serviceRangeSource).toContain("navItems={[]}");

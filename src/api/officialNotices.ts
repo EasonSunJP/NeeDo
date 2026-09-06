@@ -1,5 +1,7 @@
 import { httpClient } from "./httpClient";
 
+export const OFFICIAL_NOTICE_CHANGED_EVENT = "official-notice:changed";
+
 export type OfficialNoticeScope = "platform" | "merchant";
 export type OfficialNoticeLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type OfficialNoticeLevel = "general" | "important" | "urgent";
@@ -43,6 +45,7 @@ export type MerchantNoticeAudience = {
 };
 export type PlatformNoticeAudience =
   | { type: "all" }
+  | { type: "exact_users"; needoIds: string[] }
   | {
       type: "identity_types";
       identityTypes: Array<
@@ -59,9 +62,10 @@ export type PlatformNoticeAudience =
 export type ManagedNoticeCreateInput = {
   sourceLocale: OfficialNoticeLocale;
   level: OfficialNoticeLevel;
-  title: string;
-  summary: string;
-  blocks: OfficialNoticeBlock[];
+  translations: Record<
+    OfficialNoticeLocale,
+    { title: string; summary: string; blocks: OfficialNoticeBlock[] }
+  >;
   audience: MerchantNoticeAudience | PlatformNoticeAudience;
   sendMode: "now" | "scheduled";
   scheduledAt: string | null;
@@ -115,6 +119,7 @@ export type OfficialNoticePage<T> = {
 export type ManagedNoticeQuery = {
   page: number;
   pageSize: number;
+  search?: string;
   status?: OfficialNoticeStatus;
   level?: OfficialNoticeLevel;
 };
@@ -140,7 +145,8 @@ export const officialNoticesApi = {
       ["page", query.page],
       ["pageSize", query.pageSize],
       ["status", query.status],
-      ["level", query.level]
+      ["level", query.level],
+      ["search", query.search]
     ]);
     return httpClient.request<OfficialNoticePage<OfficialNotice>>(
       `${managementBase(scope)}?${search}`

@@ -657,7 +657,7 @@ describe("LoginPage verified identity behavior", () => {
 
 describe("LoginPage formal flow guardrails", () => {
   it("uses the published settings for login branding and public entry availability", () => {
-    expect(loginPageSource).toContain("platformSettings.loginLogo?.url ?? loginIconMarkUrl");
+    expect(loginPageSource).toContain("platformSettings.loginLogo?.url ?? DEFAULT_LOGIN_LOGO_URL");
     expect(loginPageSource).toContain('activePortal === "user" && platformSettings.selfRegistrationEnabled');
     expect(loginPageSource).toContain("platformSettings.loginMethods.google");
   });

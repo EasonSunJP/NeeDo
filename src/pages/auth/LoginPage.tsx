@@ -14,6 +14,8 @@ import { openPortalEntry } from "../../auth/portalEntry";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { DEFAULT_LOGIN_LOGO_URL } from "../../features/platform-settings/defaultBrandMedia";
+import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -23,7 +25,6 @@ import {
   useClientTheme
 } from "../../theme/ClientThemeProvider";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "./AuthVerificationPanel";
-import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 
 type LoginPanelMode = "welcome" | "account" | "register" | "verification" | "needo-id";
 type VerificationKind = "google" | "registration" | "password_login";
@@ -38,7 +39,6 @@ type GeneratedNeedoIdState = {
   session: AuthSession;
 };
 
-const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
 const loginCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const portalEntryRoute: Record<PortalScope, string> = {
@@ -677,7 +677,7 @@ export function LoginPage({
         </header>
 
         <section className="flex flex-1 flex-col justify-center py-8 text-center">
-          <AppMark url={platformSettings.loginLogo?.url ?? loginIconMarkUrl} />
+          <AppMark url={platformSettings.loginLogo?.url ?? DEFAULT_LOGIN_LOGO_URL} />
           <h1 className="mt-7 text-[32px] font-black leading-tight tracking-normal text-[color:var(--client-text)]">
             {copy.welcomeTitle}
           </h1>

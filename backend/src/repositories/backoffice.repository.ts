@@ -1,3 +1,4 @@
+import { projectWorkStatuses } from './work-status.repository';
 import {
   BookingOrderStatus,
   OrderServiceEventType,
@@ -71,6 +72,7 @@ import type {
   BackofficeCustomerUpdateBody,
   BackofficeListQuery,
   BackofficeManagedUserListQuery,
+  BackofficeManagedUserDetailQuery,
   BackofficeTimelineQuery,
   BackofficeShopUpdateBody
 } from "../validators/backoffice.validator";
@@ -529,7 +531,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public async getManagedUser(
-    input: BackofficeScope & { userId: number },
+    input: BackofficeScope & { userId: number } & Partial<BackofficeManagedUserDetailQuery>,
     occurredAt: Date
   ): Promise<BackofficeManagedUserDetailRecord | null> {
     const { userId } = input;
@@ -623,7 +625,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         this.client.auditLog.findMany({
           where: auditWhere,
           include: { actor: { select: { username: true, avatarUrl: true } } },
-          take: 20,
+          skip: ((input.audit_page ?? 1) - 1) * (input.audit_page_size ?? 10),
+          take: input.audit_page_size ?? 10,
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       ]);
@@ -675,6 +678,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         }
       },
       audit: {
+        page: input.audit_page ?? 1,
+        page_size: input.audit_page_size ?? 10,
         total: auditTotal,
         list: auditRows.map((row) => this.mapAuditEvent(row))
       }
@@ -908,8 +913,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       this.client.technicianProfile.count({ where })
     ]);
 
+    const statuses = await projectWorkStatuses(this.client, list.map(row => row.id));
     return buildPaginatedResponse(
-      list.map((technician) => this.mapTechnician(technician)),
+      list.map((technician) => ({...this.mapTechnician(technician),workStatus:statuses.get(technician.id)!})),
       total,
       input
     );
@@ -1196,6 +1202,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
     return {
       ...this.mapTechnician(profile),
+      workStatus:(await projectWorkStatuses(this.client,[profile.id])).get(profile.id)!,
       bio: profile.bio,
       yearsExperience: profile.yearsExperience,
       isRecommended: profile.isRecommended,

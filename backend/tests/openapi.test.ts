@@ -1455,6 +1455,16 @@ describe("GET /api/v1/openapi.json", () => {
         })
       })
     });
+    const recallPath =
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"];
+    expect(recallPath.post.requestBody.content["application/json"].schema.properties.mode).toEqual({
+      type: "string",
+      enum: ["standard"]
+    });
+    expect(recallPath.post.responses["200"].content["application/json"].schema.properties.data.properties.action).toEqual({
+      type: "string",
+      enum: ["standard_recall", "traceless_recall"]
+    });
     const reactionPath =
       response.body.paths[
         "/api/v1/im/conversations/{conversationId}/messages/{messageId}/reactions"

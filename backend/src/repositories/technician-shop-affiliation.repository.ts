@@ -1,3 +1,4 @@
+import type { WorkStatus } from '../domain/work-status';
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
@@ -134,6 +135,9 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
   endsAt: true,
   technicianProfile: {
     select: {
+      id:true,
+      workState:{select:{status:true,deletedAt:true}},
+      bookingOrders:{where:{status:"IN_SERVICE",deletedAt:null},take:1,select:{id:true}},
       displayName: true,
       bio: true,
       city: true,
@@ -795,6 +799,8 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
     }
 
     return {
+      technicianProfileId:record.technicianProfile.id,
+      workStatus:record.technicianProfile.bookingOrders?.length ? "in_service" : (!record.technicianProfile.workState?.deletedAt ? record.technicianProfile.workState?.status??"unsynced" : "unsynced") as WorkStatus,
       needoId: technicianIdentifier.publicId,
       displayName: record.technicianProfile.displayName,
       avatarUrl: record.technicianProfile.user.avatarUrl,
