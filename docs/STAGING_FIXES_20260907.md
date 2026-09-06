@@ -15,6 +15,8 @@ Release branch: `private`, tracking `origin/private` in `EasonSunJP/NeeDo-Privat
 
 - System membership group counts and member lists now share the managed-user tier query, including effective audited membership adjustments. This corrects a paid user being shown in the directory while the corresponding system group remained empty.
 
+- Benefit catalog validation checks the fixed set of eight codes without requiring their editable display order to match enum order. This fixes `catalog_invalid` after moving traceless recall earlier in the list. Missing and duplicated codes are still rejected.
+
 ## Test-account contact synchronization
 
 Source batch: the previously imported 251 local test accounts. Stable account number/email and identity public identifiers (or a unique type/scope match) map identities to staging IDs; source internal IDs are never copied.

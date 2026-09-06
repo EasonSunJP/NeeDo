@@ -258,7 +258,7 @@ export class PlatformMembershipService {
     const benefits = await this.repository.listBenefitsForAdministration();
     if (
       benefits.length !== PLATFORM_MEMBERSHIP_BENEFIT_CODES.length ||
-      benefits.some((benefit, index) => benefit.code !== PLATFORM_MEMBERSHIP_BENEFIT_CODES[index])
+      PLATFORM_MEMBERSHIP_BENEFIT_CODES.some(code => !benefits.some(benefit => benefit.code === code))
     ) {
       throw this.catalogInvalid();
     }
