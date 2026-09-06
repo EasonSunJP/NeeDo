@@ -84,6 +84,35 @@ describe("httpClient structured errors", () => {
   });
 });
 
+describe("httpClient authenticated streams", () => {
+  afterEach(() => {
+    clearAuthTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("refreshes once after a stream 401 and returns the retried response body unread", async () => {
+    setAuthTokens({ accessToken: "expired-access-token", refreshToken: "refresh-token" });
+    const stream = new ReadableStream();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { accessToken: "fresh-access-token", expiresIn: 900 } }))
+      .mockResolvedValueOnce(new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await httpClient.openStream("/backoffice/dashboard/live-events", {
+      headers: { Accept: "text/event-stream" },
+      signal: new AbortController().signal
+    });
+
+    expect(response.body).toBe(stream);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/backoffice/dashboard/live-events",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer fresh-access-token" }) })
+    );
+  });
+});
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },

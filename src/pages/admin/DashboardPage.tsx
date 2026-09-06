@@ -27,6 +27,17 @@ import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n
 
 const defaultQuery: DashboardQuery = { period: "last7days" };
 
+export function openLiveDashboardWindow(
+  openWindow: (url: string, target: string, features: string) => Window | null = (url, target, features) => window.open(url, target, features)
+) {
+  const child = openWindow(
+    "/pf-admin.html#/admin/live-screen?country=JP&period=today",
+    "_blank",
+    "noopener,noreferrer"
+  );
+  if (child) child.opener = null;
+}
+
 type DashboardPair = {
   dashboard: BackofficeDashboardPayload;
   overview: DashboardOverviewPayload;
@@ -255,6 +266,13 @@ export function DashboardPage() {
             />
           </div>
           <div className="flex gap-2">
+            <button
+              className="rounded-xl border border-moss bg-moss/5 px-4 py-2 text-sm font-black text-moss transition hover:bg-moss/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
+              onClick={() => openLiveDashboardWindow()}
+              type="button"
+            >
+              {t("实时数据大屏")}
+            </button>
             <Link className="rounded-xl border border-line bg-white px-4 py-2 text-sm font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40" to="/admin/orders">
               {t("处理订单")}
             </Link>

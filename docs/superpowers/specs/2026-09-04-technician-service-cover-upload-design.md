@@ -4,7 +4,7 @@
 
 **适用阶段：** Step 09 前端第一批去 mock，对现有正式技师服务写接口做一个独立增量
 
-**状态：** 实现、自动化、正式 API/MySQL 与跨页面读取已验收；浏览器文件选择与新增服务分类前置条件待补验，尚未标记完成
+**状态：** 已完成；实现、自动化、正式 API/MySQL、浏览器文件选择、跨页面读取与清理终态均已验收
 
 **关联设计：** `2026-09-03-technician-profile-detail-service-card-review-tags-design.md`
 
@@ -317,3 +317,22 @@ Route -> Controller -> Service -> Repository -> Prisma/MySQL
 - 验收结束后，仅按捕获的服务 ID 调用认证服务 DELETE API；MySQL 确认该行软删除，正式本人服务列表不再返回它，原有服务的排序值恢复为验收前值。
 
 本轮状态为 `DONE_WITH_CONCERNS`，而不是完成：Chrome 扩展控制的文件选择器拒绝附加仓库图片，无法证明浏览器本地预览/替换上传；固定正式技师测试资料虽已有服务，但未提供新增表单所需的 `defaultCategoryId`，浏览器新增服务显示“当前没有可用的正式服务分类”。因此第 11 节第 1、3、5 项中的浏览器选图/本地校验链路仍待可用文件上传控制和正式分类前置数据补验。本轮不修改技师/资料 ID 格式，不合并 `main`，不声称部署。
+
+## 15. 2026-09-07 main 浏览器闭环补验
+
+此前 `DONE_WITH_CONCERNS` 的两项前置条件已经消除：当前正式测试技师可复用本人已有服务分类；受管 Node Playwright 可直接操作原生 `input[type=file]`，不依赖 Chrome 扩展文件选择器。
+
+在本地 `main`、5180 前端和同工作树 3000 正式 API 上，使用 `admina@lifedance.com` 的真实技师与用户身份完成以下闭环：
+
+- 新增服务表单显示唯一封面上传入口；非图片和超过 8 MiB 文件在前端被拒绝，合法 JPEG 生成可解码的 `blob:` 本地预览。
+- 通过正式 POST 创建临时服务，再通过正式 PUT 上传封面；刷新技师个人中心后仍读取 `/media/content/...`。
+- 对已有服务选择内容损坏但声明为 PNG 的文件，正式封面接口返回 400，页面保留“服务已保存，封面上传失败，请重试”的部分成功状态；换成合法 JPEG 后重试返回 200。
+- 替换后的内容寻址 URL 与初始 URL 不同；技师个人中心与用户端 `/profiles/technician/s0000000002` 的共享服务卡读取同一 URL。
+- 新服务上移和下移均返回 200，顺序恢复且未出现 `error.technician_service.invalid_order`。
+- 移除封面返回 200；刷新技师端和用户详情页均保持诚实无图状态。390 px 视口 `scrollWidth === clientWidth`。
+- 唯一预期控制台错误是损坏 PNG 请求产生的 HTTP 400；除此之外控制台 error 为 0。
+- 验收服务 `1724` 最终通过正式 DELETE 软删除。MySQL 证明 `coverImageUrl=null`，两版 `MediaAsset` 均 `isActive=false` 且有 `deletedAt`，审计存在两次 `technician.service.cover.updated` 和一次 `technician.service.cover.removed`。
+- 两次脚本诊断运行创建的服务 `1721`、`1722`，以及一次完整但因证据断言终止的服务 `1723`，也都通过限定的正式 UI 清理；数据库中所有 `封面验收-` 服务均已软删除，关联媒体无活动记录。
+- 当前 HEAD 新鲜复验：前端相关 9 个文件 122 项测试、后端相关 6 个套件 69 项测试全部通过；前后端 lint 与 build 均退出 0。前端构建只保留既有 Zod 注释、SocialProfilePage mixed-import 和大 chunk 警告。
+
+至此第 11 节的浏览器文件选择、预览、上传、替换、移除、跨页面一致性、错误校验、移动布局与数据库/审计清理全部有新鲜证据，本微步骤从 `DONE_WITH_CONCERNS` 更新为完成。本记录仍只证明本地 `main`，不代表远端 push、部署或生产 migration。
