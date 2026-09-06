@@ -67,12 +67,21 @@ const blockOptions: Array<{ type: OfficialNoticeBlock["type"]; label: string; ic
   { type: "file", label: "文件", icon: "档" }
 ];
 const noticeLocales: OfficialNoticeLocale[] = ["ja", "zh-CN", "zh-TW", "en", "ko"];
-const noticeLocaleLabels: Record<OfficialNoticeLocale, string> = {
-  ja: "日本語",
-  "zh-CN": "简体中文",
-  "zh-TW": "繁體中文",
-  en: "English",
-  ko: "한국어"
+const noticeLocaleLabels: Record<Language, Record<OfficialNoticeLocale, string>> = {
+  zh: { ja: "日语", "zh-CN": "简体中文", "zh-TW": "繁体中文", en: "英语", ko: "韩语" },
+  "zh-Hant": { ja: "日語", "zh-CN": "簡體中文", "zh-TW": "繁體中文", en: "英語", ko: "韓語" },
+  ja: { ja: "日本語", "zh-CN": "中国語（簡体）", "zh-TW": "中国語（繁体）", en: "英語", ko: "韓国語" },
+  en: { ja: "Japanese", "zh-CN": "Simplified Chinese", "zh-TW": "Traditional Chinese", en: "English", ko: "Korean" },
+  ko: { ja: "일본어", "zh-CN": "중국어(간체)", "zh-TW": "중국어(번체)", en: "영어", ko: "한국어" }
+};
+const identityOptions = ["customer", "technician", "merchant_owner", "merchant_staff", "platform", "platform_admin", "scout"] as const;
+type NoticeIdentityType = typeof identityOptions[number];
+const identityTypeLabels: Record<Language, Record<NoticeIdentityType, string>> = {
+  zh: { customer: "用户", technician: "技师", merchant_owner: "商户店主", merchant_staff: "商户员工", platform: "平台", platform_admin: "平台管理员", scout: "星探" },
+  "zh-Hant": { customer: "用戶", technician: "技師", merchant_owner: "商戶店主", merchant_staff: "商戶員工", platform: "平台", platform_admin: "平台管理員", scout: "星探" },
+  ja: { customer: "顧客", technician: "技師", merchant_owner: "店舗オーナー", merchant_staff: "店舗スタッフ", platform: "プラットフォーム", platform_admin: "運営管理者", scout: "スカウト" },
+  en: { customer: "Customer", technician: "Technician", merchant_owner: "Merchant owner", merchant_staff: "Merchant staff", platform: "Platform", platform_admin: "Platform administrator", scout: "Scout" },
+  ko: { customer: "고객", technician: "기술자", merchant_owner: "매장 소유자", merchant_staff: "매장 직원", platform: "플랫폼", platform_admin: "플랫폼 관리자", scout: "스카우트" }
 };
 const noticeUiTranslations: Record<string, Partial<Record<Language, string>>> = {
   "搜索通知": { "zh-Hant": "搜尋通知", ja: "通知を検索", en: "Search notices", ko: "공지 검색" },
@@ -86,6 +95,8 @@ const noticeUiTranslations: Record<string, Partial<Record<Language, string>>> = 
   "已选择账号": { "zh-Hant": "已選擇帳號", ja: "選択済み", en: "Account selected", ko: "계정 선택됨" },
   "移除账号": { "zh-Hant": "移除帳號", ja: "アカウントを削除", en: "Remove account", ko: "계정 제거" },
   "源语言": { "zh-Hant": "來源語言", ja: "原文言語", en: "Source language", ko: "원문 언어" },
+  "身份类型": { "zh-Hant": "身分類型", ja: "アカウント種別", en: "Identity types", ko: "신분 유형" },
+  "全体用户": { "zh-Hant": "全體用戶", ja: "全ユーザー", en: "All users", ko: "전체 사용자" },
   "复制当前内容到全部语言": { "zh-Hant": "將目前內容複製到所有語言", ja: "現在の内容を全言語へコピー", en: "Copy current content to all languages", ko: "현재 내용을 모든 언어로 복사" },
   "每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。": { "zh-Hant": "每個語言頁籤皆可獨立編輯；複製後仍可逐項修改，傳送時會一併儲存五份內容。", ja: "各言語タブは個別に編集できます。コピー後も個別に変更でき、送信時に5言語すべてを保存します。", en: "Each language tab is independently editable. Copies remain editable, and all five versions are saved together.", ko: "각 언어 탭은 독립적으로 편집할 수 있습니다. 복사 후에도 개별 수정할 수 있으며 전송 시 5개 언어를 함께 저장합니다." },
   "请补齐五种语言的标题、摘要和正文": { "zh-Hant": "請補齊五種語言的標題、摘要和正文", ja: "5言語すべてのタイトル、概要、本文を入力してください", en: "Complete the title, summary, and body in all five languages", ko: "5개 언어의 제목, 요약, 본문을 모두 입력하세요" }
@@ -508,10 +519,9 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
     }
   };
 
-  const identityOptions = ["customer", "technician", "merchant_owner", "merchant_staff", "platform", "platform_admin", "scout"];
   const audienceOptions = scope === "merchant"
     ? [["shop_card_holders", "本店持卡用户"], ["shop_employees", "本店员工"], ["shop_technicians", "本店技师"]]
-    : [["all", "全体用户"], ["identity_types", "身份类型"], ["exact_users", translateNoticeText("指定账号", language)]];
+    : [["all", translateNoticeText("全体用户", language)], ["identity_types", translateNoticeText("身份类型", language)], ["exact_users", translateNoticeText("指定账号", language)]];
   const allLocalesComplete = noticeLocales.every((locale) => {
     const translation = normalizedTranslations[locale];
     return Boolean(
@@ -531,7 +541,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
     : audienceType === "all"
       ? "全体用户"
       : audienceType === "identity_types"
-        ? identityTypes.join(" / ")
+        ? identityTypes.map((identityType) => identityTypeLabels[language][identityType as NoticeIdentityType]).join(" / ")
         : selectedAccounts.length > 0
           ? selectedAccounts.map((account) => `${account.username} / ${account.needoId}`).join("、")
           : "未选择账号";
@@ -589,22 +599,28 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                 </button>
               ))}
             </div>
-            <label className="mt-4 block text-sm font-black">
-              <span className="text-xs font-black text-ink/40">源语言</span>
-              <select
-                className={`${inputClass} mt-2 bg-paper`}
-                onChange={(event) => {
-                  const locale = event.target.value as OfficialNoticeLocale;
-                  setSourceLocale(locale);
-                  setActiveLocale(locale);
-                }}
-                value={sourceLocale}
-              >
-                {noticeLocales.map((value) => (
-                  <option key={value} value={value}>{noticeLocaleLabels[value]}</option>
+            <fieldset className="mt-4">
+              <legend className="text-xs font-black text-ink/40">
+                {translateNoticeText("源语言", language)}
+              </legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {noticeLocales.map((locale) => (
+                  <button
+                    aria-pressed={sourceLocale === locale}
+                    className={`h-10 rounded-lg border px-3 text-xs font-black transition ${sourceLocale === locale ? "border-moss bg-moss text-white" : "border-line bg-paper text-ink/65 hover:border-moss"}`}
+                    data-source-locale={locale}
+                    key={locale}
+                    onClick={() => {
+                      setSourceLocale(locale);
+                      setActiveLocale(locale);
+                    }}
+                    type="button"
+                  >
+                    {noticeLocaleLabels[language][locale]}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+            </fieldset>
           </section>
 
           <section className="h-full rounded-lg border border-line bg-white p-4 shadow-panel">
@@ -636,7 +652,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
             </div>
             {scope === "platform" && audienceType === "identity_types" ? (
               <fieldset className="mt-3">
-                <legend className="text-xs font-black text-ink/40">身份类型</legend>
+                <legend className="text-xs font-black text-ink/40">{translateNoticeText("身份类型", language)}</legend>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {identityOptions.map((value) => (
                     <label className="rounded-lg border border-line bg-paper px-3 py-2 text-xs font-bold" key={value}>
@@ -648,7 +664,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                           : current.filter((item) => item !== value))}
                         type="checkbox"
                       />
-                      {value}
+                      {identityTypeLabels[language][value]}
                     </label>
                   ))}
                 </div>
@@ -797,7 +813,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                         onClick={() => setActiveLocale(locale)}
                         type="button"
                       >
-                        {noticeLocaleLabels[locale]}
+                        {noticeLocaleLabels[language][locale]}
                         {locale === sourceLocale ? ` · ${translateNoticeText("源语言", language)}` : ""}
                         {complete ? " ✓" : ""}
                       </button>

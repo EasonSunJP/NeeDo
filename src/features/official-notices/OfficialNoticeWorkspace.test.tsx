@@ -247,7 +247,7 @@ describe("official notice formal API interactions", () => {
       textareas[1].dispatchEvent(new Event("change", { bubbles: true }));
     });
     await click("現在の内容を全言語へコピー");
-    await click("English");
+    await click("英語");
     setField("标题", "Structured notice");
     await click("确认创建");
     await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
@@ -260,8 +260,41 @@ describe("official notice formal API interactions", () => {
     ]);
     expect(state.createManaged.mock.calls[0]?.[1].translations.en.title).toBe("Structured notice");
     expect(state.createManaged.mock.calls[0]?.[1].translations.ja.title).toBe("结构化通知");
+    expect(state.createManaged.mock.calls[0]?.[1].sourceLocale).toBe("en");
     expect(state.createManaged.mock.calls[0]?.[1]).not.toHaveProperty("title");
     expect(state.createManaged.mock.calls[0]?.[1]).not.toHaveProperty("blocks");
+  });
+
+  it("uses localized quick buttons for source language and identity types", async () => {
+    state.permissions = new Set([
+      "button:backoffice-official-notice-create",
+      "button:backoffice-official-notice-send",
+      "backoffice:users:read"
+    ]);
+    act(() => root.render(
+      <MemoryRouter>
+        <OfficialNoticeComposer returnPath="/done" scope="platform" />
+      </MemoryRouter>
+    ));
+
+    expect(container.textContent).toContain("原文言語");
+    expect(container.querySelectorAll("[data-source-locale]")).toHaveLength(5);
+    expect(container.textContent).toContain("中国語（簡体）");
+    expect(container.textContent).toContain("英語");
+    expect([...container.querySelectorAll("select")].some((select) => select.parentElement?.textContent?.includes("原文言語"))).toBe(false);
+
+    const identityAudience = [...container.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("アカウント種別"))
+      ?.querySelector<HTMLInputElement>('input[name="audience"]') ?? null;
+    expect(identityAudience).not.toBeNull();
+    await act(async () => {
+      identityAudience?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    for (const label of ["顧客", "技師", "店舗オーナー", "店舗スタッフ", "プラットフォーム", "運営管理者", "スカウト"]) {
+      expect(container.textContent).toContain(label);
+    }
+    expect(container.textContent).not.toMatch(/merchant_owner|merchant_staff|platform_admin|customer/);
   });
 
   it("uploads image blocks through the formal content media API", async () => {
