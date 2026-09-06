@@ -160,3 +160,17 @@ Chrome skill 所需 `scripts/browser-client.mjs` 在本机缺失，因此本次�
 最终矩阵 JSON：`/private/tmp/needo-responsive-qa/report.json`；北海道/引导线专项：`/private/tmp/needo-responsive-qa/hokkaido-report.json`；330 秒网络记录：`/private/tmp/needo-responsive-qa/network-report.json`；可复跑脚本：`/private/tmp/needo-responsive-qa.py`。
 
 截图目录 `/private/tmp/needo-responsive-qa/`：`{classic-white-black,blue-black}-{1366x768,1440x900,1920x1080,2560x1440,1920x600}-{real,zero}.png`、`mobile-{320,390,440}.png`、`labels-13.png`、`labels-47.png`、`hokkaido-compact.png`。均为本机临时证据，不随仓库部署。
+
+### 最终边界与日文输入补充复验（c9330617）
+
+2026-09-07 03:49–03:55 JST 对地图平移边界、跨海连续拖动和 IME/键盘结果滚动修复做定点补充。之前的 5180 完整 20+3 样本仍对应前节提交；本补充使用独立 `5298 → 3011`，不把新修复标记为重跑了完整矩阵。
+
+共享 5180 验收期间被另一任务切到 `merchant-main-runtime`，该轮立即中止、未出具页面结论，也未停止其他任务进程。5297 同样已有其他任务；5298 经端口检查确认空闲后从本 feature worktree 启动（PID52570），显式 `NEEDO_OPS_API_PROXY_TARGET=http://127.0.0.1:3011`。源码直取确认 `panMapGesture`、独立手势 intent、`isComposing`、`scrollTop` 逻辑实际供应。3011（PID54426）仍使用本 feature 后端、原正式 needo_dev/Redis；两个进程 cwd 分别为 `live-dashboard-responsive-map-controls` 根与 `backend/`，分支仍为 `codex/live-dashboard-responsive-map-controls`、实现提交 c9330617。为新 origin 只设置进程级 `CORS_ALLOWED_ORIGINS` 允许 5298，没有修改 env 文件或关闭 CORS。直连及代理 health/ready 均 code0、DB/Redis healthy，03:55 延迟健康复验通过，正式 adminb 登录返回成功。
+
+- 在 1920×1080、4 倍缩放下，使用真实鼠标连续移动，每步最多 4px，并逐步读取当前几何变换和真实行政锚点屏幕位置。本州到全国地图冲绳：177 步、176 个不同变换，所有采样至少 1 个真实锚点可见，最终 `47` 在视野内。冲绳都道府县到南大东 `47357`：274 步、249 个不同变换，所有采样至少 2 个真实锚点可见，最终目标在视野内。此结果取代早期“大 delta 但变换未变化”的无效拖动证据。
+- 两次连续拖动均业务请求增量 0；完成起始 hover/指针抓取后，拖动期间标签保持，pointerup 后重新排布对齐；还原恢复 scale1，层级切换自动还原，控制台 0 error。
+- 选中小笠原 `13421` 后第一次 1.5 倍缩放仍可见，屏幕锚点位移 1.46025px（采用 ≤2px 稳定容差），没有跳出视野，本地缩放请求增量 0。
+- 日文组合输入的 `compositionstart`、原生 `isComposing` 和 `keyCode=229` 下 Enter/ArrowUp/ArrowDown 均保持 URL，业务请求增量 0；`compositionend` 后普通 Enter 才产生 1 snapshot + 1 SSE 范围转换。
+- 1366×768 搜索“市”并按 12 次 ArrowDown，第 12 候选完整进入结果弹层：弹层 scrollTop338，活动项 y425.95–465.95，弹层 y246.95–466.95。document scrollX/scrollY均 0，页面宽度等于1366，键盘移动请求增量 0。
+
+本补充 JSON：`/private/tmp/needo-responsive-qa/final-targeted-report.json`；脚本：`/private/tmp/needo-responsive-final-targeted.py`；截图：`final-country-okinawa-pan.png`、`final-okinawa-daito-pan.png`、`final-ime-popup.png`（同截图目录）。本补充仍未执行 main 合并、push、部署或 migration。
