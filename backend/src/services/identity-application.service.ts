@@ -482,9 +482,6 @@ export class IdentityApplicationService {
     if (detail.serviceCategoryIds.length === 0) {
       throw this.validation("error.identity_application.service_category_required");
     }
-    if (!detail.mediaPurposes.includes("representative_identity")) {
-      throw this.validation("error.identity_application.representative_identity_required");
-    }
     if (detail.applicantKind === "corporate") {
       if (!detail.corporateLegalName?.trim() || !detail.corporateLegalNameKana?.trim()) {
         throw this.validation("error.identity_application.corporate_name_required");

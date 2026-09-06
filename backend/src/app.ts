@@ -111,6 +111,7 @@ import type { TravelOperationsRepositoryPort } from "./services/travel-operation
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
+import type { OrderRefundCaseRepositoryPort } from "./services/order-refund-case.service";
 import type {
   AffiliatePlatformFeeRepositoryPort,
   AffiliatePlatformFeeService
@@ -123,6 +124,11 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
+import type { OfficialNoticeMediaStoragePort } from "./services/official-notice-media.storage";
+import type {
+  OfficialNoticeMediaRepositoryPort,
+  OfficialNoticeMediaService
+} from "./services/official-notice-media.service";
 import type { SocialMediaRepositoryPort } from "./services/social-media.service";
 import type { SocialMediaService } from "./services/social-media.service";
 import type { OfficialAnnouncementRepositoryPort } from "./services/official-announcement.service";
@@ -216,6 +222,7 @@ import { createImPolicyRoutes } from "./routes/im-policy.routes";
 import { createLegalDocumentRoutes } from "./routes/legal-document.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
+import { createOrderRefundCaseRoutes } from "./routes/order-refund-case.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createNdpExchangeRateRoutes } from "./routes/ndp-exchange-rate.routes";
 import { createHealthRoutes } from "./routes/health.routes";
@@ -379,6 +386,7 @@ export interface AppDependencies {
   travelOperationsRepository?: TravelOperationsRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
+  orderRefundCaseRepository?: OrderRefundCaseRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
   affiliatePlatformFeeService?: AffiliatePlatformFeeService;
   ndpExchangeRateRepository?: NdpExchangeRateRepositoryPort;
@@ -400,6 +408,9 @@ export interface AppDependencies {
   contentMediaRepository?: ContentMediaRepositoryPort;
   contentMediaService?: ContentMediaService;
   contentMediaStorage?: ContentMediaStoragePort;
+  officialNoticeMediaRepository?: OfficialNoticeMediaRepositoryPort;
+  officialNoticeMediaService?: OfficialNoticeMediaService;
+  officialNoticeMediaStorage?: OfficialNoticeMediaStoragePort;
   socialMediaRepository?: SocialMediaRepositoryPort;
   socialMediaService?: SocialMediaService;
   socialMediaStorage?: ContentMediaStoragePort;
@@ -743,6 +754,10 @@ export const createApp = (
     createOrderAcceptancePauseRoutes(config, resolvedDependencies)
   );
   mount("backoffice", createOrderPerformanceRoutes(config, resolvedDependencies));
+  mount(
+    ["shared", "backoffice", "merchant-admin"],
+    createOrderRefundCaseRoutes(config, resolvedDependencies)
+  );
   mount("backoffice", createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   mount("backoffice", createNdpExchangeRateRoutes(config, resolvedDependencies));
   mount("merchant-admin", createMerchantFinanceRulesRoutes(config, resolvedDependencies));
@@ -819,7 +834,7 @@ export const createApp = (
 };
 
 const customerAvatarFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
-const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp|mp4|webm|pdf|txt)$/;
 
 const createContentMediaStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {

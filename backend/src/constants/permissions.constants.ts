@@ -543,6 +543,10 @@ export const SYSTEM_PERMISSIONS = [
     "order",
     "确认或标记退款本店订单的到店及银行转账收款"
   ),
+  createPermission("user:order-refund:write", "用户订单退款", "api", "order", "为本人已完成订单申请退款、确认到账或投诉"),
+  createPermission("merchant-admin:order-refund:write", "商户订单退款", "api", "order", "在授权店铺处理退款申请、提交退款凭证或投诉"),
+  createPermission("backoffice:order-refund-dispute:read", "退款争议读取", "api", "backoffice", "分页读取已投诉的订单退款争议"),
+  createPermission("backoffice:order-refund-dispute:resolve", "退款争议裁定", "api", "backoffice", "裁定已正式投诉的订单退款争议"),
   createPermission(
     "backoffice:order-payment:write",
     "运营线下收款维护",
@@ -2553,7 +2557,9 @@ export const buildRolePermissionAssignments = (): Record<
     "button:user:test-account:update",
     "menu:admin-settings",
     "page:admin-settings",
-    "backoffice:order:checkout:receipt-override"
+    "backoffice:order:checkout:receipt-override",
+    "backoffice:order-refund-dispute:read",
+    "backoffice:order-refund-dispute:resolve"
   ],
   finance: [
     ...FINANCE_PERMISSION_CODES,
@@ -2580,7 +2586,8 @@ export const buildRolePermissionAssignments = (): Record<
     "user:list",
     "user:update",
     "user:identity:list",
-    "button:user:update"
+    "button:user:update",
+    "backoffice:order-refund-dispute:read"
   ],
   merchant_owner: [
     "sos:list", "sos:resolve",
@@ -2600,7 +2607,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
-    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES,
+    "merchant-admin:order-refund:write"
   ],
   merchant_staff: [
     "sos:list", "sos:resolve",
@@ -2616,7 +2624,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
-    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES,
+    "merchant-admin:order-refund:write"
   ],
   technician: [
     "sos:create",
@@ -2652,7 +2661,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
-    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
+    "user:order-refund:write"
   ],
   broker: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,

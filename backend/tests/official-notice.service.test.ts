@@ -61,6 +61,26 @@ const payload = (patch: Partial<OfficialNoticePayload> = {}): OfficialNoticePayl
 
 function repository(): jest.Mocked<OfficialNoticeRepositoryPort> {
   return {
+    createDraft: jest.fn(async (input: Parameters<OfficialNoticeRepositoryPort["createDraft"]>[0]) => {
+      void input;
+      return payload({ status: "draft", scheduledAt: null, audienceCount: 0 });
+    }),
+    getManaged: jest.fn(async (
+      publicId: Parameters<OfficialNoticeRepositoryPort["getManaged"]>[0],
+      issuerScope: Parameters<OfficialNoticeRepositoryPort["getManaged"]>[1]
+    ) => {
+      void publicId;
+      void issuerScope;
+      return payload({ status: "draft", scheduledAt: null, audienceCount: 0 });
+    }),
+    updateDraft: jest.fn(async (input: Parameters<OfficialNoticeRepositoryPort["updateDraft"]>[0]) => {
+      void input;
+      return payload({ status: "draft", scheduledAt: null, audienceCount: 0, lockVersion: 2 });
+    }),
+    planDraft: jest.fn(async (input: Parameters<OfficialNoticeRepositoryPort["planDraft"]>[0]) => {
+      void input;
+      return payload({ status: "scheduled", lockVersion: 2 });
+    }),
     createAndPlan: jest.fn(
       async (input: Parameters<OfficialNoticeRepositoryPort["createAndPlan"]>[0]) => {
         void input;
@@ -169,6 +189,82 @@ describe("OfficialNoticeService", () => {
     );
     expect(repo.createAndPlan).toHaveBeenCalledWith(expect.objectContaining({ scheduledAt }));
     expect(repo.dispatchNotice).not.toHaveBeenCalled();
+  });
+
+  it("saves an incomplete platform draft without snapshotting or dispatching", async () => {
+    const repo = repository();
+    const service = new OfficialNoticeService(repo, {
+      now: () => now,
+      createPublicId: () => payload().publicId
+    });
+    const translations = Object.fromEntries(Object.entries(translationInputs).map(([locale, item]) => [
+      locale,
+      { ...item, title: locale === "ja" ? "編集中" : "", summary: "", blocks: [], isInitialCopy: locale !== "ja" }
+    ])) as never;
+
+    const result = await service.createDraft(actor, { ip: "127.0.0.1" }, {
+      sourceLocale: "ja",
+      level: "general",
+      translations,
+      audience: { type: "all" },
+      idempotencyKey: "draft-service-create"
+    });
+
+    expect(repo.createDraft).toHaveBeenCalledWith(expect.objectContaining({
+      publicId: payload().publicId,
+      actorUserId: 7,
+      issuerScope: { type: "platform" },
+      targetSummary: "全体用户",
+      translations: expect.objectContaining({
+        ja: expect.objectContaining({ title: "編集中", sourceLocale: "ja", isInitialCopy: false }),
+        en: expect.objectContaining({ sourceLocale: "ja", isInitialCopy: true })
+      })
+    }));
+    expect(repo.dispatchNotice).not.toHaveBeenCalled();
+    expect(result.status).toBe("draft");
+  });
+
+  it("updates and plans a merchant draft inside the authenticated shop scope", async () => {
+    const repo = repository();
+    const service = new OfficialNoticeService(repo, { now: () => now });
+    const merchant = {
+      userId: 7,
+      currentIdentityId: 17,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11
+    } as AuthenticatedAccessContext;
+    const draftInput = {
+      sourceLocale: "ja" as const,
+      level: "important" as const,
+      translations: Object.fromEntries(Object.entries(translationInputs).map(([locale, item]) => [
+        locale,
+        { ...item, isInitialCopy: locale !== "ja" }
+      ])) as never,
+      audience: { type: "shop_employees" as const },
+      expectedLockVersion: 1,
+      idempotencyKey: "merchant-draft-update"
+    };
+
+    await service.getMerchantDraft(merchant, payload().publicId);
+    await service.updateDraftMerchant(merchant, { ip: "127.0.0.1" }, payload().publicId, draftInput);
+    await service.planDraftMerchant(merchant, { ip: "127.0.0.1" }, payload().publicId, {
+      expectedLockVersion: 2,
+      sendMode: "now",
+      scheduledAt: null,
+      idempotencyKey: "merchant-draft-plan"
+    });
+
+    const issuerScope = expect.objectContaining({ type: "shop", shopId: 11, actorIdentityId: 17 });
+    expect(repo.getManaged).toHaveBeenCalledWith(payload().publicId, { type: "shop", shopId: 11 });
+    expect(repo.updateDraft).toHaveBeenCalledWith(expect.objectContaining({ issuerScope }));
+    expect(repo.planDraft).toHaveBeenCalledWith(expect.objectContaining({
+      issuerScope,
+      expectedLockVersion: 2,
+      sendMode: "now",
+      scheduledAt: now
+    }));
+    expect(repo.dispatchNotice).toHaveBeenCalledWith(payload().publicId, now);
   });
 
   it("keeps recipient reads scoped to the authenticated current identity", async () => {

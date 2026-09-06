@@ -35,6 +35,7 @@
     "check:affiliate-alliance-invitation-flow": "tsx scripts/check-affiliate-alliance-invitation-flow.ts",
     "check:affiliate-checkout-attribution-flow": "tsx scripts/check-affiliate-checkout-attribution-flow.ts",
     "check:affiliate-service-completion-reward-flow": "tsx scripts/check-affiliate-service-completion-reward-flow.ts",
+    "check:order-refund-case-flow": "tsx scripts/check-order-refund-case-flow.ts",
     "check:affiliate-task-expiry-flow": "tsx scripts/check-affiliate-task-expiry-flow.ts",
     "check:affiliate-platform-fee-flow": "tsx scripts/check-affiliate-platform-fee-flow.ts",
     "check:booking-platform-fee-debt-flow": "tsx scripts/check-booking-platform-fee-debt-flow.ts",

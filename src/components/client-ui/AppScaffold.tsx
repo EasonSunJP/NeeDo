@@ -561,6 +561,7 @@ export function AppTopBar({
   closeTo,
   actions,
   footer,
+  overlay,
   footerClassName,
   containerClassName,
   hideBackButton = false,
@@ -580,6 +581,7 @@ export function AppTopBar({
   closeTo?: string;
   actions?: ReactNode;
   footer?: ReactNode;
+  overlay?: ReactNode;
   footerClassName?: string;
   containerClassName?: string;
   hideBackButton?: boolean;
@@ -659,6 +661,7 @@ export function AppTopBar({
       className="gap-0"
       frameClassName={cn("z-40", frameClassName)}
       maxWidth="1600px"
+      overlay={overlay}
       panelClassName={cn(appTopBarPanelClassName, className)}
       showSpacer={!fixed}
       spacerGapPx={0}

@@ -51,7 +51,7 @@ describe("ProtectedBankAccountRepository", () => {
     });
   });
 
-  it("creates, binds, replaces, versions, notifies audit, and never writes raw values in one transaction", async () => {
+  it.each(["ordinary", "current", "savings", "other"] as const)("persists %s, binds, versions and audits without raw values in one transaction", async (accountType) => {
     const tx = {
       identityApplication: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -63,7 +63,7 @@ describe("ProtectedBankAccountRepository", () => {
           bankName: "三菱UFJ银行",
           branchCode: "001",
           branchName: "本店",
-          accountType: "ordinary",
+          accountType,
           verifiedAt
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -90,7 +90,7 @@ describe("ProtectedBankAccountRepository", () => {
         bankName: "三菱UFJ银行",
         branchCode: "001",
         branchName: "本店",
-        accountType: "ordinary",
+        accountType,
         accountNumberEncrypted: "v1.account",
         accountHolderEncrypted: "v1.holder",
         accountHolderNormalizedEncrypted: "v1.normalized",
@@ -120,6 +120,7 @@ describe("ProtectedBankAccountRepository", () => {
       data: expect.objectContaining({
         ownerUserId: 7,
         purpose: "merchant_application",
+        accountType,
         accountNumberEncrypted: "v1.account",
         accountHolderEncrypted: "v1.holder"
       })

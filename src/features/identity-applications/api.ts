@@ -226,7 +226,7 @@ export type BankAccountInput = {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumber: string;
   accountHolderName: string;
 };
