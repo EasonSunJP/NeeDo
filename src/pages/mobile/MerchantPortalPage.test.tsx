@@ -75,7 +75,7 @@ describe("MerchantPortalPage store privacy control", () => {
     );
 
     expect(staffDetailSource).toContain('backofficeRealDataApi.technician("merchant-admin", technicianApiId)');
-    expect(staffDetailSource).toContain("<FormalTechnicianDetailPanel detail={formalDetail} />");
+    expect(staffDetailSource).toContain('<FormalTechnicianDetailPanel detail={formalDetail} workStatusScope="merchant-admin" />');
     expect(staffDetailSource).toContain("正在读取员工资料");
   });
 

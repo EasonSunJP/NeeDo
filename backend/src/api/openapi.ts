@@ -1,3 +1,5 @@
+import { workStatusOpenApiPaths } from './work-status.openapi';
+import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
@@ -3336,6 +3338,120 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expectedDraftLockVersion: { type: "integer", minimum: 1 },
           publishedAt: { type: "string", format: "date-time" },
           setEnabled: { type: "boolean" }
+        }
+      },
+      LiveDashboardMoney: {
+        type: "object",
+        additionalProperties: false,
+        required: ["jpy", "ndp", "testNdp"],
+        properties: {
+          jpy: { type: "integer" },
+          ndp: { type: "integer" },
+          testNdp: { type: "integer" }
+        }
+      },
+      LiveDashboardOrderSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: ["orderNo", "status", "serviceName", "amountJpy", "occurredAt"],
+        properties: {
+          orderNo: { type: "string" },
+          status: { type: "string" },
+          serviceName: { type: "string" },
+          amountJpy: { type: "integer", minimum: 0 },
+          occurredAt: { type: "string", format: "date-time" }
+        }
+      },
+      LiveDashboardChildRegion: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "name", "orderCount", "confirmedPayments"],
+        properties: {
+          code: { type: "string", pattern: "^\\d{2,5}$" },
+          name: { type: "string" },
+          orderCount: { type: "integer", minimum: 0 },
+          confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" }
+        }
+      },
+      LiveDashboardHeadline: {
+        type: "object",
+        additionalProperties: false,
+        required: ["newOrders", "completedOrders", "newCustomers", "onboardedTechnicians"],
+        properties: {
+          newOrders: { type: "integer", minimum: 0 },
+          completedOrders: { type: "integer", minimum: 0 },
+          newCustomers: { type: "integer", minimum: 0 },
+          onboardedTechnicians: { type: "integer", minimum: 0 }
+        }
+      },
+      LiveDashboardOrders: {
+        type: "object",
+        additionalProperties: false,
+        required: ["total", "serviceGmv", "platformNetRevenue", "agentCommission"],
+        properties: {
+          total: { type: "integer", minimum: 0 },
+          serviceGmv: { $ref: "#/components/schemas/LiveDashboardMoney" },
+          platformNetRevenue: { $ref: "#/components/schemas/LiveDashboardMoney" },
+          agentCommission: {
+            oneOf: [{ $ref: "#/components/schemas/LiveDashboardMoney" }, { type: "null" }]
+          }
+        }
+      },
+      LiveDashboardRealtimeOrders: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/LiveDashboardOrderSummary" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", const: 1 },
+          page_size: { type: "integer", const: 20 }
+        }
+      },
+      LiveDashboardTrendBucket: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "label", "orderCount", "confirmedPayments"],
+        properties: {
+          key: { type: "string" },
+          label: { type: "string" },
+          orderCount: { type: "integer", minimum: 0 },
+          confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" }
+        }
+      },
+      LiveDashboardRankingItem: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "rank",
+          "entityPublicId",
+          "displayName",
+          "avatarUrl",
+          "gmvJpy",
+          "completedCount"
+        ],
+        properties: {
+          rank: { type: "integer", minimum: 1 },
+          entityPublicId: { type: "string" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"] },
+          gmvJpy: { type: "integer", minimum: 0 },
+          completedCount: { type: "integer", minimum: 0 }
+        }
+      },
+      LiveDashboardCoverage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["total", "attributed", "unresolved", "completenessPercent"],
+        properties: {
+          total: { type: "integer", minimum: 0 },
+          attributed: { type: "integer", minimum: 0 },
+          unresolved: { type: "integer", minimum: 0 },
+          completenessPercent: { type: "number", minimum: 0, maximum: 100 }
         }
       },
       TrimmedVisibleIdempotencyKey: {
@@ -6968,10 +7084,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeManagedUserExperience: {
         type: "object",
-        required: ["currentLevel", "totalExpUnits"],
+        required: ["currentLevel", "totalExp", "totalExpUnits"],
         properties: {
           currentLevel: { type: "integer", minimum: 1, maximum: 100 },
-          totalExpUnits: { type: "string", pattern: "^[0-9]+$" }
+          totalExp: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,4})?$", description: "Exact decimal EXP amount for display, consistent with the user experience summary." },
+          totalExpUnits: { type: "string", pattern: "^[0-9]+$", deprecated: true, description: "Legacy storage precision; use totalExp for experience amounts." }
         }
       },
       BackofficeManagedUser: {
@@ -7037,6 +7154,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
+          identityProfiles: {
+            type: "array",
+            description: "Operations-only personal identity names and latest application states. Merchant names come from MerchantIdentityProfile, never shop labels. Draft or withdrawn applications are not enabled.",
+            items: {
+              type: "object",
+              required: ["type", "status", "displayName"],
+              properties: {
+                type: { type: "string", enum: ["technician", "merchant"] },
+                status: { type: "string", enum: ["active", "not_enabled", "under_review", "rejected"] },
+                displayName: { type: ["string", "null"] }
+              }
+            }
+          },
           roles: { type: "array", items: { type: "object" } },
           groups: { type: "array", items: { type: "string" } },
           ekycVerified: { type: "boolean" },
@@ -7077,6 +7207,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           bookingCount: { type: "integer", minimum: 0 },
+          testNdpBalance: {
+            type: ["object", "null"],
+            description: "Separate TEST_NDP wallet balance. Null when no test wallet exists; never included in ndpBalance or NDP balance filters.",
+            required: ["available", "frozen"],
+            properties: {
+              available: { type: "integer" },
+              frozen: { type: "integer" }
+            }
+          },
           city: { type: ["string", "null"] },
           privacyMode: { type: "boolean" },
           privacyScope: {
@@ -7177,12 +7316,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           order: {
             type: "object",
-            required: ["id", "orderNo", "serviceName", "startsAt"],
+            required: ["id", "orderNo", "serviceName", "startsAt", "shopName", "durationMinutes", "note", "paymentMethod", "paymentStatus", "paymentCurrency", "otherPaymentMethod", "addOnCount", "addOnMinutes"],
             properties: {
               id: { type: "integer", minimum: 1 },
               orderNo: { type: "string" },
               serviceName: { type: "string" },
-              startsAt: { type: "string", format: "date-time" }
+              startsAt: { type: "string", format: "date-time" },
+              shopName: { type: "string" },
+              durationMinutes: { type: ["integer", "null"], minimum: 0 },
+              note: { type: ["string", "null"] },
+              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer", "cash", "ndp", "other"] },
+              paymentStatus: { type: "string", enum: ["pending", "confirmed", "refund_pending", "refunded"] },
+              paymentCurrency: { type: ["string", "null"], description: "Currency from the checkout ledger; null when unavailable. TEST_NDP is distinct from NDP." },
+              otherPaymentMethod: { type: ["string", "null"] },
+              addOnCount: { type: "integer", minimum: 0, description: "Non-deleted ACCEPTED add-ons only" },
+              addOnMinutes: { type: "integer", minimum: 0 }
             }
           },
           reviewer: {
@@ -7937,16 +8085,50 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           updatedAt: { type: "string", format: "date-time" }
         }
       },
+      AdministrativeRegionReference: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "name", "level", "parentCode", "centroid"],
+        properties: {
+          code: { type: "string", example: "13104" },
+          name: { type: "string", example: "新宿区" },
+          level: { type: "string", enum: ["country", "admin1", "admin2"] },
+          parentCode: { type: ["string", "null"], example: "13" },
+          centroid: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["lat", "lng"],
+                properties: {
+                  lat: { type: "number" },
+                  lng: { type: "number" }
+                }
+              },
+              { type: "null" }
+            ]
+          }
+        }
+      },
       BackofficeShopUpdateInput: {
         type: "object",
+        additionalProperties: false,
         minProperties: 1,
+        dependentRequired: {
+          serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"],
+          serviceAdmin1Code: ["serviceCountryCode", "serviceAdmin2Code"],
+          serviceAdmin2Code: ["serviceCountryCode", "serviceAdmin1Code"]
+        },
         properties: {
           name: { type: "string", minLength: 1, maxLength: 160 },
           description: { type: ["string", "null"], maxLength: 5000 },
           city: { type: "string", minLength: 1, maxLength: 100 },
           address: { type: "string", minLength: 1, maxLength: 255 },
           phone: { type: ["string", "null"], maxLength: 50 },
-          isRecommended: { type: "boolean" }
+          isRecommended: { type: "boolean" },
+          serviceCountryCode: { type: "string", enum: ["JP"] },
+          serviceAdmin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+          serviceAdmin2Code: { type: "string", pattern: "^[0-9]{5}$" }
         }
       },
       MerchantShopUpdateInput: {
@@ -15167,6 +15349,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...sosOpenApiPaths,
+    ...workStatusOpenApiPaths,
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
@@ -19923,9 +20107,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           content: {
             "application/json": {
               schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["scheduleSlotId", "fulfillmentMode"],
+                discriminator: { propertyName: "fulfillmentMode" },
                 properties: {
                   serviceId: { type: "integer", minimum: 1 },
                   technicianServiceId: { type: "integer", minimum: 1 },
@@ -19947,26 +20129,62 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     maxLength: 512
                   }
                 },
-                allOf: [
+                oneOf: [
                   {
-                    if: {
-                      properties: { fulfillmentMode: { const: "home" } },
-                      required: ["fulfillmentMode"]
-                    },
-                    then: { required: ["fulfillmentAddress", "travelEstimatePublicId"] }
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["scheduleSlotId", "fulfillmentMode"],
+                    oneOf: [{ required: ["serviceId"] }, { required: ["technicianServiceId"] }],
+                    properties: {
+                      serviceId: { type: "integer", minimum: 1 },
+                      technicianServiceId: { type: "integer", minimum: 1 },
+                      scheduleSlotId: { type: "integer", minimum: 1 },
+                      orderType: { type: "string", enum: ["booking", "request"] },
+                      fulfillmentMode: { type: "string", enum: ["store"] },
+                      paymentMethod: {
+                        type: "string",
+                        enum: ["onsite", "bank_transfer"],
+                        default: "onsite"
+                      },
+                      note: { type: "string", maxLength: 500 },
+                      affiliateCode: { type: "string", minLength: 1, maxLength: 40 },
+                      affiliatePublicToken: { type: "string", minLength: 1, maxLength: 512 }
+                    }
                   },
                   {
-                    if: {
-                      properties: { fulfillmentMode: { const: "store" } },
-                      required: ["fulfillmentMode"]
-                    },
-                    then: {
-                      not: {
-                        anyOf: [
-                          { required: ["fulfillmentAddress"] },
-                          { required: ["travelEstimatePublicId"] }
-                        ]
-                      }
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["scheduleSlotId", "fulfillmentMode", "serviceLocation", "fulfillmentAddress", "travelEstimatePublicId"],
+                    oneOf: [
+                      { required: ["serviceId"] },
+                      { required: ["technicianServiceId"] }
+                    ],
+                    properties: {
+                      serviceId: { type: "integer", minimum: 1 },
+                      technicianServiceId: { type: "integer", minimum: 1 },
+                      scheduleSlotId: { type: "integer", minimum: 1 },
+                      orderType: { type: "string", enum: ["booking", "request"] },
+                      fulfillmentMode: { type: "string", enum: ["home"] },
+                      fulfillmentAddress: { $ref: "#/components/schemas/JapaneseRouteAddress" },
+                      travelEstimatePublicId: { type: "string", format: "uuid" },
+                      serviceLocation: {
+                        type: "object",
+                        additionalProperties: false,
+                        required: ["countryCode", "admin1Code", "admin2Code"],
+                        properties: {
+                          countryCode: { type: "string", enum: ["JP"] },
+                          admin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+                          admin2Code: { type: "string", pattern: "^[0-9]{5}$" }
+                        }
+                      },
+                      paymentMethod: {
+                        type: "string",
+                        enum: ["onsite", "bank_transfer"],
+                        default: "onsite"
+                      },
+                      note: { type: "string", maxLength: 500 },
+                      affiliateCode: { type: "string", minLength: 1, maxLength: 40 },
+                      affiliatePublicToken: { type: "string", minLength: 1, maxLength: 512 }
                     }
                   }
                 ]
@@ -19991,14 +20209,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
-          "400": { description: "Validation failure or travel estimate fields on store service" },
+          "400": { description: "Validation failure, travel estimate fields on store service, or error.administrative_region.address_mismatch when home codes disagree with the accepted normalized address" },
           "401": { description: "Authentication required" },
           "403": {
             description:
               "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
           },
           "409": {
-            description: "Slot unavailable, estimate expired, or estimate already consumed"
+            description: "Slot unavailable, estimate expired, estimate already consumed, or error.booking.service_location_unresolved when a store location cannot be verified"
           },
           "422": { description: "Home estimate required, invalid, or mismatched" }
         }
@@ -20010,6 +20228,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated Booking order list",
         security: [{ bearerAuth: [] }],
         parameters: [
+          {
+            name: "dateMode",
+            in: "query",
+            description: "startsWithin (default) matches order starts; overlaps matches startsAt < to and endsAt > from and requires both bounds. Identity scope is unchanged.",
+            schema: { type: "string", enum: ["startsWithin", "overlaps"], default: "startsWithin" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
@@ -21429,6 +21653,203 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/backoffice/dashboard/live-events`]: {
+      get: {
+        operationId: "streamBackofficeLiveDashboardEvents",
+        tags: ["Step 12 Backoffice"],
+        summary: "Stream compact regional dashboard changes",
+        description:
+          "Browser clients must use an authenticated Bearer fetch stream, parse SSE frames themselves, and store the last successfully delivered Redis Stream ID for Last-Event-ID. The native EventSource API is not the authenticated client contract because it cannot supply the required Bearer header. On EOF, network failure, or 503, clients implement exponential backoff with jitter before reconnecting with the stored cursor; the retry: 5000 frame is only an SSE hint and does not replace fetch retry logic. Events are region-filtered, limited to compact allowlisted order fields or cache invalidation sections, replay at most 100 events from the last five minutes, emit 30-second heartbeats, and disconnect slow clients. The current standalone Redis topology provides the atomic replay operation; Redis Cluster key routing is outside this task.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:dashboard:read",
+        parameters: [
+          { name: "country", in: "query", required: true, schema: { type: "string", const: "JP" } },
+          {
+            name: "admin1",
+            in: "query",
+            required: false,
+            schema: { type: "string", pattern: "^\\d{2}$" }
+          },
+          {
+            name: "admin2",
+            in: "query",
+            required: false,
+            description: "Requires admin1 and must be its persisted N03 municipality child.",
+            schema: { type: "string", pattern: "^\\d{5}$" }
+          },
+          {
+            name: "period",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["today", "last7days", "last30days"], default: "today" }
+          },
+          {
+            name: "Last-Event-ID",
+            in: "header",
+            required: false,
+            description:
+              "A Redis Stream ID retained in the bounded replay window, including the current head. Unknown, future, trimmed, or empty/recreated-stream cursors require a full snapshot reset.",
+            schema: { type: "string", pattern: "^\\d+-\\d+$", maxLength: 80 }
+          }
+        ],
+        responses: {
+          "200": {
+            description:
+              "SSE stream with retry: 5000, connected event, compact regional events, and heartbeat comments",
+            content: { "text/event-stream": { schema: { type: "string" } } }
+          },
+          "400": {
+            description: "Strict query, Last-Event-ID, or persisted hierarchy validation failed"
+          },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": {
+            description: "Missing active platform identity or backoffice:dashboard:read permission"
+          },
+          "409": jsonErrorResponse(
+            "40900 error.live_dashboard.cursor_reset_required — clear the stored cursor, fetch a full snapshot, then reconnect without Last-Event-ID; unlike retryable EOF, network, or 503 failures, the stale cursor must not be reused"
+          ),
+          "503": dependencyUnavailableResponse(
+            "retryable shared live event transport failure; use client-managed exponential backoff with jitter"
+          )
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/dashboard/live-snapshot`]: {
+      get: {
+        operationId: "getBackofficeLiveDashboardSnapshot",
+        tags: ["Step 12 Backoffice"],
+        summary: "Read a cached formal regional operations snapshot",
+        description:
+          "Validates the persisted Japan administrative hierarchy before reading formal dashboard facts. Redis entries expire after 300 seconds; Redis failure returns freshly computed facts with cacheStatus=degraded. The response contains no customer contact, address, note, or internal actor fields.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:dashboard:read",
+        parameters: [
+          { name: "country", in: "query", required: true, schema: { type: "string", const: "JP" } },
+          {
+            name: "admin1",
+            in: "query",
+            required: false,
+            schema: { type: "string", pattern: "^\\d{2}$" }
+          },
+          {
+            name: "admin2",
+            in: "query",
+            required: false,
+            description: "Requires admin1 and must be its persisted N03 municipality child.",
+            schema: { type: "string", pattern: "^\\d{5}$" }
+          },
+          {
+            name: "period",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["today", "last7days", "last30days"], default: "today" }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Validated formal live snapshot",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", const: 0 },
+                    message: { type: "string", const: "success" },
+                    data: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: [
+                        "scope",
+                        "evaluatedAt",
+                        "cachedAt",
+                        "freshnessSeconds",
+                        "cacheStatus",
+                        "children",
+                        "headline",
+                        "confirmedPayments",
+                        "orders",
+                        "realtimeOrders",
+                        "activity",
+                        "trend",
+                        "serviceRanking",
+                        "technicianRanking",
+                        "coverage"
+                      ],
+                      properties: {
+                        scope: {
+                          type: "object",
+                          additionalProperties: false,
+                          required: ["country", "admin1", "admin2", "breadcrumbs"],
+                          properties: {
+                            country: { type: "string", const: "JP" },
+                            admin1: { type: ["string", "null"], pattern: "^\\d{2}$" },
+                            admin2: { type: ["string", "null"], pattern: "^\\d{5}$" },
+                            breadcrumbs: {
+                              type: "array",
+                              minItems: 1,
+                              maxItems: 3,
+                              items: {
+                                type: "object",
+                                additionalProperties: false,
+                                required: ["level", "code", "name"],
+                                properties: {
+                                  level: { type: "string", enum: ["country", "admin1", "admin2"] },
+                                  code: { type: "string" },
+                                  name: { type: "string" }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        evaluatedAt: { type: "string", format: "date-time" },
+                        cachedAt: { type: "string", format: "date-time" },
+                        freshnessSeconds: { type: "integer", minimum: 0 },
+                        cacheStatus: { type: "string", enum: ["hit", "miss", "degraded"] },
+                        children: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/LiveDashboardChildRegion" }
+                        },
+                        headline: { $ref: "#/components/schemas/LiveDashboardHeadline" },
+                        confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" },
+                        orders: { $ref: "#/components/schemas/LiveDashboardOrders" },
+                        realtimeOrders: {
+                          $ref: "#/components/schemas/LiveDashboardRealtimeOrders"
+                        },
+                        activity: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/LiveDashboardOrderSummary" }
+                        },
+                        trend: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/LiveDashboardTrendBucket" }
+                        },
+                        serviceRanking: {
+                          type: "array",
+                          maxItems: 10,
+                          items: { $ref: "#/components/schemas/LiveDashboardRankingItem" }
+                        },
+                        technicianRanking: {
+                          type: "array",
+                          maxItems: 10,
+                          items: { $ref: "#/components/schemas/LiveDashboardRankingItem" }
+                        },
+                        coverage: { $ref: "#/components/schemas/LiveDashboardCoverage" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "Strict query or persisted hierarchy validation failed" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing backoffice:dashboard:read permission" },
+          "409": { description: "Cached or repository scope evidence did not match the request" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/dashboard/overview`]: {
       get: {
         operationId: "getBackofficeDashboardOverview",
@@ -21677,6 +22098,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/reference/administrative-regions`]: {
+      get: {
+        tags: ["Reference Data"],
+        summary: "List verified Japan administrative-region children",
+        parameters: [
+          {
+            name: "country",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["JP"] }
+          },
+          {
+            name: "parent",
+            in: "query",
+            schema: { type: "string", pattern: "^[0-9]{2,5}$" }
+          },
+          {
+            name: "locale",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["zh-CN", "zh-TW", "ja", "en", "ko"],
+              default: "ja"
+            }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Administrative-region children", {
+            type: "object",
+            additionalProperties: false,
+            required: ["list"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AdministrativeRegionReference" }
+              }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation")
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/shops`]: {
       get: {
         tags: ["Step 12 Backoffice"],
@@ -21696,6 +22159,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
+                dependentRequired: {
+                  serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"],
+                  serviceAdmin1Code: ["serviceCountryCode", "serviceAdmin2Code"],
+                  serviceAdmin2Code: ["serviceCountryCode", "serviceAdmin1Code"]
+                },
                 required: [
                   "ownerEmail",
                   "ownerUsername",
@@ -21713,7 +22182,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   city: { type: "string" },
                   address: { type: "string" },
                   phone: { type: ["string", "null"] },
-                  isRecommended: { type: "boolean" }
+                  isRecommended: { type: "boolean" },
+                  serviceCountryCode: { type: "string", enum: ["JP"] },
+                  serviceAdmin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+                  serviceAdmin2Code: { type: "string", pattern: "^[0-9]{5}$" }
                 }
               }
             }
@@ -21721,6 +22193,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Pending shop created" },
+          "400": jsonErrorResponse(
+            "error.administrative_region.invalid_hierarchy; error.administrative_region.verifier_required"
+          ),
           "409": { description: "Owner email already exists" }
         }
       }
@@ -21743,6 +22218,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": { description: "Shop updated" },
+          "400": jsonErrorResponse(
+            "error.administrative_region.invalid_hierarchy; error.administrative_region.verifier_required; error.shop.public_number_required"
+          ),
           "404": { description: "Shop not found" }
         }
       },
@@ -21914,7 +22392,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["displayName", "email", "city", "createdAt"],
+              enum: ["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"],
               default: "createdAt"
             }
           },
@@ -25313,7 +25791,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["displayName", "email", "city", "createdAt"],
+              enum: ["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"],
               default: "createdAt"
             }
           },
@@ -27720,7 +28198,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": {
-            description: "Content-free standard recall tombstone",
+            description: "Content-free recall result; the server selects standard or traceless mode from the effective membership benefit",
             content: {
               "application/json": {
                 schema: {
@@ -27733,7 +28211,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "object",
                       required: ["action", "conversationId", "messageId", "message"],
                       properties: {
-                        action: { type: "string", enum: ["standard_recall"] },
+                        action: {
+                          type: "string",
+                          enum: ["standard_recall", "traceless_recall"]
+                        },
                         conversationId: { type: "integer" },
                         messageId: { type: "integer" },
                         message: { $ref: "#/components/schemas/RealtimeMessage" }

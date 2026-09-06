@@ -55,6 +55,12 @@ export interface AnalyticsRankingRepositoryPort {
   listRankings(input: AnalyticsRankingInput): Promise<AnalyticsRankingPage>;
 }
 
+export interface AnalyticsRankingEvidenceScope {
+  candidateJoins: Prisma.Sql;
+  candidatePredicate: Prisma.Sql;
+  entityPredicate?: Prisma.Sql;
+}
+
 const entityTypes = new Set<RankingEntityType>([
   "service",
   "technician_service",
@@ -91,7 +97,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
   ): Promise<AnalyticsRankingPage> {
     const anomalyRows = await client.$queryRaw<AnomalyRow[]>(Prisma.sql`
       /* analytics_ranking_evidence_validation */
-      WITH ${this.formalRankingCtes(input)}
+      WITH ${AnalyticsRankingRepository.formalRankingCtes(input)}
       SELECT COALESCE(SUM(incomplete_evidence), 0) AS anomalyCount
       FROM formal_order_evidence
       WHERE entity_eligible = 1
@@ -104,7 +110,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
 
     const countRows = await client.$queryRaw<CountRow[]>(Prisma.sql`
       /* analytics_ranking_count */
-      WITH ${this.formalRankingCtes(input)}, ${this.rankingCtes(input)}
+      WITH ${AnalyticsRankingRepository.formalRankingCtes(input)}, ${AnalyticsRankingRepository.rankingCtes(input)}
       SELECT COUNT(*) AS total FROM ranked_entities
     `);
     if (countRows.length !== 1) this.incomplete();
@@ -113,7 +119,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
 
     const rows = await client.$queryRaw<RankingRow[]>(Prisma.sql`
       /* analytics_ranking_page */
-      WITH ${this.formalRankingCtes(input)}, ${this.rankingCtes(input)}
+      WITH ${AnalyticsRankingRepository.formalRankingCtes(input)}, ${AnalyticsRankingRepository.rankingCtes(input)}
       SELECT ranking_position AS rankingPosition,
              entity_type AS entityType, entity_public_id AS entityPublicId,
              entity_numeric_id AS entityNumericId, display_name AS displayName,
@@ -133,7 +139,10 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     return { list, total, page: input.page, page_size: input.pageSize };
   }
 
-  private formalRankingCtes(input: AnalyticsRankingInput): Prisma.Sql {
+  public static formalRankingCtes(
+    input: AnalyticsRankingInput,
+    evidenceScope?: AnalyticsRankingEvidenceScope
+  ): Prisma.Sql {
     const city =
       input.city === null ? Prisma.sql`TRUE` : Prisma.sql`BINARY shop.city = BINARY ${input.city}`;
     const catalogRequired = input.kind === "service" || input.categoryId !== null;
@@ -176,6 +185,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                technician_user.deleted_at AS technician_user_deleted_at
         FROM booking_orders AS booking
         LEFT JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        ${evidenceScope?.candidateJoins ?? Prisma.empty}
         LEFT JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
         LEFT JOIN order_service_sessions AS session
@@ -193,6 +203,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
           AND booking.payment_confirmed_at < ${input.window.toExclusive}
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND ${city}
+          ${evidenceScope ? Prisma.sql`AND ${evidenceScope.candidatePredicate}` : Prisma.empty}
       ),
       accepted_add_on_projection AS (
         SELECT add_on.booking_order_id,
@@ -319,7 +330,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                 AND (SELECT COUNT(*) FROM technician_services AS base_service
                      JOIN categories AS base_category ON base_category.id = base_service.category_id
                      WHERE base_service.id = candidate.technician_service_id) <> 1)
-            OR COALESCE(NOT (${this.paymentEvidencePredicate()}), TRUE)
+            OR COALESCE(NOT (${AnalyticsRankingRepository.paymentEvidencePredicate()}), TRUE)
           ), TRUE)
           THEN 1 ELSE 0 END AS incomplete_evidence,
           CASE WHEN candidate.customer_is_active = TRUE
@@ -327,6 +338,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                      AND candidate.technician_deleted_at IS NULL
                      AND candidate.technician_user_is_active = TRUE
                      AND candidate.technician_user_deleted_at IS NULL
+                     AND (${evidenceScope?.entityPredicate ?? Prisma.sql`TRUE`})
                THEN 1 ELSE 0 END AS entity_eligible,
           CASE WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE
                THEN 1 ELSE 0 END AS is_test_order
@@ -337,7 +349,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     `;
   }
 
-  private paymentEvidencePredicate(): Prisma.Sql {
+  private static paymentEvidencePredicate(): Prisma.Sql {
     const selectionLink = Prisma.sql`
       event.booking_order_id = candidate.id
       AND event.service_session_id = candidate.session_id
@@ -501,7 +513,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     `;
   }
 
-  private rankingCtes(input: AnalyticsRankingInput): Prisma.Sql {
+  public static rankingCtes(input: AnalyticsRankingInput): Prisma.Sql {
     const categoryFilter =
       input.categoryId === null
         ? Prisma.sql`TRUE`

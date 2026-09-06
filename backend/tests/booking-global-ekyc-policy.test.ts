@@ -5,6 +5,7 @@ import { AppError } from "../src/utils/app-error";
 const occurredAt = new Date("2026-09-01T10:00:00.000Z");
 const actor = { userId: 41, roles: ["customer"], currentIdentityType: "customer" };
 const homeTravelInput = {
+  serviceLocation: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13102" },
   fulfillmentAddress: {
     countryCode: "JP" as const,
     postalCode: "104-0061",
@@ -57,8 +58,9 @@ describe("booking global eKYC policy", () => {
       const state = fixture();
       await state.service.createBooking(actor, {
         scheduleSlotId: 11,
-        fulfillmentMode,
-        ...(fulfillmentMode === "home" ? homeTravelInput : {})
+        ...(fulfillmentMode === "home"
+          ? { fulfillmentMode: "home" as const, ...homeTravelInput }
+          : { fulfillmentMode: "store" as const })
       });
       expect(state.enforcement.assertServiceEkyc).toHaveBeenCalledWith(
         41,

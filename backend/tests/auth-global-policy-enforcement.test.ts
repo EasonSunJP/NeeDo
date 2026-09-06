@@ -94,6 +94,9 @@ async function fixture() {
     findVerifiedRegistrationByChallenge: jest.fn(),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: false, hasSuccessfulLoginInPeriod: false, hasSuccessfulLoginFromIp: false
+    })),
     createAuditLog: jest.fn(async () => undefined),
     completePhoneBinding: jest.fn(async ({ phone }: { phone: string }) => ({
       ...account,
@@ -174,6 +177,7 @@ describe("auth global-policy enforcement", () => {
     const { service } = await fixture();
     const tokens = await service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" });
 
+    if (!("accessToken" in tokens)) throw new Error("unexpected verification challenge");
     await expect(service.authenticateAccessToken(tokens.accessToken)).rejects.toMatchObject({
       code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
       statusCode: 403,
@@ -200,6 +204,7 @@ describe("auth global-policy enforcement", () => {
     const tokens = await state.service.login("member@example.com", "Abcd@1234", {
       ip: "127.0.0.1"
     });
+    if (!("accessToken" in tokens)) throw new Error("unexpected verification challenge");
     await expect(state.service.authenticateAccessToken(tokens.accessToken)).resolves.toMatchObject({
       userId: 41,
       complianceRequirements: []

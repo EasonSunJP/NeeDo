@@ -212,7 +212,9 @@ const makeReplacementSlot = (id: number, bookedCount: number, status: "AVAILABLE
     createdAt: new Date("2026-09-01T00:00:00.000Z")
   },
   technicianService: null,
-  shop: { id: 16, name: "LifeDance", ownerUserId: 202, pricingMode: "MERCHANT" },
+  shop: { id: 16, name: "LifeDance", ownerUserId: 202, pricingMode: "MERCHANT",
+    serviceLocation: { countryCode: "JP", admin1RegionId: 13, admin2RegionId: 13104, datasetVersion: "N03-20260101", deletedAt: null,
+      admin1Region: { officialCode: "13" }, admin2Region: { officialCode: "13104" } } },
   technicianProfile: null
 });
 
@@ -235,7 +237,12 @@ const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean
   let concurrentLinkApplied = false;
 
   const transactionClient = (working: PendingReplacementHarnessState) => ({
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+    $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 101 }]).mockResolvedValue([
+      { id: 13, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
+      { id: 13104, official_code: "13104", level: "ADMIN2", parent_id: 13, deleted_at: null }
+    ]),
+    administrativeRegionLocale: { findMany: jest.fn().mockResolvedValue([{ regionId: 13, name: "東京都" }, { regionId: 13104, name: "新宿区" }]) },
+    bookingServiceLocation: { create: jest.fn().mockResolvedValue({ id: 1 }) },
     customerProfile: {
       findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
     },
@@ -357,6 +364,17 @@ const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean
 };
 
 describe("BookingRepository order list scope", () => {
+  it("uses overlap bounds without dropping merchant and technician identity scope", async () => {
+    const bookingOrder = { findMany: jest.fn(async () => []), count: jest.fn(async () => 0) };
+    const repository = new BookingRepository({ bookingOrder } as never);
+    const from = new Date("2026-09-06T15:00:00.000Z");
+    const to = new Date("2026-09-07T15:00:00.000Z");
+    await repository.listOrders({ shopId: 16, technicianProfileId: 31, from, to, dateMode: "overlaps", page: 1, pageSize: 20 });
+    const where = { shopId: 16, technicianProfileId: 31, deletedAt: null, startsAt: { lt: to }, endsAt: { gt: from } };
+    expect(bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+    expect(bookingOrder.count).toHaveBeenCalledWith({ where });
+  });
+
   it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
     const endsAt = new Date("2026-08-29T14:00:00.000Z");
@@ -549,7 +567,8 @@ describe("BookingRepository order list scope", () => {
           customerUserId: 7,
           serviceId: 1,
           scheduleSlotId: 11,
-          fulfillmentMode: "store"
+          fulfillmentMode: "store",
+          serviceLocation: { source: "SHOP_LOCATION" }
         },
         {
           prepareAffiliate: jest.fn()
@@ -604,7 +623,8 @@ describe("BookingRepository order list scope", () => {
           customerUserId: 101,
           serviceId: 31,
           scheduleSlotId: 701,
-          fulfillmentMode: "store"
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
         })
       ).resolves.toBeNull();
 
@@ -639,7 +659,8 @@ describe("BookingRepository order list scope", () => {
         customerUserId: 101,
         serviceId: 11,
         scheduleSlotId: 603,
-        fulfillmentMode: "store"
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
       },
       { invalidateSupersededAffiliate }
     );
@@ -690,7 +711,8 @@ describe("BookingRepository order list scope", () => {
           customerUserId: 101,
           serviceId: 11,
           scheduleSlotId: 603,
-          fulfillmentMode: "store"
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
         },
         {
           invalidateSupersededAffiliate,

@@ -59,6 +59,8 @@ import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
 import type { UserExperienceService } from "./user-experience.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 import type { PlatformPaymentMethod } from "../domain/platform-settings";
+import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway";
+import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -72,10 +74,22 @@ export interface AuthenticatedBookingActor {
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
 }
-export interface BookingCreateInput
-  extends Omit<BookingCreateRepositoryInput, "customerUserId">, AffiliatePromotionInput {
-  orderType?: "booking" | "request";
-}
+type BookingCreateBaseInput = Omit<
+  BookingCreateRepositoryInput,
+  "customerUserId" | "fulfillmentMode" | "serviceLocation"
+> &
+  AffiliatePromotionInput & {
+    orderType?: "booking" | "request";
+  };
+
+export type BookingCreateInput = BookingCreateBaseInput &
+  (
+    | { fulfillmentMode: "store"; serviceLocation?: never }
+    | {
+        fulfillmentMode: "home";
+        serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
+      }
+  );
 
 export interface ManualPaymentConfirmInput {
   method: "onsite" | "bank_transfer";
@@ -151,7 +165,9 @@ export class BookingService {
     experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
-    platformPaymentPolicy?: PlatformPaymentPolicyPort
+    platformPaymentPolicy?: PlatformPaymentPolicyPort,
+    private readonly workStatusNotifier?: {notifyTechnician:(id:number)=>Promise<void>},
+    private readonly liveDashboardEventPublisher?: LiveDashboardEventPublisher
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -302,6 +318,15 @@ export class BookingService {
       technicianServiceId: input.technicianServiceId,
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
+      serviceLocation:
+        input.fulfillmentMode === "store"
+          ? { source: "SHOP_LOCATION" }
+          : {
+              source: "CUSTOMER_SERVICE_LOCATION",
+              countryCode: input.serviceLocation.countryCode,
+              admin1Code: input.serviceLocation.admin1Code,
+              admin2Code: input.serviceLocation.admin2Code
+            },
       paymentMethod: input.paymentMethod,
       note: input.note,
       fulfillmentAddress: input.fulfillmentAddress,
@@ -375,6 +400,7 @@ export class BookingService {
       throw new AppError({ code: details[0], message: details[1], statusCode: details[2] });
     }
     if (!("order" in result) || !("supersededOrders" in result)) {
+      await this.publishLiveDashboardChangesBestEffort([result.id]);
       return result;
     }
 
@@ -398,6 +424,10 @@ export class BookingService {
       serviceName: result.order.serviceName,
       recipientUserIds: result.recipientUserIds
     });
+    await this.publishLiveDashboardChangesBestEffort([
+      ...result.supersededOrders.map((superseded) => superseded.order.id),
+      result.order.id
+    ]);
     return result.order;
   }
 
@@ -467,6 +497,7 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
+      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -477,6 +508,7 @@ export class BookingService {
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
   }
@@ -499,6 +531,7 @@ export class BookingService {
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
   }
@@ -540,6 +573,7 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
+      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -550,6 +584,7 @@ export class BookingService {
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
   }
@@ -697,6 +732,7 @@ export class BookingService {
     const mutation = this.requireCheckoutMutation(result);
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, false);
+      await this.publishLiveDashboardChangesBestEffort([mutation.checkout.orderId]);
     }
     return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
@@ -815,6 +851,7 @@ export class BookingService {
 
     if (result.outcome === "ok" && result.applied) {
       await this.recordManualPaymentMutation(actor, context, scope, "confirm", order);
+      await this.publishLiveDashboardChangesBestEffort([order.id]);
     }
 
     return order;
@@ -955,23 +992,25 @@ export class BookingService {
     if (!completed) return;
     try {
       const order = await this.repository.findOrderById(checkout.orderId);
-      if (!order) return;
-      await this.notifyOrderStatusChangedBestEffort({
-        actorUserId: actor.userId,
-        orderId: order.id,
-        orderNo: order.orderNo,
-        fromStatus:
-          checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
-        toStatus: "completed",
-        serviceName: order.serviceName,
-        recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
-      });
+      if (order) {
+        await this.notifyOrderStatusChangedBestEffort({
+          actorUserId: actor.userId,
+          orderId: order.id,
+          orderNo: order.orderNo,
+          fromStatus:
+            checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
+          toStatus: "completed",
+          serviceName: order.serviceName,
+          recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
+        });
+      }
     } catch (error) {
       logger.error(
         { error, orderId: checkout.orderId },
         "Checkout completion notification lookup failed after booking commit"
       );
     }
+    await this.publishLiveDashboardChangesBestEffort([checkout.orderId]);
   }
 
   public async refundManualPayment(
@@ -992,6 +1031,7 @@ export class BookingService {
 
     if (result.outcome === "ok" && result.applied) {
       await this.recordManualPaymentMutation(actor, context, scope, "refund", order);
+      await this.publishLiveDashboardChangesBestEffort([order.id]);
     }
 
     return order;
@@ -1100,6 +1140,7 @@ export class BookingService {
       recipientUserIds: this.resolveOrderNotificationRecipients(actor, next)
     });
     await this.notifyOrderChangedBestEffort(actor, next, "status");
+    await this.publishLiveDashboardChangesBestEffort([next.id]);
 
     return next;
   }
@@ -1125,6 +1166,7 @@ export class BookingService {
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
   }
@@ -1301,6 +1343,18 @@ export class BookingService {
         "Order realtime change delivery failed after booking commit"
       );
     }
+  }
+
+  private async publishLiveDashboardChangesBestEffort(orderIds: number[]): Promise<void> {
+    if (!this.liveDashboardEventPublisher || !this.repository.findLiveDashboardOrderEvents) return;
+    const projectionRepository = {
+      findLiveDashboardOrderEvents: (ids: number[]) =>
+        this.repository.findLiveDashboardOrderEvents!(ids)
+    };
+    await new LiveDashboardOrderChangePublisher(
+      projectionRepository,
+      this.liveDashboardEventPublisher
+    ).publishCommittedOrderChanges(orderIds);
   }
 
   private isAcceptancePausedResult(

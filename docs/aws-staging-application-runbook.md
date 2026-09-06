@@ -169,3 +169,30 @@ combined with an unreviewed application or schema change.
 acceptance file may contain only identifiers, counts, timestamps, statuses, and
 digests. They must not contain an email address, password, token, secret JSON,
 database URL, AWS temporary credential, SSM output body, or application log.
+
+## 2026-09-06 current-main release
+
+The release integrates local main `dc65536a99f6d9d14bc94271eff16e76074d0dd6`
+into the existing staging branch. GitHub private main was independently verified
+at that revision. The previous staging application was `7d8561dbf48b031bf509b99faa0382fe2b3cf9bb`.
+
+Release reconciliation restores the immutable Google-disabled service guard,
+restores standalone PWA floating-header safe-area spacing, and updates existing
+test fixtures and maintenance checker inputs for current auth, work-status,
+service-location, partner-validity and recall contracts.
+
+Validation: 427 frontend files / 2,939 tests; 711 backend suites / 5,267 tests
+passed across 12 serial shards, with 19 suites / 76 environment-gated tests
+skipped. Frontend and backend lint/build and the production bundle audit pass
+(8 HTML entries / 55 assets). Deployment scripts were verified with their
+respective Vitest and Node test runners; process-launch tests passed serially
+with a 30-second timeout after a loaded run exceeded the default 5 seconds.
+
+Five additive migrations introduce SOS, administrative regions, technician work
+status, affected-order relationships and the UTC attendance activation boundary.
+No previously released migration is changed. Initialize only the versioned
+Japanese administrative-region reference catalog when its new tables are empty;
+do not run the general account/simulation seed. Keep application release,
+reference-data initialization, authenticated API smoke and browser acceptance
+as separate evidence gates. Immutable package and deployment identifiers are
+recorded in ignored `outputs/aws-staging/` evidence files.

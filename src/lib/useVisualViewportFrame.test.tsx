@@ -58,16 +58,17 @@ describe("useVisualViewportFrame", () => {
     });
     await act(async () => visualViewport.dispatchEvent(new Event("resize")));
 
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("100vw");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
 
     await act(async () => root.unmount());
   });
 
-  it("uses native dynamic viewport sizing when standalone PWA pixel metrics are stale", async () => {
+  it("anchors the frame to all four edges when standalone PWA pixel metrics are stale", async () => {
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
       height: { configurable: true, value: 690 },
@@ -91,9 +92,10 @@ describe("useVisualViewportFrame", () => {
     await act(async () => root.render(<Harness />));
 
     const frame = container.querySelector<HTMLElement>("[data-testid='frame']");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("100vw");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
 

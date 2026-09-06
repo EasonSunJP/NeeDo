@@ -80,6 +80,7 @@ describeIntegration("formal account creation integration", () => {
     ]);
 
     const shop = await backofficeRepository.createShop({
+      verifiedById: managed.id,
       ownerEmail: `${marker}-owner@needo.test`,
       ownerPasswordHash: "prepared-password-hash",
       ownerUsername: "Shop Owner",

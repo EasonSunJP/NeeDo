@@ -229,6 +229,14 @@ img {
   padding-top: calc(env(safe-area-inset-top) + 12px);
 }
 
+html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host .safe-header-top {
+  padding-top: 12px;
+}
+
 .safe-shell-bottom {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }

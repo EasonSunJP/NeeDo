@@ -185,6 +185,9 @@ const createFixture = async () => {
     findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: false, hasSuccessfulLoginInPeriod: false, hasSuccessfulLoginFromIp: false
+    })),
     createAuditLog: jest.fn(async () => undefined)
   };
   const merchantProfileRepository = {

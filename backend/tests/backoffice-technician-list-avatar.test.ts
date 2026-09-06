@@ -4,6 +4,8 @@ describe("merchant technician list identity data", () => {
   it("returns the technician identity avatar instead of the later personal avatar", async () => {
     const createdAt = new Date("2026-08-25T00:00:00.000Z");
     const client = {
+      technicianWorkState: { findMany: jest.fn(async () => []) },
+      bookingOrder: { findMany: jest.fn(async () => []) },
       technicianProfile: {
         findMany: jest.fn(async () => [
           {

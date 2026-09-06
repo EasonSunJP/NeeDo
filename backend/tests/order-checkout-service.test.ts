@@ -161,6 +161,220 @@ describe("formal order checkout service", () => {
     });
     expect(repository.findOrderById).toHaveBeenCalledWith(41);
   });
+
+  it("still publishes a committed NDP completion when notification lookup finds no order", async () => {
+    const checkout = {
+      id: 9,
+      orderId: 41,
+      status: "completed",
+      paymentMethod: "ndp",
+      paymentEvidence: "ndp_ledger"
+    };
+    const repository = {
+      payCheckoutWithNdp: jest.fn(async () => ({ outcome: "ok", applied: true, checkout })),
+      findOrderById: jest.fn(async () => null),
+      findLiveDashboardOrderEvents: jest.fn(async () => [
+        {
+          orderId: 41,
+          scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+          orderNo: "ND41",
+          status: "completed" as const,
+          serviceName: "Service",
+          amountJpy: 8_800
+        }
+      ])
+    };
+    const ledger = { debitCheckoutPayment: jest.fn(async () => ({ transactionId: 91 })) };
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository as never,
+      ledger as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await expect(
+      service.payCheckoutWithNdp(
+        customer,
+        41,
+        { idempotencyKey: "checkout-null-notification-order-1" },
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).resolves.toEqual({ ...checkout, availablePaymentMethods: ["cash", "ndp"] });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes every applied checkout advance once and skips idempotent replays", async () => {
+    const cashCheckout = {
+      id: 9,
+      orderId: 41,
+      status: "awaitingPaymentConfirmation",
+      paymentMethod: "cash",
+      paymentEvidence: null
+    };
+    const ndpCheckout = {
+      ...cashCheckout,
+      status: "completed",
+      paymentMethod: "ndp",
+      paymentEvidence: "ndp_ledger"
+    };
+    const repository = {
+      selectCheckoutPaymentMethod: jest
+        .fn()
+        .mockResolvedValueOnce({ outcome: "ok", applied: true, checkout: cashCheckout })
+        .mockResolvedValueOnce({ outcome: "ok", applied: false, checkout: cashCheckout }),
+      payCheckoutWithNdp: jest
+        .fn()
+        .mockResolvedValueOnce({ outcome: "ok", applied: true, checkout: ndpCheckout })
+        .mockResolvedValueOnce({ outcome: "ok", applied: false, checkout: ndpCheckout }),
+      confirmCheckoutReceipt: jest
+        .fn()
+        .mockResolvedValueOnce({ outcome: "ok", applied: true, checkout: cashCheckout })
+        .mockResolvedValueOnce({ outcome: "ok", applied: false, checkout: cashCheckout })
+        .mockResolvedValueOnce({ outcome: "ok", applied: true, checkout: cashCheckout })
+        .mockResolvedValueOnce({ outcome: "ok", applied: false, checkout: cashCheckout }),
+      findOrderById: jest.fn(async () => ({
+        id: 41,
+        orderNo: "ND41",
+        serviceName: "Service",
+        customerUserId: 101,
+        technicianProfileId: 702
+      })),
+      findLiveDashboardOrderEvents: jest.fn(async () => [
+        {
+          orderId: 41,
+          scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+          orderNo: "ND41",
+          status: "completed" as const,
+          serviceName: "Service",
+          amountJpy: 8_800
+        }
+      ])
+    };
+    const ledger = { debitCheckoutPayment: jest.fn(async () => ({ transactionId: 91 })) };
+    const audit = {
+      record: jest.fn(async () => undefined),
+      createInput: jest.fn((input) => input)
+    };
+    const publisher = { publish: jest.fn(async () => null) };
+    const technician = {
+      ...customer,
+      userId: 202,
+      roles: ["technician"],
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 702
+    };
+    const operator = {
+      ...customer,
+      userId: 303,
+      roles: ["operator"],
+      currentIdentityType: "platform",
+      currentIdentityScopeType: "global",
+      currentIdentityScopeId: null
+    };
+    const service = new BookingService(
+      repository as never,
+      ledger as never,
+      undefined,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+    const context = { ip: "127.0.0.1", userAgent: "jest" };
+
+    await service.selectCheckoutPaymentMethod(
+      customer,
+      41,
+      {
+        method: "cash",
+        idempotencyKey: "select-cash-live-1"
+      },
+      context
+    );
+    await service.selectCheckoutPaymentMethod(
+      customer,
+      41,
+      {
+        method: "cash",
+        idempotencyKey: "select-cash-live-1"
+      },
+      context
+    );
+    await service.payCheckoutWithNdp(
+      customer,
+      41,
+      {
+        idempotencyKey: "pay-ndp-live-1"
+      },
+      context
+    );
+    await service.payCheckoutWithNdp(
+      customer,
+      41,
+      {
+        idempotencyKey: "pay-ndp-live-1"
+      },
+      context
+    );
+    await service.confirmCheckoutReceipt(
+      technician as never,
+      41,
+      {
+        reason: "cash received",
+        idempotencyKey: "receipt-live-1"
+      },
+      context
+    );
+    await service.confirmCheckoutReceipt(
+      technician as never,
+      41,
+      {
+        reason: "cash received",
+        idempotencyKey: "receipt-live-1"
+      },
+      context
+    );
+    await service.confirmCheckoutReceipt(
+      operator as never,
+      41,
+      {
+        reason: "terminal verified",
+        idempotencyKey: "override-live-1"
+      },
+      context,
+      true
+    );
+    await service.confirmCheckoutReceipt(
+      operator as never,
+      41,
+      {
+        reason: "terminal verified",
+        idempotencyKey: "override-live-1"
+      },
+      context,
+      true
+    );
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(4);
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([41]);
+    expect(publisher.publish).toHaveBeenCalledTimes(8);
+  });
 });
 
 const decimal = (value: number) => ({

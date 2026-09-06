@@ -715,7 +715,10 @@ describe("RealtimeService standard message recall", () => {
   const createRecallFixture = (
     outcome:
       | { status: "recalled" | "already_recalled"; message: typeof recalledMessage }
-      | { status: "not_found" | "window_expired" }
+      | { status: "not_found" | "window_expired" },
+    membershipBenefitResolver?: {
+      hasEffectiveBenefitAt: (userId: number, benefitCode: "traceless_recall", occurredAt: Date) => Promise<boolean>;
+    }
   ) => {
     const repository = {
       recallMessage: jest.fn(async () => outcome),
@@ -727,7 +730,14 @@ describe("RealtimeService standard message recall", () => {
       publish: jest.fn(),
       subscribe: jest.fn()
     };
-    const service = new RealtimeService(repository as never, eventGateway);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway,
+      undefined,
+      undefined,
+      undefined,
+      membershipBenefitResolver
+    );
 
     return { eventGateway, repository, service };
   };
@@ -756,6 +766,7 @@ describe("RealtimeService standard message recall", () => {
       messageId: 700,
       senderIdentityId: 1,
       senderUserId: 1,
+      mode: "standard",
       now: expect.any(Date)
     });
     expect(recalledMessage.content).toBeNull();
@@ -789,6 +800,76 @@ describe("RealtimeService standard message recall", () => {
       message: recalledMessage
     });
     expect(eventGateway.publish).not.toHaveBeenCalled();
+  });
+
+  it("selects traceless recall only from the server membership resolver", async () => {
+    const tracelessMessage = { ...recalledMessage, recallMode: "traceless" as const };
+    const resolver = {
+      hasEffectiveBenefitAt: jest.fn(async () => true)
+    };
+    const { repository, service } = createRecallFixture(
+      { status: "recalled", message: tracelessMessage } as never,
+      resolver
+    );
+
+    await expect(
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
+    ).resolves.toMatchObject({ action: "traceless_recall", message: tracelessMessage });
+
+    expect(resolver.hasEffectiveBenefitAt).toHaveBeenCalledWith(
+      1,
+      "traceless_recall",
+      expect.any(Date)
+    );
+    expect(repository.recallMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "traceless" })
+    );
+  });
+
+  it("rejects before mutation when the membership resolver fails", async () => {
+    const resolver = {
+      hasEffectiveBenefitAt: jest.fn(async () => {
+        throw new Error("membership lookup failed");
+      })
+    };
+    const { repository, service } = createRecallFixture(
+      { status: "recalled", message: recalledMessage },
+      resolver
+    );
+
+    await expect(
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
+    ).rejects.toThrow("membership lookup failed");
+    expect(repository.recallMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns an already recalled terminal mode unchanged after eligibility changes", async () => {
+    const resolver = {
+      hasEffectiveBenefitAt: jest.fn(async () => true)
+    };
+    const { repository, service } = createRecallFixture(
+      { status: "already_recalled", message: recalledMessage },
+      resolver
+    );
+
+    await expect(
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
+    ).resolves.toMatchObject({ action: "standard_recall", message: recalledMessage });
+    expect(repository.recallMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "traceless" })
+    );
   });
 
   it("maps the authoritative deadline failure to a stable error", async () => {

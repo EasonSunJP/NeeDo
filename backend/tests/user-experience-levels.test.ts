@@ -1,10 +1,23 @@
 import {
   USER_EXPERIENCE_THRESHOLDS,
   USER_EXPERIENCE_UNITS_PER_EXP,
+  formatExperienceUnits,
   resolveLevel
 } from "../src/domain/user-experience-levels";
 
 describe("customer experience level curve", () => {
+  it.each([
+    [0n, "0", 1], [1n, "0.0001", 1], [40_000n, "4", 1],
+    [49_999n, "4.9999", 1], [50_000n, "5", 2], [550_000n, "55", 4],
+    [200_000_000n, "20000", 100]
+  ])("keeps exact EXP and level boundaries consistent for %s units", (units, exp, level) => {
+    expect(formatExperienceUnits(units)).toBe(exp);
+    expect(resolveLevel(units)).toBe(level);
+  });
+  it("formats fractional reversals and large balances without floating-point loss", () => {
+    expect(formatExperienceUnits(-12_345n)).toBe("-1.2345");
+    expect(formatExperienceUnits(9_007_199_254_740_993n)).toBe("900719925474.0993");
+  });
   it("checks in the approved nonlinear Lv.1-Lv.100 thresholds", () => {
     expect(USER_EXPERIENCE_THRESHOLDS).toHaveLength(100);
     expect(USER_EXPERIENCE_THRESHOLDS[0]).toBe(0);

@@ -1,0 +1,61 @@
+.booking-sos-capsule {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  width: 74px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #9b2420 0%, #db3029 100%);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 950;
+  font-family: inherit;
+  letter-spacing: -.04em;
+  line-height: 1;
+  transition: filter .15s;
+}
+.booking-sos-capsule:hover { filter: brightness(1.12); }
+.booking-sos-capsule:disabled { cursor: default; }
+.booking-sos-feedback {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--client-surface, #202027);
+  color: var(--client-text, #fff);
+  border: 1px solid var(--client-line, #4a4a50);
+  box-shadow: 0 4px 18px #0003;
+  font-size: 12px;
+  font-weight: 700;
+}
+.backoffice-header-actions { display: flex; align-self: flex-start; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.backoffice-header-actions .backoffice-message-action > a,
+.backoffice-header-actions .backoffice-action {
+  display: inline-flex; position: relative; align-items: center; justify-content: center;
+  height: 40px; min-width: 40px; gap: 8px; padding: 0 10px;
+  border: 1px solid var(--admin-line, #d5d5dd); border-radius: 10px;
+  background: var(--admin-surface, #fff); color: var(--admin-muted, #282830);
+  font-size: 12px; font-weight: 800; flex-shrink: 0;
+}
+.backoffice-header-actions .backoffice-action[data-active="true"] { background: #e9322e; color: white; border-color: #ff817b; box-shadow: 0 0 20px #e9322e24; }
+.sos-alert-icon { display: grid; place-items: center; border-radius: 7px; }
+[data-active="true"] > .sos-alert-icon { background: #ffffff25; }
+.backoffice-header-actions .sos-alert-icon { width: 26px; height: 26px; }
+@media (max-width: 767px) {
+  .backoffice-header-actions { gap: 5px; }
+  .backoffice-header-actions .sos-alert-label { display: none; }
+  .backoffice-header-actions .backoffice-message-action > a,
+.backoffice-header-actions .backoffice-action { padding: 0 6px; }
+  .backoffice-header-actions .admin-theme-menu-trigger { width: 44px; }
+  .backoffice-header-actions .admin-theme-trigger-content { padding: 0 8px; }
+  .backoffice-header-actions .admin-theme-trigger-content > :not(:first-child) { display: none; }
+}
+
+@media (max-width: 767px) {
+  .admin-topbar:has(.backoffice-header-actions) .admin-mobile-brand,
+  .admin-topbar:has(.backoffice-header-actions) .admin-section-tabs,
+  .admin-topbar:has(.backoffice-header-actions) .admin-search { display: none; }
+}

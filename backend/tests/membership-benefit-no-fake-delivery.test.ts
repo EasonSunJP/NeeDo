@@ -65,7 +65,10 @@ describe("membership benefit delivery boundary", () => {
     );
 
     expect(result.list).toHaveLength(5);
-    expect(result.list.every((benefit) => benefit.deliveryCapability === "unavailable")).toBe(true);
+    expect(result.list.filter((benefit) => benefit.code !== "traceless_recall")
+      .every((benefit) => benefit.deliveryCapability === "unavailable")).toBe(true);
+    expect(result.list.find((benefit) => benefit.code === "traceless_recall")?.deliveryCapability)
+      .toBe("available");
     expect(repository.saveTierDraftWithAudit).not.toHaveBeenCalled();
     expect(repository.publishTierDraftWithAudit).not.toHaveBeenCalled();
     expect(repository.changeEntitlementWithAudit).not.toHaveBeenCalled();

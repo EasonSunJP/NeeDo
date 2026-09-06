@@ -158,6 +158,7 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
     }
   };
   const client = {
+    technicianWorkState: { findMany: jest.fn(async () => []) },
     technicianProfile: { findFirst: jest.fn(async () => technician) },
     customerProfile: { findFirst: jest.fn(async () => customer) },
     bookingOrder: {

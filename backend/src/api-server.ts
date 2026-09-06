@@ -10,6 +10,7 @@ import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { OfficialNoticeRepository } from "./repositories/official-notice.repository";
 import { OfficialNoticeWorker } from "./workers/official-notice.worker";
+import { createLiveDashboardRuntime } from "./services/live-dashboard-runtime";
 
 export type ApiApplicationFactory = (config: AppConfig, dependencies?: AppDependencies) => Express;
 
@@ -17,6 +18,7 @@ export const startApiServer = (
   createApplication: ApiApplicationFactory,
   config: AppConfig = env
 ): Server => {
+  const liveDashboard = createLiveDashboardRuntime(config);
   const realtimeEventGateway = new SseRealtimeEventGateway({
     eventBus: new RedisRealtimeEventBus({
       channel: config.REALTIME_REDIS_CHANNEL,
@@ -41,7 +43,9 @@ export const startApiServer = (
   const app = createApplication(config, {
     redisHealthCheck: checkRedisHealth,
     realtimeEventGateway,
-    officialNoticeRepository
+    officialNoticeRepository,
+    liveDashboardCache: liveDashboard.cache,
+    liveDashboardEventGateway: liveDashboard.gateway
   });
   const server = app.listen(config.PORT, () => {
     noticeWorker.start();
@@ -66,7 +70,7 @@ export const startApiServer = (
       try {
         await noticeWorker.stopAndDrain();
       } finally {
-        await realtimeEventGateway.close();
+        await Promise.all([realtimeEventGateway.close(), liveDashboard.close()]);
       }
     }
   });

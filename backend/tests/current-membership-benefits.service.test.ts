@@ -69,13 +69,14 @@ const membership = (tierCode: "free" | "gold"): ResolvedPlatformMembership => ({
 
 const repository = (
   current: ResolvedPlatformMembership | null,
-  free = membership("free")
+  free = membership("free"),
+  hasActiveCustomerProfile = true
 ): jest.Mocked<PlatformMembershipRepositoryPort> => ({
   listTiersForAdministration: jest.fn(),
   listBenefitsForAdministration: jest.fn(),
   hasActiveCustomerProfile: jest.fn(async (userId: number) => {
     void userId;
-    return true;
+    return hasActiveCustomerProfile;
   }),
   hasVerifiedEkycAt: jest.fn(async (userId: number, occurredAt: Date) => {
     void userId;
@@ -88,9 +89,8 @@ const repository = (
     return current;
   }),
   findPublishedTierAt: jest.fn(async (tierCode, occurredAt: Date) => {
-    void tierCode;
     void occurredAt;
-    return free;
+    return tierCode === "free" ? free : current;
   }),
   findTierDraft: jest.fn(),
   saveTierDraftWithAudit: jest.fn(),
@@ -135,8 +135,8 @@ describe("current membership benefits", () => {
     expect(result.list.find((item) => item.code === "traceless_recall")).toMatchObject({
       configuredEnabled: true,
       globallyEnabled: true,
-      deliveryCapability: "unavailable",
-      effective: false,
+      deliveryCapability: "available",
+      effective: true,
       name: "traceless-ja",
       description: "traceless-description-ja"
     });
@@ -151,5 +151,91 @@ describe("current membership benefits", () => {
       service.getMyMembershipBenefits({ userId: 42 } as never, "en")
     ).resolves.toMatchObject({ tierCode: "free" });
     expect(repo.findPublishedTierAt).toHaveBeenCalledWith("free", now);
+  });
+
+  it.each([
+    [true, true, "available", true],
+    [false, true, "available", false],
+    [true, false, "available", false],
+    [true, true, "unavailable", false]
+  ] as const)(
+    "resolves traceless recall only when tier, global, and delivery switches are all effective",
+    async (configuredEnabled, globallyEnabled, capability, expected) => {
+      const resolved = membership("gold");
+      const traceless = resolved.benefitCatalog!.find((item) => item.code === "traceless_recall")!;
+      traceless.configuredEnabled = configuredEnabled;
+      traceless.globallyEnabled = globallyEnabled;
+      const service = new PlatformMembershipService(
+        repository(resolved),
+        undefined,
+        () => now,
+        undefined,
+        new MembershipBenefitCapabilityService({ traceless_recall: { capability } })
+      );
+
+      await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(expected);
+    }
+  );
+
+  it("returns standard-only eligibility for a legitimate non-customer without resolving membership", async () => {
+    const repo = repository(membership("gold"), membership("free"), false);
+    const service = new PlatformMembershipService(repo, undefined, () => now);
+
+    await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(false);
+    expect(repo.findActiveEntitlementAt).not.toHaveBeenCalled();
+    expect(repo.findPublishedTierAt).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "uses the published v2 recall switch (%s) for an entitlement bound to archived v1",
+    async (enabled) => {
+      const archived = membership("gold");
+      archived.benefitCatalog!.find((item) => item.code === "traceless_recall")!.configuredEnabled = !enabled;
+      const published = membership("gold");
+      published.tierVersionPublicId = "gold-v2";
+      published.benefitCatalog!.find((item) => item.code === "traceless_recall")!.configuredEnabled = enabled;
+      const repo = repository(archived);
+      repo.findPublishedTierAt.mockResolvedValue(published);
+      const service = new PlatformMembershipService(repo, undefined, () => now);
+
+      await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(enabled);
+      expect(repo.findPublishedTierAt).toHaveBeenCalledWith("gold", now);
+      await expect(service.resolveMembershipAt(41, now)).resolves.toMatchObject({
+        tierVersionPublicId: "gold-v1",
+        multiplier: archived.multiplier,
+        theme: archived.theme
+      });
+    }
+  );
+
+  it("fails with a stable internal error when the effective tier has no published version", async () => {
+    const repo = repository(membership("gold"));
+    repo.findPublishedTierAt.mockResolvedValue(null);
+    const service = new PlatformMembershipService(repo, undefined, () => now);
+
+    await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).rejects.toMatchObject({
+      message: "error.platform_membership.benefit_catalog_unavailable",
+      statusCode: 500
+    });
+  });
+
+  it.each([
+    ["benefit catalog is absent", (resolved: ResolvedPlatformMembership) => {
+      delete resolved.benefitCatalog;
+    }],
+    ["traceless recall entry is absent", (resolved: ResolvedPlatformMembership) => {
+      resolved.benefitCatalog = resolved.benefitCatalog!.filter(
+        (item) => item.code !== "traceless_recall"
+      );
+    }]
+  ] as const)("fails closed with a stable internal error when %s", async (_scenario, mutate) => {
+    const resolved = membership("gold");
+    mutate(resolved);
+    const service = new PlatformMembershipService(repository(resolved), undefined, () => now);
+
+    await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).rejects.toMatchObject({
+      message: "error.platform_membership.benefit_catalog_unavailable",
+      statusCode: 500
+    });
   });
 });

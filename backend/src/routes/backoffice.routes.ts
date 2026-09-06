@@ -2,16 +2,22 @@ import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { BackofficeController } from "../controllers/backoffice.controller";
+import { LiveDashboardController } from "../controllers/live-dashboard.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeRepository } from "../repositories/backoffice.repository";
 import { DashboardRepository } from "../repositories/dashboard.repository";
+import { AdministrativeRegionRepository } from "../repositories/administrative-region.repository";
+import { LiveDashboardRepository } from "../repositories/live-dashboard.repository";
+import { prisma } from "../prisma/client";
 import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
 import { PlatformMembershipRepository } from "../repositories/platform-membership.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeService } from "../services/backoffice.service";
+import { LiveDashboardCache } from "../services/live-dashboard-cache.service";
+import { LiveDashboardService } from "../services/live-dashboard.service";
 import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
 import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
@@ -39,6 +45,7 @@ import {
   manageableMerchantShopsQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
+import { liveDashboardQuerySchema } from "../validators/live-dashboard.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 export const BACKOFFICE_ROUTE_PERMISSIONS = {
@@ -102,6 +109,16 @@ export const createBackofficeRoutes = (
       )
   );
   const controller = new BackofficeController(service);
+  const liveDashboardController = new LiveDashboardController(
+    new LiveDashboardService(
+      dependencies.liveDashboardRepository ?? new LiveDashboardRepository(prisma),
+      dependencies.administrativeRegionRepository ?? new AdministrativeRegionRepository(),
+      dependencies.liveDashboardCache ?? new LiveDashboardCache(),
+      auditLogService,
+      dependencies.liveDashboardClock,
+      dependencies.liveDashboardEventGateway
+    )
+  );
 
   router.get(
     "/backoffice/dashboard",
@@ -116,6 +133,20 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
     validateRequest({ query: backofficeDashboardQuerySchema }),
     controller.dashboardOverview
+  );
+  router.get(
+    "/backoffice/dashboard/live-snapshot",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: liveDashboardQuerySchema }),
+    liveDashboardController.snapshot
+  );
+  router.get(
+    "/backoffice/dashboard/live-events",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: liveDashboardQuerySchema }),
+    liveDashboardController.events
   );
   router.get(
     "/backoffice/dashboard/metrics/:metricKey",

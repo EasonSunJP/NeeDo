@@ -895,6 +895,14 @@ export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate
 
   const message = toConversationMessage(event.payload);
   if (event.type === "message.recalled") {
+    if (message.recallMode === "traceless") {
+      return {
+        type: "message.deleted",
+        conversationId: message.conversationId,
+        messageId: message.id,
+        reason: "traceless_recall",
+      };
+    }
     return message.serverState === "recalled"
       ? { type: "message.recalled", message }
       : { type: "refresh" };
@@ -1659,16 +1667,18 @@ export function createFormalImApi({
       );
       const message = toConversationMessage(response.message);
 
+      const authoritativeMode = response.action === "standard_recall" ? "standard" : "traceless";
       if (
-        response.action !== "standard_recall" ||
+        (response.action !== "standard_recall" && response.action !== "traceless_recall") ||
         String(response.conversationId) !== conversationId ||
         String(response.messageId) !== messageId ||
-        message.serverState !== "recalled"
+        message.serverState !== "recalled" ||
+        response.message.recallMode !== authoritativeMode
       ) {
         throw new Error("error.response.invalid_recall_result");
       }
 
-      return { conversationId, messageId, message, mode };
+      return { conversationId, messageId, message, mode: authoritativeMode };
     },
     resendMessage: featureUnavailable,
     forwardMessage: featureUnavailable,

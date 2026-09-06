@@ -1,3 +1,4 @@
+import { WorkStatusService } from "../services/work-status.service";
 import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
@@ -99,7 +100,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
       auditLogService
     );
   const bookingService = new BookingService(
-    dependencies.bookingRepository ?? new BookingRepository(),
+    dependencies.bookingRepository ??
+      new BookingRepository(undefined, dependencies.administrativeRegionRepository),
     ledgerService,
     dependencies.realtimeService,
     auditLogService,
@@ -116,7 +118,9 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     createUserExperienceServiceForRoutes(dependencies),
     undefined,
     dependencies.userPolicyEnforcementService,
-    dependencies.platformAccessPolicyService
+    dependencies.platformAccessPolicyService,
+    dependencies.workStatusService??new WorkStatusService(undefined,undefined,dependencies.realtimeEventGateway),
+    dependencies.liveDashboardEventGateway
   );
   const controller = new BookingController(bookingService);
 

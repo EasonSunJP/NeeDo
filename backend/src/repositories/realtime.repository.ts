@@ -526,6 +526,7 @@ export interface RecallMessageInput {
   messageId: number;
   senderUserId: number;
   senderIdentityId?: number;
+  mode: "standard" | "traceless";
   now: Date;
 }
 
@@ -1869,6 +1870,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         return { status: "not_found" } as const;
       }
 
+      const recallMode =
+        input.mode === "traceless" ? MessageRecallMode.TRACELESS : MessageRecallMode.STANDARD;
+      const deletionAction =
+        input.mode === "traceless"
+          ? ImDeletionAction.TRACELESS_RECALL
+          : ImDeletionAction.STANDARD_RECALL;
+      const auditAction =
+        input.mode === "traceless" ? "im.message.traceless_recall" : "im.message.standard_recall";
       await tx.imMessageTranslation.deleteMany({ where: { messageId: input.messageId } });
       await tx.message.update({
         where: { id: input.messageId },
@@ -1876,7 +1885,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           content: null,
           metadata: Prisma.DbNull,
           recalledAt: input.now,
-          recallMode: MessageRecallMode.STANDARD,
+          recallMode,
           contentPurgedAt: input.now
         }
       });
@@ -1889,13 +1898,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: {
           messageId_action: {
             messageId: input.messageId,
-            action: ImDeletionAction.STANDARD_RECALL
+            action: deletionAction
           }
         },
         create: {
           conversationId: input.conversationId,
           messageId: input.messageId,
-          action: ImDeletionAction.STANDARD_RECALL,
+          action: deletionAction,
           mediaKind: null,
           occurredAt: input.now
         },
@@ -1904,18 +1913,31 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       await tx.auditLog.create({
         data: {
           actorId: input.senderUserId,
-          action: "im.message.standard_recall",
+          action: auditAction,
           targetType: "Message",
           targetId: input.messageId,
           ip: null,
           userAgent: null,
           metadata: {
             conversationId: input.conversationId,
-            recallMode: "standard"
+            recallMode: input.mode
           },
           createdAt: input.now
         }
       });
+      if (input.mode === "traceless") {
+        await tx.conversationParticipant.updateMany({
+          where: {
+            conversationId: input.conversationId,
+            identityId: { not: input.senderIdentityId ?? input.senderUserId },
+            deletedAt: null,
+            createdAt: { lte: candidate.createdAt },
+            unreadCount: { gt: 0 },
+            OR: [{ lastReadMessageId: null }, { lastReadMessageId: { lt: input.messageId } }]
+          },
+          data: { unreadCount: { decrement: 1 } }
+        });
+      }
       await tx.conversation.update({
         where: { id: input.conversationId },
         data: { updatedAt: input.now }
@@ -5248,7 +5270,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       deletedAt: null,
       expiredAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+      AND: [
+        {
+          OR: [{ recallMode: null }, { recallMode: MessageRecallMode.STANDARD }]
+        },
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+        }
+      ]
     };
   }
 

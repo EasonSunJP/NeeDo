@@ -519,7 +519,7 @@ export async function runFormalAgentSettlementFlow(
 
   const agent = await partnerService.markPartnerProfile(
     agentUser.id,
-    { partnerType: "agent", activatedAt: periodStart, reason: "rollback flow agent" },
+    { partnerType: "agent", startsAt: periodStart, endsAt: null, permanent: true, reason: "rollback flow agent" },
     actor,
     context
   );

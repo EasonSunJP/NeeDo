@@ -75,20 +75,16 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain('"merchant@example.com"');
     expect(seedSource).toContain("fixedPreviewConversations");
     expect(seedSource).toContain("fixedPreviewContacts");
-    expect(checkSource).toContain("fixedRealtimeContacts");
-    expect(checkSource).toContain("fixedExpectedIdentityPairs");
-    expect(checkSource).toContain("ownerIdentityId: pair.ownerIdentityId");
-    expect(checkSource).toContain("fixedRealtimeConversations");
-    expect(checkSource).toContain("identityId: fixedCustomerIdentityId");
-    expect(checkSource).toContain("identityId: { in: fixedCounterpartIdentityIds }");
-    expect(checkSource).toContain("activeExperienceAccounts");
-    expect(checkSource).toContain("const getRequiredId = <Key, Value>");
+    expect(seedSource).toContain("identityId: firstIdentityId");
+    expect(seedSource).toContain("identityId: secondIdentityId");
+    expect(seedSource).toContain("ownerIdentityId:");
+    expect(seedSource).toContain("contactIdentityId:");
   });
 
-  it("does not compare preserved staging passwords against the local export password", () => {
-    expect(checkSource).toMatch(
-      /if \(!seedConfig\.preserveExistingPasswords\) \{\s+const passwordChecks = await Promise\.all/
-    );
+  it("preserves existing staging password hashes instead of generating replacements", () => {
+    expect(seedSource).toContain("const passwordHashes = seedConfig.preserveExistingPasswords");
+    expect(seedSource).toContain("seedConfig.preserveExistingPasswords ? existingPasswordsByEmail : passwordHashes");
+    expect(seedSource).toContain('"password hash"');
   });
 
   it("keeps the focused customer-100 account linked to an expanded real IM dataset", () => {
@@ -103,7 +99,8 @@ describe("three-month simulation IM persistence", () => {
     expect(checkSource).toContain("simulationConversations");
     expect(checkSource).toContain("simulationMessages");
     expect(checkSource).toContain("simulationContacts");
-    expect(checkSource).toContain("simulationContactSources");
+    expect(checkSource).toContain("filterSimulationContactsByIdentityPair");
+    expect(checkSource).toContain("expectedContactIdentityKeys");
     expect(checkSource).toContain("plan.conversations.length");
     expect(checkSource).toContain("plan.messages.length");
     expect(checkSource).toContain("plan.contacts.length");

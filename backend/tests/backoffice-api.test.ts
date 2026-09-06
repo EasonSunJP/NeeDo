@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import { AppError } from "../src/utils/app-error";
 import {
   MerchantShopContextRepository,
   type MerchantShopContextRepositoryPort
@@ -144,6 +145,7 @@ const createFixture = async (
     "backoffice:customers:list",
     "backoffice:customers:write",
     "backoffice:shops:list",
+    "backoffice:shops:write",
     "backoffice:merchant-accounts:read",
     "merchant-admin:dashboard:read",
     "merchant-admin:orders:list",
@@ -357,6 +359,18 @@ const createFixture = async (
     ),
     resolveShop: jest.fn(),
     resolveDefaultShop: jest.fn()
+  };
+  let shopState = {
+    id: 11,
+    shopNo: "0000000011",
+    name: "Aoyama Care Studio",
+    status: "published",
+    serviceLocation: null as null | {
+      countryCode: "JP";
+      admin1Code: string;
+      admin2Code: string;
+      verifiedById: number;
+    }
   };
   const backofficeRepository = {
     getDashboard: jest.fn(
@@ -650,11 +664,90 @@ const createFixture = async (
       page: 1,
       page_size: 20
     })),
-    updateShop: jest.fn(async (id: number, input: { name?: string }) => ({
-      id,
-      name: input.name ?? "Aoyama Care Studio",
-      status: "published"
-    })),
+    get shopState() {
+      return shopState;
+    },
+    findUserByEmail: jest.fn(async () => null),
+    createShop: jest.fn(
+      async (input: {
+        name: string;
+        serviceCountryCode?: "JP";
+        serviceAdmin1Code?: string;
+        serviceAdmin2Code?: string;
+        serviceLocationAudit?: Record<string, unknown>;
+      }) => {
+        shopState = {
+          ...shopState,
+          name: input.name,
+          serviceLocation: input.serviceCountryCode
+            ? {
+                countryCode: input.serviceCountryCode,
+                admin1Code: input.serviceAdmin1Code!,
+                admin2Code: input.serviceAdmin2Code!,
+                verifiedById: 1
+              }
+            : shopState.serviceLocation
+        };
+        if (input.serviceLocationAudit) {
+          auditLogs.push({
+            ...input.serviceLocationAudit,
+            metadata: {
+              ...(input.serviceLocationAudit.metadata as Record<string, unknown>),
+              shopNo: shopState.shopNo
+            }
+          });
+        }
+        return shopState;
+      }
+    ),
+    updateShop: jest.fn(
+      async (
+        id: number,
+        input: {
+          name?: string;
+          serviceCountryCode?: "JP";
+          serviceAdmin1Code?: string;
+          serviceAdmin2Code?: string;
+        },
+        mutation?: {
+          verifiedById: number;
+          serviceLocationAudit?: Record<string, unknown>;
+        }
+      ) => {
+        if (
+          input.serviceCountryCode &&
+          (input.serviceAdmin1Code !== "13" || input.serviceAdmin2Code !== "13104")
+        ) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.administrative_region.invalid_hierarchy",
+            statusCode: 400
+          });
+        }
+        shopState = {
+          ...shopState,
+          name: input.name ?? shopState.name,
+          serviceLocation: input.serviceCountryCode
+            ? {
+                countryCode: input.serviceCountryCode,
+                admin1Code: input.serviceAdmin1Code!,
+                admin2Code: input.serviceAdmin2Code!,
+                verifiedById: mutation!.verifiedById
+              }
+            : shopState.serviceLocation
+        };
+        if (mutation?.serviceLocationAudit) {
+          auditLogs.push({
+            ...mutation.serviceLocationAudit,
+            metadata: {
+              ...(mutation.serviceLocationAudit.metadata as Record<string, unknown>),
+              shopNo: shopState.shopNo
+            }
+          });
+        }
+        return shopState;
+      }
+    ),
     updateTechnician: jest.fn(async (input: Record<string, unknown>) => ({
       id: input.technicianId,
       userId: 17,
@@ -1708,5 +1801,133 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       });
 
     expect(fixture.backofficeRepository.updateShop).not.toHaveBeenCalled();
+  });
+
+  it("creates a shop with one verified service-region assignment and atomic public audit input", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/backoffice/shops")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        ownerEmail: "new-shop@example.com",
+        ownerUsername: "New Shop Owner",
+        ownerPassword: "Abcd@1234",
+        name: "New Formal Shop",
+        city: "Tokyo",
+        address: "Shinjuku",
+        serviceCountryCode: "JP",
+        serviceAdmin1Code: "13",
+        serviceAdmin2Code: "13104"
+      })
+      .expect(201);
+
+    expect(fixture.backofficeRepository.createShop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verifiedById: 1,
+        serviceLocationAudit: expect.objectContaining({
+          actorId: 1,
+          action: "backoffice.shop.service_location.verify",
+          targetType: "shop",
+          targetId: null,
+          metadata: {
+            countryCode: "JP",
+            admin1Code: "13",
+            admin2Code: "13104"
+          }
+        })
+      })
+    );
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "backoffice.shop.service_location.verify",
+          metadata: expect.objectContaining({ shopNo: "0000000011" })
+        })
+      ])
+    );
+  });
+
+  it("writes one verified service-region assignment and passes its audit into the mutation", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/shops/11")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        serviceCountryCode: "JP",
+        serviceAdmin1Code: "13",
+        serviceAdmin2Code: "13104"
+      })
+      .expect(200);
+
+    expect(fixture.backofficeRepository.updateShop).toHaveBeenCalledWith(
+      11,
+      {
+        serviceCountryCode: "JP",
+        serviceAdmin1Code: "13",
+        serviceAdmin2Code: "13104"
+      },
+      expect.objectContaining({
+        verifiedById: 1,
+        serviceLocationAudit: expect.objectContaining({
+          action: "backoffice.shop.service_location.verify",
+          targetType: "shop",
+          targetId: null,
+          metadata: {
+            countryCode: "JP",
+            admin1Code: "13",
+            admin2Code: "13104"
+          }
+        })
+      })
+    );
+    expect(fixture.backofficeRepository.shopState.serviceLocation).toEqual({
+      countryCode: "JP",
+      admin1Code: "13",
+      admin2Code: "13104",
+      verifiedById: 1
+    });
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "backoffice.shop.service_location.verify",
+          targetType: "shop",
+          targetId: null,
+          metadata: {
+            shopNo: "0000000011",
+            countryCode: "JP",
+            admin1Code: "13",
+            admin2Code: "13104"
+          }
+        })
+      ])
+    );
+  });
+
+  it("rejects an invalid administrative hierarchy without changing the shop", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+    const before = structuredClone(fixture.backofficeRepository.shopState);
+
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/shops/11")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        serviceCountryCode: "JP",
+        serviceAdmin1Code: "27",
+        serviceAdmin2Code: "13104"
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.administrative_region.invalid_hierarchy"
+        });
+      });
+
+    expect(fixture.backofficeRepository.shopState).toEqual(before);
   });
 });

@@ -1,3 +1,4 @@
+import type { WorkStatus } from '../domain/work-status';
 import { hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -26,6 +27,7 @@ import { DASHBOARD_METRIC_KEYS, type DashboardMetricKey } from "../validators/ba
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
@@ -465,6 +467,7 @@ export interface BackofficeManagedUserMembershipPayload {
 
 export interface BackofficeManagedUserExperiencePayload {
   currentLevel: number;
+  totalExp: string;
   totalExpUnits: string;
 }
 
@@ -482,12 +485,18 @@ export interface BackofficeManagedUserPayload {
   isTestAccount: boolean;
   source: string[];
   identities: BackofficeManagedUserIdentityPayload[];
+  identityProfiles?: Array<{
+    type: "technician" | "merchant";
+    status: "active" | "not_enabled" | "under_review" | "rejected";
+    displayName: string | null;
+  }>;
   roles: Array<{ code: string; name: string }>;
   groups: string[];
   ekycVerified: boolean;
   membership: BackofficeManagedUserMembershipPayload;
   experience: BackofficeManagedUserExperiencePayload | null;
   ndpBalance: { available: number; frozen: number };
+  testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;
   city: string | null;
   privacyMode: boolean;
@@ -551,6 +560,7 @@ export type BackofficeManagedUserDetailRecord = Omit<
 >;
 
 export interface BackofficeTechnicianPayload {
+  workStatus?: WorkStatus;
   id: number;
   userId: number;
   needoId: string;
@@ -613,6 +623,7 @@ export type TechnicianRankingRepositoryInput = BackofficeScope &
 
 export interface BackofficeShopPayload {
   id: number;
+  shopNo: string | null;
   ownerUserId: number | null;
   ownerEmail: string | null;
   avatarUrl: string | null;
@@ -794,6 +805,13 @@ export interface BackofficeServicePayload {
 
 export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
   ownerPasswordHash: string;
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
+}
+
+export interface BackofficeShopMutationContext {
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
 }
 
 export type ScopedTechnicianUpdateInput = BackofficeScope &
@@ -886,7 +904,8 @@ export interface BackofficeRepositoryPort {
   createShop: (input: BackofficeShopCreateData) => Promise<BackofficeShopPayload>;
   updateShop: (
     id: number,
-    input: BackofficeShopUpdateBody
+    input: BackofficeShopUpdateBody,
+    mutation?: BackofficeShopMutationContext
   ) => Promise<BackofficeShopPayload | null>;
   updateMerchantShopProfile?: (input: {
     avatar?: { mimeType: string; url: string };
@@ -1882,7 +1901,9 @@ export class BackofficeService {
     try {
       shop = await this.repository.createShop({
         ...input,
-        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
+        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS),
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
       });
     } catch (error) {
       if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
@@ -1908,7 +1929,10 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
     const shop = this.requireResult(
-      await this.repository.updateShop(id, input),
+      await this.repository.updateShop(id, input, {
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
+      }),
       "error.shop.not_found"
     );
     await this.record(actor, context, "backoffice.shop.update", "Shop", {
@@ -2417,6 +2441,32 @@ export class BackofficeService {
     );
     await this.record(actor, context, action, "Service", { serviceId, shopId: service.shopId });
     return service;
+  }
+
+  private createVerifiedServiceLocationAudit(
+    input: {
+      serviceCountryCode?: "JP";
+      serviceAdmin1Code?: string;
+      serviceAdmin2Code?: string;
+    },
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): AuditLogCreateInput | undefined {
+    if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
+      return undefined;
+    }
+    return this.auditLogService.createInput({
+      actor,
+      action: "backoffice.shop.service_location.verify",
+      targetType: "shop",
+      targetId: null,
+      context,
+      metadata: {
+        countryCode: input.serviceCountryCode,
+        admin1Code: input.serviceAdmin1Code,
+        admin2Code: input.serviceAdmin2Code
+      }
+    });
   }
 
   private requireResult<T>(value: T | null, message: string): T {

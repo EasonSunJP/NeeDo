@@ -226,4 +226,70 @@ describe("BookingService manual payment", () => {
     });
     expect(bookingRepository.confirmManualPayment).not.toHaveBeenCalled();
   });
+
+  it("publishes manual confirmation and refund only for applied mutations", async () => {
+    const confirmed = order({ paymentStatus: "confirmed" });
+    const refunded = order({ status: "cancelled", paymentStatus: "refunded" });
+    const bookingRepository = repository({ outcome: "ok", order: confirmed, applied: true });
+    bookingRepository.confirmManualPayment
+      .mockResolvedValueOnce({ outcome: "ok", order: confirmed, applied: true })
+      .mockResolvedValueOnce({ outcome: "ok", order: confirmed, applied: false });
+    bookingRepository.refundManualPayment
+      .mockResolvedValueOnce({ outcome: "ok", order: refunded, applied: true })
+      .mockResolvedValueOnce({ outcome: "ok", order: refunded, applied: false });
+    bookingRepository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: 91,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: confirmed.orderNo,
+        status: confirmed.status,
+        serviceName: confirmed.serviceName,
+        amountJpy: 8_800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      bookingRepository,
+      undefined,
+      undefined,
+      auditLogService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.confirmManualPayment(
+      backofficeActor,
+      91,
+      { method: "bank_transfer", amountJpy: 8_800, reference: "BANK-LIVE-1" },
+      requestContext
+    );
+    await service.confirmManualPayment(
+      backofficeActor,
+      91,
+      { method: "bank_transfer", amountJpy: 8_800, reference: "BANK-LIVE-1" },
+      requestContext
+    );
+    await service.refundManualPayment(
+      backofficeActor,
+      91,
+      { reason: "refund", reference: "REF-LIVE-1" },
+      requestContext
+    );
+    await service.refundManualPayment(
+      backofficeActor,
+      91,
+      { reason: "refund", reference: "REF-LIVE-1" },
+      requestContext
+    );
+
+    expect(bookingRepository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(2);
+    expect(bookingRepository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([91]);
+    expect(publisher.publish).toHaveBeenCalledTimes(4);
+  });
 });

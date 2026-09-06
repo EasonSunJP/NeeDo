@@ -310,6 +310,41 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("accepts the server-authoritative traceless recall result while retaining the standard request", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        action: "traceless_recall",
+        conversationId: 91,
+        messageId: 700,
+        message: {
+          id: 700,
+          conversationId: 91,
+          senderUserId: 100,
+          type: "text",
+          content: null,
+          metadata: null,
+          reactions: [],
+          recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+          recalledAt: "2026-08-25T10:01:00.000Z",
+          recallMode: "traceless",
+          contentPurgedAt: "2026-08-25T10:01:00.000Z",
+          lifecycleVersion: 2,
+          availableRecallModes: [],
+          createdAt: "2026-08-25T10:00:00.000Z",
+        },
+      }),
+    );
+
+    await expect(realtimeApi.recallMessage(91, 700, "standard")).resolves.toMatchObject({
+      action: "traceless_recall",
+      message: { recallMode: "traceless" },
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/conversations/91/messages/700/recall",
+      expect.objectContaining({ body: JSON.stringify({ mode: "standard" }) }),
+    );
+  });
+
   it("deletes one message only from the authenticated user's history", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ conversationId: 91, messageId: 700, deleted: true })

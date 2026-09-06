@@ -16,6 +16,7 @@ import type { AffiliateCheckoutService } from "./affiliate-checkout.service";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
+import type { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
 
 export interface ExchangeBookingConversionRepositoryPort {
   findOwnerContext(
@@ -39,7 +40,8 @@ export class ExchangeBookingConversionService {
     private readonly affiliate: Pick<AffiliateCheckoutService, "invalidateCancelledBooking">,
     private readonly policy: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     private readonly realtime?: RealtimeCommittedNotificationPort,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly liveDashboard?: Pick<LiveDashboardOrderChangePublisher, "publishCommittedOrderChanges">
   ) {}
 
   public async createBookings(
@@ -98,6 +100,13 @@ export class ExchangeBookingConversionService {
 
     if (!("payload" in result)) {
       throw this.mapOutcome(result);
+    }
+    if (result.outcome === "created" && this.liveDashboard) {
+      try {
+        await this.liveDashboard.publishCommittedOrderChanges(result.committedOrderIds ?? result.payload.orders.map((order) => order.orderId));
+      } catch (error) {
+        logger.error({ error, exchangePostId }, "Exchange live dashboard publish failed after commit");
+      }
     }
     if (result.outcome === "created" && this.realtime) {
       try {

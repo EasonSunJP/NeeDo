@@ -234,6 +234,15 @@ async function click(element: Element) {
 }
 
 async function changeInput(label: string, value: string) {
+  const select = container.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`);
+  if (select) {
+    await waitFor(() => expect([...select.options].some((option) => option.textContent === value)).toBe(true));
+    await act(async () => {
+      select.value = [...select.options].find((option) => option.textContent === value)!.value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    return;
+  }
   const element = container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(element, value);
@@ -264,6 +273,11 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  vi.spyOn(bookingApi, "listAdministrativeRegions").mockImplementation(async ({ parent }) => ({
+    list: parent
+      ? [{ code: "13102", parentCode: "13", level: "admin2", name: "中央区", centroid: null }]
+      : [{ code: "13", parentCode: null, level: "admin1", name: "東京都", centroid: null }]
+  }));
   vi.spyOn(pricingModeApi, "listPublicTechnicianServices").mockResolvedValue({
     list: [],
     page: 1,
@@ -300,7 +314,7 @@ describe("formal checkout technician-card round trip", () => {
     expect(createEstimate).toHaveBeenCalledWith({ servicePublicId: "svc0000000031", scheduleSlotId: 101, destination: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) });
     expect(container.querySelector('iframe[src*="google.com/maps"]')).toBeNull();
     await click(confirmBefore);
-    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ fulfillmentMode: "home", travelEstimatePublicId: "00000000-0000-4000-8000-000000000077", fulfillmentAddress: expect.objectContaining({ postalCode: "104-0061" }) })));
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ fulfillmentMode: "home", scheduleSlotId: 101, serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13102" }, travelEstimatePublicId: "00000000-0000-4000-8000-000000000077", fulfillmentAddress: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) })));
   });
 
   it("shows an unconfigured provider state and retries against the formal estimate API", async () => {
@@ -397,6 +411,10 @@ describe("formal checkout technician-card round trip", () => {
       serviceId: 31,
       scheduleSlotId: 103
     })));
+    const storePayload = createBooking.mock.calls[0]![0];
+    expect(storePayload).not.toHaveProperty("serviceLocation");
+    expect(storePayload).not.toHaveProperty("fulfillmentAddress");
+    expect(storePayload).not.toHaveProperty("travelEstimatePublicId");
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="测试返回上一条历史"]')!);
     await waitFor(() => expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/origin"));
   });

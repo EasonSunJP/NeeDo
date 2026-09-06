@@ -1,12 +1,11 @@
+import { BackofficeHeaderActions } from "../../features/sos/BackofficeHeaderActions";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { cn } from "../../lib/utils";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
 import { AdminAccountMenu } from "./AdminAccountMenu";
-import { AdminThemeMenu } from "./AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
-import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 import { OfficialNoticeBell } from "../ui/OfficialNoticeBell";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { contentPublicationEditorText } from "../../features/content-publication/i18n";
@@ -40,11 +39,6 @@ type AdminNavSection = {
   items: AdminNavItem[];
 };
 
-type AdminUtilityLink = {
-  label: string;
-  to: string;
-  tone: "screen" | "sos";
-};
 
 const navSections: AdminNavSection[] = [
   {
@@ -177,9 +171,6 @@ const navSections: AdminNavSection[] = [
   }
 ];
 
-const utilityLinks: AdminUtilityLink[] = [
-  { label: "求救通知", to: "/admin/reviews?module=sos", tone: "sos" }
-];
 
 function splitTo(to: string) {
   const [path, query = ""] = to.split("?");
@@ -255,24 +246,6 @@ function getInitialAdminThemeState(): AdminThemeState {
     theme: detectSystemAdminTheme(defaultDayAdminTheme, defaultNightAdminTheme, platformAdminThemeOptions),
     preferenceMode
   };
-}
-
-function AdminUtilityIcon({ tone }: { tone: AdminUtilityLink["tone"] }) {
-  if (tone === "sos") {
-    return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-        <path d="M12 3.4 3.8 18.2a1.6 1.6 0 0 0 1.4 2.4h13.6a1.6 1.6 0 0 0 1.4-2.4L12 3.4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.1" />
-        <path d="M12 8.5v5.2M12 17.2h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2.3" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-      <path d="M4 5.6h16v10.8H4z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-      <path d="M9 20h6M12 16.4V20M7.5 13.2V9.8M12 13.2V7.6M16.5 13.2v-2.4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-    </svg>
-  );
 }
 
 export function AdminLayout({ children }: { children: ReactNode }) {
@@ -483,46 +456,15 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     </button>
                   ))}
                 </div>
-                <div className="admin-utility-actions hidden shrink-0 items-center gap-2 xl:flex">
-                  {utilityLinks.map((item) => {
-                    const { path, search } = splitTo(item.to);
-                    const active = location.pathname === path && location.search === search;
 
-                    return (
-                      <NavLink
-                        aria-label={item.label}
-                        className={cn(
-                          "admin-utility-link focus-ring flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-black transition",
-                          `is-${item.tone}`,
-                          active && "is-active"
-                        )}
-                        key={item.to}
-                        to={item.to}
-                      >
-                        <span className="grid h-7 w-7 place-items-center rounded-md">
-                          <AdminUtilityIcon tone={item.tone} />
-                        </span>
-                        <span>{item.label}</span>
-                      </NavLink>
-                    );
-                  })}
-                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <LanguageSwitcher className="shrink-0" iconOnly />
-                <AdminThemeMenu onThemeChange={setTheme} options={platformAdminThemeOptions} theme={theme} />
-                <OfficialNoticeBell to="/admin/notifications/inbox" />
-                <NavLink
-                  aria-label="客服台"
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"
-                  to="/admin/support"
-                >
-                  <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <path d="M4 13.5a8 8 0 0 1 16 0v3a2 2 0 0 1-2 2h-1.2a1.8 1.8 0 0 1-1.8-1.8v-1.4a1.8 1.8 0 0 1 1.8-1.8H18v-.2a6 6 0 0 0-12 0v.2h1.2A1.8 1.8 0 0 1 9 15.3v1.4a1.8 1.8 0 0 1-1.8 1.8H6a2 2 0 0 1-2-2v-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-                    <path d="M12 18.5h2.5a2 2 0 0 0 2-2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-                  </svg>
-                </NavLink>
-              </div>
+              <BackofficeHeaderActions
+                theme={theme}
+                onThemeChange={setTheme}
+                themeOptions={platformAdminThemeOptions}
+                messageAction={<OfficialNoticeBell to="/admin/notifications/inbox" />}
+                supportTo="/admin/support"
+              />
             </div>
             <div className="admin-subnav scrollbar-none mt-3 flex items-center gap-2 overflow-x-auto lg:hidden">
               {activeSection.items.map((item) => (
@@ -534,18 +476,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     )
                   }
                   end={item.to === "/admin"}
-                  key={item.to}
-                  to={item.to}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-              {utilityLinks.map((item) => (
-                <NavLink
-                  className={cn(
-                    "shrink-0 rounded-lg border px-3 py-2 text-xs font-black",
-                    item.tone === "sos" ? "sos-danger-action" : "border-line bg-paper text-ink/60"
-                  )}
                   key={item.to}
                   to={item.to}
                 >

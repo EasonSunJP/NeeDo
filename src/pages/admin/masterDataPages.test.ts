@@ -106,9 +106,7 @@ describe("master data pages", () => {
   it("uses merchant-scoped customers and NeeDoID employees without merchant demo data", () => {
     const source = read("../merchant-admin/MerchantAdminPeoplePage.tsx");
     expect(source).not.toContain("getMerchantAdminDemo");
-    expect(source).toMatch(
-      /backofficeRealDataApi\.customers\(\s*"merchant-admin"/,
-    );
+    expect(source).toContain('<UnifiedUserDirectory onSelect={openCustomer} scope="merchant" />');
     expect(source).toContain("merchantEmployeeApi.list(");
     expect(source).toContain("merchantEmployeeApi.detail(needoId)");
     expect(source).toContain("merchantEmployeeApi.updateProfile(");
@@ -122,9 +120,9 @@ describe("master data pages", () => {
     expect(source).not.toContain(
       'backofficeRealDataApi.technician("merchant-admin"',
     );
-    expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');
+    expect(source).toContain("UnifiedUserDetailDrawer");
     expect(source).toContain("EmployeeDetailCard");
     expect(source).not.toContain("FormalTechnicianDetailPanel");
-    expect(source).toContain("FormalCustomerDetailPanel");
+    expect(source).not.toContain("FormalCustomerDetailPanel");
   });
 });

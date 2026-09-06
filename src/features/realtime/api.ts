@@ -37,7 +37,7 @@ export type RealtimeMessage = {
 };
 
 export type RealtimeRecallResult = {
-  action: "standard_recall";
+  action: "standard_recall" | "traceless_recall";
   conversationId: number;
   message: RealtimeMessage;
   messageId: number;

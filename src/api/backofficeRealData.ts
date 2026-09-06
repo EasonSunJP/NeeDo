@@ -1,3 +1,5 @@
+import { mapWorkStatusToLegacy } from "../features/technician-work-status/model";
+import type { WorkStatus } from "../features/technician-work-status/api";
 import { httpClient } from "./httpClient";
 import type { Merchant, Order, OrderStatus, Settlement, Store, Technician } from "../types/domain";
 import { formatSystemId } from "../lib/systemIds";
@@ -410,6 +412,7 @@ export interface BackofficeNdpSummaryPayload {
 }
 
 export interface BackofficeTechnicianPayload {
+  workStatus?: WorkStatus;
   id: number;
   userId: number;
   needoId: string;
@@ -1946,7 +1949,8 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     name: row.displayName,
     storeId: row.shopId ? `store-${row.shopId}` : "",
     role: "therapist",
-    status: row.status === "published" ? "available" : "off",
+    status: mapWorkStatusToLegacy(row.workStatus),
+    workStatus: row.workStatus ?? "unsynced",
     rating: 0,
     orderCount: 0,
     income: 0,

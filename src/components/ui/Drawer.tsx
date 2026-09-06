@@ -37,6 +37,7 @@ export function Drawer({
   children,
   footer,
   onClose,
+  closeLabel,
   resizable = true,
   widthStorageKey = defaultDrawerWidthStorageKey,
   defaultWidth = defaultDrawerWidth,
@@ -49,6 +50,7 @@ export function Drawer({
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
+  closeLabel?: string;
   resizable?: boolean;
   widthStorageKey?: string;
   defaultWidth?: number;
@@ -165,7 +167,7 @@ export function Drawer({
         ) : null}
         <header className="drawer-panel-header flex items-center justify-between border-b border-line px-5 py-4">
           <h2 className="text-lg font-bold">{title}</h2>
-          <CloseIconButton onClick={onClose} />
+          <CloseIconButton label={closeLabel} onClick={onClose} />
         </header>
         <div className="drawer-panel-body min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
         {footer ? <footer className="drawer-panel-footer shrink-0 border-t border-line px-5 py-4">{footer}</footer> : null}

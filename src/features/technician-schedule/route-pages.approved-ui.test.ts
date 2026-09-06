@@ -40,7 +40,8 @@ describe("approved formal technician schedule UI", () => {
   it("loads the shared calendar in formal-only mode without legacy store imports", () => {
     const combinedSource = `${routeSource}\n${workspaceSource}`;
     expect(workspaceSource).toContain("formalOnly");
-    expect(unifiedCalendarSource).toContain("schedulingApi.listSlots");
+    expect(unifiedCalendarSource).toContain("loadManagedScheduleWindow");
+    expect(unifiedCalendarSource).toContain('activeScope === "merchant" ? "merchant-admin" : "technician"');
     expect(combinedSource).not.toContain("formalRuntimeFallbacks");
     expect(combinedSource).not.toContain("entityStore");
     expect(combinedSource).not.toContain("scheduleStore");

@@ -226,12 +226,14 @@ const main = async (): Promise<void> => {
     );
 
     const emailLogin = await authService.login(existingEmail, existingPassword, context);
+    assert("accessToken" in emailLogin, "password login unexpectedly requires verification");
     const emailLoginTokens = await trackTokens(emailLogin, "email password login");
     assert(
       emailLoginTokens.userId === existingUser.id,
       "email password login did not resolve the registered User"
     );
     const needoIdLogin = await authService.login(existingUser.needoId, existingPassword, context);
+    assert("accessToken" in needoIdLogin, "password login unexpectedly requires verification");
     const needoIdLoginTokens = await trackTokens(needoIdLogin, "NeeDo ID password login");
     assert(
       needoIdLoginTokens.userId === existingUser.id,
@@ -364,6 +366,7 @@ const main = async (): Promise<void> => {
       "password setup did not persist a bcrypt password"
     );
     const passwordLogin = await authService.login(googleOnlyEmail, googleOnlyPassword, context);
+    assert("accessToken" in passwordLogin, "password login unexpectedly requires verification");
     const passwordLoginTokens = await trackTokens(passwordLogin, "Google-only password login");
     assert(
       passwordLoginTokens.userId === googleOnlyUser.id,

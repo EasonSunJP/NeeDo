@@ -384,7 +384,7 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
 
     for (const content of [
       "身份与基础资料", "业务状态与正式指标", "正式启用服务", "近期正式排班",
-      "薪酬设置", "账号状态", "角色", "身份", "正式审计时间线",
+      "薪酬设置", "账号状态", "角色", "身份", "工作时间线",
       "訪問ケア 60分", "¥186,000", "¥12,000", "停用账号"
     ]) {
       expect(markup).toContain(content);
@@ -411,12 +411,12 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     }
   });
 
-  it("always shows all three unavailable metrics even when the API hint array is empty", () => {
+  it("keeps remaining unavailable metrics and replaces lateness with formal monthly metrics", () => {
     const markup = renderToStaticMarkup(
       <FormalTechnicianDetailPanel detail={{ ...technicianDetail, unavailableMetrics: [] }} />
     );
 
-    for (const label of ["接单率", "迟到情况", "排班偏好"]) {
+    for (const label of ["接单率", "排班偏好"]) {
       expect(markup).toMatch(new RegExp(`${label}[\\s\\S]*?尚未接入正式数据`));
     }
   });
@@ -446,36 +446,13 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     expect(markup).toContain('data-tone="neutral">future_status');
   });
 
-  it("renders structured formal audit metadata and uses unavailable detail without invented prose", () => {
-    const markup = renderToStaticMarkup(<FormalTechnicianDetailPanel detail={technicianDetail} />);
-
-    for (const formalValue of ["更新了技师档案", "资料复核", "city", "bio", "formal-backoffice", "2", "保留原始正式动作"]) {
-      expect(markup).toContain(formalValue);
-    }
-    expect(markup).toContain('data-tone="neutral"');
-    expect(markup).toMatch(/custom\.empty\.action[\s\S]*?尚未接入正式数据/);
-    expect(markup).not.toContain("记录了 custom.empty.action");
-    expect(source).toContain("preserveAtLabel: true");
-  });
-
-  it("normalizes recursively empty structured metadata to the localized unavailable state", () => {
-    const markup = renderToStaticMarkup(
-      <FormalTechnicianDetailPanel detail={{
-        ...technicianDetail,
-        timeline: [{
-          id: "audit-empty-values",
-          action: "custom.empty.values",
-          actorName: "审计服务",
-          actorAvatarUrl: null,
-          createdAt: "2026-08-24T10:00:00.000Z",
-          metadata: { reason: "  ", changedFields: [], source: {} }
-        }]
-      }} />
-    );
-
-    for (const label of ["原因", "变更字段", "来源"]) {
-      expect(markup).toMatch(new RegExp(`${label}[\\s\\S]*?尚未接入正式数据`));
-    }
+  it("replaces technical inspection logs with the formal business timeline", () => {
+    const markup = renderToStaticMarkup(<FormalTechnicianDetailPanel detail={technicianDetail} initialTab="时间线" />);
+    expect(markup).toContain("工作时间线");
+    expect(markup).toContain("补充记录");
+    expect(markup).not.toContain("custom.empty.action");
+    expect(markup).not.toContain("formal-backoffice");
+    expect(markup).toContain("work-status-month-metrics");
   });
 
   it("uses a neutral missing-avatar placeholder instead of deriving a fake identity", () => {
@@ -502,7 +479,7 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
       }} />
     );
 
-    for (const emptyLabel of ["尚未接入正式数据", "当前没有近期正式排班", "当前没有正式角色记录", "当前没有正式身份记录", "暂无正式审计记录"]) {
+    for (const emptyLabel of ["尚未接入正式数据", "当前没有近期正式排班", "当前没有正式角色记录", "当前没有正式身份记录", "正在同步…"]) {
       expect(markup).toContain(emptyLabel);
     }
   });
@@ -612,7 +589,7 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
       expect(inactivePrivateMarkup).toContain(value);
     }
     expect(technicianMarkup).toContain('alt="佐藤 美香 头像"');
-    expect(technicianMarkup).toContain("已批准");
+    expect(technicianMarkup).toContain("已验证");
   });
 });
 

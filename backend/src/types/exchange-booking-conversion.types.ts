@@ -66,6 +66,7 @@ export type ExchangeBookingConversionRepositoryResult =
       outcome: "created" | "replayed";
       payload: ExchangeBookingConversionPayload;
       notifications: ExchangeCommittedNotification[];
+      committedOrderIds?: number[];
     }
   | {
       outcome:

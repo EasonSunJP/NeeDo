@@ -1201,6 +1201,7 @@ describe("verified email registration and formal password authentication", () =>
         assertAuthenticatedAccess: jest.fn(async () => undefined),
         assertSelfRegistrationEnabled: jest.fn(async () => undefined),
         assertGoogleLoginEnabled: jest.fn(async () => undefined),
+        getAvailablePaymentMethods: jest.fn(async () => []),
         getPasswordLoginVerificationPolicy: jest.fn(async () => ({
           platformSettingsVersion: 3,
           enabled: true,
@@ -1265,6 +1266,7 @@ describe("verified email registration and formal password authentication", () =>
         assertAuthenticatedAccess: jest.fn(async () => undefined),
         assertSelfRegistrationEnabled,
         assertGoogleLoginEnabled,
+        getAvailablePaymentMethods: jest.fn(async () => []),
         getPasswordLoginVerificationPolicy: jest.fn(async () => ({
           platformSettingsVersion: 3,
           enabled: false,

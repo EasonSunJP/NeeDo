@@ -55,6 +55,7 @@ export function TableColumnHeader({
   searchValue,
   selectedValues,
   sortDirection,
+  sortLabels,
   style,
   title,
   uiLanguage = "zh",
@@ -77,6 +78,7 @@ export function TableColumnHeader({
   searchValue: string;
   selectedValues: string[];
   sortDirection?: TableSortDirection;
+  sortLabels?: { asc: string; desc: string };
   style?: CSSProperties;
   title: string;
   uiLanguage?: Language;
@@ -286,10 +288,10 @@ export function TableColumnHeader({
         <p className="text-xs font-black text-ink/65">{copy.sort}</p>
         <div className="grid grid-cols-2 gap-2">
           <button className={cn("needo-table-filter-sort-button", draftSortDirection === "asc" && "is-active")} onClick={() => handleSort("asc")} type="button">
-            A→Z
+            {sortLabels?.asc ?? "A→Z"}
           </button>
           <button className={cn("needo-table-filter-sort-button", draftSortDirection === "desc" && "is-active")} onClick={() => handleSort("desc")} type="button">
-            Z→A
+            {sortLabels?.desc ?? "Z→A"}
           </button>
         </div>
       </div> : null}

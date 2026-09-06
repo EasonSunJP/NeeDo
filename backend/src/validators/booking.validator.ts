@@ -118,21 +118,35 @@ export const availabilityListQuerySchema = z
     path: ["to"]
   });
 
+const bookingBaseSchema = z.object({
+  serviceId: z.coerce.number().int().positive().optional(),
+  technicianServiceId: z.coerce.number().int().positive().optional(),
+  scheduleSlotId: z.coerce.number().int().positive(),
+  orderType: z.enum(["booking", "request"]).optional(),
+  paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
+  note: z.string().trim().max(500).optional(),
+  affiliateCode: z.string().trim().min(1).max(40).optional(),
+  affiliatePublicToken: z.string().trim().min(1).max(512).optional()
+});
+
 export const bookingCreateBodySchema = z
-  .object({
-    serviceId: z.coerce.number().int().positive().optional(),
-    technicianServiceId: z.coerce.number().int().positive().optional(),
-    scheduleSlotId: z.coerce.number().int().positive(),
-    orderType: z.enum(["booking", "request"]).optional(),
-    fulfillmentMode: z.enum(["home", "store"]),
-    paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
-    note: z.string().trim().max(500).optional(),
-    fulfillmentAddress: japaneseRouteAddressSchema.optional(),
-    travelEstimatePublicId: z.string().uuid().optional(),
-    affiliateCode: z.string().trim().min(1).max(40).optional(),
-    affiliatePublicToken: z.string().trim().min(1).max(512).optional()
-  })
-  .strict()
+  .discriminatedUnion("fulfillmentMode", [
+    bookingBaseSchema.extend({ fulfillmentMode: z.literal("store") }).strict(),
+    bookingBaseSchema
+      .extend({
+        fulfillmentMode: z.literal("home"),
+        fulfillmentAddress: japaneseRouteAddressSchema,
+        travelEstimatePublicId: z.string().uuid(),
+        serviceLocation: z
+          .object({
+            countryCode: z.literal("JP"),
+            admin1Code: z.string().regex(/^\d{2}$/),
+            admin2Code: z.string().regex(/^\d{5}$/)
+          })
+          .strict()
+      })
+      .strict()
+  ])
   .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
     message: "Exactly one of serviceId or technicianServiceId is required",
     path: ["serviceId"]
@@ -145,8 +159,6 @@ export const bookingCreateBodySchema = z
       if (!value.travelEstimatePublicId) {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "travelEstimatePublicId is required for home service", path: ["travelEstimatePublicId"] });
       }
-    } else if (value.fulfillmentAddress || value.travelEstimatePublicId) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "travel estimate fields are not allowed for store service", path: ["travelEstimatePublicId"] });
     }
   });
 
@@ -294,6 +306,7 @@ export const orderTimelineCommentBodySchema = z.object({ body: visibleTextSchema
 export const orderListQuerySchema = z
   .object({
     ...paginationQuerySchema,
+    dateMode: z.enum(["startsWithin", "overlaps"]).optional(),
     customerUserId: z.coerce.number().int().positive().optional(),
     status: z
       .enum([
@@ -310,6 +323,10 @@ export const orderListQuerySchema = z
     to: isoDateSchema.optional()
   })
   .superRefine((value, context) => {
+    if (value.dateMode === "overlaps" && (!value.from || !value.to)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "overlap queries require from and to", path: ["from"] });
+      return;
+    }
     if (Boolean(value.from) !== Boolean(value.to)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

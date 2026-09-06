@@ -1517,7 +1517,11 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    realtimeRepository
+    realtimeRepository,
+    platformMembershipResolverService: {
+      resolveMembershipAt: jest.fn(),
+      hasEffectiveBenefitAt: jest.fn(async () => false)
+    }
   } as never);
   const login = async (email: string) => {
     const response = await request(app)
@@ -2161,6 +2165,9 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
           }
         });
       });
+    expect(fixture.realtimeRepository.recallMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mode: "standard" })
+    );
   });
 
   it("requires message:recall and rejects unsupported recall modes", async () => {

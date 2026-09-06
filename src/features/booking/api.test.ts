@@ -96,6 +96,44 @@ describe("bookingApi", () => {
     });
   });
 
+  it("loads official Japanese administrative children and submits home region codes", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({
+        code: 0,
+        message: "success",
+        data: {
+          list: [{ code: "13", name: "東京都", level: "admin1", parentCode: null, centroid: null }]
+        }
+      }))
+      .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.listAdministrativeRegions({ country: "JP", locale: "ja", parent: "13" });
+    await bookingApi.createBooking({
+      fulfillmentMode: "home",
+      scheduleSlotId: 33,
+      serviceId: 12,
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+      travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/reference/administrative-regions?country=JP&locale=ja&parent=13",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(requestBodyAt(1)).toEqual({
+      fulfillmentMode: "home",
+      orderType: "booking",
+      paymentMethod: "onsite",
+      scheduleSlotId: 33,
+      serviceId: 12,
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+      travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
+    });
+  });
+
   it("generates distinct opaque idempotency keys within the formal contract bounds", () => {
     const first = createBookingIdempotencyKey();
     const second = createBookingIdempotencyKey();
@@ -195,6 +233,12 @@ describe("bookingApi", () => {
       pageSize: "100"
     });
     expect(requestInit).toEqual(expect.objectContaining({ method: "GET" }));
+  });
+
+  it("serializes overlapping order windows for the merchant calendar", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [], total: 0, page: 1, page_size: 100 } }));
+    await bookingApi.listOrders({ from: "2026-09-06T15:00:00.000Z", to: "2026-09-07T15:00:00.000Z", dateMode: "overlaps" });
+    expect(String(vi.mocked(fetch).mock.calls.at(-1)?.[0])).toContain("dateMode=overlaps");
   });
 
   it("calls the scoped manual-payment confirmation and refund endpoints", async () => {
