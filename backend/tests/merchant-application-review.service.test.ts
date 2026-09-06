@@ -118,9 +118,21 @@ describe("MerchantApplicationReviewService", () => {
     );
   });
 
+  it.each(["individual", "corporate"] as const)("approves %s evidence without a representative photo", async (applicantKind) => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(corporateApplication({
+      applicantKind, eKycVerified: true,
+      media: applicantKind === "corporate" ? corporateApplication().media.slice(0, 1) : [],
+      bankAccount: { ...corporateApplication().bankAccount!, verificationSource: applicantKind === "corporate" ? "corporate_registration" : "ekyc" }
+    }));
+    await new MerchantApplicationReviewService(repository).approve({
+      applicationId: 41, reviewerUserId: 9, expectedVersion: 3, now: exactFifteenDays
+    });
+    expect(repository.approveInTransaction).toHaveBeenCalled();
+  });
+
   it.each([
     ["corporate registration", { media: corporateApplication().media.slice(1) }],
-    ["representative identity", { media: corporateApplication().media.slice(0, 1) }],
     ["verified corporate bank", { bankAccount: null }],
     [
       "corporate verification source",

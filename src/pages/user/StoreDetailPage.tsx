@@ -106,6 +106,7 @@ type StoreDetailExperienceProps = {
   store: Store;
   techniciansOverride?: Technician[];
   presentationOverride?: StorePresentationConfig;
+  transportSummary?: string;
   hideUnavailableReviewDetails?: boolean;
 };
 
@@ -2700,6 +2701,7 @@ export function StoreDetailExperience({
   technicianPricingRatePercent,
   techniciansOverride,
   presentationOverride,
+  transportSummary,
   hideUnavailableReviewDetails = false
 }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
@@ -3476,7 +3478,12 @@ export function StoreDetailExperience({
                   metric="favorite"
                   onClick={() => setActiveMetricDetail((current) => (current === "favorite" ? null : "favorite"))}
                 />
-                <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />
+                {transportSummary !== undefined ? (
+                  <div className={cn(storeCompactMetricPillClassName, "min-w-0 gap-1.5 px-2 text-[12px] font-normal text-[color:var(--client-muted)]")}>
+                    <AppIcon className="h-4 w-4 shrink-0" name="map" />
+                    <span className="min-w-0 truncate">{transportSummary}</span>
+                  </div>
+                ) : <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />}
               </div>
               {activeMetricDetail ? (
                 <div className="inline-flex w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_48%,transparent)] px-3 py-2 text-[12px] font-normal text-[color:var(--client-muted)]">
@@ -3517,7 +3524,7 @@ export function StoreDetailExperience({
                     </div>
                   ) : (
                     <p className="mt-1.5 text-sm font-semibold leading-6 text-[color:var(--client-text)]">
-                      {config.station} · {config.distance}
+                      {[config.station, config.distance].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </InfoRow>

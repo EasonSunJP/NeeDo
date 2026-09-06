@@ -65,7 +65,11 @@ const merchantShowcaseShape = {
   businessAddress: z.string().trim().min(1).max(255),
   contactPhone: z.string().trim().min(1).max(32),
   responsiblePersonName: z.string().trim().min(1).max(120),
-  showcaseDraft: z.record(z.unknown()),
+  showcaseDraft: z.object({
+    nearestStation: z.string().trim().max(160).optional(),
+    stationTravelMinutes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+    stationAccess: z.string().trim().max(255).optional()
+  }).passthrough(),
   serviceCategoryIds: z.array(z.number().int().positive()).min(1).max(5),
   businessKeywordIds: z.array(z.number().int().positive()).max(5)
 };

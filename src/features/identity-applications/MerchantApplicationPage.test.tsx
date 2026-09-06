@@ -3,7 +3,7 @@ import { act, StrictMode, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Store } from "../../types/domain";
+import type { Store, StorePresentationConfig } from "../../types/domain";
 import type { Language } from "../../i18n/translations";
 import { platformMembershipSelfApi } from "../platform-membership/api";
 import { shopTaxonomyApi } from "../shop-taxonomy/api";
@@ -11,17 +11,17 @@ import { identityApplicationsApi, type IdentityApplication } from "./api";
 import { MerchantApplicationPage } from "./MerchantApplicationPage";
 import { merchantApplicationDraftMemory } from "./merchantApplicationDraftMemory";
 
-const context = vi.hoisted(() => ({ accountId: 41, language: "zh" as Language, preview: null as Store | null }));
+const context = vi.hoisted(() => ({ accountId: 41, language: "zh" as Language, preview: null as Store | null, presentation: null as StorePresentationConfig | null }));
 vi.mock("../../auth/AuthProvider", () => ({
   useAuth: () => ({ session: { id: context.accountId }, refreshSession: vi.fn() })
 }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: context.language }) }));
 // Leave form controls, taxonomy, translation resolution and routing real; isolate unrelated page chrome/preview internals.
 vi.mock("../../components/client-ui/SettingsDirectory", () => ({
-  SettingsDetailPage: ({ children }: { children: ReactNode }) => <main>{children}</main>
+  SettingsDetailPage: ({ children, headerOverlay }: { children: ReactNode; headerOverlay?: ReactNode }) => <><header>{headerOverlay}</header><main>{children}</main></>
 }));
 vi.mock("../../pages/user/StoreDetailPage", () => ({
-  StoreDetailExperience: ({ store }: { store: Store }) => { context.preview = store; return null; }
+  StoreDetailExperience: ({ store, presentationOverride }: { store: Store; presentationOverride?: StorePresentationConfig }) => { context.preview = store; context.presentation = presentationOverride ?? null; return null; }
 }));
 
 const corporateDraft: IdentityApplication = {
@@ -126,6 +126,12 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => button("按摩").click());
   }
 
+  async function chooseBank(code: string) {
+    const select = container.querySelector<HTMLSelectElement>('select[aria-label="银行名称"]');
+    expect(select).not.toBeNull();
+    await act(async () => { select!.value = code; select!.dispatchEvent(new Event("change", { bubbles: true })); });
+  }
+
   async function chooseCover() {
     const file = new File(["selected image bytes"], "first-shop.png", { type: "image/png" });
     await act(async () => {
@@ -135,6 +141,161 @@ describe("MerchantApplicationPage behavior", () => {
     });
     return file;
   }
+
+  it("keeps an unconfigured station empty instead of displaying the legacy Ginza example", async () => {
+    await render();
+    expect(input("最近车站").value).toBe("");
+    expect(input("交通说明").value).toBe("");
+    expect(context.presentation).toMatchObject({ station: "未填写", distance: "", favoriteCount: 0 });
+    expect(JSON.stringify(context.presentation)).not.toContain("银座");
+  });
+
+  it("restores, previews and saves station access in the formal showcase draft", async () => {
+    const saved = { ...corporateDraft, merchantDetail: { ...corporateDraft.merchantDetail!, showcaseDraft: {
+      ...corporateDraft.merchantDetail!.showcaseDraft, nearestStation: "新宿駅 南口", stationAccess: "南口を右へ", stationTravelMinutes: 5
+    } } };
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [saved], total: 1, page: 1, page_size: 20 });
+    await render();
+    expect(input("最近车站").value).toBe("新宿駅 南口");
+    expect(context.presentation).toMatchObject({ station: "新宿駅 南口", distance: "5 分钟" });
+    expect(input("到店时间").value).toBe("5");
+    await enter("到店时间", "３");
+    await enter("最近车站", "  東京駅 八重洲口  ");
+    await enter("交通说明", "  徒歩3分  ");
+    expect(context.presentation).toMatchObject({ station: "東京駅 八重洲口", distance: "3 分钟" });
+    await act(async () => button("本人确认（eKYC）").click());
+    await act(async () => button("Return to application").click());
+    expect(input("最近车站").value.trim()).toBe("東京駅 八重洲口");
+    expect(input("交通说明").value.trim()).toBe("徒歩3分");
+    await act(async () => button("下一步：银行与身份").click());
+    expect(identityApplicationsApi.updateMerchantShowcase).toHaveBeenCalledWith(71, expect.objectContaining({
+      showcaseDraft: expect.objectContaining({ nearestStation: "東京駅 八重洲口", stationAccess: "徒歩3分", stationTravelMinutes: 3 })
+    }));
+  });
+
+  it.each(["individual", "corporate"] as const)("continues the %s bank step without requesting a representative photo", async (applicantKind) => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: {
+      ...corporateDraft.merchantDetail!, applicantKind
+    } }], total: 1, page: 1, page_size: 20 });
+    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockResolvedValue({ applicationVersion: 6, accountNumberMasked: "•••4567", holderMatched: true });
+    vi.spyOn(identityApplicationsApi, "getCurrentContract").mockResolvedValue({ type: "merchant", version: "1", effectiveAt: "2026-08-01T00:00:00Z", language: "zh-CN", text: "合同", contentHash: "a".repeat(64) });
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    expect(container.textContent).not.toContain("法人或代表者证件照片");
+    await chooseBank("0005");
+    for (const [label, value] of [["支店代码", "００１"], ["支店名称", "本店"], ["账号", "1234567"], ["账户名义人", "カ）サクラ"]]) await enter(label, value);
+    if (applicantKind === "corporate") {
+      const fileInput = container.querySelector('input[type="file"]')!;
+      Object.defineProperty(fileInput, "files", { configurable: true, value: [new File(["registration"], "registration.png", { type: "image/png" })] });
+      await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
+    }
+    await act(async () => button("下一步：收费规则与合同").click());
+    expect(identityApplicationsApi.bindMerchantBankAccount).toHaveBeenCalled();
+    expect(button("提交申请")).toBeTruthy();
+    expect(vi.mocked(identityApplicationsApi.uploadMedia).mock.calls.some((call) => call[1] === "representative_identity")).toBe(false);
+  });
+
+  it("shows dismissible bank errors in the header overlay instead of the form flow", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: {
+      ...corporateDraft.merchantDetail!, applicantKind: "individual"
+    } }], total: 1, page: 1, page_size: 20 });
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    await act(async () => button("下一步：收费规则与合同").click());
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("请选择银行");
+    expect(alert?.closest("header")).not.toBeNull();
+    expect(container.querySelector("main [role=alert]")).toBeNull();
+    const dismiss = alert?.querySelector("button");
+    expect(dismiss).toBeTruthy();
+    await act(async () => dismiss!.click());
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => button("下一步：收费规则与合同").click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("请选择银行");
+  });
+
+  it("selects real Japanese banks, fills their code, and identifies a missing holder", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: { ...corporateDraft.merchantDetail!, applicantKind: "individual" } }], total: 1, page: 1, page_size: 20 });
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    const bankSelect = container.querySelector<HTMLSelectElement>('select[aria-label="银行名称"]');
+    expect(bankSelect?.textContent).toContain("三井住友銀行");
+    expect(bankSelect?.textContent).toContain("楽天銀行");
+    expect(bankSelect?.textContent).toContain("PayPay銀行");
+    expect(bankSelect?.textContent).toContain("GMOあおぞらネット銀行");
+    expect(bankSelect?.textContent).toContain("ドコモSMTBネット銀行");
+    await chooseBank("0009");
+    expect(input("银行代码").value).toBe("0009");
+    expect(input("银行代码").readOnly).toBe(true);
+    for (const [label, value] of [["支店代码", "００１"], ["支店名称", "本店"], ["账号", "１２３４５６７"]]) await enter(label, value);
+    await act(async () => button("下一步：收费规则与合同").click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("请输入账户名义人");
+    expect(input("支店代码").value).toBe("001");
+    expect(input("账号").value).toBe("1234567");
+    await enter("账户名义人", "ヤマダタロウ");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await chooseBank("0036");
+    expect(input("银行代码").value).toBe("0036");
+    expect(input("支店代码").value).toBe("");
+    expect(input("支店名称").value).toBe("");
+    expect(input("账号").value).toBe("");
+  });
+
+  it("keeps unlisted financial institutions available through manual entry", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: { ...corporateDraft.merchantDetail!, applicantKind: "individual" } }], total: 1, page: 1, page_size: 20 });
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    await chooseBank("custom");
+    await enter("金融机构名称", "信用金庫");
+    await enter("银行代码", "１２３４");
+    expect(input("银行代码").value).toBe("1234");
+    expect(input("银行代码").readOnly).toBe(false);
+    await chooseBank("0009");
+    expect(input("银行代码").readOnly).toBe(true);
+    expect(container.querySelector('input[aria-label="金融机构名称"]')).toBeNull();
+  });
+
+  it("keeps the saved showcase version when its image upload fails", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    vi.mocked(identityApplicationsApi.uploadMedia).mockRejectedValue(new Error("error.network.timeout"));
+    await render();
+    await chooseCover();
+    await act(async () => button("下一步：银行与身份").click());
+    expect(identityApplicationsApi.updateMerchantShowcase).toHaveBeenLastCalledWith(71, expect.objectContaining({ expectedVersion: 3 }));
+    await act(async () => button("下一步：银行与身份").click());
+    expect(identityApplicationsApi.updateMerchantShowcase).toHaveBeenLastCalledWith(71, expect.objectContaining({ expectedVersion: 4 }));
+  });
+
+  it("shows the eKYC rejection clearly and retains the bank inputs", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: { ...corporateDraft.merchantDetail!, applicantKind: "individual" } }], total: 1, page: 1, page_size: 20 });
+    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockRejectedValue(new Error("error.identity_application.ekyc_required"));
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    await chooseBank("0009");
+    for (const [label, value] of [["支店代码", "001"], ["支店名称", "本店"], ["账号", "1234567"], ["账户名义人", "ヤマダタロウ"]]) await enter(label, value);
+    await act(async () => button("下一步：收费规则与合同").click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("个人名义申请需要完成本人确认（eKYC）");
+    expect(container.querySelector('[role="alert"]')?.textContent).not.toContain("error.");
+    expect(input("账号").value).toBe("1234567");
+    expect(input("账户名义人").value).toBe("ヤマダタロウ");
+  });
+
+  it("retains the successful upload version when bank binding fails and is retried", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockRejectedValue(new Error("error.bank_account.holder_name_mismatch"));
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    await chooseBank("0009");
+    for (const [label, value] of [["支店代码", "001"], ["支店名称", "本店"], ["账号", "1234567"], ["账户名义人", "カ）サクラ"]]) await enter(label, value);
+    const fileInput = container.querySelector('input[type="file"]')!;
+    Object.defineProperty(fileInput, "files", { configurable: true, value: [new File(["registration"], "registration.png", { type: "image/png" })] });
+    await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
+    await act(async () => button("下一步：收费规则与合同").click());
+    expect(identityApplicationsApi.uploadMedia).toHaveBeenLastCalledWith(71, "corporate_registration", 4, expect.any(File));
+    expect(identityApplicationsApi.bindMerchantBankAccount).toHaveBeenLastCalledWith(71, expect.objectContaining({ expectedVersion: 5 }));
+    await act(async () => button("下一步：收费规则与合同").click());
+    expect(identityApplicationsApi.uploadMedia).toHaveBeenLastCalledWith(71, "corporate_registration", 5, expect.any(File));
+  });
 
   it("round-trips existing distinct corporate and representative names in the save payload", async () => {
     vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
@@ -146,9 +307,9 @@ describe("MerchantApplicationPage behavior", () => {
       representativeName: "山田太郎", representativeNameKana: "ヤマダタロウ", expectedVersion: 3
     }));
     expect(button("下一步：收费规则与合同")).toBeTruthy();
-    expect(Array.from(container.querySelectorAll("select option"), (option) => [option.getAttribute("value"), option.textContent])).toEqual([
-      ["ordinary", "普通預金"], ["current", "当座預金"], ["savings", "貯蓄預金"], ["other", "その他"]
-    ]);
+    const accountType = container.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="账户类型"]')!;
+    await act(async () => accountType.click());
+    expect([...container.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(["普通預金", "当座預金", "貯蓄預金", "その他"]);
   });
 
   it("validates and saves a new corporate identity using the approved visible legal fields", async () => {
@@ -194,7 +355,7 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => button("下一步：银行与身份").click());
     expect(identityApplicationsApi.createMerchantDraft).toHaveBeenCalledWith(expect.objectContaining({
       applicantKind: "corporate", serviceCategoryIds: [1], businessKeywordIds: [10],
-      showcaseDraft: { description: "新しいお店の紹介", priceLabel: "￥8,800 ~ ￥12,800" }
+      showcaseDraft: { description: "新しいお店の紹介", priceLabel: "￥8,800 ~ ￥12,800", nearestStation: "", stationAccess: "", stationTravelMinutes: null }
     }));
     expect(vi.mocked(identityApplicationsApi.uploadMedia).mock.calls[0]?.[3]).toBe(file);
   });

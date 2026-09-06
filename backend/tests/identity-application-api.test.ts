@@ -279,7 +279,7 @@ describe("identity application applicant HTTP API", () => {
       businessAddress: "东京都中央区银座1-1-1",
       contactPhone: "09000000000",
       responsiblePersonName: "山本太郎",
-      showcaseDraft: { headline: "安心服务" },
+      showcaseDraft: { headline: "安心服务", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" },
       serviceCategoryIds: [1],
       businessKeywordIds: [10]
     };

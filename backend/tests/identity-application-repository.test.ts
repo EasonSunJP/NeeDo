@@ -181,7 +181,7 @@ describe("IdentityApplicationRepository", () => {
         businessAddress: "東京都中央区",
         contactPhone: "0312345678",
         responsiblePersonName: "山本太郎",
-        showcaseDraft: { description: "リラクゼーション" },
+        showcaseDraft: { description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" },
         bankAccountId: null,
         contractAcceptanceId: null,
         bankAccount: null
@@ -208,7 +208,7 @@ describe("IdentityApplicationRepository", () => {
           businessAddress: "東京都中央区",
           contactPhone: "0312345678",
           responsiblePersonName: "山本太郎",
-          showcaseDraft: { description: "リラクゼーション" },
+          showcaseDraft: { description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" },
           serviceCategoryIds: [1],
           businessKeywordIds: [10],
           bankAccountId: null,
@@ -219,11 +219,14 @@ describe("IdentityApplicationRepository", () => {
         }
       })
     ).resolves.toMatchObject({
-      merchantDetail: { serviceCategoryIds: [1], businessKeywordIds: [10] }
+      merchantDetail: { serviceCategoryIds: [1], businessKeywordIds: [10], showcaseDraft: { description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" } }
     });
     expect(identityApplication.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          merchantDetail: { create: expect.objectContaining({ showcaseDraft: {
+            description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分"
+          } }) },
           serviceCategories: { create: [{ categoryId: 1, selectedByUserId: 3 }] },
           businessKeywords: { create: [{ businessKeywordId: 10, selectedByUserId: 3 }] }
         })

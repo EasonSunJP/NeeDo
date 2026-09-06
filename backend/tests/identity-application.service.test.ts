@@ -322,6 +322,19 @@ describe("IdentityApplicationService", () => {
     );
   });
 
+  it.each(["individual", "corporate"] as const)("submits %s merchant evidence without a representative photo", async (applicantKind) => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(application({
+      type: "merchant", technicianDetail: null,
+      merchantDetail: merchantDetail({ applicantKind, eKycVerified: true,
+        mediaPurposes: applicantKind === "corporate" ? ["corporate_registration"] : [] })
+    }));
+    await new IdentityApplicationService(repository).submit({
+      userId: 3, applicationId: 11, expectedVersion: 1, now: new Date("2026-08-26T05:00:00.000Z")
+    });
+    expect(repository.submit).toHaveBeenCalled();
+  });
+
   it("enforces corporate and individual merchant submission evidence", async () => {
     const corporate = createRepository();
     corporate.findById.mockResolvedValue(

@@ -281,9 +281,6 @@ export class MerchantApplicationReviewService {
     if (application.serviceCategories.length === 0) {
       throw this.validation("error.identity_application.service_category_required");
     }
-    if (!application.media.some((item) => item.purpose === "representative_identity")) {
-      throw this.validation("error.identity_application.representative_identity_required");
-    }
     if (application.applicantKind === "corporate") {
       if (!application.corporateLegalName?.trim() || !application.corporateLegalNameKana?.trim()) {
         throw this.validation("error.identity_application.corporate_name_required");
