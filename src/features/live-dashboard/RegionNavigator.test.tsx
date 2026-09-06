@@ -101,6 +101,16 @@ describe("RegionNavigator", () => {
     expect(onSelectRegion).not.toHaveBeenCalled();
   });
 
+  it("reopens the popup and activates the first result when ArrowDown follows Escape", async () => {
+    await render();
+    const input = await typeIntoSearch("新宿");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" })));
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" })));
+    expect(container.querySelector('[role="listbox"]')).toBeTruthy();
+    expect(input.getAttribute("aria-activedescendant")).toContain("13104");
+  });
+
   it("shows an empty result state and does not navigate from the current scope", async () => {
     const onSelectRegion = await render();
     const input = await typeIntoSearch("不存在");

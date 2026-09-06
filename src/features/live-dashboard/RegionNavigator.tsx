@@ -89,7 +89,7 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
       setActiveIndex(-1);
       return;
     }
-    if (!open || !results.length) return;
+    if (!results.length) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setOpen(true);
@@ -99,6 +99,7 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
       setOpen(true);
       setActiveIndex((current) => current <= 0 ? results.length - 1 : current - 1);
     } else if (event.key === "Enter") {
+      if (!open) return;
       event.preventDefault();
       selectEntry(results[activeIndex >= 0 ? activeIndex : 0]);
     }

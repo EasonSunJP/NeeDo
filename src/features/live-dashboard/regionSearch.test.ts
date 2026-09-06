@@ -26,11 +26,10 @@ describe("regionSearch", () => {
     expect(scopeForRegion(shinjuku, "last7days")).toEqual({ country: "JP", admin1: "13", admin2: "13104", period: "last7days" });
   });
 
-  it("returns no results for blanks or unknown queries and applies a stable limit", () => {
+  it("returns no results for blanks or unknown queries and bounds the result limit", () => {
     expect(searchRegions(index, "   ")).toEqual([]);
     expect(searchRegions(index, "不存在")).toEqual([]);
     expect(searchRegions(index, "市", 3)).toHaveLength(3);
-    expect(searchRegions(index, "市", 3).map((entry) => entry.code)).toEqual(searchRegions(index, "市", 3).map((entry) => entry.code));
   });
 
   it("orders exact matches, prefixes, contains matches, levels, and codes deterministically", () => {
@@ -42,12 +41,13 @@ describe("regionSearch", () => {
         { code: "20000", level: "admin2", parentCode: "20", nameJa: "x-prefecture-child", breadcrumbJa: ["日本", "二十県", "x-prefecture-child"] },
         { code: "13", level: "admin1", parentCode: "JP", nameJa: "x-prefecture", breadcrumbJa: ["日本", "x-prefecture"] },
         { code: "19998", level: "admin2", parentCode: "19", nameJa: "before-x-after", breadcrumbJa: ["日本", "十九県", "before-x-after"] },
-        { code: "12", level: "admin1", parentCode: "JP", nameJa: "also-x", breadcrumbJa: ["日本", "also-x"] }
+        { code: "12", level: "admin1", parentCode: "JP", nameJa: "also-x", breadcrumbJa: ["日本", "also-x"] },
+        { code: "11", level: "admin1", parentCode: "JP", nameJa: "other-x", breadcrumbJa: ["日本", "other-x"] }
       ]
     };
 
     expect(searchRegions(controlledIndex, "x").map((entry) => entry.code))
-      .toEqual(["19999", "13", "20000", "12", "19998"]);
+      .toEqual(["19999", "13", "20000", "11", "12", "19998"]);
   });
 
   it("rejects extra fields, duplicate codes, invalid parents, counts, and non-N03 versions", async () => {
