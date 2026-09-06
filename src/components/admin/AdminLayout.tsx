@@ -43,7 +43,7 @@ type AdminNavSection = {
 const navSections: AdminNavSection[] = [
   {
     key: "platform",
-    title: "运营管理",
+    title: "运营",
     items: [
       { label: "数据大盘", to: "/admin", icon: "◆", permission: "menu:dashboard" },
       { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", children: ["搜索筛选", "城市跟进", "异常观察"] },
@@ -51,6 +51,17 @@ const navSections: AdminNavSection[] = [
       { label: "动态管理", to: "/admin/data?module=moments", icon: "◎" },
       { label: "用户端首页轮播图", to: "/admin/carousel", icon: "播", permission: "page:backoffice-user-home-carousel", children: ["五语言", "草稿与发布", "版本回滚"] },
       { label: "官方通知", to: "/admin/notifications", icon: "通", permission: "page:backoffice-official-notice", children: ["通知列表", "定时发送", "投递回执"] }
+    ]
+  },
+  {
+    key: "users",
+    title: "用户",
+    items: [
+      { label: "用户列表", to: "/admin/users", icon: "列", permission: "backoffice:users:read", children: ["全部账号", "身份", "会员与经验"] },
+      { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
+      { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
+      { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
+      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["八项权益", "启停", "交付能力"] }
     ]
   },
   {
@@ -78,6 +89,24 @@ const navSections: AdminNavSection[] = [
     ]
   },
   {
+    key: "stores",
+    title: "店铺",
+    items: [
+      { label: "店铺列表", to: "/admin/merchants", icon: "店", children: ["店铺信息卡", "营业状态", "预约能力"] },
+      { label: "店铺分类", to: "/admin/merchants?module=categories", icon: "类", children: ["分类图标", "启用状态", "排序"] }
+    ]
+  },
+  {
+    key: "marketing",
+    title: "营销",
+    badge: "TEST",
+    items: [
+      { label: "优惠券", to: "/admin/marketing", icon: "券", children: ["能力门禁", "核销合同", "归因审计"] },
+      { label: "礼品卡", to: "/admin/marketing?module=gift-cards", icon: "礼", children: ["能力门禁"] },
+      { label: "文章管理", to: "/admin/marketing?module=articles", icon: "文", children: ["能力门禁"] }
+    ]
+  },
+  {
     key: "finance",
     title: "财务",
     items: [
@@ -87,15 +116,6 @@ const navSections: AdminNavSection[] = [
       { label: "退款审核", to: "/admin/finance?module=refund-review", icon: "审" },
       { label: "分账规则", to: "/admin/finance?module=commission", icon: "％" },
       { label: "发票记录", to: "/admin/finance?module=invoices", icon: "票" }
-    ]
-  },
-  {
-    key: "marketing",
-    title: "营销",
-    items: [
-      { label: "优惠券", to: "/admin/marketing", icon: "券", children: ["能力门禁", "核销合同", "归因审计"] },
-      { label: "礼品卡", to: "/admin/marketing?module=gift-cards", icon: "礼", children: ["能力门禁"] },
-      { label: "文章管理", to: "/admin/marketing?module=articles", icon: "文", children: ["能力门禁"] }
     ]
   },
   {
@@ -109,27 +129,9 @@ const navSections: AdminNavSection[] = [
     ]
   },
   {
-    key: "users",
-    title: "用户管理",
-    items: [
-      { label: "用户列表", to: "/admin/users", icon: "列", permission: "backoffice:users:read", children: ["全部账号", "身份", "会员与经验"] },
-      { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
-      { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
-      { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
-      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["八项权益", "启停", "交付能力"] }
-    ]
-  },
-  {
-    key: "stores",
-    title: "店铺与商家",
-    items: [
-      { label: "店铺列表", to: "/admin/merchants", icon: "店", children: ["店铺信息卡", "营业状态", "预约能力"] },
-      { label: "店铺分类", to: "/admin/merchants?module=categories", icon: "类", children: ["分类图标", "启用状态", "排序"] }
-    ]
-  },
-  {
     key: "agents",
-    title: "代理",
+    title: "代理商",
+    badge: "TEST",
     items: [
       { label: "代理商管理", to: "/admin/agents", icon: "代", permission: "backoffice:agent:read", children: ["介绍店铺", "佣金规则", "结算与支付"] }
     ]
