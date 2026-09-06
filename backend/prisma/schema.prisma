@@ -25,6 +25,45 @@ enum BookingOrderStatus {
   @@map("booking_order_status")
 }
 
+enum OrderRefundCaseStatus {
+  MERCHANT_REVIEW_PENDING       @map("merchant_review_pending")
+  REFUND_PENDING                @map("refund_pending")
+  CUSTOMER_CONFIRMATION_PENDING @map("customer_confirmation_pending")
+  MERCHANT_REJECTED             @map("merchant_rejected")
+  DISPUTED                      @map("disputed")
+  REFUNDED                      @map("refunded")
+  DISPUTE_REJECTED              @map("dispute_rejected")
+
+  @@map("order_refund_case_status")
+}
+
+enum OrderRefundCaseAction {
+  REQUEST                  @map("request")
+  MERCHANT_APPROVE         @map("merchant_approve")
+  MERCHANT_REJECT          @map("merchant_reject")
+  OPEN_COMPLAINT           @map("open_complaint")
+  RESOLVE_DISPUTE_REFUND   @map("resolve_dispute_refund")
+  RESOLVE_DISPUTE_REJECT   @map("resolve_dispute_reject")
+  SUBMIT_REFUND_EVIDENCE   @map("submit_refund_evidence")
+  CONFIRM_CUSTOMER_RECEIPT @map("confirm_customer_receipt")
+
+  @@map("order_refund_case_action")
+}
+
+enum OrderRefundDisputeStatus {
+  OPEN     @map("open")
+  RESOLVED @map("resolved")
+
+  @@map("order_refund_dispute_status")
+}
+
+enum OrderRefundDisputeResolution {
+  REFUND @map("refund")
+  REJECT @map("reject")
+
+  @@map("order_refund_dispute_resolution")
+}
+
 enum OrderReviewTargetType {
   CUSTOMER   @map("customer")
   TECHNICIAN @map("technician")
@@ -1200,6 +1239,14 @@ model User {
   affiliateAllianceMemberships          AffiliateAllianceMember[]           @relation("AffiliateAllianceMemberUser")
   receivedAffiliateAllianceInvitations  AffiliateAllianceInvitation[]       @relation("AffiliateAllianceInvitationInvitee")
   bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
+  orderRefundCases                      OrderRefundCase[]                   @relation("OrderRefundCaseCustomer")
+  customerOrderRefundDisputes           OrderRefundDispute[]                @relation("OrderRefundDisputeCustomer")
+  merchantDecidedOrderRefundCases       OrderRefundCase[]                   @relation("OrderRefundCaseMerchantDecider")
+  submittedOrderRefundEvidenceCases     OrderRefundCase[]                   @relation("OrderRefundCaseEvidenceSubmitter")
+  orderRefundCaseEvents                 OrderRefundCaseEvent[]              @relation("OrderRefundCaseEventActor")
+  openedOrderRefundDisputes             OrderRefundDispute[]                @relation("OrderRefundDisputeOpener")
+  resolvedOrderRefundDisputes           OrderRefundDispute[]                @relation("OrderRefundDisputeResolver")
+  orderRefundDisputeRevisions           OrderRefundDisputeRevision[]        @relation("OrderRefundDisputeRevisionResolver")
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
   revisedOrderReviewAmendments          OrderReviewAmendment[]              @relation("OrderReviewAmendmentReviser")
@@ -1725,6 +1772,8 @@ model Shop {
   availabilities             Availability[]
   scheduleSlots              ScheduleSlot[]
   bookingOrders              BookingOrder[]
+  orderRefundCases           OrderRefundCase[]
+  orderRefundDisputes        OrderRefundDispute[]
   financeRuleSets            ShopFinanceRuleSet[]
   compensationProfiles       TechnicianCompensationProfile[]
   payRuns                    PayRun[]
@@ -4068,6 +4117,10 @@ model BookingOrder {
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
   performanceRevisions           OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionBookingOrder")
   refundAmendments               OrderRefundAmendment[]
+  refundCases                    OrderRefundCase[]
+  refundCaseEvents               OrderRefundCaseEvent[]
+  refundDisputes                 OrderRefundDispute[]
+  refundDisputeRevisions         OrderRefundDisputeRevision[]
   serviceLocation                BookingServiceLocation?
 
   @@index([customerUserId])
@@ -4091,6 +4144,165 @@ model BookingOrder {
   @@map("booking_orders")
   sosAlerts SosAlert[]
   sosCommands SosCommand[]
+}
+
+model OrderRefundCase {
+  id                           Int                   @id @default(autoincrement())
+  publicId                     String                @unique(map: "order_refund_cases_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  bookingOrderId               Int                   @map("booking_order_id")
+  shopId                       Int                   @map("shop_id")
+  customerUserId               Int                   @map("customer_user_id")
+  status                       OrderRefundCaseStatus @default(MERCHANT_REVIEW_PENDING)
+  responsibility               String                @default("shop") @db.VarChar(20)
+  refundAmountJpy              Int                   @map("refund_amount_jpy")
+  currency                     String                @default("JPY") @db.VarChar(3)
+  version                      Int                   @default(1)
+  activeKey                    String?               @unique(map: "order_refund_cases_active_key_key") @map("active_key") @db.VarChar(191)
+  requestReason                String                @map("request_reason") @db.VarChar(500)
+  requestedByIdentityId        Int                   @map("requested_by_identity_id")
+  requestedAt                  DateTime              @default(now()) @map("requested_at")
+  merchantDecisionReason       String?               @map("merchant_decision_reason") @db.VarChar(500)
+  merchantDecidedByUserId      Int?                  @map("merchant_decided_by_user_id")
+  merchantDecidedByIdentityId  Int?                  @map("merchant_decided_by_identity_id")
+  merchantDecidedAt            DateTime?             @map("merchant_decided_at")
+  refundEvidence               Json?                 @map("refund_evidence")
+  refundEvidenceSubmittedById  Int?                  @map("refund_evidence_submitted_by_id")
+  refundEvidenceIdentityId     Int?                  @map("refund_evidence_identity_id")
+  refundEvidenceSubmittedAt    DateTime?             @map("refund_evidence_submitted_at")
+  customerConfirmedAt          DateTime?             @map("customer_confirmed_at")
+  createdAt                    DateTime              @default(now()) @map("created_at")
+  updatedAt                    DateTime              @updatedAt @map("updated_at")
+  deletedAt                    DateTime?             @map("deleted_at")
+
+  bookingOrder                 BookingOrder          @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  shop                         Shop                  @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  customer                     User                  @relation("OrderRefundCaseCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  requesterIdentity            UserIdentity          @relation("OrderRefundCaseRequesterIdentity", fields: [requestedByIdentityId], references: [id], onDelete: Restrict)
+  merchantDecidedBy            User?                 @relation("OrderRefundCaseMerchantDecider", fields: [merchantDecidedByUserId], references: [id], onDelete: Restrict)
+  merchantDecidedByIdentity    UserIdentity?         @relation("OrderRefundCaseMerchantDeciderIdentity", fields: [merchantDecidedByIdentityId], references: [id], onDelete: Restrict)
+  evidenceSubmittedBy          User?                 @relation("OrderRefundCaseEvidenceSubmitter", fields: [refundEvidenceSubmittedById], references: [id], onDelete: Restrict)
+  evidenceSubmittedByIdentity  UserIdentity?         @relation("OrderRefundCaseEvidenceSubmitterIdentity", fields: [refundEvidenceIdentityId], references: [id], onDelete: Restrict)
+  events                       OrderRefundCaseEvent[]
+  disputes                     OrderRefundDispute[]
+  disputeRevisions             OrderRefundDisputeRevision[]
+
+  @@index([bookingOrderId, createdAt, deletedAt], map: "order_refund_cases_order_created_deleted_idx")
+  @@index([shopId, status, createdAt, deletedAt], map: "order_refund_cases_shop_status_created_deleted_idx")
+  @@index([customerUserId, status, createdAt, deletedAt], map: "order_refund_cases_customer_status_created_deleted_idx")
+  @@index([requestedByIdentityId])
+  @@index([merchantDecidedByUserId])
+  @@index([merchantDecidedByIdentityId])
+  @@index([refundEvidenceSubmittedById])
+  @@index([refundEvidenceIdentityId])
+  @@index([deletedAt])
+  @@map("order_refund_cases")
+}
+
+model OrderRefundCaseEvent {
+  id                 Int                   @id @default(autoincrement())
+  orderRefundCaseId  Int                   @map("order_refund_case_id")
+  bookingOrderId     Int                   @map("booking_order_id")
+  action             OrderRefundCaseAction
+  fromStatus         OrderRefundCaseStatus? @map("from_status")
+  toStatus           OrderRefundCaseStatus  @map("to_status")
+  actorUserId        Int                   @map("actor_user_id")
+  actorIdentityId    Int                   @map("actor_identity_id")
+  idempotencyKey     String                @unique(map: "order_refund_case_events_idempotency_key_key") @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String                @map("request_fingerprint") @db.Char(64)
+  metadata           Json?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  deletedAt          DateTime?             @map("deleted_at")
+
+  refundCase         OrderRefundCase       @relation(fields: [orderRefundCaseId], references: [id], onDelete: Restrict)
+  bookingOrder       BookingOrder          @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  actor              User                  @relation("OrderRefundCaseEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorIdentity      UserIdentity          @relation("OrderRefundCaseEventActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([orderRefundCaseId, createdAt, deletedAt], map: "order_refund_case_events_case_created_deleted_idx")
+  @@index([bookingOrderId, createdAt, deletedAt], map: "order_refund_case_events_order_created_deleted_idx")
+  @@index([actorUserId, createdAt, deletedAt], map: "order_refund_case_events_actor_created_deleted_idx")
+  @@index([actorIdentityId])
+  @@index([deletedAt])
+  @@map("order_refund_case_events")
+}
+
+model OrderRefundDispute {
+  id                      Int                         @id @default(autoincrement())
+  publicId                String                      @unique(map: "order_refund_disputes_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  orderRefundCaseId       Int                         @map("order_refund_case_id")
+  bookingOrderId          Int                         @map("booking_order_id")
+  shopId                  Int                         @map("shop_id")
+  customerUserId          Int                         @map("customer_user_id")
+  status                  OrderRefundDisputeStatus    @default(OPEN)
+  resolution              OrderRefundDisputeResolution?
+  version                 Int                         @default(1)
+  activeKey               String?                     @unique(map: "order_refund_disputes_active_key_key") @map("active_key") @db.VarChar(191)
+  openedByUserId          Int                         @map("opened_by_user_id")
+  openedByIdentityId      Int                         @map("opened_by_identity_id")
+  reason                  String                      @db.VarChar(500)
+  resolvedByUserId        Int?                        @map("resolved_by_user_id")
+  resolvedByIdentityId    Int?                        @map("resolved_by_identity_id")
+  resolvedAt              DateTime?                   @map("resolved_at")
+  publicResolutionReason  String?                     @map("public_resolution_reason") @db.VarChar(500)
+  internalNote            String?                     @map("internal_note") @db.VarChar(1000)
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  deletedAt               DateTime?                   @map("deleted_at")
+
+  refundCase              OrderRefundCase             @relation(fields: [orderRefundCaseId], references: [id], onDelete: Restrict)
+  bookingOrder            BookingOrder                @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  shop                    Shop                        @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  customer                User                        @relation("OrderRefundDisputeCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  opener                  User                        @relation("OrderRefundDisputeOpener", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  openerIdentity          UserIdentity                @relation("OrderRefundDisputeOpenerIdentity", fields: [openedByIdentityId], references: [id], onDelete: Restrict)
+  resolver                User?                       @relation("OrderRefundDisputeResolver", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolverIdentity        UserIdentity?               @relation("OrderRefundDisputeResolverIdentity", fields: [resolvedByIdentityId], references: [id], onDelete: Restrict)
+  revisions               OrderRefundDisputeRevision[]
+
+  @@index([orderRefundCaseId, createdAt, deletedAt], map: "order_refund_disputes_case_created_deleted_idx")
+  @@index([status, shopId, createdAt, deletedAt], map: "order_refund_disputes_status_shop_created_deleted_idx")
+  @@index([bookingOrderId])
+  @@index([customerUserId])
+  @@index([openedByUserId])
+  @@index([openedByIdentityId])
+  @@index([resolvedByUserId])
+  @@index([resolvedByIdentityId])
+  @@index([deletedAt])
+  @@map("order_refund_disputes")
+}
+
+model OrderRefundDisputeRevision {
+  id                      Int                         @id @default(autoincrement())
+  orderRefundDisputeId    Int                         @map("order_refund_dispute_id")
+  orderRefundCaseId       Int                         @map("order_refund_case_id")
+  bookingOrderId          Int                         @map("booking_order_id")
+  resolution              OrderRefundDisputeResolution
+  previousVersion         Int                         @map("previous_version")
+  nextVersion             Int                         @map("next_version")
+  resolvedByUserId        Int                         @map("resolved_by_user_id")
+  resolvedByIdentityId    Int                         @map("resolved_by_identity_id")
+  publicResolutionReason  String                      @map("public_resolution_reason") @db.VarChar(500)
+  internalNote            String?                     @map("internal_note") @db.VarChar(1000)
+  idempotencyKey          String                      @unique(map: "order_refund_dispute_revisions_idempotency_key_key") @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint      String                      @map("request_fingerprint") @db.Char(64)
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  deletedAt               DateTime?                   @map("deleted_at")
+
+  dispute                 OrderRefundDispute          @relation(fields: [orderRefundDisputeId], references: [id], onDelete: Restrict)
+  refundCase              OrderRefundCase             @relation(fields: [orderRefundCaseId], references: [id], onDelete: Restrict)
+  bookingOrder            BookingOrder                @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  resolver                User                        @relation("OrderRefundDisputeRevisionResolver", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolverIdentity        UserIdentity                @relation("OrderRefundDisputeRevisionResolverIdentity", fields: [resolvedByIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([orderRefundDisputeId, createdAt, deletedAt], map: "order_refund_dispute_revisions_dispute_created_deleted_idx")
+  @@index([orderRefundCaseId, createdAt, deletedAt], map: "order_refund_dispute_revisions_case_created_deleted_idx")
+  @@index([bookingOrderId])
+  @@index([resolvedByUserId, createdAt, deletedAt], map: "order_refund_dispute_revisions_resolver_created_deleted_idx")
+  @@index([resolvedByIdentityId])
+  @@index([deletedAt])
+  @@map("order_refund_dispute_revisions")
 }
 
 model AdministrativeRegion {
@@ -5378,6 +5590,13 @@ model UserIdentity {
   initiatedExchangeCancellations ExchangeBookingCancellation[] @relation("ExchangeCancellationInitiatorIdentity")
   resolvedExchangeCancellations  ExchangeBookingCancellation[] @relation("ExchangeCancellationResolverIdentity")
   exchangeCancellationEvents     ExchangeBookingCancellationEvent[] @relation("ExchangeCancellationEventIdentity")
+  requestedOrderRefundCases      OrderRefundCase[]                @relation("OrderRefundCaseRequesterIdentity")
+  merchantDecidedOrderRefundCases OrderRefundCase[]               @relation("OrderRefundCaseMerchantDeciderIdentity")
+  submittedOrderRefundEvidenceCases OrderRefundCase[]             @relation("OrderRefundCaseEvidenceSubmitterIdentity")
+  orderRefundCaseEvents          OrderRefundCaseEvent[]           @relation("OrderRefundCaseEventActorIdentity")
+  openedOrderRefundDisputes      OrderRefundDispute[]             @relation("OrderRefundDisputeOpenerIdentity")
+  resolvedOrderRefundDisputes    OrderRefundDispute[]             @relation("OrderRefundDisputeResolverIdentity")
+  orderRefundDisputeRevisions    OrderRefundDisputeRevision[]     @relation("OrderRefundDisputeRevisionResolverIdentity")
   createdConversations       Conversation[]                @relation("ConversationCreatorIdentity")
   conversationParticipants   ConversationParticipant[]     @relation("ConversationParticipantIdentity")
   sentMessages               Message[]                     @relation("MessageSenderIdentity")
