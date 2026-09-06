@@ -38,8 +38,14 @@ describe("completed-order refund case real MySQL checker", () => {
     expect(source).toContain("deleteFormalTestUserFoundations");
     expect(source).toContain("affiliateRewardTransaction.findMany");
     expect(source).toContain("ledgerTransaction.findMany");
+    expect(source.match(/referenceType:\s*"affiliate_reward"/gu)?.length).toBeGreaterThanOrEqual(2);
+    expect(source.match(/referenceId:\s*\{\s*in:\s*rewardIds\s*\}/gu)).toHaveLength(2);
     expect(source).toContain("afterEvidenceOrder");
     expect(source).toContain("afterReceiptOrder");
+    expect(source).toContain("platformRewardBefore");
+    expect(source).toContain("platformWalletBefore");
+    expect(source).toContain("platformRewardAfter");
+    expect(source).toContain("platformWalletAfter");
     expect(source).toContain("transaction.financeReconciliation.deleteMany");
     expect(source).toContain("transaction.walletLedger.deleteMany");
     expect(source).toContain("where: { transactionId: { in: ledgerTransactionIds } }");

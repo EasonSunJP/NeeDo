@@ -50,6 +50,11 @@ const refundCaseInclude = {
 } satisfies Prisma.OrderRefundCaseInclude;
 
 type RefundCaseRecord = Prisma.OrderRefundCaseGetPayload<{ include: typeof refundCaseInclude }>;
+type AffiliateRewardViewRecord = {
+  bookingOrderId: number;
+  status: AffiliateRewardStatus;
+  rewardNdp: number;
+};
 type Tx = Prisma.TransactionClient;
 
 class RefundMutationAbort extends Error {
@@ -187,7 +192,11 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
       if (!(await this.lockOrder(tx, target.bookingOrderId))) return { kind: "not_found" };
       await this.lockCase(tx, target.orderRefundCaseId);
       await this.lockDispute(tx, target.id);
-      const replay = await this.replayDisputeRevision(tx, input.idempotencyKey, input.fingerprint);
+      const replay = await this.replayResolveIdempotency(
+        tx,
+        input.idempotencyKey,
+        input.fingerprint
+      );
       if (replay) return replay;
       const dispute = await tx.orderRefundDispute.findFirst({
         where: { id: target.id, deletedAt: null }, select: { id: true, orderRefundCaseId: true, bookingOrderId: true, status: true, version: true }
@@ -273,7 +282,9 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
         status: this.statusDb(transition.status), version: { increment: 1 }, activeKey: null, customerConfirmedAt: new Date()
       }, include: refundCaseInclude });
       const affiliateAfter = await this.affiliateSnapshot(tx, found.bookingOrderId);
-      if (JSON.stringify(affiliateBefore) !== JSON.stringify(affiliateAfter)) throw new Error("error.order_refund.affiliate_invariant_failed");
+      if (JSON.stringify(affiliateBefore) !== JSON.stringify(affiliateAfter)) {
+        throw new RefundMutationAbort({ kind: "affiliate_invariant_failed" });
+      }
       await this.event(tx, found.id, found.bookingOrderId, caseAction("receipt"), found.status, updated.status, input, {});
       await this.audit(tx, input, found.id, { fromStatus: found.status, toStatus: updated.status, previousVersion: found.version, nextVersion: updated.version, refundAmountJpy: found.refundAmountJpy, currency: found.currency, customerConfirmed: true });
       if (found.merchantDecidedByUserId && found.merchantDecidedByIdentityId) {
@@ -289,7 +300,31 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
       this.client.orderRefundDispute.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (input.page - 1) * input.page_size, take: input.page_size, select: { refundCase: { include: refundCaseInclude } } }),
       this.client.orderRefundDispute.count({ where })
     ]);
-    return { list: await Promise.all(rows.map((row) => this.view(this.client, row.refundCase))), total, page: input.page, page_size: input.page_size };
+    const bookingOrderIds = [...new Set(rows.map((row) => row.refundCase.bookingOrderId))];
+    const rewards =
+      bookingOrderIds.length === 0
+        ? []
+        : await this.client.affiliateReward.findMany({
+            where: { bookingOrderId: { in: bookingOrderIds }, deletedAt: null },
+            orderBy: [{ bookingOrderId: "asc" }, { id: "asc" }],
+            select: { id: true, bookingOrderId: true, status: true, rewardNdp: true }
+          });
+    const rewardByOrder = new Map<number, AffiliateRewardViewRecord>();
+    for (const reward of rewards) {
+      if (!rewardByOrder.has(reward.bookingOrderId)) {
+        rewardByOrder.set(reward.bookingOrderId, reward);
+      }
+    }
+    return {
+      list: await Promise.all(
+        rows.map((row) =>
+          this.view(this.client, row.refundCase, rewardByOrder.get(row.refundCase.bookingOrderId) ?? null)
+        )
+      ),
+      total,
+      page: input.page,
+      page_size: input.page_size
+    };
   }
 
   private async mutate(operation: (tx: Tx) => Promise<OrderRefundMutationResult>, recoverP2002?: () => Promise<OrderRefundMutationResult | null>, allowedP2002Targets: readonly string[] = []): Promise<OrderRefundMutationResult> {
@@ -325,6 +360,16 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
     const revision = await tx.orderRefundDisputeRevision.findFirst({ where: { idempotencyKey, deletedAt: null }, select: { requestFingerprint: true, refundCase: { include: refundCaseInclude } } });
     if (!revision) return null;
     return revision.requestFingerprint === fingerprint ? { kind: "replayed", value: await this.view(tx, revision.refundCase) } : { kind: "idempotency_conflict" };
+  }
+
+  private async replayResolveIdempotency(
+    tx: Tx,
+    idempotencyKey: string,
+    fingerprint: string
+  ): Promise<OrderRefundMutationResult | null> {
+    const eventReplay = await this.replayCaseEvent(tx, idempotencyKey, fingerprint);
+    if (eventReplay) return eventReplay;
+    return this.replayDisputeRevision(tx, idempotencyKey, fingerprint);
   }
 
   private async event(tx: Tx, caseId: number, orderId: number, action: OrderRefundCaseAction, fromStatus: OrderRefundCaseStatus | null, toStatus: OrderRefundCaseStatus, input: { actorUserId: number; actorIdentityId: number; idempotencyKey: string; fingerprint: string }, metadata: Record<string, unknown>): Promise<void> {
@@ -383,7 +428,9 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
   }
 
   private async recoverDisputeP2002(input: { idempotencyKey: string; fingerprint: string }): Promise<OrderRefundMutationResult | null> {
-    return this.client.$transaction((tx) => this.replayDisputeRevision(tx, input.idempotencyKey, input.fingerprint));
+    return this.client.$transaction((tx) =>
+      this.replayResolveIdempotency(tx, input.idempotencyKey, input.fingerprint)
+    );
   }
 
   private async recoverComplaintP2002(input: OpenRefundComplaintCommand): Promise<OrderRefundMutationResult | null> {
@@ -405,8 +452,19 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
     ] } : {}) };
   }
 
-  private async view(client: Pick<PrismaClient, "affiliateReward"> | Tx, row: RefundCaseRecord): Promise<OrderRefundCaseView> {
-    const reward = await client.affiliateReward.findFirst({ where: { bookingOrderId: row.bookingOrderId, deletedAt: null }, orderBy: { id: "asc" }, select: { status: true, rewardNdp: true } });
+  private async view(
+    client: Pick<PrismaClient, "affiliateReward"> | Tx,
+    row: RefundCaseRecord,
+    preloadedReward?: AffiliateRewardViewRecord | null
+  ): Promise<OrderRefundCaseView> {
+    const reward =
+      preloadedReward === undefined
+        ? await client.affiliateReward.findFirst({
+            where: { bookingOrderId: row.bookingOrderId, deletedAt: null },
+            orderBy: { id: "asc" },
+            select: { bookingOrderId: true, status: true, rewardNdp: true }
+          })
+        : preloadedReward;
     const dispute = row.disputes[0] ?? null;
     return {
       publicId: row.publicId, orderNo: row.bookingOrder.orderNo, shop: { shopNo: row.shop.shopNo, name: row.shop.name },

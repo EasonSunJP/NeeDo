@@ -2851,6 +2851,7 @@ const orderRefundCommandOperation = (input: {
   inputSchema: string;
   parameters?: readonly Record<string, unknown>[];
   create?: boolean;
+  affiliateInvariant?: boolean;
 }) => ({
   tags: ["Order Refund Cases"],
   summary: input.summary,
@@ -2868,7 +2869,14 @@ const orderRefundCommandOperation = (input: {
           "200": jsonDataResponse("Exact idempotent replay of an existing refund request", { $ref: "#/components/schemas/OrderRefundCasePublic" })
         }
       : { "200": jsonDataResponse("Refund case command completed", { $ref: "#/components/schemas/OrderRefundCasePublic" }) }),
-    ...orderRefundErrorResponses
+    ...orderRefundErrorResponses,
+    ...(input.affiliateInvariant
+      ? {
+          "500": jsonErrorResponse(
+            "error.order_refund_case.affiliate_invariant_failed — settled Affiliate reward or claimant wallet changed"
+          )
+        }
+      : {})
   }
 });
 
@@ -2890,7 +2898,7 @@ const createOrderRefundCaseOpenApiPaths = (config: AppConfig): Record<string, un
       })
     },
     [`${customerBase}/{caseId}/confirm-receipt`]: {
-      post: orderRefundCommandOperation({ summary: "Confirm the merchant refund was received", permission: userWrite, inputSchema: "OrderRefundUpdateEnvelope", parameters: orderRefundPathParameters })
+      post: orderRefundCommandOperation({ summary: "Confirm the merchant refund was received", permission: userWrite, inputSchema: "OrderRefundUpdateEnvelope", parameters: orderRefundPathParameters, affiliateInvariant: true })
     },
     [`${customerBase}/{caseId}/complaints`]: {
       post: orderRefundCommandOperation({ summary: "Open a complaint after the merchant rejected the refund", permission: userWrite, inputSchema: "OrderRefundComplaintInput", parameters: orderRefundPathParameters })
@@ -3001,7 +3009,7 @@ const orderRefundOpenApiSchemas = {
   OrderRefundCasePublic: {
     type: "object",
     additionalProperties: false,
-    required: ["publicId", "orderNo", "shop", "customer", "status", "responsibility", "refundAmountJpy", "currency", "version", "requestReason", "requestedAt", "createdAt", "updatedAt"],
+    required: ["publicId", "orderNo", "shop", "customer", "status", "responsibility", "refundAmountJpy", "currency", "version", "requestReason", "merchantDecisionNote", "refundReference", "requestedAt", "merchantDecisionAt", "refundSubmittedAt", "customerConfirmedAt", "dispute", "affiliateReward", "createdAt", "updatedAt"],
     properties: {
       publicId: { type: "string", format: "uuid" },
       orderNo: { type: "string" },
@@ -3009,7 +3017,7 @@ const orderRefundOpenApiSchemas = {
       customer: { type: "object", additionalProperties: false, required: ["needoId", "displayName"], properties: { needoId: { type: "string" }, displayName: { type: "string" } } },
       status: { type: "string", enum: ["merchant_review_pending", "refund_pending", "customer_confirmation_pending", "merchant_rejected", "disputed", "refunded", "dispute_rejected"] },
       responsibility: { const: "shop" },
-      refundAmountJpy: { type: "integer", minimum: 0 },
+      refundAmountJpy: { type: "integer", minimum: 1 },
       currency: { type: "string", const: "JPY" },
       version: { type: "integer", minimum: 1 },
       requestReason: { type: "string", minLength: 2, maxLength: 500 },

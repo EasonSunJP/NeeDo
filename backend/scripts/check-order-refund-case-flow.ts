@@ -585,6 +585,12 @@ const main = async (): Promise<void> => {
       customerComplaint.dispute?.publicId,
       "customer complaint did not create an operations dispute"
     );
+    const platformRewardBefore = await prisma.affiliateReward.findUniqueOrThrow({
+      where: { id: rejected.reward.id }
+    });
+    const platformWalletBefore = await prisma.wallet.findUniqueOrThrow({
+      where: { id: claimantWallet.id }
+    });
     const platformRefund = await refund.resolveDispute(
       operatorActor,
       context,
@@ -618,7 +624,19 @@ const main = async (): Promise<void> => {
       rejectedRequest.value.publicId,
       { idempotencyKey: `${marker}-customer-dispute-receipt`, expectedVersion: 5 }
     );
-    proof["customer-complaint-platform-refund"] = customerDisputeRefund.status === "refunded";
+    const platformRewardAfter = await prisma.affiliateReward.findUniqueOrThrow({
+      where: { id: rejected.reward.id }
+    });
+    const platformWalletAfter = await prisma.wallet.findUniqueOrThrow({
+      where: { id: claimantWallet.id }
+    });
+    assert(
+      JSON.stringify(platformRewardBefore) === JSON.stringify(platformRewardAfter) &&
+        JSON.stringify(platformWalletBefore) === JSON.stringify(platformWalletAfter),
+      "platform-adjudicated refund changed an Affiliate reward or claimant wallet"
+    );
+    proof["customer-complaint-platform-refund"] =
+      customerDisputeRefund.status === "refunded";
 
     const merchantDispute = await createCompletedOrder("merchant-dispute", customerC);
     const merchantDisputeRequest = await refund.request(customerActor(customerC), context, {
@@ -673,13 +691,28 @@ const main = async (): Promise<void> => {
         ledgerTransactionIds.push(transaction.ledgerTransactionId);
       }
     }
-    const ledgerTransactions = await prisma.ledgerTransaction.findMany({
+    const linkedLedgerTransactions = await prisma.ledgerTransaction.findMany({
       where: {
         id: { in: rewardTransactions.map((transaction) => transaction.ledgerTransactionId) },
         deletedAt: null
       },
       select: { id: true, type: true }
     });
+    const directRewardLedgerTransactions = await prisma.ledgerTransaction.findMany({
+      where: {
+        referenceType: "affiliate_reward",
+        referenceId: { in: rewardIds }
+      },
+      select: { id: true, type: true }
+    });
+    const ledgerTransactions = [
+      ...new Map(
+        [...linkedLedgerTransactions, ...directRewardLedgerTransactions].map((transaction) => [
+          transaction.id,
+          transaction
+        ])
+      ).values()
+    ];
     for (const transaction of ledgerTransactions) {
       if (!ledgerTransactionIds.includes(transaction.id)) ledgerTransactionIds.push(transaction.id);
     }
@@ -740,6 +773,18 @@ const main = async (): Promise<void> => {
         }
         if (!ledgerTransactionIds.includes(rewardTransaction.ledgerTransactionId)) {
           ledgerTransactionIds.push(rewardTransaction.ledgerTransactionId);
+        }
+      }
+      const capturedDirectLedgerTransactions = await transaction.ledgerTransaction.findMany({
+        where: {
+          referenceType: "affiliate_reward",
+          referenceId: { in: rewardIds }
+        },
+        select: { id: true }
+      });
+      for (const ledgerTransaction of capturedDirectLedgerTransactions) {
+        if (!ledgerTransactionIds.includes(ledgerTransaction.id)) {
+          ledgerTransactionIds.push(ledgerTransaction.id);
         }
       }
       await transaction.affiliateRewardTransaction.deleteMany({

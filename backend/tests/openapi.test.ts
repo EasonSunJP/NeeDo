@@ -45,6 +45,13 @@ describe("GET /api/v1/openapi.json", () => {
     ].post as { responses: Record<string, { description: string }> };
     expect(resolve.responses["409"].description).toContain("error.order_refund.dispute_required");
 
+    const confirmReceipt = document.paths[
+      "/api/v1/orders/{orderId}/refund-requests/{caseId}/confirm-receipt"
+    ].post as { responses: Record<string, { description: string }> };
+    expect(confirmReceipt.responses["500"].description).toContain(
+      "error.order_refund_case.affiliate_invariant_failed"
+    );
+
     const list = document.paths["/api/v1/backoffice/refund-disputes"].get as {
       parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }>;
     };
@@ -68,6 +75,23 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.components.schemas.OrderRefundCasePublic.properties).not.toEqual(
       expect.objectContaining({ id: expect.anything(), requestFingerprint: expect.anything(), internalNote: expect.anything() })
     );
+    expect(document.components.schemas.OrderRefundCasePublic).toMatchObject({
+      required: expect.arrayContaining([
+        "merchantDecisionNote",
+        "refundReference",
+        "merchantDecisionAt",
+        "refundSubmittedAt",
+        "customerConfirmedAt",
+        "dispute",
+        "affiliateReward"
+      ]),
+      properties: {
+        refundAmountJpy: { type: "integer", minimum: 1 }
+      }
+    });
+    expect(document.components.schemas.OrderRefundRequestInput).toMatchObject({
+      properties: { idempotencyKey: { type: "string", minLength: 8, maxLength: 160 } }
+    });
   });
 
   it("documents the protected Bearer-only regional live event stream", () => {

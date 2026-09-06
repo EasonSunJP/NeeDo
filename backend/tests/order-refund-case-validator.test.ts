@@ -16,6 +16,36 @@ const idempotencyKey = "refund-case-command-0001";
 const uuid = "d7b4c4c8-ef16-45fb-8e40-4be1b30f2a2d";
 
 describe("completed-order refund case validators", () => {
+  it.each([128, 129, 160])(
+    "accepts a %i-character idempotency key across the public command envelope",
+    (length) => {
+      const key = "k".repeat(length);
+      expect(
+        orderRefundCaseRequestBodySchema.parse({
+          idempotencyKey: key,
+          expectedVersion: 0,
+          reason: "valid reason"
+        }).idempotencyKey
+      ).toBe(key);
+      expect(
+        orderRefundCaseReceiptConfirmationBodySchema.parse({
+          idempotencyKey: key,
+          expectedVersion: 1
+        }).idempotencyKey
+      ).toBe(key);
+    }
+  );
+
+  it("rejects a 161-character idempotency key", () => {
+    expect(() =>
+      orderRefundCaseRequestBodySchema.parse({
+        idempotencyKey: "k".repeat(161),
+        expectedVersion: 0,
+        reason: "valid reason"
+      })
+    ).toThrow();
+  });
+
   it("requires expectedVersion exactly zero for the initial request and trims the reason/key", () => {
     expect(
       orderRefundCaseRequestBodySchema.parse({

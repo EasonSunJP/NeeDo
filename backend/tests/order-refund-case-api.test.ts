@@ -205,6 +205,32 @@ describe("completed-order refund case HTTP API", () => {
       .expect(200);
   });
 
+  it.each([128, 129, 160])(
+    "accepts a %i-character idempotency key through the service boundary",
+    async (length) => {
+      const fixture = createFixture();
+      const idempotencyKey = "k".repeat(length);
+      await request(fixture.app)
+        .post("/api/v1/orders/77/refund-requests")
+        .set("Authorization", "Bearer customer")
+        .send({ ...requestBody, idempotencyKey })
+        .expect(201);
+      expect(fixture.repository.request).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey })
+      );
+    }
+  );
+
+  it("rejects a 161-character idempotency key before the repository", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post("/api/v1/orders/77/refund-requests")
+      .set("Authorization", "Bearer customer")
+      .send({ ...requestBody, idempotencyKey: "k".repeat(161) })
+      .expect(400);
+    expect(fixture.repository.request).not.toHaveBeenCalled();
+  });
+
   it("maps hidden scope and command conflicts to stable public statuses", async () => {
     const fixture = createFixture();
     fixture.repository.merchantDecision.mockResolvedValueOnce({ kind: "scope_mismatch" });
@@ -222,6 +248,23 @@ describe("completed-order refund case HTTP API", () => {
       .send({ ...updateBody, resolution: "refund", publicReason: "没有正式投诉，不能裁定" })
       .expect(409)
       .expect({ code: ERROR_CODES.ORDER_REFUND_DISPUTE_REQUIRED, message: "error.order_refund.dispute_required", data: null });
+  });
+
+  it("maps Affiliate snapshot mismatches to the stable refund invariant 500", async () => {
+    const fixture = createFixture();
+    fixture.repository.confirmCustomerReceipt.mockResolvedValueOnce({
+      kind: "affiliate_invariant_failed"
+    });
+    await request(fixture.app)
+      .post(`/api/v1/orders/77/refund-requests/${casePublicId}/confirm-receipt`)
+      .set("Authorization", "Bearer customer")
+      .send(updateBody)
+      .expect(500)
+      .expect({
+        code: ERROR_CODES.ORDER_REFUND_AFFILIATE_INVARIANT_FAILED,
+        message: "error.order_refund_case.affiliate_invariant_failed",
+        data: null
+      });
   });
 
   it("wires every role-scoped command and paginated dispute list", async () => {
