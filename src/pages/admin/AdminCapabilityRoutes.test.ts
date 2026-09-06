@@ -146,6 +146,7 @@ describe("formal official notification workspaces", () => {
 
   it("registers separately permissioned platform and merchant management routes", () => {
     expect(appSource).toContain('path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice"');
+    expect(appSource).toContain('path="/admin/notifications/inbox" element={protect("admin"');
     expect(appSource).toContain('["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"]');
     expect(appSource).toContain('path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read"');
     expect(appSource).toContain('["merchant-admin:notice:create", "merchant-admin:notice:send"]');

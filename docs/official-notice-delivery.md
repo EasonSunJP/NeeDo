@@ -4,7 +4,10 @@ This Step 13 slice restores the existing platform notice API and adds a formally
 scoped merchant publication API. Migration
 `20260905120000_merchant_official_notice_scope` adds immutable platform/shop
 issuer scope, merchant audiences and dedicated merchant notice permissions. It
-does not restore the announcement pages or merchant notification UI.
+also restores the operations management/composer/inbox pages and the equivalent
+merchant management/composer/inbox surfaces. Both portal headers use the shared
+official-notice bell, whose badge is derived from the recipient inbox rather than
+the generic realtime notification count.
 
 ## Ownership and API
 
@@ -12,7 +15,7 @@ The operations route manifest owns the following `/api/v1` management routes;
 the merchant API rejects this namespace with 404. The compatibility backend
 retains its existing combined manifest.
 
-- `GET /backoffice/official-notices`: paginated list, read permission.
+- `GET /backoffice/official-notices`: paginated, server-searched and filtered list, read permission.
 - `POST /backoffice/official-notices`: immediate or scheduled publication,
   both create and send permissions.
 - `POST /backoffice/official-notices/{publicId}/cancel`: pre-dispatch cancellation,
@@ -24,6 +27,14 @@ retains its existing combined manifest.
 
 The merchant route manifest owns the equivalent paginated create/list and
 cancel/archive/retry operations under `/merchant-admin/official-notices`.
+Both management list endpoints accept the same bounded `search` query and match
+persisted notice public IDs, audience summaries, and locale titles/summaries on
+the server; the browser never filters only the currently loaded page.
+Operations exact-account delivery searches the formal global account directory
+under `backoffice:users:read` by email, phone or NeeDoID. The create request sends
+only public `needoIds`; the notice repository resolves them again and rejects any
+account without an active, non-deleted identity. Internal `userIds` and friend
+lists are not accepted as targeting inputs.
 Every merchant operation derives its shop and acting identity from the verified
 session. The request cannot supply a shop, issuer, recipient user or platform
 audience. Dedicated `merchant-admin:notice:*` permissions are granted to the
@@ -38,9 +49,12 @@ platform publishing permission. All route contracts are registered in OpenAPI.
 
 ## Persistence and delivery
 
-Publication creates the notice, five locale records, immutable audience snapshots,
-queued delivery rows and an audit record in one transaction. Locale records are
-source copies marked `isInitialCopy`; this is **not automatic translation**.
+Publication requires five explicit locale payloads and creates the notice, all
+five locale records, immutable audience snapshots, queued delivery rows and an
+audit record in one transaction. The editor may copy one locale to the others as
+an explicit operator action, but every tab remains independently editable. The
+server never fabricates missing translations and records all supplied locales as
+authored content rather than automatic translation copies.
 Merchant publication supports only server-derived current-shop audiences:
 active issued membership-card holders, current shop employees, and current shop
 technicians linked through their active affiliation, employee record and role.
@@ -106,10 +120,12 @@ idempotency and zero persistent fixtures.
 
 ## Still pending in the overall task
 
-- Restore the approved operations UI and shared merchant notification surfaces.
-- Real browser multi-portal login/logout acceptance.
-- Operations-to-user/technician/merchant delivery and read reception acceptance.
-- Same-shop database/API/page parity and update propagation acceptance.
+- Real browser multi-portal login/logout acceptance beyond the local portal checks.
+- Staging operations-to-user/technician/merchant delivery and read reception acceptance.
+- Staging same-shop database/API/page parity and update propagation acceptance.
+- Formal merchant media upload and server-side ownership binding for notice assets.
+- Complete five-locale UI-label coverage, source-language quick buttons, draft editing,
+  merchant exact-account targeting and font-size controls.
 
 Draft editing and a separate approval workflow are not enabled by the immediate/
 scheduled publication endpoint; schema statuses alone must not be presented as

@@ -13860,18 +13860,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             type: "object",
             additionalProperties: false,
-            required: ["type", "userIds"],
+            required: ["type", "needoIds"],
             properties: {
               type: { type: "string", enum: ["exact_users"] },
-              userIds: {
+              needoIds: {
                 type: "array",
                 minItems: 1,
                 maxItems: 500,
-                items: { type: "integer", minimum: 1 }
+                items: { type: "string", pattern: "^u[0-9]{10}$" }
               }
             }
           }
         ]
+      },
+      OfficialNoticeTranslationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "blocks"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: "string", minLength: 1, maxLength: 500 },
+          blocks: {
+            type: "array",
+            minItems: 1,
+            maxItems: 80,
+            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
+          }
+        }
+      },
+      OfficialNoticeTranslationsInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+        properties: {
+          "zh-CN": { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          "zh-TW": { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          en: { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          ja: { $ref: "#/components/schemas/OfficialNoticeTranslationInput" },
+          ko: { $ref: "#/components/schemas/OfficialNoticeTranslationInput" }
+        }
       },
       OfficialNoticeCreate: {
         type: "object",
@@ -13879,9 +13906,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "sourceLocale",
           "level",
-          "title",
-          "summary",
-          "blocks",
+          "translations",
           "audience",
           "sendMode",
           "scheduledAt",
@@ -13890,14 +13915,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
           level: { type: "string", enum: ["general", "important", "urgent"] },
-          title: { type: "string", minLength: 1, maxLength: 160 },
-          summary: { type: "string", minLength: 1, maxLength: 500 },
-          blocks: {
-            type: "array",
-            minItems: 1,
-            maxItems: 80,
-            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
-          },
+          translations: { $ref: "#/components/schemas/OfficialNoticeTranslationsInput" },
           audience: { $ref: "#/components/schemas/OfficialNoticeAudience" },
           sendMode: { type: "string", enum: ["now", "scheduled"] },
           scheduledAt: { type: ["string", "null"], format: "date-time" },
@@ -13921,9 +13939,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "sourceLocale",
           "level",
-          "title",
-          "summary",
-          "blocks",
+          "translations",
           "audience",
           "sendMode",
           "scheduledAt",
@@ -13932,14 +13948,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
           level: { type: "string", enum: ["general", "important", "urgent"] },
-          title: { type: "string", minLength: 1, maxLength: 160 },
-          summary: { type: "string", minLength: 1, maxLength: 500 },
-          blocks: {
-            type: "array",
-            minItems: 1,
-            maxItems: 80,
-            items: { $ref: "#/components/schemas/OfficialNoticeBlock" }
-          },
+          translations: { $ref: "#/components/schemas/OfficialNoticeTranslationsInput" },
           audience: { $ref: "#/components/schemas/MerchantOfficialNoticeAudience" },
           sendMode: { type: "string", enum: ["now", "scheduled"] },
           scheduledAt: { type: ["string", "null"], format: "date-time" },
@@ -25863,6 +25872,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
+            name: "search",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
+          {
             name: "status",
             in: "query",
             schema: {
@@ -26001,6 +26015,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "search",
+            in: "query",
+            schema: { type: "string", minLength: 1, maxLength: 100 }
+          },
           {
             name: "status",
             in: "query",

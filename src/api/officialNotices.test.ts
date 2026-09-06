@@ -8,26 +8,35 @@ describe("officialNoticesApi", () => {
   beforeEach(() => vi.mocked(httpClient.request).mockReset().mockResolvedValue({}));
 
   it("keeps platform and merchant management namespaces separate", async () => {
-    await officialNoticesApi.listManaged("platform", { page: 2, pageSize: 20, status: "sent" });
-    await officialNoticesApi.listManaged("merchant", { page: 1, pageSize: 10, level: "urgent" });
+    await officialNoticesApi.listManaged("platform", { page: 2, pageSize: 20, status: "sent", search: "maintenance" });
+    await officialNoticesApi.listManaged("merchant", { page: 1, pageSize: 10, level: "urgent", search: "営業時間" });
 
     expect(httpClient.request).toHaveBeenNthCalledWith(
       1,
-      "/backoffice/official-notices?page=2&pageSize=20&status=sent"
+      "/backoffice/official-notices?page=2&pageSize=20&status=sent&search=maintenance"
     );
     expect(httpClient.request).toHaveBeenNthCalledWith(
       2,
-      "/merchant-admin/official-notices?page=1&pageSize=10&level=urgent"
+      "/merchant-admin/official-notices?page=1&pageSize=10&level=urgent&search=%E5%96%B6%E6%A5%AD%E6%99%82%E9%96%93"
     );
   });
 
   it("sends only server-derived merchant audience input", async () => {
+    const translation = {
+      title: "営業時間変更",
+      summary: "本日の営業時間を変更します",
+      blocks: [{ id: "body", type: "paragraph" as const, content: "18時まで営業します" }]
+    };
     const input = {
       sourceLocale: "ja" as const,
       level: "important" as const,
-      title: "営業時間変更",
-      summary: "本日の営業時間を変更します",
-      blocks: [{ id: "body", type: "paragraph" as const, content: "18時まで営業します" }],
+      translations: {
+        "zh-CN": translation,
+        "zh-TW": translation,
+        en: translation,
+        ja: translation,
+        ko: translation
+      },
       audience: { type: "shop_employees" as const },
       sendMode: "now" as const,
       scheduledAt: null,

@@ -92,6 +92,7 @@ export interface OfficialNoticeRepositoryPort {
     issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
+    search?: string;
     status?: OfficialNoticeStatusCode;
     level?: OfficialNoticeLevelCode;
   }): Promise<{ list: OfficialNoticePayload[]; total: number }>;
@@ -184,20 +185,20 @@ export class OfficialNoticeService {
   ): Promise<OfficialNoticePayload> {
     const now = this.now();
     const scheduledAt = input.sendMode === "now" ? now : new Date(input.scheduledAt as string);
-    const translation = {
-      title: input.title.trim(),
-      summary: input.summary.trim(),
-      blocks: structuredClone(input.blocks)
-    };
     const translations = Object.fromEntries(
-      CONTENT_LOCALES.map((locale) => [
-        locale,
-        {
-          ...structuredClone(translation),
-          sourceLocale: input.sourceLocale,
-          isInitialCopy: locale !== input.sourceLocale
-        }
-      ])
+      CONTENT_LOCALES.map((locale) => {
+        const translation = input.translations[locale];
+        return [
+          locale,
+          {
+            title: translation.title.trim(),
+            summary: translation.summary.trim(),
+            blocks: structuredClone(translation.blocks),
+            sourceLocale: locale,
+            isInitialCopy: false
+          }
+        ];
+      })
     ) as Record<ContentLocaleCode, OfficialNoticeTranslationPayload>;
     const publicId = this.createPublicId();
     const created = await this.repository.createAndPlan({
@@ -239,6 +240,7 @@ export class OfficialNoticeService {
     const result = await this.repository.listBackoffice({
       issuerScope: { type: "platform" },
       ...pagination,
+      ...(input.search ? { search: input.search } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.level ? { level: input.level } : {})
     });
@@ -253,6 +255,7 @@ export class OfficialNoticeService {
     const result = await this.repository.listBackoffice({
       issuerScope: resolveNoticeReadScope(actor),
       ...pagination,
+      ...(input.search ? { search: input.search } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.level ? { level: input.level } : {})
     });
@@ -412,7 +415,8 @@ export class OfficialNoticeService {
 
   private targetSummary(audience: NoticeAudienceInput): string {
     if (audience.type === "all") return "全体用户";
-    if (audience.type === "exact_users") return `指定账号 ${audience.userIds.length} 个`;
+    if (audience.type === "exact_users")
+      return `指定账号 ${new Set(audience.needoIds).size} 个`;
     if (audience.type === "identity_types")
       return [...new Set(audience.identityTypes.map((type) => identityLabels[type] ?? type))].join(
         " / "

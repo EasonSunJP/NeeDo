@@ -3,6 +3,11 @@ import source from "./AdminLayout.tsx?raw";
 import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
+  it("uses the shared formal notice bell without a hard-coded unread count", () => {
+    expect(source).toContain("<OfficialNoticeBell to=\"/admin/notifications/inbox\"");
+    expect(source).not.toContain("count={12}");
+  });
+
   it("exposes one read-permission-filtered NDP exchange-rate settings item", () => {
     expect(source.match(/to: "\/admin\/settings\/ndp-exchange-rate"/g)).toHaveLength(1);
     expect(source).toContain('label: "NDP 汇率"');
