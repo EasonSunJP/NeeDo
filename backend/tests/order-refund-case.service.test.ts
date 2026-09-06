@@ -166,12 +166,12 @@ describe("OrderRefundCaseService", () => {
   it("uses the authenticated merchant shop scope for merchant decisions and evidence", async () => {
     const { service, repo } = serviceFor();
 
-    await service.merchantApprove(merchant, context, casePublicId, {
+    await service.merchantApprove(merchant, context, 12, casePublicId, {
       idempotencyKey: "refund-approve-0001",
       expectedVersion: 1,
       note: "  refund approved  "
     });
-    await service.submitEvidence(merchant, context, casePublicId, {
+    await service.submitEvidence(merchant, context, 12, casePublicId, {
       idempotencyKey: "refund-evidence-0001",
       expectedVersion: 2,
       reference: "  bank-transfer-123  "
@@ -180,6 +180,7 @@ describe("OrderRefundCaseService", () => {
     expect(repo.merchantDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         casePublicId,
+        orderId: 12,
         decision: "approve",
         shopId: 55,
         actorUserId: merchant.userId,
@@ -191,6 +192,7 @@ describe("OrderRefundCaseService", () => {
     expect(repo.submitEvidence).toHaveBeenCalledWith(
       expect.objectContaining({
         casePublicId,
+        orderId: 12,
         shopId: 55,
         payload: { reference: "bank-transfer-123" },
         audit: expect.objectContaining({ action: "order_refund.evidence_submitted" })
@@ -198,7 +200,7 @@ describe("OrderRefundCaseService", () => {
     );
   });
 
-  it("opens complaints only after merchant rejection and only confirms receipt for the booking customer", async () => {
+  it("opens a customer complaint only after merchant rejection and confirms receipt with its nested order", async () => {
     const { service, repo } = serviceFor();
     repo.openComplaint.mockResolvedValueOnce({
       kind: "invalid_state",
@@ -206,7 +208,7 @@ describe("OrderRefundCaseService", () => {
     });
 
     await expectRejected(
-      service.openComplaint(customer, context, casePublicId, {
+      service.openComplaint(customer, context, 12, casePublicId, {
         idempotencyKey: "refund-complaint-0001",
         expectedVersion: 1,
         reason: "merchant denied the refund"
@@ -216,10 +218,21 @@ describe("OrderRefundCaseService", () => {
       "error.order_refund_case.invalid_state"
     );
     expect(repo.openComplaint).toHaveBeenCalledWith(
-      expect.objectContaining({ audit: expect.objectContaining({ action: "order_refund.complaint_opened" }) })
+      expect.objectContaining({
+        orderId: 12,
+        shopId: null,
+        audit: expect.objectContaining({ action: "order_refund.complaint_opened" })
+      })
     );
+    await expect(
+      service.openComplaint(customer, context, 12, casePublicId, {
+        idempotencyKey: "refund-complaint-0002",
+        expectedVersion: 1,
+        reason: "merchant denied the refund"
+      })
+    ).resolves.toEqual(view({ status: "disputed", version: 3 }));
 
-    await service.confirmCustomerReceipt(customer, context, casePublicId, {
+    await service.confirmCustomerReceipt(customer, context, 12, casePublicId, {
       idempotencyKey: "refund-receipt-0001",
       expectedVersion: 3
     });
@@ -227,9 +240,67 @@ describe("OrderRefundCaseService", () => {
       expect.objectContaining({
         actorUserId: customer.userId,
         actorIdentityId: customer.currentIdentityId,
+        orderId: 12,
         audit: expect.objectContaining({ action: "order_refund.customer_receipt_confirmed" })
       })
     );
+  });
+
+  it("opens a merchant complaint with the authenticated shop scope and hides cross-shop cases", async () => {
+    const { service, repo } = serviceFor();
+    const otherShopMerchant: AuthenticatedAccessContext = {
+      ...merchant,
+      currentIdentityScopeId: 56
+    };
+    const previewMerchant: AuthenticatedAccessContext = {
+      ...merchant,
+      isReadOnlyMerchantPreview: true,
+      merchantPreviewShopId: 55
+    };
+
+    await expect(
+      service.openComplaint(merchant, context, 12, casePublicId, {
+        idempotencyKey: "merchant-complaint-0001",
+        expectedVersion: 2,
+        reason: "refund evidence was rejected"
+      })
+    ).resolves.toEqual(view({ status: "disputed", version: 3 }));
+    expect(repo.openComplaint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 12,
+        shopId: 55,
+        actorUserId: merchant.userId,
+        actorIdentityId: merchant.currentIdentityId,
+        actorScope: { type: "shop", id: 55 },
+        audit: expect.objectContaining({
+          action: "order_refund.complaint_opened",
+          metadata: expect.objectContaining({ ids: { orderId: 12, casePublicId } })
+        })
+      })
+    );
+
+    repo.openComplaint.mockResolvedValueOnce({ kind: "scope_mismatch" });
+    await expectRejected(
+      service.openComplaint(otherShopMerchant, context, 12, casePublicId, {
+        idempotencyKey: "merchant-complaint-0002",
+        expectedVersion: 2,
+        reason: "refund evidence was rejected"
+      }),
+      404,
+      ERROR_CODES.ORDER_REFUND_CASE_NOT_FOUND,
+      "error.order_refund_case.not_found"
+    );
+    await expectRejected(
+      service.openComplaint(previewMerchant, context, 12, casePublicId, {
+        idempotencyKey: "merchant-complaint-0003",
+        expectedVersion: 2,
+        reason: "refund evidence was rejected"
+      }),
+      403,
+      ERROR_CODES.IDENTITY_FORBIDDEN,
+      "error.identity.forbidden"
+    );
+    expect(repo.openComplaint).toHaveBeenCalledTimes(2);
   });
 
   it("allows dispute resolution only from a global platform identity and records both resolution actions", async () => {
@@ -274,6 +345,7 @@ describe("OrderRefundCaseService", () => {
         audit: expect.objectContaining({ action: "order_refund.dispute_resolved_refund" })
       })
     );
+    expect(repo.resolveDispute.mock.calls[0][0].audit.targetType).toBe("OrderRefundDispute");
     expect(repo.resolveDispute).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -319,11 +391,28 @@ describe("OrderRefundCaseService", () => {
     );
   });
 
+  it("includes the server-validated nested order in every case command and its fingerprint", async () => {
+    const { service, repo } = serviceFor();
+    const input = {
+      idempotencyKey: "refund-order-bound-0001",
+      expectedVersion: 1,
+      note: "refund approved"
+    };
+
+    await service.merchantApprove(merchant, context, 12, casePublicId, input);
+    await service.merchantApprove(merchant, context, 13, casePublicId, input);
+
+    const [first, second] = repo.merchantDecision.mock.calls.map(([command]) => command);
+    expect(first).toMatchObject({ orderId: 12, audit: expect.objectContaining({ metadata: expect.objectContaining({ ids: { orderId: 12, casePublicId } }) }) });
+    expect(second).toMatchObject({ orderId: 13, audit: expect.objectContaining({ metadata: expect.objectContaining({ ids: { orderId: 13, casePublicId } }) }) });
+    expect(first.fingerprint).not.toBe(second.fingerprint);
+  });
+
   it("maps hidden scope/not-found, ordinary conflicts, and forbidden Affiliate invariants to stable errors", async () => {
     const { service, repo } = serviceFor();
     repo.merchantDecision.mockResolvedValueOnce({ kind: "scope_mismatch" });
     await expectRejected(
-      service.merchantReject(merchant, context, casePublicId, {
+      service.merchantReject(merchant, context, 12, casePublicId, {
         idempotencyKey: "refund-hidden-0001",
         expectedVersion: 1,
         note: "refund denied"
@@ -338,7 +427,7 @@ describe("OrderRefundCaseService", () => {
 
     repo.merchantDecision.mockResolvedValueOnce({ kind: "idempotency_conflict" });
     await expectRejected(
-      service.merchantReject(merchant, context, casePublicId, {
+      service.merchantReject(merchant, context, 12, casePublicId, {
         idempotencyKey: "refund-conflict-0001",
         expectedVersion: 1,
         note: "refund denied"
@@ -350,7 +439,7 @@ describe("OrderRefundCaseService", () => {
 
     repo.merchantDecision.mockResolvedValueOnce({ kind: "affiliate_invariant_failed" });
     await expectRejected(
-      service.merchantReject(merchant, context, casePublicId, {
+      service.merchantReject(merchant, context, 12, casePublicId, {
         idempotencyKey: "refund-affiliate-0001",
         expectedVersion: 1,
         note: "refund denied"

@@ -61,22 +61,26 @@ export interface RequestRefundCommand extends RefundCommandBase {
 }
 
 export interface MerchantRefundDecisionCommand extends RefundCommandBase {
+  orderId: number;
   casePublicId: string;
   decision: "approve" | "reject";
   payload: { note: string };
 }
 
 export interface SubmitRefundEvidenceCommand extends RefundCommandBase {
+  orderId: number;
   casePublicId: string;
   payload: { reference: string };
 }
 
 export interface ConfirmRefundReceiptCommand extends RefundCommandBase {
+  orderId: number;
   casePublicId: string;
   payload: Record<string, never>;
 }
 
 export interface OpenRefundComplaintCommand extends RefundCommandBase {
+  orderId: number;
   casePublicId: string;
   payload: { reason: string };
 }
@@ -211,24 +215,27 @@ export class OrderRefundCaseService {
   public async merchantApprove(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
+    orderId: number,
     casePublicId: string,
     input: MerchantRefundDecisionInput
   ): Promise<OrderRefundCaseView> {
-    return this.merchantDecision(actor, context, casePublicId, input, "approve");
+    return this.merchantDecision(actor, context, orderId, casePublicId, input, "approve");
   }
 
   public async merchantReject(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
+    orderId: number,
     casePublicId: string,
     input: MerchantRefundDecisionInput
   ): Promise<OrderRefundCaseView> {
-    return this.merchantDecision(actor, context, casePublicId, input, "reject");
+    return this.merchantDecision(actor, context, orderId, casePublicId, input, "reject");
   }
 
   public async submitEvidence(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
+    orderId: number,
     casePublicId: string,
     input: SubmitRefundEvidenceInput
   ): Promise<OrderRefundCaseView> {
@@ -237,14 +244,16 @@ export class OrderRefundCaseService {
     const reference = this.text(input.reference, 120);
     const shopId = this.requireMerchantWriteScope(actor);
     const actorScope = this.actorScope(actor);
+    const normalizedOrderId = this.positiveInteger(orderId);
     const publicId = this.publicId(casePublicId);
     const command: SubmitRefundEvidenceCommand = {
+      orderId: normalizedOrderId,
       casePublicId: publicId,
       ...this.commandBase({
         actor,
         context,
         action: "order_refund.evidence_submitted",
-        ids: { casePublicId: publicId },
+        ids: { orderId: normalizedOrderId, casePublicId: publicId },
         actorScope,
         shopId,
         ...normalized,
@@ -258,6 +267,7 @@ export class OrderRefundCaseService {
   public async confirmCustomerReceipt(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
+    orderId: number,
     casePublicId: string,
     input: ConfirmRefundReceiptInput
   ): Promise<OrderRefundCaseView> {
@@ -265,14 +275,16 @@ export class OrderRefundCaseService {
     this.requireCustomerIdentity(actor);
     const normalized = this.updateEnvelope(input);
     const actorScope = this.actorScope(actor);
+    const normalizedOrderId = this.positiveInteger(orderId);
     const publicId = this.publicId(casePublicId);
     const command: ConfirmRefundReceiptCommand = {
+      orderId: normalizedOrderId,
       casePublicId: publicId,
       ...this.commandBase({
         actor,
         context,
         action: "order_refund.customer_receipt_confirmed",
-        ids: { casePublicId: publicId },
+        ids: { orderId: normalizedOrderId, casePublicId: publicId },
         actorScope,
         shopId: null,
         ...normalized,
@@ -286,24 +298,27 @@ export class OrderRefundCaseService {
   public async openComplaint(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
+    orderId: number,
     casePublicId: string,
     input: OpenRefundComplaintInput
   ): Promise<OrderRefundCaseView> {
     this.assertNoProtectedPublicFields(input);
-    this.requireCustomerIdentity(actor);
     const normalized = this.updateEnvelope(input);
     const reason = this.text(input.reason, 500);
     const actorScope = this.actorScope(actor);
+    const normalizedOrderId = this.positiveInteger(orderId);
+    const shopId = this.complaintShopScope(actor);
     const publicId = this.publicId(casePublicId);
     const command: OpenRefundComplaintCommand = {
+      orderId: normalizedOrderId,
       casePublicId: publicId,
       ...this.commandBase({
         actor,
         context,
         action: "order_refund.complaint_opened",
-        ids: { casePublicId: publicId },
+        ids: { orderId: normalizedOrderId, casePublicId: publicId },
         actorScope,
-        shopId: null,
+        shopId,
         ...normalized,
         payload: { reason }
       }),
@@ -343,7 +358,8 @@ export class OrderRefundCaseService {
         actorScope,
         shopId: null,
         ...normalized,
-        payload
+        payload,
+        targetType: "OrderRefundDispute"
       }),
       payload
     };
@@ -375,6 +391,7 @@ export class OrderRefundCaseService {
   private async merchantDecision(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
+    orderId: number,
     casePublicId: string,
     input: MerchantRefundDecisionInput,
     decision: "approve" | "reject"
@@ -384,8 +401,10 @@ export class OrderRefundCaseService {
     const note = this.text(input.note, 500);
     const shopId = this.requireMerchantWriteScope(actor);
     const actorScope = this.actorScope(actor);
+    const normalizedOrderId = this.positiveInteger(orderId);
     const publicId = this.publicId(casePublicId);
     const command: MerchantRefundDecisionCommand = {
+      orderId: normalizedOrderId,
       casePublicId: publicId,
       decision,
       ...this.commandBase({
@@ -395,7 +414,7 @@ export class OrderRefundCaseService {
           decision === "approve"
             ? "order_refund.merchant_approved"
             : "order_refund.merchant_rejected",
-        ids: { casePublicId: publicId },
+        ids: { orderId: normalizedOrderId, casePublicId: publicId },
         actorScope,
         shopId,
         ...normalized,
@@ -416,6 +435,7 @@ export class OrderRefundCaseService {
     idempotencyKey: string;
     expectedVersion: number;
     payload: Record<string, unknown>;
+    targetType?: "OrderRefundCase" | "OrderRefundDispute";
   }): RefundCommandBase {
     return {
       actorUserId: input.actor.userId,
@@ -436,7 +456,7 @@ export class OrderRefundCaseService {
         actor: input.actor,
         context: input.context,
         action: input.action,
-        targetType: "OrderRefundCase",
+        targetType: input.targetType ?? "OrderRefundCase",
         metadata: {
           ids: input.ids,
           actorIdentityId: this.identityId(input.actor),
@@ -484,6 +504,14 @@ export class OrderRefundCaseService {
   private requireCustomerIdentity(actor: AuthenticatedAccessContext): void {
     if (actor.currentIdentityType === "customer" && this.identityId(actor) > 0) return;
     throw this.identityForbidden();
+  }
+
+  private complaintShopScope(actor: AuthenticatedAccessContext): number | null {
+    if (actor.currentIdentityType === "customer") {
+      this.requireCustomerIdentity(actor);
+      return null;
+    }
+    return this.requireMerchantWriteScope(actor);
   }
 
   private requireMerchantWriteScope(actor: AuthenticatedAccessContext): number {
