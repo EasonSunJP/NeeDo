@@ -4,6 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "maps:jp:build": "node --max-old-space-size=4096 scripts/build-jp-admin-map.mjs",
+    "maps:jp:check": "node scripts/check-jp-admin-map.mjs",
     "dev": "npm run dev:formal",
     "dev:formal": "node scripts/dev-formal.mjs",
     "dev:frontend": "vite --host 0.0.0.0",
@@ -37,9 +39,14 @@
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "autoprefixer": "^10.4.21",
+    "d3-geo": "^3.1.1",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.6",
+    "stream-json": "^3.6.0",
     "tailwindcss": "^3.4.17",
+    "topojson-client": "^3.1.0",
+    "topojson-server": "^3.0.1",
+    "topojson-simplify": "^3.0.3",
     "vitest": "^4.1.4"
   }
 }
