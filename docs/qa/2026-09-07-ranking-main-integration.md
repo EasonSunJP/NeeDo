@@ -20,7 +20,7 @@
 
 ## 验证命令
 
-前端：`npx vitest run src/features/dashboard src/pages/admin/DashboardPage.test.ts src/pages/admin/RankingEmbeddedDrawers.test.tsx src/api/backofficeRealData.test.ts`。
+前端：`npx vitest run src/features/dashboard src/pages/admin/DashboardPage.test.ts src/pages/admin/RankingEmbeddedDrawers.test.tsx src/api/backofficeRealData.test.ts src/api/backofficeDashboard.test.ts`。
 
 后端：`npm test -- --runInBand --runTestsByPath tests/analytics-ranking-api.test.ts tests/analytics-ranking-openapi.test.ts tests/analytics-ranking.repository.test.ts tests/analytics-ranking.service.test.ts`。
 
@@ -38,3 +38,14 @@
 
 11 个排行文件与来源提交内容完全相同。排行 repository 仅提取分页上限变更，
 保留 main 既有金额公式；OpenAPI 仅提取排行参数变更；API 测试额外增加三个分页用例。
+
+## 补充：旧分页测试边界
+
+额外回归在 `src/api/backofficeDashboard.test.ts:300` 复现一项失败：旧测试仍要求
+`pageSize=11` 在发出请求前被拒绝。正式合同已经扩为 1..100，11 是合法请求，
+未提供有效响应的测试 mock 导致后续投影报 `error.api`。业务实现符合新合同。
+仅把非法测试边界改为 101，并将合法请求/响应契约参数化为 10、11、50、100。
+修复前该文件 72 项通过、1 项失败；修复后连同相关前端回归共 15 文件 / 176 项通过。
+复现及回归日志：`/tmp/needo-ranking-boundary-red.log`、`/tmp/needo-ranking-boundary-green.log`。
+后端排行 4 套 / 43 项重跑通过，前端构建与 `git diff --check` 通过；日志为
+`/tmp/needo-ranking-boundary-backend.log`、`/tmp/needo-ranking-boundary-build.log`。
