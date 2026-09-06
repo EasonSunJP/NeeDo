@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import os from "node:os";
 import path from "node:path";
 import type { LiveDashboardSnapshotFacts } from "../src/domain/live-dashboard";
@@ -11,12 +13,44 @@ import {
   buildDeterministicRunMarker,
   cleanupRedis,
   loadLiveDashboardCheckerAuthority,
-  redactCheckerError
+  redactCheckerError,
+  schemaEvidence
 } from "../scripts/check-live-dashboard-flow";
 
 const scriptPath = path.join(process.cwd(), "scripts/check-live-dashboard-flow.ts");
 
 describe("live dashboard formal-flow checker contract", () => {
+  it("consumes deterministic camelCase schema metadata aliases independently of driver casing", async () => {
+    const root = path.resolve(process.cwd(), "..");
+    const catalog = JSON.parse(fs.readFileSync(path.join(root, "backend/prisma/reference/jp-administrative-regions-2026.json"), "utf8"));
+    const migration = fs.readFileSync(path.join(root, "backend/prisma/migrations/20260906120000_live_dashboard_administrative_regions/migration.sql"));
+    const tables = ["administrative_regions", "administrative_region_locales", "shop_service_locations", "booking_service_locations"];
+    const columns = ["country_code", "admin1_region_code", "admin2_region_code", "resolution_status", "dataset_version"];
+    const indexes = [
+      ["administrative_regions", "administrative_regions_hierarchy_idx"],
+      ["shop_service_locations", "shop_service_locations_scope_idx"],
+      ["booking_service_locations", "booking_service_locations_scope_idx"]
+    ];
+    const transaction = {
+      $queryRaw: async (query: Prisma.Sql) => {
+        const sql = query.sql;
+        if (sql.includes("information_schema.tables")) return tables.map((tableName) => ({ tableName }));
+        if (sql.includes("information_schema.columns")) return columns.map((columnName) => ({ tableName: "booking_service_locations", columnName }));
+        if (sql.includes("information_schema.statistics")) return indexes.map(([tableName, indexName]) => ({ tableName, indexName }));
+        if (sql.includes("_prisma_migrations")) return [{ checksum: createHash("sha256").update(migration).digest("hex") }];
+        if (sql.includes("COUNT(*)")) return [{ level: "COUNTRY", count: 1n }, { level: "ADMIN1", count: 47n }, { level: "ADMIN2", count: 1918n }];
+        if (sql.includes("SELECT ward.official_code")) return Array.from({ length: 23 }, (_, index) => ({ official_code: String(13101 + index) }));
+        return catalog.regions;
+      },
+      permission: { findFirst: async () => ({ code: "backoffice:dashboard:read", rolePermissions: [{ id: 1 }] }) }
+    };
+    await expect(schemaEvidence(transaction as unknown as Prisma.TransactionClient, root)).resolves.toMatchObject({ catalogVersion: catalog.version });
+    const source = fs.readFileSync(scriptPath, "utf8");
+    expect(source).toContain("SELECT table_name AS tableName FROM information_schema.tables");
+    expect(source).toContain("SELECT table_name AS tableName, column_name AS columnName FROM information_schema.columns");
+    expect(source).toContain("SELECT DISTINCT table_name AS tableName, index_name AS indexName FROM information_schema.statistics");
+  });
+
   const tempDirectories: string[] = [];
 
   afterAll(() => {

@@ -301,7 +301,7 @@ const deterministicUuid = (marker: string, name: string): string => {
     .join("")}-${value.slice(16, 20).join("")}-${value.slice(20).join("")}`;
 };
 
-const schemaEvidence = async (
+export const schemaEvidence = async (
   transaction: Prisma.TransactionClient,
   repositoryRoot: string
 ): Promise<Record<string, unknown>> => {
@@ -338,16 +338,16 @@ const schemaEvidence = async (
         WHERE migration_name = ${MIGRATION_NAME} AND finished_at IS NOT NULL
           AND rolled_back_at IS NULL
       `),
-    transaction.$queryRaw<Array<{ table_name: string }>>(Prisma.sql`
-        SELECT table_name FROM information_schema.tables
+    transaction.$queryRaw<Array<{ tableName: string }>>(Prisma.sql`
+        SELECT table_name AS tableName FROM information_schema.tables
         WHERE table_schema = DATABASE() AND table_name IN (${Prisma.join(REQUIRED_TABLES)})
       `),
-    transaction.$queryRaw<Array<{ table_name: string; column_name: string }>>(Prisma.sql`
-        SELECT table_name, column_name FROM information_schema.columns
+    transaction.$queryRaw<Array<{ tableName: string; columnName: string }>>(Prisma.sql`
+        SELECT table_name AS tableName, column_name AS columnName FROM information_schema.columns
         WHERE table_schema = DATABASE()
       `),
-    transaction.$queryRaw<Array<{ table_name: string; index_name: string }>>(Prisma.sql`
-        SELECT DISTINCT table_name, index_name FROM information_schema.statistics
+    transaction.$queryRaw<Array<{ tableName: string; indexName: string }>>(Prisma.sql`
+        SELECT DISTINCT table_name AS tableName, index_name AS indexName FROM information_schema.statistics
         WHERE table_schema = DATABASE()
       `),
     transaction.$queryRaw<Array<{ level: string; count: bigint }>>(Prisma.sql`
@@ -410,9 +410,9 @@ const schemaEvidence = async (
     migrationRows.length === 1 && migrationRows[0]!.checksum === migrationChecksum,
     "Administrative-region migration checksum is not applied exactly"
   );
-  const tables = tableRows.map((row) => row.table_name);
-  const columns = columnRows.map((row) => `${row.table_name}.${row.column_name}`);
-  const indexes = indexRows.map((row) => `${row.table_name}.${row.index_name}`);
+  const tables = tableRows.map((row) => row.tableName);
+  const columns = columnRows.map((row) => `${row.tableName}.${row.columnName}`);
+  const indexes = indexRows.map((row) => `${row.tableName}.${row.indexName}`);
   assertCondition(
     REQUIRED_TABLES.every((value) => tables.includes(value)),
     "Schema table missing"
