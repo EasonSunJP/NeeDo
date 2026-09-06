@@ -455,7 +455,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
     setAccountSearching(true);
     setAccountSearchError("");
     try {
-      const result = await platformUserManagementApi.listUsers({
+      const result = await platformUserManagementApi.listUsers("operations", {
         keyword,
         state: "active",
         page: 1,

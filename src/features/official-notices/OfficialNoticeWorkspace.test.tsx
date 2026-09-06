@@ -285,12 +285,15 @@ describe("official notice formal API interactions", () => {
     setField("メール、携帯番号または NeeDoID", "hanako@example.com");
     await click("アカウントを検索");
 
-    await waitFor(() => expect(state.listUsers).toHaveBeenCalledWith({
-      keyword: "hanako@example.com",
-      state: "active",
-      page: 1,
-      page_size: 20
-    }));
+    await waitFor(() => expect(state.listUsers).toHaveBeenCalledWith(
+      "operations",
+      {
+        keyword: "hanako@example.com",
+        state: "active",
+        page: 1,
+        page_size: 20
+      }
+    ));
     expect(container.textContent).toContain("u0000000009");
     expect(container.textContent).toContain("+819012345678");
     await click("u0000000009");
