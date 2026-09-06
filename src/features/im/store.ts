@@ -368,6 +368,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let hydrated = false;
   let hydrating: Promise<void> | null = null;
   let entityRefresh: Promise<void> | null = null;
+  let entityRefreshGeneration = 0;
   let snapshot = createInitialSnapshot();
   const failedTerminalMediaPurges = new Set<string>();
   const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
@@ -556,6 +557,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function rememberTracelessMessage(conversationId: string, messageId: string) {
     const messageIds = tracelessMessageIdsByConversation.get(conversationId) ?? new Set<string>();
+    if (!messageIds.has(messageId)) entityRefreshGeneration += 1;
     messageIds.add(messageId);
     tracelessMessageIdsByConversation.set(conversationId, messageIds);
   }
@@ -1752,23 +1754,29 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
 
     entityRefresh = (async () => {
-      const bootstrap = await api.bootstrap();
-      snapshot = {
-        ...snapshot,
-        currentUserId: bootstrap.currentUserId,
-        config: bootstrap.config,
-        users: bootstrap.users,
-        usersById: toUserRecord(bootstrap.users),
-        contacts: bootstrap.contacts,
-        organizationContacts: bootstrap.organizationContacts,
-        friendRequests: bootstrap.friendRequests,
-        conversations: sortConversations(applyDraftsToConversations(
-          bootstrap.conversations.map(sanitizeTracelessConversation),
-          snapshot.ui.drafts,
-        )),
-        members: bootstrap.members
-      };
-      emit();
+      let generation: number;
+      do {
+        generation = entityRefreshGeneration;
+        const bootstrap = await api.bootstrap();
+        // A recall invalidates pre-recall counters as well as message previews.
+        if (generation !== entityRefreshGeneration) continue;
+        snapshot = {
+          ...snapshot,
+          currentUserId: bootstrap.currentUserId,
+          config: bootstrap.config,
+          users: bootstrap.users,
+          usersById: toUserRecord(bootstrap.users),
+          contacts: bootstrap.contacts,
+          organizationContacts: bootstrap.organizationContacts,
+          friendRequests: bootstrap.friendRequests,
+          conversations: sortConversations(applyDraftsToConversations(
+            bootstrap.conversations.map(sanitizeTracelessConversation),
+            snapshot.ui.drafts,
+          )),
+          members: bootstrap.members
+        };
+        emit();
+      } while (generation !== entityRefreshGeneration);
     })().finally(() => {
       entityRefresh = null;
     });

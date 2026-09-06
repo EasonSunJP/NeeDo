@@ -198,14 +198,15 @@ export class PlatformMembershipService {
       return false;
     }
     const membership = await this.resolveMembershipAt(userId, occurredAt);
-    if (!membership.benefitCatalog) {
+    const publishedTier = await this.repository.findPublishedTierAt(membership.tierCode, occurredAt);
+    if (!publishedTier?.benefitCatalog) {
       throw new AppError({
         code: ERROR_CODES.INTERNAL,
         message: "error.platform_membership.benefit_catalog_unavailable",
         statusCode: 500
       });
     }
-    const benefit = membership.benefitCatalog?.find((item) => item.code === benefitCode);
+    const benefit = publishedTier.benefitCatalog.find((item) => item.code === benefitCode);
     if (!benefit) {
       throw new AppError({
         code: ERROR_CODES.INTERNAL,

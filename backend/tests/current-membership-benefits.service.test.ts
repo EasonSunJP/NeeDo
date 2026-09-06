@@ -89,9 +89,8 @@ const repository = (
     return current;
   }),
   findPublishedTierAt: jest.fn(async (tierCode, occurredAt: Date) => {
-    void tierCode;
     void occurredAt;
-    return free;
+    return tierCode === "free" ? free : current;
   }),
   findTierDraft: jest.fn(),
   saveTierDraftWithAudit: jest.fn(),
@@ -185,6 +184,39 @@ describe("current membership benefits", () => {
     await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(false);
     expect(repo.findActiveEntitlementAt).not.toHaveBeenCalled();
     expect(repo.findPublishedTierAt).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "uses the published v2 recall switch (%s) for an entitlement bound to archived v1",
+    async (enabled) => {
+      const archived = membership("gold");
+      archived.benefitCatalog!.find((item) => item.code === "traceless_recall")!.configuredEnabled = !enabled;
+      const published = membership("gold");
+      published.tierVersionPublicId = "gold-v2";
+      published.benefitCatalog!.find((item) => item.code === "traceless_recall")!.configuredEnabled = enabled;
+      const repo = repository(archived);
+      repo.findPublishedTierAt.mockResolvedValue(published);
+      const service = new PlatformMembershipService(repo, undefined, () => now);
+
+      await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(enabled);
+      expect(repo.findPublishedTierAt).toHaveBeenCalledWith("gold", now);
+      await expect(service.resolveMembershipAt(41, now)).resolves.toMatchObject({
+        tierVersionPublicId: "gold-v1",
+        multiplier: archived.multiplier,
+        theme: archived.theme
+      });
+    }
+  );
+
+  it("fails with a stable internal error when the effective tier has no published version", async () => {
+    const repo = repository(membership("gold"));
+    repo.findPublishedTierAt.mockResolvedValue(null);
+    const service = new PlatformMembershipService(repo, undefined, () => now);
+
+    await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).rejects.toMatchObject({
+      message: "error.platform_membership.benefit_catalog_unavailable",
+      statusCode: 500
+    });
   });
 
   it.each([
