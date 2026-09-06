@@ -243,6 +243,14 @@ const recalled = message({
   availableRecallModes: [],
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 describe("formal IM recall terminal precedence", () => {
   it("never lets a stale active row overwrite a confirmed recall tombstone", () => {
     expect(preferTerminalMessage(recalled, message())).toBe(recalled);
@@ -348,6 +356,45 @@ describe("formal IM recall terminal precedence", () => {
     expect(store?.messagesByConversation["91"]?.some((item) => item.type === "recalled")).toBe(false);
     expect(store?.conversations[0]).toMatchObject({ lastMessageId: "699", lastMessagePreview: "earlier" });
     expect(mocked.localCache.purgeMedia).toHaveBeenCalledWith("108", "91", "700");
+  });
+
+  it("does not reconcile a stale active send response after its traceless deletion barrier", async () => {
+    mocked.session = { activePublicId: "u0000010909", avatarUrl: null, id: 10_909, primaryPublicId: "u0000010909", username: "发送撤回测试用户" };
+    const pendingSend = deferred<{ conversation?: Conversation; message: ConversationMessage }>();
+    const staleResponse = message({ id: "701", localId: "701", content: "stale server content", sentAt: "2026-08-25T10:01:00.000Z" });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "10909", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation()], members: [] }),
+      sendMessage: vi.fn(() => pendingSend.promise),
+    };
+
+    await renderStore();
+    let sendPromise: Promise<ConversationMessage> | undefined;
+    await act(async () => {
+      sendPromise = store?.sendMessage("91", "text", "optimistic content");
+      await Promise.resolve();
+    });
+    expect(store?.messagesByConversation["91"]).toHaveLength(1);
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "message.deleted", conversationId: "91", messageId: "701", reason: "traceless_recall" });
+      pendingSend.resolve({
+        message: staleResponse,
+        conversation: conversation({ lastMessageId: "701", lastMessagePreview: "stale server content", lastMessageTime: staleResponse.sentAt }),
+      });
+      await sendPromise;
+    });
+
+    expect(store?.messagesByConversation["91"]).toEqual([]);
+    expect(store?.conversations[0]).toMatchObject({ lastMessagePreview: "" });
+    expect(store?.conversations[0]?.lastMessageId).toBeUndefined();
+  });
+
+  it("guards stale standard recall summary recomputation behind the traceless deletion barrier", () => {
+    const recomputeStart = storeSource.indexOf("function recomputeCurrentLastMessageSummary");
+    const recomputeEnd = storeSource.indexOf("function rebuildConversationMessageSummary", recomputeStart);
+    const recomputeSource = storeSource.slice(recomputeStart, recomputeEnd);
+
+    expect(recomputeSource).toContain("if (isTracelessMessage(message.conversationId, message.id)) return;");
   });
 
   it("purges encrypted media before refreshing an online privacy deletion", async () => {

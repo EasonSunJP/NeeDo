@@ -590,6 +590,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   }
 
   function recomputeCurrentLastMessageSummary(message: ConversationMessage) {
+    if (isTracelessMessage(message.conversationId, message.id)) return;
     snapshot = {
       ...snapshot,
       conversations: sortConversations(
@@ -869,6 +870,19 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function replaceLocalMessage(localId: string, nextMessage: ConversationMessage) {
     const current = snapshot.messagesByConversation[nextMessage.conversationId] ?? [];
+    if (isTracelessMessage(nextMessage.conversationId, nextMessage.id)) {
+      snapshot = {
+        ...snapshot,
+        messagesByConversation: {
+          ...snapshot.messagesByConversation,
+          [nextMessage.conversationId]: current.filter(
+            (message) => message.id !== localId && message.localId !== localId,
+          ),
+        },
+      };
+      rebuildConversationMessageSummary(nextMessage.conversationId);
+      return;
+    }
     const deduped = current
       .map((message) => (message.id === localId || message.localId === localId ? nextMessage : message))
       .filter((message, index, array) => array.findIndex((item) => item.id === message.id) === index);

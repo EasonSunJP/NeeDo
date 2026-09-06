@@ -49,3 +49,41 @@ Result: passed — 5 files, 234 tests, no warnings.
 ## Commit
 
 Pending local commit: `feat(im): remove traceless recalls from chat`
+
+## Follow-up: terminal-resurrection fixes
+
+### RED
+
+Command:
+
+```bash
+npm test -- --run src/features/realtime/api.test.ts src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/pages.test.ts
+```
+
+Result: failed as intended with two new regressions. A deferred optimistic send was replaced by a stale active response after a `traceless_recall` deletion barrier, and the summary recomputation path lacked a traceless-barrier guard. The focused suite reported 234 passed and 2 failed.
+
+### GREEN
+
+Command:
+
+```bash
+npm test -- --run src/features/realtime/api.test.ts src/features/im/formal-api.test.ts src/features/im/store.test.ts src/features/im/pages.test.ts
+```
+
+Result: passed — 5 files, 236 tests.
+
+### Production build
+
+Command:
+
+```bash
+npm run build
+```
+
+Result: passed (`tsc -b && vite build`, exit 0). Vite retained existing non-blocking warnings for a mixed static/dynamic SocialProfilePage import and chunks over the configured 3600 kB advisory threshold.
+
+### Follow-up self-review
+
+- `replaceLocalMessage` now removes its local optimistic counterpart and rebuilds the summary when the server message ID is already terminalized by a traceless deletion.
+- `recomputeCurrentLastMessageSummary` returns before processing a terminalized ID, so both the legacy `syncRealtime` path and the formal subscription path cannot turn a stale standard recall into a visible residue.
+- `upsertConversation` continues to sanitize traceless last-message IDs before a server response can update a preview.
