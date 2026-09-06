@@ -241,6 +241,7 @@ describe("BackofficeRepository managed users", () => {
         amendments: []
       }
     ]);
+    const auditFindMany = jest.fn(async () => []);
     const repository = new BackofficeRepository({
       user: { findFirst },
       wallet: { findMany: jest.fn(async () => [{ ownerId: 41, availableBalance: 900, frozenBalance: 0 }]) },
@@ -249,14 +250,20 @@ describe("BackofficeRepository managed users", () => {
         aggregate: jest.fn(async () => ({ _sum: { paymentAmountJpy: 18000 } }))
       },
       orderReview: { findMany: reviewFindMany },
-      auditLog: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) }
+      auditLog: { count: jest.fn(async () => 126), findMany: auditFindMany }
     } as never);
 
     const detail = await repository.getManagedUser(
-      { scope: "merchant", shopId: 11, userId: 41 },
+      { scope: "merchant", shopId: 11, userId: 41, audit_page: 2, audit_page_size: 50 },
       now
     );
 
+    expect(auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      skip: 50, take: 50,
+      where: { deletedAt: null, targetType: "User", targetId: 41, metadata: { path: "$.shopId", equals: 11 } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    }));
+    expect(detail?.audit).toMatchObject({ total: 126, page: 2, page_size: 50 });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: 41,

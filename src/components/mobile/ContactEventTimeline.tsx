@@ -129,7 +129,7 @@ export function ContactEventTimeline({
         return (
           <div
             className={cn(
-              "grid",
+              "contact-event-row grid",
               layout === "three-column"
                 ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
                 : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
@@ -154,7 +154,7 @@ export function ContactEventTimeline({
             </div>
             <div className={cn("min-w-0 pb-5", index === renderedEvents.length - 1 && "pb-0")}>
               <div className={cn(
-                "grid items-start",
+                "contact-event-avatar-row grid items-start",
                 layout === "three-column"
                   ? "grid-cols-[40px,minmax(0,1fr)] gap-2.5"
                   : "grid-cols-[32px,minmax(0,1fr)] gap-2 sm:grid-cols-[40px,minmax(0,1fr)] sm:gap-2.5"
@@ -278,7 +278,7 @@ function ContactEventTimelineCommentRow({
 
   return (
     <div className={cn(
-      "grid",
+      "contact-event-comment-row grid",
       layout === "three-column"
         ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
         : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
@@ -296,7 +296,7 @@ function ContactEventTimelineCommentRow({
         </button>
       </div>
       <div className="min-w-0 py-1">
-        <div className="grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
+        <div className="contact-event-avatar-row grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
           <ContactEventTimelineAvatar name={commentAuthorName} src={commentAuthorAvatarSrc} wide={layout === "three-column"} />
           <div className="min-w-0">
             {commentOpen ? (

@@ -185,6 +185,8 @@ const decodeUserDetail = (value: unknown): PlatformManagedUserDetail => {
       timelineCommentWrite: boolean(capabilities.timelineCommentWrite)
     },
     audit: {
+      page: integer(audit.page),
+      page_size: integer(audit.page_size),
       total: integer(audit.total),
       list: array(audit.list).map((item) => {
         const event = record(item);
@@ -424,6 +426,7 @@ const decodeUserUsageTimeline = (value: unknown): UserUsageTimeline => {
         code: string(event.code),
         occurredAt: timestamp(event.occurredAt),
         actorName: nullableString(event.actorName),
+        actorAvatarUrl: event.actorAvatarUrl === undefined ? null : nullableString(event.actorAvatarUrl),
         body: nullableString(event.body)
       };
     })
@@ -448,9 +451,9 @@ export const platformUserManagementApi = {
       decodeUser
     );
   },
-  async getUser(scope: UserDirectoryScope, userId: number) {
+  async getUser(scope: UserDirectoryScope, userId: number, query?: { audit_page: number; audit_page_size: 10 | 50 }) {
     const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
-    return decodeUserDetail(await httpClient.request<unknown>(`${path}/${userId}`));
+    return decodeUserDetail(await (query ? httpClient.request<unknown>(`${path}/${userId}`, { query }) : httpClient.request<unknown>(`${path}/${userId}`)));
   },
   adjustMembership(userId: number, body: UserMembershipAdjustmentInput) {
     return httpClient.request<unknown>(`/backoffice/users/${userId}/membership-adjustment`, {

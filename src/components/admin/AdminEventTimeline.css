@@ -1,0 +1,51 @@
+.admin-event-timeline {
+  --client-bg: var(--admin-bg, #f7f8fb);
+  --client-surface: var(--admin-surface, #ffffff);
+  --client-elevated: var(--admin-elevated, #f0f3f6);
+  --client-line: var(--admin-line, rgba(22, 54, 48, 0.12));
+  --client-text: var(--admin-text, #163630);
+  --client-muted: var(--admin-muted, #61706d);
+  --client-primary: var(--admin-accent, #3c887e);
+  --client-primary-contrast: var(--admin-bg, #ffffff);
+  min-width: 0;
+  container-type: inline-size;
+}
+.admin-event-timeline > section {
+  border-color: color-mix(in srgb, var(--client-line) 45%, transparent);
+  background: var(--client-surface);
+  box-shadow: none;
+}
+.admin-event-timeline .audit-event-metadata {
+  border: 0;
+  background: color-mix(in srgb, var(--client-bg) 38%, transparent);
+  font-weight: 500;
+}
+.admin-event-timeline .contact-event-row > :first-child {
+  font-weight: 500;
+}
+.admin-event-timeline .contact-event-row p {
+  font-weight: 500;
+}
+.admin-event-timeline .contact-event-row p > span:first-child {
+  font-weight: 750;
+}
+@container (max-width: 420px) {
+  .admin-event-timeline .contact-event-row > :first-child {
+    font-size: 10px;
+    white-space: pre;
+  }
+  .admin-event-timeline .contact-event-row,
+  .admin-event-timeline .contact-event-comment-row {
+    grid-template-columns: 72px 20px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .admin-event-timeline .contact-event-avatar-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 7px;
+  }
+  .admin-event-timeline .contact-event-avatar-row > span {
+    height: 28px;
+    width: 28px;
+    border-radius: 10px;
+  }
+}

@@ -6773,7 +6773,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   timelineCommentWrite: { type: "boolean" }
                 }
               },
-              audit: { type: "object" }
+              audit: { type: "object", required: ["list", "total", "page", "page_size"], properties: {
+                list: { type: "array", items: { $ref: "#/components/schemas/BackofficeAuditEvent" } },
+                total: { type: "integer", minimum: 0 }, page: { type: "integer", minimum: 1 },
+                page_size: { type: "integer", enum: [10, 50] }
+              } }
             }
           }
         ]
@@ -6926,6 +6930,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           code: { type: "string" },
           occurredAt: { type: "string", format: "date-time" },
           actorName: { type: ["string", "null"] },
+          actorAvatarUrl: { type: ["string", "null"] },
           body: { type: ["string", "null"] }
         }
       },
@@ -21250,11 +21255,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read one all-user management detail",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:users:read",
-        parameters: [idPathParameter("userId")],
+        parameters: [idPathParameter("userId"),
+          { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } }
+        ],
         responses: {
           "200": jsonDataResponse("All-user detail", {
             $ref: "#/components/schemas/BackofficeManagedUserDetail"
           }),
+          "400": { description: "Invalid audit pagination" },
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User not found" }
@@ -24646,11 +24655,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read a canonical user detail scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:customers:list",
-        parameters: [idPathParameter("userId")],
+        parameters: [idPathParameter("userId"),
+          { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } }
+        ],
         responses: {
           "200": jsonDataResponse("Scoped user detail", {
             $ref: "#/components/schemas/BackofficeManagedUserDetail"
           }),
+          "400": { description: "Invalid audit pagination" },
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User absent from the authenticated shop" }

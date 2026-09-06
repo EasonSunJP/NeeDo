@@ -94,6 +94,7 @@ export type UserUsageTimelineEntry = {
   code: string;
   occurredAt: string;
   actorName: string | null;
+  actorAvatarUrl?: string | null;
   body: string | null;
 };
 export type UserUsageTimeline = { order: UserUsage; timeline: UserUsageTimelineEntry[] };
@@ -180,6 +181,8 @@ export type PlatformManagedUserDetail = PlatformManagedUser & {
     timelineCommentWrite: boolean;
   };
   audit: {
+    page?: number;
+    page_size?: number;
     total: number;
     list: Array<{
       id: string;

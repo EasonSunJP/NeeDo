@@ -34,6 +34,27 @@ describe("BackofficeUserUsageRepository", () => {
     );
   });
 
+  it("projects real actor avatars and hides operations-only comments from merchants", async () => {
+    const at = new Date("2026-09-05T08:00:00.000Z");
+    const findFirst = jest.fn(async () => ({
+      id: 88, orderNo: "B-88", status: "CONFIRMED", paymentStatus: "UNPAID",
+      paymentRefundedAt: null, paymentRefundReference: null, paymentRefundReason: null,
+      priceAmount: 8800, currency: "JPY", createdAt: at, startsAt: at, endsAt: at,
+      serviceNameSnapshot: "Care", service: null, shop: { name: "Shop" }, technicianProfile: null,
+      refundAmendments: [], serviceEvents: [],
+      statusHistory: [{ id: 1, toStatus: "CONFIRMED", reason: null, createdAt: at,
+        actor: { username: "Mika", avatarUrl: "/media/mika.png" } }],
+      timelineComments: [{ id: 2, visibility: "backoffice", body: "Operations note", createdAt: at,
+        actor: { username: "Admin", avatarUrl: "/media/admin.png" } }]
+    }));
+    const repository = new BackofficeUserUsageRepository({ bookingOrder: { findFirst } } as never);
+    const merchant = await repository.getTimeline({ scope: "merchant", shopId: 11, userId: 41, orderId: 88 });
+    expect(merchant?.timeline).toContainEqual(expect.objectContaining({ actorName: "Mika", actorAvatarUrl: "/media/mika.png" }));
+    expect(merchant?.timeline.some((event) => event.type === "comment")).toBe(false);
+    const operations = await repository.getTimeline({ scope: "platform", userId: 41, orderId: 88 });
+    expect(operations?.timeline).toContainEqual(expect.objectContaining({ actorName: "Admin", actorAvatarUrl: "/media/admin.png", body: "Operations note" }));
+  });
+
   it("appends comments and refund corrections without updating or deleting source facts", async () => {
     const transaction = {
       $queryRaw: jest.fn(async () => [{ id: 88 }]),
