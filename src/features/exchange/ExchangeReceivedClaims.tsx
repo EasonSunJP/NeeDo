@@ -5,6 +5,7 @@ import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
 import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import {
+  confirmQuickExchangeBudget,
   createExchangeMatchingBookings,
   getExchangeMatching,
   listReceivedExchangeClaims,
@@ -214,6 +215,8 @@ export function ExchangeReceivedClaims({
   const [error, setError] = useState(false);
   const [matchingError, setMatchingError] = useState(false);
   const [matchingPending, setMatchingPending] = useState(false);
+  const [quickBudgetError, setQuickBudgetError] = useState(false);
+  const [quickBudgetChangedRefreshed, setQuickBudgetChangedRefreshed] = useState(false);
   const [bookingPending, setBookingPending] = useState(false);
   const [bookingError, setBookingError] = useState(false);
   const [bookingStaleRefreshed, setBookingStaleRefreshed] = useState(false);
@@ -221,6 +224,7 @@ export function ExchangeReceivedClaims({
     useState<ExchangeMatchAdjustmentPreview | null>(null);
   const [adjustmentChanged, setAdjustmentChanged] = useState(false);
   const selectionAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+  const quickBudgetAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const bookingAttemptRef = useRef<{ signature: string; key: string } | null>(null);
 
   useEffect(() => {
@@ -228,12 +232,15 @@ export function ExchangeReceivedClaims({
     setLoading(true);
     setError(false);
     setMatchingError(false);
+    setQuickBudgetError(false);
+    setQuickBudgetChangedRefreshed(false);
     setBookingError(false);
     setBookingStaleRefreshed(false);
     setSelectedClaimIds([]);
     setAdjustmentPreview(null);
     setAdjustmentChanged(false);
     selectionAttemptRef.current = null;
+    quickBudgetAttemptRef.current = null;
     bookingAttemptRef.current = null;
     void Promise.all([
       listReceivedExchangeClaims(postId, {
@@ -319,6 +326,60 @@ export function ExchangeReceivedClaims({
       }
     } finally {
       setBookingPending(false);
+    }
+  }
+
+  async function confirmQuickBudgetDecision() {
+    const decision = matching?.quickBudgetDecision;
+    if (
+      !matching ||
+      matching.status !== "open" ||
+      !matching.viewer.canConfirmQuickBudget ||
+      !decision ||
+      matchingPending
+    ) {
+      return;
+    }
+    const input = {
+      expectedVersion: matching.version,
+      budgetConfirmation: {
+        action: decision.action,
+        confirmedBudgetMaxJpy: decision.requiredBudgetMaxJpy
+      }
+    } as const;
+    const signature = JSON.stringify({ postId, ...input });
+    const attempt =
+      quickBudgetAttemptRef.current?.signature === signature
+        ? quickBudgetAttemptRef.current
+        : { signature, key: globalThis.crypto.randomUUID() };
+    quickBudgetAttemptRef.current = attempt;
+    setMatchingPending(true);
+    setQuickBudgetError(false);
+    setQuickBudgetChangedRefreshed(false);
+    try {
+      const completed = await confirmQuickExchangeBudget(postId, input, attempt.key);
+      setMatching(completed);
+      quickBudgetAttemptRef.current = null;
+      try {
+        await refreshPersistedState();
+      } catch {
+        setError(true);
+      }
+      onMatched?.();
+    } catch (caught) {
+      if (caught instanceof ApiClientError && caught.status === 409) {
+        quickBudgetAttemptRef.current = null;
+        try {
+          await refreshPersistedState();
+          setQuickBudgetChangedRefreshed(true);
+        } catch {
+          setError(true);
+        }
+      } else {
+        setQuickBudgetError(true);
+      }
+    } finally {
+      setMatchingPending(false);
     }
   }
 
@@ -437,11 +498,19 @@ export function ExchangeReceivedClaims({
         </div>
         <span className="rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-bg-soft)] px-3 py-1.5 text-[10px] font-black text-[color:var(--client-muted)]">{total}</span>
       </div>
-      <p className="mt-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">{t("receivedClaimsIntro")}</p>
+      <p className="mt-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">
+        {t(
+          matching?.status === "open" && !matching.viewer.canSelect
+            ? "receivedQuickClaimsIntro"
+            : "receivedClaimsIntro"
+        )}
+      </p>
 
       {loading ? <p className="mt-5 text-sm font-bold text-[color:var(--client-muted)]">{t("matchingLoading")}</p> : null}
       {error ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("receivedClaimsFailed")}</p> : null}
       {matchingError ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("matchingFailed")}</p> : null}
+      {quickBudgetError ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("quickConfirmFailed")}</p> : null}
+      {quickBudgetChangedRefreshed ? <p className="mt-5 text-sm font-bold text-[color:var(--client-primary)]" role="status">{t("quickBudgetChangedRefreshed")}</p> : null}
       {bookingError ? <p className="mt-5 text-sm font-bold text-[color:var(--client-accent)]" role="alert">{t("bookingCreateFailed")}</p> : null}
       {bookingStaleRefreshed ? <p className="mt-5 text-sm font-bold text-[color:var(--client-primary)]" role="status">{t("bookingStaleRefreshed")}</p> : null}
       {!loading && !error && claims.length === 0 ? <p className="mt-5 rounded-[20px] bg-[color:var(--client-bg-soft)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">{t("receivedClaimsEmpty")}</p> : null}
@@ -458,7 +527,7 @@ export function ExchangeReceivedClaims({
               <dd className="mt-1 text-lg font-black text-[color:var(--client-primary)]">¥{matching.effectiveBudgetMaxJpy.toLocaleString("ja-JP")}</dd>
             </div>
           </dl>
-          {matching.status === "open" ? (
+          {matching.status === "open" && matching.viewer.canSelect ? (
             <>
               <div className="mt-3 flex items-center justify-between gap-3 text-xs font-black">
                 <span className="text-[color:var(--client-muted)]">{t("matchingSelectedCount")} {selectedClaimIds.length}/{matching.effectiveTargetProviderCount}</span>
@@ -480,12 +549,75 @@ export function ExchangeReceivedClaims({
                 </p>
               ) : null}
             </>
+          ) : matching.status === "open" ? (
+            <div className="mt-3 rounded-2xl bg-[color:var(--client-bg)] px-3 py-3">
+              <p className="text-sm font-black text-[color:var(--client-primary)]">
+                {t(matching.quickBudgetDecision ? "quickTargetReached" : "quickMatchingWaiting")}
+              </p>
+              <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
+                {t(
+                  matching.quickBudgetDecision
+                    ? "quickBudgetExceeded"
+                    : "quickMatchingWaitingDetail"
+                )}
+              </p>
+            </div>
           ) : (
             <div className="mt-3 rounded-2xl bg-[color:var(--client-primary-soft)] px-3 py-3">
               <p className="text-sm font-black text-[color:var(--client-primary)]">{t("matchingCompleted")}</p>
               <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("matchingNoBooking")}</p>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {matching?.status === "open" &&
+      matching.viewer.canConfirmQuickBudget &&
+      matching.quickBudgetDecision ? (
+        <div
+          className="mt-4 min-w-0 rounded-[22px] border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-4"
+          data-testid="exchange-quick-budget-decision"
+        >
+          <h3 className="text-sm font-black text-[color:var(--client-primary)]">
+            {t("quickTargetReached")}
+          </h3>
+          <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-text)]">
+            {t("quickBudgetExceeded")}
+          </p>
+          <dl className="mt-3 grid min-w-0 gap-2 text-xs sm:grid-cols-2">
+            <div className="min-w-0 rounded-2xl bg-[color:var(--client-bg)] p-3">
+              <dt className="font-black text-[color:var(--client-muted)]">
+                {t("matchingTarget")}
+              </dt>
+              <dd className="mt-1 break-words text-base font-black text-[color:var(--client-text)]">
+                {matching.quickBudgetDecision.activeClaimCount}/
+                {matching.effectiveTargetProviderCount}
+              </dd>
+            </div>
+            <div className="min-w-0 rounded-2xl bg-[color:var(--client-bg)] p-3">
+              <dt className="font-black text-[color:var(--client-muted)]">
+                {t("matchingBudgetIncreaseProposal")}
+              </dt>
+              <dd className="mt-1 break-words text-base font-black text-[color:var(--client-text)]">
+                ¥{matching.quickBudgetDecision.effectiveBudgetMaxJpy.toLocaleString("ja-JP")} → ¥
+                {matching.quickBudgetDecision.requiredBudgetMaxJpy.toLocaleString("ja-JP")}
+              </dd>
+              <dd className="mt-1 font-black text-[color:var(--client-primary)]">
+                {t("matchingBudgetIncreaseAmount")} ¥
+                {matching.quickBudgetDecision.requiredBudgetIncreaseJpy.toLocaleString("ja-JP")}
+              </dd>
+            </div>
+          </dl>
+          <button
+            className="focus-ring mt-3 min-h-12 w-full rounded-2xl bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-40"
+            data-action="confirm-quick-exchange-budget"
+            disabled={matchingPending}
+            onClick={() => void confirmQuickBudgetDecision()}
+            type="button"
+          >
+            {t(matchingPending ? "quickConfirming" : "quickConfirmAll")} · ¥
+            {matching.quickBudgetDecision.requiredBudgetMaxJpy.toLocaleString("ja-JP")}
+          </button>
         </div>
       ) : null}
 

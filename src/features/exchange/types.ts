@@ -75,6 +75,15 @@ export type ExchangeClaimMine = {
 
 export type ExchangeMatchingStatus = "open" | "matched" | "closed";
 
+export type ExchangeQuickBudgetDecision = {
+  action: "increase_to_selected_total";
+  activeClaimCount: number;
+  selectedQuoteTotalJpy: number;
+  effectiveBudgetMaxJpy: number;
+  requiredBudgetMaxJpy: number;
+  requiredBudgetIncreaseJpy: number;
+};
+
 export type ExchangeMatchParticipant = {
   exchangeClaimId: number;
   provider: { publicId: string; displayName: string; avatarUrl: string | null };
@@ -155,7 +164,12 @@ export type ExchangeMatching = {
   selectedQuoteTotalJpy: number;
   matchedAt: string | null;
   participants: ExchangeMatchParticipant[];
-  viewer: { canSelect: boolean; canCreateBookings: boolean };
+  quickBudgetDecision: ExchangeQuickBudgetDecision | null;
+  viewer: {
+    canSelect: boolean;
+    canConfirmQuickBudget: boolean;
+    canCreateBookings: boolean;
+  };
 };
 
 export type ExchangeMatchAdjustmentPreview = {
@@ -182,6 +196,14 @@ export type SelectExchangeMatchingInput = {
     action: "reduce_to_selected_count";
     confirmedTargetProviderCount: number;
   } | null;
+};
+
+export type ConfirmQuickExchangeBudgetInput = {
+  expectedVersion: number;
+  budgetConfirmation: {
+    action: "increase_to_selected_total";
+    confirmedBudgetMaxJpy: number;
+  };
 };
 
 export type ExchangeClaimOptionListInput = PaginationInput & {

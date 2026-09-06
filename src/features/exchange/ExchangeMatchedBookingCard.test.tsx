@@ -34,7 +34,12 @@ describe("ExchangeMatchedBookingCard", () => {
       effectiveBudgetMaxJpy: 20_000,
       selectedQuoteTotalJpy: 19_000,
       matchedAt: "2026-09-03T04:00:00.000Z",
-      viewer: { canSelect: false, canCreateBookings: false },
+      quickBudgetDecision: null,
+      viewer: {
+        canSelect: false,
+        canConfirmQuickBudget: false,
+        canCreateBookings: false
+      },
       participants: [{
         exchangeClaimId: 1,
         provider: { publicId: "NT0000001", displayName: "技师一", avatarUrl: null },

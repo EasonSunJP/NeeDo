@@ -359,7 +359,7 @@ Run the command from Step 2.
 
 Expected: all suites pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/repositories/exchange.repository.ts backend/src/services/exchange.service.ts backend/src/repositories/exchange-claim.repository.ts backend/tests/exchange.repository.test.ts backend/tests/exchange.service.test.ts backend/tests/exchange-claim.repository.test.ts
@@ -384,17 +384,17 @@ git commit -m "feat(exchange): publish quick claim capacity"
 - Consumes: `ExchangeMatching.quickBudgetDecision` and `viewer.canConfirmQuickBudget`.
 - Produces: `confirmQuickExchangeBudget(postId, input, idempotencyKey)`.
 
-- [ ] **Step 1: Write failing API and component tests**
+- [x] **Step 1: Write failing API and component tests**
 
 Cover Quick provider claim submission, matched claim rendering without withdrawal, owner received-claim cards without checkboxes, exact over-budget preview content, disabled button during request, retry reuse of the same idempotency key, stale-version refresh, successful persisted match rendering, and absence of subset controls. Test all five locale keys and 320 px/440 px class constraints.
 
-- [ ] **Step 2: Run frontend tests and verify RED**
+- [x] **Step 2: Run frontend tests and verify RED**
 
 Run: `npx vitest run src/features/exchange/api.test.ts src/features/exchange/ExchangeClaimPanel.test.tsx src/features/exchange/ExchangeReceivedClaims.test.tsx src/features/exchange/ExchangePostDetailPage.test.tsx`
 
 Expected: FAIL because Quick claims and owner confirmation are not connected.
 
-- [ ] **Step 3: Add client types and API call**
+- [x] **Step 3: Add client types and API call**
 
 Mirror the backend preview exactly and add:
 
@@ -412,21 +412,21 @@ export function confirmQuickExchangeBudget(
 }
 ```
 
-- [ ] **Step 4: Reuse the existing panels without parallel UI**
+- [x] **Step 4: Reuse the existing panels without parallel UI**
 
 Show `ExchangeClaimPanel` whenever the server says `canClaim`, regardless of mode. In `ExchangeReceivedClaims`, branch only the interaction controls: Selective retains checkboxes and selection preview; Quick shows read-only claim cards and the server-owned exact budget decision. Confirmation sends only `expectedVersion` and the exact budget object and refreshes matching/claims after every 409 or success.
 
-- [ ] **Step 5: Add complete five-language copy**
+- [x] **Step 5: Add complete five-language copy**
 
 Add labels for “Quick matching waiting”, “Target reached”, “Total quote exceeds budget”, “Increase budget to ¥X and match all”, “Budget changed; refreshed”, and the matched/failed states in Simplified Chinese, Traditional Chinese, Japanese, English, and Korean. Authored provider messages stay unmodified.
 
-- [ ] **Step 6: Run frontend tests and build**
+- [x] **Step 6: Run frontend tests and build**
 
 Run the command from Step 2, then `npm run build`.
 
 Expected: all focused tests pass and production build exits 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/features/exchange/types.ts src/features/exchange/api.ts src/features/exchange/api.test.ts src/features/exchange/ExchangeClaimPanel.tsx src/features/exchange/ExchangeClaimPanel.test.tsx src/features/exchange/ExchangeReceivedClaims.tsx src/features/exchange/ExchangeReceivedClaims.test.tsx src/features/exchange/ExchangePostDetailPage.tsx src/features/exchange/ExchangePostDetailPage.test.tsx src/features/exchange/i18n.ts

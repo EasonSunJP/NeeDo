@@ -364,6 +364,24 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("选择服务者完成匹配");
   });
 
+  it("labels the owner Quick inbox without suggesting manual provider selection", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
+      demand: { ...demandPost.demand!, matchMode: "quick" }
+    });
+    await renderDetail();
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull()
+    );
+
+    const inboxButton = document.body.querySelector<HTMLButtonElement>(
+      '[data-action="matching-inbox"]'
+    );
+    expect(inboxButton?.textContent).toBe("查看速配状态");
+    expect(document.body.textContent).not.toContain("选择服务者完成匹配");
+  });
+
   it("keeps the formal claim composition free of local or fake workflow bridges", () => {
     expect(appSource).not.toContain("/needo/posts/:postId/customer");
     expect(appSource).not.toContain("NeedoPostCustomerRoutePage");

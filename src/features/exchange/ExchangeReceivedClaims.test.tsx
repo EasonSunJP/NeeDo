@@ -4,15 +4,18 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../api/httpClient";
 import {
+  confirmQuickExchangeBudget,
   createExchangeMatchingBookings,
   getExchangeMatching,
   listReceivedExchangeClaims,
   selectExchangeMatching
 } from "./api";
 import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
+import { exchangeText } from "./i18n";
 import type { ExchangeClaim, ExchangeMatching } from "./types";
 
 vi.mock("./api", () => ({
+  confirmQuickExchangeBudget: vi.fn(),
   createExchangeMatchingBookings: vi.fn(),
   getExchangeMatching: vi.fn(),
   listReceivedExchangeClaims: vi.fn(),
@@ -52,7 +55,12 @@ function matching(overrides: Partial<ExchangeMatching> = {}): ExchangeMatching {
     selectedQuoteTotalJpy: 0,
     matchedAt: null,
     participants: [],
-    viewer: { canSelect: true, canCreateBookings: false },
+    quickBudgetDecision: null,
+    viewer: {
+      canSelect: true,
+      canConfirmQuickBudget: false,
+      canCreateBookings: false
+    },
     ...overrides
   };
 }
@@ -113,6 +121,286 @@ describe("ExchangeReceivedClaims", () => {
     expect(Array.from(document.body.querySelectorAll("button")).map((button) => button.textContent).join(" ")).not.toMatch(/追加预算|预约|支付/u);
   });
 
+  it("shows the exact Quick budget decision without provider selection controls and confirms all claims", async () => {
+    const activeClaims = [claim(1, "一号技师原文留言", 15_000), claim(2, "二号技师原文留言", 16_000)];
+    const matchedClaims = activeClaims.map((item) => ({
+      ...item,
+      status: "matched" as const,
+      terminalAt: "2026-09-01T03:00:00.000Z"
+    }));
+    const quickOpen = matching({
+      effectiveTargetProviderCount: 2,
+      effectiveBudgetMaxJpy: 30_000,
+      quickBudgetDecision: {
+        action: "increase_to_selected_total",
+        activeClaimCount: 2,
+        selectedQuoteTotalJpy: 31_000,
+        effectiveBudgetMaxJpy: 30_000,
+        requiredBudgetMaxJpy: 31_000,
+        requiredBudgetIncreaseJpy: 1_000
+      },
+      viewer: {
+        canSelect: false,
+        canConfirmQuickBudget: true,
+        canCreateBookings: false
+      }
+    });
+    const quickMatched = matching({
+      status: "matched",
+      version: 7,
+      effectiveTargetProviderCount: 2,
+      effectiveBudgetMaxJpy: 31_000,
+      selectedQuoteTotalJpy: 31_000,
+      matchedAt: "2026-09-01T03:00:00.000Z",
+      quickBudgetDecision: null,
+      viewer: {
+        canSelect: false,
+        canConfirmQuickBudget: false,
+        canCreateBookings: false
+      }
+    });
+    vi.mocked(listReceivedExchangeClaims)
+      .mockResolvedValueOnce({ list: activeClaims, total: 2, page: 1, page_size: 10 })
+      .mockResolvedValueOnce({ list: matchedClaims, total: 2, page: 1, page_size: 10 });
+    vi.mocked(getExchangeMatching)
+      .mockResolvedValueOnce(quickOpen)
+      .mockResolvedValueOnce(quickMatched);
+    vi.mocked(confirmQuickExchangeBudget).mockResolvedValue(quickMatched);
+    const onMatched = vi.fn();
+
+    await act(async () =>
+      root.render(<ExchangeReceivedClaims language="zh" onMatched={onMatched} postId="41" />)
+    );
+    await waitFor(() =>
+      expect(
+        document.body.querySelector('[data-testid="exchange-quick-budget-decision"]')
+      ).not.toBeNull()
+    );
+
+    const decisionCard = document.body.querySelector<HTMLElement>(
+      '[data-testid="exchange-quick-budget-decision"]'
+    )!;
+    const decisionGridClasses = decisionCard.querySelector("dl")!.className.split(/\s+/u);
+    expect(decisionCard.className).toContain("min-w-0");
+    expect(decisionGridClasses).toContain("sm:grid-cols-2");
+    expect(decisionGridClasses).not.toContain("grid-cols-2");
+    expect(
+      decisionCard.querySelector<HTMLButtonElement>(
+        '[data-action="confirm-quick-exchange-budget"]'
+      )?.className
+    ).toContain("w-full");
+    expect(document.body.querySelector('[data-match-claim-id="1"]')).toBeNull();
+    expect(document.body.querySelector('[data-match-claim-id="2"]')).toBeNull();
+    expect(document.body.textContent).toContain("GINZA Calm Body Lab");
+    expect(document.body.textContent).toContain("技师 1");
+    expect(document.body.textContent).toContain("真实服务 2");
+    expect(document.body.textContent).toContain("一号技师原文留言");
+    expect(document.body.textContent).toContain("¥30,000 → ¥31,000");
+    expect(document.body.textContent).toContain("增加 ¥1,000");
+
+    await act(async () =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-action="confirm-quick-exchange-budget"]')!
+        .click()
+    );
+    await waitFor(() => expect(document.body.textContent).toContain("匹配已完成"));
+
+    expect(confirmQuickExchangeBudget).toHaveBeenCalledWith(
+      "41",
+      {
+        expectedVersion: 6,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      },
+      "exchange-match-select-0001"
+    );
+    expect(getExchangeMatching).toHaveBeenCalledTimes(2);
+    expect(listReceivedExchangeClaims).toHaveBeenCalledTimes(2);
+    expect(onMatched).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the exact Quick confirmation while its formal request is pending", async () => {
+    vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
+      list: [claim(1, "first", 31_000)],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    vi.mocked(getExchangeMatching).mockResolvedValue(
+      matching({
+        effectiveBudgetMaxJpy: 30_000,
+        quickBudgetDecision: {
+          action: "increase_to_selected_total",
+          activeClaimCount: 1,
+          selectedQuoteTotalJpy: 31_000,
+          effectiveBudgetMaxJpy: 30_000,
+          requiredBudgetMaxJpy: 31_000,
+          requiredBudgetIncreaseJpy: 1_000
+        },
+        viewer: {
+          canSelect: false,
+          canConfirmQuickBudget: true,
+          canCreateBookings: false
+        }
+      })
+    );
+    vi.mocked(confirmQuickExchangeBudget).mockImplementation(
+      () => new Promise<ExchangeMatching>(() => undefined)
+    );
+
+    await act(async () => root.render(<ExchangeReceivedClaims language="zh" postId="41" />));
+    await waitFor(() =>
+      expect(
+        document.body.querySelector('[data-action="confirm-quick-exchange-budget"]')
+      ).not.toBeNull()
+    );
+    const button = document.body.querySelector<HTMLButtonElement>(
+      '[data-action="confirm-quick-exchange-budget"]'
+    )!;
+    await act(async () => button.click());
+
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain("正在确认速配");
+    expect(confirmQuickExchangeBudget).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the same Quick budget idempotency key after a network failure", async () => {
+    vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
+      list: [claim(1, "first", 31_000)],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    vi.mocked(getExchangeMatching).mockResolvedValue(
+      matching({
+        quickBudgetDecision: {
+          action: "increase_to_selected_total",
+          activeClaimCount: 1,
+          selectedQuoteTotalJpy: 31_000,
+          effectiveBudgetMaxJpy: 30_000,
+          requiredBudgetMaxJpy: 31_000,
+          requiredBudgetIncreaseJpy: 1_000
+        },
+        viewer: {
+          canSelect: false,
+          canConfirmQuickBudget: true,
+          canCreateBookings: false
+        }
+      })
+    );
+    vi.mocked(confirmQuickExchangeBudget).mockRejectedValue(new Error("network failed"));
+    vi.mocked(globalThis.crypto.randomUUID).mockReturnValue(
+      "123e4567-e89b-42d3-a456-426614174011"
+    );
+
+    await act(async () => root.render(<ExchangeReceivedClaims language="zh" postId="41" />));
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-action="confirm-quick-exchange-budget"]')).not.toBeNull()
+    );
+    const button = () =>
+      document.body.querySelector<HTMLButtonElement>(
+        '[data-action="confirm-quick-exchange-budget"]'
+      )!;
+    await act(async () => button().click());
+    await waitFor(() => expect(document.body.textContent).toContain("速配确认失败，请重试"));
+    await act(async () => button().click());
+    await waitFor(() => expect(confirmQuickExchangeBudget).toHaveBeenCalledTimes(2));
+
+    expect(vi.mocked(confirmQuickExchangeBudget).mock.calls[0]?.[2]).toBe(
+      "123e4567-e89b-42d3-a456-426614174011"
+    );
+    expect(vi.mocked(confirmQuickExchangeBudget).mock.calls[1]?.[2]).toBe(
+      "123e4567-e89b-42d3-a456-426614174011"
+    );
+  });
+
+  it("refreshes the exact Quick decision after a stale version conflict", async () => {
+    vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
+      list: [claim(1, "first", 32_000)],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    vi.mocked(getExchangeMatching)
+      .mockResolvedValueOnce(
+        matching({
+          effectiveBudgetMaxJpy: 30_000,
+          quickBudgetDecision: {
+            action: "increase_to_selected_total",
+            activeClaimCount: 1,
+            selectedQuoteTotalJpy: 31_000,
+            effectiveBudgetMaxJpy: 30_000,
+            requiredBudgetMaxJpy: 31_000,
+            requiredBudgetIncreaseJpy: 1_000
+          },
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: true,
+            canCreateBookings: false
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        matching({
+          version: 7,
+          effectiveBudgetMaxJpy: 30_000,
+          quickBudgetDecision: {
+            action: "increase_to_selected_total",
+            activeClaimCount: 1,
+            selectedQuoteTotalJpy: 32_000,
+            effectiveBudgetMaxJpy: 30_000,
+            requiredBudgetMaxJpy: 32_000,
+            requiredBudgetIncreaseJpy: 2_000
+          },
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: true,
+            canCreateBookings: false
+          }
+        })
+      );
+    vi.mocked(confirmQuickExchangeBudget).mockRejectedValueOnce(
+      new ApiClientError("error.exchange.match_version_conflict", 40901, 409, null)
+    );
+
+    await act(async () => root.render(<ExchangeReceivedClaims language="zh" postId="41" />));
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-action="confirm-quick-exchange-budget"]')).not.toBeNull()
+    );
+    await act(async () =>
+      document.body
+        .querySelector<HTMLButtonElement>('[data-action="confirm-quick-exchange-budget"]')!
+        .click()
+    );
+    await waitFor(() => expect(document.body.textContent).toContain("预算状态已变化，已刷新正式数据"));
+
+    expect(document.body.textContent).toContain("¥30,000 → ¥32,000");
+    expect(document.body.textContent).not.toContain("速配确认失败，请重试");
+    expect(getExchangeMatching).toHaveBeenCalledTimes(2);
+  });
+
+  it("provides complete Quick matching copy in all five supported languages", () => {
+    const languages = ["zh", "zh-Hant", "ja", "en", "ko"] as const;
+    const keys = [
+      "quickMatchingWaiting",
+      "quickTargetReached",
+      "quickBudgetExceeded",
+      "quickConfirmAll",
+      "quickBudgetChangedRefreshed",
+      "quickConfirmFailed",
+      "quickMatchingStatus"
+    ] as const;
+
+    for (const language of languages) {
+      for (const key of keys) {
+        expect(exchangeText(key, language)).not.toBe(key);
+        expect(exchangeText(key, language).trim()).not.toBe("");
+      }
+    }
+  });
+
   it("enables exact selection only at the effective count and budget, then persists one versioned match", async () => {
     vi.mocked(listReceivedExchangeClaims).mockResolvedValue({
       list: [claim(1, "first", 11_000), claim(2, "second", 13_000)],
@@ -126,7 +414,11 @@ describe("ExchangeReceivedClaims", () => {
         version: 7,
         selectedQuoteTotalJpy: 11_000,
         matchedAt: "2026-09-01T03:00:00.000Z",
-        viewer: { canSelect: false, canCreateBookings: false },
+        viewer: {
+          canSelect: false,
+          canConfirmQuickBudget: false,
+          canCreateBookings: false
+        },
         participants: [
           {
             exchangeClaimId: 1,
@@ -226,7 +518,11 @@ describe("ExchangeReceivedClaims", () => {
           effectiveBudgetMaxJpy: 30_000,
           selectedQuoteTotalJpy: 11_000,
           matchedAt: "2026-09-01T03:00:00.000Z",
-          viewer: { canSelect: false, canCreateBookings: false }
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: false,
+            canCreateBookings: false
+          }
         })
       );
 
@@ -447,7 +743,11 @@ describe("ExchangeReceivedClaims", () => {
           status: "matched",
           version: 7,
           matchedAt: "2026-09-03T04:00:00.000Z",
-          viewer: { canSelect: false, canCreateBookings: true },
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: false,
+            canCreateBookings: true
+          },
           participants: [
             {
               exchangeClaimId: 1,
@@ -470,7 +770,11 @@ describe("ExchangeReceivedClaims", () => {
         matching({
           status: "matched",
           version: 8,
-          viewer: { canSelect: false, canCreateBookings: false },
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: false,
+            canCreateBookings: false
+          },
           participants: [
             {
               exchangeClaimId: 1,
@@ -514,7 +818,15 @@ describe("ExchangeReceivedClaims", () => {
   it("refreshes persisted matching state after a stale booking version without reporting a generic creation failure", async () => {
     vi.mocked(listReceivedExchangeClaims).mockResolvedValue({ list: [claim(1, "first")], total: 1, page: 1, page_size: 10 });
     vi.mocked(getExchangeMatching).mockResolvedValue(
-      matching({ status: "matched", version: 7, viewer: { canSelect: false, canCreateBookings: true } })
+      matching({
+        status: "matched",
+        version: 7,
+        viewer: {
+          canSelect: false,
+          canConfirmQuickBudget: false,
+          canCreateBookings: true
+        }
+      })
     );
     vi.mocked(createExchangeMatchingBookings).mockRejectedValueOnce(
       new ApiClientError("error.exchange.match_booking_version_conflict", 40901, 409, null)
@@ -532,7 +844,15 @@ describe("ExchangeReceivedClaims", () => {
   it("reuses a failed booking idempotency key until the persisted matching version changes", async () => {
     vi.mocked(listReceivedExchangeClaims).mockResolvedValue({ list: [claim(1, "first")], total: 1, page: 1, page_size: 10 });
     vi.mocked(getExchangeMatching).mockResolvedValue(
-      matching({ status: "matched", version: 7, viewer: { canSelect: false, canCreateBookings: true } })
+      matching({
+        status: "matched",
+        version: 7,
+        viewer: {
+          canSelect: false,
+          canConfirmQuickBudget: false,
+          canCreateBookings: true
+        }
+      })
     );
     vi.mocked(createExchangeMatchingBookings).mockRejectedValue(new Error("network failed"));
     vi.mocked(globalThis.crypto.randomUUID).mockReturnValue("123e4567-e89b-42d3-a456-426614174001");
@@ -551,9 +871,39 @@ describe("ExchangeReceivedClaims", () => {
   it("rotates the booking idempotency key after a stale refresh returns a new matching version", async () => {
     vi.mocked(listReceivedExchangeClaims).mockResolvedValue({ list: [claim(1, "first")], total: 1, page: 1, page_size: 10 });
     vi.mocked(getExchangeMatching)
-      .mockResolvedValueOnce(matching({ status: "matched", version: 7, viewer: { canSelect: false, canCreateBookings: true } }))
-      .mockResolvedValueOnce(matching({ status: "matched", version: 8, viewer: { canSelect: false, canCreateBookings: true } }))
-      .mockResolvedValueOnce(matching({ status: "matched", version: 9, viewer: { canSelect: false, canCreateBookings: false } }));
+      .mockResolvedValueOnce(
+        matching({
+          status: "matched",
+          version: 7,
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: false,
+            canCreateBookings: true
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        matching({
+          status: "matched",
+          version: 8,
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: false,
+            canCreateBookings: true
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        matching({
+          status: "matched",
+          version: 9,
+          viewer: {
+            canSelect: false,
+            canConfirmQuickBudget: false,
+            canCreateBookings: false
+          }
+        })
+      );
     vi.mocked(createExchangeMatchingBookings)
       .mockRejectedValueOnce(new ApiClientError("error.exchange.match_booking_version_conflict", 40901, 409, null))
       .mockResolvedValueOnce({ exchangePostId: 41, matchingVersion: 9, bookedAt: "2026-09-03T04:02:00.000Z", orders: [] });
