@@ -1138,6 +1138,9 @@ const checkoutNdpConflictResponse = jsonErrorResponse(
 const reviewConflictResponse = jsonErrorResponse(
   "40906 error.order.review_requires_completion — the order is not completed; 40961 error.order.review_already_submitted — this reviewer already submitted the directional review; 40961 error.idempotency.key_reused — the key's stored review is not equivalent; 40965 error.order.review_invalid_settlement — formal checkout settlement evidence is missing or inconsistent"
 );
+const manualPaymentRefundConflictResponse = jsonErrorResponse(
+  "40913 error.payment.invalid_state — direct payment refund is limited to cancelled REFUND_PENDING orders; COMPLETED + CONFIRMED paid orders must use OrderRefundCase and become REFUNDED only after the customer confirms receipt"
+);
 const dependencyUnavailableResponse = (condition: string) =>
   jsonErrorResponse(`50301 error.dependency_unavailable — ${condition}`);
 const idPathParameter = (name = "id") => ({
@@ -21249,7 +21252,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": { description: "Payment marked refunded or identical retry returned" },
-          "409": { description: "Payment is not refundable from its current state" }
+          "409": manualPaymentRefundConflictResponse
         }
       }
     },
@@ -21309,7 +21312,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": { description: "Payment marked refunded or identical retry returned" },
-          "409": { description: "Payment is not refundable from its current state" }
+          "409": manualPaymentRefundConflictResponse
         }
       }
     },

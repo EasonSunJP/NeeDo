@@ -388,6 +388,7 @@ const createRepositoryHarness = (
     overflow?: boolean;
     auditFailure?: boolean;
     activeRefundCase?: boolean;
+    refundUpdateConflict?: boolean;
   } = {}
 ) => {
   const order: any = {
@@ -521,6 +522,9 @@ const createRepositoryHarness = (
           : 0
       ),
       updateMany: jest.fn(async ({ where, data }: any) => {
+        if (options.refundUpdateConflict && data.paymentStatus === "REFUNDED") {
+          return { count: 0 };
+        }
         if (
           where.id !== order.id ||
           (where.status && where.status !== order.status) ||
@@ -655,6 +659,7 @@ const createRepositoryHarness = (
     histories,
     audits,
     bookingOrderUpdateMany: tx.bookingOrder.updateMany,
+    orderFinancialFindUnique: tx.orderFinancial.findUnique,
     orderFinancialUpdate: tx.orderFinancial.update,
     orderRefundCaseFindFirst: tx.orderRefundCase.findFirst,
     performanceSummaryUpsert: tx.technicianPerformanceSummary.upsert,
@@ -1254,5 +1259,37 @@ describe("formal checkout repository state", () => {
         reference: "REF-CANCELLED-1"
       })
     ).resolves.toMatchObject({ outcome: "ok", order: { paymentStatus: "refunded" } });
+  });
+
+  it("returns a safe conflict when a cancelled refund loses its compare-and-swap race", async () => {
+    const raced = createRepositoryHarness({ refundUpdateConflict: true });
+    raced.order.status = "CANCELLED";
+    raced.order.paymentStatus = "REFUND_PENDING";
+    raced.order.paymentAmountJpy = 8_800;
+    const initialOrder = { ...raced.order };
+
+    await expect(
+      raced.repository.refundManualPayment({
+        scope: "backoffice",
+        orderId: 41,
+        actorUserId: 303,
+        reason: "cancelled before completion",
+        reference: "REF-CAS-RACE"
+      })
+    ).resolves.toEqual({ outcome: "conflict" });
+
+    expect(raced.bookingOrderUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 41,
+          status: "CANCELLED",
+          paymentStatus: "REFUND_PENDING"
+        }),
+        data: expect.objectContaining({ paymentStatus: "REFUNDED" })
+      })
+    );
+    expect(raced.order).toEqual(initialOrder);
+    expect(raced.orderFinancialFindUnique).not.toHaveBeenCalled();
+    expect(raced.orderFinancialUpdate).not.toHaveBeenCalled();
   });
 });

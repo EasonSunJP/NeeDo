@@ -988,6 +988,19 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders/{id}/payment/refund");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/confirm");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/refund");
+    [
+      "/api/v1/merchant-admin/orders/{id}/payment/refund",
+      "/api/v1/backoffice/orders/{id}/payment/refund"
+    ].forEach((path) => {
+      const conflictResponse = response.body.paths[path].post.responses["409"];
+      expect(conflictResponse.description).toEqual(expect.stringMatching(/completed/i));
+      expect(conflictResponse.description).toContain("OrderRefundCase");
+      expect(conflictResponse.description).toContain("40913");
+      expect(conflictResponse.description).toContain("error.payment.invalid_state");
+      expect(conflictResponse.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/ApiError"
+      });
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me/summary");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
