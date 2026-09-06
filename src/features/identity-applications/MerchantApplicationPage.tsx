@@ -1,3 +1,4 @@
+import { translateBankResumeText } from "./bankResumeI18n";
 import { selectLatestApplication } from "./model";
 import { ApplicationReviewEvidence } from "./ApplicationReviewEvidence";
 import { ApplicationReviewActions } from "./ApplicationReviewActions";
@@ -99,9 +100,16 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   const [ekycVerified, setEkycVerified] = useState(false);
   const [bank, setBank] = useState<BankAccountInput>(emptyBank);
   const [customBank, setCustomBank] = useState(false);
+  const [editingSavedBank, setEditingSavedBank] = useState(false);
+  const savedBank = application?.reviewEvidence?.bankAccount;
+  const reuseSavedBank = !editingSavedBank && Boolean(application?.merchantDetail?.bankAccountId && application.merchantDetail.bankVerificationStatus === "verified" && savedBank?.verificationStatus === "verified");
+  const hasSavedRegistration = application?.merchantDetail?.mediaPurposes.includes("corporate_registration") ?? false;
+  const bankText = (source: string) => translateBankResumeText(source, language);
   const [showcaseImage, setShowcaseImage] = useState<File | null>(retainedDraft?.showcaseImage ?? null);
   const [corporateRegistration, setCorporateRegistration] = useState<File | null>(null);
   const [contract, setContract] = useState<ContractDefinition | null>(null);
+  const [contractFailed, setContractFailed] = useState(false);
+  const [contractRevision, setContractRevision] = useState(0);
   const [hasRead, setHasRead] = useState(false);
   const [hasAgreed, setHasAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -184,10 +192,15 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
 
   useEffect(() => {
     if (step !== 2 || contract) return;
-    identityApplicationsApi.getCurrentContract("merchant", getContractLanguage(language)).then(setContract).catch((caught: unknown) => {
-      setError(merchantApplicationErrorMessage(caught));
+    let active = true;
+    setContractFailed(false);
+    identityApplicationsApi.getCurrentContract("merchant", getContractLanguage(language)).then(value => {
+      if (active) setContract(value);
+    }).catch((caught: unknown) => {
+      if (active) { setContractFailed(true); setError(merchantApplicationErrorMessage(caught)); }
     });
-  }, [contract, language, step]);
+    return () => { active = false; };
+  }, [contract, language, step, contractRevision]);
 
   const updateForm = <K extends keyof MerchantForm>(key: K, value: MerchantForm[K]) =>
     setForm((current) => {
@@ -322,11 +335,11 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
 
   const saveBankAndIdentity = async () => {
     if (!application) return;
-    if (form.applicantKind === "corporate" && !corporateRegistration) {
+    if (form.applicantKind === "corporate" && !corporateRegistration && !hasSavedRegistration) {
       setError("请上传法人登记资料");
       return;
     }
-    const bankError = validateMerchantBankAccount(bank);
+    const bankError = reuseSavedBank ? "" : validateMerchantBankAccount(bank);
     if (bankError) {
       setError(bankError);
       return;
@@ -340,8 +353,10 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
         version = registrationUploaded.applicationVersion;
         setApplication((current) => current ? { ...current, version } : current);
       }
-      const bound = await identityApplicationsApi.bindMerchantBankAccount(application.id, { ...bank, expectedVersion: version });
-      setApplication((current) => current ? { ...current, version: bound.applicationVersion } : current);
+      if (!reuseSavedBank) {
+        const bound = await identityApplicationsApi.bindMerchantBankAccount(application.id, { ...bank, expectedVersion: version });
+        setApplication((current) => current ? { ...current, version: bound.applicationVersion } : current);
+      }
       setStep(2);
     } catch (caught) {
       setError(merchantApplicationErrorMessage(caught));
@@ -453,6 +468,19 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
           <ApplicationCard className="space-y-4">
             <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "银行账户名义必须与申请资料中的姓名片假名一致；要求 eKYC 时，以认证姓名为准。")}</ApplicationNotice>
             {form.applicantKind === "individual" ? <ApplicationNotice>{t("如尚未完成 eKYC，请先在用户设置的验证与资质页面完成认证。")}</ApplicationNotice> : null}
+            {reuseSavedBank && savedBank ? <div className="space-y-4">
+              <p className="text-sm font-medium">{bankText("已保存的银行账户")}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ApplicationReadOnlyField label="银行名称" value={`${savedBank.bankName}（${savedBank.bankCode}）`} />
+                <ApplicationReadOnlyField label="支店名称" value={`${savedBank.branchName}（${savedBank.branchCode}）`} />
+                <ApplicationReadOnlyField label="账户类型" value={({ ordinary: "普通預金", current: "当座預金", savings: "貯蓄預金", other: "その他" } as Record<string, string>)[savedBank.accountType] ?? "—"} />
+                <ApplicationReadOnlyField label="账号" value={savedBank.accountNumberMasked ?? "—"} />
+                <ApplicationReadOnlyField label="账户名义人" value={savedBank.accountHolderMasked ?? "—"} />
+                <ApplicationReadOnlyField label="银行账户" value={t("已验证")} />
+              </div>
+              <p className="text-sm text-[color:var(--client-muted)]">{bankText("继续使用已保存的账户，无需再次填写完整账号。")}</p>
+              <ApplicationButton tone="secondary" onClick={() => { setEditingSavedBank(true); setBank({ ...emptyBank }); setCustomBank(false); setError(""); }}>{bankText("修改银行账户")}</ApplicationButton>
+            </div> : (
             <div className="grid gap-4 sm:grid-cols-2">
               <ApplicationField as="div" label="银行名称" required>
                 <ApplicationDropdown label={t("银行名称")} maxVisibleOptions={10} onChange={selectBank} options={[
@@ -468,7 +496,8 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
               <ApplicationField label="账号" required><ApplicationInput inputMode="numeric" onChange={(event) => updateBank("accountNumber", event.target.value)} value={bank.accountNumber} /></ApplicationField>
               <ApplicationField hint={form.applicantKind === "corporate" ? "必须与法人名称片假名一致" : "必须与 eKYC 姓名一致"} label="账户名义人" required><ApplicationInput onChange={(event) => updateBank("accountHolderName", event.target.value)} value={bank.accountHolderName} /></ApplicationField>
             </div>
-            {form.applicantKind === "corporate" ? <ApplicationField as="div" hint="JPEG 或 PNG" label="法人登记资料" required><ApplicationFileUpload accept="image/jpeg,image/png" file={corporateRegistration} label={t("法人登记资料")} onChange={setCorporateRegistration} /></ApplicationField> : null}
+            )}
+            {form.applicantKind === "corporate" ? hasSavedRegistration ? <p className="text-sm text-[color:var(--client-muted)]">{bankText("法人登记资料已保存")}</p> : <ApplicationField as="div" hint="JPEG 或 PNG" label="法人登记资料" required><ApplicationFileUpload accept="image/jpeg,image/png" file={corporateRegistration} label={t("法人登记资料")} onChange={setCorporateRegistration} /></ApplicationField> : null}
           </ApplicationCard>
           <ApplicationBottomAction>
             <div className="flex gap-3">
@@ -483,7 +512,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
         <>
           <ApplicationCard className="space-y-4">
             <div><h2 className="text-xl font-black text-[color:var(--client-text)]">{t("收费规则与 NeeDo 合同")}</h2><p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{t("合同以当前版本、完整正文和内容哈希留存，确认后具有法律效力。")}</p></div>
-            {contract ? <div className="max-h-[48vh] overflow-y-auto whitespace-pre-wrap rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-4 text-[12px] leading-6 text-[color:var(--client-text)]">{contract.text}</div> : <ApplicationNotice>{t("正在读取合同全文")}</ApplicationNotice>}
+            {contract ? <div className="max-h-[48vh] overflow-y-auto whitespace-pre-wrap rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-4 text-[12px] leading-6 text-[color:var(--client-text)]">{contract.text}</div> : <ApplicationNotice>{t(contractFailed ? "合同暂时无法读取，请重试或联系平台客服。" : "正在读取合同全文")}{contractFailed ? <ApplicationButton tone="secondary" onClick={() => { setError(""); setContractRevision(value => value + 1); }}>{t("重试")}</ApplicationButton> : null}</ApplicationNotice>}
             {contract ? <p className="break-all text-[10px] text-[color:var(--client-muted)]">v{contract.version} · {contract.contentHash}</p> : null}
             <label className="flex items-start gap-3 text-sm font-bold text-[color:var(--client-text)]"><input checked={hasRead} className="mt-1 h-5 w-5 accent-[color:var(--client-primary)]" onChange={(event) => setHasRead(event.target.checked)} type="checkbox" />{t("我已阅读完整收费规则与合同")}</label>
             <label className="flex items-start gap-3 text-sm font-bold text-[color:var(--client-text)]"><input checked={hasAgreed} className="mt-1 h-5 w-5 accent-[color:var(--client-primary)]" onChange={(event) => setHasAgreed(event.target.checked)} type="checkbox" />{t("我同意与 NeeDo 缔结具有法律效力的合同")}</label>

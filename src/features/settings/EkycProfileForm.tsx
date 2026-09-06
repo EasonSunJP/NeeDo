@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../../auth/AuthProvider";
+import { ekycApplicationsApi, type EkycApplicationDetail } from "./ekycApplicationsApi";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { ApplicationDropdown } from "../identity-applications/ApplicationDropdown";
@@ -6,10 +8,55 @@ import { ApplicationBottomAction, ApplicationButton, ApplicationField, Applicati
 import { ekycOccupations, emptyEkycProfile, normalizeEkycProfile, validateEkycProfile, type EkycProfile } from "./ekycProfileModel";
 
 export function EkycProfileForm({ onError }: { onError: (message: string) => void }) {
+  const { session } = useAuth();
+  return <EkycProfileFormForAccount key={session?.id ?? "anonymous"} onError={onError} />;
+}
+
+function EkycProfileFormForAccount({ onError }: { onError: (message: string) => void }) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   const [profile, setProfile] = useState<EkycProfile>({ ...emptyEkycProfile });
   const [review, setReview] = useState(false);
+  const [application, setApplication] = useState<EkycApplicationDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  const errorCallback = useRef(onError);
+  errorCallback.current = onError;
+  useEffect(() => {
+    mounted.current = true;
+    let current = true;
+    setLoading(true); setLoadFailed(false);
+    void ekycApplicationsApi.listMine().then(async result => {
+      const latest = result.list[0];
+      const detail = latest ? await ekycApplicationsApi.getMine(latest.id) : null;
+      if (!current) return;
+      setApplication(detail?.status === "withdrawn" ? null : detail);
+      if (detail) setProfile(detail.profile);
+      setReview(Boolean(detail && detail.status !== "withdrawn"));
+    }).catch(error => {
+      if (!current) return;
+      setLoadFailed(true);
+      errorCallback.current(error instanceof Error ? error.message : String(error));
+    }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; mounted.current = false; };
+  }, [revision]);
+  const run = async (operation: () => Promise<EkycApplicationDetail>, withdrawn = false) => {
+    if (busy) return;
+    setBusy(true); onError("");
+    try {
+      const result = await operation();
+      if (!mounted.current) return;
+      setApplication(withdrawn ? null : result);
+      setProfile(result.profile);
+      setReview(!withdrawn);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) { if (mounted.current) onError(error instanceof Error ? error.message : String(error)); }
+    finally { if (mounted.current) setBusy(false); }
+  };
+  const step = application ? 2 : Number(review);
   const update = (key: keyof EkycProfile, value: string) => {
     setProfile(current => ({ ...current, [key]: value }));
     onError("");
@@ -45,16 +92,19 @@ export function EkycProfileForm({ onError }: { onError: (message: string) => voi
     ["职业", profile.occupation === "other" ? profile.otherOccupation : t(ekycOccupations.find(option => option.value === profile.occupation)?.label ?? "")]
   ];
 
+  if (loading) return <p role="status">{t("正在加载…")}</p>;
+  if (loadFailed) return <ApplicationButton onClick={() => setRevision(value => value + 1)}>{t("重试")}</ApplicationButton>;
   return <div className="space-y-5">
-    <ol aria-label={t("认证资料进度")} className="grid grid-cols-2 gap-3">
-      {["填写资料", "确认资料"].map((label, index) => <li aria-current={Number(review) === index ? "step" : undefined} className="min-w-0" key={label}>
-        <div className={`h-1.5 rounded-full ${index <= Number(review) ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--client-line)]"}`} />
+    <ol aria-label={t("认证资料进度")} className="grid grid-cols-3 gap-3">
+      {["填写资料", "确认资料", "审核"].map((label, index) => <li aria-current={step === index ? "step" : undefined} className="min-w-0" key={label}>
+        <div className={`h-1.5 rounded-full ${index <= step ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--client-line)]"}`} />
         <p className="mt-2 text-center text-xs font-black text-[color:var(--client-text)]">{t(label)}</p>
       </li>)}
     </ol>
-    {review ? <ApplicationSection title="确认资料" info="请确认填写内容与本人证件一致。">
+    {review ? <ApplicationSection title={application ? "申请资料" : "确认资料"} info="请确认填写内容与本人证件一致。">
       <div className="grid gap-4 sm:grid-cols-2">{reviewRows.map(([label, value]) => <ApplicationReadOnlyField key={label} label={label} value={value} />)}</div>
-      <p className="text-sm leading-6 text-[color:var(--client-muted)]">{t("资料尚未提交，确认填写内容不代表认证通过。")}</p>
+      <p className="text-sm leading-6 text-[color:var(--client-muted)]">{t(application ? (application.status === "approved" ? "本人认证已通过运营人工审核。" : application.status === "rejected" ? "审核未通过，请根据原因修改后再次申请。" : "资料已提交，请等待运营人工审核。") : "资料尚未提交，确认填写内容不代表认证通过。")}</p>
+      {application?.rejectionReason ? <p className="rounded-2xl border border-red-500 bg-red-950 p-4 text-white">{t("驳回原因")}：{application.rejectionReason}</p> : null}
     </ApplicationSection> : <>
       <ApplicationSection title="姓名" info="请填写与本人证件一致的姓名。">
         <div className="grid grid-cols-2 gap-3">{field("familyName", "姓", true, "family-name")}{field("givenName", "名", true, "given-name")}</div>
@@ -89,10 +139,15 @@ export function EkycProfileForm({ onError }: { onError: (message: string) => voi
       </ApplicationSection>
     </>}
     <ApplicationBottomAction>
-      <div className="flex items-center justify-end gap-3">
-        {review ? <ApplicationButton onClick={() => { setReview(false); onError(""); }} tone="secondary">{t("上一步")}</ApplicationButton> : null}
-        <ApplicationButton className="min-w-0 flex-1" disabled={review} onClick={advance}>{t(review ? "认证提交暂未开放" : "确认填写内容")}</ApplicationButton>
-      </div>
+      {application ? application.status === "submitted" ? <div className="flex gap-3">
+        <ApplicationButton disabled={busy} tone="secondary" onClick={() => void run(() => ekycApplicationsApi.withdraw(application.id, application.version), true)}>{t("撤回")}</ApplicationButton>
+        <ApplicationButton className="flex-1" disabled>{t("审核中")}</ApplicationButton>
+      </div> : application.status === "rejected" ? <ApplicationButton className="w-full" tone="danger" onClick={() => { setApplication(null); setReview(false); onError(""); }}>{t("审核未通过，再次申请")}</ApplicationButton>
+      : <ApplicationButton className="w-full" disabled>{t("审核已通过")}</ApplicationButton>
+      : <div className="flex items-center justify-end gap-3">
+        {review ? <ApplicationButton disabled={busy} onClick={() => { setReview(false); onError(""); }} tone="secondary">{t("上一步")}</ApplicationButton> : null}
+        <ApplicationButton className="min-w-0 flex-1" disabled={busy} onClick={review ? () => void run(() => ekycApplicationsApi.submit(profile)) : advance}>{t(busy ? "提交中…" : review ? "提交审核" : "确认填写内容")}</ApplicationButton>
+      </div>}
     </ApplicationBottomAction>
   </div>;
 }

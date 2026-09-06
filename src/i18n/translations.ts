@@ -1,3 +1,4 @@
+import { ekycTranslations, ekycChineseErrors } from "../features/settings/ekycI18n";
 import { identityApplicationTranslations } from "../features/identity-applications/i18n";
 import { affiliateProfileTranslations } from "../features/affiliate-profile/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
@@ -439,6 +440,7 @@ export const translations: TranslationMap = {
   "图片正在上传，请稍候。失败的图片可以点击重试。": fourLanguageTranslation("圖片正在上傳，請稍候。上傳失敗的圖片可點擊重試。", "画像をアップロード中です。しばらくお待ちください。失敗した画像は再試行できます。", "Images are uploading. Failed uploads can be retried.", "이미지를 업로드하는 중입니다. 실패한 이미지는 다시 시도할 수 있습니다."),
   "提醒你查看一条新动态。": fourLanguageTranslation("提醒你查看一則新動態。", "新しい投稿を確認するよう通知されました。", "You were reminded to view a new post.", "새 게시물을 확인해 달라는 알림을 받았습니다."),
   ...identityApplicationTranslations,
+  ...ekycTranslations,
   "平均客单价": fourLanguageTranslation("平均客單價", "平均注文単価", "Average order value", "평균 주문 금액"),
   "已完成订单服务金额 ÷ 已完成订单数": fourLanguageTranslation("已完成訂單服務金額 ÷ 已完成訂單數", "完了注文のサービス金額 ÷ 完了注文数", "Completed-order service amount ÷ completed orders", "완료 주문 서비스 금액 ÷ 완료 주문 수"),
   "榜单读取失败": fourLanguageTranslation("榜單讀取失敗", "ランキングを読み込めませんでした", "Couldn't load ranking", "순위를 불러오지 못했습니다"),
@@ -15570,6 +15572,7 @@ const manualI18nContextCorrectionLocks: Partial<Record<TargetLanguage, ManualI18
 };
 
 const coreReadApiSourceTranslationOverrides: Record<string, LocalizedText> = {
+  ...Object.fromEntries(Object.entries(ekycChineseErrors).map(([key, zh]) => [`error.ekyc_application.${key}`, { zh, ...ekycTranslations[`error.ekyc_application.${key}`] } as LocalizedText])),
   "AC": { zh: "空调", "zh-Hant": "冷氣", ja: "エアコン", en: "AC", ko: "에어컨" },
   "AC Cleaning Diagnostics": { zh: "空调清洗诊断", "zh-Hant": "冷氣清潔診斷", ja: "エアコン清掃診断", en: "AC Cleaning Diagnostics", ko: "에어컨 청소 진단" },
   "Aoyama Care Studio": { zh: "青山护理工作室", "zh-Hant": "青山護理工作室", ja: "青山ケアスタジオ", en: "Aoyama Care Studio", ko: "아오야마 케어 스튜디오" },

@@ -93,7 +93,8 @@ const navSections: AdminNavSection[] = [
     title: "店铺",
     items: [
       { label: "店铺列表", to: "/admin/merchants", icon: "店", children: ["店铺信息卡", "营业状态", "预约能力"] },
-      { label: "店铺分类", to: "/admin/merchants?module=categories", icon: "类", children: ["分类图标", "启用状态", "排序"] }
+      { label: "店铺分类", to: "/admin/merchants?module=categories", icon: "类", children: ["分类图标", "启用状态", "排序"] },
+      { label: "店铺申请管理", to: "/admin/merchant-applications", icon: "审", permission: "ops:merchant-application:read" }
     ]
   },
   {
@@ -170,7 +171,8 @@ const navSections: AdminNavSection[] = [
       { label: "操作文档", to: "/admin/docs", icon: "文", children: ["产运后台", "商户后台", "联盟营销后台"] },
       { label: "API 文档", to: "/admin/docs/api", icon: "A", children: ["全量 API", "显示开关", "关键字段"] }
     ]
-  }
+  },
+  { key: "application-reviews", title: "审核", items: [{ label: "eKYC手动", to: "/admin/application-reviews/ekyc", icon: "审", permission: "ops:ekyc-application:read" }] }
 ];
 
 

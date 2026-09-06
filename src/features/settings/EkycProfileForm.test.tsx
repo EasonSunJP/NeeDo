@@ -3,18 +3,21 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EkycProfileForm } from "./EkycProfileForm";
+import { ekycApplicationsApi } from "./ekycApplicationsApi";
 import pageSource from "./UnifiedSettingsPages.tsx?raw";
+vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: { id: 41 } }) }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
 let container: HTMLDivElement, root: Root;
 let onError = vi.fn();
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("scrollTo", vi.fn());
+  vi.spyOn(ekycApplicationsApi, "listMine").mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });
   onError = vi.fn();
   container = document.createElement("div"); document.body.appendChild(container); root = createRoot(container);
   await act(async () => root.render(<EkycProfileForm onError={onError} />));
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const button = (text: string) => Array.from(container.querySelectorAll("button")).find(el => el.textContent === text)!;
 async function fill(label: string, value: string) {
   const input = container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
@@ -49,8 +52,25 @@ it("reviews normalized entries and retains them when returning to edit, without 
   await act(async () => button("确认填写内容").click());
   expect(container.textContent).toContain("ヤマダ タロウ");
   expect(container.textContent).toContain("资料尚未提交");
-  expect(button("认证提交暂未开放").disabled).toBe(true);
+  expect(button("提交审核").disabled).toBe(false);
   await act(async () => button("上一步").click());
   expect(container.querySelector<HTMLInputElement>('input[aria-label="姓"]')!.value).toBe("山田");
   expect(container.querySelector<HTMLInputElement>('input[aria-label="邮政编码"]')!.value).toBe("1600022");
+});
+
+it("restores a submitted snapshot, never submits on entry, and withdraws with its version", async () => {
+  const profile = { familyName: "山田", givenName: "太郎", familyNameKana: "ヤマダ", givenNameKana: "タロウ", birthYear: "1992", birthMonth: "2", birthDay: "29", sex: "male", postalCode: "1600022", city: "東京都", street: "新宿1", building: "", occupation: "employee", otherOccupation: "" };
+  const application = { id: 7, userId: 41, status: "submitted" as const, version: 3, createdAt: "2026-09-07", updatedAt: "2026-09-07", reviewedAt: null, reviewNote: null, rejectionReason: null, profile };
+  vi.mocked(ekycApplicationsApi.listMine).mockResolvedValue({ list: [application], total: 1, page: 1, page_size: 20 });
+  vi.spyOn(ekycApplicationsApi, "getMine").mockResolvedValue(application);
+  const submit = vi.spyOn(ekycApplicationsApi, "submit");
+  const withdraw = vi.spyOn(ekycApplicationsApi, "withdraw").mockResolvedValue({ ...application, status: "withdrawn", version: 4 });
+  await act(async () => root.render(<EkycProfileForm key="restored" onError={onError} />));
+  expect(container.textContent).toContain("山田 太郎");
+  expect(button("审核中").disabled).toBe(true);
+  expect(container.querySelector('input[aria-label="姓"]')).toBeNull();
+  expect(submit).not.toHaveBeenCalled();
+  await act(async () => button("撤回").click());
+  expect(withdraw).toHaveBeenCalledWith(7, 3);
+  expect(container.querySelector<HTMLInputElement>('input[aria-label="姓"]')!.value).toBe("山田");
 });

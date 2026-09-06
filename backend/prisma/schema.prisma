@@ -1337,6 +1337,8 @@ model User {
   contractAcceptances                   ContractAcceptance[]
   applicationMediaAssets                MediaAsset[]                        @relation("ApplicationMediaOwner")
   ekycVerifications                     EkycVerification[]
+  ekycApplications                      EkycApplication[] @relation("EkycApplicant")
+  ekycApplicationReviews                EkycApplication[] @relation("EkycReviewer")
   externalAccounts                      ExternalAuthAccount[]
   createdTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationCreatedBy")
   updatedTechnicianShopAffiliations     TechnicianShopAffiliation[]         @relation("TechnicianShopAffiliationUpdatedBy")
@@ -8177,4 +8179,27 @@ model TechnicianAttendanceAffectedOrder {
   @@index([orderId])
   @@index([shopId,deletedAt])
   @@map("technician_attendance_affected_orders")
+}
+
+model EkycApplication {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  activeUserId Int? @unique @map("active_user_id")
+  status String @db.VarChar(40)
+  version Int @default(1)
+  profileEncrypted String @map("profile_encrypted") @db.LongText
+  reviewerUserId Int? @map("reviewer_user_id")
+  reviewedAt DateTime? @map("reviewed_at")
+  reviewNote String? @map("review_note") @db.Text
+  rejectionReason String? @map("rejection_reason") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  user User @relation("EkycApplicant", fields:[userId], references:[id], onDelete:Restrict)
+  reviewer User? @relation("EkycReviewer", fields:[reviewerUserId], references:[id], onDelete:Restrict)
+  @@index([userId, status])
+  @@index([reviewerUserId])
+  @@index([status, createdAt])
+  @@index([deletedAt])
+  @@map("ekyc_applications")
 }

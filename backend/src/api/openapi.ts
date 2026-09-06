@@ -1,3 +1,4 @@
+import { ekycApplicationOpenApiPaths } from "./ekyc-application.openapi";
 import { accountActivityOpenApiPaths } from "./account-activity.openapi";
 import { operationsMemberOpenApiPaths } from "./operations-member.openapi";
 import { workStatusOpenApiPaths } from './work-status.openapi';
@@ -15794,6 +15795,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   },
   paths: {
     ...operationsMemberOpenApiPaths(config.API_PREFIX),
+    ...ekycApplicationOpenApiPaths(config.API_PREFIX),
     ...accountActivityOpenApiPaths(config.API_PREFIX),
     ...sosOpenApiPaths,
     ...workStatusOpenApiPaths,

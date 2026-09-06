@@ -31,7 +31,7 @@ import { startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { yen } from "../../lib/utils";
 import { readPositiveIntegerSearchParam } from "./adminSearchParams";
 
-const tabs = ["店铺列表", "入驻审核", "服务项目", "店铺分类"];
+const tabs = ["店铺列表", "服务项目", "店铺分类"];
 const emptyShopForm: BackofficeShopCreateInput = {
   ownerEmail: "",
   ownerUsername: "",
@@ -313,14 +313,6 @@ export function MerchantsPage({ embeddedDetail }: {
               {!loading && billingAccounts.length === 0 ? <p className="text-sm text-ink/50">{t("暂无商家或店铺数据")}</p> : null}
             </div>
           </section>
-        ) : null}
-
-        {active === "入驻审核" ? (
-          <div className="mt-4 rounded-2xl border border-line bg-paper p-5">
-            <p className="text-sm font-black text-ink">店铺身份正式申请</p>
-            <p className="mt-2 text-sm leading-6 text-ink/60">查看法人或个人名义、eKYC、银行名义校验、服务展示、证件资料与合同回执。</p>
-            <Button className="mt-4" onClick={() => navigate("/admin/merchant-applications")}>打开申请审核</Button>
-          </div>
         ) : null}
 
         {active === "服务项目" ? <div className="mt-4 space-y-4"><div className="flex justify-end"><Button onClick={() => setCreateServiceOpen(true)} variant="secondary">新增服务项目</Button></div><DataTable columns={[

@@ -1,3 +1,5 @@
+import { createEkycApplicationRoutes } from "./routes/ekyc-application.routes";
+import type { EkycApplicationRepositoryPort, EkycApplicationService } from "./services/ekyc-application.service";
 import type { OperationsMemberRepositoryPort } from "./repositories/operations-member.repository";
 import { createWorkStatusRoutes } from './routes/work-status.routes';
 import type { WorkStatusService } from './services/work-status.service';
@@ -400,6 +402,8 @@ export interface AppDependencies {
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
+  ekycApplicationRepository?: EkycApplicationRepositoryPort;
+  ekycApplicationService?: EkycApplicationService;
   identityApplicationRepository?: IdentityApplicationRepositoryPort;
   identityApplicationService?: IdentityApplicationService;
   identityApplicationMediaRepository?: IdentityApplicationMediaRepositoryPort;
@@ -766,6 +770,8 @@ export const createApp = (
   mount("merchant-admin", createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCompensationProfileRoutes(config, resolvedDependencies));
   mount(["shared", "backoffice"], createLedgerRoutes(config, resolvedDependencies));
+  mount("shared", createEkycApplicationRoutes(config, resolvedDependencies));
+  mount("backoffice", createEkycApplicationRoutes(config, resolvedDependencies, true));
   mount("backoffice", createIdentityApplicationRoutes(config, resolvedDependencies));
   mount("backoffice", createIdentityApplicationMediaRoutes(config, resolvedDependencies));
   mount("backoffice", createContentMediaRoutes(config, resolvedDependencies));

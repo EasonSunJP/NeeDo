@@ -175,7 +175,7 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
       type: "merchant",
       deletedAt: null,
       merchantDetail: { deletedAt: null },
-      ...(query.status ? { status: query.status } : {})
+      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected", "withdrawn"] }
     };
     const [rows, total] = await this.client.$transaction([
       this.client.identityApplication.findMany({
@@ -204,7 +204,7 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
     includeSensitiveDocuments: boolean
   ): Promise<MerchantApplicationReviewRecord | null> {
     const row = await this.client.identityApplication.findFirst({
-      where: { id: applicationId, type: "merchant", deletedAt: null },
+      where: { id: applicationId, type: "merchant", deletedAt: null, status: { not: "draft" } },
       select: buildMerchantReviewSelect(includeSensitiveDocuments, this.now())
     });
     return row ? this.map(row) : null;

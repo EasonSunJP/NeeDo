@@ -304,6 +304,9 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-profile",
     "更新当前商户身份的独立个人资料"
   ),
+  createPermission("ekyc-application:own", "本人 eKYC 申请", "api", "ekyc-application", "本人 eKYC 申请"),
+  createPermission("ops:ekyc-application:read", "查看 eKYC 申请", "api", "ekyc-application", "查看 eKYC 申请"),
+  createPermission("ops:ekyc-application:review", "审核 eKYC 申请", "api", "ekyc-application", "审核 eKYC 申请"),
   createPermission(
     "identity-application:own",
     "本人身份申请",
@@ -2278,6 +2281,7 @@ const REALTIME_USER_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES = [
+  "ekyc-application:own",
   "identity-application:own",
   "contract:read",
   "contract:accept",
@@ -2293,6 +2297,8 @@ const MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES = [
+  "ops:ekyc-application:read",
+  "ops:ekyc-application:review",
   "ops:merchant-application:read",
   "ops:merchant-application:review",
   "identity-application-media:sensitive-read"
@@ -2580,6 +2586,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     "ops:merchant-application:read",
+    "ops:ekyc-application:read",
     "identity-application-media:sensitive-read",
     "menu:user-management",
     "page:user-management",
