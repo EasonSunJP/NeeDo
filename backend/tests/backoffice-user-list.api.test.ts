@@ -132,10 +132,14 @@ describe("backoffice all-user API", () => {
     const token = await fixture.loginAsAdmin();
 
     const response = await request(fixture.app)
-      .get("/api/v1/backoffice/users/41")
+      .get("/api/v1/backoffice/users/41?audit_page=2&audit_page_size=50")
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
+    for (const query of ["audit_page=0", "audit_page_size=100", "audit_page_size=11"]) {
+      await request(fixture.app).get(`/api/v1/backoffice/users/41?${query}`)
+        .set("Authorization", `Bearer ${token}`).expect(400);
+    }
     expect(response.body.data.capabilities).toEqual({
       membershipWrite: false,
       reviewAmend: true,
@@ -144,7 +148,7 @@ describe("backoffice all-user API", () => {
       timelineCommentWrite: false
     });
     expect(getManagedUser).toHaveBeenCalledWith(
-      { scope: "platform", userId: 41 },
+      { scope: "platform", userId: 41, audit_page: 2, audit_page_size: 50 },
       expect.any(Date)
     );
   });

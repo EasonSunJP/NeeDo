@@ -25,11 +25,11 @@ import {
   translateText,
   type Language
 } from "../../i18n/translations";
+import { AdminEventTimeline } from "./AdminEventTimeline";
 import { cn } from "../../lib/utils";
 import type { PlatformManagedUserDetail } from "../../features/platform-user-management/types";
 import { membershipTierText, privacyModeText, privacyScopeText } from "../../features/platform-user-management/i18n";
 import {
-  ContactEventTimelinePanel,
   type ContactEventTimelineEntry
 } from "../mobile/ContactEventTimeline";
 import { Badge, type BadgeTone } from "../ui/Badge";
@@ -48,7 +48,7 @@ type TechnicianDetailTab =
   | "权限与账号"
   | "时间线";
 
-export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户动态";
+export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户LOG";
 
 export type FormalLocalization = {
   language: Language;
@@ -72,7 +72,7 @@ const technicianTabs: TechnicianDetailTab[] = [
   "时间线"
 ];
 
-const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户动态"];
+const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"];
 
 export function resolveFormalTabKeyboardIndex(
   key: string,
@@ -245,7 +245,7 @@ export function FormalCustomerDetailPanel({
             editContent,
             membershipEditContent,
             localization,
-            tab === "用户动态" ? (
+            tab === "用户LOG" ? (
               <CustomerTimelinePanel
                 detail={detail}
                 error={timelineError}
@@ -270,7 +270,8 @@ export function FormalManagedUserDetailPanel({
   membershipActions,
   reviewContent,
   usageContent,
-  accountContent
+  accountContent,
+  activityContent
 }: {
   actionContent?: ReactNode;
   detail: PlatformManagedUserDetail;
@@ -279,6 +280,7 @@ export function FormalManagedUserDetailPanel({
   reviewContent?: ReactNode;
   usageContent?: ReactNode;
   accountContent?: ReactNode;
+  activityContent?: ReactNode;
 }) {
   const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
@@ -328,7 +330,7 @@ export function FormalManagedUserDetailPanel({
 
       <FormalTabs active={activeTab} idPrefix={panelId} items={customerTabs} localization={localization} onChange={setActiveTab} />
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
-        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent)}
+        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent, activityContent)}
       </FormalTabPanels>
     </article>
   );
@@ -345,7 +347,8 @@ function renderManagedUserTab(
   localization: FormalLocalization,
   reviewContent?: ReactNode,
   usageContent?: ReactNode,
-  accountContent?: ReactNode
+  accountContent?: ReactNode,
+  activityContent?: ReactNode
 ) {
   if (tab === "基础资料") return <FormalSectionCard localization={localization} title="基础资料"><DetailGrid items={localizeDetailItems([
     { label: "用户名", value: detail.username },
@@ -377,10 +380,10 @@ function renderManagedUserTab(
     <FormalSectionCard localization={localization} title="身份"><div className="flex flex-wrap gap-2">{detail.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`} tone="blue">{identity.displayName ?? identity.type}</Badge>)}</div></FormalSectionCard>
   </>;
 
-  return <>{usageContent}<AuditTimeline events={detail.audit.list.map((event) => ({
+  return <>{usageContent}{activityContent ?? <AuditTimeline events={detail.audit.list.map((event) => ({
     ...event,
     metadata: event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata as Record<string, unknown> : null
-  }))} localization={localization} title="用户动态" /></>;
+  }))} localization={localization} title="用户LOG" />}</>;
 }
 
 function useFormalLocalization(): FormalLocalization {
@@ -828,7 +831,7 @@ function CustomerTimelinePanel({
   if (loading && !timeline) {
     return (
       <div className="rounded-[18px] border border-line bg-white p-6 text-sm font-black text-ink/50">
-        {localization.t("正在读取用户动态...")}
+        {localization.t("正在读取用户LOG...")}
       </div>
     );
   }
@@ -853,10 +856,10 @@ function CustomerTimelinePanel({
   const events = timeline?.list ?? detail.timeline;
   return (
     <div>
-      <AuditTimeline events={events} localization={localization} title="用户动态" />
+      <AuditTimeline events={events} localization={localization} title="用户LOG" />
       {timeline && onPageChange && onPageSizeChange ? (
         <FormalTimelinePagination
-          ariaLabel="用户动态翻页"
+          ariaLabel="用户LOG翻页"
           disabled={loading}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
@@ -1093,10 +1096,10 @@ function BookingRow({ booking, localization }: { booking: BackofficeOrderPayload
   );
 }
 
-function AuditTimeline({ events, localization, title = "正式审计时间线" }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization; title?: string }) {
+export function AuditTimeline({ events, localization, title = "正式审计时间线" }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization; title?: string }) {
   return (
-    <ContactEventTimelinePanel
-      className="rounded-[18px] border-line bg-white text-ink shadow-[0_8px_24px_rgba(22,23,26,0.05)]"
+    <AdminEventTimeline
+      className="rounded-[18px]"
       emptyLabel={localization.t("暂无正式审计记录")}
       events={events.map((event) => mapAuditEvent(event, localization))}
       showCommentComposer={false}
@@ -1105,13 +1108,19 @@ function AuditTimeline({ events, localization, title = "正式审计时间线" }
   );
 }
 
+function formatAuditTimestamp(value: string, localization: FormalLocalization) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${new Intl.DateTimeFormat(localization.locale, { dateStyle: "medium" }).format(date)}\n${new Intl.DateTimeFormat(localization.locale, { timeStyle: "medium" }).format(date)}`;
+}
+
 function mapAuditEvent(event: BackofficeAuditEventPayload, localization: FormalLocalization): ContactEventTimelineEntry {
   const action = auditAction(event.action, localization);
   return {
     actorAvatarSrc: event.actorAvatarUrl ?? undefined,
     actorName: event.actorName,
     actorRole: action.label,
-    atLabel: formatDateTime(event.createdAt, localization),
+    atLabel: formatAuditTimestamp(event.createdAt, localization),
     icon: event.actorAvatarUrl ? undefined : <NeutralProfileIcon />,
     id: event.id,
     message: (
@@ -1146,7 +1155,7 @@ function AuditMetadata({
     <span className="grid gap-2">
       {message ? <span>{message}</span> : null}
       {entries.length > 0 ? (
-        <span className="grid gap-1.5 rounded-lg border border-current/15 px-2.5 py-2 text-[11px] leading-4">
+        <span className="audit-event-metadata grid gap-1.5 rounded-lg px-2.5 py-2 text-[11px] leading-4">
           {entries.map(([key, value]) => (
             <span className="grid grid-cols-[minmax(72px,auto),minmax(0,1fr)] gap-2" key={key}>
               <strong>{auditMetadataLabel(key, localization)}</strong>
@@ -1308,7 +1317,7 @@ function auditAction(action: string, localization: FormalLocalization): { label:
   const danger = /deleted|disabled|rejected|cancelled|failed/i.test(action);
   return {
     label: labels[action] ? localization.t(labels[action]) : action,
-    tone: danger ? "red" : labels[action] ? "green" : "neutral"
+    tone: danger ? "red" : "green"
   };
 }
 

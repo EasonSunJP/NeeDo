@@ -37,6 +37,7 @@ export interface UserUsageTimelineEntry {
   code: string;
   occurredAt: string;
   actorName: string | null;
+  actorAvatarUrl?: string | null;
   body: string | null;
 }
 
@@ -118,7 +119,7 @@ const orderTimelineSelect = Prisma.validator<Prisma.BookingOrderSelect>()({
       toStatus: true,
       reason: true,
       createdAt: true,
-      actor: { select: { username: true } }
+      actor: { select: { username: true, avatarUrl: true } }
     }
   },
   serviceEvents: {
@@ -129,7 +130,7 @@ const orderTimelineSelect = Prisma.validator<Prisma.BookingOrderSelect>()({
       eventType: true,
       reason: true,
       occurredAt: true,
-      actor: { select: { username: true } }
+      actor: { select: { username: true, avatarUrl: true } }
     }
   },
   timelineComments: {
@@ -140,7 +141,7 @@ const orderTimelineSelect = Prisma.validator<Prisma.BookingOrderSelect>()({
       body: true,
       visibility: true,
       createdAt: true,
-      actor: { select: { username: true } }
+      actor: { select: { username: true, avatarUrl: true } }
     }
   }
 });
@@ -370,6 +371,7 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
         code: event.toStatus.toLowerCase(),
         occurredAt: event.createdAt.toISOString(),
         actorName: event.actor?.username ?? null,
+        actorAvatarUrl: event.actor?.avatarUrl ?? null,
         body: event.reason
       })),
       ...order.serviceEvents.map((event) => ({
@@ -378,6 +380,7 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
         code: event.eventType.toLowerCase(),
         occurredAt: event.occurredAt.toISOString(),
         actorName: event.actor?.username ?? null,
+        actorAvatarUrl: event.actor?.avatarUrl ?? null,
         body: event.reason
       })),
       ...order.timelineComments
@@ -388,6 +391,7 @@ export class BackofficeUserUsageRepository implements BackofficeUserUsageReposit
           code: "comment",
           occurredAt: comment.createdAt.toISOString(),
           actorName: comment.actor.username,
+          actorAvatarUrl: comment.actor.avatarUrl ?? null,
           body: comment.body
         }))
     ];

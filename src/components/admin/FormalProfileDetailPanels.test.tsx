@@ -218,7 +218,7 @@ describe("formal profile tab accessibility", () => {
   it("renders six user tabs including reviews and exact tab-to-panel relationships", () => {
     const markup = renderToStaticMarkup(<FormalCustomerDetailPanel detail={customerDetail} />);
 
-    for (const label of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户动态"]) {
+    for (const label of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"]) {
       expect(markup).toContain(`>${label}</button>`);
     }
     assertExactTabRelationships(markup, 6);
@@ -247,7 +247,7 @@ describe("formal profile tab accessibility", () => {
     const markup = renderToStaticMarkup(
       <FormalCustomerDetailPanel
         detail={customerDetail}
-        initialTab="用户动态"
+        initialTab="用户LOG"
         timeline={{
           list: [{
             id: "audit-membership",
@@ -280,7 +280,7 @@ describe("formal profile tab accessibility", () => {
     const markup = renderToStaticMarkup(
       <FormalCustomerDetailPanel
         detail={customerDetail}
-        initialTab="用户动态"
+        initialTab="用户LOG"
         timeline={{
           list: [{
             id: "audit-created",
@@ -550,7 +550,7 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
       />
     );
 
-    for (const content of ["基础资料", "会员等级", "预约与消费汇总", "下次预约", "近期预约", "账号状态", "用户动态", "¥48,000", "管理账号", "NeeDoID u0000002044"]) {
+    for (const content of ["基础资料", "会员等级", "预约与消费汇总", "下次预约", "近期预约", "账号状态", "用户LOG", "¥48,000", "管理账号", "NeeDoID u0000002044"]) {
       expect(markup).toContain(content);
     }
     expect(markup).not.toContain("用户档案 #");
@@ -622,7 +622,7 @@ describe("formal profile localization and dependency boundary", () => {
     expect(translateText("预约与消费", "en")).toBe("Bookings & Spend");
     expect(translateText("权限与账号", "ko")).toBe("권한 및 계정");
     expect(translateText("迟到情况", "zh-Hant")).toBe("遲到情況");
-    expect(translateText("用户动态", "ja")).toBe("ユーザーアクティビティ");
+    expect(translateText("用户LOG", "ja")).toBe("ユーザーLOG");
     expect(translateText("运营免费赋予", "en")).toBe("Complimentary operations grant");
     expect(translateText("永久免费", "ko")).toBe("영구 무료");
     expect(translateText("用户身份", "ja")).toBe("ユーザー ID");

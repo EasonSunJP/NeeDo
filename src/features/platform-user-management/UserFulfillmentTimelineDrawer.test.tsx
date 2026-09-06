@@ -106,9 +106,13 @@ describe("UserFulfillmentTimelineDrawer", () => {
     await flush();
     expect(api.getUsageTimeline).toHaveBeenCalledWith("operations", 41, 88);
     expect(container.textContent).toContain("预约已创建");
+    expect(container.querySelector('[data-tone="green"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="追加评论"]')).not.toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="追加评论"]')?.click());
     expect(container.textContent).toContain("修改退款信息");
     expect(container.textContent).not.toContain("删除");
-    const submit = [...container.querySelectorAll("button")].find(
+    const submit = [...container.querySelectorAll("button")].reverse().find(
       (button) => button.textContent === "追加评论",
     );
     act(() => submit?.click());
