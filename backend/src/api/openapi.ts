@@ -21597,7 +21597,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Backoffice"],
         summary: "Stream compact regional dashboard changes",
         description:
-          "Bearer-header-only SSE stream for active platform identities. Events are region-filtered, limited to compact allowlisted order fields or cache invalidation sections, replay at most 100 events from the last five minutes using Last-Event-ID, emit 30-second heartbeats, and disconnect slow clients.",
+          "Bearer-header-only SSE stream for active platform identities. Events are region-filtered, limited to compact allowlisted order fields or cache invalidation sections, replay at most 100 events from the last five minutes using Redis Stream IDs in Last-Event-ID, emit 30-second heartbeats, and disconnect slow clients. The current standalone Redis topology provides the atomic replay operation; Redis Cluster key routing is outside this task.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:dashboard:read",
         parameters: [
@@ -21625,6 +21625,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "Last-Event-ID",
             in: "header",
             required: false,
+            description:
+              "A Redis Stream ID retained in the bounded replay window, including the current head. Unknown, future, trimmed, or empty/recreated-stream cursors require a full snapshot reset.",
             schema: { type: "string", pattern: "^\\d+-\\d+$", maxLength: 80 }
           }
         ],
@@ -21641,6 +21643,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": {
             description: "Missing active platform identity or backoffice:dashboard:read permission"
           },
+          "409": jsonErrorResponse(
+            "40900 error.live_dashboard.cursor_reset_required — discard Last-Event-ID, fetch a full snapshot, then reconnect without the stale cursor"
+          ),
           "503": { description: "Shared live event transport is unavailable" }
         }
       }

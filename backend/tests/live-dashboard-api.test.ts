@@ -3,8 +3,10 @@ import { resolve } from "node:path";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
+import { ERROR_CODES } from "../src/constants/error-codes";
 import type { LiveDashboardSnapshotFacts } from "../src/domain/live-dashboard";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { AppError } from "../src/utils/app-error";
 
 const now = new Date("2026-09-06T03:04:05.000Z");
 
@@ -80,7 +82,7 @@ const facts: LiveDashboardSnapshotFacts = {
   coverage: { total: 1, attributed: 1, unresolved: 0, completenessPercent: 100 }
 };
 
-const createFixture = (options: { failAudit?: boolean } = {}) => {
+const createFixture = (options: { failAudit?: boolean; cursorReset?: boolean } = {}) => {
   const users = [
     createUser(1, ["backoffice:dashboard:read"]),
     createUser(2, []),
@@ -109,6 +111,16 @@ const createFixture = (options: { failAudit?: boolean } = {}) => {
   };
   const liveDashboardEventGateway = {
     publish: jest.fn(),
+    prepareSubscription: jest.fn(async (lastEventId: string | null) => {
+      if (options.cursorReset) {
+        throw new AppError({
+          code: ERROR_CODES.LIVE_DASHBOARD_CURSOR_RESET_REQUIRED,
+          message: "error.live_dashboard.cursor_reset_required",
+          statusCode: 409
+        });
+      }
+      return { lastEventId, entries: [] };
+    }),
     subscribe: jest.fn(async (_scope, _lastEventId, response) => {
       response.status(200).end();
       return () => undefined;
@@ -297,11 +309,36 @@ describe("GET /api/v1/backoffice/dashboard/live-events", () => {
     expect(fixture.liveDashboardEventGateway.subscribe).toHaveBeenCalledWith(
       { countryCode: "JP", admin1Code: "13", admin2Code: null },
       "1000-4",
-      expect.anything()
+      expect.anything(),
+      { lastEventId: "1000-4", entries: [] }
     );
+    expect(fixture.liveDashboardEventGateway.prepareSubscription).toHaveBeenCalledWith("1000-4");
     expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ action: "backoffice.dashboard.live_events.connect" })
     );
+    expect(
+      fixture.liveDashboardEventGateway.prepareSubscription.mock.invocationCallOrder[0]
+    ).toBeLessThan(fixture.auditLogRepository.create.mock.invocationCallOrder[0]!);
+  });
+
+  it("returns a pre-header cursor reset conflict without recording a successful connection", async () => {
+    const fixture = createFixture({ cursorReset: true });
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-events?country=JP")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .set("Last-Event-ID", "9999999999999-0")
+      .expect(409);
+
+    expect(response.body).toEqual({
+      code: ERROR_CODES.LIVE_DASHBOARD_CURSOR_RESET_REQUIRED,
+      message: "error.live_dashboard.cursor_reset_required",
+      data: null
+    });
+    expect(fixture.auditLogRepository.create).not.toHaveBeenCalled();
+    expect(fixture.liveDashboardEventGateway.prepareSubscription).toHaveBeenCalledWith(
+      "9999999999999-0"
+    );
+    expect(fixture.liveDashboardEventGateway.subscribe).not.toHaveBeenCalled();
   });
 
   it("does not open the stream when the connection audit fails", async () => {

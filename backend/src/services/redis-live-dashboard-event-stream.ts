@@ -4,7 +4,8 @@ import {
   LIVE_DASHBOARD_REPLAY_LIMIT,
   LIVE_DASHBOARD_REPLAY_WINDOW_MS,
   type LiveDashboardEventStreamEntry,
-  type LiveDashboardEventStreamPort
+  type LiveDashboardEventStreamPort,
+  type LiveDashboardReplayRead
 } from "./live-dashboard-event.gateway";
 
 const STREAM_ID_PATTERN = /^\d+-\d+$/;
@@ -35,6 +36,30 @@ const hasExactEntryKeys = (value: Record<string, unknown>): boolean => {
   const keys = Object.keys(value).sort();
   return keys.length === 2 && keys[0] === "event" && keys[1] === "id";
 };
+
+// Validation and replay must be one Redis operation: a separate XRANGE existence
+// check could race the stream's exact MAXLEN trim and silently skip retained events.
+const READ_RETAINED_LUA = `
+local cursor = ARGV[1]
+local window_ms = tonumber(ARGV[2])
+local limit = ARGV[3]
+local now = redis.call('TIME')
+local server_ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+local cutoff_ms = math.max(0, server_ms - window_ms)
+local cutoff = tostring(cutoff_ms) .. '-0'
+if cursor == '' then
+  return {'ready', redis.call('XRANGE', KEYS[1], cutoff, '+', 'COUNT', limit)}
+end
+local cursor_ms = tonumber(string.match(cursor, '^(%d+)%-'))
+if not cursor_ms or cursor_ms < cutoff_ms then
+  return {'reset_required'}
+end
+local exact = redis.call('XRANGE', KEYS[1], cursor, cursor, 'COUNT', 1)
+if #exact == 0 then
+  return {'reset_required'}
+end
+return {'ready', redis.call('XRANGE', KEYS[1], '(' .. cursor, '+', 'COUNT', limit)}
+`;
 
 export class RedisLiveDashboardEventStream implements LiveDashboardEventStreamPort {
   private readonly key: string;
@@ -102,6 +127,28 @@ export class RedisLiveDashboardEventStream implements LiveDashboardEventStreamPo
       String(LIVE_DASHBOARD_REPLAY_LIMIT)
     ]);
     return this.parseRange(raw);
+  }
+
+  public async readRetained(lastEventId: string | null): Promise<LiveDashboardReplayRead> {
+    await this.ensureConnected();
+    const raw = await this.client.sendCommand([
+      "EVAL",
+      READ_RETAINED_LUA,
+      "1",
+      this.key,
+      lastEventId ?? "",
+      String(LIVE_DASHBOARD_REPLAY_WINDOW_MS),
+      String(LIVE_DASHBOARD_REPLAY_LIMIT)
+    ]);
+    if (!Array.isArray(raw) || raw[0] !== "ready") {
+      if (Array.isArray(raw) && raw.length === 1 && raw[0] === "reset_required") {
+        return { status: "reset_required", entries: [] };
+      }
+      throw new Error("Redis returned an invalid retained live dashboard range");
+    }
+    if (raw.length !== 2)
+      throw new Error("Redis returned an invalid retained live dashboard range");
+    return { status: "ready", entries: this.parseRange(raw[1]) };
   }
 
   public subscribe(listener: () => void): Promise<() => Promise<void> | void> {

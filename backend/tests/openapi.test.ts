@@ -15,7 +15,7 @@ describe("GET /api/v1/openapi.json", () => {
             security?: unknown;
             "x-required-permission"?: string;
             parameters: Array<Record<string, unknown>>;
-            responses: Record<string, { content?: Record<string, unknown> }>;
+            responses: Record<string, { description?: string; content?: Record<string, unknown> }>;
           };
         }
       >;
@@ -46,9 +46,14 @@ describe("GET /api/v1/openapi.json", () => {
       expect.objectContaining({
         "400": expect.any(Object),
         "401": expect.any(Object),
-        "403": expect.any(Object)
+        "403": expect.any(Object),
+        "409": expect.any(Object)
       })
     );
+    expect(operation.responses["409"]?.description).toContain(
+      "error.live_dashboard.cursor_reset_required"
+    );
+    expect(operation.responses["409"]?.description).toContain("full snapshot");
   });
 
   it("uses a root server when versioned paths already include the API prefix", () => {

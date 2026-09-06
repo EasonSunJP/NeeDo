@@ -4,6 +4,7 @@ import type { LiveDashboardEvent } from "../src/domain/live-dashboard";
 import { LiveDashboardCache } from "../src/services/live-dashboard-cache.service";
 import {
   LiveDashboardEventGateway,
+  type LiveDashboardReplayRead,
   type LiveDashboardEventStreamEntry,
   type LiveDashboardEventStreamPort
 } from "../src/services/live-dashboard-event.gateway";
@@ -18,6 +19,7 @@ class SharedStreamState {
 class MemoryEventStream implements LiveDashboardEventStreamPort {
   public appendCalls = 0;
   public broadcastCalls = 0;
+  public readCalls = 0;
   public subscribeCalls = 0;
 
   public constructor(private readonly state: SharedStreamState) {}
@@ -43,6 +45,7 @@ class MemoryEventStream implements LiveDashboardEventStreamPort {
   }
 
   public async readAfter(lastEventId: string | null): Promise<LiveDashboardEventStreamEntry[]> {
+    this.readCalls += 1;
     const cutoff = `${this.state.serverNowMs - 5 * 60 * 1000}-0`;
     return this.state.entries
       .filter(
@@ -51,6 +54,29 @@ class MemoryEventStream implements LiveDashboardEventStreamPort {
           (!lastEventId || compareIds(entry.id, lastEventId) > 0)
       )
       .slice(-100);
+  }
+
+  public async readRetained(lastEventId: string | null): Promise<LiveDashboardReplayRead> {
+    this.readCalls += 1;
+    const cutoff = `${this.state.serverNowMs - 5 * 60 * 1000}-0`;
+    if (
+      lastEventId &&
+      !this.state.entries.some(
+        (entry) => entry.id === lastEventId && compareIds(entry.id, cutoff) >= 0
+      )
+    ) {
+      return { status: "reset_required", entries: [] };
+    }
+    return {
+      status: "ready",
+      entries: this.state.entries
+        .filter(
+          (entry) =>
+            compareIds(entry.id, cutoff) >= 0 &&
+            (!lastEventId || compareIds(entry.id, lastEventId) > 0)
+        )
+        .slice(0, 100)
+    };
   }
 
   public async subscribe(listener: () => void): Promise<() => Promise<void>> {
@@ -85,14 +111,77 @@ class RecoveringStream extends MemoryEventStream {
 class FailingReplayStream extends MemoryEventStream {
   private failures = 1;
 
+  public override async readRetained(lastEventId: string | null): Promise<LiveDashboardReplayRead> {
+    if (this.failures > 0) {
+      this.failures -= 1;
+      throw new Error("redis range unavailable");
+    }
+    return super.readRetained(lastEventId);
+  }
+}
+
+class FailingDrainStream extends MemoryEventStream {
+  private failures = 1;
+
   public override async readAfter(
     lastEventId: string | null
   ): Promise<LiveDashboardEventStreamEntry[]> {
     if (this.failures > 0) {
       this.failures -= 1;
-      throw new Error("redis range unavailable");
+      throw new Error("redis drain unavailable");
     }
     return super.readAfter(lastEventId);
+  }
+}
+
+class DeferredSubscriptionStream extends MemoryEventStream {
+  public readonly unsubscribe = jest.fn(async () => undefined);
+  public releaseSubscription!: () => void;
+  public closeCalls = 0;
+
+  public override subscribe(): Promise<() => Promise<void>> {
+    this.subscribeCalls += 1;
+    return new Promise((resolve) => {
+      this.releaseSubscription = () => resolve(this.unsubscribe);
+    });
+  }
+
+  public override async close(): Promise<void> {
+    this.closeCalls += 1;
+  }
+}
+
+class DeferredReplayStream extends MemoryEventStream {
+  public readonly unsubscribe = jest.fn(async () => undefined);
+  public releaseReplay!: () => void;
+
+  public override async subscribe(): Promise<() => Promise<void>> {
+    this.subscribeCalls += 1;
+    return this.unsubscribe;
+  }
+
+  public override readRetained(): Promise<LiveDashboardReplayRead> {
+    this.readCalls += 1;
+    return new Promise((resolve) => {
+      this.releaseReplay = () => resolve({ status: "ready", entries: [] });
+    });
+  }
+}
+
+class DeferredCursorStream extends MemoryEventStream {
+  public readonly unsubscribe = jest.fn(async () => undefined);
+  public releaseCursor!: () => void;
+
+  public override async subscribe(): Promise<() => Promise<void>> {
+    this.subscribeCalls += 1;
+    return this.unsubscribe;
+  }
+
+  public override readRetained(): Promise<LiveDashboardReplayRead> {
+    this.readCalls += 1;
+    return new Promise((resolve) => {
+      this.releaseCursor = () => resolve({ status: "ready", entries: [] });
+    });
   }
 }
 
@@ -110,6 +199,7 @@ class FakeResponse extends EventEmitter {
   public readonly writes: string[] = [];
   public statusCode = 0;
   public ended = false;
+  public endCalls = 0;
   public writable = true;
 
   public status(code: number): this {
@@ -130,6 +220,7 @@ class FakeResponse extends EventEmitter {
   }
 
   public end(): void {
+    this.endCalls += 1;
     if (this.ended) return;
     this.ended = true;
     this.emit("close");
@@ -156,6 +247,10 @@ const storedOrderEvent = (overrides: Partial<OrderChangedEvent> = {}): string =>
   const stored = { ...orderEvent(overrides) };
   delete (stored as Partial<OrderChangedEvent>).id;
   return JSON.stringify(stored);
+};
+
+const flushMicrotasks = async (): Promise<void> => {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 };
 
 describe("LiveDashboardEventGateway", () => {
@@ -308,6 +403,128 @@ describe("LiveDashboardEventGateway", () => {
     await gateway.close();
   });
 
+  it("runs one process recovery drain while staggered client heartbeats remain per response", async () => {
+    const stream = new MemoryEventStream(new SharedStreamState());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const first = new FakeResponse();
+    const second = new FakeResponse();
+    const stopFirst = await gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      null,
+      first as unknown as Response
+    );
+    await jest.advanceTimersByTimeAsync(10_000);
+    const stopSecond = await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: null },
+      null,
+      second as unknown as Response
+    );
+    const baselineReads = stream.readCalls;
+
+    await jest.advanceTimersByTimeAsync(20_000);
+    expect(stream.readCalls - baselineReads).toBe(1);
+    await jest.advanceTimersByTimeAsync(10_000);
+
+    expect(stream.readCalls - baselineReads).toBe(1);
+    expect(first.writes.join("")).toContain(": heartbeat\n\n");
+    expect(second.writes.join("")).toContain(": heartbeat\n\n");
+    stopFirst();
+    stopSecond();
+    expect(jest.getTimerCount()).toBe(0);
+    expect(first.listenerCount("close") + first.listenerCount("error")).toBe(0);
+    expect(second.listenerCount("close") + second.listenerCount("error")).toBe(0);
+    await gateway.close();
+  });
+
+  it("rejects future, trimmed, unknown, and empty-stream cursors before SSE headers", async () => {
+    const cases: Array<{ label: string; state: SharedStreamState; cursor: string }> = [];
+
+    const empty = new SharedStreamState();
+    empty.serverNowMs = 1_000;
+    cases.push({ label: "empty", state: empty, cursor: "1000-0" });
+
+    const future = new SharedStreamState();
+    future.serverNowMs = 1_000;
+    const futureStream = new MemoryEventStream(future);
+    await futureStream.append(storedOrderEvent());
+    cases.push({ label: "future", state: future, cursor: "1001-0" });
+
+    const trimmed = new SharedStreamState();
+    trimmed.serverNowMs = 1_000;
+    const trimmedStream = new MemoryEventStream(trimmed);
+    const trimmedId = (await trimmedStream.append(storedOrderEvent())).id;
+    for (let index = 0; index < 100; index += 1) {
+      await trimmedStream.append(storedOrderEvent());
+    }
+    cases.push({ label: "trimmed", state: trimmed, cursor: trimmedId });
+
+    const unknown = new SharedStreamState();
+    unknown.serverNowMs = 1_000;
+    const unknownStream = new MemoryEventStream(unknown);
+    await unknownStream.append(storedOrderEvent());
+    unknown.serverNowMs = 1_002;
+    await unknownStream.append(storedOrderEvent());
+    cases.push({ label: "unknown", state: unknown, cursor: "1001-0" });
+
+    for (const testCase of cases) {
+      const gateway = new LiveDashboardEventGateway({
+        eventStream: new MemoryEventStream(testCase.state)
+      });
+      const response = new FakeResponse();
+      const error = await gateway
+        .subscribe(
+          { countryCode: "JP", admin1Code: null, admin2Code: null },
+          testCase.cursor,
+          response as unknown as Response
+        )
+        .then(
+          () => null,
+          (caught) => caught
+        );
+      await gateway.close();
+
+      expect(error).toMatchObject({
+        statusCode: 409,
+        message: "error.live_dashboard.cursor_reset_required"
+      });
+      expect(response.statusCode).toBe(0);
+      expect(response.headers.size).toBe(0);
+      expect(response.writes.join("")).not.toContain("event: connected");
+    }
+  });
+
+  it("accepts a retained cursor and a cursor equal to the current stream head", async () => {
+    const state = new SharedStreamState();
+    state.serverNowMs = 1_000;
+    const stream = new MemoryEventStream(state);
+    const first = await stream.append(storedOrderEvent());
+    const head = await stream.append(
+      storedOrderEvent({
+        payload: { ...orderEvent().payload, orderNo: "ND202609060002" }
+      })
+    );
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const retained = new FakeResponse();
+    const atHead = new FakeResponse();
+
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      first.id,
+      retained as unknown as Response
+    );
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      head.id,
+      atHead as unknown as Response
+    );
+
+    expect(retained.writes.join("")).toContain(`id: ${head.id}`);
+    expect(retained.writes.join("")).toContain("event: connected");
+    expect(atHead.writes.join("")).not.toContain(`id: ${head.id}`);
+    expect(atHead.writes.join("")).toContain("event: connected");
+    await gateway.close();
+  });
+
   it("limits replay to 100 events received within the last five minutes", async () => {
     let nowMs = Date.parse("2026-09-06T00:00:00.000Z");
     const state = new SharedStreamState();
@@ -333,7 +550,7 @@ describe("LiveDashboardEventGateway", () => {
     const bounded = new FakeResponse();
     await gateway.subscribe(
       { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
-      "0000000000000-0",
+      null,
       bounded as unknown as Response
     );
     expect(bounded.writes.join("").match(/event: order\.changed/g)).toHaveLength(100);
@@ -344,7 +561,7 @@ describe("LiveDashboardEventGateway", () => {
     const expired = new FakeResponse();
     await gateway.subscribe(
       { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
-      "0000000000000-0",
+      null,
       expired as unknown as Response
     );
     expect(expired.writes.join("")).not.toContain("event: order.changed");
@@ -510,7 +727,7 @@ describe("LiveDashboardEventGateway", () => {
 
     await gateway.subscribe(
       { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
-      "0000000000000-0",
+      null,
       failed as unknown as Response
     );
 
@@ -520,12 +737,119 @@ describe("LiveDashboardEventGateway", () => {
     const recovered = new FakeResponse();
     await gateway.subscribe(
       { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
-      "0000000000000-0",
+      null,
       recovered as unknown as Response
     );
     expect(recovered.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
     expect(recovered.writes.join("")).toContain("event: connected");
     await gateway.close();
+  });
+
+  it("ends without connected when the establishment drain fails and retries the cursor", async () => {
+    const state = new SharedStreamState();
+    const stream = new FailingDrainStream(state);
+    const missing = await stream.append(storedOrderEvent());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const failed = new FakeResponse();
+
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      null,
+      failed as unknown as Response
+    );
+
+    expect(failed.ended).toBe(true);
+    expect(failed.writes.join("")).not.toContain("event: connected");
+
+    const recovered = new FakeResponse();
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      null,
+      recovered as unknown as Response
+    );
+    expect(recovered.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
+    expect(recovered.writes.join("")).toContain("event: connected");
+    await gateway.close();
+  });
+
+  it("cancels a late transport subscription and never installs a client after close", async () => {
+    const stream = new DeferredSubscriptionStream(new SharedStreamState());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    const subscribing = gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      null,
+      response as unknown as Response
+    );
+    await flushMicrotasks();
+    let closeSettled = false;
+    const closing = gateway.close().then(() => {
+      closeSettled = true;
+    });
+    await flushMicrotasks();
+    const settledBeforeRelease = closeSettled;
+
+    stream.releaseSubscription();
+    await Promise.all([subscribing, closing]);
+    await gateway.close();
+
+    expect(settledBeforeRelease).toBe(false);
+    expect(stream.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(stream.closeCalls).toBe(1);
+    expect(response.ended).toBe(true);
+    expect(response.endCalls).toBe(1);
+    expect(response.writes.join("")).not.toContain("event: connected");
+    expect(jest.getTimerCount()).toBe(0);
+    expect(response.listenerCount("close")).toBe(0);
+    expect(response.listenerCount("error")).toBe(0);
+  });
+
+  it("does not reconnect or install timers when close wins an in-progress replay", async () => {
+    const stream = new DeferredReplayStream(new SharedStreamState());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    const subscribing = gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      null,
+      response as unknown as Response
+    );
+    await flushMicrotasks();
+
+    const closing = gateway.close();
+    stream.releaseReplay();
+    await Promise.all([subscribing, closing]);
+
+    expect(stream.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(response.ended).toBe(true);
+    expect(response.endCalls).toBe(1);
+    expect(response.writes.join("")).not.toContain("event: connected");
+    expect(jest.getTimerCount()).toBe(0);
+    expect(response.listenerCount("close")).toBe(0);
+    expect(response.listenerCount("error")).toBe(0);
+  });
+
+  it("does not open headers when close wins the atomic retained-cursor read", async () => {
+    const stream = new DeferredCursorStream(new SharedStreamState());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    const subscribing = gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      "1000-0",
+      response as unknown as Response
+    );
+    await flushMicrotasks();
+
+    const closing = gateway.close();
+    stream.releaseCursor();
+    await Promise.all([subscribing, closing]);
+
+    expect(stream.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(response.ended).toBe(true);
+    expect(response.endCalls).toBe(1);
+    expect(response.statusCode).toBe(0);
+    expect(response.headers.size).toBe(0);
+    expect(response.writes).toHaveLength(0);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it("invalidates through the shared cache hook and contains invalidation failure", async () => {

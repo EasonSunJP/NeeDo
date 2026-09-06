@@ -87,6 +87,7 @@ export class LiveDashboardService {
         statusCode: 503
       });
     }
+    const prepared = await this.eventGateway.prepareSubscription(lastEventId);
     await this.auditLog.record({
       actor,
       context,
@@ -108,7 +109,8 @@ export class LiveDashboardService {
         admin2Code: query.admin2 ?? null
       },
       lastEventId,
-      response
+      response,
+      prepared
     );
   }
 
