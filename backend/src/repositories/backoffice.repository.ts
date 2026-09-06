@@ -1,3 +1,4 @@
+import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
 import {
   BookingOrderStatus,
@@ -116,11 +117,6 @@ interface LockedShopRow {
 
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
 const OPERATIONS_ROLE_CODES = ["admin", "operator", "finance", "support", "viewer"];
-const PAID_PLATFORM_TIER_CODES = [
-  PlatformMembershipTierCode.SILVER,
-  PlatformMembershipTierCode.GOLD,
-  PlatformMembershipTierCode.BLACK_DIAMOND
-];
 
 const visibleManagedIdentityScopeWhere = (scope: BackofficeScope) =>
   scope.scope === "merchant"
@@ -2252,71 +2248,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     tierCode: "free" | "silver" | "gold" | "black_diamond",
     occurredAt: Date
   ): Prisma.UserWhereInput {
-    const activeEntitlement = this.managedActiveEntitlementWhere(occurredAt);
-    const activeTierAdjustment = {
-      deletedAt: null,
-      supersededAt: null,
-      effectiveFrom: { lte: occurredAt },
-      tierVersionId: { not: null }
-    } satisfies Prisma.UserMembershipAdjustmentWhereInput;
-    if (tierCode === "free") {
-      return {
-        customerProfile: { is: { deletedAt: null } },
-        OR: [
-          {
-            membershipAdjustments: {
-              some: {
-                ...activeTierAdjustment,
-                tierVersion: { tier: { code: PlatformMembershipTierCode.FREE } }
-              }
-            }
-          },
-          {
-            membershipAdjustments: { none: activeTierAdjustment },
-            platformMembershipEntitlements: {
-              none: {
-                ...activeEntitlement,
-                tierVersion: {
-                  ...this.managedActiveTierVersionWhere(occurredAt),
-                  tier: { code: { in: PAID_PLATFORM_TIER_CODES }, deletedAt: null }
-                }
-              }
-            }
-          }
-        ]
-      };
-    }
-    const dbTierCode =
-      tierCode === "silver"
-        ? PlatformMembershipTierCode.SILVER
-        : tierCode === "gold"
-          ? PlatformMembershipTierCode.GOLD
-          : PlatformMembershipTierCode.BLACK_DIAMOND;
-    return {
-      customerProfile: { is: { deletedAt: null } },
-      OR: [
-        {
-          membershipAdjustments: {
-            some: {
-              ...activeTierAdjustment,
-              tierVersion: { tier: { code: dbTierCode, deletedAt: null } }
-            }
-          }
-        },
-        {
-          membershipAdjustments: { none: activeTierAdjustment },
-          platformMembershipEntitlements: {
-            some: {
-              ...activeEntitlement,
-              tierVersion: {
-                ...this.managedActiveTierVersionWhere(occurredAt),
-                tier: { code: dbTierCode, deletedAt: null }
-              }
-            }
-          }
-        }
-      ]
-    };
+    return buildManagedUserTierWhere(tierCode, occurredAt);
   }
 
   private managedUserGroupWhere(groupCode: string, occurredAt: Date): Prisma.UserWhereInput {
@@ -2344,28 +2276,6 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           group: { code: groupCode, status: "ACTIVE", deletedAt: null }
         }
       }
-    };
-  }
-
-  private managedActiveEntitlementWhere(
-    occurredAt: Date
-  ): Prisma.PlatformMembershipEntitlementWhereInput {
-    return {
-      deletedAt: null,
-      supersededAt: null,
-      startsAt: { lte: occurredAt },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
-    };
-  }
-
-  private managedActiveTierVersionWhere(
-    occurredAt: Date
-  ): Prisma.PlatformMembershipTierVersionWhereInput {
-    return {
-      status: "PUBLISHED",
-      deletedAt: null,
-      effectiveFrom: { lte: occurredAt },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }]
     };
   }
 

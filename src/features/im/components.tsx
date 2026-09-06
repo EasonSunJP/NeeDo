@@ -607,7 +607,7 @@ function ImComposerRichInput({
       <div className="relative min-h-[24px]">
         <textarea
           aria-placeholder={placeholder}
-          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
           data-im-composer-native-input="true"
           disabled
           placeholder={placeholder}
@@ -622,7 +622,7 @@ function ImComposerRichInput({
     <div className="relative min-h-[24px]">
       {!draft ? (
         <span
-          className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]"
+          className="pointer-events-none absolute inset-0 text-[16px] leading-6 text-[color:var(--client-muted)]"
           data-no-i18n="true"
         >
           {localizedPlaceholder}
@@ -632,7 +632,7 @@ function ImComposerRichInput({
         aria-disabled={disabled}
         aria-multiline="true"
         aria-placeholder={localizedPlaceholder}
-        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
         data-no-i18n="true"
@@ -1770,6 +1770,7 @@ export function ImBottomSheet({
   children,
   panelClassName,
   bodyClassName,
+  presentation = "sheet",
   showCloseButton = false,
   closeLabel = "关闭"
 }: {
@@ -1777,6 +1778,7 @@ export function ImBottomSheet({
   title?: string;
   onClose: () => void;
   children: ReactNode;
+  presentation?: "sheet" | "composer";
   panelClassName?: string;
   bodyClassName?: string;
   showCloseButton?: boolean;
@@ -1790,7 +1792,9 @@ export function ImBottomSheet({
     <div className="fixed inset-0 z-50 bg-[color:var(--client-overlay)]" onClick={onClose}>
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
+          presentation === "composer"
+            ? "absolute inset-x-0 mx-auto client-liquid-glass-surface im-composer-glass im-composer-panel im-contact-card-panel p-4"
+            : "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
           panelClassName
         )}
         onClick={(event) => event.stopPropagation()}

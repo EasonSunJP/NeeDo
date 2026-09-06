@@ -229,6 +229,14 @@ img {
   padding-top: calc(env(safe-area-inset-top) + 12px);
 }
 
+html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host .safe-header-top {
+  padding-top: 12px;
+}
+
 .safe-shell-bottom {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }
@@ -2496,6 +2504,11 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   transform-origin: bottom center;
   animation: im-composer-panel-enter 180ms ease-out both;
   scrollbar-gutter: stable;
+}
+
+.im-contact-card-panel {
+  width: min(calc(100% - 24px), calc(var(--client-bottom-nav-max-width, 880px) - 24px));
+  bottom: max(env(safe-area-inset-bottom), 6px);
 }
 
 @keyframes im-composer-panel-enter {

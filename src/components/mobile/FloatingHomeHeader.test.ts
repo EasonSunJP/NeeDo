@@ -7,7 +7,15 @@ const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8"
 
 describe("FloatingHomeHeader spacing guard", () => {
   it("prevents parent vertical rhythm utilities from pushing the fixed frame down", () => {
-    expect(source).toContain('className={cn("pointer-events-none fixed inset-x-0 top-0 z-[35] !mt-0", frameClassName)}');
+    expect(source).toContain('"client-floating-header-host pointer-events-none fixed inset-x-0 top-0 z-[35] !mt-0"');
+  });
+
+  it("keeps all four rounded corners below the iOS standalone safe area", () => {
+    expect(source).toContain("panel.getBoundingClientRect().bottom + spacerGapPx");
+    expect(styles).toContain('html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host {');
+    expect(styles).toContain("top: calc(env(safe-area-inset-top, 0px) + 12px);");
+    expect(styles).toContain('html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host .safe-header-top {');
+    expect(styles).toContain("padding-top: 12px;");
   });
 
   it("keeps every shared floating header on the framed Liquid Glass surface class", () => {
@@ -27,7 +35,7 @@ describe("FloatingHomeHeader spacing guard", () => {
   });
 
   it("rounds every remaining floating top header to 28px on all four corners", () => {
-    expect(source).toContain("client-floating-header-glass-frame !rounded-[28px]");
+    expect(source).toContain("client-floating-header-glass-frame overflow-hidden !rounded-[28px]");
     expect(source).not.toContain("rounded-t-none");
     expect(source).not.toContain("rounded-b-[28px]");
 

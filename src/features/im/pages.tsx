@@ -6969,6 +6969,7 @@ export function ImConversationRoomPage({
       <ImBottomSheet
         onClose={closeContactCardPicker}
         open={contactCardPickerOpen}
+        presentation="composer"
         title={translateText("发送名片", language)}
       >
         <div className="space-y-3 pb-2">
@@ -6988,7 +6989,7 @@ export function ImConversationRoomPage({
             </p>
           ) : null}
 
-          <section className="max-h-[62dvh] overflow-y-auto rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-surface)_28%)]">
+          <section className="overflow-y-auto rounded-2xl bg-[color:color-mix(in_srgb,var(--client-surface)_35%,transparent)]">
             {contactCardPickerStatus === "loading" ? (
               <div className="px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
                 {translateText("正在加载名片", language)}

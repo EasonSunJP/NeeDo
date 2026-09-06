@@ -5703,8 +5703,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["targetUserId", "needoId", "nickname", "avatarUrl", "relationship"],
         properties: {
-          targetUserId: { type: "string", pattern: "^u[0-9]{10}$" },
-          needoId: { type: "string", pattern: "^u[0-9]{10}$" },
+          targetUserId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
           nickname: { type: "string", minLength: 1, maxLength: 191 },
           avatarUrl: { type: ["string", "null"] },
           relationship: { type: "string", enum: ["self", "friend"] }
@@ -5836,7 +5836,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["targetUserId"],
         properties: {
-          targetUserId: { type: "string", pattern: "^u[0-9]{10}$" }
+          targetUserId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" }
         }
       },
       ContactCardSendResult: {
@@ -8436,9 +8436,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "isGloballyEnabled",
           "nameTranslations",
           "descriptionTranslations",
-          "lockVersion"
+          "lockVersion",
+          "deliveryCapability"
         ],
         properties: {
+          deliveryCapability: { type: "string", enum: ["available", "unavailable"] },
           code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
           sortOrder: { type: "integer", minimum: 0 },
           isGloballyEnabled: { type: "boolean" },

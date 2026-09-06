@@ -33,6 +33,10 @@ vi.mock("./api", () => ({
   }
 }));
 
+vi.mock("../../components/admin/AdminLayout", () => ({
+  AdminLayout: ({ children }: { children: React.ReactNode }) => <div data-admin-layout="true">{children}</div>
+}));
+
 import { SystemSettingsPage } from "./SystemSettingsPage";
 
 const settings = {
@@ -102,6 +106,7 @@ describe("SystemSettingsPage interactions", () => {
     await act(async () => {
       root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
     });
+    expect(container.querySelector('[data-admin-layout="true"] [role="tablist"]')).not.toBeNull();
     const basic = container.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')!;
     await act(async () => basic.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })));
     const selected = container.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');

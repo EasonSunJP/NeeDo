@@ -1045,10 +1045,10 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     audit: AuditLogCreateInput;
   }): Promise<UserMembershipAdjustmentMutationResult> {
     return this.client.$transaction(async (transaction) => {
-      const lockedCustomers = await transaction.$queryRaw<Array<{ id: number }>>(
-        Prisma.sql`SELECT id FROM customer_profiles WHERE user_id = ${input.userId} AND deleted_at IS NULL FOR UPDATE`
+      const lockedUsers = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM users WHERE id = ${input.userId} AND deleted_at IS NULL FOR UPDATE`
       );
-      if (lockedCustomers.length === 0) return { kind: "not_found" as const };
+      if (lockedUsers.length === 0) return { kind: "not_found" as const };
 
       const current = await transaction.userMembershipAdjustment.findFirst({
         where: {

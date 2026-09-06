@@ -355,7 +355,7 @@ function toContactCardCandidate(value: unknown): ImContactCardCandidate {
   ]);
   const targetUserId = contactCardString(candidate.targetUserId, 160);
   const needoId = contactCardString(candidate.needoId, 160);
-  if (!/^u[0-9]{10}$/u.test(targetUserId) || !/^u[0-9]{10}$/u.test(needoId)) {
+  if (!/^(?:u|needo)[0-9]{10}$/u.test(targetUserId) || !/^(?:u|needo)[0-9]{10}$/u.test(needoId)) {
     return invalidContactCard();
   }
   const nickname = contactCardString(candidate.nickname, 160);
@@ -1409,7 +1409,7 @@ export function createFormalImApi({
       const normalizedTargetUserId = targetUserId.trim();
       const normalizedIdempotencyKey = idempotencyKey.trim();
       if (
-        !/^u[0-9]{10}$/u.test(normalizedTargetUserId) ||
+        !/^(?:u|needo)[0-9]{10}$/u.test(normalizedTargetUserId) ||
         normalizedIdempotencyKey.length < 8 ||
         normalizedIdempotencyKey.length > 191
       ) {

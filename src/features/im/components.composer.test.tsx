@@ -105,7 +105,7 @@ describe("ImChatComposer", () => {
   it("follows the live visual viewport only while the keyboard editor has focus", async () => {
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
-      height: { configurable: true, value: 690 },
+      height: { configurable: true, value: 480 },
       offsetTop: { configurable: true, value: 20 },
       width: { configurable: true, value: 390 },
       offsetLeft: { configurable: true, value: 5 }
@@ -133,7 +133,7 @@ describe("ImChatComposer", () => {
     });
 
     const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("690px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("480px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
 
@@ -191,6 +191,23 @@ describe("ImChatComposer", () => {
     expect.soft(onSend).toHaveBeenCalledWith("测试测试!");
     expect.soft(actualVisualPlaceholder).toBe("メッセージを送信");
     expect.soft(actualAriaPlaceholder).toBe("メッセージを送信");
+  });
+
+  it("keeps the editable composer at the iOS no-zoom font size", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    const placeholder = editor?.parentElement?.querySelector("span");
+    expect(editor?.classList.contains("text-[16px]")).toBe(true);
+    expect(placeholder?.classList.contains("text-[16px]")).toBe(true);
+
+    await act(async () => root.unmount());
   });
 
   it("opens voice recording directly with caller copy and a ref without entering a gesture mode", async () => {

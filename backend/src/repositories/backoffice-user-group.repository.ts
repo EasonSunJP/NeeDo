@@ -1,7 +1,7 @@
+import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { randomUUID } from "node:crypto";
 import {
   BackofficeUserGroupStatus,
-  PlatformMembershipTierCode,
   Prisma,
   type PrismaClient
 } from "@prisma/client";
@@ -23,18 +23,6 @@ import {
 } from "../utils/pagination";
 
 const operationsRoleCodes = ["admin", "operator", "finance", "support", "viewer"];
-const paidTierCodes = [
-  PlatformMembershipTierCode.SILVER,
-  PlatformMembershipTierCode.GOLD,
-  PlatformMembershipTierCode.BLACK_DIAMOND
-];
-
-const systemTierCode: Partial<Record<SystemUserGroupCode, PlatformMembershipTierCode>> = {
-  "system:silver": PlatformMembershipTierCode.SILVER,
-  "system:gold": PlatformMembershipTierCode.GOLD,
-  "system:black_diamond": PlatformMembershipTierCode.BLACK_DIAMOND
-};
-
 const memberSelect = Prisma.validator<Prisma.UserSelect>()({
   needoId: true,
   username: true,
@@ -333,52 +321,8 @@ export class BackofficeUserGroupRepository implements BackofficeUserGroupReposit
       };
     }
 
-    if (groupCode === "system:free") {
-      return {
-        ...activeBase,
-        customerProfile: { is: { deletedAt: null } },
-        platformMembershipEntitlements: {
-          none: {
-            ...this.activeEntitlementWhere(occurredAt),
-            tierVersion: this.activeTierVersionWhere(occurredAt, { in: paidTierCodes })
-          }
-        }
-      };
-    }
-    const paidTierCode = systemTierCode[groupCode];
-    if (!paidTierCode) throw new Error("Unsupported paid system group code");
-    return {
-      ...activeBase,
-      customerProfile: { is: { deletedAt: null } },
-      platformMembershipEntitlements: {
-        some: {
-          ...this.activeEntitlementWhere(occurredAt),
-          tierVersion: this.activeTierVersionWhere(occurredAt, paidTierCode)
-        }
-      }
-    };
-  }
-
-  private activeEntitlementWhere(occurredAt: Date): Prisma.PlatformMembershipEntitlementWhereInput {
-    return {
-      deletedAt: null,
-      supersededAt: null,
-      startsAt: { lte: occurredAt },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
-    };
-  }
-
-  private activeTierVersionWhere(
-    occurredAt: Date,
-    tierCode: Prisma.EnumPlatformMembershipTierCodeFilter | PlatformMembershipTierCode
-  ): Prisma.PlatformMembershipTierVersionWhereInput {
-    return {
-      status: "PUBLISHED",
-      deletedAt: null,
-      effectiveFrom: { lte: occurredAt },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: occurredAt } }],
-      tier: { code: tierCode, deletedAt: null }
-    };
+    const tierCode = groupCode.slice("system:".length) as "free" | "silver" | "gold" | "black_diamond";
+    return { ...activeBase, ...buildManagedUserTierWhere(tierCode, occurredAt) };
   }
 
   private mapCustomGroup(

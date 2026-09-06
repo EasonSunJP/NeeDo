@@ -40,7 +40,7 @@ function fixture(current: null | {
 }
 
 describe("PlatformMembershipRepository user membership adjustment", () => {
-  it("locks the customer, supersedes the old row, and persists a complete successor", async () => {
+  it("locks the account, supersedes the old row, and persists a complete successor", async () => {
     const test = fixture({
       id: 70,
       lockVersion: 2,
@@ -92,6 +92,21 @@ describe("PlatformMembershipRepository user membership adjustment", () => {
         }),
       }),
     );
+    expect(test.auditCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("adjusts an existing account even before it has a customer profile", async () => {
+    const test = fixture();
+    test.transaction.$queryRaw.mockImplementation(async (...args: unknown[]) => {
+      const query = args[0] as { sql: string };
+      return /FROM users WHERE id =/.test(query.sql) ? [{ id: 41 }] : [];
+    });
+    const result = await test.repository.adjustUserMembershipWithAudit({
+      actorId: 9, userId: 41, tierCode: "gold", reason: "Approved account membership",
+      expectedLockVersion: null, effectiveFrom: now,
+      audit: { actorId: 9, action: "platform.user_membership.adjust", targetType: "UserMembershipAdjustment" }
+    });
+    expect(result.kind).toBe("adjusted");
     expect(test.auditCreate).toHaveBeenCalledTimes(1);
   });
 

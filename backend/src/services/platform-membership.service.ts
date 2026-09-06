@@ -136,6 +136,7 @@ export class PlatformMembershipService {
       this.resolveMembershipAt(actor.userId, occurredAt),
       this.repository.hasVerifiedEkycAt(actor.userId, occurredAt)
     ]);
+    const publishedDesign = await this.repository.findPublishedTierAt(membership.tierCode, occurredAt);
     return {
       tierCode: membership.tierCode,
       tierVersionPublicId: membership.tierVersionPublicId,
@@ -146,7 +147,7 @@ export class PlatformMembershipService {
         code: benefit.code,
         configuration: benefit.configuration
       })),
-      theme: membership.theme
+      theme: publishedDesign?.theme ?? membership.theme
     };
   }
 
@@ -252,16 +253,16 @@ export class PlatformMembershipService {
 
   public async listBenefitsForAdministration(
     actor: AuthenticatedAccessContext
-  ): Promise<PlatformMembershipBenefitAdministrationPayload[]> {
+  ): Promise<Array<PlatformMembershipBenefitAdministrationPayload & { deliveryCapability: MembershipBenefitDeliveryCapability }>> {
     this.assertOperationsIdentity(actor);
     const benefits = await this.repository.listBenefitsForAdministration();
     if (
       benefits.length !== PLATFORM_MEMBERSHIP_BENEFIT_CODES.length ||
-      benefits.some((benefit, index) => benefit.code !== PLATFORM_MEMBERSHIP_BENEFIT_CODES[index])
+      PLATFORM_MEMBERSHIP_BENEFIT_CODES.some(code => !benefits.some(benefit => benefit.code === code))
     ) {
       throw this.catalogInvalid();
     }
-    return benefits;
+    return benefits.map(benefit => ({ ...benefit, deliveryCapability: this.benefitCapabilities.resolve(benefit.code) }));
   }
 
   public async updateBenefit(
@@ -269,7 +270,7 @@ export class PlatformMembershipService {
     context: AuthRequestContext,
     benefitCode: string,
     input: PlatformMembershipBenefitUpdateBody
-  ): Promise<PlatformMembershipBenefitAdministrationPayload> {
+  ): Promise<PlatformMembershipBenefitAdministrationPayload & { deliveryCapability: MembershipBenefitDeliveryCapability }> {
     this.assertOperationsIdentity(actor);
     const normalizedBenefitCode = this.normalizeBenefitCode(benefitCode);
     if (
@@ -308,7 +309,8 @@ export class PlatformMembershipService {
         }
       })
     });
-    return this.unwrapBenefitMutation(result);
+    const benefit = this.unwrapBenefitMutation(result);
+    return { ...benefit, deliveryCapability: this.benefitCapabilities.resolve(benefit.code) };
   }
 
   public async changeEntitlement(
