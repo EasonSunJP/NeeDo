@@ -28,6 +28,23 @@ export interface PersistedBookingLocation extends BookingLocationCreateInput {
   deletedAt: Date | null;
 }
 
+interface BookingLocationRestorePredicate {
+  id: number;
+  bookingOrderId: number;
+  countryCode: string;
+  admin1RegionCode: string | null;
+  admin1Name: string | null;
+  admin2RegionCode: string | null;
+  admin2Name: string | null;
+  source: BookingLocationSource;
+  resolutionStatus: BookingLocationResolutionStatus;
+  datasetVersion: string;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: null;
+}
+
 interface BookingOrderSnapshot {
   id: number;
   fulfillmentMode: string;
@@ -58,6 +75,15 @@ interface BookingOrderSnapshot {
   };
 }
 
+interface BookingOrderFindManyArguments {
+  where: { deletedAt: null };
+  select: typeof bookingOrderSnapshotSelect;
+  orderBy: { id: "asc" };
+  take: number;
+  cursor?: { id: number };
+  skip?: 1;
+}
+
 interface BackfillAuditRecord {
   id: number;
   action: string;
@@ -77,7 +103,7 @@ interface AuditLookup {
 
 export interface BookingLocationBackfillClient {
   bookingOrder: {
-    findMany: (args: unknown) => Promise<BookingOrderSnapshot[]>;
+    findMany: (args: BookingOrderFindManyArguments) => Promise<BookingOrderSnapshot[]>;
   };
   bookingServiceLocation: {
     findMany: (args?: {
@@ -89,7 +115,7 @@ export interface BookingLocationBackfillClient {
       skipDuplicates: boolean;
     }) => Promise<{ count: number }>;
     updateMany: (args: {
-      where: { bookingOrderId: number; deletedAt: null; updatedAt: Date };
+      where: { OR: BookingLocationRestorePredicate[] };
       data: { deletedAt: Date };
     }) => Promise<{ count: number }>;
     count?: () => Promise<number>;
@@ -120,6 +146,7 @@ export interface BookingLocationBackfillPlan {
   summary: BookingLocationBackfillSummary;
   rows: BookingLocationCreateInput[];
   skipped: Array<{ bookingOrderId: number; reason: BookingLocationBackfillSkipReason }>;
+  sourceDigest: string;
 }
 
 export interface BookingLocationBackfillManifestRow {
@@ -193,6 +220,10 @@ const RESTORE_ACTION = "booking_service_location.backfill.restore";
 const AUDIT_TARGET = "booking_service_location_backfill_run";
 const UNRESOLVED_DATASET_VERSION = "historical-unresolved-v1";
 const MAX_BATCH_SIZE = 500;
+const BOOKING_PLAN_PAGE_SIZE = 500;
+export const MAX_BACKFILL_MANIFEST_ROWS = 5_000;
+export const MAX_BACKFILL_MANIFEST_SERIALIZED_BYTES = 256 * 1_024;
+export const MAX_BACKFILL_SCANNED_BOOKINGS = 10_000;
 const forbiddenTarget = /(?:prod|production|staging|live)/iu;
 const localDatabasePurpose = /(?:test|dev|local)/iu;
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -204,12 +235,68 @@ const defaultFileSystem: BookingLocationBackfillFileSystem = {
   readFileSync: (value) => readFileSync(value, "utf8")
 };
 
+const bookingOrderSnapshotSelect = {
+  id: true,
+  fulfillmentMode: true,
+  serviceLocation: { select: { bookingOrderId: true } },
+  shop: {
+    select: {
+      serviceLocation: {
+        select: {
+          countryCode: true,
+          datasetVersion: true,
+          verifiedAt: true,
+          deletedAt: true,
+          admin1Region: {
+            select: {
+              id: true,
+              level: true,
+              officialCode: true,
+              parentId: true,
+              deletedAt: true,
+              locales: {
+                where: { locale: "JA", deletedAt: null },
+                select: { name: true },
+                take: 1
+              }
+            }
+          },
+          admin2Region: {
+            select: {
+              id: true,
+              level: true,
+              officialCode: true,
+              parentId: true,
+              deletedAt: true,
+              locales: {
+                where: { locale: "JA", deletedAt: null },
+                select: { name: true },
+                take: 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+} as const;
+
 const chunks = <T>(items: readonly T[], size = MAX_BATCH_SIZE): T[][] => {
   const result: T[][] = [];
   for (let index = 0; index < items.length; index += size) {
     result.push(items.slice(index, index + size));
   }
   return result;
+};
+
+const appendPlannedRow = (
+  rows: BookingLocationCreateInput[],
+  row: BookingLocationCreateInput
+): void => {
+  rows.push(row);
+  if (rows.length > MAX_BACKFILL_MANIFEST_ROWS) {
+    throw new Error("Backfill manifest row limit exceeded");
+  }
 };
 
 const nonEmpty = (value: string | null | undefined): value is string =>
@@ -259,55 +346,6 @@ const verifiedShopRow = (
 export async function buildBookingLocationBackfillPlan(
   client: BookingLocationBackfillClient
 ): Promise<BookingLocationBackfillPlan> {
-  const orders = await client.bookingOrder.findMany({
-    where: { deletedAt: null },
-    select: {
-      id: true,
-      fulfillmentMode: true,
-      serviceLocation: { select: { bookingOrderId: true } },
-      shop: {
-        select: {
-          serviceLocation: {
-            select: {
-              countryCode: true,
-              datasetVersion: true,
-              verifiedAt: true,
-              deletedAt: true,
-              admin1Region: {
-                select: {
-                  id: true,
-                  level: true,
-                  officialCode: true,
-                  parentId: true,
-                  deletedAt: true,
-                  locales: {
-                    where: { locale: "JA", deletedAt: null },
-                    select: { name: true },
-                    take: 1
-                  }
-                }
-              },
-              admin2Region: {
-                select: {
-                  id: true,
-                  level: true,
-                  officialCode: true,
-                  parentId: true,
-                  deletedAt: true,
-                  locales: {
-                    where: { locale: "JA", deletedAt: null },
-                    select: { name: true },
-                    take: 1
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    orderBy: { id: "asc" }
-  });
   const summary: BookingLocationBackfillSummary = {
     storeVerified: 0,
     homeVerified: 0,
@@ -316,49 +354,88 @@ export async function buildBookingLocationBackfillPlan(
   };
   const rows: BookingLocationCreateInput[] = [];
   const skipped: BookingLocationBackfillPlan["skipped"] = [];
-
-  for (const current of orders) {
-    if (current.serviceLocation !== null) {
-      summary.alreadyPresent += 1;
-      continue;
-    }
-    const mode = current.fulfillmentMode.trim().toLowerCase();
-    if (mode === "home") {
-      rows.push({
-        bookingOrderId: current.id,
-        countryCode: "JP",
-        admin1RegionCode: null,
-        admin1Name: null,
-        admin2RegionCode: null,
-        admin2Name: null,
-        source: "CUSTOMER_SERVICE_LOCATION",
-        resolutionStatus: "UNRESOLVED",
-        datasetVersion: UNRESOLVED_DATASET_VERSION,
-        resolvedAt: null
-      });
-      summary.unresolved += 1;
-      continue;
-    }
-    if (mode === "store") {
-      const verified = verifiedShopRow(current);
-      if (verified) {
-        rows.push(verified);
-        summary.storeVerified += 1;
-      } else {
-        skipped.push({
-          bookingOrderId: current.id,
-          reason: "SHOP_LOCATION_NOT_VERIFIED"
-        });
-      }
-      continue;
-    }
-    skipped.push({
-      bookingOrderId: current.id,
-      reason: "UNSUPPORTED_FULFILLMENT_MODE"
+  let cursorId: number | undefined;
+  let scannedBookings = 0;
+  while (true) {
+    const page = await client.bookingOrder.findMany({
+      where: { deletedAt: null },
+      select: bookingOrderSnapshotSelect,
+      orderBy: { id: "asc" },
+      take: BOOKING_PLAN_PAGE_SIZE,
+      ...(cursorId === undefined ? {} : { cursor: { id: cursorId }, skip: 1 as const })
     });
+    if (page.length === 0) break;
+    for (const current of page) {
+      scannedBookings += 1;
+      if (scannedBookings > MAX_BACKFILL_SCANNED_BOOKINGS) {
+        throw new Error("Booking location backfill booking scan limit exceeded");
+      }
+      if (cursorId !== undefined && current.id <= cursorId) {
+        throw new Error("Booking location backfill cursor order is invalid");
+      }
+      cursorId = current.id;
+      if (current.serviceLocation !== null) {
+        summary.alreadyPresent += 1;
+        continue;
+      }
+      const mode = current.fulfillmentMode.trim().toLowerCase();
+      if (mode === "home" || mode === "home_visit") {
+        appendPlannedRow(rows, {
+          bookingOrderId: current.id,
+          countryCode: "JP",
+          admin1RegionCode: null,
+          admin1Name: null,
+          admin2RegionCode: null,
+          admin2Name: null,
+          source: "CUSTOMER_SERVICE_LOCATION",
+          resolutionStatus: "UNRESOLVED",
+          datasetVersion: UNRESOLVED_DATASET_VERSION,
+          resolvedAt: null
+        });
+        summary.unresolved += 1;
+        continue;
+      }
+      if (mode === "store") {
+        const verified = verifiedShopRow(current);
+        if (verified) {
+          appendPlannedRow(rows, verified);
+          summary.storeVerified += 1;
+        } else {
+          skipped.push({
+            bookingOrderId: current.id,
+            reason: "SHOP_LOCATION_NOT_VERIFIED"
+          });
+        }
+        continue;
+      }
+      skipped.push({
+        bookingOrderId: current.id,
+        reason: "UNSUPPORTED_FULFILLMENT_MODE"
+      });
+    }
+    if (page.length < BOOKING_PLAN_PAGE_SIZE) break;
   }
-  return { summary, rows, skipped };
+  const planWithoutDigest = { summary, rows, skipped };
+  return {
+    ...planWithoutDigest,
+    sourceDigest: digestBookingLocationBackfillPlan(planWithoutDigest)
+  };
 }
+
+type PlanWithoutDigest = Omit<BookingLocationBackfillPlan, "sourceDigest">;
+
+const canonicalPlan = (plan: PlanWithoutDigest): string =>
+  JSON.stringify({
+    summary: plan.summary,
+    rows: plan.rows.map((row) => ({
+      ...row,
+      resolvedAt: row.resolvedAt?.toISOString() ?? null
+    })),
+    skipped: plan.skipped
+  });
+
+export const digestBookingLocationBackfillPlan = (plan: PlanWithoutDigest): string =>
+  createHash("sha256").update(canonicalPlan(plan), "utf8").digest("hex");
 
 const requireValidRunId = (runId: string): string => {
   const normalized = runId.trim();
@@ -386,6 +463,35 @@ const validatePlan = (plan: BookingLocationBackfillPlan): void => {
   };
   if (JSON.stringify(derived) !== JSON.stringify(plan.summary)) {
     throw new Error("Backfill plan summary does not match its rows");
+  }
+  if (digestBookingLocationBackfillPlan(plan) !== plan.sourceDigest) {
+    throw new Error("Backfill plan source digest is invalid");
+  }
+};
+
+const manifestMetadataForCapacity = (
+  plan: BookingLocationBackfillPlan,
+  runId: string
+): Record<string, unknown> => ({
+  version: 1,
+  runId,
+  insertedCount: plan.rows.length,
+  rows: plan.rows.map((row) => ({
+    bookingOrderId: row.bookingOrderId,
+    checksum: "0".repeat(64)
+  }))
+});
+
+const assertManifestCapacity = (plan: BookingLocationBackfillPlan, runId: string): void => {
+  if (plan.rows.length > MAX_BACKFILL_MANIFEST_ROWS) {
+    throw new Error("Backfill manifest row limit exceeded");
+  }
+  const serializedBytes = Buffer.byteLength(
+    JSON.stringify(manifestMetadataForCapacity(plan, runId)),
+    "utf8"
+  );
+  if (serializedBytes > MAX_BACKFILL_MANIFEST_SERIALIZED_BYTES) {
+    throw new Error("Backfill manifest serialized byte limit exceeded");
   }
 };
 
@@ -428,6 +534,23 @@ export const checksumBookingLocation = (row: PersistedBookingLocation): string =
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 };
 
+const restorePredicate = (row: PersistedBookingLocation): BookingLocationRestorePredicate => ({
+  id: row.id,
+  bookingOrderId: row.bookingOrderId,
+  countryCode: row.countryCode,
+  admin1RegionCode: row.admin1RegionCode,
+  admin1Name: row.admin1Name,
+  admin2RegionCode: row.admin2RegionCode,
+  admin2Name: row.admin2Name,
+  source: row.source,
+  resolutionStatus: row.resolutionStatus,
+  datasetVersion: row.datasetVersion,
+  resolvedAt: row.resolvedAt,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+  deletedAt: null
+});
+
 const auditLookup = (action: string, runId: string): AuditLookup => ({
   where: {
     action,
@@ -444,7 +567,18 @@ export async function applyBookingLocationBackfill(
 ): Promise<BookingLocationBackfillApplyResult> {
   validatePlan(plan);
   const runId = requireValidRunId(runIdInput);
+  assertManifestCapacity(plan, runId);
   return client.$transaction(async (transaction) => {
+    const currentPlan = await buildBookingLocationBackfillPlan(transaction);
+    validatePlan(currentPlan);
+    assertManifestCapacity(currentPlan, runId);
+    if (
+      currentPlan.sourceDigest !== plan.sourceDigest ||
+      currentPlan.rows.length !== plan.rows.length ||
+      canonicalPlan(currentPlan) !== canonicalPlan(plan)
+    ) {
+      throw new Error("Backfill source plan drift detected");
+    }
     if (await transaction.auditLog.findFirst(auditLookup(APPLY_ACTION, runId))) {
       throw new Error("Backfill run ID has already been applied");
     }
@@ -504,6 +638,15 @@ const readManifest = (
   ) {
     throw new Error("Backfill manifest is invalid");
   }
+  if (candidateRows.length > MAX_BACKFILL_MANIFEST_ROWS) {
+    throw new Error("Backfill manifest row limit exceeded");
+  }
+  if (
+    Buffer.byteLength(JSON.stringify(audit.metadata), "utf8") >
+    MAX_BACKFILL_MANIFEST_SERIALIZED_BYTES
+  ) {
+    throw new Error("Backfill manifest serialized byte limit exceeded");
+  }
   const rows: BookingLocationBackfillManifestRow[] = candidateRows.map((candidate) => {
     if (
       !isRecord(candidate) ||
@@ -548,17 +691,15 @@ export async function restoreBookingLocationBackfill(
       }
     }
     const deletedAt = new Date();
-    for (const manifestRow of manifest.rows) {
-      const current = locationsByOrderId.get(manifestRow.bookingOrderId)!;
+    for (const manifestBatch of chunks(manifest.rows)) {
+      const predicates = manifestBatch.map((manifestRow) =>
+        restorePredicate(locationsByOrderId.get(manifestRow.bookingOrderId)!)
+      );
       const restored = await transaction.bookingServiceLocation.updateMany({
-        where: {
-          bookingOrderId: current.bookingOrderId,
-          deletedAt: null,
-          updatedAt: current.updatedAt
-        },
+        where: { OR: predicates },
         data: { deletedAt }
       });
-      if (restored.count !== 1) {
+      if (restored.count !== predicates.length) {
         throw new Error("Backfill restore refused concurrent checksum drift");
       }
     }
@@ -590,9 +731,11 @@ export function loadBookingLocationBackfillEnvironment(
     throw new Error("FORMAL_BACKEND_ENV_FILE does not exist");
   }
   const values = parse(fileSystem.readFileSync(envFilePath));
-  for (const key of ["NODE_ENV", "DEPLOY_ENV", "APP_ENV", "ENVIRONMENT"] as const) {
-    if (forbiddenTarget.test(values[key]?.trim() ?? "")) {
-      throw new Error("Booking location backfill refuses a protected environment");
+  for (const environment of [runtimeEnvironment, values]) {
+    for (const key of ["NODE_ENV", "DEPLOY_ENV", "APP_ENV", "ENVIRONMENT"] as const) {
+      if (forbiddenTarget.test(environment[key]?.trim() ?? "")) {
+        throw new Error("Booking location backfill refuses a protected environment");
+      }
     }
   }
   const databaseUrl = values.DATABASE_URL?.trim();

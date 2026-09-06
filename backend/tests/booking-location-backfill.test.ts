@@ -14,6 +14,7 @@ import {
 
 type OrderFixture = {
   id: number;
+  deletedAt: Date | null;
   fulfillmentMode: string;
   note?: string | null;
   serviceLocation: { bookingOrderId: number } | null;
@@ -55,6 +56,7 @@ const verifiedAt = new Date("2026-08-01T00:00:00.000Z");
 
 const order = (id: number, overrides: Partial<OrderFixture> = {}): OrderFixture => ({
   id,
+  deletedAt: null,
   fulfillmentMode: "store",
   serviceLocation: null,
   shop: {
@@ -89,9 +91,14 @@ const clone = <T>(value: T): T => structuredClone(value);
 class FakeClient implements BookingLocationBackfillClient {
   public locations: PersistedBookingLocation[];
   public audits: AuditFixture[] = [];
+  public bookingQueries: Array<Record<string, unknown>> = [];
   public createManyCalls: Array<{ data: BookingLocationCreateInput[]; skipDuplicates: boolean }> =
     [];
+  public restoreUpdateBatchSizes: number[] = [];
   public failAuditCreate = false;
+  public failRestoreUpdateBatch: number | null = null;
+  public onTransactionStart: (() => void) | null = null;
+  public transactionCount = 0;
   private nextLocationId = 1;
 
   public constructor(
@@ -103,7 +110,35 @@ class FakeClient implements BookingLocationBackfillClient {
   }
 
   public bookingOrder = {
-    findMany: async (): Promise<OrderFixture[]> => clone(this.orders)
+    findMany: async (input: unknown): Promise<OrderFixture[]> => {
+      const args = input as {
+        take?: number;
+        cursor?: { id: number };
+        skip?: number;
+      };
+      this.bookingQueries.push(clone(input as Record<string, unknown>));
+      const active = this.orders
+        .filter((item) => item.deletedAt === null)
+        .sort((left, right) => left.id - right.id);
+      const cursorIndex = args.cursor
+        ? active.findIndex((item) => item.id === args.cursor!.id)
+        : -1;
+      const start = cursorIndex < 0 ? 0 : cursorIndex + (args.skip ?? 0);
+      const page = active.slice(start, start + (args.take ?? active.length));
+      return clone(
+        page.map((item) => ({
+          id: item.id,
+          deletedAt: item.deletedAt,
+          fulfillmentMode: item.fulfillmentMode,
+          serviceLocation:
+            this.locations.some((location) => location.bookingOrderId === item.id) ||
+            item.serviceLocation !== null
+              ? { bookingOrderId: item.id }
+              : null,
+          shop: item.shop
+        }))
+      );
+    }
   };
 
   public bookingServiceLocation = {
@@ -136,19 +171,48 @@ class FakeClient implements BookingLocationBackfillClient {
       return { count };
     },
     updateMany: async (args: {
-      where: { bookingOrderId: number; deletedAt: null; updatedAt: Date };
+      where: {
+        bookingOrderId?: number;
+        deletedAt?: null;
+        updatedAt?: Date;
+        OR?: Array<Partial<PersistedBookingLocation> & { bookingOrderId: number; deletedAt: null }>;
+      };
       data: { deletedAt: Date };
     }): Promise<{ count: number }> => {
-      const match = this.locations.find(
-        (item) =>
-          item.bookingOrderId === args.where.bookingOrderId &&
-          item.deletedAt === null &&
-          item.updatedAt.getTime() === args.where.updatedAt.getTime()
+      const predicates =
+        args.where.OR ??
+        ([
+          {
+            bookingOrderId: args.where.bookingOrderId!,
+            deletedAt: null,
+            updatedAt: args.where.updatedAt!
+          }
+        ] as Array<
+          Partial<PersistedBookingLocation> & {
+            bookingOrderId: number;
+            deletedAt: null;
+          }
+        >);
+      this.restoreUpdateBatchSizes.push(predicates.length);
+      if (this.failRestoreUpdateBatch === this.restoreUpdateBatchSizes.length) return { count: 0 };
+      const normalizeComparable = (value: unknown): unknown =>
+        Object.prototype.toString.call(value) === "[object Date]"
+          ? new Date(value as Date).toISOString()
+          : value;
+      const equals = (left: unknown, right: unknown): boolean =>
+        normalizeComparable(left) === normalizeComparable(right);
+      const matches = this.locations.filter((item) =>
+        predicates.some((predicate) =>
+          Object.entries(predicate).every(([key, value]) =>
+            equals(item[key as keyof PersistedBookingLocation], value)
+          )
+        )
       );
-      if (!match) return { count: 0 };
-      match.deletedAt = args.data.deletedAt;
-      match.updatedAt = args.data.deletedAt;
-      return { count: 1 };
+      for (const match of matches) {
+        match.deletedAt = args.data.deletedAt;
+        match.updatedAt = args.data.deletedAt;
+      }
+      return { count: matches.length };
     },
     count: async (): Promise<number> =>
       this.locations.filter((item) => item.deletedAt === null).length
@@ -183,15 +247,21 @@ class FakeClient implements BookingLocationBackfillClient {
   public async $transaction<T>(
     callback: (transaction: BookingLocationBackfillClient) => Promise<T>
   ): Promise<T> {
+    this.transactionCount += 1;
     const locationsBefore = clone(this.locations);
     const auditsBefore = clone(this.audits);
     const callsBefore = clone(this.createManyCalls);
+    const restoreCallsBefore = clone(this.restoreUpdateBatchSizes);
+    const transactionHook = this.onTransactionStart;
+    this.onTransactionStart = null;
+    transactionHook?.();
     try {
       return await callback(this);
     } catch (error) {
       this.locations = locationsBefore;
       this.audits = auditsBefore;
       this.createManyCalls = callsBefore;
+      this.restoreUpdateBatchSizes = restoreCallsBefore;
       throw error;
     }
   }
@@ -270,6 +340,165 @@ describe("booking service location historical backfill", () => {
     expect(client.locations.some((item) => item.bookingOrderId === 3)).toBe(false);
   });
 
+  it("normalizes historical home_visit without selecting or parsing free text", async () => {
+    const first = new FakeClient([
+      order(11, {
+        fulfillmentMode: "home_visit",
+        note: "東京都港区六本木 1-2-3"
+      })
+    ]);
+    const second = new FakeClient([
+      order(11, {
+        fulfillmentMode: "home_visit",
+        note: "大阪府大阪市の別の住所"
+      })
+    ]);
+
+    const firstPlan = await buildBookingLocationBackfillPlan(first);
+    const secondPlan = await buildBookingLocationBackfillPlan(second);
+
+    expect(firstPlan).toEqual(secondPlan);
+    expect(firstPlan.summary).toEqual({
+      storeVerified: 0,
+      homeVerified: 0,
+      unresolved: 1,
+      alreadyPresent: 0
+    });
+    expect(firstPlan.skipped).toEqual([]);
+    expect(firstPlan.rows).toEqual([
+      expect.objectContaining({
+        bookingOrderId: 11,
+        source: "CUSTOMER_SERVICE_LOCATION",
+        resolutionStatus: "UNRESOLVED",
+        admin1RegionCode: null,
+        admin2RegionCode: null
+      })
+    ]);
+    for (const query of first.bookingQueries) {
+      expect(query).toMatchObject({
+        take: 500,
+        orderBy: { id: "asc" }
+      });
+      expect(query.select).not.toHaveProperty("note");
+    }
+    expect(JSON.stringify(firstPlan)).not.toContain("六本木");
+    expect(JSON.stringify(secondPlan)).not.toContain("大阪市");
+  });
+
+  it("cursor-pages bookings in deterministic ID order with the exact safe projection", async () => {
+    const client = new FakeClient(Array.from({ length: 501 }, (_, index) => order(index + 1)));
+
+    await buildBookingLocationBackfillPlan(client);
+
+    expect(client.bookingQueries).toHaveLength(2);
+    expect(client.bookingQueries[0]).toMatchObject({
+      take: 500,
+      orderBy: { id: "asc" }
+    });
+    expect(client.bookingQueries[0]).not.toHaveProperty("cursor");
+    expect(client.bookingQueries[0]).not.toHaveProperty("skip");
+    expect(client.bookingQueries[1]).toMatchObject({
+      take: 500,
+      cursor: { id: 500 },
+      skip: 1,
+      orderBy: { id: "asc" }
+    });
+    for (const query of client.bookingQueries) {
+      expect(query.select).toEqual({
+        id: true,
+        fulfillmentMode: true,
+        serviceLocation: { select: { bookingOrderId: true } },
+        shop: {
+          select: {
+            serviceLocation: {
+              select: {
+                countryCode: true,
+                datasetVersion: true,
+                verifiedAt: true,
+                deletedAt: true,
+                admin1Region: {
+                  select: {
+                    id: true,
+                    level: true,
+                    officialCode: true,
+                    parentId: true,
+                    deletedAt: true,
+                    locales: {
+                      where: { locale: "JA", deletedAt: null },
+                      select: { name: true },
+                      take: 1
+                    }
+                  }
+                },
+                admin2Region: {
+                  select: {
+                    id: true,
+                    level: true,
+                    officialCode: true,
+                    parentId: true,
+                    deletedAt: true,
+                    locales: {
+                      where: { locale: "JA", deletedAt: null },
+                      select: { name: true },
+                      take: 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  });
+
+  it.each([
+    ["deleted booking", (fixture: OrderFixture) => (fixture.deletedAt = new Date())],
+    ["fulfillment mode", (fixture: OrderFixture) => (fixture.fulfillmentMode = "home_visit")],
+    ["shop assignment", (fixture: OrderFixture) => (fixture.shop.serviceLocation = null)],
+    [
+      "region code",
+      (fixture: OrderFixture) => (fixture.shop.serviceLocation!.admin2Region.officialCode = "13104")
+    ],
+    [
+      "dataset version",
+      (fixture: OrderFixture) => (fixture.shop.serviceLocation!.datasetVersion = "jp-admin-new")
+    ],
+    [
+      "localized name",
+      (fixture: OrderFixture) =>
+        (fixture.shop.serviceLocation!.admin2Region.locales[0]!.name = "新宿区")
+    ]
+  ])("refuses %s source drift inside the write transaction", async (_label, mutate) => {
+    const client = new FakeClient([order(1)]);
+    const plan = await buildBookingLocationBackfillPlan(client);
+    client.onTransactionStart = () => mutate(client.orders[0]!);
+
+    await expect(applyBookingLocationBackfill(client, plan, "source-drift-run")).rejects.toThrow(
+      "source plan drift"
+    );
+    expect(client.locations).toEqual([]);
+    expect(client.audits).toEqual([]);
+    expect(client.createManyCalls).toEqual([]);
+  });
+
+  it("refuses a same-count source row swap inside the write transaction", async () => {
+    const client = new FakeClient([order(1), order(2, { shop: { serviceLocation: null } })]);
+    const plan = await buildBookingLocationBackfillPlan(client);
+    client.onTransactionStart = () => {
+      const verified = client.orders[0]!.shop.serviceLocation;
+      client.orders[0]!.shop.serviceLocation = null;
+      client.orders[1]!.shop.serviceLocation = clone(verified);
+    };
+
+    await expect(applyBookingLocationBackfill(client, plan, "same-count-swap")).rejects.toThrow(
+      "source plan drift"
+    );
+    expect(client.locations).toEqual([]);
+    expect(client.audits).toEqual([]);
+    expect(client.createManyCalls).toEqual([]);
+  });
+
   it("uses bounded createMany batches and records exact inserted IDs with checksums", async () => {
     const client = new FakeClient(Array.from({ length: 501 }, (_, index) => order(index + 1)));
     const plan = await buildBookingLocationBackfillPlan(client);
@@ -288,6 +517,52 @@ describe("booking service location historical backfill", () => {
       action: "booking_service_location.backfill.apply",
       targetType: "booking_service_location_backfill_run"
     });
+  });
+
+  it("fails planning closed when the 5,000-row manifest limit would be exceeded", async () => {
+    const client = new FakeClient(Array.from({ length: 5_001 }, (_, index) => order(index + 1)));
+
+    await expect(buildBookingLocationBackfillPlan(client)).rejects.toThrow(
+      "manifest row limit exceeded"
+    );
+
+    expect(client.transactionCount).toBe(0);
+    expect(client.locations).toEqual([]);
+    expect(client.audits).toEqual([]);
+  });
+
+  it("bounds scan memory and preview output even when every booking is skipped", async () => {
+    const client = new FakeClient(
+      Array.from({ length: 10_001 }, (_, index) =>
+        order(index + 1, { shop: { serviceLocation: null } })
+      )
+    );
+
+    await expect(buildBookingLocationBackfillPlan(client)).rejects.toThrow(
+      "booking scan limit exceeded"
+    );
+
+    expect(client.bookingQueries.every((query) => query.take === 500)).toBe(true);
+    expect(client.transactionCount).toBe(0);
+    expect(client.locations).toEqual([]);
+    expect(client.audits).toEqual([]);
+  });
+
+  it("rejects an oversized serialized manifest before opening the write transaction", async () => {
+    const firstLargeId = 9_007_199_250_000_000;
+    const client = new FakeClient(
+      Array.from({ length: 3_000 }, (_, index) => order(firstLargeId + index))
+    );
+    const plan = await buildBookingLocationBackfillPlan(client);
+
+    await expect(
+      applyBookingLocationBackfill(client, plan, "serialized-byte-limit")
+    ).rejects.toThrow("manifest serialized byte limit exceeded");
+
+    expect(client.transactionCount).toBe(0);
+    expect(client.createManyCalls).toEqual([]);
+    expect(client.locations).toEqual([]);
+    expect(client.audits).toEqual([]);
   });
 
   it("rolls back inserted locations when the transaction audit fails", async () => {
@@ -324,9 +599,27 @@ describe("booking service location historical backfill", () => {
     const restored = await restoreBookingLocationBackfill(client, "20260906T120000Z-abc123");
     expect(restored.restoredBookingOrderIds).toEqual([1, 2]);
     expect(client.locations.every((item) => item.deletedAt !== null)).toBe(true);
+    expect(client.restoreUpdateBatchSizes).toEqual([2]);
     expect(client.audits.at(-1)).toMatchObject({
       action: "booking_service_location.backfill.restore"
     });
+  });
+
+  it("batches restore CAS operations and rolls all batches back on a short count", async () => {
+    const client = new FakeClient(Array.from({ length: 501 }, (_, index) => order(index + 1)));
+    await applyBookingLocationBackfill(
+      client,
+      await buildBookingLocationBackfillPlan(client),
+      "restore-batch-run"
+    );
+    client.failRestoreUpdateBatch = 2;
+
+    await expect(restoreBookingLocationBackfill(client, "restore-batch-run")).rejects.toThrow(
+      "concurrent checksum drift"
+    );
+    expect(client.restoreUpdateBatchSizes).toEqual([]);
+    expect(client.locations.every((item) => item.deletedAt === null)).toBe(true);
+    expect(client.audits).toHaveLength(1);
   });
 });
 
@@ -358,6 +651,18 @@ describe("booking service location backfill CLI safety", () => {
       )
     ).toMatchObject({ databaseHost: "127.0.0.1", databaseName: "needo_backfill_test" });
 
+    expect(
+      loadBookingLocationBackfillEnvironment(
+        {
+          FORMAL_BACKEND_ENV_FILE: envFile,
+          DATABASE_URL: "mysql://runtime:runtime-secret@live-db.invalid/runtime_prod"
+        },
+        fileSystem(
+          "NODE_ENV=test\nDEPLOY_ENV=local\nDATABASE_URL=mysql://needo:file-secret@127.0.0.1:3307/needo_file_test"
+        )
+      )
+    ).toMatchObject({ databaseHost: "127.0.0.1", databaseName: "needo_file_test" });
+
     for (const unsafe of [
       "NODE_ENV=production\nDATABASE_URL=mysql://needo:super-secret@127.0.0.1/needo_test",
       "DEPLOY_ENV=staging\nDATABASE_URL=mysql://needo:super-secret@127.0.0.1/needo_test",
@@ -375,6 +680,36 @@ describe("booking service location backfill CLI safety", () => {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).not.toContain("super-secret");
       }
+    }
+  });
+
+  it.each([
+    ["NODE_ENV", "prod"],
+    ["NODE_ENV", "production"],
+    ["DEPLOY_ENV", "staging"],
+    ["DEPLOY_ENV", "live"],
+    ["APP_ENV", "prod"],
+    ["APP_ENV", "production"],
+    ["ENVIRONMENT", "staging"],
+    ["ENVIRONMENT", "live"]
+  ])("rejects inherited protected %s=%s without exposing file credentials", (key, value) => {
+    try {
+      loadBookingLocationBackfillEnvironment(
+        {
+          FORMAL_BACKEND_ENV_FILE: envFile,
+          [key]: value,
+          DATABASE_URL: "mysql://runtime:runtime-secret@127.0.0.1/runtime_test"
+        },
+        fileSystem(
+          "NODE_ENV=test\nDEPLOY_ENV=local\nDATABASE_URL=mysql://needo:file-secret@127.0.0.1:3307/needo_backfill_test"
+        )
+      );
+      throw new Error("unsafe inherited environment unexpectedly accepted");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("protected environment");
+      expect((error as Error).message).not.toContain("file-secret");
+      expect((error as Error).message).not.toContain("runtime-secret");
     }
   });
 
