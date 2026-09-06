@@ -31,7 +31,7 @@
   font-size: 12px;
   font-weight: 700;
 }
-.backoffice-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.backoffice-header-actions { display: flex; align-self: flex-start; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
 .backoffice-header-actions .backoffice-message-action > a,
 .backoffice-header-actions .backoffice-action {
   display: inline-flex; position: relative; align-items: center; justify-content: center;
