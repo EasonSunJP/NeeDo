@@ -51,6 +51,7 @@ describe("AnalyticsRankingsSection", () => {
     expect(container.textContent).toContain("服务项目排行 TOP10");
     expect(container.textContent).toContain("技师排行 TOP10");
     expect(container.textContent).toContain("用户消费排行 TOP10");
+    expect(container.querySelector('[data-kind="service"]')?.getAttribute("data-categories")).toBe("1");
     expect(container.querySelector('[data-kind="technician"]')?.getAttribute("data-categories")).toBe("1");
     expect([...container.querySelectorAll("[data-kind]")].every(
       (node) => node.getAttribute("data-has-detail") === "true"

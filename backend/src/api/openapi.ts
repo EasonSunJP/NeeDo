@@ -21458,7 +21458,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "pageSize",
             in: "query",
             required: false,
-            schema: { type: "integer", minimum: 1, maximum: 10, default: 10 }
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
           }
         ],
         responses: {

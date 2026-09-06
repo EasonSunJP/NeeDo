@@ -41,6 +41,8 @@ npm run dev:frontend
 
 ## Build
 
+运营排行服务类型筛选、完整详情、时间/城市查询和 10/50/100 分页的本地 main 集成范围与验收命令见 [排行集成记录](docs/qa/2026-09-07-ranking-main-integration.md)。
+
 ```bash
 npm run build
 ```
