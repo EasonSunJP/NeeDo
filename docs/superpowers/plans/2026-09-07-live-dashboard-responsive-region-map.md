@@ -17,7 +17,7 @@
 - Portrait phones hide the map graphic and map viewport controls, retain nationwide search and all cascading selectors, use a single column, and may scroll vertically.
 - Search covers 47 prefectures and 1918 ADMIN2 regions, including Tokyo's 23 special wards, from a versioned local N03 index.
 - Dense labels move to deterministic perimeter callouts with leader lines; when the outer rail is full, bounded inward rails along the same edge are allowed. Selected/focused regions have priority and labels must not overlap or fall back into the original anchor cluster.
-- Callouts are laid out in rendered screen pixels so text remains readable. Japan 47, Tokyo 62, and Okinawa 41 remain complete at accepted viewports; physically over-capacity levels such as Hokkaido 195 use deterministic progressive disclosure that prioritizes selected, focused, and data-bearing regions, exposes the visible count accessibly, and reveals more labels as the user zooms. Every path remains keyboard/search/select reachable.
+- Callouts are laid out in rendered screen pixels so text remains readable. Japan 47, Tokyo 62, and Okinawa 41 remain complete at accepted viewports; physically over-capacity levels such as Hokkaido 195 use deterministic progressive disclosure that prioritizes selected, focused, and data-bearing regions, exposes the visible count accessibly, and reveals previously hidden names inside the current visible geography after zooming. The total visible count need not increase monotonically when zooming narrows the geographic extent. Every path remains keyboard/search/select reachable.
 - Map controls are zoom in, zoom out, and reset; zoomed maps support bounded pointer/touch panning and reset on administrative-level change.
 - The trend chart keeps a readable plot and a separate date-axis band at every accepted desktop viewport; zero values must not collapse onto the date labels.
 - Use only `.live-dashboard-*` selectors and existing `--admin-*` theme variables for new styling.
@@ -458,7 +458,7 @@ Inside SVG:
 </g>
 ```
 
-Recompute placements from asset, rendered stage size, viewport, active/focused code, and `children`; never run it from the SSE clock or list timers. Project anchors into rendered screen pixels before laying out callouts so SVG aspect-ratio fitting cannot shrink text below the readable size. Keep all labels for Japan/Tokyo/Okinawa accepted fixtures. If a denser administrative level exceeds the measured capacity, use deterministic priority truncation, expose `visible / total` through accessible copy, and reveal more as zoom increases; paths, search, and selectors remain complete.
+Recompute placements from asset, rendered stage size, viewport, active/focused code, and `children`; never run it from the SSE clock or list timers. Project anchors into rendered screen pixels before laying out callouts so SVG aspect-ratio fitting cannot shrink text below the readable size. Keep all labels for Japan/Tokyo/Okinawa accepted fixtures. If a denser administrative level exceeds the measured capacity, use deterministic priority truncation, expose `visible / total` through accessible copy, and reveal previously hidden names that remain inside the visible geography after zooming; the total count may decrease when the viewport covers fewer regions. Paths, search, and selectors remain complete.
 
 - [ ] **Step 5: Add accessible zoom and bounded pointer panning**
 
