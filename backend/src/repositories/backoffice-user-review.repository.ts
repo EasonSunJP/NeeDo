@@ -1,5 +1,6 @@
 import {
   BookingOrderStatus,
+  OrderAddOnStatus,
   OrderReviewTargetType,
   Prisma,
   type PrismaClient
@@ -26,7 +27,21 @@ export interface ReceivedUserReview {
     revisedAt: string;
     revisedBy: string;
   }>;
-  order: { id: number; orderNo: string; serviceName: string; startsAt: string };
+  order: {
+    id: number;
+    orderNo: string;
+    serviceName: string;
+    startsAt: string;
+    shopName: string;
+    durationMinutes: number | null;
+    note: string | null;
+    paymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+    paymentStatus: "pending" | "confirmed" | "refund_pending" | "refunded";
+    paymentCurrency: string | null;
+    otherPaymentMethod: string | null;
+    addOnCount: number;
+    addOnMinutes: number;
+  };
   reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
 }
 
@@ -96,6 +111,22 @@ const reviewSelect = Prisma.validator<Prisma.OrderReviewSelect>()({
       orderNo: true,
       serviceNameSnapshot: true,
       startsAt: true,
+      serviceDurationSnapshot: true,
+      note: true,
+      paymentMethod: true,
+      paymentStatus: true,
+      shop: { select: { name: true } },
+      addOns: {
+        where: { deletedAt: null, status: OrderAddOnStatus.ACCEPTED },
+        select: { durationMinutes: true }
+      },
+      checkout: {
+        select: {
+          deletedAt: true,
+          otherMethodLabel: true,
+          ledgerTransaction: { select: { currency: true, deletedAt: true } }
+        }
+      },
       service: { select: { name: true } }
     }
   },
@@ -260,6 +291,10 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
   private mapReview(row: ReviewRecord): ReceivedUserReview {
     const amendment = row.amendments[0] ?? null;
     const tags = amendment?.tags ?? row.tags;
+    const order = row.bookingOrder;
+    const checkout = order.checkout?.deletedAt === null ? order.checkout : null;
+    const ledger =
+      checkout?.ledgerTransaction?.deletedAt === null ? checkout.ledgerTransaction : null;
     return {
       reviewId: row.id,
       targetType: "customer",
@@ -281,7 +316,19 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
         id: row.bookingOrder.id,
         orderNo: row.bookingOrder.orderNo,
         serviceName: row.bookingOrder.serviceNameSnapshot ?? row.bookingOrder.service?.name ?? "—",
-        startsAt: row.bookingOrder.startsAt.toISOString()
+        startsAt: order.startsAt.toISOString(),
+        shopName: order.shop.name,
+        durationMinutes: order.serviceDurationSnapshot,
+        note: order.note,
+        paymentMethod:
+          order.paymentMethod.toLowerCase() as ReceivedUserReview["order"]["paymentMethod"],
+        paymentStatus:
+          order.paymentStatus.toLowerCase() as ReceivedUserReview["order"]["paymentStatus"],
+        paymentCurrency: order.paymentMethod === "NDP" ? (ledger?.currency ?? null) : null,
+        otherPaymentMethod:
+          order.paymentMethod === "OTHER" ? (checkout?.otherMethodLabel ?? null) : null,
+        addOnCount: order.addOns.length,
+        addOnMinutes: order.addOns.reduce((sum, item) => sum + item.durationMinutes, 0)
       },
       reviewer: {
         needoId: row.reviewer.needoId,

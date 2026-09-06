@@ -7201,12 +7201,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           order: {
             type: "object",
-            required: ["id", "orderNo", "serviceName", "startsAt"],
+            required: ["id", "orderNo", "serviceName", "startsAt", "shopName", "durationMinutes", "note", "paymentMethod", "paymentStatus", "paymentCurrency", "otherPaymentMethod", "addOnCount", "addOnMinutes"],
             properties: {
               id: { type: "integer", minimum: 1 },
               orderNo: { type: "string" },
               serviceName: { type: "string" },
-              startsAt: { type: "string", format: "date-time" }
+              startsAt: { type: "string", format: "date-time" },
+              shopName: { type: "string" },
+              durationMinutes: { type: ["integer", "null"], minimum: 0 },
+              note: { type: ["string", "null"] },
+              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer", "cash", "ndp", "other"] },
+              paymentStatus: { type: "string", enum: ["pending", "confirmed", "refund_pending", "refunded"] },
+              paymentCurrency: { type: ["string", "null"], description: "Currency from the checkout ledger; null when unavailable. TEST_NDP is distinct from NDP." },
+              otherPaymentMethod: { type: ["string", "null"] },
+              addOnCount: { type: "integer", minimum: 0, description: "Non-deleted ACCEPTED add-ons only" },
+              addOnMinutes: { type: "integer", minimum: 0 }
             }
           },
           reviewer: {

@@ -3,6 +3,7 @@ import { Button } from "../../components/ui/Button";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { platformUserManagementApi } from "./api";
+import { ReceivedReviewFacts } from "./ReceivedReviewFacts";
 import { ReviewAmendmentDialog } from "./ReviewAmendmentDialog";
 import type {
   Paginated,
@@ -143,6 +144,11 @@ export function UserReceivedReviews({
 }) {
   const { language } = useOptionalI18n();
   const text = copy[language];
+  const dateTime = (value: string) =>
+    new Intl.DateTimeFormat(
+      language === "zh" ? "zh-CN" : language === "zh-Hant" ? "zh-TW" : language,
+      { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo" },
+    ).format(new Date(value));
   const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<{
@@ -193,13 +199,19 @@ export function UserReceivedReviews({
       <div className="mt-4 grid gap-3">
         {state.data?.list.map((review) => (
           <article
-            className="rounded-xl border border-line bg-paper p-4"
+            className="min-w-0 overflow-hidden rounded-[20px] border border-line bg-paper p-4 sm:p-5"
             key={review.reviewId}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <strong className="text-base font-black text-ink">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-ink/45">
+                  {review.order.shopName}
+                </p>
+                <p className="mt-1 break-words text-lg font-black text-ink">
+                  {review.order.serviceName}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <strong className="text-base font-black tracking-wider text-moss">
                     {"★".repeat(review.rating)}
                     <span className="ml-1 text-sm text-ink/45">
                       {review.rating}/5
@@ -211,9 +223,6 @@ export function UserReceivedReviews({
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-1 text-sm font-black text-ink">
-                  {review.order.serviceName}
-                </p>
               </div>
               {canAmend ? (
                 <ReviewAmendmentDialog
@@ -222,23 +231,11 @@ export function UserReceivedReviews({
                 />
               ) : null}
             </div>
-            {review.comment ? (
-              <p className="mt-3 whitespace-pre-wrap text-sm font-medium leading-6 text-ink/75">
-                {review.comment}
-              </p>
-            ) : null}
-            {review.tags.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {review.tags.map((tag) => (
-                  <span
-                    className="rounded-full border border-moss/30 bg-moss/10 px-2.5 py-1 text-xs font-black text-moss"
-                    key={tag}
-                  >
-                    {receivedReviewTagText(tag, language)}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+            <ReceivedReviewFacts
+              review={review}
+              language={language}
+              tagText={receivedReviewTagText}
+            />
             {review.amendmentHistory.length > 0 ? (
               <details className="mt-3 rounded-lg border border-line bg-white p-3">
                 <summary className="cursor-pointer text-xs font-black text-ink/65">
@@ -246,52 +243,60 @@ export function UserReceivedReviews({
                 </summary>
                 <div className="mt-3 grid gap-2">
                   {review.amendmentHistory.map((amendment) => (
-                    <div className="rounded-lg bg-paper p-3 text-xs text-ink/65" key={amendment.version}>
-                      <p className="font-black text-ink">v{amendment.version} · {amendment.rating ?? "—"}/5</p>
-                      {amendment.comment ? <p className="mt-1 whitespace-pre-wrap">{amendment.comment}</p> : null}
-                      {amendment.tags.length > 0 ? <p className="mt-1">{amendment.tags.map((tag) => receivedReviewTagText(tag, language)).join(" · ")}</p> : null}
-                      <p className="mt-1">{text.reason}: {amendment.reason}</p>
-                      <p className="mt-1">{text.revisedBy}: {amendment.revisedBy} · {new Date(amendment.revisedAt).toLocaleString(language)}</p>
+                    <div
+                      className="rounded-lg bg-paper p-3 text-xs text-ink/65"
+                      key={amendment.version}
+                    >
+                      <p className="font-black text-ink">
+                        v{amendment.version} · {amendment.rating ?? "—"}/5
+                      </p>
+                      {amendment.comment ? (
+                        <p className="mt-1 whitespace-pre-wrap">
+                          {amendment.comment}
+                        </p>
+                      ) : null}
+                      {amendment.tags.length > 0 ? (
+                        <p className="mt-1">
+                          {amendment.tags
+                            .map((tag) => receivedReviewTagText(tag, language))
+                            .join(" · ")}
+                        </p>
+                      ) : null}
+                      <p className="mt-1">
+                        {text.reason}: {amendment.reason}
+                      </p>
+                      <p className="mt-1">
+                        {text.revisedBy}: {amendment.revisedBy} ·{" "}
+                        {dateTime(amendment.revisedAt)}
+                      </p>
                     </div>
                   ))}
                 </div>
               </details>
             ) : null}
-            <dl className="mt-3 grid gap-1 text-xs font-bold text-ink/45 sm:grid-cols-2 lg:grid-cols-4">
+            <dl className="mt-5 grid gap-x-5 gap-y-4 border-t border-line pt-4 text-xs text-ink/45 sm:grid-cols-2">
               <div>
-                <dt className="inline">{text.reviewer}: </dt>
-                <dd className="inline text-ink/65">
+                <dt className="font-bold">{text.reviewer}: </dt>
+                <dd className="mt-1 break-words font-semibold leading-5 text-ink/70">
                   {review.reviewer.displayName}
                 </dd>
               </div>
               <div>
-                <dt className="inline">{text.order}: </dt>
-                <dd className="inline text-ink/65">{review.order.orderNo}</dd>
-              </div>
-              <div>
-                <dt className="inline">{text.serviceAt}: </dt>
-                <dd className="inline text-ink/65">
-                  {new Intl.DateTimeFormat(
-                    language === "zh"
-                      ? "zh-CN"
-                      : language === "zh-Hant"
-                        ? "zh-TW"
-                        : language,
-                    { dateStyle: "medium", timeStyle: "short" },
-                  ).format(new Date(review.order.startsAt))}
+                <dt className="font-bold">{text.order}: </dt>
+                <dd className="mt-1 break-words font-semibold leading-5 text-ink/70">
+                  {review.order.orderNo}
                 </dd>
               </div>
               <div>
-                <dt className="inline">{text.reviewedAt}: </dt>
-                <dd className="inline text-ink/65">
-                  {new Intl.DateTimeFormat(
-                    language === "zh"
-                      ? "zh-CN"
-                      : language === "zh-Hant"
-                        ? "zh-TW"
-                        : language,
-                    { dateStyle: "medium", timeStyle: "short" },
-                  ).format(new Date(review.createdAt))}
+                <dt className="font-bold">{text.serviceAt}: </dt>
+                <dd className="mt-1 break-words font-semibold leading-5 text-ink/70">
+                  {dateTime(review.order.startsAt)}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-bold">{text.reviewedAt}: </dt>
+                <dd className="mt-1 break-words font-semibold leading-5 text-ink/70">
+                  {dateTime(review.createdAt)}
                 </dd>
               </div>
             </dl>

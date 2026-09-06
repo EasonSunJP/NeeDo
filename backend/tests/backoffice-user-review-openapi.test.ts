@@ -19,6 +19,9 @@ describe("backoffice received-review OpenAPI", () => {
       "x-permission": "backoffice:customers:write"
     });
     expect(amendmentPath.delete).toBeUndefined();
+    const order = response.body.components.schemas.BackofficeReceivedUserReview.properties.order;
+    expect(order.required).toEqual(expect.arrayContaining(["paymentMethod", "paymentStatus", "paymentCurrency", "otherPaymentMethod", "addOnMinutes", "addOnCount", "note"]));
+    expect(order.properties.paymentStatus.enum).toEqual(["pending", "confirmed", "refund_pending", "refunded"]);
     expect(
       response.body.components.schemas.BackofficeReceivedUserReviewPage.properties.page_size
     ).toMatchObject({ enum: [10] });

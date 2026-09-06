@@ -25,7 +25,18 @@ const review = {
     orderNo: "B-88",
     serviceNameSnapshot: "Home care",
     startsAt: createdAt,
-    service: null
+    service: null,
+    shop: { name: "Tokyo care" },
+    serviceDurationSnapshot: 60,
+    note: "Doorbell is broken",
+    paymentMethod: "NDP",
+    paymentStatus: "REFUNDED",
+    checkout: {
+      deletedAt: null,
+      otherMethodLabel: null,
+      ledgerTransaction: { currency: "TEST_NDP", deletedAt: null }
+    },
+    addOns: [{ durationMinutes: 30 }, { durationMinutes: 15 }]
   },
   reviewer: {
     needoId: "s0000000042",
@@ -78,7 +89,16 @@ describe("BackofficeUserReviewRepository", () => {
             id: 88,
             orderNo: "B-88",
             serviceName: "Home care",
-            startsAt: createdAt.toISOString()
+            startsAt: createdAt.toISOString(),
+            shopName: "Tokyo care",
+            durationMinutes: 60,
+            note: "Doorbell is broken",
+            paymentMethod: "ndp",
+            paymentStatus: "refunded",
+            paymentCurrency: "TEST_NDP",
+            otherPaymentMethod: null,
+            addOnCount: 2,
+            addOnMinutes: 45
           },
           reviewer: {
             needoId: "s0000000042",
@@ -106,6 +126,86 @@ describe("BackofficeUserReviewRepository", () => {
         take: 10
       })
     );
+  });
+
+  it("reads accepted add-ons only and preserves pending offline payment without a checkout", async () => {
+    const findMany = jest.fn(async () => [
+      {
+        ...review,
+        bookingOrder: {
+          ...review.bookingOrder,
+          paymentMethod: "ONSITE",
+          paymentStatus: "PENDING",
+          checkout: null,
+          addOns: []
+        }
+      }
+    ]);
+    const repository = new BackofficeUserReviewRepository({
+      orderReview: { findMany, count: jest.fn(async () => 1) }
+    } as never);
+    const result = await repository.listReceivedReviews({
+      scope: "platform",
+      userId: 41,
+      page: 1,
+      pageSize: 10
+    });
+    expect(result.list[0].order).toMatchObject({
+      paymentMethod: "onsite",
+      paymentStatus: "pending",
+      paymentCurrency: null,
+      addOnCount: 0,
+      addOnMinutes: 0
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          bookingOrder: expect.objectContaining({
+            select: expect.objectContaining({
+              addOns: {
+                where: { deletedAt: null, status: "ACCEPTED" },
+                select: { durationMinutes: true }
+              }
+            })
+          })
+        })
+      })
+    );
+  });
+
+  it("keeps an explicitly named other payment method and ignores a deleted checkout", async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          ...review,
+          bookingOrder: {
+            ...review.bookingOrder,
+            paymentMethod: "OTHER",
+            paymentStatus: "CONFIRMED",
+            checkout: { deletedAt: null, otherMethodLabel: "PayPay", ledgerTransaction: null }
+          }
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...review,
+          bookingOrder: {
+            ...review.bookingOrder,
+            checkout: { ...review.bookingOrder.checkout, deletedAt: createdAt }
+          }
+        }
+      ]);
+    const repository = new BackofficeUserReviewRepository({
+      orderReview: { findMany, count: jest.fn(async () => 1) }
+    } as never);
+    const input = { scope: "platform" as const, userId: 41, page: 1, pageSize: 10 as const };
+    expect((await repository.listReceivedReviews(input)).list[0].order).toMatchObject({
+      paymentMethod: "other",
+      otherPaymentMethod: "PayPay",
+      paymentCurrency: null
+    });
+    expect((await repository.listReceivedReviews(input)).list[0].order.paymentCurrency).toBeNull();
   });
 
   it("checks shop visibility without exposing cross-shop users", async () => {

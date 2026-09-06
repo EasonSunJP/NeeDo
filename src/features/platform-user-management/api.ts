@@ -398,7 +398,16 @@ const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
       id: integer(order.id),
       orderNo: string(order.orderNo),
       serviceName: string(order.serviceName),
-      startsAt: timestamp(order.startsAt)
+      startsAt: timestamp(order.startsAt),
+      shopName: string(order.shopName),
+      durationMinutes: order.durationMinutes === null ? null : integer(order.durationMinutes),
+      note: nullableString(order.note),
+      paymentMethod: enumValue(order.paymentMethod, ["onsite", "bank_transfer", "cash", "ndp", "other"] as const),
+      paymentStatus: enumValue(order.paymentStatus, ["pending", "confirmed", "refund_pending", "refunded"] as const),
+      paymentCurrency: nullableString(order.paymentCurrency),
+      otherPaymentMethod: nullableString(order.otherPaymentMethod),
+      addOnCount: integer(order.addOnCount),
+      addOnMinutes: integer(order.addOnMinutes)
     },
     reviewer: {
       needoId: string(reviewer.needoId),
