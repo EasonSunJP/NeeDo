@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { LiveDashboardScope, LiveDashboardSnapshot } from "../../api/liveDashboard";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
@@ -42,6 +42,8 @@ export function RegionNavigator({ breadcrumbs, fallbackChildren = [], onSelectRe
   const { language } = useOptionalI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
   const resultListId = useId();
+  const resultListRef = useRef<HTMLUListElement>(null);
+  const isComposingRef = useRef(false);
   const [index, setIndex] = useState<RegionSearchIndex | null>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -75,6 +77,18 @@ export function RegionNavigator({ breadcrumbs, fallbackChildren = [], onSelectRe
 
   useEffect(() => setActiveIndex(-1), [query]);
 
+  useEffect(() => {
+    const list = resultListRef.current;
+    const activeOption = list?.children[activeIndex];
+    if (!open || !list || !activeOption) return;
+    const viewportTop = list.getBoundingClientRect().top + list.clientTop;
+    const viewportBottom = viewportTop + list.clientHeight;
+    const optionBounds = activeOption.getBoundingClientRect();
+    // Adjust only this popup; scrollIntoView can also move the dashboard or mobile page.
+    if (optionBounds.top < viewportTop) list.scrollTop += optionBounds.top - viewportTop;
+    else if (optionBounds.bottom > viewportBottom) list.scrollTop += optionBounds.bottom - viewportBottom;
+  }, [activeIndex, open, results]);
+
   const selectScope = (next: LiveDashboardScope) => {
     if (!sameScope(scope, next)) onSelectRegion(next);
     setQuery("");
@@ -85,6 +99,7 @@ export function RegionNavigator({ breadcrumbs, fallbackChildren = [], onSelectRe
   const activeResultId = activeIndex >= 0 ? `${resultListId}-option-${results[activeIndex]?.code}` : undefined;
 
   const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isComposingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Escape") {
       setOpen(false);
       setActiveIndex(-1);
@@ -127,7 +142,9 @@ export function RegionNavigator({ breadcrumbs, fallbackChildren = [], onSelectRe
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => { setOpen(false); setActiveIndex(-1); }}
+          onBlur={() => { isComposingRef.current = false; setOpen(false); setActiveIndex(-1); }}
+          onCompositionStart={() => { isComposingRef.current = true; }}
+          onCompositionEnd={() => { isComposingRef.current = false; }}
           onKeyDown={onSearchKeyDown}
           placeholder={t("搜索都道府县、市区町村")}
           role="combobox"
@@ -135,7 +152,7 @@ export function RegionNavigator({ breadcrumbs, fallbackChildren = [], onSelectRe
         />
         </label>
       {open && query && index && (results.length ? (
-        <ul className="live-dashboard-region-results" id={resultListId} role="listbox">
+        <ul className="live-dashboard-region-results" id={resultListId} ref={resultListRef} role="listbox">
           {results.map((entry, resultIndex) => (
             <li
               aria-selected={resultIndex === activeIndex}
