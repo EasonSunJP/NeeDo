@@ -725,6 +725,7 @@ export const fulfillmentAddressSnapshotFromRouteAddress = (
   };
 };
 export interface LiveDashboardOrderEventProjection {
+  orderId: number;
   scope: LiveDashboardScope;
   orderNo: string;
   status: BookingOrderStatusPayload;
@@ -820,7 +821,7 @@ export interface BookingRepositoryPort {
     body: string;
     orderId: number;
   }) => Promise<BookingOrderPayload | null>;
-  findLiveDashboardOrderEvent?: (id: number) => Promise<LiveDashboardOrderEventProjection | null>;
+  findLiveDashboardOrderEvents?: (ids: number[]) => Promise<LiveDashboardOrderEventProjection[]>;
   getServiceVerificationCode: (orderId: number) => Promise<string>;
   startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
   createOrderAddOn: (input: CreateOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
@@ -982,12 +983,15 @@ export class BookingRepository implements BookingRepositoryPort {
       administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
   }
 
-  public async findLiveDashboardOrderEvent(
-    id: number
-  ): Promise<LiveDashboardOrderEventProjection | null> {
-    const order = await this.client.bookingOrder.findFirst({
-      where: { id, deletedAt: null },
+  public async findLiveDashboardOrderEvents(
+    ids: number[]
+  ): Promise<LiveDashboardOrderEventProjection[]> {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+    const orders = await this.client.bookingOrder.findMany({
+      where: { id: { in: uniqueIds }, deletedAt: null },
       select: {
+        id: true,
         orderNo: true,
         status: true,
         serviceNameSnapshot: true,
@@ -1005,21 +1009,31 @@ export class BookingRepository implements BookingRepositoryPort {
         }
       }
     });
-    const location = order?.serviceLocation;
-    if (!order || !location || location.deletedAt || location.countryCode !== "JP") return null;
-    const verified = location.resolutionStatus === "VERIFIED";
-    return {
-      scope: {
-        countryCode: "JP",
-        admin1Code: verified ? location.admin1RegionCode : null,
-        admin2Code: verified ? location.admin2RegionCode : null
-      },
-      orderNo: order.orderNo,
-      status: bookingOrderStatusFromDb(order.status),
-      serviceName:
-        order.serviceNameSnapshot ?? order.service?.name ?? order.technicianService?.name ?? "-",
-      amountJpy: Number(this.formatDecimal(order.priceAmount, 0))
-    };
+    const byId = new Map(orders.map((order) => [order.id, order]));
+    return uniqueIds.flatMap((id) => {
+      const order = byId.get(id);
+      const location = order?.serviceLocation;
+      if (!order || !location || location.deletedAt || location.countryCode !== "JP") return [];
+      const verified = location.resolutionStatus === "VERIFIED";
+      return [
+        {
+          orderId: order.id,
+          scope: {
+            countryCode: "JP" as const,
+            admin1Code: verified ? location.admin1RegionCode : null,
+            admin2Code: verified ? location.admin2RegionCode : null
+          },
+          orderNo: order.orderNo,
+          status: bookingOrderStatusFromDb(order.status),
+          serviceName:
+            order.serviceNameSnapshot ??
+            order.service?.name ??
+            order.technicianService?.name ??
+            "-",
+          amountJpy: Number(this.formatDecimal(order.priceAmount, 0))
+        }
+      ];
+    });
   }
 
   public async listAvailableSlots(

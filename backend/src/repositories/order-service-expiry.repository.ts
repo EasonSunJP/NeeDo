@@ -51,7 +51,10 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
     private readonly reportFailure?: OrderServiceExpiryFailureReporter
   ) {}
 
-  public async moveDueSessionsToCheckout(input: { now: Date; batchSize: number }): Promise<number> {
+  public async moveDueSessionsToCheckout(input: {
+    now: Date;
+    batchSize: number;
+  }): Promise<number[]> {
     const candidates = await this.client.orderServiceSession.findMany({
       where: {
         deletedAt: null,
@@ -67,15 +70,17 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
       take: input.batchSize
     });
 
-    let advanced = 0;
+    const advancedOrderIds: number[] = [];
     for (const candidate of candidates) {
       try {
-        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) advanced += 1;
+        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) {
+          advancedOrderIds.push(candidate.bookingOrderId);
+        }
       } catch {
         await this.reportCandidateFailure(candidate.bookingOrderId);
       }
     }
-    return advanced;
+    return advancedOrderIds;
   }
 
   private advanceCandidate(orderId: number, now: Date): Promise<boolean> {

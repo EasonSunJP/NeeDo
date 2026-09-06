@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Response } from "express";
 import type {
   LiveDashboardEvent,
@@ -8,12 +7,12 @@ import type {
 } from "../domain/live-dashboard";
 
 export const LIVE_DASHBOARD_EVENT_CHANNEL = "needo:dashboard:live:v1";
+export const LIVE_DASHBOARD_EVENT_STREAM_KEY = "needo:dashboard:live:stream:v1";
 export const LIVE_DASHBOARD_EVENT_MAX_BYTES = 32 * 1024;
-const LIVE_DASHBOARD_REPLAY_LIMIT = 100;
-const LIVE_DASHBOARD_REPLAY_WINDOW_MS = 5 * 60 * 1000;
+export const LIVE_DASHBOARD_REPLAY_LIMIT = 100;
+export const LIVE_DASHBOARD_REPLAY_WINDOW_MS = 5 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const BUS_RETRY_BASE_DELAY_MS = 5_000;
-const BUS_RETRY_MAX_DELAY_MS = 30_000;
+const STREAM_RETRY_DELAY_MS = 5_000;
 const STREAM_ID_PATTERN = /^\d{13}-\d+$/;
 const INVALIDATION_SECTIONS = new Set<LiveDashboardInvalidationSection>([
   "headline",
@@ -22,9 +21,18 @@ const INVALIDATION_SECTIONS = new Set<LiveDashboardInvalidationSection>([
   "rankings"
 ]);
 
-export interface LiveDashboardEventBusPort {
-  publish(message: string): Promise<void>;
-  subscribe(listener: (message: string) => void): Promise<() => Promise<void> | void>;
+export interface LiveDashboardEventStreamEntry {
+  id: string;
+  event: string;
+}
+
+export interface LiveDashboardEventStreamPort {
+  append(event: string): Promise<LiveDashboardEventStreamEntry>;
+  broadcast(entry: LiveDashboardEventStreamEntry): Promise<void>;
+  readAfter(lastEventId: string | null): Promise<LiveDashboardEventStreamEntry[]>;
+  subscribe(
+    listener: (entry: LiveDashboardEventStreamEntry) => void
+  ): Promise<() => Promise<void> | void>;
   close(): Promise<void>;
 }
 
@@ -45,28 +53,22 @@ export interface LiveDashboardCacheInvalidator {
   invalidateScope?(scope: LiveDashboardScope): Promise<void>;
 }
 
-interface LiveDashboardEventEnvelope {
-  sourceInstanceId: string;
-  event: LiveDashboardEvent;
-}
+type StoredLiveDashboardEvent = Omit<LiveDashboardEvent, "id">;
 
 interface Subscriber {
   scope: LiveDashboardScope;
   response: Response;
+  lastSentId: string | null;
+  pending: Map<string, LiveDashboardEventStreamEntry> | null;
+  heartbeat?: ReturnType<typeof setInterval>;
   unsubscribe: () => void;
 }
 
-interface ReplayEntry {
-  event: LiveDashboardEvent;
-  receivedAtMs: number;
-}
-
 interface LiveDashboardEventGatewayOptions {
-  eventBus?: LiveDashboardEventBusPort;
+  eventStream: LiveDashboardEventStreamPort;
   cache?: LiveDashboardCacheInvalidator;
-  instanceId?: string;
   now?: () => Date;
-  onError?: (error: unknown, operation: "publish" | "subscribe" | "invalidate") => void;
+  onError?: (error: unknown, operation: "publish" | "subscribe" | "replay" | "invalidate") => void;
 }
 
 const hasExactKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean => {
@@ -77,24 +79,20 @@ const hasExactKeys = (value: Record<string, unknown>, keys: readonly string[]): 
 
 export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort {
   private readonly subscribers = new Set<Subscriber>();
-  private readonly history: ReplayEntry[] = [];
-  private readonly eventBus?: LiveDashboardEventBusPort;
+  private readonly seenIds = new Set<string>();
+  private readonly seenIdOrder: string[] = [];
+  private readonly eventStream: LiveDashboardEventStreamPort;
   private readonly cache?: LiveDashboardCacheInvalidator;
-  private readonly instanceId: string;
   private readonly now: () => Date;
   private readonly onError: NonNullable<LiveDashboardEventGatewayOptions["onError"]>;
-  private busUnsubscribe?: () => Promise<void> | void;
-  private busSubscriptionPromise?: Promise<void>;
-  private busRetryTimer?: ReturnType<typeof setTimeout>;
-  private busRetryAttempt = 0;
+  private streamUnsubscribe?: () => Promise<void> | void;
+  private streamSubscriptionPromise?: Promise<void>;
+  private streamRetryTimer?: ReturnType<typeof setTimeout>;
   private closePromise?: Promise<void>;
-  private lastEventTimestamp = -1;
-  private lastEventSequence = -1;
 
-  public constructor(options: LiveDashboardEventGatewayOptions = {}) {
-    this.eventBus = options.eventBus;
+  public constructor(options: LiveDashboardEventGatewayOptions) {
+    this.eventStream = options.eventStream;
     this.cache = options.cache;
-    this.instanceId = options.instanceId ?? randomUUID();
     this.now = options.now ?? (() => new Date());
     this.onError = options.onError ?? (() => undefined);
   }
@@ -102,33 +100,44 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
   public async publish(
     input: LiveDashboardEventDraft | LiveDashboardEvent
   ): Promise<LiveDashboardEvent | null> {
-    let event: LiveDashboardEvent;
+    let storedEvent: StoredLiveDashboardEvent;
     try {
-      event = this.canonicalizeEvent(input);
-      if (Buffer.byteLength(JSON.stringify(event), "utf8") > LIVE_DASHBOARD_EVENT_MAX_BYTES) {
-        throw new Error("Live dashboard event exceeds 32 KiB");
-      }
+      storedEvent = this.canonicalizeStoredEvent(input);
+      this.assertEventSize({ id: "0000000000000-0", ...storedEvent });
     } catch (error) {
       this.onError(error, "publish");
       return null;
     }
 
-    this.deliver(event);
-    void this.invalidate(event);
-
-    if (this.eventBus) {
+    if (storedEvent.type === "metrics.invalidate") {
+      if (!this.cache?.invalidateScope) {
+        this.onError(new Error("Live dashboard cache invalidation is unavailable"), "invalidate");
+        return null;
+      }
       try {
-        await this.eventBus.publish(
-          JSON.stringify({
-            sourceInstanceId: this.instanceId,
-            event
-          } satisfies LiveDashboardEventEnvelope)
-        );
+        await this.cache.invalidateScope(storedEvent.scope);
+      } catch (error) {
+        this.onError(error, "invalidate");
+        return null;
+      }
+    }
+
+    try {
+      const entry = await this.eventStream.append(JSON.stringify(storedEvent));
+      const event = this.parseStreamEntry(entry);
+      if (!event) throw new Error("Shared live dashboard stream returned an invalid entry");
+      this.assertEventSize(event);
+      this.acceptEntry(entry, event);
+      try {
+        await this.eventStream.broadcast(entry);
       } catch (error) {
         this.onError(error, "publish");
       }
+      return event;
+    } catch (error) {
+      this.onError(error, "publish");
+      return null;
     }
-    return event;
   }
 
   public async subscribe(
@@ -136,7 +145,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     lastEventId: string | null,
     response: Response
   ): Promise<() => void> {
-    await this.ensureBusSubscription();
+    await this.ensureStreamSubscription();
     response.status(200);
     response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     response.setHeader("Cache-Control", "no-cache, no-transform");
@@ -149,37 +158,42 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     const unsubscribe = (): void => {
       if (!active) return;
       active = false;
-      clearInterval(heartbeat);
+      if (subscriber.heartbeat) clearInterval(subscriber.heartbeat);
       this.subscribers.delete(subscriber);
     };
     subscriber.scope = { ...scope };
     subscriber.response = response;
+    subscriber.lastSentId = lastEventId;
+    subscriber.pending = new Map();
     subscriber.unsubscribe = unsubscribe;
     this.subscribers.add(subscriber);
     response.on("close", unsubscribe);
     response.on("error", unsubscribe);
-    const heartbeat = setInterval(() => {
-      this.write(response, ": heartbeat\n\n", unsubscribe);
-    }, HEARTBEAT_INTERVAL_MS);
 
     if (!this.write(response, "retry: 5000\n\n", unsubscribe)) return unsubscribe;
-    this.pruneHistory();
-    if (lastEventId) {
-      for (const entry of this.history) {
-        if (
-          this.compareEventIds(entry.event.id, lastEventId) > 0 &&
-          this.matchesScope(scope, entry.event.scope) &&
-          !this.write(response, this.formatEvent(entry.event.type, entry.event), unsubscribe)
-        ) {
-          return unsubscribe;
-        }
-      }
+
+    let replayEntries: LiveDashboardEventStreamEntry[] = [];
+    try {
+      replayEntries = await this.eventStream.readAfter(lastEventId);
+    } catch (error) {
+      this.onError(error, "replay");
     }
+    const combined = new Map<string, LiveDashboardEventStreamEntry>();
+    for (const entry of replayEntries) combined.set(entry.id, entry);
+    for (const entry of subscriber.pending.values()) combined.set(entry.id, entry);
+    const ordered = [...combined.values()].sort((left, right) =>
+      this.compareEventIds(left.id, right.id)
+    );
+    for (const entry of ordered) {
+      const event = this.parseStreamEntry(entry);
+      if (event && !this.sendEvent(subscriber, event)) return unsubscribe;
+    }
+    subscriber.pending = null;
+
     if (
       !this.write(
         response,
         this.formatEvent("connected", {
-          id: this.createEventId(),
           type: "connected",
           scope: { ...scope },
           payload: {},
@@ -190,7 +204,9 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     ) {
       return unsubscribe;
     }
-
+    subscriber.heartbeat = setInterval(() => {
+      this.write(response, ": heartbeat\n\n", unsubscribe);
+    }, HEARTBEAT_INTERVAL_MS);
     return unsubscribe;
   }
 
@@ -199,27 +215,34 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     return this.closePromise;
   }
 
-  private deliver(event: LiveDashboardEvent): void {
-    this.history.push({ event, receivedAtMs: this.now().getTime() });
-    this.pruneHistory();
+  private acceptEntry(entry: LiveDashboardEventStreamEntry, parsed?: LiveDashboardEvent): void {
+    if (this.seenIds.has(entry.id)) return;
+    const event = parsed ?? this.parseStreamEntry(entry);
+    if (!event) return;
+    this.seenIds.add(entry.id);
+    this.seenIdOrder.push(entry.id);
+    if (this.seenIdOrder.length > LIVE_DASHBOARD_REPLAY_LIMIT * 2) {
+      const removed = this.seenIdOrder.shift();
+      if (removed) this.seenIds.delete(removed);
+    }
     for (const subscriber of [...this.subscribers]) {
-      if (this.matchesScope(subscriber.scope, event.scope)) {
-        this.write(
-          subscriber.response,
-          this.formatEvent(event.type, event),
-          subscriber.unsubscribe
-        );
-      }
+      if (subscriber.pending) subscriber.pending.set(entry.id, entry);
+      else this.sendEvent(subscriber, event);
     }
   }
 
-  private async invalidate(event: LiveDashboardEvent): Promise<void> {
-    if (event.type !== "metrics.invalidate" || !this.cache?.invalidateScope) return;
-    try {
-      await this.cache.invalidateScope(event.scope);
-    } catch (error) {
-      this.onError(error, "invalidate");
+  private sendEvent(subscriber: Subscriber, event: LiveDashboardEvent): boolean {
+    if (!this.matchesScope(subscriber.scope, event.scope)) return true;
+    if (subscriber.lastSentId && this.compareEventIds(event.id, subscriber.lastSentId) <= 0) {
+      return true;
     }
+    const written = this.write(
+      subscriber.response,
+      this.formatEvent(event.type, event),
+      subscriber.unsubscribe
+    );
+    if (written) subscriber.lastSentId = event.id;
+    return written;
   }
 
   private matchesScope(subscriber: LiveDashboardScope, event: LiveDashboardScope): boolean {
@@ -230,74 +253,36 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     );
   }
 
-  private pruneHistory(): void {
-    const cutoff = this.now().getTime() - LIVE_DASHBOARD_REPLAY_WINDOW_MS;
-    while (this.history[0] && this.history[0].receivedAtMs < cutoff) this.history.shift();
-    if (this.history.length > LIVE_DASHBOARD_REPLAY_LIMIT) {
-      this.history.splice(0, this.history.length - LIVE_DASHBOARD_REPLAY_LIMIT);
-    }
-  }
-
-  private async ensureBusSubscription(): Promise<void> {
-    if (!this.eventBus || this.busUnsubscribe || this.closePromise) return;
-    if (!this.busSubscriptionPromise) {
-      this.busSubscriptionPromise = this.eventBus
-        .subscribe((message) => this.handleBusMessage(message))
+  private async ensureStreamSubscription(): Promise<void> {
+    if (this.streamUnsubscribe || this.closePromise) return;
+    if (!this.streamSubscriptionPromise) {
+      this.streamSubscriptionPromise = this.eventStream
+        .subscribe((entry) => this.acceptEntry(entry))
         .then((unsubscribe) => {
-          this.busUnsubscribe = unsubscribe;
-          this.busRetryAttempt = 0;
+          this.streamUnsubscribe = unsubscribe;
         })
         .catch((error) => {
-          this.busSubscriptionPromise = undefined;
+          this.streamSubscriptionPromise = undefined;
           this.onError(error, "subscribe");
-          this.scheduleBusRetry();
+          this.scheduleStreamRetry();
         });
     }
-    await this.busSubscriptionPromise;
+    await this.streamSubscriptionPromise;
   }
 
-  private scheduleBusRetry(): void {
-    if (!this.eventBus || this.busRetryTimer || this.closePromise) return;
-    const delay = Math.min(
-      BUS_RETRY_BASE_DELAY_MS * 2 ** this.busRetryAttempt,
-      BUS_RETRY_MAX_DELAY_MS
-    );
-    this.busRetryAttempt += 1;
-    this.busRetryTimer = setTimeout(() => {
-      this.busRetryTimer = undefined;
-      void this.ensureBusSubscription();
-    }, delay);
+  private scheduleStreamRetry(): void {
+    if (this.streamRetryTimer || this.closePromise) return;
+    this.streamRetryTimer = setTimeout(() => {
+      this.streamRetryTimer = undefined;
+      void this.ensureStreamSubscription();
+    }, STREAM_RETRY_DELAY_MS);
   }
 
-  private handleBusMessage(message: string): void {
-    if (Buffer.byteLength(message, "utf8") > LIVE_DASHBOARD_EVENT_MAX_BYTES + 512) return;
-    try {
-      const parsed = JSON.parse(message) as unknown;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-      const envelope = parsed as Record<string, unknown>;
-      if (!hasExactKeys(envelope, ["sourceInstanceId", "event"])) return;
-      if (
-        typeof envelope.sourceInstanceId !== "string" ||
-        envelope.sourceInstanceId === this.instanceId
-      ) {
-        return;
-      }
-      const event = this.parseExactEvent(envelope.event);
-      if (!event) return;
-      this.deliver(event);
-      void this.invalidate(event);
-    } catch {
-      return;
-    }
-  }
-
-  private canonicalizeEvent(
+  private canonicalizeStoredEvent(
     input: LiveDashboardEventDraft | LiveDashboardEvent
-  ): LiveDashboardEvent {
-    const id = input.id ?? this.createEventId();
-    const createdAt = input.createdAt ?? this.now().toISOString();
+  ): StoredLiveDashboardEvent {
     const candidate = {
-      id,
+      id: "0000000000000-0",
       type: input.type,
       scope: {
         countryCode: input.scope.countryCode,
@@ -313,11 +298,35 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
               amountJpy: input.payload.amountJpy
             }
           : { sections: [...input.payload.sections] },
-      createdAt
+      createdAt: input.createdAt ?? this.now().toISOString()
     };
     const parsed = this.parseExactEvent(candidate);
     if (!parsed) throw new Error("Invalid live dashboard event");
-    return parsed;
+    return parsed.type === "order.changed"
+      ? {
+          type: parsed.type,
+          scope: parsed.scope,
+          payload: parsed.payload,
+          createdAt: parsed.createdAt
+        }
+      : {
+          type: parsed.type,
+          scope: parsed.scope,
+          payload: parsed.payload,
+          createdAt: parsed.createdAt
+        };
+  }
+
+  private parseStreamEntry(entry: LiveDashboardEventStreamEntry): LiveDashboardEvent | null {
+    if (!STREAM_ID_PATTERN.test(entry.id)) return null;
+    if (Buffer.byteLength(entry.event, "utf8") > LIVE_DASHBOARD_EVENT_MAX_BYTES) return null;
+    try {
+      const stored = JSON.parse(entry.event) as unknown;
+      if (!stored || typeof stored !== "object" || Array.isArray(stored)) return null;
+      return this.parseExactEvent({ id: entry.id, ...(stored as Record<string, unknown>) });
+    } catch {
+      return null;
+    }
   }
 
   private parseExactEvent(value: unknown): LiveDashboardEvent | null {
@@ -329,9 +338,8 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
       typeof event.createdAt !== "string" ||
       !Number.isFinite(Date.parse(event.createdAt)) ||
       new Date(event.createdAt).toISOString() !== event.createdAt
-    ) {
+    )
       return null;
-    }
     const scope = this.parseScope(event.scope);
     if (
       !scope ||
@@ -414,6 +422,12 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     };
   }
 
+  private assertEventSize(event: unknown): void {
+    if (Buffer.byteLength(JSON.stringify(event), "utf8") > LIVE_DASHBOARD_EVENT_MAX_BYTES) {
+      throw new Error("Live dashboard event exceeds 32 KiB");
+    }
+  }
+
   private write(response: Response, chunk: string, unsubscribe: () => void): boolean {
     try {
       if (response.write(chunk)) return true;
@@ -433,14 +447,6 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     return `${id ? `id: ${id}\n` : ""}event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`;
   }
 
-  private createEventId(): string {
-    const timestamp = Math.max(this.now().getTime(), this.lastEventTimestamp);
-    const sequence = timestamp === this.lastEventTimestamp ? this.lastEventSequence + 1 : 0;
-    this.lastEventTimestamp = timestamp;
-    this.lastEventSequence = sequence;
-    return `${timestamp}-${sequence}`;
-  }
-
   private compareEventIds(left: string, right: string): number {
     const [leftTimestamp = "0", leftSequence = "0"] = left.split("-");
     const [rightTimestamp = "0", rightSequence = "0"] = right.split("-");
@@ -451,16 +457,12 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
   }
 
   private async closeInternal(): Promise<void> {
-    if (this.busRetryTimer) {
-      clearTimeout(this.busRetryTimer);
-      this.busRetryTimer = undefined;
-    }
+    if (this.streamRetryTimer) clearTimeout(this.streamRetryTimer);
     for (const subscriber of [...this.subscribers]) {
       subscriber.unsubscribe();
       subscriber.response.end();
     }
-    this.history.length = 0;
-    if (this.busUnsubscribe) await this.busUnsubscribe();
-    if (this.eventBus) await this.eventBus.close();
+    if (this.streamUnsubscribe) await this.streamUnsubscribe();
+    await this.eventStream.close();
   }
 }

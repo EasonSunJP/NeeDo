@@ -7,6 +7,7 @@ import { createMerchantShopAuditCompletionRuntime } from "./prisma/merchant-shop
 import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.repository";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
+import { BookingRepository } from "./repositories/booking.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
 import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
 import { ExchangeClaimRepository } from "./repositories/exchange-claim.repository";
@@ -55,8 +56,11 @@ import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
 import { LiveDashboardCache } from "./services/live-dashboard-cache.service";
 import {
   LIVE_DASHBOARD_EVENT_CHANNEL,
+  LIVE_DASHBOARD_EVENT_STREAM_KEY,
   LiveDashboardEventGateway
 } from "./services/live-dashboard-event.gateway";
+import { RedisLiveDashboardEventStream } from "./services/redis-live-dashboard-event-stream";
+import { LiveDashboardOrderChangePublisher } from "./services/live-dashboard-order-change.publisher";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
@@ -89,13 +93,17 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
 const liveDashboardCache = new LiveDashboardCache();
 const liveDashboardEventGateway = new LiveDashboardEventGateway({
   cache: liveDashboardCache,
-  eventBus: new RedisRealtimeEventBus({
-    channel: LIVE_DASHBOARD_EVENT_CHANNEL,
-    publisher: createRedisClient(),
-    subscriber: createRedisClient(),
-    onError: (error, connection) => {
-      logger.error({ connection, error }, "Live dashboard Redis connection error");
-    }
+  eventStream: new RedisLiveDashboardEventStream({
+    key: LIVE_DASHBOARD_EVENT_STREAM_KEY,
+    client: createRedisClient(),
+    eventBus: new RedisRealtimeEventBus({
+      channel: LIVE_DASHBOARD_EVENT_CHANNEL,
+      publisher: createRedisClient(),
+      subscriber: createRedisClient(),
+      onError: (error, connection) => {
+        logger.error({ connection, error }, "Live dashboard Redis connection error");
+      }
+    })
   }),
   onError: (error, operation) => {
     logger.error({ error, operation }, "Live dashboard event delivery error");
@@ -266,7 +274,8 @@ const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
   new OrderServiceExpiryService(
     new OrderServiceExpiryRepository(undefined, ({ orderId, code, message }) => {
       logger.error({ orderId, code, message }, "Order service expiry candidate failed");
-    })
+    }),
+    new LiveDashboardOrderChangePublisher(new BookingRepository(), liveDashboardEventGateway)
   ),
   logger,
   env.ORDER_SERVICE_EXPIRY_INTERVAL_MS,

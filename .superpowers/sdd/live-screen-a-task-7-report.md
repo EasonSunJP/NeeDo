@@ -6,9 +6,10 @@ Scope: Task 7 only — shared SSE invalidation and compact regional order events
 ## Outcome
 
 - Added protected Bearer-only `GET /api/v1/backoffice/dashboard/live-events` with existing dashboard permission, platform identity enforcement, strict Zod query/header validation, hierarchy validation, connection audit, and OpenAPI documentation.
-- Added one process-wide Redis pub/sub subscription on `needo:dashboard:live:v1`, compact strict event allowlists, 32 KiB limit, monotonic timestamp-sequence IDs, replay bounded to 100 events received in five minutes, `retry: 5000`, connected event, 30-second heartbeats, `Last-Event-ID`, and immediate slow-client disconnect.
-- Added strict country/ancestor regional fanout and targeted deletion of only the matching country/ancestor dashboard cache keys for all three supported periods.
-- Added post-commit `order.changed` and `metrics.invalidate` publication for successful booking, add-on, service-status, checkout-completion, manual-payment confirmation/refund, and order transition mutations. Projection and publish failures are logged and cannot roll back a committed mutation.
+- Added one process-wide Redis pub/sub subscription on `needo:dashboard:live:v1` plus Redis Stream authority on `needo:dashboard:live:stream:v1`. Redis-assigned stream IDs provide one global order and shared replay across app processes, bounded to 100 events/five minutes. The gateway retains compact strict event allowlists, a 32 KiB limit, `retry: 5000`, connected event, 30-second heartbeats, `Last-Event-ID`, and immediate slow-client disconnect.
+- Added strict country/ancestor regional fanout and targeted deletion of only the matching country/ancestor dashboard cache keys for all three supported periods. The publishing authority awaits one shared deletion before appending `metrics.invalidate`; remote gateways only fan out the cleared-cache signal. Failed deletion is contained and suppresses the misleading invalidation frame.
+- Added post-commit `order.changed` and `metrics.invalidate` publication for successful booking, superseded cancellation, add-on, manual and automatic service-status, payment-method selection, checkout-completion, manual-payment confirmation/refund, and normal order transitions. Projection and publish failures are logged and cannot roll back a committed mutation.
+- Batched compact projections into one repository query and publishes them with concurrency capped at four, removing the superseded-order sequential N+1 while retaining one event pair per changed order.
 - Graceful shutdown closes the live gateway and its dedicated Redis publisher/subscriber clients.
 
 ## RED / GREEN evidence
@@ -32,6 +33,20 @@ Replay ordering RED:
 ```text
 npm test -- --runInBand tests/live-dashboard-events.test.ts -t "writes retry"
 FAIL: connected event was written before replayed order events.
+```
+
+Fix-loop shared-stream RED:
+
+```text
+npm test -- --runInBand tests/live-dashboard-events.test.ts
+FAIL (compile): missing LiveDashboardEventStreamPort/eventStream contract for the two-gateway shared replay test.
+```
+
+Fix-loop checkout isolation RED:
+
+```text
+npm test -- --runInBand tests/order-checkout-service.test.ts
+FAIL: a committed NDP completion with a null notification lookup produced 0 live frames; expected 2.
 ```
 
 GREEN implementation evidence:
@@ -66,11 +81,59 @@ git diff --check
 PASS
 ```
 
+Fix-loop combined regression:
+
+```text
+npm test -- --runInBand \
+  tests/live-dashboard-events.test.ts \
+  tests/redis-live-dashboard-event-stream.test.ts \
+  tests/live-dashboard-api.test.ts \
+  tests/live-dashboard-openapi.test.ts \
+  tests/live-dashboard-validator.test.ts \
+  tests/live-dashboard-cache.test.ts \
+  tests/live-dashboard.service.test.ts \
+  tests/live-dashboard.repository.test.ts \
+  tests/live-dashboard-order-change.publisher.test.ts \
+  tests/live-dashboard-order-projection.test.ts \
+  tests/booking-service.test.ts \
+  tests/booking-repository-scope.test.ts \
+  tests/booking-api.test.ts \
+  tests/booking-service-location.test.ts \
+  tests/booking-validator.test.ts \
+  tests/order-checkout-service.test.ts \
+  tests/manual-payment-service.test.ts \
+  tests/manual-payment-api.test.ts \
+  tests/order-service-expiry.repository.test.ts \
+  tests/order-service-expiry.service.test.ts \
+  tests/order-service-expiry.worker.test.ts \
+  tests/order-service-expiry-server-wiring.test.ts \
+  tests/order-service-expiry-config.test.ts \
+  tests/openapi.test.ts \
+  tests/security-middleware.test.ts
+PASS: 25 suites, 237/237 tests
+
+npm run build
+PASS
+
+npm run lint
+PASS
+
+./node_modules/.bin/prettier --check <all 29 Task 7 changed TypeScript files>
+PASS
+
+git diff --check 9c4973d3955f631bd8a40b35de851f66c2bbeb29
+PASS
+```
+
 ## Narrow architecture adaptations
 
 The existing booking payload intentionally does not expose immutable service-location data. With approval, Task 7 adds one repository-layer projection in `booking.repository.ts`. It is a single bounded read after the committed mutation returns, selects only order number/status/service snapshot/amount and immutable `BookingServiceLocation` region codes, and never adds address, note, identity, shop, technician, or customer fields to the booking API. Unresolved locations fall back to country-only scope. Projection and publisher failures have explicit post-commit regression coverage.
 
 The existing dashboard cache gained an exact-key invalidation method; it does not scan or flush unrelated scopes. Booking route composition passes the shared publisher dependency without changing public request/response contracts.
+
+The production gateway now uses `redis-live-dashboard-event-stream.ts` as its global ID/replay transport. The in-memory stream exists only inside `live-dashboard-events.test.ts` as the injectable transport test double; production has no in-memory fallback. `live-dashboard-order-change.publisher.ts` centralizes one-query compact projection and bounded publication for booking and expiry paths.
+
+Automatic expiry now returns the exact IDs actually advanced by the committed repository transactions. `OrderServiceExpiryService` passes that applied set to the same best-effort compact publisher after the repository returns and preserves the worker's numeric count contract. Checkout completion publication is independent of the notification-recipient lookup, so notification projection absence cannot suppress the dashboard event.
 
 Task 7 verification also found a stale test-only store-booking fixture missing the already-required Task 3 `serviceLocation`. It was closed with `serviceLocation: { source: "SHOP_LOCATION" }`; no production behavior was broadened.
 
@@ -84,3 +147,4 @@ Commit message: `feat: stream regional dashboard changes`
 - No UI or Task 8 work.
 - No real database or Redis access; transport/repository behavior was verified with isolated ports and fixtures.
 - The progress ledger was not updated.
+- The review-recorded unrelated membership failures and broad-suite heap exhaustion were not changed or reclassified. Task 7 verification used serial focused groups and the 237-test relevant regression matrix above.
