@@ -10,6 +10,7 @@ import {
 import { merchantSaasBillingApi } from "../../api/merchantSaasBilling";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
+import { MerchantAccountDetailDrawer } from "../../components/admin/MerchantAccountDetailDrawer";
 import { MerchantBillingCard } from "../../components/admin/MerchantBillingCard";
 import { MerchantBillingEditorDialog } from "../../components/admin/MerchantBillingEditorDialog";
 import { MerchantSuspensionDialog } from "../../components/admin/MerchantSuspensionDialog";
@@ -22,8 +23,6 @@ import { Tabs } from "../../components/ui/Tabs";
 import { coreReadApi, type CoreCategory } from "../../features/core-read/api";
 import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
 import {
-  formatFreeDuration,
-  formatJpy,
   isMerchantGroup,
   type MerchantAccountCard
 } from "../../features/merchant-saas-billing/model";
@@ -356,29 +355,7 @@ export function MerchantsPage({ embeddedDetail }: {
         onClose={() => setBusinessSettingsCard(null)}
       />
 
-      <Drawer open={Boolean(billingDetailCard)} title={t("商家 / 门店 SaaS 详情")} onClose={() => setBillingDetailCard(null)}>
-        {billingDetailCard ? (
-          <DetailGrid
-            items={[
-              { label: "名称", value: billingDetailCard.name },
-              { label: "账号类型", value: isMerchantGroup(billingDetailCard) ? "商家" : billingDetailCard.type === "single_shop" ? "单人店铺" : "店铺" },
-              { label: "付费模式", value: billingDetailCard.billing.cadence },
-              { label: "月费", value: billingDetailCard.billing.cadence === "free" ? "免费" : formatJpy(billingDetailCard.billing.monthlyFeeJpy, language) },
-              { label: "年费", value: formatJpy(billingDetailCard.billing.annualFeeJpy, language) },
-              { label: "计费状态", value: billingDetailCard.billing.state },
-              { label: "累计免费时间", value: formatFreeDuration(billingDetailCard.billing.freeDuration, language) },
-              { label: "支付接口", value: billingDetailCard.billing.paymentProvider },
-              { label: "人工锁定", value: `模式 ${billingDetailCard.billing.cadenceLocked ? "是" : "否"} / 金额 ${billingDetailCard.billing.amountLocked ? "是" : "否"}` },
-              { label: "封号状态", value: billingDetailCard.suspension ? "已人工封号" : "未封号" },
-              ...(isMerchantGroup(billingDetailCard) ? [
-                { label: "付费责任", value: billingDetailCard.paymentResponsibility },
-                { label: "旗下店铺", value: billingDetailCard.shops.length },
-                { label: "合计月费", value: formatJpy(billingDetailCard.consolidatedMonthlyTotalJpy, language) }
-              ] : [{ label: "有效技师", value: billingDetailCard.technicianCount }])
-            ]}
-          />
-        ) : null}
-      </Drawer>
+      <MerchantAccountDetailDrawer card={billingDetailCard} onClose={() => setBillingDetailCard(null)} />
 
       <Drawer open={createShopOpen} title="创建店铺与负责人账号" onClose={() => setCreateShopOpen(false)}>
         <form className="space-y-4" onSubmit={createShop}>

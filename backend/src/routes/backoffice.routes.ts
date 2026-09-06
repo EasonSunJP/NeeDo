@@ -1,3 +1,4 @@
+import { RealtimeRepository } from "../repositories/realtime.repository";
 import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
@@ -21,6 +22,7 @@ import { LiveDashboardService } from "../services/live-dashboard.service";
 import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
 import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
+  backofficeAccountPostsQuerySchema,
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
   backofficeDashboardQuerySchema,
@@ -106,9 +108,21 @@ export const createBackofficeRoutes = (
         auditLogService,
         undefined,
         dependencies.userExperienceService
-      )
+      ),
+    dependencies.realtimeRepository ?? new RealtimeRepository()
   );
   const controller = new BackofficeController(service);
+  for (const merchant of [false, true]) {
+    const prefix = merchant ? "/merchant-admin" : "/backoffice";
+    const technicianPermission = merchant ? BACKOFFICE_ROUTE_PERMISSIONS.merchantTechnicians : BACKOFFICE_ROUTE_PERMISSIONS.technicians;
+    router.get(`${prefix}/technicians/:id/user-log`, authenticate(), authorize(technicianPermission),
+      validateRequest({ params: backofficeEntityIdParamSchema, query: backofficeManagedUserDetailQuerySchema }), controller.technicianUserLog(merchant));
+    for (const subject of ["users", "technicians"] as const) {
+      const permission = subject === "technicians" ? technicianPermission : merchant ? BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers : BACKOFFICE_ROUTE_PERMISSIONS.usersRead;
+      router.get(`${prefix}/${subject}/:id/posts`, authenticate(), authorize(permission),
+        validateRequest({ params: backofficeEntityIdParamSchema, query: backofficeAccountPostsQuerySchema }), controller.accountPosts(subject, merchant));
+    }
+  }
   const liveDashboardController = new LiveDashboardController(
     new LiveDashboardService(
       dependencies.liveDashboardRepository ?? new LiveDashboardRepository(prisma),

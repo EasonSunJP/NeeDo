@@ -6,9 +6,12 @@ interface LiveTrendChartProps {
   paymentsLabel: string;
 }
 
+const CHART = { width: 400, height: 150, left: 22, right: 382, top: 18, baseline: 104, labelY: 136 } as const;
+const pointX = (index: number, count: number) => count === 1 ? CHART.width / 2 : CHART.left + index * ((CHART.right - CHART.left) / (count - 1));
+const valueY = (value: number, maximum: number) => CHART.baseline - (value / Math.max(1, maximum)) * (CHART.baseline - CHART.top);
 const linePoints = (values: readonly number[], maximum: number) => values.map((value, index) => {
-  const x = values.length === 1 ? 200 : 18 + index * (364 / (values.length - 1));
-  const y = 104 - (value / maximum) * 82;
+  const x = pointX(index, values.length);
+  const y = valueY(value, maximum);
   return `${x.toFixed(1)},${y.toFixed(1)}`;
 }).join(" ");
 
@@ -22,14 +25,23 @@ export function LiveTrendChart({ ordersLabel, paymentsLabel, points }: LiveTrend
         <span><i className="is-orders" />{ordersLabel}</span>
         <span><i className="is-payments" />{paymentsLabel}</span>
       </div>
-      <svg aria-label={`${ordersLabel} / ${paymentsLabel}`} preserveAspectRatio="none" role="img" viewBox="0 0 400 130">
-        <path className="live-dashboard-chart-grid" d="M18 22H382M18 63H382M18 104H382" />
-        <polyline className="live-dashboard-chart-line is-orders" points={linePoints(points.map((point) => point.orderCount), maxOrders)} />
-        <polyline className="live-dashboard-chart-line is-payments" points={linePoints(points.map((point) => point.confirmedPayments.jpy), maxPayments)} />
-        {points.map((point, index) => {
-          const x = points.length === 1 ? 200 : 18 + index * (364 / (points.length - 1));
-          return <text className="live-dashboard-chart-label" key={point.key} textAnchor="middle" x={x} y="124">{point.label}</text>;
-        })}
+      <svg aria-label={`${ordersLabel} / ${paymentsLabel}`} preserveAspectRatio="xMidYMid meet" role="img" viewBox={`0 0 ${CHART.width} ${CHART.height}`}>
+        <g data-chart-plot>
+          <path className="live-dashboard-chart-grid" d={`M${CHART.left} ${CHART.top}H${CHART.right}M${CHART.left} ${(CHART.top + CHART.baseline) / 2}H${CHART.right}`} />
+          <polyline className="live-dashboard-chart-line is-orders" points={linePoints(points.map((point) => point.orderCount), maxOrders)} />
+          <polyline className="live-dashboard-chart-line is-payments" points={linePoints(points.map((point) => point.confirmedPayments.jpy), maxPayments)} />
+          {points.length === 1 ? <>
+            <circle className="live-dashboard-chart-line is-orders" data-chart-point cx={pointX(0, 1)} cy={valueY(points[0].orderCount, maxOrders)} r="2" />
+            <circle className="live-dashboard-chart-line is-payments" data-chart-point cx={pointX(0, 1)} cy={valueY(points[0].confirmedPayments.jpy, maxPayments)} r="2" />
+          </> : null}
+        </g>
+        <g data-chart-axis>
+          <path className="live-dashboard-chart-grid" data-chart-baseline data-y={CHART.baseline} d={`M${CHART.left} ${CHART.baseline}H${CHART.right}`} />
+          {points.map((point, index) => {
+            const x = pointX(index, points.length);
+            return <text className="live-dashboard-chart-label" key={point.key} textAnchor="middle" x={x} y={CHART.labelY}>{point.label}</text>;
+          })}
+        </g>
       </svg>
     </div>
   );

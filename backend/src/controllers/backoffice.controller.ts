@@ -3,6 +3,7 @@ import type { BackofficeService } from "../services/backoffice.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  backofficeAccountPostsQuerySchema,
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
   backofficeDashboardQuerySchema,
@@ -98,6 +99,14 @@ export class BackofficeController {
       next(error);
     }
   };
+
+  public technicianUserLog = (merchant: boolean) => this.createListHandler((service, request, response) =>
+    service.getTechnicianUserLog(backofficeEntityIdParamSchema.parse(request.params).id, merchant, getAuthenticatedAccess(response), getRequestContext(request), backofficeManagedUserDetailQuerySchema.parse(request.query))
+  );
+
+  public accountPosts = (subject: "users" | "technicians", merchant: boolean) => this.createListHandler((service, request, response) =>
+    service.listAccountPosts(backofficeEntityIdParamSchema.parse(request.params).id, subject, merchant, getAuthenticatedAccess(response), getRequestContext(request), backofficeAccountPostsQuerySchema.parse(request.query))
+  );
 
   public managedUsers = this.createListHandler((service, request, response) =>
     service.listManagedUsers(

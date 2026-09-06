@@ -1,3 +1,5 @@
+import { accountActivityOpenApiPaths } from "./account-activity.openapi";
+import { operationsMemberOpenApiPaths } from "./operations-member.openapi";
 import { workStatusOpenApiPaths } from './work-status.openapi';
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
@@ -8651,16 +8653,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeUserGroupMember: {
         type: "object",
-        required: ["needoId", "displayName", "membershipLevel", "isOperationsMember"],
+        required: ["id", "needoId", "username", "email", "avatarUrl"],
         properties: {
-          needoId: { type: "string", minLength: 1, maxLength: 64 },
-          displayName: { type: "string", minLength: 1, maxLength: 120 },
-          avatarUrl: { type: ["string", "null"], format: "uri" },
-          membershipLevel: {
-            type: "string",
-            enum: ["free", "silver", "gold", "black_diamond"]
-          },
-          isOperationsMember: { type: "boolean" }
+          id: { type: "integer", minimum: 1 },
+          needoId: { type: "string" }, username: { type: "string" },
+          email: { type: "string", format: "email" }, avatarUrl: { type: ["string", "null"] }
         }
       },
       BackofficeUserGroupCreateInput: {
@@ -15351,6 +15348,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...operationsMemberOpenApiPaths(config.API_PREFIX),
+    ...accountActivityOpenApiPaths(config.API_PREFIX),
     ...sosOpenApiPaths,
     ...workStatusOpenApiPaths,
     ...createShopMembershipCardPlanOpenApiPaths(config),
@@ -21459,7 +21458,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "pageSize",
             in: "query",
             required: false,
-            schema: { type: "integer", minimum: 1, maximum: 10, default: 10 }
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 }
           }
         ],
         responses: {
@@ -22425,7 +22424,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "backoffice:users:read",
         parameters: [idPathParameter("userId"),
           { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } }
+          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } },
+          { name: "audit_from", in: "query", description: "Inclusive UTC start; requires audit_to", schema: { type: "string", format: "date-time" } },
+          { name: "audit_to", in: "query", description: "Exclusive UTC end; requires audit_from", schema: { type: "string", format: "date-time" } }
         ],
         responses: {
           "200": jsonDataResponse("All-user detail", {
@@ -25825,7 +25826,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "merchant-admin:customers:list",
         parameters: [idPathParameter("userId"),
           { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } }
+          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } },
+          { name: "audit_from", in: "query", description: "Inclusive UTC start; requires audit_to", schema: { type: "string", format: "date-time" } },
+          { name: "audit_to", in: "query", description: "Exclusive UTC end; requires audit_from", schema: { type: "string", format: "date-time" } }
         ],
         responses: {
           "200": jsonDataResponse("Scoped user detail", {

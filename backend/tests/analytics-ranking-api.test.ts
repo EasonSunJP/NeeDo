@@ -88,6 +88,18 @@ const fixture = (role = "operator", permissions = [permission], identityType = "
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 describe("formal analytics rankings API", () => {
+  it.each([10, 50, 100])("accepts %i records per page for ranking details", async (pageSize) => {
+    const test = fixture();
+    const response = await request(test.app)
+      .get(`/api/v1/backoffice/analytics/rankings/service?pageSize=${pageSize}&city=Tokyo&categoryId=8`)
+      .set(bearer(test.token))
+      .expect(200);
+    expect(response.body.data).toMatchObject({ page: 1, page_size: pageSize });
+    expect(test.repository.listRankings).toHaveBeenCalledWith(expect.objectContaining({
+      page: 1, pageSize, city: "Tokyo", categoryId: 8
+    }));
+  });
+
   it.each(["admin", "operator"])("serves %s through the actual createApp chain", async (role) => {
     const test = fixture(role);
     test.repository.listRankings.mockResolvedValueOnce({
@@ -145,7 +157,7 @@ describe("formal analytics rankings API", () => {
     for (const url of [
       "/api/v1/backoffice/analytics/rankings/shop",
       "/api/v1/backoffice/analytics/rankings/service?unknown=1",
-      "/api/v1/backoffice/analytics/rankings/service?pageSize=11",
+      "/api/v1/backoffice/analytics/rankings/service?pageSize=101",
       "/api/v1/backoffice/analytics/rankings/service?page=1e2"
     ])
       await request(allowed.app).get(url).set(bearer(allowed.token)).expect(400);

@@ -33,10 +33,12 @@ async function listAllActiveCategories(language: string) {
 
 export function AnalyticsRankingsSection({
   onOpenDetail,
+  cities = [],
   query
 }: {
   onOpenDetail: (item: AnalyticsRankingItem) => void;
   query: DashboardQuery;
+  cities?: string[];
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
@@ -70,9 +72,9 @@ export function AnalyticsRankingsSection({
         ) : null}
       </div>
       <div className="grid min-w-0 gap-5 xl:grid-cols-3">
-        <AnalyticsRankingPanel kind="service" onOpenDetail={onOpenDetail} query={query} title="服务项目排行 TOP10" />
-        <AnalyticsRankingPanel categories={categories} kind="technician" onOpenDetail={onOpenDetail} query={query} title="技师排行 TOP10" />
-        <AnalyticsRankingPanel categories={categories} kind="customer" onOpenDetail={onOpenDetail} query={query} title="用户消费排行 TOP10" />
+        <AnalyticsRankingPanel cities={cities} categories={categories} kind="service" onOpenDetail={onOpenDetail} query={query} title="服务项目排行 TOP10" />
+        <AnalyticsRankingPanel cities={cities} categories={categories} kind="technician" onOpenDetail={onOpenDetail} query={query} title="技师排行 TOP10" />
+        <AnalyticsRankingPanel cities={cities} categories={categories} kind="customer" onOpenDetail={onOpenDetail} query={query} title="用户消费排行 TOP10" />
       </div>
     </section>
   );
