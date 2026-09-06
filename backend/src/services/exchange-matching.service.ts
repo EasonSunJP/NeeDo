@@ -1,7 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type {
-  CompleteExchangeSelectionInput,
+  CompleteExchangeMatchInput,
   ExchangeMatchingRecord,
   ExchangeMatchingSelectionClaim
 } from "../repositories/exchange-matching.repository";
@@ -36,7 +36,7 @@ export interface ExchangeMatchingRepositoryPort {
     endsAt: Date
   ): Promise<boolean>;
   hasBookingConflict(technicianProfileId: number, startsAt: Date, endsAt: Date): Promise<boolean>;
-  completeSelection(input: CompleteExchangeSelectionInput): Promise<ExchangeMatchingPayload | null>;
+  completeMatch(input: CompleteExchangeMatchInput): Promise<ExchangeMatchingPayload | null>;
 }
 
 export class ExchangeMatchingService {
@@ -107,7 +107,7 @@ export class ExchangeMatchingService {
           selectedQuoteTotalJpy
         );
         this.assertExactConfirmations(input, preview);
-        const adjustments: CompleteExchangeSelectionInput["adjustments"] = [];
+        const adjustments: CompleteExchangeMatchInput["adjustments"] = [];
         if (preview.requiresBudgetConfirmation) {
           adjustments.push({
             type: "budget_increased",
@@ -151,7 +151,7 @@ export class ExchangeMatchingService {
         );
         const unselectedClaimIds = unselectedClaims.map((claim) => claim.id);
         const versionAfter = matching!.version + adjustments.length + 1;
-        const completed = await repository.completeSelection({
+        const completed = await repository.completeMatch({
           matchingId: matching!.id,
           exchangePostId,
           selectedClaims: exactClaims,
@@ -168,6 +168,8 @@ export class ExchangeMatchingService {
           versionAfter,
           actorUserId: access.userId,
           actorIdentityId: identityId,
+          viewerIdentityId: identityId,
+          matchEventType: "selective_matched",
           idempotencyKey,
           payloadFingerprint,
           at: this.now(),

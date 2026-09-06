@@ -1,4 +1,5 @@
 import {
+  ExchangeMatchEventType,
   ExchangeMatchingStatus,
   ExchangeMatchMode,
   ExchangePostStatus,
@@ -440,7 +441,7 @@ describe("ExchangeMatchingRepository", () => {
     const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient);
 
     await expect(
-      repository.completeSelection({
+      repository.completeMatch({
         matchingId: 51,
         exchangePostId: 41,
         selectedClaims: [
@@ -493,6 +494,8 @@ describe("ExchangeMatchingRepository", () => {
         versionAfter: 4,
         actorUserId: 7,
         actorIdentityId: 17,
+        viewerIdentityId: 17,
+        matchEventType: "selective_matched",
         idempotencyKey: "matching-repository-key-0001",
         payloadFingerprint: "a".repeat(64),
         at,
@@ -563,6 +566,101 @@ describe("ExchangeMatchingRepository", () => {
     });
   });
 
+  it("persists a system-authored Quick match through the shared terminal mutation", async () => {
+    const client = {
+      exchangeMatchParticipant: { createMany: jest.fn(async () => ({ count: 1 })) },
+      exchangeClaim: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      exchangeRequestMatching: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        findFirst: jest.fn(async () => ({
+          id: 51,
+          exchangePostId: 41,
+          status: ExchangeMatchingStatus.MATCHED,
+          effectiveTargetProviderCount: 1,
+          effectiveBudgetMaxJpy: 15_000,
+          selectedQuoteTotalJpy: 15_000,
+          version: 4,
+          matchedAt: at,
+          exchangePost: {
+            id: 41,
+            authorUserId: 7,
+            ownerIdentityId: 17,
+            type: ExchangePostType.DEMAND,
+            status: ExchangePostStatus.MATCHED,
+            expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+            demand: { matchMode: ExchangeMatchMode.QUICK },
+            claims: []
+          },
+          participants: []
+        }))
+      },
+      exchangePost: { update: jest.fn(async () => ({ id: 41 })) },
+      exchangeMatchEvent: { create: jest.fn(async () => ({ id: 81 })) },
+      notification: { createMany: jest.fn(async () => ({ count: 1 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 91 })) }
+    };
+    const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient);
+    const selectedClaim = {
+      id: 301,
+      exchangePostId: 41,
+      claimantUserId: 8,
+      claimantIdentityId: 18,
+      shopId: 11,
+      technicianProfileId: 81,
+      serviceId: 501,
+      technicianServiceId: null,
+      scheduleSlotId: 91,
+      quoteAmountJpy: 15_000,
+      serviceNameSnapshot: "Quick shop service",
+      serviceDurationSnapshot: 60,
+      currency: "JPY" as const,
+      status: "active" as const,
+      estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
+      estimatedEndsAt: new Date("2026-09-02T02:00:00.000Z")
+    };
+
+    await repository.completeMatch({
+      matchingId: 51,
+      exchangePostId: 41,
+      selectedClaims: [selectedClaim],
+      selectedClaimIds: [301],
+      unselectedClaims: [],
+      unselectedClaimIds: [],
+      selectedQuoteTotalJpy: 15_000,
+      effectiveTargetProviderCountAfter: 1,
+      effectiveBudgetMaxJpyAfter: 15_000,
+      adjustments: [],
+      versionBefore: 3,
+      versionAfter: 4,
+      actorUserId: null,
+      actorIdentityId: null,
+      viewerIdentityId: 17,
+      matchEventType: "quick_matched",
+      idempotencyKey: "quick-auto:claim:301",
+      payloadFingerprint: "q".repeat(64),
+      at,
+      audit: {
+        actorId: null,
+        action: "exchange.matching.quick.auto_match",
+        targetType: "exchange_request_matching",
+        targetId: 51
+      }
+    });
+
+    expect(client.exchangePost.update).toHaveBeenCalledWith({
+      where: { id: 41 },
+      data: { status: ExchangePostStatus.MATCHED }
+    });
+    expect(client.exchangeMatchEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: ExchangeMatchEventType.QUICK_MATCHED,
+        actorUserId: null,
+        actorIdentityId: null,
+        idempotencyKey: "quick-auto:claim:301"
+      })
+    });
+  });
+
   it("persists budget and target adjustments as one linked atomic event chain", async () => {
     const createdEvents: Array<Record<string, unknown>> = [];
     const client = {
@@ -606,7 +704,7 @@ describe("ExchangeMatchingRepository", () => {
     };
     const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient);
 
-    await repository.completeSelection({
+    await repository.completeMatch({
       matchingId: 51,
       exchangePostId: 41,
       selectedClaims: [
@@ -643,6 +741,8 @@ describe("ExchangeMatchingRepository", () => {
       versionAfter: 6,
       actorUserId: 7,
       actorIdentityId: 17,
+      viewerIdentityId: 17,
+      matchEventType: "selective_matched",
       idempotencyKey: "matching-adjustment-key-0001",
       payloadFingerprint: "b".repeat(64),
       at,
@@ -742,7 +842,7 @@ describe("ExchangeMatchingRepository", () => {
       })
     ]);
 
-    await repository.completeSelection({
+    await repository.completeMatch({
       matchingId: 51,
       exchangePostId: 41,
       selectedClaims: claims,
@@ -757,6 +857,8 @@ describe("ExchangeMatchingRepository", () => {
       versionAfter: 4,
       actorUserId: 7,
       actorIdentityId: 17,
+      viewerIdentityId: 17,
+      matchEventType: "selective_matched",
       idempotencyKey: "matching-snapshot-key-0001",
       payloadFingerprint: "c".repeat(64),
       at,

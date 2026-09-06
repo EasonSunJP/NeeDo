@@ -111,7 +111,7 @@ Run the command from Step 2.
 
 Expected: 2 suites pass with zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/types/exchange-matching.types.ts backend/src/repositories/exchange-matching.repository.ts backend/tests/exchange-matching.repository.test.ts backend/tests/exchange-matching.service.test.ts
@@ -129,7 +129,7 @@ git commit -m "feat(exchange): expose quick budget decision"
 - Produces: `completeMatch(input: CompleteExchangeMatchInput): Promise<ExchangeMatchingPayload | null>`.
 - Produces: `matchEventType: "selective_matched" | "quick_matched"`, nullable event actor IDs, and a separate owner `viewerIdentityId`.
 
-- [ ] **Step 1: Write failing repository tests for Quick terminal persistence**
+- [x] **Step 1: Write failing repository tests for Quick terminal persistence**
 
 Assert one call with `matchEventType: "quick_matched"`:
 
@@ -150,13 +150,13 @@ expect(client.exchangePost.update).toHaveBeenCalledWith({
 
 Retain the Selective test and assert it still writes `SELECTIVE_MATCHED`.
 
-- [ ] **Step 2: Run the repository test and verify RED**
+- [x] **Step 2: Run the repository test and verify RED**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-matching.repository.test.ts`
 
 Expected: FAIL because `completeSelection` hard-codes Selective event and actor fields.
 
-- [ ] **Step 3: Implement the generalized mutation**
+- [x] **Step 3: Implement the generalized mutation**
 
 Rename the input and method without changing lock order or Participant/claim/Post writes. Map the event type explicitly:
 
@@ -169,7 +169,7 @@ const databaseEventType =
 
 Use `input.viewerIdentityId` only for the final owner projection. Keep all selected claims matched, all unselected active claims not selected, all `activeKey` values cleared, notification payloads redacted, and the optimistic matching update as the terminal gate.
 
-- [ ] **Step 4: Run repository and Selective service regressions**
+- [x] **Step 4: Run repository and Selective service regressions**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-matching.repository.test.ts tests/exchange-matching.service.test.ts`
 

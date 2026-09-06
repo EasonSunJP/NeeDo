@@ -149,7 +149,7 @@ const createRepository = (
     lockTechnicians: jest.fn(async () => true),
     hasParticipantConflict: jest.fn(async () => false),
     hasBookingConflict: jest.fn(async () => false),
-    completeSelection: jest.fn(async () => matchedPayload),
+    completeMatch: jest.fn(async () => matchedPayload),
     ...overrides
   };
   return repository;
@@ -196,7 +196,7 @@ describe("ExchangeMatchingService", () => {
     expect(repository.lockMatching).toHaveBeenCalledWith(41);
     expect(repository.lockActiveClaims).toHaveBeenCalledWith(41);
     expect(repository.lockTechnicians).toHaveBeenCalledWith([81, 82]);
-    expect(repository.completeSelection).toHaveBeenCalledWith(
+    expect(repository.completeMatch).toHaveBeenCalledWith(
       expect.objectContaining({
         matchingId: 51,
         exchangePostId: 41,
@@ -208,7 +208,9 @@ describe("ExchangeMatchingService", () => {
         versionAfter: 4,
         idempotencyKey: "matching-select-key-0001",
         actorUserId: 7,
-        actorIdentityId: 17
+        actorIdentityId: 17,
+        viewerIdentityId: 17,
+        matchEventType: "selective_matched"
       })
     );
   });
@@ -238,7 +240,7 @@ describe("ExchangeMatchingService", () => {
         requiresBudgetConfirmation: false
       }
     });
-    expect(repository.completeSelection).not.toHaveBeenCalled();
+    expect(repository.completeMatch).not.toHaveBeenCalled();
 
     await service.selectMatching(
       access,
@@ -252,7 +254,7 @@ describe("ExchangeMatchingService", () => {
       "matching-target-confirm-0001",
       { ip: "127.0.0.1", userAgent: "jest" }
     );
-    expect(repository.completeSelection).toHaveBeenLastCalledWith(
+    expect(repository.completeMatch).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 1,
         effectiveBudgetMaxJpyAfter: 30_000,
@@ -286,7 +288,7 @@ describe("ExchangeMatchingService", () => {
         requiresBudgetConfirmation: true
       })
     });
-    expect(repository.completeSelection).not.toHaveBeenCalled();
+    expect(repository.completeMatch).not.toHaveBeenCalled();
 
     await service.selectMatching(
       access,
@@ -300,7 +302,7 @@ describe("ExchangeMatchingService", () => {
       "matching-budget-confirm-0001",
       { ip: "127.0.0.1", userAgent: "jest" }
     );
-    expect(repository.completeSelection).toHaveBeenLastCalledWith(
+    expect(repository.completeMatch).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 2,
         effectiveBudgetMaxJpyAfter: 31_000,
@@ -332,7 +334,7 @@ describe("ExchangeMatchingService", () => {
       ip: "127.0.0.1",
       userAgent: "jest"
     });
-    expect(repository.completeSelection).toHaveBeenLastCalledWith(
+    expect(repository.completeMatch).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 1,
         effectiveBudgetMaxJpyAfter: 31_000,
@@ -379,7 +381,7 @@ describe("ExchangeMatchingService", () => {
           { ip: "127.0.0.1", userAgent: "jest" }
         )
       ).rejects.toMatchObject({ statusCode: 409 });
-      expect(isolated.completeSelection).not.toHaveBeenCalled();
+      expect(isolated.completeMatch).not.toHaveBeenCalled();
     }
 
     const aboveTarget = createRepository({
@@ -394,7 +396,7 @@ describe("ExchangeMatchingService", () => {
         { ip: "127.0.0.1", userAgent: "jest" }
       )
     ).rejects.toMatchObject({ code: 40995 });
-    expect(aboveTarget.completeSelection).not.toHaveBeenCalled();
+    expect(aboveTarget.completeMatch).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -414,7 +416,7 @@ describe("ExchangeMatchingService", () => {
         userAgent: "jest"
       })
     ).rejects.toMatchObject({ code });
-    expect(repository.completeSelection).not.toHaveBeenCalled();
+    expect(repository.completeMatch).not.toHaveBeenCalled();
   });
 
   it("rejects an inactive claim set and duplicate technician", async () => {
@@ -458,7 +460,7 @@ describe("ExchangeMatchingService", () => {
           { ip: "127.0.0.1", userAgent: "jest" }
         )
       ).rejects.toMatchObject({ code: 40997 });
-      expect(repository.completeSelection).not.toHaveBeenCalled();
+      expect(repository.completeMatch).not.toHaveBeenCalled();
     }
   });
 
@@ -469,7 +471,7 @@ describe("ExchangeMatchingService", () => {
       ip: "127.0.0.1",
       userAgent: "jest"
     });
-    const input = (initial.completeSelection as jest.Mock).mock.calls[0]?.[0] as {
+    const input = (initial.completeMatch as jest.Mock).mock.calls[0]?.[0] as {
       payloadFingerprint: string;
     };
     const replay = createRepository({

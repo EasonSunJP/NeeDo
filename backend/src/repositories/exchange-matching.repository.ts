@@ -114,7 +114,7 @@ export interface ExchangeMatchingSelectionClaim {
   estimatedEndsAt: Date;
 }
 
-export interface CompleteExchangeSelectionInput {
+export interface CompleteExchangeMatchInput {
   matchingId: number;
   exchangePostId: number;
   selectedClaims: ExchangeMatchingSelectionClaim[];
@@ -130,8 +130,10 @@ export interface CompleteExchangeSelectionInput {
   >;
   versionBefore: number;
   versionAfter: number;
-  actorUserId: number;
-  actorIdentityId: number;
+  actorUserId: number | null;
+  actorIdentityId: number | null;
+  viewerIdentityId: number;
+  matchEventType: "selective_matched" | "quick_matched";
   idempotencyKey: string;
   payloadFingerprint: string;
   at: Date;
@@ -317,8 +319,8 @@ export class ExchangeMatchingRepository {
     return row !== null;
   }
 
-  public async completeSelection(
-    input: CompleteExchangeSelectionInput
+  public async completeMatch(
+    input: CompleteExchangeMatchInput
   ): Promise<ExchangeMatchingPayload | null> {
     await this.client.exchangeMatchParticipant.createMany({
       data: input.selectedClaims.map((claim) => ({
@@ -417,7 +419,10 @@ export class ExchangeMatchingRepository {
       data: {
         matchingId: input.matchingId,
         sequence: input.versionAfter,
-        type: ExchangeMatchEventType.SELECTIVE_MATCHED,
+        type:
+          input.matchEventType === "quick_matched"
+            ? ExchangeMatchEventType.QUICK_MATCHED
+            : ExchangeMatchEventType.SELECTIVE_MATCHED,
         actorUserId: input.actorUserId,
         actorIdentityId: input.actorIdentityId,
         versionBefore: eventVersion,
@@ -468,7 +473,7 @@ export class ExchangeMatchingRepository {
       ]
     });
     await this.client.auditLog.create({ data: toAuditLogCreateData(input.audit) });
-    const result = await this.findForViewer(input.exchangePostId, input.actorIdentityId);
+    const result = await this.findForViewer(input.exchangePostId, input.viewerIdentityId);
     return result?.payload ?? null;
   }
 
