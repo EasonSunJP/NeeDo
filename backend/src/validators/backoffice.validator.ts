@@ -104,6 +104,12 @@ export const backofficeManagedUserListQuerySchema = z
 
 export type BackofficeManagedUserListQuery = z.infer<typeof backofficeManagedUserListQuerySchema>;
 
+export const backofficeManagedUserDetailQuerySchema = z.object({
+  audit_page: z.coerce.number().int().positive().default(1),
+  audit_page_size: z.coerce.number().refine((value) => value === 10 || value === 50).default(10)
+}).strict();
+export type BackofficeManagedUserDetailQuery = z.infer<typeof backofficeManagedUserDetailQuerySchema>;
+
 export const backofficeManagedUserParamSchema = z
   .object({ userId: z.coerce.number().int().positive() })
   .strict();

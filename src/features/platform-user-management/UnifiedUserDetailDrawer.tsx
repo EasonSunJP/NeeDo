@@ -10,6 +10,7 @@ import { UserMembershipAdjustmentDialog } from "./UserMembershipAdjustmentDialog
 import { UserReceivedReviews } from "./UserReceivedReviews";
 import { UserUsageList } from "./UserUsageList";
 import { PlatformPartnerRangeEditor } from "./PlatformPartnerRangeEditor";
+import { ManagedUserActivity } from "./ManagedUserActivity";
 import { PermissionTagDisclosure } from "./PermissionTagDisclosure";
 
 type DetailState = {
@@ -59,6 +60,7 @@ export function UnifiedUserDetailDrawer({
       {!state.loading && !state.error && user ? <div className="space-y-4">
         <FormalManagedUserDetailPanel
           detail={user}
+          activityContent={<ManagedUserActivity key={`${scope}-${user.id}`} scope={scope} user={user} />}
           accountContent={<PermissionTagDisclosure roles={user.account.roles} />}
           membershipActions={scope === "operations" && user.capabilities.membershipWrite ? {
             tier: <UserMembershipAdjustmentDialog currentValue={user.membership.tierCode} expectedLockVersion={user.membership.lockVersion} kind="tier" onSaved={() => setReloadToken((value) => value + 1)} userId={user.id} />,

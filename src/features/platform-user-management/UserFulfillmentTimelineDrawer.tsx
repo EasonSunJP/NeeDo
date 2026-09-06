@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { AdminEventTimeline } from "../../components/admin/AdminEventTimeline";
+import { useOptionalAuth } from "../../auth/AuthProvider";
 import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
@@ -170,6 +172,8 @@ export function UserFulfillmentTimelineDrawer({
 }) {
   const { language } = useOptionalI18n();
   const text = copy[language];
+  const auth = useOptionalAuth();
+  const [commentOpen, setCommentOpen] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<{
     loading: boolean;
@@ -180,6 +184,9 @@ export function UserFulfillmentTimelineDrawer({
   const [commentError, setCommentError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
+    setCommentOpen(false);
+    setComment("");
+    setCommentError("");
     if (!usage) {
       setState({ loading: false, error: "", data: null });
       return;
@@ -271,51 +278,35 @@ export function UserFulfillmentTimelineDrawer({
           </div>
         </section>
       ) : null}
-      <div className="grid gap-3">
-        {state.data?.timeline.map((event) => (
-          <article
-            className="relative ml-3 border-l-2 border-moss/30 pb-4 pl-5 last:pb-0"
-            key={event.id}
-          >
-            <span className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-moss" />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <strong className="text-sm font-black text-ink">
-                {eventLabels[event.code]?.[language] ??
-                  eventLabels[event.type]?.[language] ??
-                  text.system}
-              </strong>
-              <time className="text-xs font-bold text-ink/40">
-                {new Intl.DateTimeFormat(
-                  language === "zh"
-                    ? "zh-CN"
-                    : language === "zh-Hant"
-                      ? "zh-TW"
-                      : language,
-                  { dateStyle: "medium", timeStyle: "short" },
-                ).format(new Date(event.occurredAt))}
-              </time>
-            </div>
-            {event.actorName ? (
-              <p className="mt-1 text-xs font-bold text-ink/45">
-                {event.actorName}
-              </p>
-            ) : null}
-            {event.body ? (
-              <p className="mt-2 whitespace-pre-wrap rounded-lg bg-paper p-3 text-sm font-medium text-ink/70">
-                {event.body}
-              </p>
-            ) : null}
-          </article>
-        ))}
-      </div>
-      {!state.loading && state.data?.timeline.length === 0 ? (
-        <p className="text-sm font-bold text-ink/45">{text.none}</p>
-      ) : null}
-      {canComment ? (
-        <section className="mt-5 border-t border-line pt-4">
+      {state.data ? <AdminEventTimeline
+        title={text.title}
+        emptyLabel={text.none}
+        commentButtonLabel={text.comment}
+        commentAuthorName={auth?.session?.profileDisplayName ?? auth?.session?.username ?? text.system}
+        commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
+        showCommentComposer={canComment}
+        onCommentButtonClick={() => setCommentOpen(true)}
+        events={state.data.timeline.map((event) => {
+          const label = eventLabels[event.code]?.[language] ?? eventLabels[event.type]?.[language] ?? text.system;
+          const locale = language === "zh" ? "zh-CN" : language === "zh-Hant" ? "zh-TW" : language;
+          const date = new Date(event.occurredAt);
+          return {
+            id: event.id, title: label, actorRole: label,
+            actorName: event.actorName ?? text.system,
+            actorAvatarSrc: event.actorAvatarUrl ?? undefined,
+            atLabel: `${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)}\n${new Intl.DateTimeFormat(locale, { timeStyle: "medium" }).format(date)}`,
+            preserveAtLabel: true,
+            message: event.body ?? label,
+            tone: ["cancelled", "failed", "no_show"].includes(event.code) ? "red" as const : "green" as const
+          };
+        })}
+      /> : null}
+      {canComment && commentOpen ? (
+        <section className="mt-4 rounded-xl bg-paper p-4">
           <label className="text-xs font-black text-ink/55">
             {text.comment}
             <textarea
+              autoFocus
               className="mt-1 min-h-24 w-full rounded-lg border border-line bg-paper p-3 text-sm font-bold"
               maxLength={2000}
               onChange={(event) => setComment(event.target.value)}
