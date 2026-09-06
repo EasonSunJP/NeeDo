@@ -28,6 +28,8 @@ export type OfficialNoticeBlockType =
   | "video"
   | "file";
 
+export type OfficialNoticeFontSize = "small" | "medium" | "large" | "xlarge";
+
 export type OfficialNoticeBlock = {
   id: string;
   type: OfficialNoticeBlockType;
@@ -36,6 +38,7 @@ export type OfficialNoticeBlock = {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  fontSize?: OfficialNoticeFontSize;
   source?: "url" | "media";
   mediaAssetId?: number;
 };

@@ -36,6 +36,15 @@ const blockTypes = [
   "file"
 ] as const;
 const mediaBlockTypes = new Set<string>(["image", "video", "file"]);
+const textualBlockTypes = new Set<string>([
+  "paragraph",
+  "heading",
+  "subheading",
+  "bullet",
+  "numbered",
+  "quote",
+  "callout"
+]);
 const safeResourceUrl = /^(?:https:\/\/[^\s]+|\/media\/content\/[a-f0-9]{64}\.(?:jpg|png|webp))$/u;
 
 export const officialNoticeBlockSchema = z
@@ -57,11 +66,18 @@ export const officialNoticeBlockSchema = z
       .max(50 * 1024 * 1024)
       .optional(),
     mimeType: z.string().trim().max(100).optional(),
+    fontSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
     source: z.enum(["url", "media"]).optional(),
     mediaAssetId: z.number().int().positive().optional()
   })
   .strict()
   .superRefine((block, context) => {
+    if (block.fontSize && !textualBlockTypes.has(block.type)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "error.official_notice.block_invalid"
+      });
+    }
     if (block.type === "divider") {
       if (block.content !== "") {
         context.addIssue({

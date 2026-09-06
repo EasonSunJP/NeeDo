@@ -71,7 +71,7 @@ const notice = {
       summary: "営業時間のお知らせ",
       blocks: [
         { id: "heading", type: "heading" as const, content: "重要なお知らせ" },
-        { id: "body", type: "paragraph" as const, content: "18時まで営業します" }
+        { id: "body", type: "paragraph" as const, content: "18時まで営業します", fontSize: "xlarge" as const }
       ],
       sourceLocale: "ja" as const,
       isInitialCopy: false
@@ -178,6 +178,8 @@ describe("official notice formal API interactions", () => {
     expect(state.listManaged).toHaveBeenCalledWith("merchant", { page: 1, pageSize: 20 });
     await click("営業時間変更");
     expect([...document.querySelectorAll("h2")].some((heading) => heading.textContent === "重要なお知らせ")).toBe(true);
+    expect([...container.querySelectorAll('[data-notice-font-size="xlarge"]')]
+      .some((block) => block.textContent === "18時まで営業します")).toBe(true);
     setField("操作理由", "排期调整");
     await click("取消发送");
     await waitFor(() => expect(state.cancelManaged).toHaveBeenCalledTimes(1));
@@ -238,6 +240,7 @@ describe("official notice formal API interactions", () => {
     setField("标题", "结构化通知");
     setField("摘要", "检查内容块");
     setField("正文", "第一段正文");
+    setField("文字サイズ", "large");
     await click("大段落标题");
     const textareas = document.querySelectorAll<HTMLTextAreaElement>("textarea");
     expect(textareas).toHaveLength(2);
@@ -252,7 +255,7 @@ describe("official notice formal API interactions", () => {
     await click("确认创建");
     await waitFor(() => expect(state.createManaged).toHaveBeenCalledTimes(1));
     expect(state.createManaged.mock.calls[0]?.[1].translations.ja.blocks).toEqual([
-      expect.objectContaining({ type: "paragraph", content: "第一段正文" }),
+      expect.objectContaining({ type: "paragraph", content: "第一段正文", fontSize: "large" }),
       expect.objectContaining({ type: "heading", content: "重要事项" })
     ]);
     expect(Object.keys(state.createManaged.mock.calls[0]?.[1].translations).sort()).toEqual([

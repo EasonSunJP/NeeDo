@@ -91,6 +91,49 @@ describe("official notice validation", () => {
     }
   });
 
+  it("persists supported font sizes only on textual blocks", () => {
+    const parsed = officialNoticeCreateBodySchema.parse({
+      ...base,
+      translations: {
+        ...base.translations,
+        "zh-CN": {
+          ...base.translations["zh-CN"],
+          blocks: [
+            {
+              id: "paragraph-large",
+              type: "paragraph",
+              content: "需要醒目显示的正文",
+              fontSize: "large"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(parsed.translations["zh-CN"].blocks[0]).toMatchObject({ fontSize: "large" });
+
+    for (const block of [
+      { id: "paragraph-invalid", type: "paragraph", content: "正文", fontSize: "huge" },
+      { id: "divider-sized", type: "divider", content: "", fontSize: "large" },
+      {
+        id: "image-sized",
+        type: "image",
+        content: `/media/content/${"b".repeat(64)}.webp`,
+        source: "media",
+        mediaAssetId: 42,
+        fontSize: "small"
+      }
+    ]) {
+      expect(() => officialNoticeCreateBodySchema.parse({
+        ...base,
+        translations: {
+          ...base.translations,
+          "zh-CN": { ...base.translations["zh-CN"], blocks: [block] }
+        }
+      })).toThrow();
+    }
+  });
+
   it("requires a future timestamp only for scheduled delivery", () => {
     expect(() =>
       officialNoticeCreateBodySchema.parse({

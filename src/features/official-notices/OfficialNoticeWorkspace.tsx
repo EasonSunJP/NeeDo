@@ -23,6 +23,11 @@ import { translateText, type Language } from "../../i18n/translations";
 import { platformUserManagementApi } from "../platform-user-management/api";
 import type { PlatformManagedUser } from "../platform-user-management/types";
 import { contentPublicationApi } from "../../api/contentPublication";
+import {
+  defaultOfficialNoticeFontSize,
+  isTextualOfficialNoticeBlock,
+  officialNoticeFontSizeClass
+} from "../../lib/officialNoticeBlockPresentation";
 
 const inputClass = "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none focus:border-moss";
 const textareaClass = "min-h-32 w-full rounded-lg border border-line bg-white px-3 py-3 text-sm font-bold outline-none focus:border-moss";
@@ -96,6 +101,11 @@ const noticeUiTranslations: Record<string, Partial<Record<Language, string>>> = 
   "移除账号": { "zh-Hant": "移除帳號", ja: "アカウントを削除", en: "Remove account", ko: "계정 제거" },
   "源语言": { "zh-Hant": "來源語言", ja: "原文言語", en: "Source language", ko: "원문 언어" },
   "身份类型": { "zh-Hant": "身分類型", ja: "アカウント種別", en: "Identity types", ko: "신분 유형" },
+  "字号": { "zh-Hant": "字號", ja: "文字サイズ", en: "Font size", ko: "글자 크기" },
+  "小": { "zh-Hant": "小", ja: "小", en: "Small", ko: "작게" },
+  "标准": { "zh-Hant": "標準", ja: "標準", en: "Standard", ko: "표준" },
+  "大": { "zh-Hant": "大", ja: "大", en: "Large", ko: "크게" },
+  "超大": { "zh-Hant": "特大", ja: "特大", en: "Extra large", ko: "매우 크게" },
   "全体用户": { "zh-Hant": "全體用戶", ja: "全ユーザー", en: "All users", ko: "전체 사용자" },
   "复制当前内容到全部语言": { "zh-Hant": "將目前內容複製到所有語言", ja: "現在の内容を全言語へコピー", en: "Copy current content to all languages", ko: "현재 내용을 모든 언어로 복사" },
   "每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。": { "zh-Hant": "每個語言頁籤皆可獨立編輯；複製後仍可逐項修改，傳送時會一併儲存五份內容。", ja: "各言語タブは個別に編集できます。コピー後も個別に変更でき、送信時に5言語すべてを保存します。", en: "Each language tab is independently editable. Copies remain editable, and all five versions are saved together.", ko: "각 언어 탭은 독립적으로 편집할 수 있습니다. 복사 후에도 개별 수정할 수 있으며 전송 시 5개 언어를 함께 저장합니다." },
@@ -175,13 +185,15 @@ function NoticeBlocks({ blocks }: { blocks: OfficialNoticeBlock[] | undefined })
     if (block.type === "image") return <figure key={block.id}><img alt={block.caption ?? "通知图片"} className="max-h-[420px] w-full rounded-lg object-contain" src={block.content} />{block.caption ? <figcaption className="mt-2 text-xs text-ink/50">{block.caption}</figcaption> : null}</figure>;
     if (block.type === "video") return <video className="max-h-[420px] w-full rounded-lg" controls key={block.id} src={block.content} />;
     if (block.type === "file") return <a className="font-bold text-moss underline" href={block.content} key={block.id} rel="noreferrer" target="_blank">{block.fileName ?? block.caption ?? "查看附件"}</a>;
-    if (block.type === "heading") return <h2 className="mt-4 text-xl font-black" key={block.id}>{block.content}</h2>;
-    if (block.type === "subheading") return <h3 className="mt-3 text-base font-black" key={block.id}>{block.content}</h3>;
-    if (block.type === "bullet") return <div className="flex gap-2" key={block.id}><span aria-hidden="true">•</span><p className="whitespace-pre-wrap">{block.content}</p></div>;
-    if (block.type === "numbered") return <div className="flex gap-2" key={block.id}><span aria-hidden="true">1.</span><p className="whitespace-pre-wrap">{block.content}</p></div>;
-    if (block.type === "quote") return <blockquote className="border-l-4 border-moss/40 pl-4 italic text-ink/70" key={block.id}>{block.content}</blockquote>;
-    if (block.type === "callout") return <aside className="rounded-lg border border-moss/30 bg-mint/10 p-3 font-bold" key={block.id}>{block.content}</aside>;
-    return <p className="whitespace-pre-wrap" key={block.id}>{block.content}</p>;
+    const fontSize = block.fontSize ?? defaultOfficialNoticeFontSize(block.type);
+    const fontSizeClass = officialNoticeFontSizeClass(block.type, block.fontSize);
+    if (block.type === "heading") return <h2 className={`mt-4 font-black ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}>{block.content}</h2>;
+    if (block.type === "subheading") return <h3 className={`mt-3 font-black ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}>{block.content}</h3>;
+    if (block.type === "bullet") return <div className={`flex gap-2 ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}><span aria-hidden="true">•</span><p className="whitespace-pre-wrap">{block.content}</p></div>;
+    if (block.type === "numbered") return <div className={`flex gap-2 ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}><span aria-hidden="true">1.</span><p className="whitespace-pre-wrap">{block.content}</p></div>;
+    if (block.type === "quote") return <blockquote className={`border-l-4 border-moss/40 pl-4 italic text-ink/70 ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}>{block.content}</blockquote>;
+    if (block.type === "callout") return <aside className={`rounded-lg border border-moss/30 bg-mint/10 p-3 font-bold ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}>{block.content}</aside>;
+    return <p className={`whitespace-pre-wrap ${fontSizeClass}`} data-notice-font-size={fontSize} key={block.id}>{block.content}</p>;
   })}</>;
 }
 
@@ -865,6 +877,9 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                           fileName: undefined,
                           fileSize: undefined,
                           mimeType: undefined,
+                          fontSize: isTextualOfficialNoticeBlock(event.target.value as OfficialNoticeBlock["type"])
+                            ? block.fontSize
+                            : undefined,
                           source: undefined,
                           mediaAssetId: undefined
                         })}
@@ -933,17 +948,34 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                       )}
                     </div>
                   ) : (
-                    <label className="mt-4 block text-sm font-black">
-                      {blockOptions.find((option) => option.type === block.type)?.label}
-                      <textarea
-                        className={`${textareaClass} mt-2 bg-paper`}
-                        maxLength={20000}
-                        onChange={(event) => updateBlock(block.id, { content: event.target.value })}
-                        placeholder={blockPlaceholder(block.type)}
-                        required
-                        value={block.content}
-                      />
-                    </label>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
+                      <label className="block text-sm font-black">
+                        {blockOptions.find((option) => option.type === block.type)?.label}
+                        <textarea
+                          className={`${textareaClass} mt-2 bg-paper`}
+                          maxLength={20000}
+                          onChange={(event) => updateBlock(block.id, { content: event.target.value })}
+                          placeholder={blockPlaceholder(block.type)}
+                          required
+                          value={block.content}
+                        />
+                      </label>
+                      <label className="block text-sm font-black">
+                        {translateNoticeText("字号", language)}
+                        <select
+                          className={`${inputClass} mt-2 bg-paper`}
+                          onChange={(event) => updateBlock(block.id, {
+                            fontSize: event.target.value as NonNullable<OfficialNoticeBlock["fontSize"]>
+                          })}
+                          value={block.fontSize ?? defaultOfficialNoticeFontSize(block.type)}
+                        >
+                          <option value="small">{translateNoticeText("小", language)}</option>
+                          <option value="medium">{translateNoticeText("标准", language)}</option>
+                          <option value="large">{translateNoticeText("大", language)}</option>
+                          <option value="xlarge">{translateNoticeText("超大", language)}</option>
+                        </select>
+                      </label>
+                    </div>
                   )}
                 </article>
               ))}
