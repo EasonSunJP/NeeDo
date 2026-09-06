@@ -4,7 +4,7 @@ Release branch: `private`, tracking `origin/private` in `EasonSunJP/NeeDo-Privat
 
 ## Corrections
 
-- Operations settings now render inside the shared AdminLayout; membership editors use the operations switch and theme tokens.
+- Operations settings now render inside the shared AdminLayout and reuse its selected-tab styles for legible labels across themes; membership editors use the operations switch and theme tokens.
 - Expanded home search tags render beside the clipped glass header, keeping the dropdown visible and scrollable.
 - Manual home service areas survive configuration normalization and reload. Automatic device location no longer replaces an existing manual choice at app startup. This remains a browser/PWA preference, not a cross-device profile field.
 - Membership adjustments lock the existing user account, so an operations account without a customer profile can receive an audited adjustment. Existing authorization, optimistic versioning and audit requirements remain enforced.

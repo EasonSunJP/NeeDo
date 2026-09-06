@@ -120,7 +120,7 @@ export function SystemSettingsPage() {
       <div className="rounded-2xl border border-line bg-white p-2 shadow-sm">
         <div aria-label={labels.title} className="grid gap-2 md:grid-cols-4" role="tablist">
           {tabLabels.map((tab, index) => (
-            <button aria-controls={`system-settings-panel-${tab.id}`} aria-selected={activeTab === tab.id} className={cn("focus-ring relative rounded-xl px-4 py-3 text-sm font-black transition", activeTab === tab.id ? "bg-ink text-white shadow-sm" : "bg-paper text-ink/60 hover:text-ink")} id={`system-settings-tab-${tab.id}`} key={tab.id} onClick={() => selectTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)} ref={(node) => { tabRefs.current[index] = node; }} role="tab" tabIndex={activeTab === tab.id ? 0 : -1} type="button">
+            <button aria-controls={`system-settings-panel-${tab.id}`} aria-selected={activeTab === tab.id} className={cn("admin-section-tab focus-ring relative rounded-xl px-4 py-3 text-sm font-black transition", activeTab === tab.id ? "is-active shadow-sm" : "bg-paper")} id={`system-settings-tab-${tab.id}`} key={tab.id} onClick={() => selectTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)} ref={(node) => { tabRefs.current[index] = node; }} role="tab" tabIndex={activeTab === tab.id ? 0 : -1} type="button">
               {tab.label}
               {dirtyTabs[tab.id] ? <span aria-label={labels.dirty} className="absolute right-2 top-2 h-2 w-2 rounded-full bg-coral" /> : null}
             </button>
