@@ -67,6 +67,18 @@ describe("completed-order refund case validators", () => {
         reference: "x".repeat(121)
       })
     ).toThrow();
+    for (const expectedVersion of [0, -1, 1.2, "2"]) {
+      expect(() =>
+        orderRefundCaseEvidenceBodySchema.parse({
+          idempotencyKey,
+          expectedVersion,
+          reference: "payment-ref"
+        })
+      ).toThrow();
+      expect(() =>
+        orderRefundCaseReceiptConfirmationBodySchema.parse({ idempotencyKey, expectedVersion })
+      ).toThrow();
+    }
   });
 
   it("validates dispute resolution and preserves omitted versus nullable internal notes", () => {
@@ -100,6 +112,16 @@ describe("completed-order refund case validators", () => {
         publicReason: "valid reason"
       })
     ).toThrow();
+    for (const expectedVersion of [0, -1, 1.2, "4"]) {
+      expect(() =>
+        orderRefundCaseDisputeResolutionBodySchema.parse({
+          idempotencyKey,
+          expectedVersion,
+          resolution: "reject",
+          publicReason: "valid reason"
+        })
+      ).toThrow();
+    }
   });
 
   it("enforces strict positive order, UUID case/dispute, and unknown-field boundaries", () => {
@@ -109,6 +131,9 @@ describe("completed-order refund case validators", () => {
       disputeId: uuid
     });
     for (const value of [0, -1, 1.2, "not-a-number"]) {
+      expect(() => orderRefundCaseOrderIdParamSchema.parse({ orderId: value })).toThrow();
+    }
+    for (const value of [true, ["12"], [12]]) {
       expect(() => orderRefundCaseOrderIdParamSchema.parse({ orderId: value })).toThrow();
     }
     expect(() => orderRefundCaseIdParamSchema.parse({ caseId: "123" })).toThrow();
@@ -136,6 +161,8 @@ describe("completed-order refund case validators", () => {
     for (const input of [
       { page: 0 },
       { page_size: 101 },
+      { page: true },
+      { page_size: ["20"] },
       { status: "pending" },
       { search: "x".repeat(101) },
       { unknown: true }

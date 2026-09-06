@@ -41,9 +41,12 @@ export const orderRefundCaseDisputeResolutionBodySchema = updateEnvelopeSchema
   })
   .strict();
 
-const positiveOrderId = z.coerce.number().int().positive();
+const scalarNumberSchema = z.union([z.string(), z.number()]);
+const positiveScalarNumberSchema = scalarNumberSchema.pipe(z.coerce.number().int().positive());
 
-export const orderRefundCaseOrderIdParamSchema = z.object({ orderId: positiveOrderId }).strict();
+export const orderRefundCaseOrderIdParamSchema = z
+  .object({ orderId: positiveScalarNumberSchema })
+  .strict();
 export const orderRefundCaseIdParamSchema = z.object({ caseId: z.string().trim().uuid() }).strict();
 export const orderRefundCaseDisputeParamSchema = z
   .object({ disputeId: z.string().trim().uuid() })
@@ -51,8 +54,8 @@ export const orderRefundCaseDisputeParamSchema = z
 
 export const orderRefundCaseListQuerySchema = z
   .object({
-    page: z.coerce.number().int().positive().default(1),
-    page_size: z.coerce.number().int().positive().max(100).default(20),
+    page: positiveScalarNumberSchema.default(1),
+    page_size: scalarNumberSchema.pipe(z.coerce.number().int().positive().max(100)).default(20),
     status: z.enum(["open", "resolved"]).optional(),
     search: z.string().trim().max(100).optional()
   })
