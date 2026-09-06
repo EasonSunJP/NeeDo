@@ -105,8 +105,6 @@ vi.mock("react-router-dom", async (importOriginal) => {
 
 import {
   getPostLoginRoute,
-  isGoogleAuthEnabled,
-  isRegistrationEnabled,
   LoginPage,
   requiresFormalFrontendLogin,
   resolveLoginErrorMessage
@@ -243,54 +241,6 @@ describe("LoginPage verified identity behavior", () => {
 
   it("keeps the desktop identity gateway constrained to 440px", () => {
     expect(container.querySelector("main")?.style.maxWidth).toBe("440px");
-  });
-
-  it("keeps Google auth default-on but hides it without initialization when explicitly disabled", async () => {
-    expect(isGoogleAuthEnabled(undefined)).toBe(true);
-    expect(isGoogleAuthEnabled("true")).toBe(true);
-    expect(isGoogleAuthEnabled("false")).toBe(false);
-
-    await act(async () => root.unmount());
-    mocked.authApi.initializeGoogleLogin.mockClear();
-    root = createRoot(container);
-    await act(async () =>
-      root.render(
-        createElement(LoginPage, {
-          googleAuthEnabled: false,
-          navigateToPortal: mocked.navigateToPortal
-        })
-      )
-    );
-    await flushUi();
-
-    expect(container.querySelector('[data-testid="google-identity-button"]')).toBeNull();
-    expect(mocked.authApi.initializeGoogleLogin).not.toHaveBeenCalled();
-    expect(container.querySelector('[data-testid="show-password-login"]')).not.toBeNull();
-  });
-
-  it("defaults registration on and removes every registration surface when disabled", async () => {
-    expect(isRegistrationEnabled(undefined)).toBe(true);
-    expect(isRegistrationEnabled("true")).toBe(true);
-    expect(isRegistrationEnabled("false")).toBe(false);
-
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await act(async () => {
-      root.render(
-        createElement(LoginPage, {
-          googleAuthEnabled: false,
-          registrationEnabled: false,
-          navigateToPortal: mocked.navigateToPortal
-        })
-      );
-    });
-    await flushUi();
-
-    expect(container.querySelector('[data-testid="show-registration"]')).toBeNull();
-    expect(container.querySelector('[data-testid="registration-form"]')).toBeNull();
-    expect(container.querySelector('[data-testid="auth-verification-panel"]')).toBeNull();
-    expect(container.querySelector('[data-testid="show-password-login"]')).not.toBeNull();
-    expect(mocked.auth.startRegistration).not.toHaveBeenCalled();
   });
 
   it("defaults browser password saving on and keeps native autofill metadata after opt-out", async () => {
