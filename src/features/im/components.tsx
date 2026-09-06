@@ -1770,6 +1770,7 @@ export function ImBottomSheet({
   children,
   panelClassName,
   bodyClassName,
+  presentation = "sheet",
   showCloseButton = false,
   closeLabel = "关闭"
 }: {
@@ -1777,6 +1778,7 @@ export function ImBottomSheet({
   title?: string;
   onClose: () => void;
   children: ReactNode;
+  presentation?: "sheet" | "composer";
   panelClassName?: string;
   bodyClassName?: string;
   showCloseButton?: boolean;
@@ -1790,7 +1792,9 @@ export function ImBottomSheet({
     <div className="fixed inset-0 z-50 bg-[color:var(--client-overlay)]" onClick={onClose}>
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
+          presentation === "composer"
+            ? "absolute inset-x-0 mx-auto client-liquid-glass-surface im-composer-glass im-composer-panel im-contact-card-panel p-4"
+            : "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
           panelClassName
         )}
         onClick={(event) => event.stopPropagation()}

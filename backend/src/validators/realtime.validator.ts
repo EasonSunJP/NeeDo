@@ -141,7 +141,7 @@ export const contactCardSendBodySchema = z
     targetUserId: z
       .string()
       .trim()
-      .regex(/^u[0-9]{10}$/u)
+      .regex(/^(?:u|needo)[0-9]{10}$/u)
   })
   .strict();
 

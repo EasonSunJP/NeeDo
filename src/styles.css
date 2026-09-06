@@ -2506,6 +2506,11 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   scrollbar-gutter: stable;
 }
 
+.im-contact-card-panel {
+  width: min(calc(100% - 24px), calc(var(--client-bottom-nav-max-width, 880px) - 24px));
+  bottom: max(env(safe-area-inset-bottom), 6px);
+}
+
 @keyframes im-composer-panel-enter {
   from {
     opacity: 0;
