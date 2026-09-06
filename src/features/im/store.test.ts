@@ -327,6 +327,29 @@ describe("formal IM recall terminal precedence", () => {
     expect(mocked.localCache.purgeMedia).toHaveBeenCalledWith("106", "91", "700");
   });
 
+  it("removes a locally confirmed traceless recall, purges media, and keeps stale history from restoring it", async () => {
+    mocked.session = { activePublicId: "u0000000108", avatarUrl: null, id: 108, primaryPublicId: "u0000000108", username: "无痕撤回测试用户" };
+    const earlier = message({ id: "699", localId: "699", content: "earlier", sentAt: "2026-08-25T09:59:00.000Z" });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({ currentUserId: "100", config: { allowStrangerMessaging: true, preserveConversationAfterDelete: true, recallWindowMs: 180_000, separatorThresholdMs: 300_000, syncDraftAcrossDevices: false }, users: [], contacts: [], friendRequests: [], conversations: [conversation({ lastMessageId: "700", lastMessagePreview: "原消息", lastMessageType: "text" })], members: [] }),
+      listMessages: vi.fn().mockResolvedValue({ messages: [earlier, message()], nextCursor: null, hasMore: false }),
+      recallMessage: vi.fn().mockResolvedValue({ conversationId: "91", messageId: "700", message: { ...recalled, recallMode: "traceless" }, mode: "traceless" }),
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+      await store?.recallMessage("91", "700", "standard");
+      mocked.subscriptionListener?.({ type: "message.deleted", conversationId: "91", messageId: "700", reason: "traceless_recall" });
+      await store?.loadMessages("91", { reset: true });
+    });
+
+    expect(store?.messagesByConversation["91"]).toEqual([earlier]);
+    expect(store?.messagesByConversation["91"]?.some((item) => item.type === "recalled")).toBe(false);
+    expect(store?.conversations[0]).toMatchObject({ lastMessageId: "699", lastMessagePreview: "earlier" });
+    expect(mocked.localCache.purgeMedia).toHaveBeenCalledWith("108", "91", "700");
+  });
+
   it("purges encrypted media before refreshing an online privacy deletion", async () => {
     vi.useFakeTimers();
     mocked.session = {

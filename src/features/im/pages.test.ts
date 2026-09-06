@@ -375,6 +375,7 @@ describe("IM pages", () => {
     expect(recallSource).toContain(
       "restoreImComposerDraft(message.content, message.ext?.richText)",
     );
+    expect(recallSource).not.toContain('store.recallMessage(message.conversationId, message.id, "traceless")');
     expect(recallSource).toContain("if (mediaPreview?.id === message.id)");
     expect(recallSource).toContain("setMediaPreview(null)");
     expect(recallSource.indexOf("setDraft(originalContent)")).toBeGreaterThan(
