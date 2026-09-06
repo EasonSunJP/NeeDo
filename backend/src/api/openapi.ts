@@ -2835,7 +2835,7 @@ const orderRefundErrorResponses = {
   "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
   "403": jsonErrorResponse("error.forbidden or error.identity.forbidden — permission or identity denied"),
   "404": jsonErrorResponse("error.order_refund_case.not_found or error.order_refund_dispute.not_found — unavailable in the authenticated scope"),
-  "409": jsonErrorResponse("error.order_refund_case.invalid_state, error.order_refund_case.version_conflict, error.order_refund_case.idempotency_conflict, error.order_refund_case.active_conflict, or error.order_refund_dispute.required")
+  "409": jsonErrorResponse("error.order_refund_case.invalid_state, error.order_refund_case.version_conflict, error.order_refund_case.idempotency_conflict, error.order_refund_case.active_conflict, or error.order_refund.dispute_required")
 };
 
 const orderRefundPathParameters = [

@@ -448,6 +448,19 @@ describe("OrderRefundCaseService", () => {
       ERROR_CODES.ORDER_REFUND_AFFILIATE_INVARIANT_FAILED,
       "error.order_refund_case.affiliate_invariant_failed"
     );
+
+    repo.resolveDispute.mockResolvedValueOnce({ kind: "dispute_required" });
+    await expectRejected(
+      service.resolveDispute(operator, context, disputePublicId, {
+        idempotencyKey: "refund-dispute-required-0001",
+        expectedVersion: 1,
+        resolution: "refund",
+        publicReason: "a persisted complaint is required"
+      }),
+      409,
+      ERROR_CODES.ORDER_REFUND_DISPUTE_REQUIRED,
+      "error.order_refund.dispute_required"
+    );
   });
 
   it("rejects public responsibility or Affiliate mutation fields before repository execution", async () => {

@@ -40,6 +40,11 @@ describe("GET /api/v1/openapi.json", () => {
     expect(create.responses["201"].description).toContain("created");
     expect(create.responses["200"].description).toContain("replay");
 
+    const resolve = document.paths[
+      "/api/v1/backoffice/refund-disputes/{disputeId}/resolve"
+    ].post as { responses: Record<string, { description: string }> };
+    expect(resolve.responses["409"].description).toContain("error.order_refund.dispute_required");
+
     const list = document.paths["/api/v1/backoffice/refund-disputes"].get as {
       parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }>;
     };

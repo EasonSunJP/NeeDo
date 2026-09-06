@@ -500,7 +500,7 @@ export class OrderRefundCaseService {
       version_conflict: [ERROR_CODES.ORDER_REFUND_CASE_VERSION_CONFLICT, "error.order_refund_case.version_conflict", 409],
       idempotency_conflict: [ERROR_CODES.ORDER_REFUND_CASE_IDEMPOTENCY_CONFLICT, "error.order_refund_case.idempotency_conflict", 409],
       active_conflict: [ERROR_CODES.ORDER_REFUND_CASE_ACTIVE_CONFLICT, "error.order_refund_case.active_conflict", 409],
-      dispute_required: [ERROR_CODES.ORDER_REFUND_DISPUTE_REQUIRED, "error.order_refund_dispute.required", 409],
+      dispute_required: [ERROR_CODES.ORDER_REFUND_DISPUTE_REQUIRED, "error.order_refund.dispute_required", 409],
       affiliate_invariant_failed: [
         ERROR_CODES.ORDER_REFUND_AFFILIATE_INVARIANT_FAILED,
         "error.order_refund_case.affiliate_invariant_failed",

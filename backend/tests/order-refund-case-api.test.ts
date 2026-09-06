@@ -221,7 +221,7 @@ describe("completed-order refund case HTTP API", () => {
       .set("Authorization", "Bearer ops")
       .send({ ...updateBody, resolution: "refund", publicReason: "没有正式投诉，不能裁定" })
       .expect(409)
-      .expect({ code: ERROR_CODES.ORDER_REFUND_DISPUTE_REQUIRED, message: "error.order_refund_dispute.required", data: null });
+      .expect({ code: ERROR_CODES.ORDER_REFUND_DISPUTE_REQUIRED, message: "error.order_refund.dispute_required", data: null });
   });
 
   it("wires every role-scoped command and paginated dispute list", async () => {
