@@ -21,6 +21,7 @@ export const floatingHeaderSearchActionClassName =
 
 export function FloatingHomeHeader({
   children,
+  overlay,
   dark = false,
   stacked = false,
   className,
@@ -33,6 +34,7 @@ export function FloatingHomeHeader({
   spacerGapPx = floatingHeaderFrameGapPx
 }: {
   children: ReactNode;
+  overlay?: ReactNode;
   dark?: boolean;
   stacked?: boolean;
   className?: string;
@@ -106,6 +108,7 @@ export function FloatingHomeHeader({
           >
             <div className={cn("flex flex-col gap-3", className)}>{children}</div>
           </div>
+          {overlay ? <div className="relative">{overlay}</div> : null}
         </div>
       </div>
     </>

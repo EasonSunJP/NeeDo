@@ -828,102 +828,8 @@ export function CategoryPage() {
   const isCoreReadLoading = (categoryQuery.loading || allRequestedSearchesLoading) && !hasStaticSearchContent;
   const coreReadError = hasStaticSearchContent ? null : categoryQuery.error;
 
-  return (
-    <MobileShell>
-      <div className="relative">
-        {tagMenuOpen ? (
-          <button
-            aria-label="关闭筛选菜单"
-            className="fixed inset-0 z-30 cursor-default bg-black/28 backdrop-blur-[3px]"
-            onClick={() => setTagMenuOpen(false)}
-            type="button"
-          />
-        ) : null}
-
-        <FloatingHomeHeader
-          className="gap-0"
-          frameClassName="z-40"
-          panelClassName={floatingHeaderGlassPanelClassName}
-          spacerGapPx={0}
-          stacked
-        >
-          <div className="relative px-3 pb-3">
-            <div className="flex items-center gap-2">
-                <IconButton
-                  className={`${floatingHeaderControlButtonClassName} shrink-0`}
-                  icon="back"
-                  label="返回"
-                  onClick={() => navigate(-1)}
-                />
-
-                <label
-                  className={cn(
-                    floatingHeaderSearchFieldClassName,
-                    "pr-1.5"
-                  )}
-                >
-                  <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
-                  <input
-                    className={floatingHeaderSearchInputClassName}
-                    onChange={(event) => {
-                      setSearchDraft(event.target.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        applySearch();
-                      }
-                    }}
-                    placeholder="输入关键词后添加"
-                    value={searchDraft}
-                  />
-                  <button
-                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-[12px] font-black text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
-                    onClick={() => applySearch()}
-                    type="button"
-                  >
-                    添加
-                  </button>
-                </label>
-
-                <button
-                  className={cn(
-                    "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
-                    floatingHeaderPillSurfaceClassName,
-                    "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
-                  )}
-                  onClick={() => setTagMenuOpen((current) => !current)}
-                  type="button"
-                >
-                  {entityFilterLabel}
-                  <ChevronDownIcon open={tagMenuOpen} />
-                </button>
-              </div>
-
-            <div
-              {...tagRailDragProps}
-              className="mt-2 flex gap-2 overflow-x-auto py-1 [scrollbar-width:none]"
-              ref={tagRailRef}
-              style={{ msOverflowStyle: "none" }}
-            >
-              {pinnedCategoryTags.map((tag) => {
-                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
-
-                return (
-                  <button
-                    className="shrink-0 whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-3.5 py-2 text-[13px] font-black transition"
-                    key={tag.id}
-                    onClick={() => handleTagSelect(tag)}
-                    type="button"
-                  >
-                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {tagMenuOpen ? (
-              <div className="absolute inset-x-3 top-full z-50 mt-2 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl">
+  const searchTagMenu = tagMenuOpen ? (
+              <div id="category-search-tags" className="absolute inset-x-3 top-full z-50 mt-2 max-h-[65dvh] overflow-y-auto rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">对象与人气标签</p>
@@ -974,7 +880,106 @@ export function CategoryPage() {
                   })}
                 </div>
               </div>
-            ) : null}
+            ) : null;
+
+  return (
+    <MobileShell>
+      <div className="relative">
+        {tagMenuOpen ? (
+          <button
+            aria-label="关闭筛选菜单"
+            className="fixed inset-0 z-30 cursor-default bg-black/28 backdrop-blur-[3px]"
+            onClick={() => setTagMenuOpen(false)}
+            type="button"
+          />
+        ) : null}
+
+        <FloatingHomeHeader
+          className="gap-0"
+          frameClassName="z-40"
+          overlay={searchTagMenu}
+          panelClassName={floatingHeaderGlassPanelClassName}
+          spacerGapPx={0}
+          stacked
+        >
+          <div className="relative px-3 pb-3">
+            <div className="flex items-center gap-2">
+                <IconButton
+                  className={`${floatingHeaderControlButtonClassName} shrink-0`}
+                  icon="back"
+                  label="返回"
+                  onClick={() => navigate(-1)}
+                />
+
+                <label
+                  className={cn(
+                    floatingHeaderSearchFieldClassName,
+                    "pr-1.5"
+                  )}
+                >
+                  <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
+                  <input
+                    className={floatingHeaderSearchInputClassName}
+                    onChange={(event) => {
+                      setSearchDraft(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        applySearch();
+                      }
+                    }}
+                    placeholder="输入关键词后添加"
+                    value={searchDraft}
+                  />
+                  <button
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-[12px] font-black text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+                    onClick={() => applySearch()}
+                    type="button"
+                  >
+                    添加
+                  </button>
+                </label>
+
+                <button
+                  className={cn(
+                    "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
+                    floatingHeaderPillSurfaceClassName,
+                    "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+                  )}
+                  aria-controls="category-search-tags"
+                  aria-expanded={tagMenuOpen}
+                  onClick={() => setTagMenuOpen((current) => !current)}
+                  type="button"
+                >
+                  {entityFilterLabel}
+                  <ChevronDownIcon open={tagMenuOpen} />
+                </button>
+              </div>
+
+            <div
+              {...tagRailDragProps}
+              className="mt-2 flex gap-2 overflow-x-auto py-1 [scrollbar-width:none]"
+              ref={tagRailRef}
+              style={{ msOverflowStyle: "none" }}
+            >
+              {pinnedCategoryTags.map((tag) => {
+                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
+
+                return (
+                  <button
+                    className="shrink-0 whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-3.5 py-2 text-[13px] font-black transition"
+                    key={tag.id}
+                    onClick={() => handleTagSelect(tag)}
+                    type="button"
+                  >
+                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+
           </div>
         </FloatingHomeHeader>
 
