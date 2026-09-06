@@ -6,6 +6,7 @@ import {
   type BackofficeDashboardPayload,
   type DashboardHeadlineSeriesPoint,
   type DashboardOverviewPayload,
+  type AnalyticsRankingItem,
   type DashboardQuery
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
@@ -18,7 +19,9 @@ import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCar
 import type { DashboardMetricSparklinePoint } from "../../features/dashboard/DashboardMetricSparkline";
 import { AnalyticsMetricGrid } from "../../features/dashboard/AnalyticsMetricGrid";
 import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";
-import { buildAnalyticsRankingDetailLocation } from "../../features/dashboard/analyticsRankingDetailRoute";
+import { MerchantsPage } from "./MerchantsPage";
+import { TechniciansPage } from "./TechniciansPage";
+import { UnifiedUserDetailDrawer } from "../../features/platform-user-management/UnifiedUserDetailDrawer";
 import { useI18n } from "../../i18n/I18nProvider";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
@@ -105,6 +108,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
+  const [rankingDetail, setRankingDetail] = useState<AnalyticsRankingItem | null>(null);
   const [pair, setPair] = useState<DashboardPair | null>(null);
   const [query, setQuery] = useState<DashboardQuery>(defaultQuery);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
@@ -378,12 +382,19 @@ export function DashboardPage() {
             ) : null}
 
             <AnalyticsRankingsSection
-              onOpenDetail={(item) => navigate(buildAnalyticsRankingDetailLocation(item))}
+              onOpenDetail={setRankingDetail}
               query={committedQuery}
             />
           </>
         ) : null}
       </div>
+      {rankingDetail?.entityType === "customer" ? (
+        <UnifiedUserDetailDrawer scope="operations" userId={rankingDetail.entityNumericId} onClose={() => setRankingDetail(null)} />
+      ) : rankingDetail?.entityType === "technician" ? (
+        <TechniciansPage key={rankingDetail.entityNumericId} embeddedDetail={{ id: rankingDetail.entityNumericId, onClose: () => setRankingDetail(null) }} />
+      ) : rankingDetail ? (
+        <MerchantsPage key={`${rankingDetail.entityType}:${rankingDetail.entityNumericId}`} embeddedDetail={{ id: rankingDetail.entityNumericId, type: rankingDetail.entityType, onClose: () => setRankingDetail(null) }} />
+      ) : null}
     </AdminLayout>
   );
 }

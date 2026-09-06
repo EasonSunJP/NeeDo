@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
+import type { AnalyticsRankingItem } from "../../api/backofficeRealData";
 import { DashboardPage } from "./DashboardPage";
 import { DashboardMetricDetailPage } from "./DashboardMetricDetailPage";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
@@ -29,8 +30,16 @@ vi.mock("../../features/dashboard/DashboardCharts", () => ({
   getAnalyticsSeriesColor: (index: number) => `color-${index}`
 }));
 vi.mock("../../features/dashboard/AnalyticsRankingsSection", () => ({
-  AnalyticsRankingsSection: () => createElement("div", { "data-testid": "rankings-section" }, "排行榜 TOP10")
+  AnalyticsRankingsSection: ({ onOpenDetail }: { onOpenDetail: (item: AnalyticsRankingItem) => void }) => createElement("div", { "data-testid": "rankings-section" }, "排行榜 TOP10", ...(["service", "technician", "customer"] as const).map((entityType) => createElement("button", {
+    key: entityType, "data-ranking-kind": entityType,
+    onClick: () => onOpenDetail({ entityType, entityNumericId: 51, entityPublicId: "public-51" } as AnalyticsRankingItem)
+  }, entityType)))
 }));
+
+
+vi.mock("./MerchantsPage", () => ({ MerchantsPage: ({ embeddedDetail }: { embeddedDetail?: { id: number; onClose: () => void } }) => embeddedDetail ? createElement("button", { "data-detail": "service", onClick: embeddedDetail.onClose }, String(embeddedDetail.id)) : null }));
+vi.mock("./TechniciansPage", () => ({ TechniciansPage: ({ embeddedDetail }: { embeddedDetail?: { id: number; onClose: () => void } }) => embeddedDetail ? createElement("button", { "data-detail": "technician", onClick: embeddedDetail.onClose }, String(embeddedDetail.id)) : null }));
+vi.mock("../../features/platform-user-management/UnifiedUserDetailDrawer", () => ({ UnifiedUserDetailDrawer: ({ userId, onClose }: { userId: number; onClose: () => void }) => createElement("button", { "data-detail": "customer", onClick: onClose }, String(userId)) }));
 
 const filter = {
   period: "last7days",
@@ -132,6 +141,24 @@ describe("operations unified data dashboard", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+  });
+
+  it.each(["service", "technician", "customer"])("opens and closes %s detail without leaving or reloading the dashboard", async (kind) => {
+    apiMocks.dashboard.mockResolvedValue(dashboardPayload);
+    apiMocks.dashboardOverview.mockResolvedValue(overviewPayload);
+    const router = createMemoryRouter([{ path: "*", element: createElement(DashboardPage) }], { initialEntries: ["/admin?period=last7days"] });
+    await act(async () => root.render(createElement(RouterProvider, { router })));
+    const rankings = container.querySelector('[data-testid="rankings-section"]');
+    await act(async () => container.querySelector<HTMLButtonElement>(`[data-ranking-kind="${kind}"]`)!.click());
+    expect(router.state.location.pathname).toBe("/admin");
+    expect(router.state.location.search).toBe("?period=last7days");
+    expect(container.querySelector(`[data-detail="${kind}"]`)?.textContent).toBe("51");
+    await act(async () => container.querySelector<HTMLButtonElement>(`[data-detail="${kind}"]`)!.click());
+    expect(container.querySelector("[data-detail]")).toBeNull();
+    expect(container.querySelector('[data-testid="rankings-section"]')).toBe(rankings);
+    expect(apiMocks.dashboard).toHaveBeenCalledTimes(1);
+    expect(apiMocks.dashboardOverview).toHaveBeenCalledTimes(1);
+    router.dispose();
   });
 
   it("commits the dashboard and overview atomically from one query generation", async () => {
@@ -392,9 +419,9 @@ describe("operations unified data dashboard", () => {
 
   it("renders the three formal Top10 rankings after the comprehensive overview", () => {
     expect(source).toContain('import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";');
-    expect(source).toContain('import { buildAnalyticsRankingDetailLocation } from "../../features/dashboard/analyticsRankingDetailRoute";');
+    expect(source).not.toContain("buildAnalyticsRankingDetailLocation");
     expect(source).toContain("<AnalyticsRankingsSection");
-    expect(source).toContain("onOpenDetail={(item) => navigate(buildAnalyticsRankingDetailLocation(item))}");
+    expect(source).toContain("onOpenDetail={setRankingDetail}");
     expect(source).toContain("query={committedQuery}");
   });
 

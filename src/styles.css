@@ -5738,6 +5738,15 @@ body:has(.admin-theme-dark),
   color: var(--admin-ink-fill) !important;
 }
 
+.admin-shell .analytics-ranking-detail-control:is(:hover, :focus-visible) {
+  background-color: color-mix(in srgb, var(--admin-accent) 16%, var(--admin-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--admin-accent) 38%, transparent);
+}
+
+.admin-shell .analytics-ranking-detail-control:active {
+  background-color: color-mix(in srgb, var(--admin-accent) 24%, var(--admin-surface));
+}
+
 .admin-shell .bg-paper {
   background-color: var(--admin-muted-surface) !important;
 }

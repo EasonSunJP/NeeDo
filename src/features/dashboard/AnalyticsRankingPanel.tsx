@@ -149,7 +149,7 @@ export function AnalyticsRankingPanel({
             <li key={`${item.entityType}:${item.entityPublicId}`}>
               <button
                 aria-label={`${t("查看详细数据")}：${item.displayName}`}
-                className="grid w-full grid-cols-[2rem_2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg py-3 text-left transition hover:bg-paper/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/45"
+                className="analytics-ranking-detail-control grid w-full grid-cols-[2rem_2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg py-3 text-left transition focus-visible:outline-none"
                 data-ranking-detail-control="true"
                 onClick={() => onOpenDetail(item)}
                 type="button"
