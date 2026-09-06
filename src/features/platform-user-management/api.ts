@@ -342,6 +342,7 @@ const decodeBenefit = (value: unknown): PlatformBenefitAdministration => {
   };
   return {
     code: enumValue(raw.code, platformBenefitCodes),
+    deliveryCapability: raw.deliveryCapability === undefined ? "unavailable" : enumValue(raw.deliveryCapability, ["available", "unavailable"] as const),
     sortOrder: integer(raw.sortOrder),
     isGloballyEnabled: boolean(raw.isGloballyEnabled),
     nameTranslations: decodeLocalizedText(raw.nameTranslations),

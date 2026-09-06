@@ -16,17 +16,6 @@ import {
   type PlatformBenefitCode
 } from "./types";
 
-const benefitCatalog: Array<{ code: PlatformBenefitCode; capabilityConnected: boolean }> = [
-  { code: "ndp_experience", capabilityConnected: true },
-  { code: "member_sign_in", capabilityConnected: true },
-  { code: "priority_request", capabilityConnected: true },
-  { code: "support_service", capabilityConnected: false },
-  { code: "exclusive_discount", capabilityConnected: false },
-  { code: "member_day", capabilityConnected: false },
-  { code: "birthday_gift", capabilityConnected: false },
-  { code: "traceless_recall", capabilityConnected: false }
-];
-
 export function MembershipBenefitsPage() {
   const { hasPermission } = useAuth();
   const { language } = useI18n();
@@ -61,8 +50,7 @@ export function MembershipBenefitsPage() {
     {error ? <div className="rounded-xl border border-coral/25 bg-white p-10 text-center"><p className="text-sm font-bold text-coral">{error}</p><Button className="mt-4" onClick={() => setReloadToken((value) => value + 1)} variant="secondary">重新加载</Button></div> : null}
     {malformed ? <div className="rounded-lg border border-coral/25 bg-coral/5 p-4 text-sm font-bold text-coral">{platformUserManagementText("membershipBenefitsCatalogInvalid", language)}</div> : null}
     {!loading && !error && !malformed ? <div className="overflow-hidden rounded-xl border border-line bg-white shadow-sm"><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-paper text-xs font-black text-ink/45"><tr><th className="px-4 py-3">顺序</th><th className="px-4 py-3">权益</th><th className="px-4 py-3">说明</th><th className="px-4 py-3">全局状态</th><th className="px-4 py-3">交付能力</th><th className="px-4 py-3 text-right">操作</th></tr></thead><tbody className="divide-y divide-line">{rows.map((benefit) => {
-      const catalog = benefitCatalog.find((item) => item.code === benefit.code)!;
-      return <tr key={benefit.code}><td className="px-4 py-4 font-black text-ink/45">{benefit.sortOrder}</td><td className="px-4 py-4"><p className="font-black">{resolvePlatformBenefitLocalizedText(benefit.nameTranslations, language, benefit.code)}</p></td><td className="max-w-xl px-4 py-4 text-ink/60">{resolvePlatformBenefitLocalizedText(benefit.descriptionTranslations, language, benefit.code)}</td><td className="px-4 py-4">{benefit.isGloballyEnabled ? <Badge tone="green">已配置</Badge> : <Badge tone="red">全局停用</Badge>}</td><td className="px-4 py-4">{catalog.capabilityConnected ? <Badge tone="green">能力已接通</Badge> : <Badge tone="yellow">能力未接通</Badge>}</td><td className="px-4 py-4 text-right"><Button onClick={() => setSelectedCode(benefit.code)} size="sm" variant="secondary">{canWrite ? "编辑" : "查看"}</Button></td></tr>;
+      return <tr key={benefit.code}><td className="px-4 py-4 font-black text-ink/45">{benefit.sortOrder}</td><td className="px-4 py-4"><p className="font-black">{resolvePlatformBenefitLocalizedText(benefit.nameTranslations, language, benefit.code)}</p></td><td className="max-w-xl px-4 py-4 text-ink/60">{resolvePlatformBenefitLocalizedText(benefit.descriptionTranslations, language, benefit.code)}</td><td className="px-4 py-4">{benefit.isGloballyEnabled ? <Badge tone="green">已配置</Badge> : <Badge tone="red">全局停用</Badge>}</td><td className="px-4 py-4">{benefit.deliveryCapability === "available" ? <Badge tone="green">能力已接通</Badge> : <Badge tone="yellow">能力未接通</Badge>}</td><td className="px-4 py-4 text-right"><Button onClick={() => setSelectedCode(benefit.code)} size="sm" variant="secondary">{canWrite ? "编辑" : "查看"}</Button></td></tr>;
     })}</tbody></table></div></div> : null}
     {selected ? <MembershipBenefitEditor benefit={selected} canWrite={canWrite} onCancel={() => setSelectedCode(null)} onSaved={(updated) => { setBenefits((current) => current.map((benefit) => benefit.code === updated.code ? updated : benefit)); setSelectedCode(null); }} /> : null}
   </ModuleShell></AdminLayout>;

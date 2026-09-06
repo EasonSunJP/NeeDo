@@ -8436,9 +8436,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "isGloballyEnabled",
           "nameTranslations",
           "descriptionTranslations",
-          "lockVersion"
+          "lockVersion",
+          "deliveryCapability"
         ],
         properties: {
+          deliveryCapability: { type: "string", enum: ["available", "unavailable"] },
           code: { $ref: "#/components/schemas/PlatformMembershipBenefitCode" },
           sortOrder: { type: "integer", minimum: 0 },
           isGloballyEnabled: { type: "boolean" },

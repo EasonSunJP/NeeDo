@@ -335,6 +335,7 @@ export type PlatformTierAdministration = {
 };
 
 export type PlatformBenefitAdministration = {
+  deliveryCapability?: "available" | "unavailable";
   code: PlatformBenefitCode;
   sortOrder: number;
   isGloballyEnabled: boolean;

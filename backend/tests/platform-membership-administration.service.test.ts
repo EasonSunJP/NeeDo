@@ -87,7 +87,9 @@ describe("PlatformMembershipService administration", () => {
     const service = new PlatformMembershipService(repository(), audit, () => now);
 
     await expect(service.listTiersForAdministration(actor)).resolves.toEqual(tiers);
-    await expect(service.listBenefitsForAdministration(actor)).resolves.toEqual(benefits);
+    const listed = await service.listBenefitsForAdministration(actor);
+    expect(listed).toEqual(benefits.map(benefit => ({ ...benefit, deliveryCapability: ["ndp_experience", "member_sign_in", "priority_request", "traceless_recall"].includes(benefit.code) ? "available" : "unavailable" })));
+    expect(listed.find(benefit => benefit.code === "traceless_recall")).toMatchObject({ deliveryCapability: "available" });
   });
 
   it("updates a global benefit with optimistic locking and an audit input", async () => {

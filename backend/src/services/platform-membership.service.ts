@@ -253,7 +253,7 @@ export class PlatformMembershipService {
 
   public async listBenefitsForAdministration(
     actor: AuthenticatedAccessContext
-  ): Promise<PlatformMembershipBenefitAdministrationPayload[]> {
+  ): Promise<Array<PlatformMembershipBenefitAdministrationPayload & { deliveryCapability: MembershipBenefitDeliveryCapability }>> {
     this.assertOperationsIdentity(actor);
     const benefits = await this.repository.listBenefitsForAdministration();
     if (
@@ -262,7 +262,7 @@ export class PlatformMembershipService {
     ) {
       throw this.catalogInvalid();
     }
-    return benefits;
+    return benefits.map(benefit => ({ ...benefit, deliveryCapability: this.benefitCapabilities.resolve(benefit.code) }));
   }
 
   public async updateBenefit(
@@ -270,7 +270,7 @@ export class PlatformMembershipService {
     context: AuthRequestContext,
     benefitCode: string,
     input: PlatformMembershipBenefitUpdateBody
-  ): Promise<PlatformMembershipBenefitAdministrationPayload> {
+  ): Promise<PlatformMembershipBenefitAdministrationPayload & { deliveryCapability: MembershipBenefitDeliveryCapability }> {
     this.assertOperationsIdentity(actor);
     const normalizedBenefitCode = this.normalizeBenefitCode(benefitCode);
     if (
@@ -309,7 +309,8 @@ export class PlatformMembershipService {
         }
       })
     });
-    return this.unwrapBenefitMutation(result);
+    const benefit = this.unwrapBenefitMutation(result);
+    return { ...benefit, deliveryCapability: this.benefitCapabilities.resolve(benefit.code) };
   }
 
   public async changeEntitlement(
