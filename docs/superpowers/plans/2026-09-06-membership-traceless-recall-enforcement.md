@@ -149,6 +149,6 @@ Inspect `git diff --check`, `git status --short`, and the branch diff. Confirm n
 
 Commit: `docs(im): record traceless recall enforcement`
 
-- [ ] **Step 4: Rebase and merge locally**
+- [x] **Step 4: Rebase and merge locally**
 
 Pending for the controller: rebase onto the latest local `main`, rerun the focused acceptance suite, then fast-forward the feature branch into the local `main` worktree while preserving unrelated dirty files. Do not push or deploy.
