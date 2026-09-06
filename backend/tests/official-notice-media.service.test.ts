@@ -62,19 +62,30 @@ describe("OfficialNoticeMediaFileStorage", () => {
 
 describe("OfficialNoticeMediaService", () => {
   const storage = {
-    prepare: jest.fn(async (_input: Parameters<OfficialNoticeMediaStoragePort["prepare"]>[0]) => ({
-      fileKey: `${"a".repeat(64)}.pdf`,
-      checksumSha256: "a".repeat(64),
-      mimeType: "application/pdf" as const
-    })),
-    save: jest.fn(async (_input: Parameters<OfficialNoticeMediaStoragePort["save"]>[0]) => ({
-      fileKey: `${"a".repeat(64)}.pdf`,
-      checksumSha256: "a".repeat(64),
-      mimeType: "application/pdf" as const,
-      created: true
-    })),
-    read: jest.fn(async (_fileKey: string) => Buffer.alloc(0)),
-    delete: jest.fn(async (_fileKey: string) => undefined)
+    prepare: jest.fn(async (input: Parameters<OfficialNoticeMediaStoragePort["prepare"]>[0]) => {
+      void input;
+      return {
+        fileKey: `${"a".repeat(64)}.pdf`,
+        checksumSha256: "a".repeat(64),
+        mimeType: "application/pdf" as const
+      };
+    }),
+    save: jest.fn(async (input: Parameters<OfficialNoticeMediaStoragePort["save"]>[0]) => {
+      void input;
+      return {
+        fileKey: `${"a".repeat(64)}.pdf`,
+        checksumSha256: "a".repeat(64),
+        mimeType: "application/pdf" as const,
+        created: true
+      };
+    }),
+    read: jest.fn(async (fileKey: string) => {
+      void fileKey;
+      return Buffer.alloc(0);
+    }),
+    delete: jest.fn(async (fileKey: string) => {
+      void fileKey;
+    })
   } satisfies jest.Mocked<OfficialNoticeMediaStoragePort>;
 
   beforeEach(() => jest.clearAllMocks());
