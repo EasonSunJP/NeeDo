@@ -260,7 +260,7 @@ export function syncHomeDeviceLocationForAppOpen(locations: LocationAreaOption[]
 
   deviceLocationSyncedForRuntime = true;
 
-  if (!shouldRequestDeviceLocation(current, current.promptStatus !== "unrequested")) {
+  if (current.source === "manual" || !shouldRequestDeviceLocation(current, current.promptStatus !== "unrequested")) {
     return Promise.resolve(current);
   }
 
