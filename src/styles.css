@@ -8686,3 +8686,108 @@ html.im-conversation-scroll-lock #root {
     scroll-behavior: auto;
   }
 }
+/* Operations live screen: standalone, theme-scoped surface. */
+.live-dashboard-shell {
+  --live-surface: color-mix(in srgb, var(--admin-surface, #fff) 94%, transparent);
+  min-height: 100dvh;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.live-dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+  padding: 12px 18px;
+  border: 1px solid var(--admin-line, rgba(15, 23, 42, .12));
+  border-radius: 18px;
+  background: var(--live-surface);
+  box-shadow: var(--admin-shadow-panel, 0 14px 36px rgba(15, 23, 42, .08));
+}
+
+.live-dashboard-heading {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
+}
+
+.live-dashboard-heading h1 {
+  margin: 2px 0 0;
+  font-size: clamp(20px, 1.7vw, 30px);
+  font-weight: 900;
+  letter-spacing: -.03em;
+}
+
+.live-dashboard-eyebrow {
+  margin: 0;
+  color: var(--admin-accent, #315f4a);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.live-dashboard-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--admin-muted, #64748b);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.live-dashboard-connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #d1a549;
+}
+
+.live-dashboard-connection-dot.is-connected { background: #3d996c; }
+.live-dashboard-connection-dot.is-recovering { background: #d2795f; }
+
+.live-dashboard-fullscreen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--admin-line, rgba(15, 23, 42, .14));
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.live-dashboard-fullscreen-button:hover { border-color: var(--admin-accent, #315f4a); }
+
+.live-dashboard-alert {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(210, 99, 78, .3);
+  border-radius: 12px;
+  background: rgba(210, 99, 78, .08);
+  color: #b24b3a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.live-dashboard-grid {
+  min-height: calc(100dvh - 110px);
+  margin-top: 12px;
+}
+
+.live-dashboard-placeholder {
+  min-height: calc(100dvh - 112px);
+  display: grid;
+  place-content: center;
+  text-align: center;
+  border: 1px solid var(--admin-line, rgba(15, 23, 42, .12));
+  border-radius: 18px;
+  background: var(--live-surface);
+}

@@ -758,6 +758,16 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
+  "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
+  "退出全屏": fourLanguageTranslation("退出全螢幕", "全画面を終了", "Exit fullscreen", "전체 화면 종료"),
+  "无法进入全屏，当前页面仍可正常使用": fourLanguageTranslation("無法進入全螢幕，目前頁面仍可正常使用", "全画面表示にできませんでした。この画面はそのまま利用できます", "Fullscreen is unavailable; this page remains usable", "전체 화면을 사용할 수 없지만 현재 페이지는 계속 사용할 수 있습니다"),
+  "实时连接正常": fourLanguageTranslation("即時連線正常", "リアルタイム接続中", "Live connection active", "실시간 연결 정상"),
+  "实时连接恢复中": fourLanguageTranslation("即時連線恢復中", "リアルタイム接続を復旧中", "Restoring live connection", "실시간 연결 복구 중"),
+  "正在连接实时数据": fourLanguageTranslation("正在連線即時數據", "リアルタイムデータに接続中", "Connecting to live data", "실시간 데이터 연결 중"),
+  "日本运营地图": fourLanguageTranslation("日本營運地圖", "日本運営マップ", "Japan operations map", "일본 운영 지도"),
+  "正在读取实时经营数据": fourLanguageTranslation("正在讀取即時營運數據", "リアルタイム運営データを読み込んでいます", "Loading live operations data", "실시간 운영 데이터를 불러오는 중"),
+  "地图数据已就绪": fourLanguageTranslation("地圖數據已就緒", "地図データの準備ができました", "Map data is ready", "지도 데이터 준비 완료"),
   "其他方式": {"zh-Hant": "其他方式", "ja": "その他の支払方法", "en": "Other payment method", "ko": "기타 결제 수단"},
   "到店支付": {"zh-Hant": "到店支付", "ja": "来店時払い", "en": "Pay at the shop", "ko": "매장 결제"},
   "可预约时段": {"zh-Hant": "可預約時段", "ja": "予約可能枠", "en": "Available time slots", "ko": "예약 가능한 시간대"},
