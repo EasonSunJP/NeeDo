@@ -598,3 +598,18 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 - 标准前端端口 `5180` 由原始检出目录占用，标准后端 `3000` 当时未监听。本分支在 `5286/3106/3107/3108` 隔离运行并到达运营后台登录页；由于新 origin 不继承既有登录态，认证后的视觉浏览器验收未宣称完成。
 
 上述事实仅证明隔离分支的代码、测试、构建、只读数据库聚合和运行时可达性；不代表已合并到 `main`、已 push、已部署、已执行 migration，亦不代表 staging 已验收。
+
+## 2026-09-06 会员详细卡三色渐变与发布规则
+
+本微步骤把原 `detailSurfaceColor` 保留为详细卡左上角色，并新增正式持久化字段 `detailSurfaceMiddleColor` 与 `detailSurfaceBottomColor`。运营后台预览和用户端详细会员卡共用 `linear-gradient(155deg, TOP 0%, MIDDLE 52%, BOTTOM 100%)`，避免两端视觉实现漂移。三个色阶的运营标签已补齐简体中文、繁体中文、日文、英文与韩文。
+
+增量 migration `20260906130000_platform_membership_three_color_detail_surface` 先以原详细卡底色回填两个新字段，再将其收紧为 `NOT NULL` 并扩展现有 `#RRGGBB` 数据库约束，因此历史会员卡默认保持原有纯色效果。前后端继续校验十个颜色字段的十六进制格式，但不再以强调色与底色的对比度阻止保存或发布。
+
+本地验收结果：
+
+- 随机命名临时数据库迁移 checker 通过 5 项断言：两条旧记录回填一致、两个新字段均为非空、非法新色值被数据库约束拒绝；临时库已删除，`existingDatabaseModified=false`。
+- 后端聚焦测试：12 suites / 44 tests 通过。
+- 前端聚焦测试：9 files / 62 tests 通过。
+- 后端 lint、后端 build、前端 typecheck lint 与前端 production build 均退出 0。
+
+本微步骤未执行正式数据库 migration、未 push、未部署 staging；聊天无痕撤回的实际 IM 行为仍属于后续独立微步骤。

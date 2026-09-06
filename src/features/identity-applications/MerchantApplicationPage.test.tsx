@@ -59,7 +59,7 @@ describe("MerchantApplicationPage behavior", () => {
     vi.spyOn(identityApplicationsApi, "uploadMedia").mockResolvedValue({ id: 81, applicationVersion: 5 });
     vi.spyOn(platformMembershipSelfApi, "getMine").mockResolvedValue({
       tierCode: "free", tierVersionPublicId: "tier-free", multiplier: 1, expiresAt: null, ekycVerified: false, benefits: [],
-      theme: { detailAccentColor: "#000000", detailSurfaceColor: "#000000", detailItemSurfaceColor: "#000000", detailOuterBorderColor: "#000000", detailItemBorderColor: "#000000", detailAvatarBorderColor: "#000000", simpleTopColor: "#000000", simpleBottomColor: "#000000" }
+      theme: { detailAccentColor: "#000000", detailSurfaceColor: "#000000", detailSurfaceMiddleColor: "#000000", detailSurfaceBottomColor: "#000000", detailItemSurfaceColor: "#000000", detailOuterBorderColor: "#000000", detailItemBorderColor: "#000000", detailAvatarBorderColor: "#000000", simpleTopColor: "#000000", simpleBottomColor: "#000000" }
     });
     vi.spyOn(shopTaxonomyApi, "listCategories").mockResolvedValue({ list: [
       { id: 1, code: "massage", label: "按摩", qualificationPolicy: "REVIEW_REQUIRED" }

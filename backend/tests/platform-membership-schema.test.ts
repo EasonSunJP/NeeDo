@@ -49,6 +49,8 @@ describe("platform membership persistence schema", () => {
       "experienceMultiplier",
       "detailAccentColor",
       "detailSurfaceColor",
+      "detailSurfaceMiddleColor",
+      "detailSurfaceBottomColor",
       "detailItemSurfaceColor",
       "detailOuterBorderColor",
       "detailItemBorderColor",
@@ -58,6 +60,63 @@ describe("platform membership persistence schema", () => {
     ]) {
       expect(schema).toContain(token);
     }
+  });
+
+  it("backfills two additive detailed-card gradient stops and constrains all three", () => {
+    const gradientPath = resolve(
+      process.cwd(),
+      "prisma/migrations/20260906130000_platform_membership_three_color_detail_surface/migration.sql"
+    );
+    const gradientMigration = existsSync(gradientPath)
+      ? readFileSync(gradientPath, "utf8")
+      : "";
+
+    expect(schema).toContain("detailSurfaceMiddleColor");
+    expect(schema).toContain("detailSurfaceBottomColor");
+    expect(gradientMigration).toContain(
+      "ADD COLUMN `detail_surface_middle_color` CHAR(7) NULL"
+    );
+    expect(gradientMigration).toContain(
+      "ADD COLUMN `detail_surface_bottom_color` CHAR(7) NULL"
+    );
+    expect(gradientMigration).toContain(
+      "`detail_surface_middle_color` = `detail_surface_color`"
+    );
+    expect(gradientMigration).toContain(
+      "`detail_surface_bottom_color` = `detail_surface_color`"
+    );
+    expect(gradientMigration).toContain(
+      "MODIFY COLUMN `detail_surface_middle_color` CHAR(7) NOT NULL"
+    );
+    expect(gradientMigration).toContain(
+      "MODIFY COLUMN `detail_surface_bottom_color` CHAR(7) NOT NULL"
+    );
+    expect(gradientMigration).toContain("DROP CHECK `platform_membership_tier_versions_colors_chk`");
+    expect(gradientMigration).toMatch(
+      /`detail_surface_middle_color` REGEXP '\^#\[0-9A-Fa-f\]\{6\}\$'/
+    );
+    expect(gradientMigration).toMatch(
+      /`detail_surface_bottom_color` REGEXP '\^#\[0-9A-Fa-f\]\{6\}\$'/
+    );
+  });
+
+  it("provides an opt-in disposable database migration check", () => {
+    const checkerPath = resolve(
+      process.cwd(),
+      "scripts/check-membership-gradient-migration.ts"
+    );
+    const checker = existsSync(checkerPath) ? readFileSync(checkerPath, "utf8") : "";
+    const packageJson = JSON.parse(
+      readFileSync(resolve(process.cwd(), "package.json"), "utf8")
+    ) as { scripts?: Record<string, string> };
+
+    expect(packageJson.scripts?.["check:membership-gradient-migration"]).toBe(
+      "tsx scripts/check-membership-gradient-migration.ts"
+    );
+    expect(checker).toContain("ALLOW_MEMBERSHIP_GRADIENT_MIGRATION_CHECK");
+    expect(checker).toContain("needo_membership_gradient_");
+    expect(checker).toContain("DROP DATABASE");
+    expect(checker).toContain("existingDatabaseModified: false");
   });
 
   it("seeds four fixed V1 tiers and supports the additive eighth benefit without granting paid access", () => {

@@ -211,6 +211,8 @@ describe("UserCenterPage inline profile editing", () => {
       theme: {
         detailAccentColor: "#A8FF2F",
         detailSurfaceColor: "#10212A",
+        detailSurfaceMiddleColor: "#183A32",
+        detailSurfaceBottomColor: "#24314B",
         detailItemSurfaceColor: "#0A151C",
         detailOuterBorderColor: "#5B7D3A",
         detailItemBorderColor: "#263E48",

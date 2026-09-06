@@ -1,6 +1,8 @@
 export type MembershipCardTheme = {
   detailAccentColor: string;
   detailSurfaceColor: string;
+  detailSurfaceMiddleColor: string;
+  detailSurfaceBottomColor: string;
   detailItemSurfaceColor: string;
   detailOuterBorderColor: string;
   detailItemBorderColor: string;
@@ -33,17 +35,17 @@ export function resolveReadableTextColor(background: string) {
   return getMembershipThemeContrast(background, "#FFFFFF") >= getMembershipThemeContrast(background, "#08110A") ? "#FFFFFF" : "#08110A";
 }
 
+export function resolveMembershipDetailGradient(theme: MembershipCardTheme) {
+  return `linear-gradient(155deg, ${theme.detailSurfaceColor} 0%, ${theme.detailSurfaceMiddleColor} 52%, ${theme.detailSurfaceBottomColor} 100%)`;
+}
+
 export function resolveMembershipTheme(theme: MembershipCardTheme) {
   return {
     ...theme,
-    detailTextColor: resolveReadableTextColor(theme.detailSurfaceColor),
+    detailTextColor: resolveReadableTextColor(theme.detailSurfaceMiddleColor),
     detailItemTextColor: resolveReadableTextColor(theme.detailItemSurfaceColor),
     detailAccentTextColor: resolveReadableTextColor(theme.detailAccentColor),
     simpleTopTextColor: resolveReadableTextColor(theme.simpleTopColor),
     simpleBottomTextColor: resolveReadableTextColor(theme.simpleBottomColor)
   };
-}
-
-export function isAccessibleMembershipTheme(theme: MembershipCardTheme) {
-  return Object.values(theme).every((value) => hexPattern.test(value)) && getMembershipThemeContrast(theme.detailAccentColor, theme.detailSurfaceColor) >= 3;
 }

@@ -265,6 +265,8 @@ const decodeTheme = (value: unknown): PlatformMembershipTheme => {
   return {
     detailAccentColor: string(raw.detailAccentColor),
     detailSurfaceColor: string(raw.detailSurfaceColor),
+    detailSurfaceMiddleColor: string(raw.detailSurfaceMiddleColor),
+    detailSurfaceBottomColor: string(raw.detailSurfaceBottomColor),
     detailItemSurfaceColor: string(raw.detailItemSurfaceColor),
     detailOuterBorderColor: string(raw.detailOuterBorderColor),
     detailItemBorderColor: string(raw.detailItemBorderColor),

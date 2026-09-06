@@ -35,6 +35,8 @@ describe("membership benefit delivery boundary", () => {
       theme: {
         detailAccentColor: "#A7FF33",
         detailSurfaceColor: "#102731",
+        detailSurfaceMiddleColor: "#183A32",
+        detailSurfaceBottomColor: "#24314B",
         detailItemSurfaceColor: "#0B1820",
         detailOuterBorderColor: "#577A39",
         detailItemBorderColor: "#34514A",

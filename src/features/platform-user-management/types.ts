@@ -277,6 +277,8 @@ export type NdpExperienceCampaign = {
 export type PlatformMembershipTheme = {
   detailAccentColor: string;
   detailSurfaceColor: string;
+  detailSurfaceMiddleColor: string;
+  detailSurfaceBottomColor: string;
   detailItemSurfaceColor: string;
   detailOuterBorderColor: string;
   detailItemBorderColor: string;

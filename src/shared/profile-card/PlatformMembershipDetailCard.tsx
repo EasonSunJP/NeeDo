@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import type { MembershipCardTheme } from "./platformMembershipTheme";
-import { resolveMembershipTheme } from "./platformMembershipTheme";
+import {
+  resolveMembershipDetailGradient,
+  resolveMembershipTheme
+} from "./platformMembershipTheme";
 
 export type PlatformMembershipDetailCardProps = {
   avatarUrl: string | null;
@@ -30,7 +33,7 @@ export function PlatformMembershipDetailCard(props: PlatformMembershipDetailCard
   const theme = resolveMembershipTheme(props.theme);
   const showLevel = props.entityKind === "customer" && props.level !== null;
   const itemStyle = { backgroundColor: theme.detailItemSurfaceColor, borderColor: theme.detailItemBorderColor, color: theme.detailItemTextColor };
-  return <article className="w-full max-w-[610px] rounded-[28px] border p-5 shadow-[0_24px_60px_rgba(0,0,0,0.2)]" data-platform-membership-detail-card="true" style={{ backgroundColor: theme.detailSurfaceColor, borderColor: theme.detailOuterBorderColor, color: theme.detailTextColor }}>
+  return <article className="w-full max-w-[610px] rounded-[28px] border p-5 shadow-[0_24px_60px_rgba(0,0,0,0.2)]" data-platform-membership-detail-card="true" style={{ backgroundColor: theme.detailSurfaceColor, backgroundImage: resolveMembershipDetailGradient(theme), borderColor: theme.detailOuterBorderColor, color: theme.detailTextColor }}>
     <div className="flex items-start gap-4"><div className="h-28 w-28 shrink-0 overflow-hidden rounded-[28px] border-[3px] bg-black/10" style={{ borderColor: theme.detailAvatarBorderColor }}>{props.avatarUrl ? <img alt="" className="h-full w-full object-cover" src={props.avatarUrl} /> : <span className="grid h-full w-full place-items-center text-3xl font-black">{props.displayName.slice(0, 1)}</span>}</div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 flex-wrap items-center gap-2"><h1 className="truncate text-lg font-black">{props.displayName}</h1>{props.ekycVerified ? <span aria-label="eKYC verified" className="grid h-5 w-5 place-items-center rounded-full bg-[#85D20A] text-xs font-black text-[#071106]">✓</span> : null}</div>{props.actionSlot ? <div className="shrink-0">{props.actionSlot}</div> : null}</div><div className="mt-3 flex flex-wrap items-center gap-2"><span className="rounded-full px-3 py-1 text-xs font-black" style={{ backgroundColor: theme.detailAccentColor, color: theme.detailAccentTextColor }}>{props.tierLabel}</span>{showLevel ? <div><span className="font-black">Lv.{props.level}</span></div> : null}</div>{props.onNeedoIdClick ? <button aria-label="复制 NeeDo ID" className="mt-3 block max-w-full cursor-copy truncate text-left text-sm opacity-70" onClick={props.onNeedoIdClick} type="button">ID {props.needoId}</button> : <p className="mt-3 text-sm opacity-70">ID {props.needoId}</p>}</div></div>
     <div className="mt-5 grid grid-cols-3 gap-3">{[[props.pointsLabel ?? "积分", props.points], ["利用次数", props.usageCount], ["信用值", props.credit]].map(([label, value]) => <div className="rounded-[18px] border p-3" key={String(label)} style={itemStyle}><p className="text-xs opacity-60">{label}</p><p className="mt-1 text-lg font-black">{value ?? "—"}</p></div>)}</div>
     <div className="my-5 h-px" style={{ backgroundColor: theme.detailOuterBorderColor }} />

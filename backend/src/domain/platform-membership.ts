@@ -18,6 +18,8 @@ export type PlatformMembershipBenefitCodeValue = (typeof PLATFORM_MEMBERSHIP_BEN
 export interface PlatformMembershipTheme {
   detailAccentColor: string;
   detailSurfaceColor: string;
+  detailSurfaceMiddleColor: string;
+  detailSurfaceBottomColor: string;
   detailItemSurfaceColor: string;
   detailOuterBorderColor: string;
   detailItemBorderColor: string;

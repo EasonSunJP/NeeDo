@@ -34,6 +34,8 @@ describe("PlatformMembershipService user adjustment", () => {
     const theme = {
       detailAccentColor: "#111111",
       detailSurfaceColor: "#222222",
+      detailSurfaceMiddleColor: "#292929",
+      detailSurfaceBottomColor: "#303030",
       detailItemSurfaceColor: "#333333",
       detailOuterBorderColor: "#444444",
       detailItemBorderColor: "#555555",

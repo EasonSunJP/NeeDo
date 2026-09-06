@@ -40,6 +40,8 @@ export const platformMembershipThemeSchema = z
   .object({
     detailAccentColor: hexColorSchema,
     detailSurfaceColor: hexColorSchema,
+    detailSurfaceMiddleColor: hexColorSchema,
+    detailSurfaceBottomColor: hexColorSchema,
     detailItemSurfaceColor: hexColorSchema,
     detailOuterBorderColor: hexColorSchema,
     detailItemBorderColor: hexColorSchema,

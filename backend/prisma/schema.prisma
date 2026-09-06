@@ -2554,6 +2554,8 @@ model PlatformMembershipTierVersion {
   experienceMultiplier    Decimal                         @map("experience_multiplier") @db.Decimal(8, 4)
   detailAccentColor       String                          @map("detail_accent_color") @db.Char(7)
   detailSurfaceColor      String                          @map("detail_surface_color") @db.Char(7)
+  detailSurfaceMiddleColor String                         @map("detail_surface_middle_color") @db.Char(7)
+  detailSurfaceBottomColor String                         @map("detail_surface_bottom_color") @db.Char(7)
   detailItemSurfaceColor  String                          @map("detail_item_surface_color") @db.Char(7)
   detailOuterBorderColor  String                          @map("detail_outer_border_color") @db.Char(7)
   detailItemBorderColor   String                          @map("detail_item_border_color") @db.Char(7)

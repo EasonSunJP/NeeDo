@@ -63,6 +63,8 @@ const hexColorPattern = /^#[0-9A-Fa-f]{6}$/;
 const themeKeys = [
   "detailAccentColor",
   "detailSurfaceColor",
+  "detailSurfaceMiddleColor",
+  "detailSurfaceBottomColor",
   "detailItemSurfaceColor",
   "detailOuterBorderColor",
   "detailItemBorderColor",
@@ -427,8 +429,6 @@ export class PlatformMembershipService {
     ) {
       throw this.versionConflict();
     }
-    this.assertThemeContrast(draft.theme.detailAccentColor, draft.theme.detailSurfaceColor);
-
     const result = await this.repository.publishTierDraftWithAudit({
       actorId: actor.userId,
       tierCode: normalizedTierCode,
@@ -501,6 +501,8 @@ export class PlatformMembershipService {
     const theme: PlatformMembershipTierDraftPersistenceInput["theme"] = {
       detailAccentColor: normalizeColor("detailAccentColor"),
       detailSurfaceColor: normalizeColor("detailSurfaceColor"),
+      detailSurfaceMiddleColor: normalizeColor("detailSurfaceMiddleColor"),
+      detailSurfaceBottomColor: normalizeColor("detailSurfaceBottomColor"),
       detailItemSurfaceColor: normalizeColor("detailItemSurfaceColor"),
       detailOuterBorderColor: normalizeColor("detailOuterBorderColor"),
       detailItemBorderColor: normalizeColor("detailItemBorderColor"),
@@ -596,29 +598,6 @@ export class PlatformMembershipService {
       throw this.validationError();
     }
     return { extraThresholdNdp: threshold, extraAwardExpUnits: award };
-  }
-
-  private assertThemeContrast(accentColor: string, surfaceColor: string): void {
-    if (this.contrastRatio(accentColor, surfaceColor) >= 3) return;
-    throw new AppError({
-      code: ERROR_CODES.VALIDATION,
-      message: "error.platform_membership.theme_contrast",
-      statusCode: 400
-    });
-  }
-
-  private contrastRatio(first: string, second: string): number {
-    const luminance = (value: string): number => {
-      const channels = [1, 3, 5].map(
-        (offset) => parseInt(value.slice(offset, offset + 2), 16) / 255
-      );
-      const linear = channels.map((channel) =>
-        channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-      );
-      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-    };
-    const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
-    return (lighter + 0.05) / (darker + 0.05);
   }
 
   private assertVersion(expectedVersion: number, expectedLockVersion: number): void {

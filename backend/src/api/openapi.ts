@@ -7719,6 +7719,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "detailAccentColor",
           "detailSurfaceColor",
+          "detailSurfaceMiddleColor",
+          "detailSurfaceBottomColor",
           "detailItemSurfaceColor",
           "detailOuterBorderColor",
           "detailItemBorderColor",
@@ -7730,6 +7732,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           [
             "detailAccentColor",
             "detailSurfaceColor",
+            "detailSurfaceMiddleColor",
+            "detailSurfaceBottomColor",
             "detailItemSurfaceColor",
             "detailOuterBorderColor",
             "detailItemBorderColor",

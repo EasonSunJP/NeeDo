@@ -33,7 +33,18 @@ describe("platform membership OpenAPI", () => {
       "birthday_gift",
       "traceless_recall"
     ]);
-    expect(schemas.PlatformMembershipTheme.required).toHaveLength(8);
+    expect(schemas.PlatformMembershipTheme.required).toEqual([
+      "detailAccentColor",
+      "detailSurfaceColor",
+      "detailSurfaceMiddleColor",
+      "detailSurfaceBottomColor",
+      "detailItemSurfaceColor",
+      "detailOuterBorderColor",
+      "detailItemBorderColor",
+      "detailAvatarBorderColor",
+      "simpleTopColor",
+      "simpleBottomColor"
+    ]);
     expect(schemas.PlatformMembershipTierVersion.properties.benefits).toMatchObject({
       minItems: 8,
       maxItems: 8
