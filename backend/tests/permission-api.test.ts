@@ -57,6 +57,21 @@ describe("Step 06 Permission API", () => {
         })
       ])
     );
+    const treePermissions = treeResponse.body.data.modules.flatMap(
+      (module: { children: Array<{ permissions: Array<{ code: string }> }> }) =>
+        module.children.flatMap((child) => child.permissions)
+    );
+    expect(treePermissions).toHaveLength(6);
+    expect(treePermissions.map((permission: { code: string }) => permission.code)).toEqual(
+      expect.arrayContaining([
+        "permission:list",
+        "permission:delete",
+        "custom:read",
+        "role:list",
+        "user:list",
+        "button:user:create"
+      ])
+    );
   });
 
   it("creates, updates, and soft deletes custom permissions while protecting system permissions", async () => {

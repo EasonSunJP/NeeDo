@@ -599,6 +599,16 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 
 上述事实仅证明隔离分支的代码、测试、构建、只读数据库聚合和运行时可达性；不代表已合并到 `main`、已 push、已部署、已执行 migration，亦不代表 staging 已验收。
 
+## 2026-09-06 角色人员列表与权限完整性
+
+角色管理的每张角色卡现在通过正式 `GET /api/v1/users?roleId=<id>` 按需读取当前人员，接口继续使用 `user:list` 鉴权、Zod 查询校验、Service/Repository 分层和服务端分页。查询只匹配未删除的用户及有效 `UserRole` 关系；页面显示账号启停状态与该角色的作用域，不在浏览器中维护人员副本。
+
+权限 API 核对结果：`GET /api/v1/permissions/tree` 已由 `PermissionRepository.listAll()` 读取数据库中全部未删除权限，并按模块与类型分组；系统权限由 `SYSTEM_PERMISSIONS` 统一定义并由正式 seed 以 code upsert。此次不新增第二套权限 API。旧前端存在三处过期限制：角色分配只读取列表前 100 项后再截取 40 项、权限树只显示数量、权限表没有翻页。现在角色分配直接使用完整权限树并支持搜索，权限树展示每个真实名称和 code，权限表继续使用分页列表 API 并提供翻页。
+
+本微步骤没有 schema 或 migration 修改，也没有新增 mock、静态权限回退或浏览器本地角色数据。
+
+隔离分支在 `3013/5183` 启动后完成认证 API smoke：数据库返回 11 个角色、36 个权限模块和 333 条有效权限；admin 角色分页返回 5 名当前人员，全部具有对应的有效角色分配。新前端 origin 未继承既有登录态，因此没有把未认证页面记作视觉验收。启动时还观察到本地 `needo_dev` 尚未应用另一分支的会员卡三色字段 migration；该差异与本微步骤无关，未在此执行 migration 或补写数据库。
+
 ## 2026-09-06 会员详细卡三色渐变与发布规则
 
 本微步骤把原 `detailSurfaceColor` 保留为详细卡左上角色，并新增正式持久化字段 `detailSurfaceMiddleColor` 与 `detailSurfaceBottomColor`。运营后台预览和用户端详细会员卡共用 `linear-gradient(155deg, TOP 0%, MIDDLE 52%, BOTTOM 100%)`，避免两端视觉实现漂移。三个色阶的运营标签已补齐简体中文、繁体中文、日文、英文与韩文。
