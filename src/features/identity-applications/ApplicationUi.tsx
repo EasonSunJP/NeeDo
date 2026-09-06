@@ -1,5 +1,6 @@
 import { useEffect, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { SettingsDetailPage } from "../../components/client-ui/SettingsDirectory";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -15,6 +16,8 @@ export function ApplicationShell({
   children,
   backTo = "/me/settings/portal",
   onBack,
+  error,
+  onDismissError,
   hideNavigation = false
 }: {
   title: string;
@@ -22,6 +25,8 @@ export function ApplicationShell({
   children: ReactNode;
   backTo?: string;
   onBack?: () => void;
+  error?: string;
+  onDismissError?: () => void;
   hideNavigation?: boolean;
 }) {
   const { language } = useI18n();
@@ -34,6 +39,14 @@ export function ApplicationShell({
       closeTo="/me/settings/portal"
       contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
       headerFrameClassName="!z-[140]"
+      headerOverlay={error ? (
+        <div className="pointer-events-none absolute inset-x-0 top-2 mx-auto w-full max-w-[880px]">
+          <div aria-atomic="true" className="pointer-events-auto flex items-start gap-3 rounded-[20px] border border-[color:var(--client-danger)] bg-[color:var(--client-surface)] px-4 py-3 text-sm font-semibold leading-6 text-[color:var(--client-text)] shadow-[0_12px_32px_rgba(0,0,0,0.2)]" role="alert">
+            <span className="min-w-0 flex-1 break-words">{t(error)}</span>
+            {onDismissError ? <button aria-label={t("关闭提示")} className="focus-ring inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--client-muted)]" onClick={onDismissError} type="button"><AppIcon className="h-4 w-4" name="close" /></button> : null}
+          </div>
+        </div>
+      ) : undefined}
       info={t(info)}
       navItems={hideNavigation ? [] : undefined}
       onBack={onBack}

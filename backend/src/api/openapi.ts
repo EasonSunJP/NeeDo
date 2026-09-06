@@ -26364,7 +26364,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             businessAddress: { type: "string", minLength: 1, maxLength: 255 },
             contactPhone: { type: "string", minLength: 1, maxLength: 32 },
             responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
-            showcaseDraft: { type: "object", additionalProperties: true },
+            showcaseDraft: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                nearestStation: { type: "string", maxLength: 160 },
+                stationTravelMinutes: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER, nullable: true, description: "Travel time from the nearest station to the shop, in minutes" },
+                stationAccess: { type: "string", maxLength: 255 }
+              }
+            },
             serviceCategoryIds: {
               type: "array",
               minItems: 1,
@@ -26411,7 +26419,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             businessAddress: { type: "string", minLength: 1, maxLength: 255 },
             contactPhone: { type: "string", minLength: 1, maxLength: 32 },
             responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
-            showcaseDraft: { type: "object", additionalProperties: true },
+            showcaseDraft: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                nearestStation: { type: "string", maxLength: 160 },
+                stationTravelMinutes: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER, nullable: true, description: "Travel time from the nearest station to the shop, in minutes" },
+                stationAccess: { type: "string", maxLength: 255 }
+              }
+            },
             serviceCategoryIds: {
               type: "array",
               minItems: 1,
