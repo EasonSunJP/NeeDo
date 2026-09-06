@@ -114,7 +114,7 @@ describe("RegionNavigator", () => {
   it("shows an empty result state and does not navigate from the current scope", async () => {
     const onSelectRegion = await render();
     const input = await typeIntoSearch("不存在");
-    expect(container.textContent).toContain("没有匹配结果");
+    expect(container.textContent).toContain("没有匹配的地区");
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })));
     expect(onSelectRegion).not.toHaveBeenCalled();
   });
@@ -148,7 +148,7 @@ describe("RegionNavigator", () => {
   it("keeps current breadcrumbs available when the index fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     await render();
-    expect(container.textContent).toContain("实时数据暂不可用");
+    expect(container.textContent).toContain("地区搜索暂不可用");
     expect(container.textContent).toContain("日本 / 東京都 / 新宿区");
   });
 
@@ -157,10 +157,10 @@ describe("RegionNavigator", () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => new Promise((_, reject) => { rejectFetch = reject; })));
     await render();
     await typeIntoSearch("不存在");
-    expect(container.textContent).not.toContain("没有匹配结果");
+    expect(container.textContent).not.toContain("没有匹配的地区");
     await act(async () => rejectFetch!(new Error("offline")));
-    expect(container.textContent).toContain("实时数据暂不可用");
-    expect(container.textContent).not.toContain("没有匹配结果");
+    expect(container.textContent).toContain("地区搜索暂不可用");
+    expect(container.textContent).not.toContain("没有匹配的地区");
   });
 
   it("does not navigate when the selected scope is already current", async () => {
@@ -171,5 +171,17 @@ describe("RegionNavigator", () => {
       municipality.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(onSelectRegion).not.toHaveBeenCalled();
+  });
+
+  it("keeps formal municipality fallback options selectable when the index is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const onSelectRegion = vi.fn();
+    await act(async () => root.render(<RegionNavigator breadcrumbs={breadcrumbs} fallbackChildren={[
+      { code: "13103", name: "港区", orderCount: 0, confirmedPayments: { jpy: 0, ndp: 0, testNdp: 0 } }
+    ]} onSelectRegion={onSelectRegion} scope={scope} />));
+    const municipality = container.querySelector<HTMLSelectElement>('select[aria-label="市区町村"]')!;
+    expect(municipality.textContent).toContain("港区");
+    await act(async () => { municipality.value = "13103"; municipality.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(onSelectRegion).toHaveBeenCalledWith({ country: "JP", admin1: "13", admin2: "13103", period: "last7days" });
   });
 });

@@ -8,6 +8,7 @@ interface RegionNavigatorProps {
   scope: LiveDashboardScope;
   breadcrumbs: LiveDashboardSnapshot["scope"]["breadcrumbs"];
   onSelectRegion: (scope: LiveDashboardScope) => void;
+  fallbackChildren?: LiveDashboardSnapshot["children"];
 }
 
 function sameScope(left: LiveDashboardScope, right: LiveDashboardScope): boolean {
@@ -37,7 +38,7 @@ function currentEntry(scope: LiveDashboardScope, breadcrumbs: RegionNavigatorPro
   };
 }
 
-export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNavigatorProps) {
+export function RegionNavigator({ breadcrumbs, fallbackChildren = [], onSelectRegion, scope }: RegionNavigatorProps) {
   const { language } = useOptionalI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
   const resultListId = useId();
@@ -62,15 +63,15 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
 
   const results = useMemo(() => index ? searchRegions(index, query) : [], [index, query]);
   const prefectures = useMemo(() => {
-    const loaded = index?.regions.filter((entry) => entry.level === "admin1") ?? [];
+    const loaded = index?.regions.filter((entry) => entry.level === "admin1") ?? (!scope.admin1 ? fallbackChildren.map((item): RegionSearchEntry => ({ code: item.code, nameJa: item.name, level: "admin1", parentCode: "JP", breadcrumbJa: ["日本", item.name] })) : []);
     const current = currentEntry(scope, breadcrumbs, "admin1");
     return current && !loaded.some((entry) => entry.code === current.code) ? [...loaded, current] : loaded;
-  }, [breadcrumbs, index, scope]);
+  }, [breadcrumbs, fallbackChildren, index, scope]);
   const municipalities = useMemo(() => {
-    const loaded = index?.regions.filter((entry) => entry.level === "admin2" && entry.parentCode === scope.admin1) ?? [];
+    const loaded = index?.regions.filter((entry) => entry.level === "admin2" && entry.parentCode === scope.admin1) ?? (scope.admin1 ? fallbackChildren.map((item): RegionSearchEntry => ({ code: item.code, nameJa: item.name, level: "admin2", parentCode: scope.admin1!, breadcrumbJa: ["日本", scope.admin1!, item.name] })) : []);
     const current = currentEntry(scope, breadcrumbs, "admin2");
     return current && !loaded.some((entry) => entry.code === current.code) ? [...loaded, current] : loaded;
-  }, [breadcrumbs, index, scope]);
+  }, [breadcrumbs, fallbackChildren, index, scope]);
 
   useEffect(() => setActiveIndex(-1), [query]);
 
@@ -107,12 +108,13 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
 
   return (
     <section className="live-dashboard-region-navigator" aria-label={t("行政区域层级")}>
-      <nav aria-label={t("行政区域层级")}>{breadcrumbFor(scope, breadcrumbs).join(" / ")}</nav>
+      <nav aria-label={t("当前选择地区")}>{breadcrumbFor(scope, breadcrumbs).join(" / ")}</nav>
       <label>
         <span>{t("国家")}</span>
         <select aria-label={t("国家")} disabled value="JP"><option value="JP">{t("日本")}</option></select>
       </label>
-      <label>
+      <div className="live-dashboard-region-search">
+        <label>
         <span>{t("全国地区搜索")}</span>
         <input
           aria-activedescendant={activeResultId}
@@ -125,13 +127,15 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onBlur={() => { setOpen(false); setActiveIndex(-1); }}
           onKeyDown={onSearchKeyDown}
+          placeholder={t("搜索都道府县、市区町村")}
           role="combobox"
           value={query}
         />
-      </label>
+        </label>
       {open && query && index && (results.length ? (
-        <ul id={resultListId} role="listbox">
+        <ul className="live-dashboard-region-results" id={resultListId} role="listbox">
           {results.map((entry, resultIndex) => (
             <li
               aria-selected={resultIndex === activeIndex}
@@ -143,8 +147,10 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
             >{entry.breadcrumbJa.join(" / ")}</li>
           ))}
         </ul>
-      ) : <p role="status">{t("没有匹配结果")}</p>)}
-      {open && query && !index && !loadFailed ? <p role="status">{t("正在读取实时经营数据")}</p> : null}
+      ) : <span role="status">{t("没有匹配的地区")}</span>)}
+      {open && query && index && results.length > 0 ? <span className="live-dashboard-region-result-count" role="status">{t("匹配地区数量")}：{results.length}</span> : null}
+      {open && query && !index && !loadFailed ? <span role="status">{t("正在加载地区索引")}</span> : null}
+      </div>
       <label>
         <span>{t("都道府县")}</span>
         <select
@@ -174,7 +180,7 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
           {municipalities.map((entry) => <option key={entry.code} value={entry.code}>{entry.nameJa}</option>)}
         </select>
       </label>
-      {loadFailed ? <p role="status">{t("实时数据暂不可用")}</p> : null}
+      {loadFailed ? <p className="live-dashboard-region-status" role="status">{t("地区搜索暂不可用")}</p> : null}
     </section>
   );
 }
