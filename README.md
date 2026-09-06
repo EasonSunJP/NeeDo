@@ -2164,6 +2164,8 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 
 运营实时数据大屏 microstep B 已增加受保护的 `/pf-admin.html#/admin/live-screen` 独立页面，通过正式 snapshot/SSE 展示 JP、都道府县与市区町村范围数据，并使用本地版本化 N03 2026 地图资源。入口从现有运营数据大盘以 `noopener,noreferrer` 新标签页打开，不传递 token；页面支持日间/深色运营主题、全屏、低频对账、自动滚动暂停、地图键盘下钻和正式区域选择回退。完整的本地 migration、MySQL/Redis checker、浏览器与自动化证据见 [运营实时数据大屏本地验收记录](docs/live-dashboard-acceptance.md)。该记录不代表远端 push、部署或生产 migration。
 
+2026-09-07 响应式补充已完成本地验收：桌面流式单屏、手机竖屏隐藏地图但保留搜索/级联选择、全国本地搜索、可读引导线标签、缩放拖动还原及独立日期轴；20 个桌面与 3 个手机样本、正式 API 请求频率和密集区域证据见上述验收记录的“响应式地图与日期轴复验”。北海道等容量超限区域采用可访问的渐进名称披露，完整区域路径和搜索选择保持可用。
+
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 
 独立“评价中心”同样采用能力门禁：Review 表与 migration、分页搜索 RBAC API、回复和风控审计日志完成前，只展示明确的上线条件，不展示模拟评分、评价内容、回复状态、差评预警或敏感评价数字。

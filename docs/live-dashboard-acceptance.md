@@ -106,3 +106,57 @@ Checker 结果：
 - 5180、3000、3001、3002 均由同一 `main` 工作树运行；三套 API 直连 health/ready 与 5180 代理 health 均通过。
 - 5180 浏览器复验使用官方测试管理员真实登录；实时连接正常，全国 47 个区域、东京 23 区与新宿下钻通过，snapshot、SSE、地图资源全部为 200，控制台 error 为 0。
 - 本次仍未执行远端 push、部署或生产 migration。
+
+## 2026-09-07 响应式地图与日期轴复验
+
+本次验收时间为 02:40–03:12 JST；功能分支 `codex/live-dashboard-responsive-map-controls`，最终实现提交 `941e3247`，验收口径文档提交 `b1887560`。本节仅证明本地实现和正式 API 浏览器验收；尚未将本次响应式变更合并到本地 main，未 push、部署或执行 migration。
+
+### 自动化门禁
+
+- `npm run maps:jp:search-index`、`npm run maps:jp:check`：1965 条搜索索引、47 都道府县、1918 市区町村、东京 23 特别区、校验和及 gzip 预算通过。
+- 计划 Task 7 所列前端完整范围：16 文件、171 tests 通过（10.06s）；包括索引、搜索、导航、地图排布/缩放、趋势、响应式、页面、SSE状态和入口回归。
+- 前端 `npm run lint`、`npm run build` 通过；795 modules，Vite 构建 10.76s。保留既有 Zod PURE 注释、SocialProfilePage 混合导入、大 chunk 警告。
+- `npm run i18n:audit` 退出 0；最终汇总 source 15622、covered 7796、missing 7826。新增文案已进入翻译表，此结果不代表既有全仓缺失清零。
+- 后端计划范围 7 suites、91 tests 通过（7.94s），lint/build 通过。本次后续前端修复与已测后端树完全相同（`git diff --quiet cbeaf6dc..HEAD -- backend` 退出 0）。
+- feature worktree 后端首次缺少依赖，安装并生成 Prisma Client 后复测；sandbox 的 Prisma cache 与 Supertest 临时端口 EPERM 均经批准重跑通过，不是产品测试失败。
+
+### 实际供应运行时
+
+最终前端 5180 PID `30079`，运营 API 3011 PID `22383`，cwd 分别为本 feature worktree 根和 `backend/`。前端显式配置 `NEEDO_OPS_API_PROXY_TARGET=http://127.0.0.1:3011`，运营服务使用 `needo-ops-api` audience/service，正式本地 MySQL `needo_dev`（127.0.0.1:3307）和 Redis 6379（运营 session DB1、live dashboard DB0）。直连 3011 与 5180 `/ops-api/v1/` 代理的 health/ready 均 code0，数据库、Redis healthy；03:11 延迟存活复验通过。
+
+原 5180 所在的 `dashboard-remaining-acceptance` checkout 已被其他任务切换为 `codex/order-refund-case-backend` @`39fe8751`，3000/3001 的后端树与本分支存在差异，因此保留其进程并使用本分支隔离 3011。未把异分支 API 当成本次同树证据；3002 不在本次运营页链路。
+
+本地 Vite 曾在 cwd 正确时仍返回旧缓存模块。已仅重启本任务前端，并在最终矩阵之前直接验证 5180 供应的地图源码包含 `selectedCode: scope.admin2`、`focusedCode: activeCode`、`labelViewport`。旧缓存期间截图不计入最终结论。
+
+Chrome skill 所需 `scripts/browser-client.mjs` 在本机缺失，因此本次使用独立 headless Chromium/Playwright，以官方测试管理员真实登录运营端；没有复用或宣称验证用户现有 Chrome profile、扩展或安装 PWA。凭据仅从现有未跟踪 env 私下读取，未写入日志或验收文件。
+
+### 桌面与手机实测
+
+下表每个桌面尺寸均测试 `classic-white-black` 与 `blue-black`，以及日本真实 7 日数据和新宿零值数据，共 20 个样本。全部 `scrollWidth === clientWidth`、`scrollHeight === clientHeight`、整页 transform `none`，控制台 0 error。
+
+| 视口 | 地图绘图区高 px | 地图字形框高 px | 趋势基线到日期字形顶部间隔 px |
+|---|---:|---:|---:|
+| 1366×768 | 276.63 | 13 | 14.5 |
+| 1440×900 | 371.94 | 13 | 18.1 |
+| 1920×1080 | 480.91 | 13 | 22.6 |
+| 2560×1440 | 761.70 | 13 | 33.0 |
+| 1920×600 | 191.00 | 13 | 12.8 |
+
+日本 47 名称与东京 62 名称在上述所有桌面尺寸完整显示，地图标签 CSS 字号 11px，实际字形框约 13px，不再随地图比例缩成小字。日间控件文字 rgb(16,19,26)，深色 rgb(245,247,255)，实际截图中的下拉、搜索、缩放控件均可读。趋势使用 `xMidYMid meet`，日期与绘图区分离；日本正式数据包含非零订单/JPY 支付曲线，新宿正式范围为零值曲线，没有替换 API 或注入假数据。
+
+手机 320/390/440×844：document 宽分别为 320/390/440，scrollHeight 分别 2069/2074/2079；地图图形及其缩放控件隐藏，不留地图空占位，搜索、区域选择和所有数据面板保留，允许纵向滚动，横向无溢出，控制台 0 error。
+
+### 地区交互、密集标签与刷新
+
+- 全国搜索 `東京都`、`新宿区`、`13104`、`小笠原村` 返回完整路径；Enter 后分别到 admin1=13、admin2=13104、admin2=13104、admin2=13421，保留 period=last7days。级联选择日本→东京→新宿及清空下级一致；面包屑返回东京、日本通过。
+- 缩放鼠标与键盘操作通过，范围 1–4，达到上下限禁用对应按钮；还原、切换层级自动还原通过。真实指针拖动改变几何变换，结束后标签重新对齐。
+- 东京 62、冲绳 41 个名称真实 DOM 字形框重叠数均为 0；分别检查 37、33 条引导线，起点与正式静态地图行政锚点经当前变换后的误差均小于 0.1px。
+- 北海道 1920×600 保留全部 195 个可聚焦区域路径，初始显示 111 名称；聚焦原隐藏 `01101` 后立即显示。1.5 倍缩放揭示此前隐藏的 `01608`、`01631`，两者锚点仍在当前可视地理范围内；提示 `109 / 195` 与实际 DOM 一致。缩放后视野变窄，总可见数不要求单调增加。选中 `01101` 后聚焦 `01102`，两者名称同时保留。
+- 北海道拖动期间 DOM 几何持续变换而标签排布保持，pointerup 后重排；验证了延迟排布预览与结束对齐。搜索/焦点/缩放/拖动/还原业务请求增量均为 0；每次真实范围转换精确产生 1 snapshot 和 1 SSE。
+- 更早同分支的 330.035 秒连续稳定观察仅出现 1 次 5 分钟 reconciliation snapshot、0 SSE 重建；最终修复后再次核对本地操作请求增量和范围切换计数一致。现有 60 秒合并失效与 5 分钟兜底节奏未修改。
+
+### 证据位置与边界
+
+最终矩阵 JSON：`/private/tmp/needo-responsive-qa/report.json`；北海道/引导线专项：`/private/tmp/needo-responsive-qa/hokkaido-report.json`；330 秒网络记录：`/private/tmp/needo-responsive-qa/network-report.json`；可复跑脚本：`/private/tmp/needo-responsive-qa.py`。
+
+截图目录 `/private/tmp/needo-responsive-qa/`：`{classic-white-black,blue-black}-{1366x768,1440x900,1920x1080,2560x1440,1920x600}-{real,zero}.png`、`mobile-{320,390,440}.png`、`labels-13.png`、`labels-47.png`、`hokkaido-compact.png`。均为本机临时证据，不随仓库部署。
