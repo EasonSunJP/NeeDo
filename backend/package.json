@@ -50,6 +50,7 @@
     "check:agent-settlement": "tsx scripts/check-agent-settlement-flow.ts",
     "check:dashboard-overview": "tsx scripts/check-dashboard-overview-flow.ts",
     "check:shop-travel-fare-flow": "tsx scripts/check-shop-travel-fare-flow.ts",
+    "check:live-dashboard": "tsx scripts/check-live-dashboard-flow.ts",
     "check:membership-ranking": "tsx scripts/check-membership-ranking-flow.ts",
     "check:membership-traceless-migration": "tsx scripts/check-membership-traceless-benefit-migration.ts",
     "check:membership-gradient-migration": "tsx scripts/check-membership-gradient-migration.ts",

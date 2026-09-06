@@ -237,7 +237,6 @@ async function loadOperationsAnalyticsTranslations() {
 
   return operationsAnalyticsTranslationsPromise;
 }
-
 async function loadOrderPerformanceTranslations() {
   orderPerformanceTranslationsPromise ??= (async () => {
     const source = await fs.readFile(orderPerformanceTranslationsPath, "utf8");

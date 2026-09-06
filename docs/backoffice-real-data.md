@@ -492,6 +492,37 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 
 本次只增加了现有 Booking、OrderFinancial、TechnicianProfile 与 Shop 的只读聚合合同，未新增 migration 或 mock 数据。浏览器验收（各期间、排序、筛选、分页、CSV、错误/空态和详情抽屉）仍由主代理在运行中的正式服务上执行；本文档与静态测试不替代该验收。
 
+## 运营实时大盘 microstep A 数据合同（2026-09-06）
+
+microstep A contains no live-screen page。这个微步骤只交付正式数据地基、只读 API、缓存和 SSE 合同；运营端大屏页面及交互属于后续微步骤，不能把本文的后端验收表述为页面或浏览器验收。
+
+- 快照：`GET /api/v1/backoffice/dashboard/live-snapshot?country=JP&admin1=13&admin2=13104&period=today`。`country` 固定为 `JP`；`admin1`、`admin2` 逐级可选，`admin2` 必须带所属 `admin1`；`period` 为 `today`、`last7days` 或 `last30days`。`Accept-Language` 支持 `zh-CN`、`zh-TW`、`ja`、`en`、`ko`，无法识别时回退日语。所有范围以不可变的 `BookingServiceLocation` 服务发生地为准，全国范围保留 unresolved 覆盖率，东京/新宿等下钻只纳入 verified 归属。
+- 事件：`GET /api/v1/backoffice/dashboard/live-events` 使用与快照相同的查询参数和 `backoffice:dashboard:read` 权限。客户端以 `Last-Event-ID` 续传；服务端发送 `retry: 5000`、每 30 秒 heartbeat，并只发送白名单化的 `order.changed` 和 `metrics.invalidate` 字段。事件不得包含客户姓名、邮箱、电话、地址、备注或内部数字关联 ID。游标已过保留窗口或不再存在时返回 `409 error.live_dashboard.cursor_reset_required`，客户端必须丢弃旧游标、重新取快照后重连，不能静默跳过事件。
+- Redis 快照 key 使用 `dashboard:live:v1:{country}:{admin1|-}:{admin2|-}:{period}`，TTL 为 300 秒；订单变化触发 country → admin1 → admin2 的 generation-fenced 失效。Stream 最多保留 100 条且保留窗口为 5 分钟；发布、回放、排序、背压断开和隐私白名单均由正式 Redis 测试覆盖。
+
+Booking 历史服务地点回填默认只预览，不写库：
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations
+```
+
+应用必须显式给出预览计数以避免目标漂移；脚本还提供具名 run 的恢复路径：
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations -- --apply --confirm-count=<preview-planned-count>
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations -- --restore-run=<run-id>
+```
+
+最终形式化 checker 只允许明确的本地/开发 MySQL 与 Redis，并强制事务回滚和 run-prefix 清理：
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK=true LIVE_DASHBOARD_CHECK_RUN_ID=task8-local-a npm --prefix backend run check:live-dashboard
+```
+
+`LIVE_DASHBOARD_CHECK_RUN_ID` 必须是显式、可复现且本次运行唯一的小写 token；checker 对它做稳定哈希，不使用 PID 或随机数，并在数据库或 Redis 已存在同名 run 前缀时拒绝继续。直接 MySQL oracle 以独立 raw SQL 逐节核对全国、东京、新宿和三个 period 的 headline、payments、orders、realtime、activity、trend、coverage 与排名；仅排名资格及排序 CTE 复用 Task 5 明确定义为正式权威的 `AnalyticsRankingRepository` CTE，其余映射与生产 `LiveDashboardRepository` 独立。
+
+验收事实必须分开记录：本地代码提交不等于远端 push；远端 push 不等于部署；部署不等于 migration 已应用；migration 已应用也不等于正式 checker、API、SSE 或页面验收已经发生。本微步骤不执行 push、部署、生产 migration，也不声称存在 live-screen page。
+
 ## 数据来源
 
 本次读取正式表：

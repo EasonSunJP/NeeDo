@@ -2154,6 +2154,10 @@ npm test
 
 运营后台唯一“数据大盘”读取受 `backoffice:dashboard:read` 保护的正式数据库聚合，使用服务端东京日期分桶和具名比较字段，不生成演示折线或虚构增长率。旧分析页、旧数据大屏入口和旧 Dashboard 预览 payload 已退役。
 
+运营实时大盘 microstep A 只包含数据地基：`/api/v1/backoffice/dashboard/live-snapshot` 与 `/api/v1/backoffice/dashboard/live-events` 以 `country=JP`、可选的逐级 `admin1`/`admin2`、`period=today|last7days|last30days` 查询；快照名称按 `Accept-Language`（`zh-CN`、`zh-TW`、`ja`、`en`、`ko`，默认日语）本地化。地区归属只读取 Booking 创建时保存的不可变服务发生地，未解析旧订单只进入全国覆盖率，不进入东京/新宿下钻。缓存 TTL 为 300 秒，区域事件以 generation fence 逐级失效；SSE 发送 5 秒 retry、30 秒 heartbeat，支持 `Last-Event-ID`，过期/缺失游标返回 409，客户端需重新取快照再连接，且事件白名单不暴露客户资料、地址、备注或内部数字 ID。完整合同见 `docs/backoffice-real-data.md`。
+
+历史 Booking 地点脚本默认 preview；apply 必须追加 `--apply --confirm-count=<preview-planned-count>`，恢复使用 `--restore-run=<run-id>`。最终本地 checker 必须同时显式传入 `FORMAL_BACKEND_ENV_FILE`、`LIVE_DASHBOARD_CHECK_ROLLBACK=true` 与本次运行唯一、可复现的小写 `LIVE_DASHBOARD_CHECK_RUN_ID`：`FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK=true LIVE_DASHBOARD_CHECK_RUN_ID=task8-local-a npm --prefix backend run check:live-dashboard`。microstep A contains no live-screen page；本地 commit、remote push、deployment、migration application、形式化 DB/Redis 验收与页面验收是互相独立的事实，本步骤不执行 push、部署或生产 migration。
+
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 
 独立“评价中心”同样采用能力门禁：Review 表与 migration、分页搜索 RBAC API、回复和风控审计日志完成前，只展示明确的上线条件，不展示模拟评分、评价内容、回复状态、差评预警或敏感评价数字。
