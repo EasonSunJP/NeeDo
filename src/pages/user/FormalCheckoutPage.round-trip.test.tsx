@@ -513,6 +513,36 @@ describe("formal checkout technician-card round trip", () => {
     expect(createBooking).not.toHaveBeenCalled();
   });
 
+  it("fails closed when an Intelligence source requires home travel checkout", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "home" });
+    vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue({
+      ...intelligencePost,
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        serviceMode: "onsite",
+        booking: { ...intelligencePost.intelligence!.booking, serviceMode: "onsite" },
+        serviceCard: { ...intelligencePost.intelligence!.serviceCard!, serviceMode: "onsite" }
+      }
+    });
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: 3, page: 1, page_size: 100 });
+    const createBooking = vi.spyOn(bookingApi, "createBooking");
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&exchangePost=61"]}>
+            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("上门情报预约需等待正式路程估算接入"));
+    expect(container.textContent).not.toContain("确定预约");
+    expect(createBooking).not.toHaveBeenCalled();
+  });
+
   it("directly reloads the explicit technician-service route and submits the exact Intelligence target", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     const getContext = vi.spyOn(bookingApi, "getTechnicianServiceBookingContext").mockResolvedValue(technicianBookingContext);

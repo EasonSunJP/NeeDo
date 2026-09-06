@@ -144,7 +144,25 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 ```
 
-The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming, owner selection, exact budget increase, target-count reduction, matched-order creation, and per-order bilateral cancellation now have formal client/API slices. Quick matching, manual matching close, appointments, and service payment remain explicitly deferred.
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming, owner selection, exact budget increase, target-count reduction, matched-order creation, per-order bilateral cancellation, and direct appointment booking from a published Intelligence post now have formal client/API slices. Quick matching, manual matching close, and service payment remain explicitly deferred.
+
+### Formal Intelligence service and booking
+
+An Intelligence publisher must select one server-resolved catalog target: `shop:{serviceId}` for a merchant identity scoped to that shop, or `technician:{technicianServiceId}` for the owning public technician with a current active shop affiliation. The persisted Intelligence row stores exactly one Restrict-linked target plus the service name, duration, catalog price, campaign price, service mode, address, and area snapshots. Legacy unbound Intelligence remains readable but is explicitly not bookable.
+
+The shared Intelligence detail renders the formal shop/technician profile card and formal service card. A live store-mode source exposes exactly one checkout link: `/checkout/{serviceId}?date={tokyoDate}&time={tokyoStartTime}&exchangePost={postId}` or `/checkout/technician-service/{technicianServiceId}?date={tokyoDate}&time={tokyoStartTime}&exchangePost={postId}`. Checkout reloads the source and catalog context, keeps only slots fully inside the source window, and submits the exact service selector plus `exchangeIntelligencePostId`; catalog and campaign prices are never accepted from the client. Booking locks the source and capacity, revalidates publisher/service/affiliation state, snapshots the campaign price and source evidence, persists initial history and audit rows, and emits the provider notification only on the first idempotent commit. Onsite Intelligence is deliberately fail-closed in both detail and direct checkout until the separately owned structured-address and route-estimate checkout slice is committed; it cannot fall through to an invalid 422 submission. The shared empty-image fallback uses the caller's fixed dimensions rather than `h-full w-full`, so shop and technician detail cards retain readable text columns at both 440 px and 320 px mobile widths.
+
+The guarded acceptance command creates a dedicated local MySQL database and principal, applies this branch's complete migration chain from an empty database, verifies the seven physical columns, one CHECK, four indexes and three Restrict foreign keys, executes both shop and technician publication/booking paths, then deletes the database and principal. It also covers cross-shop and impersonated publication, legacy/closed/withdrawn/expired/unavailable sources, inactive affiliation, time-window and service mismatch, client price injection, referenced-service and source deletion, idempotency conflict/replay, injected transaction rollback, an explicit two-client capacity race, cards, snapshots, history, notifications, audit, and store-mode travel-state separation.
+
+```bash
+cd backend
+FORMAL_BACKEND_ENV_FILE=.env.dev \
+  npm run check:exchange-intelligence-booking-flow
+```
+
+When the local MySQL administrator authenticates through a Unix socket, set `EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH` to that verified socket (for example `/tmp/mysql.sock`). The checker verifies that the socket principal is exactly `root@localhost` before creating its random scratch database.
+
+Local `needo_dev` now has migration `20260905180000_exchange_intelligence_booking` applied. It already contained two separately owned travel migration records whose matching files remain uncommitted in the local `main` worktree; this branch verified their recorded checksums but does not absorb or claim those migrations. Its disposable-database proof therefore applies only the migration files actually owned by this branch. The current formal Exchange seed/check reports 248 existing actors, 20 Demand posts, 20 service-bound Intelligence posts, 265 comments, 1,329 likes, 359 shares, and zero legacy residue. Staging migration, staging deployment, remote push, and post-deploy acceptance remain separate release gates.
 
 ### Formal Selective Exchange Claim
 

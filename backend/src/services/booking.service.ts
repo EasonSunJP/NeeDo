@@ -398,6 +398,9 @@ export class BookingService {
     if (!("order" in result) || !("supersededOrders" in result)) {
       return result;
     }
+    if (result.idempotentReplay) {
+      return result.order;
+    }
 
     for (const superseded of result.supersededOrders) {
       await this.notifyOrderStatusChangedBestEffort({

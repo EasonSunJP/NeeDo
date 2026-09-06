@@ -14,7 +14,10 @@ import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type { JapaneseRouteAddress } from "../services/route-distance.provider";
-import { hashRouteAddress, normalizeJapaneseRouteAddress } from "../services/route-estimate.service";
+import {
+  hashRouteAddress,
+  normalizeJapaneseRouteAddress
+} from "../services/route-estimate.service";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
@@ -264,6 +267,7 @@ export interface BookingCreateMutationResult {
   order: BookingOrderPayload;
   recipientUserIds: number[];
   supersededOrders: BookingSupersededOrderNotification[];
+  idempotentReplay?: boolean;
 }
 
 export type BookingTravelEstimateFailure = "expired" | "consumed" | "mismatch" | "invalid";
@@ -1304,7 +1308,8 @@ export class BookingRepository implements BookingRepositoryPort {
                 return {
                   order: this.mapOrder(replay),
                   recipientUserIds: this.providerUserIds(replay),
-                  supersededOrders: []
+                  supersededOrders: [],
+                  idempotentReplay: true
                 };
               }
             }
@@ -1607,9 +1612,10 @@ export class BookingRepository implements BookingRepositoryPort {
               originalPriceJpy,
               scheduledStartAt: slot.startsAt
             };
-            const preparedAffiliate = !intelligenceSource && options.prepareAffiliate
-              ? await options.prepareAffiliate(affiliateContext)
-              : null;
+            const preparedAffiliate =
+              !intelligenceSource && options.prepareAffiliate
+                ? await options.prepareAffiliate(affiliateContext)
+                : null;
             const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
 
             const nextBookedCount = slot.bookedCount + 1;
@@ -4298,9 +4304,9 @@ export class BookingRepository implements BookingRepositoryPort {
       rate.ndpUnits === 0 ||
       rate.jpyUnits === 0 ||
       checkout.baseAmountJpy +
-          checkout.addOnAmountJpy +
-          checkout.travelFareAmountJpy -
-          checkout.discountAmountJpy !==
+        checkout.addOnAmountJpy +
+        checkout.travelFareAmountJpy -
+        checkout.discountAmountJpy !==
         checkout.checkoutAmountJpy ||
       BigInt(checkout.payableNdp) !==
         (BigInt(checkout.checkoutAmountJpy) * BigInt(rate.ndpUnits) + BigInt(rate.jpyUnits) - 1n) /

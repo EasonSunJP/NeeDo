@@ -9,7 +9,8 @@ import {
 import type {
   ExchangeSimulationActor,
   ExchangeSimulationPlan,
-  ExchangeSimulationPost
+  ExchangeSimulationPost,
+  ExchangeSimulationServiceBinding
 } from "./exchange-simulation-plan";
 import {
   EXCHANGE_SIMULATION_NAMESPACE,
@@ -70,14 +71,181 @@ export const discoverExchangeSimulationActors = async (
       id: true,
       userId: true,
       type: true,
+      scopeType: true,
+      scopeId: true,
       displayName: true,
       user: { select: { username: true, avatarUrl: true } },
       publicIdentifier: { select: { publicId: true } }
     }
   });
 
+  const shopScopeIds = identities.flatMap((identity) =>
+    ["merchant", "merchant_owner", "merchant_staff"].includes(identity.type) &&
+    identity.scopeType === "shop" &&
+    identity.scopeId
+      ? [identity.scopeId]
+      : []
+  );
+  const technicianScopeIds = identities.flatMap((identity) =>
+    identity.type === "technician" &&
+    identity.scopeType === "technician_profile" &&
+    identity.scopeId
+      ? [identity.scopeId]
+      : []
+  );
+  const now = new Date();
+  const [shopServices, technicianServices, technicianShopAffiliations] = await Promise.all([
+    client.service.findMany({
+      where: {
+        shopId: { in: shopScopeIds },
+        status: "published",
+        currency: "JPY",
+        durationMinutes: { gt: 0 },
+        priceAmount: { gt: 0 },
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null },
+        shop: {
+          status: "published",
+          deletedAt: null,
+          publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } },
+          entitySuspensions: {
+            none: { activeKey: { not: null }, status: "active", deletedAt: null }
+          }
+        }
+      },
+      orderBy: { id: "asc" },
+      select: {
+        id: true,
+        shopId: true,
+        name: true,
+        durationMinutes: true,
+        priceAmount: true,
+        serviceMode: true,
+        shop: { select: { city: true, address: true } }
+      }
+    }),
+    client.technicianService.findMany({
+      where: {
+        technicianId: { in: technicianScopeIds },
+        isActive: true,
+        isBookable: true,
+        reviewStatus: "APPROVED",
+        currency: "JPY",
+        durationMinutes: { gt: 0 },
+        priceAmount: { gt: 0 },
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null },
+        shop: {
+          status: "published",
+          deletedAt: null,
+          publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } },
+          entitySuspensions: {
+            none: { activeKey: { not: null }, status: "active", deletedAt: null }
+          }
+        },
+        technicianProfile: {
+          status: "published",
+          visibility: "public",
+          deletedAt: null,
+          user: { isActive: true, deletedAt: null }
+        }
+      },
+      orderBy: { id: "asc" },
+      select: {
+        id: true,
+        shopId: true,
+        technicianId: true,
+        name: true,
+        durationMinutes: true,
+        priceAmount: true,
+        sourceShopService: { select: { serviceMode: true } },
+        shop: { select: { city: true, address: true } },
+        technicianProfile: { select: { serviceArea: true, serviceAreasJson: true } }
+      }
+    }),
+    client.technicianShopAffiliation.findMany({
+      where: {
+        technicianProfileId: { in: technicianScopeIds },
+        workStatus: "ACTIVE",
+        activeKey: { not: null },
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        deletedAt: null
+      },
+      select: { technicianProfileId: true, shopId: true }
+    })
+  ]);
+  const activeAffiliations = new Set(
+    technicianShopAffiliations.map(
+      (affiliation) => `${affiliation.technicianProfileId}:${affiliation.shopId}`
+    )
+  );
+  const normalizeMode = (value: string): ExchangeSimulationServiceBinding["serviceMode"] | null =>
+    value === "store" || value === "onsite" || value === "flexible" ? value : null;
+  const normalizeAreas = (value: Prisma.JsonValue | null, fallback: string): string[] => {
+    const areas = Array.isArray(value)
+      ? [
+          ...new Set(
+            value
+              .filter((item): item is string => typeof item === "string")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
+        ]
+      : [];
+    return areas.length > 0 ? areas : [fallback];
+  };
+  const shopBindings = new Map<number, ExchangeSimulationServiceBinding>();
+  for (const service of shopServices) {
+    if (shopBindings.has(service.shopId)) continue;
+    const catalogPriceJpy = Number(service.priceAmount.toString());
+    const serviceMode = normalizeMode(service.serviceMode);
+    if (!Number.isSafeInteger(catalogPriceJpy) || !serviceMode) continue;
+    shopBindings.set(service.shopId, {
+      serviceRef: `shop:${service.id}`,
+      serviceId: service.id,
+      technicianServiceId: null,
+      serviceName: service.name,
+      serviceDurationMinutes: service.durationMinutes,
+      catalogPriceJpy,
+      serviceMode,
+      addressLabel: service.shop.address,
+      serviceAreas: [service.shop.city]
+    });
+  }
+  const technicianBindings = new Map<number, ExchangeSimulationServiceBinding>();
+  for (const service of technicianServices) {
+    if (
+      technicianBindings.has(service.technicianId) ||
+      !activeAffiliations.has(`${service.technicianId}:${service.shopId}`)
+    ) {
+      continue;
+    }
+    const serviceMode = normalizeMode(service.sourceShopService?.serviceMode ?? "store");
+    if (!Number.isSafeInteger(service.priceAmount) || !serviceMode) continue;
+    technicianBindings.set(service.technicianId, {
+      serviceRef: `technician:${service.id}`,
+      serviceId: null,
+      technicianServiceId: service.id,
+      serviceName: service.name,
+      serviceDurationMinutes: service.durationMinutes,
+      catalogPriceJpy: service.priceAmount,
+      serviceMode,
+      addressLabel: service.shop.address,
+      serviceAreas: normalizeAreas(
+        service.technicianProfile.serviceAreasJson,
+        service.technicianProfile.serviceArea?.trim() || service.shop.city
+      )
+    });
+  }
+
   return identities.flatMap((identity) =>
-    identity.publicIdentifier
+    identity.publicIdentifier &&
+    (identity.type === "customer" ||
+      (identity.scopeType === "shop" && identity.scopeId && shopBindings.has(identity.scopeId)) ||
+      (identity.scopeType === "technician_profile" &&
+        identity.scopeId &&
+        technicianBindings.has(identity.scopeId)))
       ? [
           {
             userId: identity.userId,
@@ -85,7 +253,21 @@ export const discoverExchangeSimulationActors = async (
             identityType: identity.type,
             publicId: identity.publicIdentifier.publicId,
             displayName: identity.displayName ?? identity.user.username,
-            avatarUrl: identity.user.avatarUrl
+            avatarUrl: identity.user.avatarUrl,
+            ...((
+              identity.scopeType === "shop" && identity.scopeId
+                ? shopBindings.get(identity.scopeId)
+                : identity.scopeType === "technician_profile" && identity.scopeId
+                  ? technicianBindings.get(identity.scopeId)
+                  : undefined
+            )
+              ? {
+                  intelligenceService:
+                    identity.scopeType === "shop" && identity.scopeId
+                      ? shopBindings.get(identity.scopeId)!
+                      : technicianBindings.get(identity.scopeId!)!
+                }
+              : {})
           }
         ]
       : []
@@ -236,6 +418,10 @@ const upsertSimulationPost = async (
   } else if (post.intelligence) {
     await transaction.exchangeDemand.deleteMany({ where: { postId: record.id } });
     const intelligence = {
+      serviceId: post.intelligence.serviceId,
+      technicianServiceId: post.intelligence.technicianServiceId,
+      serviceNameSnapshot: post.intelligence.serviceName,
+      serviceDurationSnapshot: post.intelligence.serviceDurationMinutes,
       serviceMode: serviceModeToDatabase[post.intelligence.serviceMode],
       addressLabel: post.intelligence.addressLabel,
       serviceAreas: post.intelligence.serviceAreas as Prisma.InputJsonValue,
@@ -322,9 +508,7 @@ const upsertSimulationPost = async (
   for (const share of post.shares) {
     const shareAt = new Date(share.createdAt);
     const saved = await transaction.exchangeShare.upsert({
-      where: {
-        postId_actorIdentityId: { postId: record.id, actorIdentityId: share.actor.identityId }
-      },
+      where: { idempotencyKey: share.idempotencyKey },
       create: {
         postId: record.id,
         actorUserId: share.actor.userId,
@@ -334,6 +518,8 @@ const upsertSimulationPost = async (
         updatedAt: shareAt
       },
       update: {
+        postId: record.id,
+        actorUserId: share.actor.userId,
         actorIdentityId: share.actor.identityId,
         idempotencyKey: share.idempotencyKey,
         createdAt: shareAt,

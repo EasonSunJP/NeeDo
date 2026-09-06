@@ -167,11 +167,11 @@ const technicianIntelligencePost = {
   },
   intelligence: {
     ...intelligencePost.intelligence!,
-    serviceMode: "onsite",
+    serviceMode: "store",
     booking: {
       ...intelligencePost.intelligence!.booking,
       target: { type: "technician_service", id: 801 },
-      serviceMode: "onsite"
+      serviceMode: "store"
     },
     publisherCard: {
       type: "technician",
@@ -195,7 +195,7 @@ const technicianIntelligencePost = {
       ...intelligencePost.intelligence!.serviceCard!,
       targetType: "technician_service",
       publicId: "technician-service0000000801",
-      serviceMode: "onsite",
+      serviceMode: "store",
       detailPath: "/stores/shop0000000061/technicians/s0000000062/services"
     }
   }
@@ -398,7 +398,7 @@ describe("ExchangePostDetailPage", () => {
 
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.click());
     expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
-      "/checkout/701?exchangePost=61"
+      "/checkout/701?date=2026-08-31&time=13%3A00&exchangePost=61"
     );
   });
 
@@ -417,8 +417,27 @@ describe("ExchangePostDetailPage", () => {
 
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.click());
     expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
-      "/checkout/technician-service/801?exchangePost=62"
+      "/checkout/technician-service/801?date=2026-08-31&time=13%3A00&exchangePost=62"
     );
+  });
+
+  it("fails closed for onsite Intelligence until structured travel checkout is integrated", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...technicianIntelligencePost,
+      intelligence: {
+        ...technicianIntelligencePost.intelligence!,
+        serviceMode: "onsite",
+        booking: { ...technicianIntelligencePost.intelligence!.booking, serviceMode: "onsite" },
+        serviceCard: { ...technicianIntelligencePost.intelligence!.serviceCard!, serviceMode: "onsite" }
+      }
+    } as ExchangePost);
+    await renderDetail("/needo/posts/62");
+    await waitFor(() => expect(document.body.textContent).toContain("佐藤 真央"));
+
+    const button = document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')!;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe("预约后续开放");
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')).toBeNull();
   });
 
   it.each([

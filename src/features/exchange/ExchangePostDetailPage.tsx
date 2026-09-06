@@ -34,6 +34,18 @@ const detailCardClassName =
   "rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel";
 const detailInnerCardClassName =
   "rounded-[18px] bg-[color:var(--client-bg-soft)] p-3";
+const tokyoCheckoutDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+const tokyoCheckoutTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Tokyo",
+  hourCycle: "h23",
+  hour: "2-digit",
+  minute: "2-digit"
+});
 
 function exchangeBasePath(context: MessageCenterContext) {
   return context === "user" ? "/needo" : `/${context}/needo`;
@@ -61,6 +73,21 @@ function formatTime(value: string, language: Language) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function checkoutStartParts(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const dateParts = new Map(
+    tokyoCheckoutDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  const timeParts = new Map(
+    tokyoCheckoutTimeFormatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  return {
+    date: `${dateParts.get("year")}-${dateParts.get("month")}-${dateParts.get("day")}`,
+    time: `${timeParts.get("hour")}:${timeParts.get("minute")}`
+  };
 }
 
 function formatJpy(value: number) {
@@ -383,19 +410,28 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
        : null;
   const intelligenceBooking = post.intelligence?.booking ?? null;
   const intelligencePostId = post.id;
+  const intelligenceServiceStartAt = post.serviceStartAt;
   const intelligenceBookable = Boolean(
     active &&
     intelligenceBooking?.available &&
-    intelligenceBooking.target
+    intelligenceBooking.target &&
+    intelligenceBooking.serviceMode === "store"
   );
 
   function openIntelligenceCheckout() {
     if (!intelligenceBookable || !intelligenceBooking?.target) return;
+    const checkoutStart = checkoutStartParts(intelligenceServiceStartAt);
+    if (!checkoutStart) return;
     const target = intelligenceBooking.target;
     const path = target.type === "shop_service"
       ? `/checkout/${target.id}`
       : `/checkout/technician-service/${target.id}`;
-    navigate(`${path}?exchangePost=${intelligencePostId}`);
+    const query = new URLSearchParams({
+      date: checkoutStart.date,
+      time: checkoutStart.time,
+      exchangePost: String(intelligencePostId)
+    });
+    navigate(`${path}?${query.toString()}`);
   }
 
   function revealDemandAction() {

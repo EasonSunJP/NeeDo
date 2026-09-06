@@ -143,6 +143,9 @@ function ensureIntelligenceCheckoutSource(post: ExchangePost, catalogRef: Checko
   if (!post.intelligence.publisherCard || !post.intelligence.serviceCard) {
     throw new CheckoutSourceError("来源情报的正式服务资料不完整，请稍后重试");
   }
+  if (post.intelligence.booking.serviceMode !== "store") {
+    throw new CheckoutSourceError("上门情报预约需等待正式路程估算接入，请返回情报详情");
+  }
   return post.intelligence;
 }
 

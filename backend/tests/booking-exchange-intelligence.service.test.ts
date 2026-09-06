@@ -65,9 +65,21 @@ describe("BookingService Intelligence source", () => {
   });
 
   it.each([
-    ["unavailable", "EXCHANGE_INTELLIGENCE_BOOKING_UNAVAILABLE", "error.exchange.intelligence_booking_unavailable"],
-    ["service_mismatch", "EXCHANGE_INTELLIGENCE_BOOKING_SERVICE_MISMATCH", "error.exchange.intelligence_booking_service_mismatch"],
-    ["idempotency_conflict", "BOOKING_CREATE_IDEMPOTENCY_CONFLICT", "error.booking.create_idempotency_conflict"]
+    [
+      "unavailable",
+      "EXCHANGE_INTELLIGENCE_BOOKING_UNAVAILABLE",
+      "error.exchange.intelligence_booking_unavailable"
+    ],
+    [
+      "service_mismatch",
+      "EXCHANGE_INTELLIGENCE_BOOKING_SERVICE_MISMATCH",
+      "error.exchange.intelligence_booking_service_mismatch"
+    ],
+    [
+      "idempotency_conflict",
+      "BOOKING_CREATE_IDEMPOTENCY_CONFLICT",
+      "error.booking.create_idempotency_conflict"
+    ]
   ] as const)("maps %s without leaking repository details", async (reason, codeKey, message) => {
     const repo = repository();
     repo.createBooking.mockResolvedValue({ intelligenceBookingError: reason });
@@ -109,5 +121,34 @@ describe("BookingService Intelligence source", () => {
       )
     ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION, statusCode: 400 });
     expect(repo.createBooking).not.toHaveBeenCalled();
+  });
+
+  it("does not emit a second notification for an idempotent booking replay", async () => {
+    const repo = repository();
+    repo.createBooking.mockResolvedValue({
+      order: {
+        ...order,
+        orderNo: "ND-REPLAY",
+        serviceName: "Formal care"
+      } as BookingOrderPayload,
+      recipientUserIds: [91],
+      supersededOrders: [],
+      idempotentReplay: true
+    });
+    const notifications = { notifyOrderStatusChanged: jest.fn(async () => undefined) };
+    const service = new BookingService(repo, undefined, notifications);
+
+    await service.createBooking(
+      actor,
+      {
+        serviceId: 41,
+        scheduleSlotId: 51,
+        exchangeIntelligencePostId: 61,
+        fulfillmentMode: "store"
+      },
+      "intelligence-booking-0001"
+    );
+
+    expect(notifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
   });
 });
