@@ -177,4 +177,18 @@ describe("UnifiedUserDetailDrawer", () => {
     await waitForText(container, "展开权限");
     expect(container.textContent).not.toContain("backoffice:users:read");
   });
+
+  it("shows partner marks only inside the account tab across all six tabs", async () => {
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "平台合作方标记");
+    const headings = [...container.querySelectorAll("h3")].filter((node) => node.textContent === "平台合作方标记");
+    expect(headings).toHaveLength(1);
+    const panel = headings[0].closest<HTMLElement>('[role="tabpanel"]');
+    expect(panel).not.toBeNull();
+    for (const tab of container.querySelectorAll<HTMLElement>('[role="tab"]')) {
+      act(() => tab.click());
+      expect(panel!.hidden).toBe(tab.textContent !== "权限与账号");
+      if (tab.textContent === "权限与账号") expect(panel!.getAttribute("aria-labelledby")).toBe(tab.id);
+    }
+  });
 });

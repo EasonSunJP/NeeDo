@@ -105,6 +105,8 @@ describe("UserFulfillmentTimelineDrawer", () => {
     );
     await flush();
     expect(api.getUsageTimeline).toHaveBeenCalledWith("operations", 41, 88);
+    expect(container.querySelector("h1")?.textContent).toBe("用户LOG・B-88");
+    expect(container.querySelector(".admin-event-timeline > section > p")?.textContent).toBe("用户LOG");
     expect(container.textContent).toContain("预约已创建");
     expect(container.querySelector('[data-tone="green"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="追加评论"]')).not.toBeNull();
