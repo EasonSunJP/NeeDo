@@ -1,0 +1,93 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { boxesOverlap, layoutMapLabels, type MapLabelPlacement, type MapLabelRegion } from "./mapLabelLayout";
+
+const identityViewport = { scale: 1, x: 0, y: 0 };
+const viewBox: [number, number, number, number] = [0, 0, 1000, 800];
+const region = (code: string, labelPoint: [number, number], nameJa = "新宿区"): MapLabelRegion => ({ code, labelPoint, nameJa });
+const overlappingPairs = (placements: MapLabelPlacement[]) => placements.flatMap((a, index) =>
+  placements.slice(index + 1).filter((b) => boxesOverlap(a, b)).map((b) => [a.code, b.code]));
+
+function expectContained(placements: MapLabelPlacement[], bounds: typeof viewBox) {
+  for (const item of placements) {
+    expect(item.label[0] - item.width / 2).toBeGreaterThanOrEqual(bounds[0]);
+    expect(item.label[0] + item.width / 2).toBeLessThanOrEqual(bounds[0] + bounds[2]);
+    expect(item.label[1] - item.height / 2).toBeGreaterThanOrEqual(bounds[1]);
+    expect(item.label[1] + item.height / 2).toBeLessThanOrEqual(bounds[1] + bounds[3]);
+  }
+}
+
+describe("layoutMapLabels", () => {
+  it("retains separated internal labels and estimates boxes in viewBox units", () => {
+    const placements = layoutMapLabels({ regions: [region("01", [200, 200]), region("02", [500, 500], "村")], viewBox, viewport: identityViewport });
+    expect(placements.find((item) => item.code === "01")).toMatchObject({ label: [200, 200], width: 61, height: 28, external: false, leader: [] });
+    expect(placements.find((item) => item.code === "02")?.width).toBe(48);
+    expect(overlappingPairs(placements)).toEqual([]);
+  });
+
+  it.each(["country.json", "prefectures/13.json"])("lays out every real region in %s without overlap", (file) => {
+    const asset = JSON.parse(fs.readFileSync(path.join(process.cwd(), "public/maps/jp/2026", file), "utf8")) as { regions: MapLabelRegion[]; viewBox: typeof viewBox };
+    const input = { ...asset, viewport: identityViewport, selectedCode: "13104", orderCountByCode: { "13104": 12, "13101": 8 } };
+    const placements = layoutMapLabels(input);
+    expect(placements).toHaveLength(asset.regions.length);
+    expect(overlappingPairs(placements)).toEqual([]);
+    expectContained(placements, asset.viewBox);
+    expect(layoutMapLabels(input)).toEqual(placements);
+    expect(layoutMapLabels({ ...input, regions: [...asset.regions].reverse() })).toEqual(placements);
+    expect(placements.some((item) => item.external)).toBe(true);
+    if (file.includes("13")) expect(placements.find((item) => item.code === "13104")).toBeDefined();
+    for (const item of placements.filter((placement) => placement.external)) {
+      expect(item.leader.length).toBeGreaterThanOrEqual(2);
+      expect(item.leader.length).toBeLessThanOrEqual(3);
+      expect(item.leader[0]).toEqual(item.anchor);
+      const end = item.leader.at(-1)!;
+      expect(Math.abs(end[0] - item.label[0]) > item.width / 2 || Math.abs(end[1] - item.label[1]) > item.height / 2).toBe(true);
+    }
+  });
+
+  it("keeps dense island callouts inside offset bounds with selected priority", () => {
+    const bounds: typeof viewBox = [100, 200, 1000, 800];
+    const regions = Array.from({ length: 80 }, (_, index) => region(String(13000 + index), [600 + index % 3, 600 + index % 4]));
+    const placements = layoutMapLabels({ regions, viewBox: bounds, viewport: identityViewport, selectedCode: "13079" });
+    expect(placements).toHaveLength(80);
+    expect(placements[0]).toMatchObject({ code: "13079", external: false });
+    expect(overlappingPairs(placements)).toEqual([]);
+    expectContained(placements, bounds);
+  });
+
+  it("prioritizes selection, positive order counts, smaller boxes, and administrative code", () => {
+    const regions = [region("04", [500, 400]), region("03", [500, 400]), region("02", [500, 400], "村"), region("01", [500, 400]), region("05", [500, 400])];
+    const placements = layoutMapLabels({ regions, viewBox, viewport: identityViewport, selectedCode: "05", orderCountByCode: { "04": 1 } });
+    expect(placements.map((item) => item.code)).toEqual(["05", "04", "02", "01", "03"]);
+    expect(placements[0].external).toBe(false);
+  });
+
+  it("transforms anchors at 2x zoom while keeping label size constant", () => {
+    const placements = layoutMapLabels({ regions: [region("01", [200, 180]), region("02", [900, 790])], viewBox, viewport: { scale: 2, x: -50, y: 30 } });
+    expect(placements[0]).toMatchObject({ anchor: [350, 390], label: [350, 390], width: 61, height: 28, external: false });
+    expect(placements[1]).toMatchObject({ anchor: [1750, 1610], external: true });
+    expectContained(placements, viewBox);
+  });
+
+  it("uses the nearest perimeter slot for an edge anchor", () => {
+    const [placement] = layoutMapLabels({ regions: [region("01", [2, 400])], viewBox, viewport: identityViewport });
+    expect(placement.external).toBe(true);
+    expect(placement.label[0]).toBeLessThan(100);
+    expect(placement.label[1]).toBe(400);
+    expectContained([placement], viewBox);
+  });
+
+  it("omits null anchors, accepts empty input, and does not mutate frozen input", () => {
+    const regions = Object.freeze([Object.freeze({ code: "01", nameJa: "村", labelPoint: null })]);
+    expect(layoutMapLabels(Object.freeze({ regions, viewBox, viewport: Object.freeze(identityViewport) }))).toEqual([]);
+    expect(layoutMapLabels({ regions: [], viewBox, viewport: identityViewport })).toEqual([]);
+  });
+
+  it("treats touching boxes as non-overlapping and detects containment", () => {
+    const a = { label: [20, 20] as [number, number], width: 20, height: 20 };
+    expect(boxesOverlap(a, { ...a, label: [40, 20] })).toBe(false);
+    expect(boxesOverlap(a, { ...a, label: [39, 20] })).toBe(true);
+    expect(boxesOverlap(a, { ...a, width: 10, height: 10 })).toBe(true);
+  });
+});
