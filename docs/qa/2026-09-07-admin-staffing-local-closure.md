@@ -61,3 +61,12 @@
 原共享Redis generation曾被覆盖的来源仍未查明。本轮登录恢复的直接问题是服务停止；不把本轮正常登录误报为已经修复历史覆盖根因。
 
 证据文件位于本工作树outputs/admin-six-month，包括order-api-evidence.json及20260907-local-closure.json；完整检查日志保留于/private/tmp/needo-admin-closure-*.log。
+
+## 后续主线组合预检（2026-09-07 04:30 JST）
+
+- 共享 main 为 `efac2594bb78fefde3bc7d2e3c6c16222f07a5d0`。依据既有串行集成安排，公告任务、商户数据中心任务明确释放前，本任务继续只修改独立分支。
+- 在 `codex/admin-six-month-main-integration` 无冲突合入该 main，组合提交为 `c3663b4e6a445da72031ddb36ceae3d039aa7fbd`；没有移动共享 main。相对 main 的业务代码差异仍仅语言字典的等价压缩，另有本验收记录。
+- 组合后正式前端构建成功，但首次资源审计发现语言包为3,705,525字节，超过原预算3,704,096字节。再将96个四语言对象复用既有函数，最终为3,703,797字节，减少1,728字节；预算未变。
+- 对比上述 main 的全部14,810条导出翻译，键顺序和所有语言值逐项完全相同；没有删除文案。
+- 最终排班、语言、资源审计工具5文件82项测试通过；完整 `verify:production-build` 通过，资源审计为8个HTML入口及56个资产。日志为 `/private/tmp/needo-admin-closure-efac-tests-fixed.log` 和 `/private/tmp/needo-admin-closure-efac-build-fixed.log`，失败基线保留于 `/private/tmp/needo-admin-closure-efac-build.log`。
+- 这是独立分支的前端组合预检；没有重建或重启后端，没有重复导入业务数据，也未推送、部署或执行数据库迁移。5289预览的构建目录已更新；此前后端及登录浏览器验收的时间和运行来源仍以前文为准，不将本次构建替代登录验收。
