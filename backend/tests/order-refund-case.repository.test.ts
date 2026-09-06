@@ -376,7 +376,9 @@ describe("OrderRefundCaseRepository", () => {
     const client = { $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
       const draft = structuredClone(state);
       const tx = { $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 71 }]).mockResolvedValueOnce([{ id: 81 }]).mockResolvedValueOnce(reward).mockResolvedValueOnce(transaction).mockResolvedValueOnce([{ id: 99, availableBalance: 50, frozenBalance: 0 }]), orderRefundCaseEvent: { findFirst: jest.fn(async () => null), create: jest.fn(async () => { draft.events += 1; }) }, orderRefundCase: { findFirst: jest.fn(async () => pendingCase), update: jest.fn(async () => { draft.case = { status: "REFUNDED", activeKey: null }; return { ...pendingCase, status: "REFUNDED", version: 5, activeKey: null }; }) }, bookingOrder: { updateMany: jest.fn(async () => { draft.order = { paymentStatus: "REFUNDED", paymentRefundedAt: now }; return { count: 1 }; }) }, orderFinancial: { updateMany: jest.fn(async () => ({ count: 0 })) }, affiliateReward: { findFirst: jest.fn(async () => null) }, auditLog: { create: jest.fn(async () => { draft.audits += 1; }) }, notification: { create: jest.fn(async () => { draft.notifications += 1; }) } };
-      try { const result = await callback(tx); Object.assign(state, draft); return result; } catch (error) { throw error; }
+      const result = await callback(tx);
+      Object.assign(state, draft);
+      return result;
     }) };
     const receipt: ConfirmRefundReceiptCommand = { ...command, casePublicId: pendingCase.publicId, expectedVersion: 4, idempotencyKey: "refund-stateful-rollback", payload: {} };
     await expect(new OrderRefundCaseRepository(client as unknown as PrismaClient).confirmCustomerReceipt(receipt)).resolves.toMatchObject({ kind: "invalid_state" });
