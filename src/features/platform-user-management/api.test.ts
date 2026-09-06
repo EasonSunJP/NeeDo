@@ -136,6 +136,23 @@ describe("platformUserManagementApi", () => {
     );
   });
 
+  it("decodes formal payment and extra-time facts and rejects invented payment states", async () => {
+    const review = {
+      reviewId: 77, targetType: "customer", rating: 5, comment: null, tags: [],
+      createdAt: "2026-09-05T10:00:00.000Z", amendmentVersion: 0, amendmentHistory: [],
+      reviewer: { needoId: "s0000000042", displayName: "Mika", avatarUrl: null },
+      order: { id: 88, orderNo: "B-88", serviceName: "Care", startsAt: "2026-09-05T09:00:00.000Z",
+        shopName: "Tokyo", durationMinutes: 60, note: null, paymentMethod: "ndp", paymentStatus: "refunded",
+        paymentCurrency: "TEST_NDP", otherPaymentMethod: null, addOnCount: 1, addOnMinutes: 30 }
+    };
+    const page = { list: [review], total: 1, page: 1, page_size: 10 };
+    vi.mocked(httpClient.request).mockResolvedValueOnce(page);
+    const result = await platformUserManagementApi.listReceivedReviews("operations", 41, { page: 1, page_size: 10 });
+    expect(result.list[0].order).toEqual(review.order);
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ ...page, list: [{ ...review, order: { ...review.order, paymentStatus: "smooth" } }] });
+    await expect(platformUserManagementApi.listReceivedReviews("operations", 41, { page: 1, page_size: 10 })).rejects.toThrow();
+  });
+
   it("uses scoped ten-row usage reads, timeline, comments and refund amendments", async () => {
     vi.mocked(httpClient.request)
       .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 10 })

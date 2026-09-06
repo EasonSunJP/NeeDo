@@ -432,7 +432,7 @@ export function FormalTabs<TTab extends string>({
     <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
       <div
         aria-label={localization.t("详情分类")}
-        className="scrollbar-none flex max-w-full gap-2 overflow-x-auto pb-0.5"
+        className="scrollbar-none flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1"
         role="tablist"
       >
         {items.map((item, index) => {
@@ -443,10 +443,10 @@ export function FormalTabs<TTab extends string>({
               aria-controls={`${idPrefix}-panel-${index}`}
               aria-selected={selected}
               className={cn(
-                "focus-ring h-9 shrink-0 rounded-lg border px-3 text-sm font-black transition",
+                "focus-ring h-9 shrink-0 rounded-full border border-transparent px-4 text-sm font-black transition",
                 selected
-                  ? "border-[color:var(--admin-text,#172033)] bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-[inset_0_-3px_0_#6e9b79]"
-                  : "border-line bg-paper text-ink/60 hover:border-moss hover:text-ink"
+                  ? "bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-sm"
+                  : "bg-transparent text-ink/60 hover:bg-white hover:text-ink"
               )}
               id={`${idPrefix}-tab-${index}`}
               key={item}

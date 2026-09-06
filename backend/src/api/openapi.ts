@@ -7039,6 +7039,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
+          identityProfiles: {
+            type: "array",
+            description: "Operations-only personal identity names and latest application states. Merchant names come from MerchantIdentityProfile, never shop labels. Draft or withdrawn applications are not enabled.",
+            items: {
+              type: "object",
+              required: ["type", "status", "displayName"],
+              properties: {
+                type: { type: "string", enum: ["technician", "merchant"] },
+                status: { type: "string", enum: ["active", "not_enabled", "under_review", "rejected"] },
+                displayName: { type: ["string", "null"] }
+              }
+            }
+          },
           roles: { type: "array", items: { type: "object" } },
           groups: { type: "array", items: { type: "string" } },
           ekycVerified: { type: "boolean" },
@@ -7079,6 +7092,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           bookingCount: { type: "integer", minimum: 0 },
+          testNdpBalance: {
+            type: ["object", "null"],
+            description: "Separate TEST_NDP wallet balance. Null when no test wallet exists; never included in ndpBalance or NDP balance filters.",
+            required: ["available", "frozen"],
+            properties: {
+              available: { type: "integer" },
+              frozen: { type: "integer" }
+            }
+          },
           city: { type: ["string", "null"] },
           privacyMode: { type: "boolean" },
           privacyScope: {
@@ -7179,12 +7201,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           order: {
             type: "object",
-            required: ["id", "orderNo", "serviceName", "startsAt"],
+            required: ["id", "orderNo", "serviceName", "startsAt", "shopName", "durationMinutes", "note", "paymentMethod", "paymentStatus", "paymentCurrency", "otherPaymentMethod", "addOnCount", "addOnMinutes"],
             properties: {
               id: { type: "integer", minimum: 1 },
               orderNo: { type: "string" },
               serviceName: { type: "string" },
-              startsAt: { type: "string", format: "date-time" }
+              startsAt: { type: "string", format: "date-time" },
+              shopName: { type: "string" },
+              durationMinutes: { type: ["integer", "null"], minimum: 0 },
+              note: { type: ["string", "null"] },
+              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer", "cash", "ndp", "other"] },
+              paymentStatus: { type: "string", enum: ["pending", "confirmed", "refund_pending", "refunded"] },
+              paymentCurrency: { type: ["string", "null"], description: "Currency from the checkout ledger; null when unavailable. TEST_NDP is distinct from NDP." },
+              otherPaymentMethod: { type: ["string", "null"] },
+              addOnCount: { type: "integer", minimum: 0, description: "Non-deleted ACCEPTED add-ons only" },
+              addOnMinutes: { type: "integer", minimum: 0 }
             }
           },
           reviewer: {

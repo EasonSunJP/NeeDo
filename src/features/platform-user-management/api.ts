@@ -72,6 +72,7 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
   const raw = record(value);
   const membership = record(raw.membership);
   const balance = record(raw.ndpBalance);
+  const testBalance = raw.testNdpBalance == null ? null : record(raw.testNdpBalance);
   const experience = raw.experience === null ? null : record(raw.experience);
   return {
     id: integer(raw.id),
@@ -100,6 +101,14 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
         scopeId: identity.scopeId === null ? null : integer(identity.scopeId)
       };
     }),
+    identityProfiles: raw.identityProfiles === undefined ? undefined : array(raw.identityProfiles).map((item) => {
+      const profile = record(item);
+      return {
+        type: enumValue(profile.type, ["technician", "merchant"] as const),
+        status: enumValue(profile.status, ["active", "not_enabled", "under_review", "rejected"] as const),
+        displayName: nullableString(profile.displayName)
+      };
+    }),
     roles: array(raw.roles).map((item) => {
       const role = record(item);
       return { code: string(role.code), name: string(role.name) };
@@ -121,6 +130,7 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
         }
       : null,
     ndpBalance: { available: integer(balance.available), frozen: integer(balance.frozen) },
+    testNdpBalance: testBalance ? { available: integer(testBalance.available), frozen: integer(testBalance.frozen) } : null,
     bookingCount: integer(raw.bookingCount),
     lastLoginAt: nullableTimestamp(raw.lastLoginAt),
     createdAt: timestamp(raw.createdAt),
@@ -388,7 +398,16 @@ const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
       id: integer(order.id),
       orderNo: string(order.orderNo),
       serviceName: string(order.serviceName),
-      startsAt: timestamp(order.startsAt)
+      startsAt: timestamp(order.startsAt),
+      shopName: string(order.shopName),
+      durationMinutes: order.durationMinutes === null ? null : integer(order.durationMinutes),
+      note: nullableString(order.note),
+      paymentMethod: enumValue(order.paymentMethod, ["onsite", "bank_transfer", "cash", "ndp", "other"] as const),
+      paymentStatus: enumValue(order.paymentStatus, ["pending", "confirmed", "refund_pending", "refunded"] as const),
+      paymentCurrency: nullableString(order.paymentCurrency),
+      otherPaymentMethod: nullableString(order.otherPaymentMethod),
+      addOnCount: integer(order.addOnCount),
+      addOnMinutes: integer(order.addOnMinutes)
     },
     reviewer: {
       needoId: string(reviewer.needoId),

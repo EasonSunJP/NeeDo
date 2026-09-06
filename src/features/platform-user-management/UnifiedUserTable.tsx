@@ -16,6 +16,24 @@ export type UnifiedUserTableProps = {
   onSelect: (userId: number) => void;
 };
 
+function UserIdentityBadges({ row, language }: { row: PlatformManagedUser; language: Language }) {
+  const profiles = row.identityProfiles;
+  if (!profiles) return <div className="flex max-w-[220px] flex-wrap gap-1">
+    {row.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`}>{identity.displayName || identity.type}</Badge>)}
+  </div>;
+  const statusText = { not_enabled: "未开启", under_review: "审核中", rejected: "拒绝" };
+  const otherTypes: Record<string, string> = { platform: "运营", broker: "经纪人", scout: "星探" };
+  return <div className="flex max-w-[220px] flex-col items-start gap-1">
+    {profiles?.map((profile, index) => <Badge key={`${profile.type}-${index}`}>
+      {translateText(profile.type === "technician" ? "技师" : "商户", language)}：{profile.status === "active" ? profile.displayName || "—" : translateText(statusText[profile.status], language)}
+    </Badge>)}
+    {row.identities.filter((identity) => identity.type in otherTypes).map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`}>
+      {translateText(otherTypes[identity.type], language)}：{identity.displayName || "—"}
+    </Badge>)}
+    {!profiles?.length && !row.identities.some((identity) => identity.type in otherTypes) ? "—" : null}
+  </div>;
+}
+
 const bookingRanges: Record<string, Pick<UserListQuery, "minBookings" | "maxBookings">> = {
   "0": { minBookings: 0, maxBookings: 0 },
   "1-9": { minBookings: 1, maxBookings: 9 },
@@ -210,12 +228,12 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
             <td className="px-4 py-3"><div className="flex items-center gap-3">{row.avatarUrl ? <img alt="" className="h-10 w-10 rounded-full border border-line object-cover" src={row.avatarUrl} /> : <div aria-label={row.displayName} className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-moss/10 text-sm font-black text-moss">{row.displayName.trim().slice(0, 1).toUpperCase() || "?"}</div>}<div><p className="font-black text-ink">{row.displayName}</p><p className="text-xs text-ink/45">{row.needoId}</p></div></div></td>
             <td className="max-w-[220px] truncate px-4 py-3 font-bold">{row.email || "—"}</td>
             <td className="px-4 py-3">{row.city || "—"}</td>
-            <td className="px-4 py-3"><div className="flex max-w-[220px] flex-wrap gap-1">{row.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`}>{identity.displayName || identity.type}</Badge>)}</div></td>
+            <td className="px-4 py-3"><UserIdentityBadges language={language} row={row} /></td>
             <td className="px-4 py-3"><p className="font-bold">{membershipTierText(row.membership.tierCode, language)}</p>{row.experience ? <p className="mt-1 text-xs text-ink/50">Lv.{row.experience.currentLevel} · {row.experience.totalExpUnits} EXP</p> : null}</td>
             <td className="px-4 py-3 font-bold">{row.bookingCount}</td>
             <td className="px-4 py-3"><Badge tone={row.privacyMode ? "yellow" : "green"}>{privacyModeText(row.privacyMode, language)}</Badge>{row.privacyScope ? <p className="mt-1 text-xs text-ink/45">{privacyScopeText(row.privacyScope, language)}</p> : null}</td>
             <td className="px-4 py-3"><Badge tone={row.ekycVerified ? "green" : "neutral"}>{row.ekycVerified ? copy.verified : copy.unverified}</Badge></td>
-            <td className="px-4 py-3 font-bold">{row.ndpBalance.available.toLocaleString()}</td>
+            <td className="px-4 py-3 font-bold">{row.ndpBalance.available.toLocaleString(language)}{row.testNdpBalance && (row.testNdpBalance.available !== 0 || row.testNdpBalance.frozen !== 0) ? <p className="mt-1 whitespace-nowrap text-xs font-medium text-ink/50">TestNDP {row.testNdpBalance.available.toLocaleString(language)}</p> : null}</td>
             <td className="px-4 py-3"><Badge tone={row.isActive ? "green" : "red"}>{row.isActive ? copy.active : copy.inactive}</Badge></td>
             <td className="px-4 py-3 text-xs text-ink/55">{new Date(row.createdAt).toLocaleString(language)}</td>
             <td className="table-frozen-action px-4 py-3"><Button className="whitespace-nowrap" onClick={() => onSelect(row.id)} size="sm" variant="secondary">{copy.details}</Button></td>
