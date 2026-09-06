@@ -89,7 +89,7 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
       setActiveIndex(-1);
       return;
     }
-    if (!results.length) return;
+    if (!open || !results.length) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setOpen(true);
@@ -129,7 +129,7 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
           value={query}
         />
       </label>
-      {open && query && (results.length ? (
+      {open && query && index && (results.length ? (
         <ul id={resultListId} role="listbox">
           {results.map((entry, resultIndex) => (
             <li
@@ -143,6 +143,7 @@ export function RegionNavigator({ breadcrumbs, onSelectRegion, scope }: RegionNa
           ))}
         </ul>
       ) : <p role="status">{t("没有匹配结果")}</p>)}
+      {open && query && !index && !loadFailed ? <p role="status">{t("正在读取实时经营数据")}</p> : null}
       <label>
         <span>{t("都道府县")}</span>
         <select

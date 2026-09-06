@@ -81,10 +81,24 @@ describe("RegionNavigator", () => {
     await render();
     const input = await typeIntoSearch("市");
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" })));
-    expect(input.getAttribute("aria-activedescendant")).toBeTruthy();
+    const firstResult = input.getAttribute("aria-activedescendant");
+    expect(firstResult).toBeTruthy();
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp" })));
+    const lastResult = input.getAttribute("aria-activedescendant");
+    expect(lastResult).toBeTruthy();
+    expect(lastResult).not.toBe(firstResult);
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" })));
+    expect(input.getAttribute("aria-activedescendant")).toBe(firstResult);
     await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" })));
     expect(container.querySelector('[role="listbox"]')).toBeNull();
+  });
+
+  it("does not select a hidden result when Enter follows Escape", async () => {
+    const onSelectRegion = await render(vi.fn(), { country: "JP", admin1: "13", period: "last7days" });
+    const input = await typeIntoSearch("新宿");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" })));
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" })));
+    expect(onSelectRegion).not.toHaveBeenCalled();
   });
 
   it("shows an empty result state and does not navigate from the current scope", async () => {
@@ -126,6 +140,17 @@ describe("RegionNavigator", () => {
     await render();
     expect(container.textContent).toContain("实时数据暂不可用");
     expect(container.textContent).toContain("日本 / 東京都 / 新宿区");
+  });
+
+  it("keeps no-match hidden while the index is loading or unavailable", async () => {
+    let rejectFetch: ((reason?: unknown) => void) | undefined;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => new Promise((_, reject) => { rejectFetch = reject; })));
+    await render();
+    await typeIntoSearch("不存在");
+    expect(container.textContent).not.toContain("没有匹配结果");
+    await act(async () => rejectFetch!(new Error("offline")));
+    expect(container.textContent).toContain("实时数据暂不可用");
+    expect(container.textContent).not.toContain("没有匹配结果");
   });
 
   it("does not navigate when the selected scope is already current", async () => {
