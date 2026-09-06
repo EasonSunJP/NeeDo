@@ -238,7 +238,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
             <td className="max-w-[220px] truncate px-4 py-3 font-bold">{row.email || "—"}</td>
             <td className="px-4 py-3">{row.city || "—"}</td>
             <td className="px-4 py-3"><UserIdentityBadges language={language} row={row} /></td>
-            <td className="px-4 py-3"><p className="font-bold">{membershipTierText(row.membership.tierCode, language)}</p>{row.experience ? <p className="mt-1 text-xs text-ink/50">Lv.{row.experience.currentLevel} · {row.experience.totalExpUnits} EXP</p> : null}</td>
+            <td className="px-4 py-3"><p className="font-bold">{membershipTierText(row.membership.tierCode, language)}</p>{row.experience ? <p className="mt-1 text-xs text-ink/50">Lv.{row.experience.currentLevel} · {row.experience.totalExp} EXP</p> : null}</td>
             <td className="px-4 py-3 font-bold">{row.bookingCount}</td>
             <td className="px-4 py-3"><Badge tone={row.privacyMode ? "yellow" : "green"}>{privacyModeText(row.privacyMode, language)}</Badge>{row.privacyScope ? <p className="mt-1 text-xs text-ink/45">{privacyScopeText(row.privacyScope, language)}</p> : null}</td>
             <td className="px-4 py-3"><Badge tone={row.ekycVerified ? "green" : "neutral"}>{row.ekycVerified ? copy.verified : copy.unverified}</Badge></td>

@@ -6970,10 +6970,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeManagedUserExperience: {
         type: "object",
-        required: ["currentLevel", "totalExpUnits"],
+        required: ["currentLevel", "totalExp", "totalExpUnits"],
         properties: {
           currentLevel: { type: "integer", minimum: 1, maximum: 100 },
-          totalExpUnits: { type: "string", pattern: "^[0-9]+$" }
+          totalExp: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,4})?$", description: "Exact decimal EXP amount for display, consistent with the user experience summary." },
+          totalExpUnits: { type: "string", pattern: "^[0-9]+$", deprecated: true, description: "Legacy storage precision; use totalExp for experience amounts." }
         }
       },
       BackofficeManagedUser: {

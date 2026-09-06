@@ -35,7 +35,7 @@ const row: PlatformManagedUser = {
     experienceMultiplier: 1.5,
     lockVersion: null
   },
-  experience: { currentLevel: 1, totalExpUnits: "40000" },
+  experience: { currentLevel: 1, totalExp: "4" },
   ndpBalance: { available: 400, frozen: 0 },
   bookingCount: 12,
   lastLoginAt: null,
@@ -77,6 +77,8 @@ describe("UnifiedUserTable", () => {
     expect(container.textContent).toContain("已开启");
     expect(container.textContent).not.toContain("邮箱已绑定");
     expect(container.textContent).not.toContain("gold");
+    expect(container.textContent).toContain("Lv.1 · 4 EXP");
+    expect(container.textContent).not.toContain("40000 EXP");
   });
 
   it("shows technician and merchant personal names without duplicating the customer or shop name", () => {

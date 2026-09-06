@@ -359,7 +359,7 @@ function renderManagedUserTab(
     { label: "当前会员等级", value: <div className="flex flex-wrap items-center justify-between gap-2"><span>{membershipTierText(detail.membership.tierCode, localization.language)}</span>{membershipActions?.tier}</div> },
     { label: "会员倍率", value: <div className="flex flex-wrap items-center justify-between gap-2"><span>×{formatDecimal(detail.membership.experienceMultiplier, localization)}</span>{membershipActions?.multiplier}</div> },
     { label: "当前等级", value: detail.experience ? `Lv.${detail.experience.currentLevel}` : "—" },
-    { label: "累计经验", value: detail.experience ? `${detail.experience.totalExpUnits} EXP` : "—" },
+    { label: "累计经验", value: detail.experience ? `${detail.experience.totalExp} EXP` : "—" },
     { label: "到期时间", value: formatDateTime(detail.membership.expiresAt, localization) }
   ], localization)} /></FormalSectionCard>;
 

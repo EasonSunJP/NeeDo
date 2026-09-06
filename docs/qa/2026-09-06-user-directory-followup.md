@@ -21,3 +21,5 @@ The September 1 design document line 137 proposed `10,000 units = 1 EXP` as stor
 - Vite PID 43732 serves port 5180 from `.worktrees/dashboard-remaining-acceptance`. Existing worktree watcher exclusion required a restart preserving public proxy configuration. Tests used a separate Chrome tab; the user's original tab was not navigated.
 
 The user requested local main integration after acceptance. This follow-up is committed directly in the existing main worktree. No push, deployment, migration or account mutation is included.
+
+The raw-unit display limitation above is addressed by the [EXP read-contract correction](2026-09-06-experience-display.md), which preserves historical storage and event values.

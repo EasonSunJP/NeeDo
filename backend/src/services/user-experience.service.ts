@@ -12,6 +12,7 @@ import {
   type UserExperienceRepositoryPort
 } from "../domain/user-experience";
 import {
+  formatExperienceUnits,
   USER_EXPERIENCE_THRESHOLDS,
   USER_EXPERIENCE_UNITS_PER_EXP
 } from "../domain/user-experience-levels";
@@ -20,17 +21,6 @@ import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 
 const eventTypeSet = new Set<string>(USER_EXPERIENCE_EVENT_TYPES);
-
-const formatExperienceUnits = (units: bigint): string => {
-  const negative = units < 0n;
-  const absolute = negative ? -units : units;
-  const whole = absolute / USER_EXPERIENCE_UNITS_PER_EXP;
-  const fraction = (absolute % USER_EXPERIENCE_UNITS_PER_EXP)
-    .toString()
-    .padStart(4, "0")
-    .replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
-};
 
 export { calculateFinalExperienceUnits } from "../domain/user-experience";
 

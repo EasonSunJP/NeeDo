@@ -466,6 +466,7 @@ export interface BackofficeManagedUserMembershipPayload {
 
 export interface BackofficeManagedUserExperiencePayload {
   currentLevel: number;
+  totalExp: string;
   totalExpUnits: string;
 }
 

@@ -25,6 +25,7 @@ import type {
   DashboardHeadlineSeriesPoint
 } from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
+import { formatExperienceUnits } from "../domain/user-experience-levels";
 import { buildManagedUserNumericPageQuery } from "./managed-user-numeric-sort";
 import {
   type BackofficeCsvExportPayload,
@@ -2392,6 +2393,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         customerProfile && user.experienceAccount && !user.experienceAccount.deletedAt
           ? {
               currentLevel: user.experienceAccount.currentLevel,
+              totalExp: formatExperienceUnits(user.experienceAccount.totalExpUnits),
               totalExpUnits: user.experienceAccount.totalExpUnits.toString()
             }
           : null,

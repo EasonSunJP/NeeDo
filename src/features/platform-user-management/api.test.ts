@@ -7,8 +7,34 @@ vi.mock("../../api/httpClient", async () => {
   return { ...actual, httpClient: { request: vi.fn() } };
 });
 
+const userResponse = (experience: unknown) => ({
+  id: 41, needoId: "u4083532147", username: "Mia", displayName: "Mia", email: "mia@example.test",
+  phone: null, emailBound: true, phoneBound: false, avatarUrl: null, city: null,
+  privacyMode: false, privacyScope: null, isActive: true, isTestAccount: false,
+  source: [], identities: [], roles: [], groups: [], ekycVerified: false,
+  membership: { tierCode: "free", tierVersionPublicId: null, entitlementPublicId: null, expiresAt: null, experienceMultiplier: 1, lockVersion: null },
+  ndpBalance: { available: 0, frozen: 0 }, experience, bookingCount: 0,
+  lastLoginAt: null, createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z"
+});
+
 describe("platformUserManagementApi", () => {
   beforeEach(() => vi.mocked(httpClient.request).mockReset());
+
+  it.each(["operations", "merchant"] as const)("uses exact EXP amounts and drops legacy units in %s", async (scope) => {
+    vi.mocked(httpClient.request).mockResolvedValue({ list: [userResponse({ currentLevel: 1, totalExp: "4.0001", totalExpUnits: "40001" })], total: 1, page: 1, page_size: 20 });
+    const page = await platformUserManagementApi.listUsers(scope, {});
+    expect(page.list[0].experience).toEqual({ currentLevel: 1, totalExp: "4.0001" });
+  });
+
+  it.each([undefined, "4 EXP", "-1", "1e4", "0.00001"])("rejects missing or invalid business EXP instead of displaying storage units: %s", async (totalExp) => {
+    vi.mocked(httpClient.request).mockResolvedValue({ list: [userResponse({ currentLevel: 1, totalExp, totalExpUnits: "40000" })], total: 1, page: 1, page_size: 20 });
+    await expect(platformUserManagementApi.listUsers("operations", {})).rejects.toThrow("Invalid user management response");
+  });
+
+  it("preserves not-applicable experience without inventing a zero balance", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({ list: [userResponse(null)], total: 1, page: 1, page_size: 20 });
+    expect((await platformUserManagementApi.listUsers("operations", {})).list[0].experience).toBeNull();
+  });
 
   it("serializes the formal routes and maps page_size to pageSize", async () => {
     vi.mocked(httpClient.request)

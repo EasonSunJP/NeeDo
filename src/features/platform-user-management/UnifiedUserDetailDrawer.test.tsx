@@ -47,7 +47,7 @@ const detail = {
   source: ["password"],
   identities: [], roles: [], groups: [], ekycVerified: false,
   membership: { tierCode: "gold", tierVersionPublicId: null, entitlementPublicId: null, expiresAt: null, experienceMultiplier: 2, lockVersion: null },
-  experience: { currentLevel: 1, totalExpUnits: "40000" },
+  experience: { currentLevel: 1, totalExp: "4" },
   ndpBalance: { available: 900, frozen: 0 },
   bookingCount: 3,
   lastLoginAt: null,
@@ -156,6 +156,8 @@ describe("UnifiedUserDetailDrawer", () => {
     expect(panel.hidden).toBe(true);
     act(() => membershipTab.click());
     expect(panel.hidden).toBe(false);
+    expect(panel.textContent).toContain("4 EXP");
+    expect(panel.textContent).not.toContain("40000 EXP");
     for (const action of ["修改会员类型", "修改会员倍率"]) {
       act(() => [...panel.querySelectorAll("button")].find((node) => node.textContent === action)!.click());
       const dialog = container.querySelector('[role="dialog"]')!;

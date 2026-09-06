@@ -144,7 +144,7 @@ export type PlatformManagedUser = {
     experienceMultiplier: number;
     lockVersion: number | null;
   };
-  experience: { currentLevel: number; totalExpUnits: string } | null;
+  experience: { currentLevel: number; totalExp: string } | null;
   ndpBalance: { available: number; frozen: number };
   testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;

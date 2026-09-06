@@ -96,7 +96,7 @@ describe("BackofficeRepository managed users", () => {
       needoId: "u0000000041",
       identities: [expect.objectContaining({ type: "customer" })],
       membership: expect.objectContaining({ tierCode: "gold" }),
-      experience: { currentLevel: 12, totalExpUnits: "345600" },
+      experience: { currentLevel: 12, totalExpUnits: "345600", totalExp: "34.56" },
       phoneBound: true,
       emailBound: true,
       displayName: "Mia",
