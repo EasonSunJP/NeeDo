@@ -47,7 +47,14 @@ export type ReceivedUserReview = {
     revisedAt: string;
     revisedBy: string;
   }>;
-  order: { id: number; orderNo: string; serviceName: string; startsAt: string };
+  order: {
+    id: number; orderNo: string; serviceName: string; startsAt: string;
+    shopName: string; durationMinutes: number | null; note: string | null;
+    paymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+    paymentStatus: "pending" | "confirmed" | "refund_pending" | "refunded";
+    paymentCurrency: string | null; otherPaymentMethod: string | null;
+    addOnCount: number; addOnMinutes: number;
+  };
   reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
 };
 

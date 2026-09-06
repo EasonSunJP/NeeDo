@@ -30,14 +30,23 @@ const review = {
       tags: ["punctual", "polite"],
       reason: "Evidence confirmed",
       revisedAt: "2026-09-06T10:00:00.000Z",
-      revisedBy: "Operator"
-    }
+      revisedBy: "Operator",
+    },
   ],
   order: {
     id: 88,
     orderNo: "B-88",
     serviceName: "Home care",
     startsAt: "2026-09-05T09:00:00.000Z",
+    shopName: "Tokyo care",
+    durationMinutes: 60,
+    note: "Doorbell is broken",
+    paymentMethod: "ndp",
+    paymentStatus: "refunded",
+    paymentCurrency: "TEST_NDP",
+    otherPaymentMethod: null,
+    addOnCount: 1,
+    addOnMinutes: 30,
   },
   reviewer: { needoId: "s0000000042", displayName: "Mika", avatarUrl: null },
 };
@@ -84,6 +93,79 @@ describe("UserReceivedReviews", () => {
     expect(container.textContent).toContain("礼貌");
     expect(container.textContent).toContain("下一页");
     expect(container.textContent).not.toContain("修改评价");
+  });
+
+  it("separates payment facts, accepted extra time, special tags, custom tags and notes", async () => {
+    api.listReceivedReviews.mockResolvedValue({
+      list: [{ ...review, tags: ["支付顺利", "魅力max", "安静交流"] }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    });
+    act(() =>
+      root.render(
+        <UserReceivedReviews canAmend={false} scope="operations" userId={41} />,
+      ),
+    );
+    await flush();
+    for (const value of [
+      "Test NDP",
+      "已退款",
+      "已加钟",
+      "30",
+      "特殊标签",
+      "魅力max",
+      "自定义标签",
+      "安静交流",
+      "评价备注",
+      "Service was good",
+      "预约备注",
+      "Doorbell is broken",
+    ]) {
+      expect(container.textContent).toContain(value);
+    }
+    const payment = container.querySelector('[aria-label="支付信息"]');
+    expect(payment?.textContent).toContain("Test NDP");
+    expect(payment?.textContent).not.toContain("支付顺利");
+    expect(container.textContent).not.toContain("支付顺利");
+  });
+
+  it("renders pending offline payment and explicit absent tags, add-ons and comment", async () => {
+    api.listReceivedReviews.mockResolvedValue({
+      list: [
+        {
+          ...review,
+          tags: [],
+          comment: null,
+          order: {
+            ...review.order,
+            paymentMethod: "onsite",
+            paymentStatus: "pending",
+            paymentCurrency: null,
+            addOnCount: 0,
+            addOnMinutes: 0,
+          },
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    });
+    act(() =>
+      root.render(
+        <UserReceivedReviews canAmend={false} scope="merchant" userId={41} />,
+      ),
+    );
+    await flush();
+    for (const value of [
+      "线下支付",
+      "待支付",
+      "未加钟",
+      "未填写评价备注",
+      "未选择特殊标签",
+      "未填写自定义标签",
+    ])
+      expect(container.textContent).toContain(value);
   });
 
   it("requires a reason and submits the current immutable version for operations", async () => {
