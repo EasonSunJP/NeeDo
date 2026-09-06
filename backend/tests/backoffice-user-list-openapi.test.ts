@@ -40,6 +40,10 @@ describe("backoffice all-user OpenAPI", () => {
       "/api/v1/merchant-admin/users"
     ].get.parameters.map((parameter: { name: string }) => parameter.name);
     expect(merchantQueryNames).toEqual(queryNames);
+    for (const path of ["/api/v1/backoffice/users", "/api/v1/merchant-admin/users"]) {
+      expect(response.body.paths[path].get.parameters.find((parameter: { name: string }) => parameter.name === "sortBy").schema.enum)
+        .toEqual(expect.arrayContaining(["ndpBalance", "bookingCount"]));
+    }
     expect(
       response.body.components.schemas.BackofficeManagedUser.properties.experience.nullable
     ).toBe(true);

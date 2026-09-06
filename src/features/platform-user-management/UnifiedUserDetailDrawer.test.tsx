@@ -47,7 +47,7 @@ const detail = {
   source: ["password"],
   identities: [], roles: [], groups: [], ekycVerified: false,
   membership: { tierCode: "gold", tierVersionPublicId: null, entitlementPublicId: null, expiresAt: null, experienceMultiplier: 2, lockVersion: null },
-  experience: { currentLevel: 2, totalExpUnits: "100" },
+  experience: { currentLevel: 1, totalExpUnits: "40000" },
   ndpBalance: { available: 900, frozen: 0 },
   bookingCount: 3,
   lastLoginAt: null,
@@ -145,6 +145,24 @@ describe("UnifiedUserDetailDrawer", () => {
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
     await waitForText(container, "修改会员类型");
     expect(container.textContent).toContain("修改会员倍率");
+    const membershipTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) => tab.textContent === "会员等级")!;
+    const panel = container.querySelector<HTMLElement>(`[id="${membershipTab.getAttribute("aria-controls")}"]`)!;
+    for (const [action, label] of [["修改会员类型", "当前会员等级"], ["修改会员倍率", "会员倍率"]]) {
+      const button = [...container.querySelectorAll("button")].find((node) => node.textContent === action)!;
+      expect(button.closest('[role="tabpanel"]')).toBe(panel);
+      expect(button.closest("dd")?.parentElement?.querySelector("dt")?.textContent).toBe(label);
+    }
+    expect([...container.querySelectorAll("p, dt")].filter((node) => node.textContent === "累计经验")).toHaveLength(1);
+    expect(panel.hidden).toBe(true);
+    act(() => membershipTab.click());
+    expect(panel.hidden).toBe(false);
+    for (const action of ["修改会员类型", "修改会员倍率"]) {
+      act(() => [...panel.querySelectorAll("button")].find((node) => node.textContent === action)!.click());
+      const dialog = container.querySelector('[role="dialog"]')!;
+      expect(dialog.getAttribute("aria-label")).toBe(action);
+      expect(dialog.textContent).toContain("调整理由");
+      act(() => [...dialog.querySelectorAll("button")].find((node) => node.textContent === "取消")!.click());
+    }
   });
 
   it("renders three independent partner ranges only for permitted operations users", async () => {

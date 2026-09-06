@@ -2703,3 +2703,5 @@ The technician status controls now persist audited work events. Merchant and ope
 ### User detail review facts and capsule tabs
 
 Received service reviews in the operations and merchant user detail cards now include formal payment method/status, checkout ledger currency, accepted extra service time, separated tag groups, and review/booking notes. Detail categories share one capsule tab container. See [local review-card acceptance and XP unit finding](docs/qa/2026-09-06-user-review-detail.md).
+
+The follow-up removes repeated membership facts, places adjustment controls inside the membership tab, consolidates merchant names, removes scout presentation, and adds server-side numeric ordering. See [user-directory follow-up acceptance](docs/qa/2026-09-06-user-directory-followup.md).
