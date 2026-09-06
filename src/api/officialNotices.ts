@@ -1,5 +1,7 @@
 import { httpClient } from "./httpClient";
 
+export const OFFICIAL_NOTICE_CHANGED_EVENT = "official-notice:changed";
+
 export type OfficialNoticeScope = "platform" | "merchant";
 export type OfficialNoticeLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type OfficialNoticeLevel = "general" | "important" | "urgent";

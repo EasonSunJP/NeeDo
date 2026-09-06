@@ -1,9 +1,42 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
+import {
+  OFFICIAL_NOTICE_CHANGED_EVENT,
+  officialNoticesApi,
+  type OfficialNoticeLocale
+} from "../../api/officialNotices";
 import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { NotificationBadge } from "./NotificationBadge";
 
 export function OfficialNoticeBell({ to }: { to: string }) {
-  const { notifications } = useRealtimeUnreadCounts();
+  const { language } = useOptionalI18n();
+  const { notifications: realtimeNotificationVersion } = useRealtimeUnreadCounts();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const locale = useMemo<OfficialNoticeLocale>(
+    () => language === "zh" ? "zh-CN" : language === "zh-Hant" ? "zh-TW" : language,
+    [language]
+  );
+  const refresh = useCallback(async () => {
+    try {
+      const result = await officialNoticesApi.listInbox({
+        locale,
+        unreadOnly: true,
+        page: 1,
+        pageSize: 1
+      });
+      setUnreadCount(result.total);
+    } catch {
+      // Keep the last durable official-notice count while the recipient API reconnects.
+    }
+  }, [locale]);
+
+  useEffect(() => { void refresh(); }, [realtimeNotificationVersion, refresh]);
+  useEffect(() => {
+    const handleChange = () => { void refresh(); };
+    window.addEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);
+    return () => window.removeEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);
+  }, [refresh]);
 
   return (
     <NavLink
@@ -25,10 +58,10 @@ export function OfficialNoticeBell({ to }: { to: string }) {
           strokeWidth="2"
         />
       </svg>
-      {notifications > 0 ? (
+      {unreadCount > 0 ? (
         <NotificationBadge
           className="absolute right-1.5 top-1.5"
-          count={notifications}
+          count={unreadCount}
           size="sm"
         />
       ) : null}

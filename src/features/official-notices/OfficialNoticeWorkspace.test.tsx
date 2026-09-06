@@ -198,6 +198,17 @@ describe("official notice formal API interactions", () => {
     });
   });
 
+  it("invalidates the shared official-notice badge after marking an inbox item read", async () => {
+    const changed = vi.fn();
+    window.addEventListener("official-notice:changed", changed);
+    act(() => root.render(<MemoryRouter><OfficialNoticeInbox /></MemoryRouter>));
+    await waitFor(() => expect(container.textContent).toContain("営業時間変更"));
+    await click("标记已读");
+    await waitFor(() => expect(state.markRead).toHaveBeenCalledWith("notice-1"));
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener("official-notice:changed", changed);
+  });
+
   it("hides write controls for a read-only identity and renders an empty page", async () => {
     state.permissions = new Set(["merchant-admin:notice:read"]);
     state.listManaged.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });

@@ -4,7 +4,7 @@ import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
   it("uses the shared formal notice bell without a hard-coded unread count", () => {
-    expect(source).toContain("<OfficialNoticeBell to=\"/admin/notifications\"");
+    expect(source).toContain("<OfficialNoticeBell to=\"/admin/notifications/inbox\"");
     expect(source).not.toContain("count={12}");
   });
 

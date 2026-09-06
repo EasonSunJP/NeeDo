@@ -511,7 +511,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <div className="flex items-center gap-2 text-sm">
                 <LanguageSwitcher className="shrink-0" iconOnly />
                 <AdminThemeMenu onThemeChange={setTheme} options={platformAdminThemeOptions} theme={theme} />
-                <OfficialNoticeBell to="/admin/notifications" />
+                <OfficialNoticeBell to="/admin/notifications/inbox" />
                 <NavLink
                   aria-label="客服台"
                   className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"

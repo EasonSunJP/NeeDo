@@ -1,5 +1,5 @@
 import { AdminLayout } from "../../components/admin/AdminLayout";
-import { OfficialNoticeManagement } from "../../features/official-notices/OfficialNoticeWorkspace";
+import { OfficialNoticeInbox, OfficialNoticeManagement } from "../../features/official-notices/OfficialNoticeWorkspace";
 
 type AdminNotificationsContentProps = {
   title?: string;
@@ -17,6 +17,9 @@ export function AdminNotificationsContent({ title = "官方通知" }: AdminNotif
   return <OfficialNoticeManagement composePath="/admin/notifications/compose" scope="platform" />;
 }
 
-export function AdminNotificationsPage() {
-  return <AdminLayout><AdminNotificationsContent /></AdminLayout>;
+export function AdminNotificationsPage({ view = "management" }: { view?: "management" | "inbox" }) {
+  return <AdminLayout>
+    {view === "management" ? <AdminNotificationsContent /> : null}
+    {view === "inbox" ? <OfficialNoticeInbox /> : null}
+  </AdminLayout>;
 }
