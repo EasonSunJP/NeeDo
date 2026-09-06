@@ -323,6 +323,41 @@ describe("LiveDashboardEventGateway", () => {
     await Promise.all([gatewayA.close(), gatewayB.close()]);
   });
 
+  it("fences replay, audit, registration, and connected before draining a joining-client wakeup", async () => {
+    const state = new SharedStreamState();
+    state.serverNowMs = 1_000;
+    const stream = new MemoryEventStream(state);
+    const first = await stream.append(storedOrderEvent());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    let between!: LiveDashboardEventStreamEntry;
+    const beforeConnect = jest.fn(async () => {
+      state.serverNowMs = 1_001;
+      between = await stream.append(
+        storedOrderEvent({
+          payload: { ...orderEvent().payload, orderNo: "ND202609060002" }
+        })
+      );
+      await stream.broadcast(between);
+    });
+
+    await gateway.subscribe(
+      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      null,
+      response as unknown as Response,
+      beforeConnect
+    );
+    await flushMicrotasks();
+
+    const output = response.writes.join("");
+    expect(beforeConnect).toHaveBeenCalledTimes(1);
+    expect(output.match(new RegExp(`id: ${first.id}`, "g"))).toHaveLength(1);
+    expect(output.match(new RegExp(`id: ${between.id}`, "g"))).toHaveLength(1);
+    expect(output.indexOf(`id: ${first.id}`)).toBeLessThan(output.indexOf("event: connected"));
+    expect(output.indexOf("event: connected")).toBeLessThan(output.indexOf(`id: ${between.id}`));
+    await gateway.close();
+  });
+
   it("uses one process subscription and fans out only to the country and region ancestors", async () => {
     const stream = new MemoryEventStream(new SharedStreamState());
     const gateway = new LiveDashboardEventGateway({ eventStream: stream });
@@ -718,57 +753,89 @@ describe("LiveDashboardEventGateway", () => {
     await gateway.close();
   });
 
-  it("ends an unestablished response on replay failure and recovers exactly once on retry", async () => {
+  it("propagates retained-read failure before audit or SSE headers and recovers on retry", async () => {
     const state = new SharedStreamState();
     const stream = new FailingReplayStream(state);
     const missing = await stream.append(storedOrderEvent());
     const gateway = new LiveDashboardEventGateway({ eventStream: stream });
     const failed = new FakeResponse();
 
-    await gateway.subscribe(
-      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
-      null,
-      failed as unknown as Response
-    );
+    const beforeConnect = jest.fn(async () => undefined);
+    const error = await gateway
+      .subscribe(
+        { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+        null,
+        failed as unknown as Response,
+        beforeConnect
+      )
+      .then(
+        () => null,
+        (caught) => caught
+      );
 
-    expect(failed.ended).toBe(true);
+    expect(error).toMatchObject({ statusCode: 503, message: "error.dependency_unavailable" });
+    expect(beforeConnect).not.toHaveBeenCalled();
+    expect(failed.statusCode).toBe(0);
+    expect(failed.headers.size).toBe(0);
     expect(failed.writes.join("")).not.toContain("event: connected");
 
     const recovered = new FakeResponse();
     await gateway.subscribe(
       { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
       null,
-      recovered as unknown as Response
+      recovered as unknown as Response,
+      beforeConnect
     );
     expect(recovered.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
     expect(recovered.writes.join("")).toContain("event: connected");
     await gateway.close();
   });
 
-  it("ends without connected when the establishment drain fails and retries the cursor", async () => {
+  it("uses the retained replay as establishment and performs no second fallible pre-connect drain", async () => {
     const state = new SharedStreamState();
     const stream = new FailingDrainStream(state);
     const missing = await stream.append(storedOrderEvent());
     const gateway = new LiveDashboardEventGateway({ eventStream: stream });
-    const failed = new FakeResponse();
+    const response = new FakeResponse();
+    const beforeConnect = jest.fn(async () => undefined);
 
     await gateway.subscribe(
       { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
       null,
-      failed as unknown as Response
+      response as unknown as Response,
+      beforeConnect
     );
 
-    expect(failed.ended).toBe(true);
-    expect(failed.writes.join("")).not.toContain("event: connected");
+    expect(beforeConnect).toHaveBeenCalledTimes(1);
+    expect(response.ended).toBe(false);
+    expect(response.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
+    expect(response.writes.join("")).toContain("event: connected");
+    await gateway.close();
+  });
 
-    const recovered = new FakeResponse();
-    await gateway.subscribe(
-      { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
-      null,
-      recovered as unknown as Response
-    );
-    expect(recovered.writes.join("").match(new RegExp(`id: ${missing.id}`, "g"))).toHaveLength(1);
-    expect(recovered.writes.join("")).toContain("event: connected");
+  it("propagates audit failure before subscriber registration, headers, or connected", async () => {
+    const stream = new MemoryEventStream(new SharedStreamState());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    const auditError = new Error("audit unavailable");
+
+    const error = await gateway
+      .subscribe(
+        { countryCode: "JP", admin1Code: null, admin2Code: null },
+        null,
+        response as unknown as Response,
+        async () => Promise.reject(auditError)
+      )
+      .then(
+        () => null,
+        (caught) => caught
+      );
+
+    expect(error).toBe(auditError);
+    expect(response.statusCode).toBe(0);
+    expect(response.headers.size).toBe(0);
+    expect(response.writes).toHaveLength(0);
+    expect(jest.getTimerCount()).toBe(0);
     await gateway.close();
   });
 
@@ -845,6 +912,42 @@ describe("LiveDashboardEventGateway", () => {
 
     expect(stream.unsubscribe).toHaveBeenCalledTimes(1);
     expect(response.ended).toBe(true);
+    expect(response.endCalls).toBe(1);
+    expect(response.statusCode).toBe(0);
+    expect(response.headers.size).toBe(0);
+    expect(response.writes).toHaveLength(0);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it("releases the serialized establishment gate once when close wins a pending audit", async () => {
+    const stream = new DeferredCursorStream(new SharedStreamState());
+    const gateway = new LiveDashboardEventGateway({ eventStream: stream });
+    const response = new FakeResponse();
+    let releaseAudit!: () => void;
+    const beforeConnect = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseAudit = resolve;
+        })
+    );
+    const subscribing = gateway.subscribe(
+      { countryCode: "JP", admin1Code: null, admin2Code: null },
+      null,
+      response as unknown as Response,
+      beforeConnect
+    );
+    await flushMicrotasks();
+    stream.releaseCursor?.();
+    await flushMicrotasks();
+    expect(beforeConnect).toHaveBeenCalledTimes(1);
+
+    const closing = gateway.close();
+    await flushMicrotasks();
+    releaseAudit();
+    await Promise.all([subscribing, closing]);
+    await gateway.close();
+
+    expect(stream.unsubscribe).toHaveBeenCalledTimes(1);
     expect(response.endCalls).toBe(1);
     expect(response.statusCode).toBe(0);
     expect(response.headers.size).toBe(0);

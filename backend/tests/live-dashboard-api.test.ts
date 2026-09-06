@@ -82,7 +82,9 @@ const facts: LiveDashboardSnapshotFacts = {
   coverage: { total: 1, attributed: 1, unresolved: 0, completenessPercent: 100 }
 };
 
-const createFixture = (options: { failAudit?: boolean; cursorReset?: boolean } = {}) => {
+const createFixture = (
+  options: { failAudit?: boolean; cursorReset?: boolean; readFailure?: boolean } = {}
+) => {
   const users = [
     createUser(1, ["backoffice:dashboard:read"]),
     createUser(2, []),
@@ -111,7 +113,14 @@ const createFixture = (options: { failAudit?: boolean; cursorReset?: boolean } =
   };
   const liveDashboardEventGateway = {
     publish: jest.fn(),
-    prepareSubscription: jest.fn(async (lastEventId: string | null) => {
+    subscribe: jest.fn(async (_scope, _lastEventId, response, beforeConnect) => {
+      if (options.readFailure) {
+        throw new AppError({
+          code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+          message: "error.dependency_unavailable",
+          statusCode: 503
+        });
+      }
       if (options.cursorReset) {
         throw new AppError({
           code: ERROR_CODES.LIVE_DASHBOARD_CURSOR_RESET_REQUIRED,
@@ -119,9 +128,7 @@ const createFixture = (options: { failAudit?: boolean; cursorReset?: boolean } =
           statusCode: 409
         });
       }
-      return { lastEventId, entries: [] };
-    }),
-    subscribe: jest.fn(async (_scope, _lastEventId, response) => {
+      await beforeConnect();
       response.status(200).end();
       return () => undefined;
     }),
@@ -310,15 +317,14 @@ describe("GET /api/v1/backoffice/dashboard/live-events", () => {
       { countryCode: "JP", admin1Code: "13", admin2Code: null },
       "1000-4",
       expect.anything(),
-      { lastEventId: "1000-4", entries: [] }
+      expect.any(Function)
     );
-    expect(fixture.liveDashboardEventGateway.prepareSubscription).toHaveBeenCalledWith("1000-4");
     expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ action: "backoffice.dashboard.live_events.connect" })
     );
-    expect(
-      fixture.liveDashboardEventGateway.prepareSubscription.mock.invocationCallOrder[0]
-    ).toBeLessThan(fixture.auditLogRepository.create.mock.invocationCallOrder[0]!);
+    expect(fixture.liveDashboardEventGateway.subscribe.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.auditLogRepository.create.mock.invocationCallOrder[0]!
+    );
   });
 
   it("returns a pre-header cursor reset conflict without recording a successful connection", async () => {
@@ -335,18 +341,32 @@ describe("GET /api/v1/backoffice/dashboard/live-events", () => {
       data: null
     });
     expect(fixture.auditLogRepository.create).not.toHaveBeenCalled();
-    expect(fixture.liveDashboardEventGateway.prepareSubscription).toHaveBeenCalledWith(
-      "9999999999999-0"
-    );
-    expect(fixture.liveDashboardEventGateway.subscribe).not.toHaveBeenCalled();
+    expect(fixture.liveDashboardEventGateway.subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a pre-header dependency error without recording a successful connection audit", async () => {
+    const fixture = createFixture({ readFailure: true });
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-events?country=JP")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      message: "error.dependency_unavailable",
+      data: null
+    });
+    expect(response.headers["content-type"]).not.toContain("text/event-stream");
+    expect(fixture.auditLogRepository.create).not.toHaveBeenCalled();
   });
 
   it("does not open the stream when the connection audit fails", async () => {
     const fixture = createFixture({ failAudit: true });
-    await request(fixture.app)
+    const response = await request(fixture.app)
       .get("/api/v1/backoffice/dashboard/live-events?country=JP")
       .set("Authorization", `Bearer ${fixture.tokens[1]}`)
       .expect(500);
-    expect(fixture.liveDashboardEventGateway.subscribe).not.toHaveBeenCalled();
+    expect(response.headers["content-type"]).not.toContain("text/event-stream");
+    expect(fixture.liveDashboardEventGateway.subscribe).toHaveBeenCalledTimes(1);
   });
 });

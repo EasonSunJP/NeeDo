@@ -21597,7 +21597,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Backoffice"],
         summary: "Stream compact regional dashboard changes",
         description:
-          "Bearer-header-only SSE stream for active platform identities. Events are region-filtered, limited to compact allowlisted order fields or cache invalidation sections, replay at most 100 events from the last five minutes using Redis Stream IDs in Last-Event-ID, emit 30-second heartbeats, and disconnect slow clients. The current standalone Redis topology provides the atomic replay operation; Redis Cluster key routing is outside this task.",
+          "Browser clients must use an authenticated Bearer fetch stream, parse SSE frames themselves, and store the last successfully delivered Redis Stream ID for Last-Event-ID. The native EventSource API is not the authenticated client contract because it cannot supply the required Bearer header. On EOF, network failure, or 503, clients implement exponential backoff with jitter before reconnecting with the stored cursor; the retry: 5000 frame is only an SSE hint and does not replace fetch retry logic. Events are region-filtered, limited to compact allowlisted order fields or cache invalidation sections, replay at most 100 events from the last five minutes, emit 30-second heartbeats, and disconnect slow clients. The current standalone Redis topology provides the atomic replay operation; Redis Cluster key routing is outside this task.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:dashboard:read",
         parameters: [
@@ -21644,9 +21644,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description: "Missing active platform identity or backoffice:dashboard:read permission"
           },
           "409": jsonErrorResponse(
-            "40900 error.live_dashboard.cursor_reset_required — discard Last-Event-ID, fetch a full snapshot, then reconnect without the stale cursor"
+            "40900 error.live_dashboard.cursor_reset_required — clear the stored cursor, fetch a full snapshot, then reconnect without Last-Event-ID; unlike retryable EOF, network, or 503 failures, the stale cursor must not be reused"
           ),
-          "503": { description: "Shared live event transport is unavailable" }
+          "503": dependencyUnavailableResponse(
+            "retryable shared live event transport failure; use client-managed exponential backoff with jitter"
+          )
         }
       }
     },

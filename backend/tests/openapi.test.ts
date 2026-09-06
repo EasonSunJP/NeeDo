@@ -12,6 +12,7 @@ describe("GET /api/v1/openapi.json", () => {
         {
           get: {
             operationId?: string;
+            description?: string;
             security?: unknown;
             "x-required-permission"?: string;
             parameters: Array<Record<string, unknown>>;
@@ -54,6 +55,14 @@ describe("GET /api/v1/openapi.json", () => {
       "error.live_dashboard.cursor_reset_required"
     );
     expect(operation.responses["409"]?.description).toContain("full snapshot");
+    expect(operation.description).toContain("authenticated Bearer fetch stream");
+    expect(operation.description).toContain("native EventSource");
+    expect(operation.description).toContain("last successfully delivered Redis Stream ID");
+    expect(operation.description).toContain("exponential backoff");
+    expect(operation.description).toContain("jitter");
+    expect(operation.description).toContain("EOF, network failure, or 503");
+    expect(operation.responses["409"]?.description).toContain("clear the stored cursor");
+    expect(operation.responses["503"]?.description).toContain("retryable");
   });
 
   it("uses a root server when versioned paths already include the API prefix", () => {

@@ -87,21 +87,6 @@ export class LiveDashboardService {
         statusCode: 503
       });
     }
-    const prepared = await this.eventGateway.prepareSubscription(lastEventId);
-    await this.auditLog.record({
-      actor,
-      context,
-      action: "backoffice.dashboard.live_events.connect",
-      targetType: "live_dashboard_event_stream",
-      targetId: null,
-      metadata: {
-        country: query.country,
-        admin1: query.admin1 ?? null,
-        admin2: query.admin2 ?? null,
-        period: query.period,
-        resumed: lastEventId !== null
-      }
-    });
     await this.eventGateway.subscribe(
       {
         countryCode: query.country,
@@ -110,7 +95,21 @@ export class LiveDashboardService {
       },
       lastEventId,
       response,
-      prepared
+      async () =>
+        this.auditLog.record({
+          actor,
+          context,
+          action: "backoffice.dashboard.live_events.connect",
+          targetType: "live_dashboard_event_stream",
+          targetId: null,
+          metadata: {
+            country: query.country,
+            admin1: query.admin1 ?? null,
+            admin2: query.admin2 ?? null,
+            period: query.period,
+            resumed: lastEventId !== null
+          }
+        })
     );
   }
 

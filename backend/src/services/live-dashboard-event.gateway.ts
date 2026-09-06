@@ -32,10 +32,12 @@ export type LiveDashboardReplayRead =
   | { status: "ready"; entries: LiveDashboardEventStreamEntry[] }
   | { status: "reset_required"; entries: [] };
 
-export interface LiveDashboardPreparedSubscription {
+interface LiveDashboardPreparedSubscription {
   lastEventId: string | null;
   entries: LiveDashboardEventStreamEntry[];
 }
+
+export type LiveDashboardBeforeConnect = () => Promise<void>;
 
 export interface LiveDashboardEventStreamPort {
   append(event: string): Promise<LiveDashboardEventStreamEntry>;
@@ -51,12 +53,11 @@ export interface LiveDashboardEventPublisher {
 }
 
 export interface LiveDashboardEventGatewayPort extends LiveDashboardEventPublisher {
-  prepareSubscription(lastEventId: string | null): Promise<LiveDashboardPreparedSubscription>;
   subscribe(
     scope: LiveDashboardScope,
     lastEventId: string | null,
     response: Response,
-    prepared?: LiveDashboardPreparedSubscription
+    beforeConnect?: LiveDashboardBeforeConnect
   ): Promise<() => void>;
   close(): Promise<void>;
 }
@@ -71,7 +72,6 @@ interface Subscriber {
   scope: LiveDashboardScope;
   response: Response;
   lastSentId: string | null;
-  pending: Map<string, LiveDashboardEventStreamEntry> | null;
   heartbeat?: ReturnType<typeof setInterval>;
   unsubscribe: () => void;
 }
@@ -101,6 +101,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
   private lastDrainedId: string | null = null;
   private drainPromise?: Promise<void>;
   private drainRequested = false;
+  private serializedTail: Promise<void> = Promise.resolve();
   private recoveryTimer?: ReturnType<typeof setInterval>;
   private readonly pendingClientSetups = new Set<Promise<() => void>>();
   private closed = false;
@@ -160,7 +161,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     }
   }
 
-  public async prepareSubscription(
+  private async prepareSubscription(
     lastEventId: string | null
   ): Promise<LiveDashboardPreparedSubscription> {
     let replay: LiveDashboardReplayRead;
@@ -188,9 +189,11 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     scope: LiveDashboardScope,
     lastEventId: string | null,
     response: Response,
-    prepared?: LiveDashboardPreparedSubscription
+    beforeConnect: LiveDashboardBeforeConnect = async () => undefined
   ): Promise<() => void> {
-    const setup = this.subscribeInternal(scope, lastEventId, response, prepared);
+    const setup = this.runSerialized(() =>
+      this.subscribeInternal(scope, lastEventId, response, beforeConnect)
+    );
     this.pendingClientSetups.add(setup);
     void setup.then(
       () => this.pendingClientSetups.delete(setup),
@@ -203,7 +206,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     scope: LiveDashboardScope,
     lastEventId: string | null,
     response: Response,
-    prepared?: LiveDashboardPreparedSubscription
+    beforeConnect: LiveDashboardBeforeConnect
   ): Promise<() => void> {
     const stopUnestablished = (): void => {
       if (this.isResponseActive(response)) response.end();
@@ -220,21 +223,25 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
 
     let replay: LiveDashboardPreparedSubscription;
     try {
-      replay = prepared ?? (await this.prepareSubscription(lastEventId));
-      if (replay.lastEventId !== lastEventId) {
-        throw new Error("Live dashboard prepared cursor does not match the request cursor");
-      }
+      replay = await this.prepareSubscription(lastEventId);
     } catch (error) {
       if (
-        error instanceof AppError &&
-        error.code === ERROR_CODES.LIVE_DASHBOARD_CURSOR_RESET_REQUIRED
+        !this.closed &&
+        !(
+          error instanceof AppError &&
+          error.code === ERROR_CODES.LIVE_DASHBOARD_CURSOR_RESET_REQUIRED
+        )
       ) {
-        throw error;
+        this.onError(error, "replay");
       }
-      this.onError(error, "replay");
+      throw error;
+    }
+    if (this.closed || !this.isResponseActive(response)) {
       stopUnestablished();
       return () => undefined;
     }
+
+    await beforeConnect();
     if (this.closed || !this.isResponseActive(response)) {
       stopUnestablished();
       return () => undefined;
@@ -261,7 +268,6 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     subscriber.scope = { ...scope };
     subscriber.response = response;
     subscriber.lastSentId = lastEventId;
-    subscriber.pending = new Map();
     subscriber.unsubscribe = unsubscribe;
     this.subscribers.add(subscriber);
     response.on("close", unsubscribe);
@@ -269,31 +275,13 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
 
     if (!this.write(response, "retry: 5000\n\n", unsubscribe)) return unsubscribe;
 
-    try {
-      await this.requestDrain();
-    } catch (error) {
-      this.onError(error, "replay");
-      unsubscribe();
-      response.end();
-      return unsubscribe;
-    }
-    if (!active || this.closed || !this.isResponseActive(response)) {
-      unsubscribe();
-      if (this.isResponseActive(response)) response.end();
-      return unsubscribe;
-    }
-    const combined = new Map<string, LiveDashboardEventStreamEntry>();
-    for (const entry of replay.entries) combined.set(entry.id, entry);
-    for (const entry of subscriber.pending.values()) combined.set(entry.id, entry);
-    const ordered = [...combined.values()].sort((left, right) =>
+    const ordered = [...replay.entries].sort((left, right) =>
       this.compareEventIds(left.id, right.id)
     );
     for (const entry of ordered) {
       const event = this.parseStreamEntry(entry);
       if (event && !this.sendEvent(subscriber, event)) return unsubscribe;
     }
-    subscriber.pending = null;
-
     if (!active || this.closed || !this.isResponseActive(response)) {
       unsubscribe();
       if (this.isResponseActive(response)) response.end();
@@ -329,10 +317,9 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     return this.closePromise;
   }
 
-  private fanOutEntry(entry: LiveDashboardEventStreamEntry, event: LiveDashboardEvent): void {
+  private fanOutEvent(event: LiveDashboardEvent): void {
     for (const subscriber of [...this.subscribers]) {
-      if (subscriber.pending) subscriber.pending.set(entry.id, entry);
-      else this.sendEvent(subscriber, event);
+      this.sendEvent(subscriber, event);
     }
   }
 
@@ -400,11 +387,21 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
     if (this.closed) return Promise.resolve();
     this.drainRequested = true;
     if (!this.drainPromise) {
-      this.drainPromise = this.runDrainLoop().finally(() => {
+      this.drainPromise = this.runSerialized(() => this.runDrainLoop()).finally(() => {
         this.drainPromise = undefined;
+        if (this.drainRequested && !this.closed) void this.requestDrain();
       });
     }
     return this.drainPromise;
+  }
+
+  private runSerialized<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.serializedTail.then(operation, operation);
+    this.serializedTail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
   }
 
   private async runDrainLoop(): Promise<void> {
@@ -421,7 +418,7 @@ export class LiveDashboardEventGateway implements LiveDashboardEventGatewayPort 
             continue;
           const event = this.parseStreamEntry(entry);
           this.lastDrainedId = entry.id;
-          if (event) this.fanOutEntry(entry, event);
+          if (event) this.fanOutEvent(event);
         }
       }
     }
