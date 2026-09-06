@@ -368,9 +368,11 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let hydrated = false;
   let hydrating: Promise<void> | null = null;
   let entityRefresh: Promise<void> | null = null;
+  let entityRefreshGeneration = 0;
   let snapshot = createInitialSnapshot();
   const failedTerminalMediaPurges = new Set<string>();
   const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
+  const tracelessMessageIdsByConversation = new Map<string, Set<string>>();
 
   function emit() {
     listeners.forEach((listener) => listener());
@@ -516,7 +518,10 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function upsertConversation(conversation: Conversation) {
     const exists = snapshot.conversations.some((item) => item.id === conversation.id);
-    const nextConversation = applyDraftOverlay(conversation, snapshot.ui.drafts);
+    const nextConversation = applyDraftOverlay(
+      sanitizeTracelessConversation(conversation),
+      snapshot.ui.drafts,
+    );
     const conversations = exists
       ? snapshot.conversations.map((item) => (item.id === conversation.id ? nextConversation : item))
       : [nextConversation, ...snapshot.conversations];
@@ -527,7 +532,53 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
   }
 
+  function isTracelessMessage(conversationId: string, messageId: string) {
+    return tracelessMessageIdsByConversation.get(conversationId)?.has(messageId) ?? false;
+  }
+
+  function sanitizeTracelessConversation(conversation: Conversation) {
+    if (
+      !conversation.lastMessageId ||
+      !isTracelessMessage(conversation.id, conversation.lastMessageId)
+    ) {
+      return conversation;
+    }
+    const remainingMessages = snapshot.messagesByConversation[conversation.id] ?? [];
+    return {
+      ...conversation,
+      ...buildConversationLastMessageSummary(
+        remainingMessages.at(-1),
+        snapshot.currentUserId ?? "",
+        snapshot.usersById,
+        conversation.updatedAt,
+      ),
+    };
+  }
+
+  function rememberTracelessMessage(conversationId: string, messageId: string) {
+    const messageIds = tracelessMessageIdsByConversation.get(conversationId) ?? new Set<string>();
+    if (!messageIds.has(messageId)) entityRefreshGeneration += 1;
+    messageIds.add(messageId);
+    tracelessMessageIdsByConversation.set(conversationId, messageIds);
+  }
+
+  function removeTracelessMessage(conversationId: string, messageId: string) {
+    rememberTracelessMessage(conversationId, messageId);
+    const messages = (snapshot.messagesByConversation[conversationId] ?? []).filter(
+      (message) => message.id !== messageId,
+    );
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: {
+        ...snapshot.messagesByConversation,
+        [conversationId]: messages,
+      },
+    };
+    rebuildConversationMessageSummary(conversationId);
+  }
+
   function upsertMessage(message: ConversationMessage) {
+    if (isTracelessMessage(message.conversationId, message.id)) return;
     const current = snapshot.messagesByConversation[message.conversationId] ?? [];
     const nextMessages = upsertConversationMessage(current, message);
 
@@ -541,6 +592,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   }
 
   function recomputeCurrentLastMessageSummary(message: ConversationMessage) {
+    if (isTracelessMessage(message.conversationId, message.id)) return;
     snapshot = {
       ...snapshot,
       conversations: sortConversations(
@@ -604,6 +656,11 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   function syncRealtime(event: ImRealtimeEvent) {
     if (event.type === "message.created" || event.type === "message.updated" || event.type === "message.recalled") {
       upsertConversation(event.payload.conversation);
+      if (event.type === "message.recalled" && event.payload.message.recallMode === "traceless") {
+        removeTracelessMessage(event.payload.message.conversationId, event.payload.message.id);
+        emit();
+        return;
+      }
       upsertMessage(event.payload.message);
       if (event.type === "message.recalled") {
         recomputeCurrentLastMessageSummary(event.payload.message);
@@ -713,6 +770,10 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         if (!realtimeUnsubscribe) {
           realtimeUnsubscribe = backend.subscribeUpdates((update) => {
             if (update.type === "message.deleted") {
+              if (update.reason === "traceless_recall") {
+                removeTracelessMessage(update.conversationId, update.messageId);
+                emit();
+              }
               scheduleTerminalMediaPurge(
                 update.conversationId,
                 update.messageId,
@@ -811,6 +872,19 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function replaceLocalMessage(localId: string, nextMessage: ConversationMessage) {
     const current = snapshot.messagesByConversation[nextMessage.conversationId] ?? [];
+    if (isTracelessMessage(nextMessage.conversationId, nextMessage.id)) {
+      snapshot = {
+        ...snapshot,
+        messagesByConversation: {
+          ...snapshot.messagesByConversation,
+          [nextMessage.conversationId]: current.filter(
+            (message) => message.id !== localId && message.localId !== localId,
+          ),
+        },
+      };
+      rebuildConversationMessageSummary(nextMessage.conversationId);
+      return;
+    }
     const deduped = current
       .map((message) => (message.id === localId || message.localId === localId ? nextMessage : message))
       .filter((message, index, array) => array.findIndex((item) => item.id === message.id) === index);
@@ -867,7 +941,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     if ((historyGenerations.get(conversationId) ?? 0) !== generation) return;
     const nextMessages = mergeConversationMessageHistory(
       snapshot.messagesByConversation[conversationId] ?? [],
-      response.messages,
+      response.messages.filter(
+        (message) => !isTracelessMessage(conversationId, message.id),
+      ),
       options?.reset ?? false,
     );
 
@@ -1093,12 +1169,19 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
     let localPurgeFailed = false;
+    if (response.mode === "traceless") {
+      removeTracelessMessage(conversationId, messageId);
+      emit();
+      void refreshBootstrap();
+    }
     await purgeTerminalMediaWithRetry(conversationId, messageId).catch(() => {
       localPurgeFailed = true;
     });
-    upsertMessage(response.message);
-    recomputeCurrentLastMessageSummary(response.message);
-    emit();
+    if (response.mode === "standard") {
+      upsertMessage(response.message);
+      recomputeCurrentLastMessageSummary(response.message);
+      emit();
+    }
     if (localPurgeFailed) {
       scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
       throw new Error("error.im.local_cache_purge_failed");
@@ -1671,20 +1754,29 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
 
     entityRefresh = (async () => {
-      const bootstrap = await api.bootstrap();
-      snapshot = {
-        ...snapshot,
-        currentUserId: bootstrap.currentUserId,
-        config: bootstrap.config,
-        users: bootstrap.users,
-        usersById: toUserRecord(bootstrap.users),
-        contacts: bootstrap.contacts,
-        organizationContacts: bootstrap.organizationContacts,
-        friendRequests: bootstrap.friendRequests,
-        conversations: sortConversations(applyDraftsToConversations(bootstrap.conversations, snapshot.ui.drafts)),
-        members: bootstrap.members
-      };
-      emit();
+      let generation: number;
+      do {
+        generation = entityRefreshGeneration;
+        const bootstrap = await api.bootstrap();
+        // A recall invalidates pre-recall counters as well as message previews.
+        if (generation !== entityRefreshGeneration) continue;
+        snapshot = {
+          ...snapshot,
+          currentUserId: bootstrap.currentUserId,
+          config: bootstrap.config,
+          users: bootstrap.users,
+          usersById: toUserRecord(bootstrap.users),
+          contacts: bootstrap.contacts,
+          organizationContacts: bootstrap.organizationContacts,
+          friendRequests: bootstrap.friendRequests,
+          conversations: sortConversations(applyDraftsToConversations(
+            bootstrap.conversations.map(sanitizeTracelessConversation),
+            snapshot.ui.drafts,
+          )),
+          members: bootstrap.members
+        };
+        emit();
+      } while (generation !== entityRefreshGeneration);
     })().finally(() => {
       entityRefresh = null;
     });

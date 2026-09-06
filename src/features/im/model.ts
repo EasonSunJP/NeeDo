@@ -25,7 +25,7 @@ export type ImMessageType =
   | "recalled";
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
 export type ImMessageServerState = "active" | "recalled";
-export type ImRecallMode = "standard";
+export type ImRecallMode = "standard" | "traceless";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
 export type MessageCampaignType = "marketing" | "crm" | "transactional" | "system" | "risk";
@@ -401,7 +401,12 @@ export type ImStoreUpdate =
   | { type: "message.created"; message: ConversationMessage }
   | { type: "message.updated"; message: ConversationMessage }
   | { type: "message.recalled"; message: ConversationMessage }
-  | { type: "message.deleted"; conversationId: string; messageId: string; reason: "privacy_expired" }
+  | {
+      type: "message.deleted";
+      conversationId: string;
+      messageId: string;
+      reason: "privacy_expired" | "traceless_recall";
+    }
   | { type: "refresh" };
 
 export type ReadCursor = {

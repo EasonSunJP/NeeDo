@@ -133,7 +133,7 @@ export type ImApi = {
     conversationId: string;
     messageId: string;
     message: ConversationMessage;
-    mode: "standard";
+    mode: "standard" | "traceless";
   }>;
   resendMessage(messageId: string): Promise<{ conversation: Conversation; message: ConversationMessage }>;
   forwardMessage(messageId: string, conversationId: string): Promise<{

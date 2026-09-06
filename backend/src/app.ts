@@ -55,7 +55,10 @@ import type { SearchQueryRecorderPort } from "./services/search-query-recorder.s
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
-import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import {
+  PlatformMembershipRepository,
+  type PlatformMembershipRepositoryPort
+} from "./repositories/platform-membership.repository";
 import {
   PlatformSettingsRepository,
   type PlatformSettingsRepositoryPort
@@ -266,7 +269,7 @@ import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
-import type { PlatformMembershipService } from "./services/platform-membership.service";
+import { PlatformMembershipService } from "./services/platform-membership.service";
 import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
@@ -430,7 +433,10 @@ export interface AppDependencies {
     | "amendRefund"
   >;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
-  platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
+  platformMembershipResolverService?: Pick<
+    PlatformMembershipService,
+    "resolveMembershipAt" | "hasEffectiveBenefitAt"
+  >;
   userExperienceService?: Pick<
     UserExperienceService,
     | "recordEvent"
@@ -621,13 +627,20 @@ export const createApp = (
       legalDocumentRepository,
       new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
     );
+  const platformMembershipRepository =
+    dependencies.platformMembershipRepository ?? new PlatformMembershipRepository();
+  const platformMembershipResolverService =
+    dependencies.platformMembershipResolverService ??
+    new PlatformMembershipService(platformMembershipRepository);
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
       realtimeRepository,
       realtimeEventGateway,
       personalIdentityScopeService,
-      userExperienceService
+      userExperienceService,
+      undefined,
+      platformMembershipResolverService
     );
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
@@ -647,7 +660,9 @@ export const createApp = (
     imMediaLifecycleRepository,
     legalDocumentRepository,
     legalDocumentService,
-    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {})
+    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {}),
+    platformMembershipRepository,
+    platformMembershipResolverService
   };
 
   apiRouter.use((request, response, next) => {
