@@ -2830,6 +2830,231 @@ const billingProfileRequestBody = {
   }
 };
 
+const orderRefundErrorResponses = {
+  "400": jsonErrorResponse("error.validation — strict request validation failed"),
+  "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
+  "403": jsonErrorResponse("error.forbidden or error.identity.forbidden — permission or identity denied"),
+  "404": jsonErrorResponse("error.order_refund_case.not_found or error.order_refund_dispute.not_found — unavailable in the authenticated scope"),
+  "409": jsonErrorResponse("error.order_refund_case.invalid_state, error.order_refund_case.version_conflict, error.order_refund_case.idempotency_conflict, error.order_refund_case.active_conflict, or error.order_refund_dispute.required")
+};
+
+const orderRefundPathParameters = [
+  { name: "orderId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+  { name: "caseId", in: "path", required: true, schema: { type: "string", format: "uuid" } }
+];
+
+const orderRefundCommandOperation = (input: {
+  summary: string;
+  permission: string;
+  inputSchema: string;
+  parameters?: readonly Record<string, unknown>[];
+  create?: boolean;
+}) => ({
+  tags: ["Order Refund Cases"],
+  summary: input.summary,
+  security: [{ bearerAuth: [] }],
+  "x-permission": input.permission,
+  ...(input.parameters ? { parameters: input.parameters } : {}),
+  requestBody: {
+    required: true,
+    content: { "application/json": { schema: { $ref: `#/components/schemas/${input.inputSchema}` } } }
+  },
+  responses: {
+    ...(input.create
+      ? {
+          "201": jsonDataResponse("Refund request created", { $ref: "#/components/schemas/OrderRefundCasePublic" }),
+          "200": jsonDataResponse("Exact idempotent replay of an existing refund request", { $ref: "#/components/schemas/OrderRefundCasePublic" })
+        }
+      : { "200": jsonDataResponse("Refund case command completed", { $ref: "#/components/schemas/OrderRefundCasePublic" }) }),
+    ...orderRefundErrorResponses
+  }
+});
+
+const createOrderRefundCaseOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
+  const userWrite = "user:order-refund:write";
+  const merchantWrite = "merchant-admin:order-refund:write";
+  const disputeRead = "backoffice:order-refund-dispute:read";
+  const disputeResolve = "backoffice:order-refund-dispute:resolve";
+  const customerBase = `${config.API_PREFIX}/orders/{orderId}/refund-requests`;
+  const merchantBase = `${config.API_PREFIX}/merchant-admin/orders/{orderId}/refund-requests/{caseId}`;
+  return {
+    [customerBase]: {
+      post: orderRefundCommandOperation({
+        summary: "Create a refund request for the authenticated customer's completed order",
+        permission: userWrite,
+        inputSchema: "OrderRefundRequestInput",
+        parameters: [orderRefundPathParameters[0]],
+        create: true
+      })
+    },
+    [`${customerBase}/{caseId}/confirm-receipt`]: {
+      post: orderRefundCommandOperation({ summary: "Confirm the merchant refund was received", permission: userWrite, inputSchema: "OrderRefundUpdateEnvelope", parameters: orderRefundPathParameters })
+    },
+    [`${customerBase}/{caseId}/complaints`]: {
+      post: orderRefundCommandOperation({ summary: "Open a complaint after the merchant rejected the refund", permission: userWrite, inputSchema: "OrderRefundComplaintInput", parameters: orderRefundPathParameters })
+    },
+    [`${merchantBase}/approve`]: {
+      post: orderRefundCommandOperation({ summary: "Approve a scoped merchant refund request", permission: merchantWrite, inputSchema: "OrderRefundDecisionInput", parameters: orderRefundPathParameters })
+    },
+    [`${merchantBase}/reject`]: {
+      post: orderRefundCommandOperation({ summary: "Reject a scoped merchant refund request", permission: merchantWrite, inputSchema: "OrderRefundDecisionInput", parameters: orderRefundPathParameters })
+    },
+    [`${merchantBase}/refund-evidence`]: {
+      post: orderRefundCommandOperation({ summary: "Submit merchant refund evidence without completing the refund", permission: merchantWrite, inputSchema: "OrderRefundEvidenceInput", parameters: orderRefundPathParameters })
+    },
+    [`${merchantBase}/complaints`]: {
+      post: orderRefundCommandOperation({ summary: "Open a merchant complaint after merchant rejection", permission: merchantWrite, inputSchema: "OrderRefundComplaintInput", parameters: orderRefundPathParameters })
+    },
+    [`${config.API_PREFIX}/backoffice/refund-disputes`]: {
+      get: {
+        tags: ["Order Refund Cases"],
+        summary: "List persisted refund disputes for platform operations",
+        security: [{ bearerAuth: [] }],
+        "x-permission": disputeRead,
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["open", "resolved"] } },
+          { name: "search", in: "query", schema: { type: "string", maxLength: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated persisted refund disputes", { $ref: "#/components/schemas/OrderRefundDisputePage" }),
+          ...orderRefundErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/refund-disputes/{disputeId}/resolve`]: {
+      post: orderRefundCommandOperation({
+        summary: "Resolve a persisted open refund dispute",
+        permission: disputeResolve,
+        inputSchema: "OrderRefundDisputeResolutionInput",
+        parameters: [{ name: "disputeId", in: "path", required: true, schema: { type: "string", format: "uuid" } }]
+      })
+    }
+  };
+};
+
+const orderRefundOpenApiSchemas = {
+  OrderRefundUpdateEnvelope: {
+    type: "object",
+    additionalProperties: false,
+    required: ["idempotencyKey", "expectedVersion"],
+    properties: {
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+      expectedVersion: { type: "integer", minimum: 1 }
+    }
+  },
+  OrderRefundRequestInput: {
+    type: "object",
+    additionalProperties: false,
+    required: ["idempotencyKey", "expectedVersion", "reason"],
+    properties: {
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+      expectedVersion: { const: 0 },
+      reason: { type: "string", minLength: 2, maxLength: 500 }
+    }
+  },
+  OrderRefundComplaintInput: {
+    type: "object",
+    additionalProperties: false,
+    required: ["idempotencyKey", "expectedVersion", "reason"],
+    properties: {
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+      expectedVersion: { type: "integer", minimum: 1 },
+      reason: { type: "string", minLength: 2, maxLength: 500 }
+    }
+  },
+  OrderRefundDecisionInput: {
+    type: "object",
+    additionalProperties: false,
+    required: ["idempotencyKey", "expectedVersion", "note"],
+    properties: {
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+      expectedVersion: { type: "integer", minimum: 1 },
+      note: { type: "string", minLength: 2, maxLength: 500 }
+    }
+  },
+  OrderRefundEvidenceInput: {
+    type: "object",
+    additionalProperties: false,
+    required: ["idempotencyKey", "expectedVersion", "reference"],
+    properties: {
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+      expectedVersion: { type: "integer", minimum: 1 },
+      reference: { type: "string", minLength: 2, maxLength: 120 }
+    }
+  },
+  OrderRefundDisputeResolutionInput: {
+    type: "object",
+    additionalProperties: false,
+    required: ["idempotencyKey", "expectedVersion", "resolution", "publicReason"],
+    properties: {
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+      expectedVersion: { type: "integer", minimum: 1 },
+      resolution: { type: "string", enum: ["refund", "reject"] },
+      publicReason: { type: "string", minLength: 2, maxLength: 500 },
+      internalNote: { type: ["string", "null"], minLength: 2, maxLength: 1000, writeOnly: true }
+    }
+  },
+  OrderRefundCasePublic: {
+    type: "object",
+    additionalProperties: false,
+    required: ["publicId", "orderNo", "shop", "customer", "status", "responsibility", "refundAmountJpy", "currency", "version", "requestReason", "requestedAt", "createdAt", "updatedAt"],
+    properties: {
+      publicId: { type: "string", format: "uuid" },
+      orderNo: { type: "string" },
+      shop: { type: "object", additionalProperties: false, required: ["shopNo", "name"], properties: { shopNo: { type: ["string", "null"] }, name: { type: "string" } } },
+      customer: { type: "object", additionalProperties: false, required: ["needoId", "displayName"], properties: { needoId: { type: "string" }, displayName: { type: "string" } } },
+      status: { type: "string", enum: ["merchant_review_pending", "refund_pending", "customer_confirmation_pending", "merchant_rejected", "disputed", "refunded", "dispute_rejected"] },
+      responsibility: { const: "shop" },
+      refundAmountJpy: { type: "integer", minimum: 0 },
+      currency: { type: "string", const: "JPY" },
+      version: { type: "integer", minimum: 1 },
+      requestReason: { type: "string", minLength: 2, maxLength: 500 },
+      merchantDecisionNote: { type: ["string", "null"] },
+      refundReference: { type: ["string", "null"] },
+      requestedAt: { type: "string", format: "date-time" },
+      merchantDecisionAt: { type: ["string", "null"], format: "date-time" },
+      refundSubmittedAt: { type: ["string", "null"], format: "date-time" },
+      customerConfirmedAt: { type: ["string", "null"], format: "date-time" },
+      dispute: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["publicId", "status", "resolution", "version", "reason", "openedAt", "resolvedAt", "publicResolutionReason"],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["open", "resolved"] },
+          resolution: { type: ["string", "null"], enum: ["refund", "reject", null] },
+          version: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 2, maxLength: 500 },
+          openedAt: { type: "string", format: "date-time" },
+          resolvedAt: { type: ["string", "null"], format: "date-time" },
+          publicResolutionReason: { type: ["string", "null"], maxLength: 500 }
+        }
+      },
+      affiliateReward: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["status", "rewardNdp"],
+        properties: { status: { const: "settled" }, rewardNdp: { type: "integer", minimum: 0 } }
+      },
+      createdAt: { type: "string", format: "date-time" },
+      updatedAt: { type: "string", format: "date-time" }
+    }
+  },
+  OrderRefundDisputePage: {
+    type: "object",
+    additionalProperties: false,
+    required: ["list", "total", "page", "page_size"],
+    properties: {
+      list: { type: "array", items: { $ref: "#/components/schemas/OrderRefundCasePublic" } },
+      total: { type: "integer", minimum: 0 },
+      page: { type: "integer", minimum: 1 },
+      page_size: { type: "integer", minimum: 1, maximum: 100 }
+    }
+  }
+};
+
 export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   openapi: "3.1.0",
   info: {
@@ -2851,6 +3076,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     schemas: {
       ...shopMembershipCardPlanOpenApiSchemas,
+      ...orderRefundOpenApiSchemas,
       ShopTravelFareBand: {
         type: "object",
         additionalProperties: false,
@@ -15356,6 +15582,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    ...createOrderRefundCaseOpenApiPaths(config),
     [`${config.API_PREFIX}/platform/settings/public`]: {
       get: {
         operationId: "getPublicPlatformSettings",

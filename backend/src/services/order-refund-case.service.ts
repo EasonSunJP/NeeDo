@@ -123,6 +123,11 @@ export type OrderRefundMutationResult =
       current?: OrderRefundCaseView;
     };
 
+export type OrderRefundRequestResult = {
+  kind: "created" | "replayed";
+  value: OrderRefundCaseView;
+};
+
 export interface OrderRefundCaseRepositoryPort {
   request(input: RequestRefundCommand): Promise<OrderRefundMutationResult>;
   merchantDecision(input: MerchantRefundDecisionCommand): Promise<OrderRefundMutationResult>;
@@ -184,7 +189,7 @@ export class OrderRefundCaseService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
     input: RequestRefundInput
-  ): Promise<OrderRefundCaseView> {
+  ): Promise<OrderRefundRequestResult> {
     this.assertNoProtectedPublicFields(input);
     this.requireCustomerIdentity(actor);
     const normalized = {
@@ -209,7 +214,12 @@ export class OrderRefundCaseService {
       }),
       payload: { reason: normalized.reason }
     };
-    return this.unwrap(await this.repository.request(command), "case");
+    const result = await this.repository.request(command);
+    if (result.kind === "created" || result.kind === "replayed") {
+      return { kind: result.kind, value: result.value };
+    }
+    this.unwrap(result, "case");
+    throw new Error("Order refund request repository returned an impossible updated result");
   }
 
   public async merchantApprove(

@@ -110,6 +110,7 @@ import type { TravelOperationsRepositoryPort } from "./services/travel-operation
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
+import type { OrderRefundCaseRepositoryPort } from "./services/order-refund-case.service";
 import type {
   AffiliatePlatformFeeRepositoryPort,
   AffiliatePlatformFeeService
@@ -215,6 +216,7 @@ import { createImPolicyRoutes } from "./routes/im-policy.routes";
 import { createLegalDocumentRoutes } from "./routes/legal-document.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
+import { createOrderRefundCaseRoutes } from "./routes/order-refund-case.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createNdpExchangeRateRoutes } from "./routes/ndp-exchange-rate.routes";
 import { createHealthRoutes } from "./routes/health.routes";
@@ -377,6 +379,7 @@ export interface AppDependencies {
   travelOperationsRepository?: TravelOperationsRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
+  orderRefundCaseRepository?: OrderRefundCaseRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
   affiliatePlatformFeeService?: AffiliatePlatformFeeService;
   ndpExchangeRateRepository?: NdpExchangeRateRepositoryPort;
@@ -741,6 +744,10 @@ export const createApp = (
     createOrderAcceptancePauseRoutes(config, resolvedDependencies)
   );
   mount("backoffice", createOrderPerformanceRoutes(config, resolvedDependencies));
+  mount(
+    ["shared", "backoffice", "merchant-admin"],
+    createOrderRefundCaseRoutes(config, resolvedDependencies)
+  );
   mount("backoffice", createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   mount("backoffice", createNdpExchangeRateRoutes(config, resolvedDependencies));
   mount("merchant-admin", createMerchantFinanceRulesRoutes(config, resolvedDependencies));

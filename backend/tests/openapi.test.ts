@@ -5,6 +5,66 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents every authenticated completed-order refund command with strict public contracts", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, { additionalProperties?: boolean; properties?: Record<string, unknown> }> };
+    };
+    const commands = [
+      ["/api/v1/orders/{orderId}/refund-requests", "post", "user:order-refund:write"],
+      ["/api/v1/orders/{orderId}/refund-requests/{caseId}/confirm-receipt", "post", "user:order-refund:write"],
+      ["/api/v1/orders/{orderId}/refund-requests/{caseId}/complaints", "post", "user:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/approve", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/reject", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/refund-evidence", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/complaints", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/backoffice/refund-disputes", "get", "backoffice:order-refund-dispute:read"],
+      ["/api/v1/backoffice/refund-disputes/{disputeId}/resolve", "post", "backoffice:order-refund-dispute:resolve"]
+    ] as const;
+
+    for (const [path, method, permission] of commands) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toMatchObject({ security: [{ bearerAuth: [] }], "x-permission": permission });
+      expect(operation?.responses).toEqual(
+        expect.objectContaining({ "400": expect.any(Object), "401": expect.any(Object), "403": expect.any(Object), "404": expect.any(Object), "409": expect.any(Object) })
+      );
+    }
+
+    const create = document.paths["/api/v1/orders/{orderId}/refund-requests"].post as {
+      requestBody: { content: { "application/json": { schema: { $ref: string } } } };
+      responses: Record<string, { description: string }>;
+    };
+    expect(create.requestBody.content["application/json"].schema.$ref).toBe(
+      "#/components/schemas/OrderRefundRequestInput"
+    );
+    expect(create.responses["201"].description).toContain("created");
+    expect(create.responses["200"].description).toContain("replay");
+
+    const list = document.paths["/api/v1/backoffice/refund-disputes"].get as {
+      parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }>;
+    };
+    expect(list.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "page_size", in: "query" }),
+        expect.objectContaining({ name: "status", in: "query" }),
+        expect.objectContaining({ name: "search", in: "query" })
+      ])
+    );
+
+    for (const name of [
+      "OrderRefundRequestInput",
+      "OrderRefundUpdateEnvelope",
+      "OrderRefundComplaintInput",
+      "OrderRefundDisputeResolutionInput"
+    ]) {
+      expect(document.components.schemas[name]).toMatchObject({ additionalProperties: false });
+    }
+    expect(document.components.schemas.OrderRefundCasePublic.properties).not.toEqual(
+      expect.objectContaining({ id: expect.anything(), requestFingerprint: expect.anything(), internalNote: expect.anything() })
+    );
+  });
+
   it("documents the protected Bearer-only regional live event stream", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<

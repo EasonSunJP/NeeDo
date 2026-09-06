@@ -133,7 +133,7 @@ describe("OrderRefundCaseService", () => {
         expectedVersion: 0,
         reason: "  damaged service  "
       })
-    ).resolves.toEqual(view());
+    ).resolves.toEqual({ kind: "created", value: view() });
 
     const command = repo.request.mock.calls[0][0];
     expect(command).toMatchObject({
@@ -365,7 +365,7 @@ describe("OrderRefundCaseService", () => {
         expectedVersion: 0,
         reason: "  damaged service  "
       })
-    ).resolves.toEqual(view());
+    ).resolves.toEqual({ kind: "replayed", value: view() });
     const replayFingerprint = repo.request.mock.calls[0][0].fingerprint;
 
     await service.request(customer, context, {
