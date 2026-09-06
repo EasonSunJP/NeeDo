@@ -445,17 +445,17 @@ git commit -m "feat(exchange): connect quick matching UI"
 - Produces: `ENV_FILE=.env.dev npm --prefix backend run check:exchange-quick-matching-flow`.
 - Produces: two-connection concurrency proof guarded by explicit local-only environment flags.
 
-- [ ] **Step 1: Write failing checker-safety and integration tests**
+- [x] **Step 1: Write failing checker-safety and integration tests**
 
 Assert the checker rejects missing `ENV_FILE`, production/staging flags, remote MySQL hosts, production-looking database names, and databases with unapplied repository migrations. Add two-connection barriers for the final two providers claiming the same Request and for owner budget confirmation racing a replay.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-quick-matching-flow-script.test.ts tests/exchange-quick-matching.repository.integration.test.ts`
 
 Expected: safety suite fails because the checker is absent; integration suite is skipped unless its explicit flags are present.
 
-- [ ] **Step 3: Implement marker-scoped rollback proof**
+- [x] **Step 3: Implement marker-scoped rollback proof**
 
 Create one below-budget Quick Request and one over-budget Quick Request through the formal service/repository chain. Prove:
 
@@ -466,7 +466,7 @@ over budget: 2 active claims -> OPEN -> exact owner preview -> no third claim ->
 
 Also assert claim/event/notification/audit counts, selected and unselected states, address privacy, participant time locks, `ScheduleSlot.bookedCount` unchanged, publication fee still `HELD`, exact Wallet/Hold/Ledger/Reconciliation baselines unchanged, zero Booking/Payment rows, idempotent replay, changed-payload conflict, concurrent single terminal winner, and captured-ID cleanup.
 
-- [ ] **Step 4: Run the guarded checker on the authorized local database**
+- [x] **Step 4: Run the guarded checker on the authorized local database**
 
 Run:
 
@@ -478,7 +478,7 @@ RUN_EXCHANGE_QUICK_MATCHING_INTEGRATION=true ALLOW_EXCHANGE_QUICK_MATCHING_DEV_I
 
 Expected: migrations up to date, checker reports both scenarios and zero residue, concurrency suite passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/scripts/check-exchange-quick-matching-flow.ts backend/tests/exchange-quick-matching-flow-script.test.ts backend/tests/exchange-quick-matching.repository.integration.test.ts backend/package.json

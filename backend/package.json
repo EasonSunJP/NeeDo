@@ -96,6 +96,7 @@
     "check:formal-exchange-test": "tsx scripts/check-formal-exchange-test.ts",
     "check:exchange-selective-claim-flow": "tsx scripts/check-exchange-selective-claim-flow.ts",
     "check:exchange-selective-matching-flow": "tsx scripts/check-exchange-selective-matching-flow.ts",
+    "check:exchange-quick-matching-flow": "tsx scripts/check-exchange-quick-matching-flow.ts",
     "check:exchange-booking-conversion-flow": "tsx scripts/check-exchange-booking-conversion-flow.ts",
     "check:exchange-cancellation-schema": "tsx scripts/check-exchange-cancellation-schema.ts",
     "check:exchange-cancellation-flow": "tsx scripts/check-exchange-cancellation-flow.ts",
