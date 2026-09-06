@@ -37,3 +37,12 @@
 2026-09-06 19:17 JST，只读请求 5180 的 UnifiedUserTable/DataTable 模块仍得到不含冻结详情列的旧缓存。因此 Git 合并成功不等同于 5180 已显示新 UI。本任务未停止跨任务服务：5180/3000 的 cwd 为 main 工作区，但 3001 为另一个会员任务的 backend。已交由运行环境协调任务统一核对代理并刷新前端；本功能实际浏览器验收地址仍为 15182。
 
 技师 work-status 是独立功能，未因本 UI 合并而自动合入。其前置通知模块尚在修复，由通知任务自行完成验收及 main 集成，再依次处理 SOS、work-status；禁止合并含其他任务改动的 `22a2e32b` 快照。
+
+
+## 5180 实际页面复验完成
+
+2026-09-06 19:41 JST 继续核验：协调任务恢复四个 main 服务后，实际 5180 已返回包含 `table-frozen-action` / `frozenDetailLabel` 的新前端模块。早先 Redis 未就绪导致的 503 经后端重启消除，`/api/v1/ready`、`/ops-api/v1/ready`、`/merchant-api/v1/ready` 均返回 200 ready，数据库和 Redis 正常。
+
+通过 5180 真实登录页面登录运营和商户账号后，运营用户、商户用户、商户员工三类列表全部通过横向冻结列和点击正式抽屉复验：用户表滚动 417px、员工表滚动 163px 后，右列 x=899px、宽104px不变；胶囊圆角9999px、高32px，底色不透明。各详情抽屉在390px下无页面横向溢出、无读取失败。本节取代上一节“5180仍旧缓存”的运行限制。
+
+截图：[main运营用户](main-operations-users.png)、[main商户用户](main-merchant-users.png)、[main商户员工](main-merchant-staff.png)。本次不写入业务状态、预约或评论；未推送部署。正式通知随后已合入 main `3fcabc57`，SOS及技师work-status仍按协调顺序继续集成。
