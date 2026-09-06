@@ -136,6 +136,7 @@ export class PlatformMembershipService {
       this.resolveMembershipAt(actor.userId, occurredAt),
       this.repository.hasVerifiedEkycAt(actor.userId, occurredAt)
     ]);
+    const publishedDesign = await this.repository.findPublishedTierAt(membership.tierCode, occurredAt);
     return {
       tierCode: membership.tierCode,
       tierVersionPublicId: membership.tierVersionPublicId,
@@ -146,7 +147,7 @@ export class PlatformMembershipService {
         code: benefit.code,
         configuration: benefit.configuration
       })),
-      theme: membership.theme
+      theme: publishedDesign?.theme ?? membership.theme
     };
   }
 
