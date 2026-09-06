@@ -7,6 +7,33 @@ import storeSource from "../store.ts?raw";
 const styles = readFileSync(new URL("../../../styles.css", import.meta.url), "utf8");
 
 describe("OverviewWorkspace mobile schedule detail header", () => {
+  it("loads the merchant detail board from formal schedule slots and formal technician avatars", () => {
+    expect(source).toContain("loadManagedScheduleWindow");
+    expect(source).toContain("buildFormalMerchantScheduleBoard");
+    expect(source).toContain("formalTechnicians");
+    expect(source).toContain("dataOverride={formalScheduleBoard?.dataOverride}");
+    expect(source).toContain("formalScheduleLoading");
+    expect(source).toContain("formalScheduleError");
+    expect(source).not.toContain('useState("2026-04-20")');
+  });
+
+  it("reloads and isolates formal data when switching shops", () => {
+    expect(source).toContain("formalScheduleScopeKey");
+    expect(source).toContain("formalScheduleResult.scopeKey === formalScheduleScopeKey");
+    expect(source).toContain("formalScheduleReloadKey, formalScheduleScopeKey, usesFormalMerchantSchedule]");
+  });
+
+  it("keeps the formal board override during loading and errors", () => {
+    const start = source.indexOf("const formalScheduleBoard = useMemo");
+    const guard = source.slice(start, source.indexOf("return buildFormalMerchantScheduleBoard", start));
+    expect(guard).not.toContain("formalScheduleLoading");
+    expect(guard).not.toContain("formalScheduleError");
+    const detail = source.slice(source.indexOf('<MobileFullscreenPage className="z-[90]"'));
+    expect(detail).toContain('aria-live="polite"');
+    expect(detail).toContain("formalScheduleLoading");
+    expect(detail).toContain("formalScheduleError");
+  });
+
   it("uses the shared floating fullscreen header without a page-local wrapper", () => {
     const detailStart = source.indexOf('<MobileFullscreenPage className="z-[90]"');
     const detailEnd = source.indexOf("isMobileSurface && currentSelectedContactStatusItem", detailStart);

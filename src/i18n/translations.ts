@@ -758,6 +758,10 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "其他方式": {"zh-Hant": "其他方式", "ja": "その他の支払方法", "en": "Other payment method", "ko": "기타 결제 수단"},
+  "到店支付": {"zh-Hant": "到店支付", "ja": "来店時払い", "en": "Pay at the shop", "ko": "매장 결제"},
+  "可预约时段": {"zh-Hant": "可預約時段", "ja": "予約可能枠", "en": "Available time slots", "ko": "예약 가능한 시간대"},
+  "有预约时段": { "zh-Hant": "有預約時段", ja: "予約のある枠", en: "Slots with bookings", ko: "예약이 있는 시간대" },
   "运营后台成员": fourLanguageTranslation("營運後台成員", "運営管理メンバー", "Operations member", "운영 관리자"),
   "暂无待处理订单": fourLanguageTranslation("暫無待處理訂單", "対応待ちの注文はありません", "No pending orders", "처리 대기 주문이 없습니다"),
   "暂无待审核申请": fourLanguageTranslation("暫無待審核申請", "審査待ちの申請はありません", "No applications awaiting review", "검토 대기 신청이 없습니다"),
@@ -788,6 +792,9 @@ export const translations: TranslationMap = {
   "当前语言尚无已发布版本，请联系 NeeDo 客服。": fourLanguageTranslation("目前語言尚無已發布版本，請聯絡 NeeDo 客服。", "現在の言語には公開済みバージョンがありません。NeeDo サポートへお問い合わせください。", "No published version exists for this language. Please contact NeeDo Support.", "현재 언어로 게시된 버전이 없습니다. NeeDo 고객지원에 문의해 주세요."),
   "系统维护中": fourLanguageTranslation("系統維護中", "システムメンテナンス中", "System maintenance", "시스템 점검 중"),
   "服务暂时停止开放，请稍后再试。": fourLanguageTranslation("服務暫時停止開放，請稍後再試。", "サービスを一時停止しています。しばらくしてからもう一度お試しください。", "The service is temporarily unavailable. Please try again later.", "서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
+  "暂无正式排班": { "zh-Hant": "暫無正式排班", ja: "シフトはまだありません", en: "No shifts scheduled", ko: "등록된 근무 일정 없음" },
+  "正式排班记录": { "zh-Hant": "正式排班記錄", ja: "登録済みシフト", en: "Scheduled shift", ko: "등록된 근무 일정" },
+
   "NDP 汇率": fourLanguageTranslation("NDP 匯率", "NDP 為替レート", "NDP exchange rate", "NDP 환율"),
   "按整数比例发布不可变汇率版本；订单结算会保存当时使用的正式快照。": fourLanguageTranslation("以整數比例發布不可變匯率版本；訂單結算會儲存當時使用的正式快照。", "整数比率で変更不可の為替レート版を公開します。注文決済には使用時点の正式なスナップショットが保存されます。", "Publish immutable exchange-rate versions as integer ratios. Order settlement stores the formal snapshot used at that time.", "정수 비율의 변경 불가 환율 버전을 게시합니다. 주문 정산에는 당시 사용한 공식 스냅샷이 저장됩니다."),
   "发布新汇率": fourLanguageTranslation("發布新匯率", "新しいレートを公開", "Publish new rate", "새 환율 게시"),

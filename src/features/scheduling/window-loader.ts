@@ -59,7 +59,7 @@ export async function loadManagedScheduleWindow(
   );
 }
 
-export async function loadEveryTechnicianOrder(
+export async function loadEveryScopedOrder(
   query: Omit<OrderListQuery, "page" | "pageSize"> = {}
 ): Promise<BookingOrder[]> {
   const rows = await loadEveryPage((page) => bookingApi.listOrders({
@@ -72,3 +72,6 @@ export async function loadEveryTechnicianOrder(
     right.startsAt.localeCompare(left.startsAt) || right.id - left.id
   );
 }
+
+// Existing technician consumers keep the same scoped order contract.
+export const loadEveryTechnicianOrder = loadEveryScopedOrder;
