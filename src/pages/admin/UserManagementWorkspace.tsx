@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
+import { RoleMembersPanel } from "./RoleMembersPanel";
 import {
   userManagementApi,
   type PaginatedData,
@@ -51,6 +52,10 @@ type Copy = {
   keyword: string;
   search: string;
   empty: string;
+  members: string;
+  memberEmpty: string;
+  retry: string;
+  scope: string;
   permissionTree: string;
   saveSuccess: string;
   formalAccount: string;
@@ -99,6 +104,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "关键字",
     search: "搜索",
     empty: "暂无数据",
+    members: "人员列表",
+    memberEmpty: "该角色暂无人员",
+    retry: "重试",
+    scope: "范围",
     permissionTree: "权限树",
     saveSuccess: "已保存",
     formalAccount: "正式账号",
@@ -145,6 +154,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "關鍵字",
     search: "搜尋",
     empty: "暫無資料",
+    members: "人員列表",
+    memberEmpty: "此角色暫無人員",
+    retry: "重試",
+    scope: "範圍",
     permissionTree: "權限樹",
     saveSuccess: "已儲存",
     formalAccount: "正式帳號",
@@ -191,6 +204,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "キーワード",
     search: "検索",
     empty: "データがありません",
+    members: "メンバー一覧",
+    memberEmpty: "このロールにはメンバーがいません",
+    retry: "再試行",
+    scope: "範囲",
     permissionTree: "権限ツリー",
     saveSuccess: "保存しました",
     formalAccount: "正式アカウント",
@@ -237,6 +254,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "Keyword",
     search: "Search",
     empty: "No data",
+    members: "Member list",
+    memberEmpty: "No members have this role",
+    retry: "Retry",
+    scope: "Scope",
     permissionTree: "Permission tree",
     saveSuccess: "Saved",
     formalAccount: "Formal account",
@@ -283,6 +304,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "키워드",
     search: "검색",
     empty: "데이터 없음",
+    members: "구성원 목록",
+    memberEmpty: "이 역할에 구성원이 없습니다",
+    retry: "다시 시도",
+    scope: "범위",
     permissionTree: "권한 트리",
     saveSuccess: "저장됨",
     formalAccount: "정식 계정",
@@ -777,6 +802,23 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
                       <Badge key={permission.id} tone="neutral">{permission.code}</Badge>
                     ))}
                   </div>
+                  <PermissionGate permission="user:list">
+                    <RoleMembersPanel
+                      copy={{
+                        active: copy.active,
+                        disabled: copy.disabled,
+                        empty: copy.memberEmpty,
+                        loading: copy.loading,
+                        members: copy.members,
+                        nextPage: copy.nextPage,
+                        previousPage: copy.previousPage,
+                        retry: copy.retry,
+                        scope: copy.scope,
+                        pageSummary: copy.pageSummary
+                      }}
+                      role={role}
+                    />
+                  </PermissionGate>
                   <RolePermissionControl copy={copy} onAssign={(roleId, permissionIds) => mutate(() => userManagementApi.assignRolePermissions(roleId, permissionIds))} permissions={permissions.list} role={role} />
                   {!role.isSystem ? (
                     <PermissionGate permission="button:role:delete">
